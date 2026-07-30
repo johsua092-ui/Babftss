@@ -161,10 +161,29 @@ Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian 
 
 ---
 
+## 10. ISU ARSITEKTUR: REKONSTRUKSI SOURCE CODE (KEPUTUSAN PENTING)
+
+**Masalah ditemukan:** repo GitHub proyek ini **TIDAK PUNYA source code asli** (tidak ada folder `src/`, `package.json`, `vite.config.js`). Yang ada cuma hasil build/bundle production (`index.html` + `assets/index-[hash].js` yang sudah di-minify) dan `index-single.html` (versi standalone terpisah). Saat menambahkan fitur "Logic Gates Circuit" Card 01, AI terpaksa mengedit LANGSUNG file bundle minified (`assets/index-BLwO3te5.js`) karena tidak ada pilihan lain — ini BERBAHAYA untuk jangka panjang (rawan rusak, tidak bisa di-review manual, makin sulit di-maintain seiring fitur bertambah).
+
+**Konteks tambahan dari user:** proyek ini murni untuk platform tips & trick game "BABFT" (Build A Boat For Treasure) yang akan diakses banyak orang dalam jangka waktu sangat lama (bertahun-tahun) — jadi fondasi kode HARUS solid, tidak boleh gagal.
+
+**Keputusan:** **OPSI B — Rekonstruksi source code dari bundle yang ada.** AI diminta membaca ulang bundle minified yang sudah ada (`assets/index-BLwO3te5.js` + `index.html`), lalu menyusunnya ulang jadi project React/Vite yang proper (folder `src/`, komponen terpisah per file, `package.json`, `vite.config.js`, dst) — SAMBIL MEMPERTAHANKAN PERSIS tampilan & perilaku yang sudah ada dan sudah terverifikasi benar (bukan menulis ulang dari imajinasi/interpretasi bebas). Setelah source code proper ada, SEMUA pengerjaan fitur berikutnya WAJIB lewat source code ini (edit `.jsx`/`.tsx` di `src/`, lalu build), TIDAK BOLEH edit `assets/*.js` manual lagi.
+
+**Yang WAJIB tetap identik setelah rekonstruksi (jangan berubah sedikit pun secara visual/perilaku):**
+- Halaman Welcome (judul, banner, tombol Start Learning).
+- Halaman menu "Logic Gates" (3 menu, styling icon & warna masing-masing).
+- Halaman "7 Basic Logic Gates" — SELURUH spesifikasi di Bagian 3 (bentuk gate, warna, wire, highlight dinamis, dll).
+- Halaman "Logic Gates Circuit" Card 01 (NOT→AND, tier MUDAH) — sesuai Bagian 5.3, TERMASUK 2 catatan minor yang masih perlu diperbaiki (wire routing diagonal harusnya siku-siku/lurus rapi, dan hapus teks "AND" yang tertulis di dalam shape gate — ini nanti diperbaiki SETELAH rekonstruksi source selesai dan terverifikasi aman, supaya perbaikannya dilakukan di source code yang proper, bukan di bundle lama).
+
+**Status:** rekonstruksi sedang dikerjakan (prompt kerja terpisah sudah dibuat).
+
+---
+
 ## 9. RINGKASAN STATUS SAAT INI
 
 - ✅ **SELESAI:** halaman "7 Basic Logic Gates" — desain & fungsi interaktif (termasuk highlight dinamis) benar & terverifikasi.
 - ✅ **SELESAI DISETUP USER:** sistem auto-save progress Firebase Auth + Supabase Database (Bagian 6) — perlu verifikasi env variable sebelum lanjut fitur di atasnya.
-- 🔧 **SEDANG DIKERJAKAN:** halaman "Logic Gates Circuit" (Bagian 5) — sistem tier & struktur card sudah disepakati, sedang mengerjakan card pertama tier MUDAH ("NOT → AND").
+- 🔧 **SUDAH LIVE, ADA 2 MINOR ISSUE:** halaman "Logic Gates Circuit" Card 01 (NOT→AND, tier MUDAH) — sudah tampil & berfungsi di web live, TAPI: (1) wire routing A→AND dan NOT→AND (B') masih diagonal/miring, harusnya siku-siku/lurus rapi seperti standar; (2) ada teks "AND" tertulis di dalam shape gate AND, seharusnya polos tanpa teks. Perbaikan ditunda sampai rekonstruksi source code (Bagian 10) selesai.
+- 🚨 **PRIORITAS SAAT INI: REKONSTRUKSI SOURCE CODE** (Bagian 10) — repo tidak punya source code asli, hanya bundle production ter-minify. AI sedang menyusun ulang jadi project React/Vite proper, mempertahankan persis semua tampilan/perilaku yang sudah ada. Setelah ini selesai, baru lanjut ke 2 minor fix di atas dan fitur-fitur berikutnya.
 - ⏳ **BELUM DIKERJAKAN:** "Create Logic Gates Simulator" (Bagian 7).
-- **File project:** `index.html`, `bagian-7.html` (standalone truth table), `index-single.html`, folder `assets/` (build production, sudah di-minify), `favicon.svg`, `robots.txt`.
+- **File project:** `index.html`, `bagian-7.html` (standalone truth table), `index-single.html`, folder `assets/` (build production, sudah di-minify), `favicon.svg`, `robots.txt`. (Struktur ini akan berubah signifikan setelah rekonstruksi source — akan ada folder `src/`, `package.json`, `vite.config.js` baru.)
