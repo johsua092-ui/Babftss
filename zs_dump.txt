@@ -1,74 +1,101 @@
-export const gateData = [
-  {
+const ZS = [{
     id: 1,
     type: "wire",
     name: "Basic Wire",
-    dualInput: false,
+    dualInput: !1,
     label: "WIRE",
     color: "#60a5fa",
     description: "Sinyal mengalir langsung melewati kabel. Tekan saklar A → lampu output ikut menyala. Ini adalah dasar dari semua rangkaian elektronik — tanpa kabel, tidak ada sinyal yang bisa berjalan."
-  },
-  {
+}, {
     id: 2,
     type: "not",
     name: "NOT Gate",
-    dualInput: false,
+    dualInput: !1,
     label: "NOT",
     color: "#f87171",
     description: "Pembalik sinyal (Inverter). Input A = 0 → Output = 1. Input A = 1 → Output = 0. Perhatikan: saat saklar OFF, output justru menyala! Karena NOT membalik segalanya."
-  },
-  {
+}, {
     id: 3,
     type: "and",
     name: "AND Gate",
-    dualInput: true,
+    dualInput: !0,
     label: "AND",
     color: "#4ade80",
     description: "Output = 1 HANYA jika A dan B keduanya = 1. Seperti dua saklar seri — kedua saklar harus ON baru lampu menyala. Salah satu saja OFF, output langsung 0."
-  },
-  {
+}, {
     id: 4,
     type: "nand",
     name: "NAND Gate",
-    dualInput: true,
+    dualInput: !0,
     label: "NAND",
     color: "#fb923c",
     description: "Kebalikan AND. Output = 0 HANYA jika A dan B keduanya = 1. Semua kombinasi lain (00, 01, 10) menghasilkan output = 1. NAND adalah gerbang universal."
-  },
-  {
+}, {
     id: 5,
     type: "or",
     name: "OR Gate",
-    dualInput: true,
+    dualInput: !0,
     label: "OR",
     color: "#a78bfa",
     description: "Output = 1 jika SALAH SATU atau keduanya bernilai 1. Seperti dua saklar paralel — cukup satu saklar saja yang ON, lampu sudah menyala."
-  },
-  {
+}, {
     id: 6,
     type: "nor",
     name: "NOR Gate",
-    dualInput: true,
+    dualInput: !0,
     label: "NOR",
     color: "#f472b6",
     description: "Kebalikan OR. Output = 1 HANYA jika A dan B keduanya = 0. Begitu ada satu saja input yang bernilai 1, output langsung jadi 0."
-  },
-  {
+}, {
     id: 7,
     type: "xor",
     name: "XOR Gate",
-    dualInput: true,
+    dualInput: !0,
     label: "XOR",
     color: "#facc15",
-    description: "Output = 1 jika A dan B BERBEDA (01 atau 10). Jika sama (00 atau 11), output = 0. Dipakai untuk mengecek perbedaan dua sinyal."
-  },
-  {
+    description: 'Exclusive OR. Output = 1 HANYA jika A dan B BERBEDA (01 atau 10). Jika keduanya sama (00 atau 11), output = 0. "Eksklusif" berarti tidak boleh keduanya ON.'
+}, {
     id: 8,
     type: "xnor",
     name: "XNOR Gate",
-    dualInput: true,
+    dualInput: !0,
     label: "XNOR",
     color: "#2dd4bf",
     description: "Kebalikan XOR. Output = 1 HANYA jika A dan B SAMA (00 atau 11). Jika berbeda (01 atau 10), output = 0. Dipakai untuk mengecek kesamaan dua sinyal."
-  }
-]
+}];
+
+function fa(i) {
+    const a = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(i);
+    return a ? `${parseInt(a[1],16)},${parseInt(a[2],16)},${parseInt(a[3],16)}` : "255,255,255"
+}
+const QS = [{
+    id: 1,
+    name: "Spur (Basic) Gear",
+    color: "#22d3ee",
+    icon: "spur",
+    desc: "Gigi lurus sejajar poros. Paling umum, sederhana, dan mudah dibuat."
+}, {
+    id: 2,
+    name: "Helical Gear",
+    color: "#60a5fa",
+    icon: "helical",
+    desc: "Gigi miring membentuk sudut heliks. Lebih halus dan senyap dari spur gear."
+}, {
+    id: 3,
+    name: "Herringbone Gear",
+    color: "#4ade80",
+    icon: "herring",
+    desc: "Dua helical berlawanan berbentuk V. Menghilangkan gaya aksial sepenuhnya."
+}, {
+    id: 4,
+    name: "Worm Gear",
+    color: "#a78bfa",
+    icon: "worm",
+    desc: "Cacing (worm) menggerakkan roda. Rasio tinggi, tidak bisa dibalik arah."
+}, {
+    id: 5,
+    name: "Rack & Pinion Gear",
+    color: "#fb923c",
+    icon: "rack",
+    desc: "Mengubah rotasi menjadi gerakan lurus (translasi linear)."
+}, {

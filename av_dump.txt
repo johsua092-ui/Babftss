@@ -1,0 +1,31 @@
+const Av = K.forwardRef(function(a, o) {
+        const {
+            id: f,
+            invert: m,
+            position: l = "bottom-right",
+            hotkey: c = ["altKey", "KeyT"],
+            expand: d,
+            closeButton: r,
+            className: p,
+            offset: x,
+            mobileOffset: g,
+            theme: S = "light",
+            richColors: j,
+            duration: M,
+            style: T,
+            visibleToasts: k = mv,
+            toastOptions: R,
+            dir: L = Am(),
+            gap: C = vv,
+            icons: N,
+            containerAriaLabel: q = "Notifications"
+        } = a, [I, P] = K.useState([]), Q = K.useMemo(() => f ? I.filter(X => X.toasterId === f) : I.filter(X => !X.toasterId), [I, f]), at = K.useMemo(() => Array.from(new Set([l].concat(Q.filter(X => X.position).map(X => X.position)))), [Q, l]), [tt, ht] = K.useState([]), [dt, bt] = K.useState(!1), [Bt, St] = K.useState(!1), [O, _] = K.useState(S !== "system" ? S : typeof window < "u" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"), Z = K.useRef(null), it = c.join("+").replace(/Key/g, "").replace(/Digit/g, ""), E = K.useRef(null), H = K.useRef(!1), F = K.useCallback(X => {
+            P(J => {
+                var rt;
+                return (rt = J.find(st => st.id === X.id)) != null && rt.delete || we.dismiss(X.id), J.filter(({
+                    id: st
+                }) => st !== X.id)
+            })
+        }, []);
+        return K.useEffect(() => we.subscribe(X => {
+            if (X.dismiss) {

@@ -1,0 +1,451 @@
+function KS({
+    type: i,
+    dualInput: a,
+    a: o,
+    b: f,
+    output: m,
+    onToggleA: l,
+    onToggleB: c,
+    color: d
+}) {
+    const r = fa(d),
+        p = _ => _ ? d : "#1e293b",
+        x = _ => _ ? `rgba(${r},0.2)` : "#0f172a",
+        g = _ => _ ? d : "#334155",
+        S = m ? d : "#475569",
+        j = m ? `rgba(${r},0.13)` : "#0f172a",
+        M = m ? `drop-shadow(0 0 4px rgba(${r},0.9)) drop-shadow(0 0 10px rgba(${r},0.5))` : "none",
+        T = a ? 92 : 62,
+        k = a ? 22 : 31,
+        R = 70,
+        L = a ? 46 : 31,
+        C = 88,
+        N = a ? 10 : 3,
+        q = a ? 82 : 59,
+        I = q - N,
+        P = 5;
+    let Q = null,
+        at = C + 60;
+    const tt = 10,
+        ht = _ => a ? y.jsxs(y.Fragment, {
+            children: [y.jsx("line", {
+                x1: _,
+                y1: k,
+                x2: _ + tt,
+                y2: k,
+                stroke: S,
+                strokeWidth: "1.2",
+                opacity: "0.45"
+            }), y.jsx("line", {
+                x1: _,
+                y1: R,
+                x2: _ + tt,
+                y2: R,
+                stroke: S,
+                strokeWidth: "1.2",
+                opacity: "0.45"
+            })]
+        }) : null;
+    switch (i) {
+        case "wire": {
+            at = 48;
+            break
+        }
+        case "not": {
+            const _ = C + 54;
+            at = _ + P * 2 + 1, Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("polygon", {
+                    points: `${C},${N} ${C},${q} ${_},${L}`,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), y.jsx("circle", {
+                    cx: _ + P,
+                    cy: L,
+                    r: P,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                })]
+            });
+            break
+        }
+        case "and": {
+            const _ = C + 26,
+                Z = I / 2;
+            at = _ + Z, Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("path", {
+                    d: `M ${C},${N} L ${_},${N} A ${Z},${Z} 0 0,1 ${_},${q} L ${C},${q} Z`,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), ht(C)]
+            });
+            break
+        }
+        case "nand": {
+            const _ = C + 22,
+                Z = I / 2,
+                it = _ + Z;
+            at = it + P * 2 + 1, Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("path", {
+                    d: `M ${C},${N} L ${_},${N} A ${Z},${Z} 0 0,1 ${_},${q} L ${C},${q} Z`,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), y.jsx("circle", {
+                    cx: it + P,
+                    cy: L,
+                    r: P,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), ht(C)]
+            });
+            break
+        }
+        case "or": {
+            const _ = C + 70;
+            at = _;
+            const Z = [`M ${C},${N}`, `C ${C+22},${N}   ${_-18},${L-16} ${_},${L}`, `C ${_-18},${L+16} ${C+22},${q}  ${C},${q}`, `C ${C+15},${L+9}  ${C+15},${L-9} ${C},${N}`, "Z"].join(" ");
+            Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("path", {
+                    d: Z,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), ht(C + 8)]
+            });
+            break
+        }
+        case "nor": {
+            const _ = C + 65,
+                Z = _ + P;
+            at = Z + P + 1;
+            const it = [`M ${C},${N}`, `C ${C+22},${N}   ${_-18},${L-16} ${_},${L}`, `C ${_-18},${L+16} ${C+22},${q}  ${C},${q}`, `C ${C+15},${L+9}  ${C+15},${L-9} ${C},${N}`, "Z"].join(" ");
+            Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("path", {
+                    d: it,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), y.jsx("circle", {
+                    cx: Z,
+                    cy: L,
+                    r: P,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), ht(C + 8)]
+            });
+            break
+        }
+        case "xor": {
+            const _ = C + 70;
+            at = _;
+            const Z = C - 9,
+                it = [`M ${C},${N}`, `C ${C+22},${N}   ${_-18},${L-16} ${_},${L}`, `C ${_-18},${L+16} ${C+22},${q}  ${C},${q}`, `C ${C+15},${L+9}  ${C+15},${L-9} ${C},${N}`, "Z"].join(" "),
+                E = `M ${Z},${N} C ${Z+13},${L-9} ${Z+13},${L+9} ${Z},${q}`;
+            Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("path", {
+                    d: E,
+                    fill: "none",
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        transition: "stroke 0.3s"
+                    }
+                }), y.jsx("path", {
+                    d: it,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), ht(C + 8)]
+            });
+            break
+        }
+        case "xnor": {
+            const _ = C + 65,
+                Z = _ + P;
+            at = Z + P + 1;
+            const it = C - 9,
+                E = [`M ${C},${N}`, `C ${C+22},${N}   ${_-18},${L-16} ${_},${L}`, `C ${_-18},${L+16} ${C+22},${q}  ${C},${q}`, `C ${C+15},${L+9}  ${C+15},${L-9} ${C},${N}`, "Z"].join(" "),
+                H = `M ${it},${N} C ${it+13},${L-9} ${it+13},${L+9} ${it},${q}`;
+            Q = y.jsxs(y.Fragment, {
+                children: [y.jsx("path", {
+                    d: H,
+                    fill: "none",
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        transition: "stroke 0.3s"
+                    }
+                }), y.jsx("path", {
+                    d: E,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), y.jsx("circle", {
+                    cx: Z,
+                    cy: L,
+                    r: P,
+                    fill: j,
+                    stroke: S,
+                    strokeWidth: "2",
+                    style: {
+                        filter: M,
+                        transition: "all 0.3s"
+                    }
+                }), ht(C + 8)]
+            });
+            break
+        }
+    }
+    const dt = 13,
+        bt = i === "wire" ? 168 : at + 34,
+        Bt = bt + dt + 8,
+        St = i === "xor" || i === "xnor" ? C - 9 : C,
+        O = i === "or" || i === "nor" ? C : St;
+    return y.jsxs("svg", {
+        viewBox: `0 0 ${Bt} ${T}`,
+        width: "100%",
+        style: {
+            overflow: "visible",
+            display: "block"
+        },
+        children: [y.jsxs("g", {
+            onClick: l,
+            style: {
+                cursor: "pointer"
+            },
+            children: [y.jsx("rect", {
+                x: "1",
+                y: k - 21,
+                width: "46",
+                height: "42",
+                rx: "7",
+                fill: x(o),
+                stroke: g(o),
+                strokeWidth: "1.5",
+                style: {
+                    transition: "all 0.25s"
+                }
+            }), y.jsx("text", {
+                x: "24",
+                y: k - 10,
+                textAnchor: "middle",
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: "8",
+                fill: "#64748b",
+                children: "A"
+            }), y.jsx("circle", {
+                cx: "24",
+                cy: k,
+                r: "8",
+                fill: o ? d : "#1e293b",
+                stroke: o ? d : "#334155",
+                strokeWidth: "1.5",
+                style: {
+                    filter: o ? `drop-shadow(0 0 5px rgba(${r},0.8))` : "none",
+                    transition: "all 0.25s"
+                }
+            }), y.jsx("text", {
+                x: "24",
+                y: k + 17,
+                textAnchor: "middle",
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: "11",
+                fontWeight: "bold",
+                fill: o ? d : "#475569",
+                children: o ? "1" : "0"
+            })]
+        }), a && y.jsxs("g", {
+            onClick: c,
+            style: {
+                cursor: "pointer"
+            },
+            children: [y.jsx("rect", {
+                x: "1",
+                y: R - 21,
+                width: "46",
+                height: "42",
+                rx: "7",
+                fill: x(f),
+                stroke: g(f),
+                strokeWidth: "1.5",
+                style: {
+                    transition: "all 0.25s"
+                }
+            }), y.jsx("text", {
+                x: "24",
+                y: R - 10,
+                textAnchor: "middle",
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: "8",
+                fill: "#64748b",
+                children: "B"
+            }), y.jsx("circle", {
+                cx: "24",
+                cy: R,
+                r: "8",
+                fill: f ? d : "#1e293b",
+                stroke: f ? d : "#334155",
+                strokeWidth: "1.5",
+                style: {
+                    filter: f ? `drop-shadow(0 0 5px rgba(${r},0.8))` : "none",
+                    transition: "all 0.25s"
+                }
+            }), y.jsx("text", {
+                x: "24",
+                y: R + 17,
+                textAnchor: "middle",
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: "11",
+                fontWeight: "bold",
+                fill: f ? d : "#475569",
+                children: f ? "1" : "0"
+            })]
+        }), i === "wire" ? y.jsx("line", {
+            x1: "48",
+            y1: L,
+            x2: bt - dt,
+            y2: L,
+            stroke: p(o),
+            strokeWidth: "3",
+            strokeLinecap: "round",
+            style: {
+                transition: "stroke 0.3s"
+            }
+        }) : y.jsxs(y.Fragment, {
+            children: [y.jsx("line", {
+                x1: "48",
+                y1: k,
+                x2: O,
+                y2: k,
+                stroke: p(o),
+                strokeWidth: "2.5",
+                strokeLinecap: "round",
+                style: {
+                    transition: "stroke 0.3s"
+                }
+            }), a && y.jsx("line", {
+                x1: "48",
+                y1: R,
+                x2: O,
+                y2: R,
+                stroke: p(f),
+                strokeWidth: "2.5",
+                strokeLinecap: "round",
+                style: {
+                    transition: "stroke 0.3s"
+                }
+            })]
+        }), Q, i !== "wire" && y.jsx("line", {
+            x1: at,
+            y1: L,
+            x2: bt - dt,
+            y2: L,
+            stroke: p(m),
+            strokeWidth: "2.5",
+            strokeLinecap: "round",
+            style: {
+                transition: "stroke 0.3s"
+            }
+        }), y.jsx("text", {
+            x: bt,
+            y: L - dt - 5,
+            textAnchor: "middle",
+            fontFamily: "Orbitron,sans-serif",
+            fontSize: "7",
+            fill: "#475569",
+            letterSpacing: "1",
+            children: "OUT"
+        }), y.jsx("circle", {
+            cx: bt,
+            cy: L,
+            r: dt,
+            fill: m ? d : "#1e293b",
+            stroke: m ? d : "#334155",
+            strokeWidth: "2",
+            style: {
+                filter: m ? `drop-shadow(0 0 8px rgba(${r},0.9)) drop-shadow(0 0 18px rgba(${r},0.5))` : "none",
+                transition: "all 0.3s"
+            }
+        }), y.jsx("text", {
+            x: bt,
+            y: L + 4,
+            textAnchor: "middle",
+            fontFamily: "Orbitron,sans-serif",
+            fontSize: "10",
+            fontWeight: "bold",
+            fill: m ? "#000" : "#475569",
+            style: {
+                transition: "fill 0.3s"
+            },
+            children: m ? "1" : "0"
+        })]
+    })
+}
+
+function WS({
+    config: i
+}) {
+    const [a, o] = W.useState(!1), [f, m] = W.useState(!1), l = XS(i.type, a, f), c = fa(i.color);
+    return y.jsxs("div", {
+        style: {
+            backgroundColor: "#0e1420",
+            border: `1px solid ${l?`rgba(${c},0.4)`:"#1e293b"}`,
+            borderRadius: 16,
+            padding: "18px 14px",
+            boxShadow: l ? `0 0 24px rgba(${c},0.18)` : "none",
+            transition: "all 0.4s ease"
+        },
+        children: [y.jsxs("div", {
+            style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 14
+            },
+            children: [y.jsx("span", {
+                style: {

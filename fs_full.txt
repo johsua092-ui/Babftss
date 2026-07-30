@@ -1,0 +1,948 @@
+function FS() {
+    const [i, a] = W.useState("welcome"), o = {
+        hidden: {
+            opacity: 0,
+            y: 12,
+            scale: .98
+        },
+        visible: {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            transition: {
+                duration: .4,
+                ease: "easeOut"
+            }
+        },
+        exit: {
+            opacity: 0,
+            y: -10,
+            scale: .98,
+            transition: {
+                duration: .28,
+                ease: "easeIn"
+            }
+        }
+    }, f = () => { a("logic-gates-circuit") }
+        /* [REPLACED] hv("Segera hadir!", {
+            description: "Fitur ini masih dalam pengembangan.",
+            icon: y.jsx(RS, {
+                className: "w-4 h-4",
+                style: {
+                    color: "#60a5fa"
+                }
+            }),
+            style: {
+                background: "#0e1420",
+                border: "1px solid #1e293b",
+                color: "#f1f5f9"
+            }
+        }) */
+    , m = "#181b24", l = "#0e1420";
+    return y.jsxs("div", {
+        style: {
+            minHeight: "100dvh",
+            width: "100%",
+            backgroundColor: m,
+            color: "#f1f5f9",
+            overflowX: "hidden"
+        },
+        children: [y.jsxs(p8, {
+            mode: "wait",
+            children: [i === "welcome" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    minHeight: "100dvh",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 24
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 500,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 32,
+                        textAlign: "center"
+                    },
+                    children: [y.jsx("h1", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 900,
+                            fontSize: "clamp(2.4rem,10vw,3.6rem)",
+                            background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            letterSpacing: "-0.02em",
+                            lineHeight: 1.1,
+                            margin: 0
+                        },
+                        children: "WELCOME"
+                    }), y.jsx("img", {
+                        src: "assets/gate-diagram.jpg",
+                        alt: "Logic Gates Diagram",
+                        style: {
+                            width: "100%",
+                            maxWidth: 420,
+                            borderRadius: 16,
+                            display: "block",
+                            margin: "0 auto"
+                        }
+                    }), y.jsx("button", {
+                        onClick: () => a("menu"),
+                        className: "animate-pulse-glow",
+                        style: {
+                            width: "100%",
+                            maxWidth: 400,
+                            padding: "18px 0",
+                            borderRadius: 20,
+                            backgroundColor: "#22c55e",
+                            border: "none",
+                            cursor: "pointer",
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 800,
+                            fontSize: 18,
+                            color: "#052e16",
+                            letterSpacing: 2,
+                            transition: "transform 0.2s"
+                        },
+                        onMouseEnter: c => c.currentTarget.style.transform = "scale(1.02)",
+                        onMouseLeave: c => c.currentTarget.style.transform = "scale(1)",
+                        onMouseDown: c => c.currentTarget.style.transform = "scale(0.97)",
+                        onMouseUp: c => c.currentTarget.style.transform = "scale(1.02)",
+                        children: "START LEARNING"
+                    })]
+                })
+            }, "welcome"), i === "menu" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    minHeight: "100dvh",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 24
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 500,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 28,
+                        textAlign: "center"
+                    },
+                    children: [y.jsx("h1", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 900,
+                            fontSize: "clamp(2rem,8vw,3rem)",
+                            background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            letterSpacing: "-0.02em",
+                            margin: 0
+                        },
+                        children: "WELCOME"
+                    }), y.jsx("img", {
+                        src: "assets/gate-diagram.jpg",
+                        alt: "Logic Gates Diagram",
+                        style: {
+                            width: "100%",
+                            maxWidth: 420,
+                            borderRadius: 16,
+                            display: "block",
+                            margin: "0 auto"
+                        }
+                    }), y.jsxs("div", {
+                        style: {
+                            width: "100%",
+                            maxWidth: 400,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 12
+                        },
+                        children: [y.jsxs("button", {
+                            onClick: () => a("logic-gates"),
+                            style: {
+                                width: "100%",
+                                padding: "16px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                backgroundColor: l,
+                                border: "1px solid rgba(59,130,246,0.35)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 14,
+                                color: "#fff",
+                                boxShadow: "0 0 18px rgba(59,130,246,0.25)",
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.transform = "scale(1.02)",
+                            onMouseLeave: c => c.currentTarget.style.transform = "scale(1)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "rgba(59,130,246,0.18)",
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    color: "#60a5fa",
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(Gp, {
+                                    size: 22
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 14,
+                                    textAlign: "left"
+                                },
+                                children: "Logic Gates"
+                            })]
+                        }), y.jsxs("button", {
+                            onClick: () => a("gears"),
+                            style: {
+                                width: "100%",
+                                padding: "16px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                backgroundColor: l,
+                                border: "1px solid rgba(251,146,60,0.38)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 14,
+                                color: "#fff",
+                                boxShadow: "0 0 18px rgba(251,146,60,0.22)",
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.transform = "scale(1.02)",
+                            onMouseLeave: c => c.currentTarget.style.transform = "scale(1)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "rgba(251,146,60,0.18)",
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(Yp, {
+                                    icon: "spur",
+                                    color: "#fb923c",
+                                    size: 22
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 14,
+                                    textAlign: "left",
+                                    color: "#fb923c"
+                                },
+                                children: "Gears"
+                            })]
+                        }), y.jsxs("button", {
+                            onClick: () => a("linkages"),
+                            style: {
+                                width: "100%",
+                                padding: "16px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                backgroundColor: l,
+                                border: "1px solid rgba(99,102,241,0.38)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 14,
+                                color: "#fff",
+                                boxShadow: "0 0 18px rgba(99,102,241,0.22)",
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.transform = "scale(1.02)",
+                            onMouseLeave: c => c.currentTarget.style.transform = "scale(1)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "rgba(99,102,241,0.18)",
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(Xp, {
+                                    icon: "fourbar",
+                                    color: "#818cf8",
+                                    size: 22
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 14,
+                                    textAlign: "left",
+                                    color: "#818cf8"
+                                },
+                                children: "Linkages Mechanic"
+                            })]
+                        }), y.jsxs("button", {
+                            onClick: f,
+                            style: {
+                                width: "100%",
+                                padding: "16px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                backgroundColor: "rgba(14,20,32,0.6)",
+                                border: "1px solid #1e293b",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 14,
+                                color: "#475569",
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.9)",
+                            onMouseLeave: c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.6)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "#0f172a",
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    color: "#334155",
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(LS, {
+                                    size: 22
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 14,
+                                    textAlign: "left"
+                                },
+                                children: "Coming Soon"
+                            })]
+                        })]
+                    })]
+                })
+            }, "menu"), i === "logic-gates" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    minHeight: "100dvh",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 24
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 500,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 28,
+                        textAlign: "center"
+                    },
+                    children: [y.jsx("h1", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 900,
+                            fontSize: "clamp(1.8rem,7vw,2.6rem)",
+                            background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            letterSpacing: "-0.01em",
+                            margin: 0
+                        },
+                        children: "LOGIC GATES"
+                    }), y.jsxs("div", {
+                        style: {
+                            width: "100%",
+                            maxWidth: 400,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 16
+                        },
+                        children: [y.jsxs("button", {
+                            onClick: () => a("basic-logic-gates"),
+                            style: {
+                                width: "100%",
+                                padding: "22px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                backgroundColor: l,
+                                border: "1px solid rgba(59,130,246,0.35)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 16,
+                                color: "#fff",
+                                boxShadow: "0 0 18px rgba(59,130,246,0.25)",
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.transform = "translateY(-2px)",
+                            onMouseLeave: c => c.currentTarget.style.transform = "translateY(0)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "rgba(59,130,246,0.18)",
+                                    padding: 12,
+                                    borderRadius: 12,
+                                    color: "#60a5fa",
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(Gp, {
+                                    size: 28
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 16,
+                                    textAlign: "left"
+                                },
+                                children: "7 Basic Logic Gates"
+                            })]
+                        }), y.jsxs("button", {
+                            onClick: f,
+                            style: {
+                                width: "100%",
+                                padding: "22px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                backgroundColor: l,
+                                border: "1px solid rgba(168,85,247,0.35)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 16,
+                                color: "#fff",
+                                boxShadow: "0 0 18px rgba(168,85,247,0.25)",
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.transform = "translateY(-2px)",
+                            onMouseLeave: c => c.currentTarget.style.transform = "translateY(0)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "rgba(168,85,247,0.18)",
+                                    padding: 12,
+                                    borderRadius: 12,
+                                    color: "#a855f7",
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(NS, {
+                                    size: 28
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 16,
+                                    textAlign: "left"
+                                },
+                                children: "Logic Gates Circuit"
+                            })]
+                        }), y.jsxs("button", {
+                            onClick: f,
+                            className: "animate-gold-pulse",
+                            style: {
+                                width: "100%",
+                                padding: "22px 20px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                border: "1px solid rgba(251,191,36,0.5)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 16,
+                                transition: "all 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.transform = "translateY(-2px)",
+                            onMouseLeave: c => c.currentTarget.style.transform = "translateY(0)",
+                            children: [y.jsx("div", {
+                                style: {
+                                    backgroundColor: "rgba(251,191,36,0.18)",
+                                    padding: 12,
+                                    borderRadius: 12,
+                                    color: "#fbbf24",
+                                    flexShrink: 0
+                                },
+                                children: y.jsx(OS, {
+                                    size: 28
+                                })
+                            }), y.jsx("span", {
+                                style: {
+                                    fontFamily: "Orbitron,sans-serif",
+                                    fontWeight: 700,
+                                    fontSize: 14,
+                                    textAlign: "left",
+                                    color: "#fbbf24"
+                                },
+                                children: "Create Logic Gates Simulator"
+                            })]
+                        })]
+                    }), y.jsxs("button", {
+                        onClick: () => a("menu"),
+                        style: {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "10px 20px",
+                            borderRadius: 10,
+                            backgroundColor: "transparent",
+                            border: "none",
+                            color: "#475569",
+                            cursor: "pointer",
+                            fontFamily: "Inter,sans-serif",
+                            fontWeight: 600,
+                            fontSize: 14,
+                            transition: "color 0.2s"
+                        },
+                        onMouseEnter: c => c.currentTarget.style.color = "#e2e8f0",
+                        onMouseLeave: c => c.currentTarget.style.color = "#475569",
+                        children: [y.jsx(br, {
+                            size: 18
+                        }), " Back"]
+                    })]
+                })
+            }, "logic-gates"), i === "basic-logic-gates" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    padding: "32px 20px 48px",
+                    display: "flex",
+                    justifyContent: "center"
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 500
+                    },
+                    children: [y.jsx("div", {
+                        style: {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            marginBottom: 8
+                        },
+                        children: y.jsxs("button", {
+                            onClick: () => a("logic-gates"),
+                            style: {
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "8px 14px",
+                                borderRadius: 10,
+                                backgroundColor: "#0e1420",
+                                border: "1px solid #1e293b",
+                                color: "#64748b",
+                                cursor: "pointer",
+                                fontFamily: "Inter,sans-serif",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                transition: "color 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.color = "#e2e8f0",
+                            onMouseLeave: c => c.currentTarget.style.color = "#64748b",
+                            children: [y.jsx(br, {
+                                size: 15
+                            }), " Back"]
+                        })
+                    }), y.jsx("h1", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 900,
+                            fontSize: "clamp(1.4rem,6vw,2rem)",
+                            background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            margin: "12px 0 20px"
+                        },
+                        children: "7 BASIC LOGIC GATES"
+                    }), y.jsx(PS, {}), y.jsxs("p", {
+                        style: {
+                            fontFamily: "Inter,sans-serif",
+                            fontSize: 12,
+                            color: "#475569",
+                            marginBottom: 20,
+                            lineHeight: 1.6
+                        },
+                        children: ["Tekan tombol ", y.jsx("strong", {
+                            style: {
+                                color: "#64748b"
+                            },
+                            children: "A"
+                        }), " atau ", y.jsx("strong", {
+                            style: {
+                                color: "#64748b"
+                            },
+                            children: "B"
+                        }), " pada setiap gerbang untuk melihat bagaimana sinyal mengalir secara langsung. Gerbang berpendar saat outputnya aktif."]
+                    }), y.jsx("div", {
+                        style: {
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 16
+                        },
+                        children: ZS.map(c => y.jsx(WS, {
+                            config: c
+                        }, c.id))
+                    })]
+                })
+            }, "basic-logic-gates"), i === "logic-gates-circuit" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    padding: "32px 20px 48px",
+                    display: "flex",
+                    justifyContent: "center"
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 500
+                    },
+                    children: [
+                        y.jsx("div", {
+                            style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 8 },
+                            children: y.jsxs("button", {
+                                onClick: () => a("logic-gates"),
+                                style: {
+                                    display: "flex", alignItems: "center", gap: 6,
+                                    padding: "8px 14px", borderRadius: 10,
+                                    backgroundColor: "#0e1420", border: "1px solid #1e293b",
+                                    color: "#64748b", cursor: "pointer",
+                                    fontFamily: "Inter,sans-serif", fontSize: 13, fontWeight: 600,
+                                    transition: "color 0.2s"
+                                },
+                                onMouseEnter: c => c.currentTarget.style.color = "#e2e8f0",
+                                onMouseLeave: c => c.currentTarget.style.color = "#64748b",
+                                children: [y.jsx(br, { size: 15 }), " Back"]
+                            })
+                        }),
+                        y.jsx("h1", {
+                            style: {
+                                fontFamily: "Orbitron,sans-serif",
+                                fontWeight: 900,
+                                fontSize: "clamp(1.4rem,6vw,2rem)",
+                                background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                                WebkitBackgroundClip: "text",
+                                WebkitTextFillColor: "transparent",
+                                margin: "12px 0 6px"
+                            },
+                            children: "LOGIC GATES CIRCUIT"
+                        }),
+                        y.jsx("p", {
+                            style: {
+                                fontFamily: "Inter,sans-serif",
+                                fontSize: 12, color: "#475569",
+                                marginBottom: 20, lineHeight: 1.6
+                            },
+                            children: "Gabungan beberapa gerbang logika yang saling terhubung membentuk rangkaian kompleks. Pelajari bagaimana sinyal mengalir melewati lebih dari satu gerbang."
+                        }),
+                        y.jsx("div", {
+                            style: { display: "flex", flexDirection: "column", gap: 16 },
+                            children: y.jsx(CircuitCard01, {})
+                        })
+                    ]
+                })
+            }, "logic-gates-circuit"), i === "gears" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    padding: "32px 20px 48px",
+                    display: "flex",
+                    justifyContent: "center"
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 500
+                    },
+                    children: [y.jsx("div", {
+                        style: {
+                            marginBottom: 8
+                        },
+                        children: y.jsxs("button", {
+                            onClick: () => a("menu"),
+                            style: {
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "8px 14px",
+                                borderRadius: 10,
+                                backgroundColor: "#0e1420",
+                                border: "1px solid #1e293b",
+                                color: "#64748b",
+                                cursor: "pointer",
+                                fontFamily: "Inter,sans-serif",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                transition: "color 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.color = "#e2e8f0",
+                            onMouseLeave: c => c.currentTarget.style.color = "#64748b",
+                            children: [y.jsx(br, {
+                                size: 15
+                            }), " Back"]
+                        })
+                    }), y.jsx("h1", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 900,
+                            fontSize: "clamp(1.6rem,7vw,2.4rem)",
+                            background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            margin: "12px 0 6px"
+                        },
+                        children: "GEARS"
+                    }), y.jsx("p", {
+                        style: {
+                            fontFamily: "Inter,sans-serif",
+                            fontSize: 12,
+                            color: "#475569",
+                            marginBottom: 22,
+                            lineHeight: 1.6
+                        },
+                        children: "Pilih jenis roda gigi untuk dipelajari. Setiap gear memiliki bentuk dan kegunaan yang unik dalam dunia mesin dan teknik mekanik."
+                    }), y.jsx("div", {
+                        style: {
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10
+                        },
+                        children: QS.map(c => {
+                            const d = fa(c.color);
+                            return y.jsxs("button", {
+                                onClick: f,
+                                style: {
+                                    width: "100%",
+                                    padding: "14px 16px",
+                                    borderRadius: 14,
+                                    cursor: "pointer",
+                                    backgroundColor: "#0e1420",
+                                    border: `1px solid rgba(${d},0.28)`,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 14,
+                                    transition: "all 0.22s",
+                                    boxShadow: `0 0 12px rgba(${d},0.1)`,
+                                    textAlign: "left"
+                                },
+                                onMouseEnter: r => {
+                                    r.currentTarget.style.transform = "translateX(4px)", r.currentTarget.style.boxShadow = `0 0 22px rgba(${d},0.28)`, r.currentTarget.style.borderColor = `rgba(${d},0.55)`
+                                },
+                                onMouseLeave: r => {
+                                    r.currentTarget.style.transform = "translateX(0)", r.currentTarget.style.boxShadow = `0 0 12px rgba(${d},0.1)`, r.currentTarget.style.borderColor = `rgba(${d},0.28)`
+                                },
+                                children: [y.jsx("div", {
+                                    style: {
+                                        width: 52,
+                                        height: 52,
+                                        borderRadius: 12,
+                                        flexShrink: 0,
+                                        backgroundColor: `rgba(${d},0.12)`,
+                                        border: `1px solid rgba(${d},0.22)`,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center"
+                                    },
+                                    children: y.jsx(Yp, {
+                                        icon: c.icon,
+                                        color: c.color,
+                                        size: 34
+                                    })
+                                }), y.jsxs("div", {
+                                    style: {
+                                        flex: 1,
+                                        minWidth: 0
+                                    },
+                                    children: [y.jsxs("div", {
+                                        style: {
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 8,
+                                            marginBottom: 3
+                                        },
+                                        children: [y.jsx("span", {
+                                            style: {
+                                                fontFamily: "Orbitron,sans-serif",
+                                                fontSize: 8,
+                                                fontWeight: 700,
+                                                color: c.color,
+                                                opacity: .7,
+                                                letterSpacing: 1
+                                            },
+                                            children: String(c.id).padStart(2, "0")
+                                        }), y.jsx("span", {
+                                            style: {
+                                                fontFamily: "Orbitron,sans-serif",
+                                                fontWeight: 700,
+                                                fontSize: 12,
+                                                color: "#e2e8f0",
+                                                letterSpacing: .3
+                                            },
+                                            children: c.name
+                                        })]
+                                    }), y.jsx("p", {
+                                        style: {
+                                            margin: 0,
+                                            fontFamily: "Inter,sans-serif",
+                                            fontSize: 11,
+                                            color: "#64748b",
+                                            lineHeight: 1.4,
+                                            whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis"
+                                        },
+                                        children: c.desc
+                                    })]
+                                }), y.jsx("div", {
+                                    style: {
+                                        width: 7,
+                                        height: 7,
+                                        borderRadius: "50%",
+                                        flexShrink: 0,
+                                        backgroundColor: c.color,
+                                        opacity: .6,
+                                        boxShadow: `0 0 6px ${c.color}`
+                                    }
+                                })]
+                            }, c.id)
+                        })
+                    })]
+                })
+            }, "gears"), i === "linkages" && y.jsx(ki.div, {
+                variants: o,
+                initial: "hidden",
+                animate: "visible",
+                exit: "exit",
+                style: {
+                    padding: "28px 16px 52px",
+                    display: "flex",
+                    justifyContent: "center"
+                },
+                children: y.jsxs("div", {
+                    style: {
+                        width: "100%",
+                        maxWidth: 900
+                    },
+                    children: [y.jsx("div", {
+                        style: {
+                            marginBottom: 8
+                        },
+                        children: y.jsxs("button", {
+                            onClick: () => a("menu"),
+                            style: {
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "8px 14px",
+                                borderRadius: 10,
+                                backgroundColor: "#0e1420",
+                                border: "1px solid #1e293b",
+                                color: "#64748b",
+                                cursor: "pointer",
+                                fontFamily: "Inter,sans-serif",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                transition: "color 0.2s"
+                            },
+                            onMouseEnter: c => c.currentTarget.style.color = "#e2e8f0",
+                            onMouseLeave: c => c.currentTarget.style.color = "#64748b",
+                            children: [y.jsx(br, {
+                                size: 15
+                            }), " Back"]
+                        })
+                    }), y.jsx("h1", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 900,
+                            fontSize: "clamp(1.6rem,6vw,2.4rem)",
+                            background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            margin: "12px 0 4px"
+                        },
+                        children: "LINKAGE MECHANICS"
+                    }), y.jsxs("p", {
+                        style: {
+                            fontFamily: "Inter,sans-serif",
+                            fontSize: 12,
+                            color: "#475569",
+                            marginBottom: 20,
+                            lineHeight: 1.6
+                        },
+                        children: [y.jsx("span", {
+                            style: {
+                                color: "#818cf8",
+                                fontWeight: 700
+                            },
+                            children: qp.length
+                        }), " jenis mekanisme linkage dari seluruh dunia. Klik tombol untuk mempelajari setiap mekanisme secara detail."]
+                    }), y.jsx("div", {
+                        className: "linkage-grid",
+                        children: qp.map(c => {
+                            const d = fa(c.color);
+                            return y.jsxs("button", {
+                                onClick: f,
+                                className: "linkage-card",
+                                style: {
+                                    border: `1px solid rgba(${d},0.28)`,
+                                    backgroundColor: "#0b1120",
+                                    boxShadow: `0 0 0px rgba(${d},0)`
+                                },
+                                onMouseEnter: r => {
+                                    const p = r.currentTarget;
+                                    p.style.borderColor = `rgba(${d},0.65)`, p.style.boxShadow = `0 0 18px rgba(${d},0.18), inset 0 0 16px rgba(${d},0.04)`, p.style.transform = "translateY(-3px) scale(1.03)", p.style.backgroundColor = `rgba(${d},0.07)`
+                                },
+                                onMouseLeave: r => {
+                                    const p = r.currentTarget;
+                                    p.style.borderColor = `rgba(${d},0.28)`, p.style.boxShadow = `0 0 0px rgba(${d},0)`, p.style.transform = "translateY(0) scale(1)", p.style.backgroundColor = "#0b1120"
+                                },
+                                children: [y.jsx("span", {
+                                    className: "linkage-id",
+                                    style: {
+                                        color: c.color
+                                    },
+                                    children: String(c.id).padStart(2, "0")
+                                }), y.jsx("div", {
+                                    className: "linkage-icon-wrap",
+                                    children: y.jsx(Xp, {
+                                        icon: c.icon,
+                                        color: c.color,
+                                        size: 44
+                                    })
+                                }), y.jsx("span", {
+                                    className: "linkage-name",
+                                    children: c.name
+                                }), y.jsx("div", {
+                                    className: "linkage-dot",
+                                    style: {
+                                        backgroundColor: c.color,
+                                        boxShadow: `0 0 5px ${c.color}`
+                                    }
+                                })]
+                            }, c.id)
+                        })
+                    })]
+                })
+            }, "linkages")]
+        }), y.jsx(Av, {
+            position: "top-center",
+            theme: "dark"
+        })]
+    })
+}
+K2.createRoot(document.getElementById("root")).render(y.jsx(FS, {}));

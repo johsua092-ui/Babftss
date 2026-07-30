@@ -1,0 +1,301 @@
+function WS({
+    config: i
+}) {
+    const [a, o] = W.useState(!1), [f, m] = W.useState(!1), l = XS(i.type, a, f), c = fa(i.color);
+    return y.jsxs("div", {
+        style: {
+            backgroundColor: "#0e1420",
+            border: `1px solid ${l?`rgba(${c},0.4)`:"#1e293b"}`,
+            borderRadius: 16,
+            padding: "18px 14px",
+            boxShadow: l ? `0 0 24px rgba(${c},0.18)` : "none",
+            transition: "all 0.4s ease"
+        },
+        children: [y.jsxs("div", {
+            style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 14
+            },
+            children: [y.jsx("span", {
+                style: {
+                    fontFamily: "Orbitron,sans-serif",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#475569"
+                },
+                children: String(i.id).padStart(2, "0")
+            }), y.jsx("div", {
+                style: {
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    backgroundColor: l ? i.color : "#334155",
+                    boxShadow: l ? `0 0 8px ${i.color}` : "none",
+                    transition: "all 0.3s"
+                }
+            }), y.jsx("span", {
+                style: {
+                    fontFamily: "Orbitron,sans-serif",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    color: l ? i.color : "#e2e8f0"
+                },
+                children: i.name
+            })]
+        }), y.jsx(KS, {
+            type: i.type,
+            dualInput: i.dualInput,
+            a,
+            b: f,
+            output: l,
+            onToggleA: () => o(d => !d),
+            onToggleB: () => m(d => !d),
+            color: i.color
+        }), y.jsxs("div", {
+            style: {
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                margin: "10px 0 8px",
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: 10,
+                color: "#475569"
+            },
+            children: [y.jsxs("span", {
+                style: {
+                    color: a ? i.color : "#475569"
+                },
+                children: ["A=", a ? 1 : 0]
+            }), i.dualInput && y.jsxs(y.Fragment, {
+                children: [y.jsx("span", {
+                    children: "·"
+                }), y.jsxs("span", {
+                    style: {
+                        color: f ? i.color : "#475569"
+                    },
+                    children: ["B=", f ? 1 : 0]
+                })]
+            }), y.jsx("span", {
+                style: {
+                    color: "#334155"
+                },
+                children: "→"
+            }), y.jsxs("span", {
+                style: {
+                    color: l ? i.color : "#334155",
+                    fontWeight: 700
+                },
+                children: ["OUT=", l ? 1 : 0]
+            })]
+        }), y.jsx("p", {
+            style: {
+                margin: 0,
+                fontSize: 12,
+                color: "#64748b",
+                fontFamily: "Inter,sans-serif",
+                lineHeight: 1.6
+            },
+            children: i.description
+        }), y.jsxs("div", {
+            style: {
+                marginTop: 10,
+                borderTop: "1px solid #1e293b",
+                paddingTop: 10
+            },
+            children: [y.jsx("div", {
+                style: {
+                    fontFamily: "Orbitron,sans-serif",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#475569",
+                    marginBottom: 6,
+                    letterSpacing: "0.5px"
+                },
+                children: "TABEL KEBENARAN"
+            }), y.jsxs("table", {
+                style: {
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 11,
+                    fontFamily: "Orbitron,sans-serif"
+                },
+                children: [y.jsxs("thead", {
+                    children: [y.jsxs("tr", {
+                        style: {
+                            borderBottom: "2px solid #1e293b"
+                        },
+                        children: [y.jsx("th", {
+                            style: {
+                                padding: "4px 8px",
+                                textAlign: "center",
+                                color: "#64748b",
+                                fontWeight: 600,
+                                fontSize: 10
+                            },
+                            children: "A"
+                        }), i.dualInput ? y.jsx("th", {
+                            style: {
+                                padding: "4px 8px",
+                                textAlign: "center",
+                                color: "#64748b",
+                                fontWeight: 600,
+                                fontSize: 10
+                            },
+                            children: "B"
+                        }) : null, y.jsx("th", {
+                            style: {
+                                padding: "4px 8px",
+                                textAlign: "center",
+                                color: "#64748b",
+                                fontWeight: 600,
+                                fontSize: 10
+                            },
+                            children: "OUT"
+                        })]
+                    })]
+                }), y.jsxs("tbody", {
+                    children: (i.dualInput ? [
+                        [0, 0],
+                        [0, 1],
+                        [1, 0],
+                        [1, 1]
+                    ] : [
+                        [0],
+                        [1]
+                    ]).map(function(r) {
+                        var ra = r[0],
+                            rb = r[1] || 0,
+                            ro = XS(i.type, ra, rb),
+                            ac = ra == a && rb == f;
+                        return y.jsxs("tr", {
+                            style: {
+                                background: ac ? "rgba(" + c + ",0.18)" : "transparent",
+                                transition: "background 0.2s"
+                            },
+                            children: [y.jsx("td", {
+                                style: {
+                                    padding: "3px 8px",
+                                    textAlign: "center",
+                                    color: ac ? i.color : "#94a3b8",
+                                    fontWeight: 600
+                                },
+                                children: ra
+                            }), i.dualInput ? y.jsx("td", {
+                                style: {
+                                    padding: "3px 8px",
+                                    textAlign: "center",
+                                    color: ac ? i.color : "#94a3b8",
+                                    fontWeight: 600
+                                },
+                                children: rb
+                            }) : null, y.jsx("td", {
+                                style: {
+                                    padding: "3px 8px",
+                                    textAlign: "center",
+                                    color: ac ? i.color : "#94a3b8",
+                                    fontWeight: 800
+                                },
+                                children: ro ? 1 : 0
+                            })]
+                        })
+                    })
+                })]
+            })]
+        })]
+    })
+}
+
+function PS() {
+    const i = [{
+        icon: y.jsx(BS, {
+            size: 18
+        }),
+        title: "INPUT",
+        color: "#60a5fa",
+        desc: "Kamu memberi perintah — tekan tombol untuk mengirim sinyal. Nilai: 1 (ON) atau 0 (OFF)."
+    }, {
+        icon: y.jsx(YS, {
+            size: 18
+        }),
+        title: "PROCESS",
+        color: "#4ade80",
+        desc: "Gate mengolah sinyal sesuai aturannya dan memutuskan output-nya."
+    }, {
+        icon: y.jsx(HS, {
+            size: 18
+        }),
+        title: "OUTPUT",
+        color: "#f472b6",
+        desc: "Hasil keputusan gate. Lampu menyala = 1, Lampu padam = 0."
+    }];
+    return y.jsxs("div", {
+        style: {
+            backgroundColor: "#0a0f1a",
+            border: "1px solid #1e293b",
+            borderRadius: 16,
+            padding: 14,
+            marginBottom: 20
+        },
+        children: [y.jsx("p", {
+            style: {
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: 9,
+                color: "#475569",
+                letterSpacing: 2,
+                textAlign: "center",
+                margin: "0 0 12px"
+            },
+            children: "CARA KERJA LOGIC GATES"
+        }), y.jsx("div", {
+            style: {
+                display: "flex",
+                alignItems: "stretch",
+                gap: 6
+            },
+            children: i.map((a, o) => y.jsxs(K.Fragment, {
+                children: [y.jsxs("div", {
+                    style: {
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 5,
+                        backgroundColor: `rgba(${fa(a.color)},0.06)`,
+                        border: `1px solid rgba(${fa(a.color)},0.2)`,
+                        borderRadius: 12,
+                        padding: "10px 6px",
+                        textAlign: "center"
+                    },
+                    children: [y.jsx("div", {
+                        style: {
+                            color: a.color
+                        },
+                        children: a.icon
+                    }), y.jsx("span", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 800,
+                            fontSize: 9,
+                            color: a.color
+                        },
+                        children: a.title
+                    }), y.jsx("span", {
+                        style: {
+                            fontFamily: "Inter,sans-serif",
+                            fontSize: 9,
+                            color: "#64748b",
+                            lineHeight: 1.5
+                        },
+                        children: a.desc
+                    })]
+                }), o < i.length - 1 && y.jsx("div", {
+                    style: {
+                        display: "flex",
+                        alignItems: "center",
+                        flexShrink: 0
+                    },
+                    children: y.jsx("span", {
+                        style: {
