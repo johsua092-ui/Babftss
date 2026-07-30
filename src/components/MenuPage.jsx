@@ -1,149 +1,108 @@
 import React from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, Cpu, Cog, Link2 } from 'lucide-react'
+import { ArrowLeft, Zap, Cog, Link2 } from 'lucide-react'
 
 const menuItems = [
   {
     id: "logic-gates",
     title: "Logic Gates",
-    description: "Pelajari dasar-dasar gerbang logika digital",
-    icon: Cpu,
-    color: "#3b82f6",
-    gradient: "linear-gradient(135deg, #3b82f6, #2563eb)",
+    subtitle: "Gerbang Logika Dasar",
+    icon: Zap,
+    color: "#4ade80",
+    description: "Pelajari dan simulasi gerbang logika digital secara interaktif",
+    gradient: "linear-gradient(135deg, #4ade80, #22c55e)",
+    badge: null,
   },
   {
     id: "gears",
     title: "Gears",
-    description: "Pahami mekanisme roda gigi dan transmisi",
+    subtitle: "Roda Gigi",
     icon: Cog,
-    color: "#8b5cf6",
-    gradient: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+    color: "#22d3ee",
+    description: "Pilih jenis roda gigi untuk dipelajari. Setiap gear memiliki bentuk dan kegunaan yang unik dalam dunia mesin dan teknik mekanik.",
+    gradient: "linear-gradient(135deg, #22d3ee, #0891b2)",
+    badge: null,
   },
   {
     id: "linkages",
     title: "Linkages",
-    description: "Eksplorasi mekanisme penghubung dan katrol",
+    subtitle: "Mekanisme Penghubung",
     icon: Link2,
-    color: "#10b981",
-    gradient: "linear-gradient(135deg, #10b981, #059669)",
+    color: "#a78bfa",
+    description: "Setiap linkage menghasilkan gerakan unik dari kombinasi batang dan engsel. Pilih jenis untuk melihat visualisasi dan penjelasan.",
+    gradient: "linear-gradient(135deg, #a78bfa, #7c3aed)",
+    badge: "Coming Soon",
+    badgeColor: "#f59e0b",
   },
 ]
 
-const styles = {
-  container: {
-    minHeight: "100vh",
-    padding: "40px 20px",
-    maxWidth: "800px",
-    margin: "0 auto",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: "40px",
-  },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  headerIcon: {
-    width: "40px",
-    height: "40px",
-    borderRadius: "10px",
-    backgroundColor: "#3b82f6",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    fontSize: "24px",
-    fontWeight: "bold",
-    color: "#f8fafc",
-  },
-  backBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 16px",
-    backgroundColor: "#1e293b",
-    color: "#94a3b8",
-    border: "1px solid #334155",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontSize: "14px",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: "20px",
-  },
-  card: {
-    backgroundColor: "#1e293b",
-    borderRadius: "16px",
-    padding: "24px",
-    cursor: "pointer",
-    border: "1px solid #334155",
-    transition: "all 0.2s ease",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-  },
-  cardIconWrap: {
-    width: "50px",
-    height: "50px",
-    borderRadius: "12px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardTitle: {
-    fontSize: "18px",
-    fontWeight: "600",
-    color: "#f8fafc",
-  },
-  cardDesc: {
-    fontSize: "14px",
-    color: "#94a3b8",
-    lineHeight: "1.5",
-  },
-}
-
 function MenuPage({ onNavigate }) {
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <div style={styles.headerIcon}>
-            <BookOpen size={20} color="#ffffff" />
-          </div>
-          <h1 style={styles.headerTitle}>Menu Utama</h1>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20, maxWidth: 900, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ width: "100%", maxWidth: 900 }}
+      >
+        <h1 style={{ fontSize: 24, fontWeight: 700, fontFamily: "Orbitron, sans-serif", textAlign: "center", color: "#f8fafc", marginBottom: 4, letterSpacing: "-0.02em" }}>
+          BABFT Learning
+        </h1>
+        <p style={{ fontSize: 14, color: "#64748b", textAlign: "center", marginBottom: 30, fontFamily: "Orbitron, sans-serif" }}>
+          Create Logic Gates Simulator
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%" }}>
+          {menuItems.map((item, index) => {
+            const Icon = item.icon
+            return (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.1 }}
+                whileHover={{ transform: "translateY(-3px) scale(1.03)" }}
+                onClick={() => onNavigate(item.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  padding: "18px 20px",
+                  borderRadius: 16,
+                  backgroundColor: "#1e293b",
+                  border: "1px solid rgba(100,116,139,0.28)",
+                  cursor: "pointer",
+                  transition: "all 0.22s",
+                }}
+              >
+                <div style={{
+                  width: 52, height: 52, borderRadius: 12, flexShrink: 0,
+                  background: item.gradient,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Icon size={24} color="#ffffff" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f8fafc", fontFamily: "Orbitron, sans-serif" }}>{item.title}</h3>
+                    {item.badge && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 10px",
+                        borderRadius: 6, fontFamily: "Orbitron, sans-serif",
+                        backgroundColor: "rgba(245,158,11,0.15)",
+                        border: "1px solid rgba(245,158,11,0.3)",
+                        color: item.badgeColor || "#f59e0b",
+                      }}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>{item.description}</p>
+                </div>
+              </motion.div>
+            )
+          })}
         </div>
-      </div>
-      <div style={styles.grid}>
-        {menuItems.map((item, index) => {
-          const Icon = item.icon
-          return (
-            <motion.div
-              key={item.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: index * 0.1 }}
-              whileHover={{ scale: 1.02, borderColor: item.color }}
-              style={styles.card}
-              onClick={() => onNavigate(item.id)}
-            >
-              <div style={{ ...styles.cardIconWrap, background: item.gradient }}>
-                <Icon size={24} color="#ffffff" />
-              </div>
-              <div>
-                <h3 style={styles.cardTitle}>{item.title}</h3>
-                <p style={styles.cardDesc}>{item.description}</p>
-              </div>
-            </motion.div>
-          )
-        })}
-      </div>
+      </motion.div>
     </div>
   )
 }
