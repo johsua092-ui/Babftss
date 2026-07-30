@@ -53,6 +53,7 @@
 *$py.class
 **/.Python
 **/build/
+**/assets_backup/
 **/develop-eggs/
 **/dist/
 **/downloads/
