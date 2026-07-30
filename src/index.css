@@ -27,18 +27,15 @@
   .animate-pulse-glow {
     animation: 2s cubic-bezier(.4, 0, .6, 1) infinite pulse-glow;
   }
-
   .animate-gold-pulse {
     animation: 3s ease-in-out infinite gold-pulse;
   }
-
   .linkage-grid {
     display: grid;
     width: 100%;
     gap: 10px;
     grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
   }
-
   .linkage-card {
     display: flex;
     flex-direction: column;
@@ -53,7 +50,6 @@
     cursor: pointer;
     transition: transform .22s, box-shadow .22s, border-color .22s, background-color .22s;
   }
-
   .linkage-icon-wrap {
     display: flex;
     flex: 1;
@@ -61,7 +57,6 @@
     align-items: center;
     padding: 2px 0;
   }
-
   .linkage-id {
     align-self: flex-start;
     margin-bottom: 4px;
@@ -72,7 +67,6 @@
     letter-spacing: 1.2px;
     opacity: .62;
   }
-
   .linkage-name {
     display: -webkit-box;
     width: 100%;
@@ -88,7 +82,6 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-
   .linkage-dot {
     flex-shrink: 0;
     width: 5px;

@@ -1,59 +1,67 @@
-import React from 'react'
+import { Fragment } from 'react';
+import { hexToRgbStr } from '../utils/colorHelper';
 
-function CircuitDiagram01({ color = "#3b82f6", size = 400 }) {
-  return (
-    <svg width={size} height={size * 0.6} viewBox="0 0 400 240" style={{ display: "block", margin: "0 auto" }}>
-      {/* Input A label */}
-      <text x="10" y="60" fill="#94a3b8" fontSize="14" fontWeight="600" fontFamily="system-ui, sans-serif">A</text>
-      {/* Input B label */}
-      <text x="10" y="180" fill="#94a3b8" fontSize="14" fontWeight="600" fontFamily="system-ui, sans-serif">B</text>
-
-      {/* Input A line */}
-      <line x1="28" y1="56" x2="80" y2="56" stroke="#94a3b8" strokeWidth="2" />
-
-      {/* Input B line */}
-      <line x1="28" y1="176" x2="240" y2="176" stroke="#94a3b8" strokeWidth="2" />
-
-      {/* NOT Gate (triangle with circle) for Input A */}
-      <path
-        d="M 80 30 L 140 56 L 80 82 Z"
-        fill="none"
-        stroke="#ef4444"
-        strokeWidth="2.5"
-      />
-      <circle cx="145" cy="56" r="5" fill="none" stroke="#ef4444" strokeWidth="2.5" />
-
-      {/* NOT output label */}
-      <text x="100" y="105" fill="#ef4444" fontSize="11" fontFamily="system-ui, sans-serif">NOT</text>
-
-      {/* Line from NOT output to AND input A */}
-      <line x1="150" y1="56" x2="200" y2="56" stroke="#ef4444" strokeWidth="2" />
-      <line x1="200" y1="56" x2="200" y2="140" stroke="#ef4444" strokeWidth="2" />
-      <line x1="200" y1="140" x2="240" y2="140" stroke="#ef4444" strokeWidth="2" />
-
-      {/* AND Gate body */}
-      <path
-        d="M 240 110 L 280 110 A 34 34 0 0 1 280 206 L 240 206 Z"
-        fill="none"
-        stroke={color}
-        strokeWidth="2.5"
-      />
-      <text x="260" y="164" fill={color} fontSize="16" fontWeight="bold" fontFamily="monospace">&amp;</text>
-
-      {/* AND Gate label */}
-      <text x="270" y="105" fill={color} fontSize="11" fontFamily="system-ui, sans-serif">AND</text>
-
-      {/* AND output line */}
-      <line x1="314" y1="158" x2="370" y2="158" stroke={color} strokeWidth="2" />
-
-      {/* Output label */}
-      <text x="375" y="163" fill="#94a3b8" fontSize="14" fontWeight="600" fontFamily="system-ui, sans-serif">Y</text>
-
-      {/* Junction dots */}
-      <circle cx="200" cy="56" r="3" fill="#ef4444" />
-      <circle cx="200" cy="140" r="3" fill="#ef4444" />
-    </svg>
-  )
+export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggleB }) {
+    const notColor = "#f87171";
+    const andColor = "#4ade80";
+    const notRgb = hexToRgbStr(notColor);
+    const andRgb = hexToRgbStr(andColor);
+    const wc = (val, col) => val ? col : "#1e293b";
+    const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
+    const nodeR = 8, outNodeR = 13;
+    const inputAX = 1, inputAY = 28;
+    const inputBX = 1, inputBY = 76;
+    const notStartX = 100, notEndX = notStartX + 54;
+    const notTopY = inputBY - 22, notBotY = inputBY + 22, notMidY = inputBY;
+    const bubbleR = 5, notOutX = notEndX + bubbleR * 2 + 1;
+    const andStartX = 208, andW = 26;
+    const andTopY = 38, andBotY = 66, andMidY = 52;
+    const andArcR = (andBotY - andTopY) / 2;
+    const andEndX = andStartX + andW + andArcR;
+    const outX = andEndX + 34 + outNodeR, outY = andMidY;
+    const svgW = outX + 1, svgH = 100;
+    const notGlow = bPrime
+        ? `drop-shadow(0 0 4px rgba(${notRgb},0.9)) drop-shadow(0 0 10px rgba(${notRgb},0.5))`
+        : "none";
+    const notFill = bPrime ? `rgba(${notRgb},0.13)` : "#0f172a";
+    const notStroke = bPrime ? notColor : "#475569";
+    const andGlow = out
+        ? `drop-shadow(0 0 4px rgba(${andRgb},0.9)) drop-shadow(0 0 10px rgba(${andRgb},0.5))`
+        : "none";
+    const andFill = out ? `rgba(${andRgb},0.13)` : "#0f172a";
+    const andStroke = out ? andColor : "#475569";
+    const bPrimeColor = bPrime ? notColor : "#475569";
+    return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
+        <g onClick={onToggleA} style={{ cursor: "pointer" }}>
+            <rect x={inputAX} y={inputAY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={a ? `rgba(${andRgb},0.2)` : "#0f172a"} stroke={a ? andColor : "#334155"} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
+            <text x={inputAX + 24} y={inputAY - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">A</text>
+            <circle cx={inputAX + 24} cy={inputAY} r={nodeR} fill={a ? andColor : "#1e293b"} stroke={a ? andColor : "#334155"} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${andRgb},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x={inputAX + 24} y={inputAY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? andColor : "#475569"}>{a ? "1" : "0"}</text>
+        </g>
+        <g onClick={onToggleB} style={{ cursor: "pointer" }}>
+            <rect x={inputBX} y={inputBY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={b ? `rgba(${notRgb},0.2)` : "#0f172a"} stroke={b ? notColor : "#334155"} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
+            <text x={inputBX + 24} y={inputBY - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">B</text>
+            <circle cx={inputBX + 24} cy={inputBY} r={nodeR} fill={b ? notColor : "#1e293b"} stroke={b ? notColor : "#334155"} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${notRgb},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x={inputBX + 24} y={inputBY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? notColor : "#475569"}>{b ? "1" : "0"}</text>
+        </g>
+        <line x1={inputAX + inputNodeW} y1={inputAY} x2={andStartX} y2={andTopY} stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={inputBX + inputNodeW} y1={inputBY} x2={notStartX} y2={notMidY} stroke={wc(b, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <Fragment>
+            <polygon points={`${notStartX},${notTopY} ${notStartX},${notBotY} ${notEndX},${notMidY}`} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
+            <circle cx={notEndX + bubbleR} cy={notMidY} r={bubbleR} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
+            <text x={(notStartX + notEndX) / 2} y={notMidY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrime ? notColor : "#475569"} style={{ transition: "fill 0.3s" }}>NOT</text>
+        </Fragment>
+        <line x1={notOutX} y1={notMidY} x2={andStartX} y2={andBotY} stroke={wc(bPrime, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <text x={(notOutX + andStartX) / 2} y={notMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrimeColor} style={{ transition: "fill 0.3s" }}>B′</text>
+        <Fragment>
+            <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
+            <text x={andStartX + andW / 2 + 4} y={andMidY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={out ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>AND</text>
+            <line x1={andStartX} y1={andTopY} x2={andStartX - 10} y2={andTopY - 6} stroke={andStroke} strokeWidth="1.2" opacity="0.45" />
+            <line x1={andStartX} y1={andBotY} x2={andStartX - 10} y2={andBotY + 6} stroke={andStroke} strokeWidth="1.2" opacity="0.45" />
+        </Fragment>
+        <line x1={andEndX} y1={andMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <text x={outX} y={outY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">OUT</text>
+        <circle cx={outX} cy={outY} r={outNodeR} fill={out ? andColor : "#1e293b"} stroke={out ? andColor : "#334155"} strokeWidth="2" style={{ filter: out ? `drop-shadow(0 0 8px rgba(${andRgb},0.9)) drop-shadow(0 0 18px rgba(${andRgb},0.5))` : "none", transition: "all 0.3s" }} />
+        <text x={outX} y={outY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={out ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{out ? "1" : "0"}</text>
+    </svg>;
 }
-
-export default CircuitDiagram01
