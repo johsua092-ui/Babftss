@@ -91,7 +91,7 @@ export default function LoginPage() {
             <h1 style={{
               fontFamily: `"Orbitron",sans-serif`, fontWeight: 900,
               fontSize: 26, color: c.text, letterSpacing: "-0.01em", margin: 0,
-            }}>BABFT</h1>
+            }}>BABFT Learning</h1>
             <p style={{ color: c.muted, fontSize: 13, margin: "4px 0 0" }}>
               Logic Gates  ·  Gears  ·  Linkages
             </p>
