@@ -1,0 +1,106 @@
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@500;700;900&display=swap";
+@import "tailwindcss";
+
+@keyframes pulse-glow {
+  0%, to {
+    box-shadow: 0 0 15px -3px #4ade8099, 0 0 6px -2px #4ade8066;
+  }
+  50% {
+    box-shadow: 0 0 28px -3px #4ade80cc, 0 0 10px -2px #4ade8088;
+  }
+}
+
+@keyframes gold-pulse {
+  0%, to {
+    background-color: #1e1200;
+    border-color: #fbbf2466;
+    box-shadow: 0 0 10px #fbbf244d, 0 0 22px #fbbf2426;
+  }
+  50% {
+    background-color: #2a1a00;
+    border-color: #fbbf2499;
+    box-shadow: 0 0 18px #fbbf2466, 0 0 36px #fbbf2433;
+  }
+}
+
+@layer utilities {
+  .animate-pulse-glow {
+    animation: 2s cubic-bezier(.4, 0, .6, 1) infinite pulse-glow;
+  }
+
+  .animate-gold-pulse {
+    animation: 3s ease-in-out infinite gold-pulse;
+  }
+
+  .linkage-grid {
+    display: grid;
+    width: 100%;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  }
+
+  .linkage-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    text-align: center;
+    border-radius: 14px;
+    min-height: 118px;
+    padding: 10px 7px;
+    gap: 0;
+    cursor: pointer;
+    transition: transform .22s, box-shadow .22s, border-color .22s, background-color .22s;
+  }
+
+  .linkage-icon-wrap {
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+    padding: 2px 0;
+  }
+
+  .linkage-id {
+    align-self: flex-start;
+    margin-bottom: 4px;
+    font-family: Orbitron, sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 1.2px;
+    opacity: .62;
+  }
+
+  .linkage-name {
+    display: -webkit-box;
+    width: 100%;
+    margin-top: 5px;
+    font-family: Orbitron, sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: .15px;
+    color: #cbd5e1;
+    text-align: center;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .linkage-dot {
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    margin-top: 7px;
+    border-radius: 50%;
+    opacity: .65;
+  }
+}
+
+@media (max-width: 380px) {
+  .linkage-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
