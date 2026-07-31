@@ -80,6 +80,25 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 ---
 
+## 3.7 OPTIMASI GAMBAR LCP: WEBP + PATH FIX + FETCHPRIORITY (SELESAI & TERVERIFIKASI)
+
+**Masalah:** Setelah code-splitting, skor Performance mobile masih 67 karena LCP tetap 5.4 detik — tidak berubah. Elemen LCP di halaman Welcome kemungkinan besar adalah gambar `gate-diagram.jpg` (63.1 KB, JPG progressive 640x357). PageSpeed juga menemukan insight: "Improve image delivery — Est savings of 26 KiB". Ditemukan juga bug tambahan: path gambar tidak konsisten antar halaman.
+
+**Tindakan (3 bagian):**
+1. **Konversi WebP** — buat `public/gate-diagram.webp` dari `gate-diagram.jpg` menggunakan Pillow. Hasil: **63.1 KB -> 21.8 KB (hemat 65.4%, ~42 KB)**.
+2. **Fix path inconsistency** — halaman Menu pakai `src="assets/gate-diagram.jpg"` (relatif, tanpa /), sedangkan Welcome pakai `src="/gate-diagram.jpg"` (absolut). Path relatif berisiko rusak. Disamakan ke `/gate-diagram.jpg` di kedua halaman.
+3. **`<picture>` + fallback + fetchpriority** — kedua halaman sekarang pakai `<picture><source webp><img jpg fallback></picture>`. Halaman Welcome mendapat `fetchPriority="high"` pada `<img>`-nya (bukan pada `<source>`) supaya browser prioritaskan download gambar LCP ini. TIDAK ditambahkan `loading="lazy"` (kebalikan dari yang kita mau).
+
+**File yang diubah:** `src/App.jsx` (2 lokasi img diubah ke picture) + `public/gate-diagram.webp` (file baru). Total commit: `e22ccd2`.
+
+**Verifikasi:**
+- Build sukses: `1974 modules transformed`, `built in 2.90s`, 0 error.
+- Kedua file (JPG + WebP) tercopy ke `dist/`.
+- Diff App.jsx: hanya 2 lokasi gambar yang berubah, tidak ada file lain yang tersentuh.
+- File backend (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) TIDAK disentuh.
+
+---
+
 ## 4. STATUS BACKEND (Firebase Auth + Supabase) — DIKERJAKAN TEMAN, BUKAN SCOPE USER
 
 Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
@@ -117,4 +136,5 @@ Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
 - BANYAK PROGRESS DARI TEMAN (BACKEND): Login + auto-save + API routes sudah jalan (Bagian 4). Beberapa hal sudah diklarifikasi (file orphan, quiz/leaderboard opsional).
 - BELUM DIKERJAKAN: card Circuit berikutnya (tier NORMAL) — perlu didiskusikan konsepnya. "Create Logic Gates Simulator" (Bagian 5) — masih jauh.
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
+- SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
