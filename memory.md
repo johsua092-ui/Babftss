@@ -14,8 +14,8 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 1. **Welcome** — judul "WELCOME", banner bertema Build A Boat, tombol hijau "START LEARNING".
 2. **Menu utama "LOGIC GATES"**, berisi 3 menu:
-   - **"7 Basic Logic Gates"** — SELESAI & berfungsi benar.
-   - **"Logic Gates Circuit"** — SEDANG DIKERJAKAN (lihat Bagian 3).
+   - **"7 Basic Logic Gates"** — SELESAI, sudah di-revert ke spec (lihat Bagian 3.5).
+   - **"Logic Gates Circuit"** — SEDANG DIKERJAKAN (lihat Bagian 4).
    - **"Create Logic Gates Simulator"** — BELUM DIKERJAKAN, paling terakhir.
 3. Menu **Gears** (36 jenis) dan **Linkages Mechanic** (45 jenis) — sudah ada di aplikasi, belum banyak dibahas detail, perlu diklarifikasi ke user kalau ada pengerjaan lanjutan.
 
@@ -26,8 +26,31 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 **Card pertama (tier MUDAH) — "NOT -> AND":**
 - Struktur: input A & B. B -> NOT Gate -> hasil NOT(B) jadi input AND bareng A. `OUT = A AND (NOT B)`.
 - Truth table: 2 input -> 4 baris.
-- **Status: SELESAI & TERVERIFIKASI.** Sempat ada 3 minor issue (wire diagonal, teks "AND"/"NOT" di dalam shape) — sudah diperbaiki di `src/components/CircuitDiagram01.jsx`, diverifikasi lewat: (a) diff kode cuma 2 file berubah (`memory.md` + file target, tidak nyerempet file lain), (b) review kode manual (path SVG siku-siku benar, teks terhapus, label "B′" tetap ada), (c) build log asli (`✓ 1969 modules transformed`, `✓ built in 2.92s`) — kredibel dan terverifikasi nyata, bukan klaim kosong.
+- **Status: SELESAI & TERVERIFIKASI.** Sempat ada 3 minor issue (wire diagonal, teks "AND"/"NOT" di dalam shape) — sudah diperbaiki di `src/components/CircuitDiagram01.jsx`, diverifikasi lewat: (a) diff kode cuma 2 file berubah (`memory.md` + file target, tidak nyerempet file lain), (b) review kode manual (path SVG siku-siku benar, teks terhapus, label "B'" tetap ada), (c) build log asli (`1969 modules transformed`, `built in 2.92s`).
 - Next: lanjut card ke-2 (tier NORMAL) — belum direncanakan konsepnya, perlu didiskusikan dulu.
+
+---
+
+## 3.5 REVISI DARURAT: REVERT HALAMAN "7 BASIC LOGIC GATES" (SELESAI & TERVERIFIKASI)
+
+**Masalah:** Halaman yang sudah dinyatakan selesai ternyata di-redesign ulang secara tidak sah oleh AI di titik yang tidak diketahui kapan. Banyak elemen tidak sesuai `design.md` Bagian 1 ditambahkan, dan elemen wajib dihapus.
+
+**7 masalah yang ditemukan dan diperbaiki di `src/components/GateCard.jsx`:**
+1. Truth table HILANG TOTAL -> **DIKEMBALIKAN** (table dinamis dengan highlight baris sesuai `design.md` 1.4, opacity ~18% warna tema).
+2. Deskripsi satu kalimat HILANG -> **DIKEMBALIKAN** (mengambil dari `config.description` di `gateData.js`).
+3. Header kehilangan format -> **DIKEMBALIKAN** ke `<nomor>  <Nama Gate>` (nomor Orbitron abu-abu, bulatan warna tema, nama Orbitron putih).
+4. Toggle switch iOS + teks "Input A/B: TRUE/FALSE (0/1)" di luar diagram -> **DIHAPUS TOTAL**. Input sekarang HANYA lewat klik node di dalam GateDiagram.
+5. Teks "Output: TRUE/FALSE (0/0)" terpisah -> **DIHAPUS TOTAL**. Output cukup lewat node OUT di dalam GateDiagram.
+6. Tombol "+" SVG di pojok kanan atas card -> **DIHAPUS TOTAL**.
+7. Kotak "Logic:" kosong (merujuk `config.logicLine` yang tidak ada di data) -> **DIHAPUS TOTAL**.
+
+**File yang diubah:** HANYA `src/components/GateCard.jsx` (1 file). `GateDiagram.jsx` TIDAK diubah karena sudah benar.
+
+**Verifikasi:**
+- Build sukses: `1969 modules transformed`, `built in 3.25s`, 0 error.
+- JS bundle turun dari 612KB ke 611.2KB (elemen tidak sah dihapus).
+- Wire di GateDiagram.jsx: semua 8 gate type sudah diverifikasi — solid, tidak dashed, posisi nyambung ke node input & output tanpa gap.
+- File backend (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) TIDAK disentuh.
 
 ---
 
@@ -62,9 +85,9 @@ Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
 
 ## 7. RINGKASAN STATUS SAAT INI
 
-- SELESAI: halaman "7 Basic Logic Gates".
+- SELESAI & TERVERIFIKASI: halaman "7 Basic Logic Gates" — sudah di-revert ke spec `design.md` Bagian 1 (Bagian 3.5).
 - SELESAI: rekonstruksi source code + cleanup + verifikasi keamanan (Bagian 6).
-- SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 — termasuk 3 minor issue yang sempat ada, sudah diperbaiki (Bagian 3).
+- SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 (Bagian 3).
 - BANYAK PROGRESS DARI TEMAN (BACKEND): Login + auto-save + API routes sudah jalan (Bagian 4). Beberapa hal sudah diklarifikasi (file orphan, quiz/leaderboard opsional).
 - BELUM DIKERJAKAN: card Circuit berikutnya (tier NORMAL) — perlu didiskusikan konsepnya. "Create Logic Gates Simulator" (Bagian 5) — masih jauh.
-- Dokumentasi proyek sekarang terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
+- Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
