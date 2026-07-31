@@ -12,6 +12,7 @@ const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
 const GearsPage = lazy(() => import('./pages/GearsPage'));
 const LinkagesPage = lazy(() => import('./pages/LinkagesPage'));
+const AIHelper = lazy(() => import('./components/AIHelper'));
 
 const pageFallback = (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px 0', color: '#475569', fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
@@ -225,6 +226,7 @@ export default function App() {
             </motion.div>}
         </AnimatePresence>
         </main>
+        <Suspense fallback={null}><AIHelper /></Suspense>
         </div>
     );
 }

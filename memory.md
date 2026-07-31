@@ -110,11 +110,56 @@ Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
 - **Sudah diklarifikasi:** API Quiz (`api/quiz/*`) dan Leaderboard (`api/leaderboard.js`) itu **persiapan/jaga-jaga**, bukan fitur wajib dikerjakan sekarang. Lihat `instruction.md` Bagian 6.
 - Metode verifikasi token Firebase pakai `google-auth-library` (bukan `firebase-admin`) — belum tentu salah, tapi tidak umum, masih perlu dikonfirmasi validitasnya oleh teman kalau sempat.
 
+**[BARU] Optimasi performa backend (commit `afaf151`, SELESAI & TERVERIFIKASI):**
+- **Firebase lazy-load**: `firebase/config.js` diubah dari static import ke dynamic `import()` dibungkus fungsi `_init()` + `_initPromise` (singleton, sekali inisialisasi). `AuthContext.jsx` diupdate supaya auth-check jalan lewat `getFirebase().then(...)`, tidak lagi blocking render awal. API publik AuthContext (`user`, `loading`, `loginWithGoogle`, dst) tidak berubah, jadi komponen lain tetap kompatibel.
+- **Build config**: `vite.config.js` ditambah `target: 'es2020'`, `minify: 'terser'`, `drop_console: true`, `drop_debugger: true`. Dependency `terser` ditambahkan ke `package.json` (wajib, kalau tidak build akan error).
+- **`vercel.json` (file baru)**: security headers (HSTS, X-Content-Type-Options nosniff, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, Cross-Origin-Resource-Policy) + caching `/assets/*` immutable 1 tahun, `/favicon.svg` 7 hari.
+- **Catatan akurasi**: laporan awal menyebut ada "CSP policy" di headers, tapi hasil cek `vercel.json` TIDAK ditemukan header `Content-Security-Policy` — kemungkinan salah sebut, item lain semua sesuai klaim. PageSpeed juga masih menandai "Ensure CSP is effective" sebagai belum tercover.
+- **Hasil terukur**: PageSpeed mobile Performance score **66 → 94** (lompatan besar), FCP 4.8s → 2.4s, LCP 5.6s → 2.6s, Speed Index 5.8s → 2.4s.
+- **Verifikasi**: diff kode dicek langsung (bukan cuma percaya laporan) — perubahan scope sesuai (`AuthContext.jsx`, `firebase/config.js`, `vite.config.js`, `package.json`, `vercel.json` baru), tidak ada file di luar itu yang tersentuh.
+
 ---
 
 ## 5. RENCANA SETELAH CIRCUIT SELESAI
 
 "Create Logic Gates Simulator" — dikerjakan PALING TERAKHIR. Kemungkinan fitur builder/simulator bebas (drag-drop gate, dst). Butuh fondasi Basic Gates + Circuit sudah solid dulu.
+
+---
+
+## 5.5 FITUR BARU: "AI HELPER" (FLOATING CHAT WIDGET) — SEDANG DIKERJAKAN
+
+**Latar belakang:** Tim backend sudah membangun endpoint AI Chat (terhubung ke Claude) yang siap dipakai frontend. Tidak direncanakan sejak awal proyek — ini fitur baru yang muncul dari inisiatif backend developer.
+
+**Spesifikasi endpoint (backend, JANGAN disentuh dari sisi frontend):**
+- `POST https://babftss.vercel.app/api/ai-chat`
+- Request: `{ message, chatId (opsional), history (opsional) }`
+- Response: `{ answer (markdown), chatId (uuid), model }`
+- Model dipakai: `claude-haiku-4-5-20251001`.
+- 16 environment variables sudah terpasang di Vercel (dikonfirmasi backend developer).
+
+**Keputusan desain UI (disepakati dengan user):**
+- Bentuk: **floating chat widget**, tombol mengambang di pojok layar, muncul di SEMUA halaman.
+- Fokus: **bebas topik** — user bisa nanya soal Logic Gates, Gears, Linkages, atau apapun terkait materi di app, TIDAK dibatasi konteks halaman yang sedang dibuka.
+- Styling: TETAP ikut prinsip Bagian 0 di `design.md` — TIDAK pakai neon glow (itu eksklusif buat sinyal 0/1 di Logic Gates), widget ini pakai tema gelap netral biasa.
+- Riwayat chat tidak perlu persisten permanen (boleh reset saat refresh) — sengaja TIDAK dihubungkan ke sistem auto-save progress (Bagian 4), itu scope terpisah.
+- Perlu render markdown (response API berformat markdown) — kemungkinan perlu tambah library `react-markdown` kalau belum ada.
+
+**Status:** prompt kerja sudah dibuat ("PROMPT_KERJA_AI_Helper_Widget.txt"), menunggu implementasi & verifikasi.
+
+---
+
+## 5.6 DIDISKUSIKAN, BELUM DIPUTUSKAN: ADMIN PANEL + IMPOSSIBLE TRAVEL DETECTION
+
+**Latar belakang:** Backend developer mengusulkan (berdasarkan konsultasi dengan "AI cybersecurity"-nya) 2 fitur keamanan lanjutan:
+1. **Hidden admin panel** — route tersembunyi, 3-layer auth (ID+password, JWT expiry pendek, challenge questions), session server-side.
+2. **Impossible travel detection** — GeoIP + rumus Haversine buat deteksi login dari lokasi yang mustahil secara waktu-jarak, risk-based flagging (bukan hard-block).
+
+**Status: KONTEKS TAMBAHAN DARI USER (klarifikasi penting) — bukan berarti otomatis "go", tapi mengubah penilaian proporsionalitas:**
+User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat nampung informasi trik penting dari game** (bukan sekadar demo/latihan sekali pakai). Dengan konteks ini:
+- Admin panel jadi LEBIH masuk akal — perlu kontrol siapa yang boleh kelola/edit konten yang dipercaya banyak orang, supaya konten gak bisa diubah sembarangan.
+- Impossible travel detection sebagai proteksi KHUSUS AKUN ADMIN (bukan semua user biasa) juga lebih proporsional — mencegah akun admin diambil alih orang lain yang bisa merusak/mengubah konten terpercaya itu.
+
+**Tetap disarankan sebelum eksekusi:** mulai dari scope kecil dulu (misal admin panel basic dengan login aman biasa), baru tambah lapisan impossible travel detection belakangan KALAU beneran kejadian ada percobaan akses mencurigakan — daripada bangun semua lapisan sekaligus di awal sebelum tau pola penyalahgunaan yang nyata seperti apa. Keputusan akhir tetap di tangan user & tim.
 
 ---
 
