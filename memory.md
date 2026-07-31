@@ -54,6 +54,32 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 ---
 
+## 3.6 OPTIMASI PERFORMA MOBILE: CODE-SPLITTING (SELESAI & TERVERIFIKASI)
+
+**Masalah:** PageSpeed Insights menunjukkan skor mobile 67, FCP 4.9s, LCP 5.4s. Akar masalah: semua halaman ter-bundle jadi satu file JS ~612KB yang di-download sekaligus.
+
+**Tindakan:**
+1. **Code-splitting** — extract 4 halaman ke `src/pages/` lalu lazy-load dengan `React.lazy()` + `<Suspense>`:
+   - `src/pages/BasicLogicGates.jsx` (14.95 KB)
+   - `src/pages/LogicGatesCircuit.jsx` (8.79 KB)
+   - `src/pages/GearsPage.jsx` (8.69 KB)
+   - `src/pages/LinkagesPage.jsx` (8.69 KB)
+   - Welcome dan Menu tetap dimuat langsung (halaman pertama user).
+2. **Viewport meta** — hapus `maximum-scale=1` di `index.html`, sekarang user bisa pinch-zoom.
+3. **Landmark `<main>`** — tambahkan `<main>` membungkus `AnimatePresence` di `App.jsx`.
+4. **Img width/height** — tambahkan `width={640} height={357}` ke kedua `<img>` (gate-diagram.jpg, 640x357px).
+
+**Hasil build:**
+- Bundle awal (initial load): **573.09 KB** (turun dari 611.2 KB, hemat ~38 KB / 6.2%).
+- 4 chunk halaman: total ~41 KB, hanya di-load on-demand saat user navigasi.
+- Chunk size warning masih muncul (573 KB > 500 KB) karena library Firebase/Supabase di bundle awal — ini area backend developer.
+
+**File yang diubah:** `src/App.jsx`, `index.html`, 4 file baru di `src/pages/`. File backend TIDAK disentuh (diff terverifikasi 0 insertions/deletions).
+
+**Catatan untuk backend developer:** sebagian besar bundle awal (~573 KB) masih didominasi library Firebase + Supabase + google-auth-library. Osi yang bisa dipertimbangkan: (a) apakah semua fitur Firebase yang di-import benar-benar dipakai, (b) apakah cek status login bisa tidak memblokir tampilan awal.
+
+---
+
 ## 4. STATUS BACKEND (Firebase Auth + Supabase) — DIKERJAKAN TEMAN, BUKAN SCOPE USER
 
 Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
@@ -90,4 +116,5 @@ Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 (Bagian 3).
 - BANYAK PROGRESS DARI TEMAN (BACKEND): Login + auto-save + API routes sudah jalan (Bagian 4). Beberapa hal sudah diklarifikasi (file orphan, quiz/leaderboard opsional).
 - BELUM DIKERJAKAN: card Circuit berikutnya (tier NORMAL) — perlu didiskusikan konsepnya. "Create Logic Gates Simulator" (Bagian 5) — masih jauh.
+- SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
