@@ -44,18 +44,16 @@ export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggl
             <circle cx={inputBX + 24} cy={inputBY} r={nodeR} fill={b ? notColor : "#1e293b"} stroke={b ? notColor : "#334155"} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${notRgb},0.8))` : "none", transition: "all 0.25s" }} />
             <text x={inputBX + 24} y={inputBY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? notColor : "#475569"}>{b ? "1" : "0"}</text>
         </g>
-        <line x1={inputAX + inputNodeW} y1={inputAY} x2={andStartX} y2={andTopY} stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <line x1={inputBX + inputNodeW} y1={inputBY} x2={notStartX} y2={notMidY} stroke={wc(b, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <polygon points={`${notStartX},${notTopY} ${notStartX},${notBotY} ${notEndX},${notMidY}`} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
             <circle cx={notEndX + bubbleR} cy={notMidY} r={bubbleR} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
-            <text x={(notStartX + notEndX) / 2} y={notMidY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrime ? notColor : "#475569"} style={{ transition: "fill 0.3s" }}>NOT</text>
         </Fragment>
-        <line x1={notOutX} y1={notMidY} x2={andStartX} y2={andBotY} stroke={wc(bPrime, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${notOutX},${notMidY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(bPrime, notColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <text x={(notOutX + andStartX) / 2} y={notMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrimeColor} style={{ transition: "fill 0.3s" }}>B′</text>
         <Fragment>
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
-            <text x={andStartX + andW / 2 + 4} y={andMidY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={out ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>AND</text>
             <line x1={andStartX} y1={andTopY} x2={andStartX - 10} y2={andTopY - 6} stroke={andStroke} strokeWidth="1.2" opacity="0.45" />
             <line x1={andStartX} y1={andBotY} x2={andStartX - 10} y2={andBotY + 6} stroke={andStroke} strokeWidth="1.2" opacity="0.45" />
         </Fragment>
