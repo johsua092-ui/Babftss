@@ -4,6 +4,19 @@
 
 ---
 
+## 0. PRINSIP DESAIN: NEON GLOW DI LOGIC GATES ITU FUNGSIONAL, BUKAN DEKORATIF (WAJIB DIPAHAMI SEBELUM LANJUT)
+
+**Keputusan final, sudah disepakati user & tim — JANGAN diubah/disederhanakan tanpa persetujuan eksplisit:**
+
+Warna neon menyala di semua elemen Logic Gates (Basic Gates, Circuit, dan nanti Simulator) BUKAN sekadar gaya visual — itu **sinyal status fungsional**: neon menyala terang = gate/wire sedang bernilai **1**, redup/gelap = bernilai **0**. Untuk pemula yang baru belajar konsep gerbang logika, ini krusial: mereka bisa langsung "membaca" kondisi rangkaian sekilas mata dari terang-redupnya, tanpa harus baca angka satu per satu di tiap node.
+
+**Konsekuensi aturan ini:**
+- **DILARANG** "menyederhanakan"/meredam efek neon glow di halaman Logic Gates manapun atas nama "biar lebih minimalis" atau "biar nggak norak" — walau ada masukan bahwa gaya warna-warni menyala di tempat lain kelihatan berlebihan/`AI slop`.
+- Bagian **LAIN** di luar Logic Gates (misal halaman Gears, Linkages, atau UI umum non-gate) BOLEH punya gaya lebih kalem/minimalis — itu keputusan terpisah, tidak berlaku ke area Logic Gates.
+- Kalau ada saran styling baru yang menyentuh Logic Gates, WAJIB dicek dulu: apakah itu tetap mempertahankan fungsi sinyal terang=1/redup=0 ini? Kalau mengorbankan kejelasan sinyal ini demi estetika, TOLAK saran itu.
+
+---
+
 ## 1. SPESIFIKASI "7 BASIC LOGIC GATES" (REFERENSI BAKU, JANGAN DIUBAH)
 
 ### 1.1 Struktur halaman

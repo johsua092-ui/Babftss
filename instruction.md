@@ -63,6 +63,8 @@ Backend developer (teman user) sudah membuat halaman Login + integrasi backend s
 
 Kalau AI menemukan file yang kelihatannya terkait login/auth/backend saat eksplorasi kode, JANGAN diubah — laporkan ke user.
 
+**Zona file BERSAMA (bukan murni frontend atau backend, WAJIB koordinasi sebelum diubah dari sisi manapun):** `vite.config.js` (build config) dan `vercel.json` (deployment/CDN config) — kedua file ini bisa disentuh dari sisi frontend (misal buat code-splitting) MAUPUN backend (misal buat security headers, minifikasi). Sebelum mengubah salah satu file ini, AI WAJIB mengingatkan user untuk cross-check dulu dengan tim satunya, supaya perubahan tidak saling menimpa tanpa sepengetahuan.
+
 ---
 
 ## 6. FITUR BACKEND OPSIONAL YANG SUDAH TERSEDIA (TIDAK WAJIB DIPAKAI)
