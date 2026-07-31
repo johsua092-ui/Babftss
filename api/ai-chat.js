@@ -1,34 +1,11 @@
-// api/ai-chat.js — AI Chat API Route
-// POST: send message, get AI tutor response
-// OPTIONS: CORS preflight
+// api/ai-chat.js — AI Chat API Route (serverless)
+// POST /api/ai-chat — AI Tutor conversation endpoint
+// Public endpoint (no auth required) — rate limited per IP
+// Frontend team: just POST { message, chatId?, history? } to this endpoint
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr } from "../lib/api-helpers.js";
-import { askAI, getAllowedAIOrigin } from "../lib/ai-client.js";
-
-// Dynamic dataset import — loaded on first request, cached in module scope
-let _datasetCache = null;
-let _datasetLoaded = false;
-
-async function loadDataset() {
-  if (_datasetLoaded) return _datasetCache;
-  _datasetLoaded = true;
-  try {
-    // Coba load dataset dari filesystem (Vercel serverless)
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const datasetPath = path.join(process.cwd(), "lib", "ai-dataset.json");
-    if (fs.existsSync(datasetPath)) {
-      const raw = fs.readFileSync(datasetPath, "utf-8");
-      _datasetCache = JSON.parse(raw);
-    }
-  } catch {
-    // Dataset not found — AI will run without it, using only built-in system prompt
-    _datasetCache = null;
-  }
-  return _datasetCache;
-}
+import { askAI } from "../lib/ai-client.js";
 
 export default async function handler(req, res) {
-  // CORS
   applyCors(req, res, "POST, OPTIONS");
   applySecurityHeaders(res);
 
@@ -36,40 +13,36 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    // Rate limit: 30 requests per minute per IP
+    // Rate limit: 30 req/min per IP (generous for chat)
     const ip = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
     if (!checkRateLimit("ai-chat:" + ip, 30, 60000)) {
-      return res.status(429).json({ error: "Too many requests. Please wait a moment." });
+      return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
     }
 
-    // Parse body
+    // Validate input
     const { message, chatId, history } = req.body || {};
     if (!validateStr(message, 2000)) {
-      return res.status(400).json({ error: "message is required (max 2000 chars)" });
+      return res.status(400).json({ error: "message wajib diisi (max 2000 karakter)" });
     }
 
-    // Validate history if provided
+    // Sanitize history
     let cleanHistory = null;
     if (Array.isArray(history) && history.length > 0) {
       cleanHistory = history
         .filter((h) => h && (h.role === "user" || h.role === "assistant") && typeof h.content === "string")
-        .slice(-20) // max 20 messages to prevent token bloat
+        .slice(-20)
         .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
     }
 
-    // Load dataset
-    const dataset = await loadDataset();
-
-    // Call AI
+    // Call AI (dataset embedded in ai-client.js — no filesystem deps)
     const result = await askAI(message, {
       chatId: chatId || undefined,
       history: cleanHistory || undefined,
-      dataset,
     });
 
     if (!result.status) {
       console.error("[ai-chat] AI error:", result.error);
-      return res.status(502).json({ error: "AI service temporarily unavailable. Please try again." });
+      return res.status(502).json({ error: "AI service sedang sibuk. Coba lagi nanti." });
     }
 
     return res.status(200).json({
