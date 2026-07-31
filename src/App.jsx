@@ -138,7 +138,10 @@ export default function App() {
             {page === "welcome" && <motion.div key="welcome" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <div style={{ width: "100%", maxWidth: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: 32, textAlign: "center" }}>
                     <h1 style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 900, fontSize: "clamp(2.4rem,10vw,3.6rem)", background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em", lineHeight: 1.1, margin: 0 }}>Babft Learning</h1>
-                    <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
+                    <picture>
+                        <source srcSet="/gate-diagram.webp" type="image/webp" />
+                        <img fetchPriority="high" width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
+                    </picture>
                     <button onClick={() => setPage("menu")}
                         className="animate-pulse-glow"
                         style={{ width: "100%", maxWidth: 400, padding: "18px 0", borderRadius: 20, backgroundColor: "#22c55e", border: "none", cursor: "pointer", fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 18, color: "#052e16", letterSpacing: 2, transition: "transform 0.2s" }}
@@ -152,7 +155,10 @@ export default function App() {
             {page === "menu" && <motion.div key="menu" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <div style={{ width: "100%", maxWidth: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: 28, textAlign: "center" }}>
                     <h1 style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 900, fontSize: "clamp(2rem,8vw,3rem)", background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em", margin: 0 }}>Babft Learning</h1>
-                    <img width={640} height={357} src="assets/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
+                    <picture>
+                        <source srcSet="/gate-diagram.webp" type="image/webp" />
+                        <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
+                    </picture>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
                         <button onClick={() => setPage("logic-gates")}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(59,130,246,0.35)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(59,130,246,0.25)", transition: "all 0.2s" }}
