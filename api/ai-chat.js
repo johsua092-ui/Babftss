@@ -34,6 +34,16 @@ export default async function handler(req, res) {
         .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
     }
 
+    // PRE-FILTER: hardcoded platform info (prevents AI hallucination about BABFT Learning)
+    const canned = getCannedResponse(message);
+    if (canned) {
+      return res.status(200).json({
+        answer: canned,
+        chatId: chatId || "babft-platform-info",
+        model: "babft-tutor",
+      });
+    }
+
     // Call AI (dataset embedded in ai-client.js — no filesystem deps)
     const result = await askAI(message, {
       chatId: chatId || undefined,
@@ -54,4 +64,56 @@ export default async function handler(req, res) {
     console.error("[ai-chat]", e?.message || e);
     return res.status(500).json({ error: "Internal server error" });
   }
+}
+
+/**
+ * Hardcoded platform info — prevents AI hallucination about BABFT Learning
+ * Returns null if question is NOT about the platform (pass through to AI)
+ */
+function getCannedResponse(message) {
+  const msg = message.toLowerCase().trim();
+
+  // Platform identity questions
+  const isPlatformQuestion =
+    msg.includes("babft") ||
+    msg.includes("platform ini") ||
+    msg.includes("platform apa") ||
+    msg.includes("di sini") && (msg.includes("belajar") || msg.includes("diajark") || msg.includes("ajar"));
+
+  if (!isPlatformQuestion) return null;
+
+  // Canned response — accurate platform info
+  return `# 🏴‍☠️ BABFT Learning — Platform Belajar Logic Gates!
+
+BABFT Learning adalah **platform edukasi interaktif** bertema game Roblox **"Build A Boat For Treasure"** yang mengajarkan konsep **Logic Gates (Gerbang Logika)** digital dengan cara visual dan menyenangkan.
+
+## 📚 Yang Diajarkan di Platform Ini:
+
+### 1. ⚡ Basic Logic Gates (7 gerbang + pengantar)
+- **Basic Wire** — Sinyal mengalir langsung, dasar semua rangkaian
+- **NOT Gate** — Pembalik sinyal (Inverter)
+- **AND Gate** — Output 1 hanya jika semua input 1
+- **NAND Gate** — Kebalikan AND (gerbang universal)
+- **OR Gate** — Output 1 jika salah satu input 1
+- **NOR Gate** — Kebalikan OR
+- **XOR Gate** — Exclusive OR, output 1 jika input berbeda
+- **XNOR Gate** — Kebalikan XOR
+
+### 2. 🔗 Logic Gates Circuit
+Rangkaian gabungan beberapa gate dengan sistem tier:
+- 🟢 **MUDAH** — Satu-dua gate sederhana
+- 🟡 **NORMAL** — Kombinasi menengah
+- 🔴 **HARD** — Multi-gate kompleks
+- 🌈 **INSANE** — Rangkaian paling menantang
+
+### 3. ⚙️ Gears (36 jenis mekanisme gear)
+### 4. 🔩 Linkages Mechanic (45 jenis)
+
+## 🎮 Fitur Unggulan:
+- Diagram interaktif dengan **neon glow** (terang = 1, redup = 0)
+- Truth table dinamis yang real-time
+- Auto-save progress dengan login Firebase
+- Sistem tier untuk tantangan bertahap
+
+Mau belajar yang mana dulu? 😊`;
 }
