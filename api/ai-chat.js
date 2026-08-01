@@ -1,6 +1,6 @@
 // api/ai-chat.js — AI Chat API Route (serverless)
 // POST /api/ai-chat — AI Tutor + Game FAQ endpoint
-// Pre-filter handles: coding request block, platform & game facts → AI handles Logic Gates tutoring
+// Pre-filter handles: identity, coding block, platform & game facts → AI handles Logic Gates tutoring
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
 
@@ -30,7 +30,6 @@ export default async function handler(req, res) {
         .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
     }
 
-    // PRE-FILTER: block coding + game FAQ + platform info (accurate, no hallucination)
     const canned = getCannedResponse(message);
     if (canned) {
       return res.status(200).json({
@@ -40,7 +39,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // AI tutoring for Logic Gates & general questions
     const result = await askAI(message, {
       chatId: chatId || undefined,
       history: cleanHistory || undefined,
@@ -71,13 +69,16 @@ function getCannedResponse(message) {
   // ===== SECURITY: Block coding requests =====
   if (isCodingRequest(msg)) return CODE_BLOCK_MSG;
 
-  // Platform identity: "apa itu babft learning?"
+  // ===== IDENTITY: "kamu siapa/bisa apa?" =====
+  if (isIdentityQuestion(msg)) return IDENTITY_MSG;
+
+  // Platform identity
   if (/^(apa|what|jelaskan|jelasin|info|definisi|tell me about).*(babft|platform ini|platform apa)/.test(msg) ||
       /(belajar|diajarkan|diajarin|materi|pelajaran) (apa|apa aja) (di|disini|di sini)/.test(msg)) {
     return PLATFORM_INFO;
   }
 
-  // Creator: "siapa yang buat Build A Boat?"
+  // Creator
   if (/(siapa|who|siapakah).*(buat|pembuat|developer|creator|bikin).*(babft|build a boat|boat for treasure|game ini)/.test(msg) ||
       /chillthrill/.test(msg)) {
     return CREATOR_INFO;
@@ -121,10 +122,28 @@ function getCannedResponse(message) {
 }
 
 // ============================================================
+// IDENTITY DETECTOR
+// ============================================================
+function isIdentityQuestion(msg) {
+  const identityPatterns = [
+    /^kamu (siapa|siapakah|apa)\b/i,
+    /^lu (siapa|siapakah|apa)\b/i,
+    /^(kau|anda|elo) (siapa|apa)\b/i,
+    /(kamu|lu|anda) (bisa|bisa apa|bisa ngapain|bisa ngapain aja)\b/i,
+    /(siapa|apa) (nama|nama kamu|nama lo|nama lu)\b/i,
+    /^who (are )?you\b/i,
+    /^what (are|can) you\b/i,
+  ];
+  for (const p of identityPatterns) {
+    if (p.test(msg)) return true;
+  }
+  return false;
+}
+
+// ============================================================
 // ANTI-CODING DETECTOR
 // ============================================================
 function isCodingRequest(msg) {
-  // Pattern: "buatkan kode", "tulis script", "bikinin program", "codingin", dll
   const codePatterns = [
     /\bbuat(?:kan|in|kode)?\b.*\b(?:kode|coding|script|program|aplikasi|app|bot|website|html|css|js|javascript|python|php|java|ruby|go|rust|c\+\+|sql|api|endpoint|function|fungsi|class)\b/i,
     /\bbikin(?:in|kan)?\b.*\b(?:kode|coding|script|program|aplikasi|app|bot|website|html|css|js|javascript|python|php)\b/i,
@@ -136,14 +155,9 @@ function isCodingRequest(msg) {
     /\bbagaimana\b.*\bcara\b.*\b(?:hack|hackin|bypass|exploit|ddos|phishing)\b/i,
     /\b(?:hack|hackin|bypass|exploit|ddos|phishing|carding|deface)\b/i,
   ];
-
   for (const pattern of codePatterns) {
     if (pattern.test(msg)) return true;
   }
-
-  // Explicitly NOT matching: "apa itu javascript", "jelaskan apa itu python"
-  // Those are educational questions, not coding requests
-
   return false;
 }
 
@@ -169,6 +183,24 @@ Saya **tidak bisa**:
 Kalau kamu butuh bantuan coding, coba tanya ke tools yang tepat seperti GitHub Copilot, ChatGPT, atau Stack Overflow ya! 
 
 Ada yang bisa saya bantu tentang Logic Gates atau BABFT? 😊`;
+
+const IDENTITY_MSG = `# 👋 Halo! Saya AI Tutor BABFT Learning 🏴‍☠️
+
+Saya dibuat oleh **tim pengembang BABFT Learning** untuk membantu kamu belajar:
+
+## 📚 Yang Bisa Saya Bantu:
+- ⚡ **Logic Gates** — AND, OR, NOT, XOR, NAND, NOR, XNOR
+- ⚙️ **Gears & Mechanisms** — 36 jenis gear
+- 🔩 **Linkages Mechanic** — 45 jenis linkage
+- 🎮 **Build A Boat For Treasure** — Chest, Quest, Event, Tools, Codes
+
+## ❌ Yang TIDAK Bisa Saya Lakukan:
+- Membuat kode/program/script
+- Membuat website atau aplikasi
+- Konfigurasi server
+- Aktivitas ilegal
+
+Mau belajar yang mana dulu? 😊`;
 
 const PLATFORM_INFO = `# 🏴‍☠️ BABFT Learning — Platform Belajar Logic Gates!
 
