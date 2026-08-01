@@ -144,7 +144,7 @@ Update terbaru hasil investigasi kode langsung (bukan cuma laporan tertulis):
 - Riwayat chat tidak perlu persisten permanen (boleh reset saat refresh) — sengaja TIDAK dihubungkan ke sistem auto-save progress (Bagian 4), itu scope terpisah.
 - Perlu render markdown (response API berformat markdown) — kemungkinan perlu tambah library `react-markdown` kalau belum ada.
 
-**Status:** prompt kerja sudah dibuat ("PROMPT_KERJA_AI_Helper_Widget.txt"), menunggu implementasi & verifikasi.
+**Status:** implementasi selesai — lihat progress & isu performa terbaru di Bagian 5.7.
 
 ---
 
@@ -160,6 +160,32 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - Impossible travel detection sebagai proteksi KHUSUS AKUN ADMIN (bukan semua user biasa) juga lebih proporsional — mencegah akun admin diambil alih orang lain yang bisa merusak/mengubah konten terpercaya itu.
 
 **Tetap disarankan sebelum eksekusi:** mulai dari scope kecil dulu (misal admin panel basic dengan login aman biasa), baru tambah lapisan impossible travel detection belakangan KALAU beneran kejadian ada percobaan akses mencurigakan — daripada bangun semua lapisan sekaligus di awal sebelum tau pola penyalahgunaan yang nyata seperti apa. Keputusan akhir tetap di tangan user & tim.
+
+## 5.7 AI HELPER WIDGET: IMPLEMENTASI + PERBAIKAN LAZY-LOAD (SELESAI & TERVERIFIKASI)
+
+**Implementasi awal:** `src/components/AIHelper.jsx` dibuat (commit `ff6d1a4`), terhubung ke `/api/ai-chat`, styling dark/netral (tidak neon), multi-turn via chatId, markdown via `react-markdown`. Di-lazy-load via `React.lazy()` tapi **masalah**: komponen selalu ada di JSX tree dalam `<Suspense>`, sehingga React langsung fetch chunk-nya (termasuk `react-markdown` ~125 KB) saat halaman pertama dimuat. PageSpeed turun 94 → 73.
+
+**Perbaikan (SELESAI):** Pecah jadi 2 komponen:
+1. `src/components/AIHelperButton.jsx` — tombol FAB saja, import biasa (eager), TIDAK mengimpor `react-markdown`. Selalu muncul instant di semua halaman.
+2. `src/components/AIHelperPanel.jsx` — panel chat lengkap (header, messages, input, markdown). Import via `React.lazy()`, HANYA di-render ketika `helperOpen === true` di `App.jsx`.
+3. State chat (`messages`, `chatId`) dipindah ke `App.jsx` supaya tidak hilang saat panel ditutup-buka (panel unmount tapi state tetap hidup di parent).
+4. File lama `AIHelper.jsx` dihapus.
+
+**Hasil build:**
+- Bundle utama: **399.64 KB** (tidak naik dari sebelum AI Helper ditambahkan).
+- Chunk `AIHelperPanel`: 125.08 KB — hanya di-fetch saat user klik tombol FAB pertama kali.
+- `react-markdown` TIDAK ada di bundle utama (diverifikasi via `rg`).
+
+**Verifikasi:**
+- Build sukses: `2138 modules transformed`, `built in 7.09s`, 0 error.
+- File yang diubah: `src/App.jsx` (+4 baris state, ganti import, render kondisional), `src/components/AIHelperButton.jsx` (baru), `src/components/AIHelperPanel.jsx` (baru, mengganti `AIHelper.jsx`), `src/components/AIHelper.jsx` (dihapus).
+- File backend (api/, lib/, AuthContext, firebase, LoginModal, useProgressSync) TIDAK disentuh.
+- Riwayat chat TIDAK hilang saat panel ditutup-buka (state di App.jsx, bukan di panel).
+- **Catatan jujur:** tidak bisa tes DevTools Network secara langsung dari environment build ini (tidak ada browser), jadi verifikasi bahwa chunk belum ter-fetch sebelum klik FAB hanya bisa dilakukan user setelah deploy. Namun secara arsitektural, pola `{helperOpen && <Suspense><lazyComponent /></Suspense>}` memastikan `import()` tidak dipicu sampai kondisi `true` — ini mekanisme baku React.
+
+**Temuan tambahan (perlu dikonfirmasi ke backend developer, BUKAN tugas AI frontend):** Bersamaan dengan task ini, file `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json` (baru) dan `lib/api-helpers.js` (dimodifikasi — CORS origin sekarang dari env var `ALLOWED_CORS_ORIGINS`, bukan hardcoded) ikut muncul di repo. Gaya kodenya (readable/terformat, bukan minified) BEDA dari commit backend sebelumnya (yang minified) — kemungkinan besar ini pekerjaan backend developer sendiri yang dipush bersamaan, BUKAN AI frontend yang melanggar batas (AI frontend tidak diinstruksikan dan seharusnya tidak menyentuh folder ini). Tapi ini PERLU DIKONFIRMASI ke user/backend developer untuk memastikan, bukan diasumsikan begitu saja.
+
+**Catatan proses:** AI tidak menuliskan log penyelesaian task ini sendiri di `memory.md` (hanya menerapkan update yang dikirim user) — pengingat untuk selalu update memory.md di akhir setiap task.
 
 ---
 
@@ -182,4 +208,8 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - BELUM DIKERJAKAN: card Circuit berikutnya (tier NORMAL) — perlu didiskusikan konsepnya. "Create Logic Gates Simulator" (Bagian 5) — masih jauh.
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
+- SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
+- SELESAI & TERVERIFIKASI: AI Helper widget -- fungsional jalan, lazy-load diperbaiki (split FAB vs panel, bundle utama tidak terpengaruh) (Bagian 5.7).
+- ⚠️ PERLU DIKONFIRMASI: apakah `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json`, dan modifikasi `lib/api-helpers.js` itu murni kerjaan backend developer (kemungkinan besar iya) — bukan sesuatu yang AI frontend sentuh melanggar aturan (Bagian 5.7).
+- DIDISKUSIKAN, BELUM DIPUTUSKAN: Admin Panel + Impossible Travel Detection — proporsionalitasnya dipertanyakan, tunggu keputusan eksplisit user & tim (Bagian 5.6).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.

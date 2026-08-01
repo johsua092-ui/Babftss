@@ -1,19 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Bot, User2 } from 'lucide-react';
+import { X, Send, Bot, MessageCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const API_URL = '/api/ai-chat';
 
 const styles = {
-    fab: {
-        position: 'fixed', bottom: 24, right: 24, zIndex: 200,
-        width: 52, height: 52, borderRadius: '50%',
-        backgroundColor: '#334155', border: '1px solid #475569',
-        color: '#e2e8f0', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-        transition: 'background-color 0.2s, transform 0.15s',
-    },
     panelOuter: {
         position: 'fixed', bottom: 88, right: 24, zIndex: 200,
         width: 380, maxWidth: 'calc(100vw - 32px)',
@@ -98,10 +89,8 @@ const styles = {
     },
 };
 
-// Markdown styling overrides for dark theme
 const mdStyles = {
     p: { margin: '0 0 8px 0' },
-    pLast: { margin: 0 },
     h1: { fontFamily: 'Orbitron,sans-serif', fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '12px 0 6px 0' },
     h2: { fontFamily: 'Orbitron,sans-serif', fontSize: 14, fontWeight: 700, color: '#e2e8f0', margin: '10px 0 4px 0' },
     h3: { fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 700, color: '#cbd5e1', margin: '8px 0 4px 0' },
@@ -124,12 +113,7 @@ function MarkdownContent({ content }) {
     return (
         <ReactMarkdown
             components={{
-                p: ({ children, ...props }) => {
-                    const { node, ...rest } = props;
-                    // Check if this is the last paragraph in a block
-                    const isLast = node?.position?.end?.offset === node?.position?.start?.offset;
-                    return <p style={mdStyles.p} {...rest}>{children}</p>;
-                },
+                p: ({ children, node, ...props }) => <p style={mdStyles.p} {...props}>{children}</p>,
                 h1: ({ children, ...props }) => <h1 style={mdStyles.h1} {...props}>{children}</h1>,
                 h2: ({ children, ...props }) => <h2 style={mdStyles.h2} {...props}>{children}</h2>,
                 h3: ({ children, ...props }) => <h3 style={mdStyles.h3} {...props}>{children}</h3>,
@@ -155,27 +139,20 @@ function MarkdownContent({ content }) {
     );
 }
 
-export default function AIHelper() {
-    const [open, setOpen] = useState(false);
-    const [messages, setMessages] = useState([]);
+export default function AIHelperPanel({ onClose, messages, setMessages, chatId, setChatId }) {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [chatId, setChatId] = useState(null);
     const [error, setError] = useState(null);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
-    // Auto-scroll to bottom when messages change
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, loading]);
 
-    // Focus input when panel opens
     useEffect(() => {
-        if (open) {
-            setTimeout(() => inputRef.current?.focus(), 100);
-        }
-    }, [open]);
+        setTimeout(() => inputRef.current?.focus(), 150);
+    }, []);
 
     async function sendMessage() {
         const text = input.trim();
@@ -191,7 +168,6 @@ export default function AIHelper() {
         try {
             const body = { message: text };
             if (chatId) body.chatId = chatId;
-            // Send history (exclude the just-added user msg's API duplicate — send full newMessages as history)
             if (newMessages.length > 0) body.history = newMessages;
 
             const res = await fetch(API_URL, {
@@ -200,20 +176,13 @@ export default function AIHelper() {
                 body: JSON.stringify(body),
             });
 
-            if (!res.ok) {
-                throw new Error(`Server error (${res.status})`);
-            }
+            if (!res.ok) throw new Error(`Server error (${res.status})`);
 
             const data = await res.json();
-
-            if (data.chatId && !chatId) {
-                setChatId(data.chatId);
-            }
-
+            if (data.chatId && !chatId) setChatId(data.chatId);
             setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
         } catch (err) {
             setError('Gagal menghubungi AI. Coba lagi.');
-            // Remove the user message that failed to send? No, keep it for context.
         } finally {
             setLoading(false);
         }
@@ -227,113 +196,86 @@ export default function AIHelper() {
     }
 
     return (
-        <>
-            {/* Floating Action Button */}
-            {!open && (
-                <button
-                    style={styles.fab}
-                    onClick={() => setOpen(true)}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#475569'; e.currentTarget.style.transform = 'scale(1.05)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#334155'; e.currentTarget.style.transform = 'scale(1)'; }}
-                    title="AI Helper"
-                >
-                    <MessageCircle size={22} />
-                </button>
-            )}
-
-            {/* Chat Panel */}
-            {open && (
-                <div style={styles.panelOuter}>
-                    {/* Header */}
-                    <div style={styles.header}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Bot size={18} color="#64748b" />
-                            <h2 style={styles.headerTitle}>AI Helper</h2>
-                        </div>
-                        <button
-                            style={styles.closeBtn}
-                            onClick={() => setOpen(false)}
-                            onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
-                            onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
-                        >
-                            <X size={18} />
-                        </button>
-                    </div>
-
-                    {/* Messages Area */}
-                    <div style={styles.messages}>
-                        {messages.length === 0 && !loading && (
-                            <div style={styles.emptyState}>
-                                <div style={styles.emptyIcon}>
-                                    <MessageCircle size={20} />
-                                </div>
-                                <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
-                                    Tanya apa saja tentang Logic Gates, Gears, atau materi lain di BABFT Learning.
-                                </span>
-                            </div>
-                        )}
-
-                        {messages.map((msg, i) => (
-                            <div key={i} style={styles.bubbleRow(msg.role === 'user')}>
-                                <span style={styles.bubbleLabel(msg.role === 'user')}>
-                                    {msg.role === 'user' ? 'Kamu' : 'AI'}
-                                </span>
-                                <div style={styles.bubble(msg.role === 'user')}>
-                                    {msg.role === 'user' ? (
-                                        msg.content
-                                    ) : (
-                                        <MarkdownContent content={msg.content} />
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-
-                        {loading && (
-                            <div style={styles.bubbleRow(false)}>
-                                <span style={styles.bubbleLabel(false)}>AI</span>
-                                <div style={styles.loadingBubble}>
-                                    AI sedang mengetik...
-                                </div>
-                            </div>
-                        )}
-
-                        {error && (
-                            <div style={{ ...styles.bubbleRow(false), alignItems: 'center' }}>
-                                <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 12.5, color: '#f87171', padding: '0 4px' }}>
-                                    {error}
-                                </span>
-                            </div>
-                        )}
-
-                        <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Input Area */}
-                    <div style={styles.inputArea}>
-                        <input
-                            ref={inputRef}
-                            style={styles.input}
-                            type="text"
-                            placeholder="Ketik pertanyaan..."
-                            value={input}
-                            onChange={e => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            disabled={loading}
-                            onFocus={e => e.currentTarget.style.borderColor = '#475569'}
-                            onBlur={e => e.currentTarget.style.borderColor = '#253047'}
-                        />
-                        <button
-                            style={styles.sendBtn(!input.trim() || loading)}
-                            onClick={sendMessage}
-                            disabled={!input.trim() || loading}
-                            onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#475569'; }}
-                            onMouseLeave={e => { e.currentTarget.style.backgroundColor = e.currentTarget.disabled ? '#1e293b' : '#334155'; }}
-                        >
-                            <Send size={16} />
-                        </button>
-                    </div>
+        <div style={styles.panelOuter}>
+            <div style={styles.header}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Bot size={18} color="#64748b" />
+                    <h2 style={styles.headerTitle}>AI Helper</h2>
                 </div>
-            )}
-        </>
+                <button
+                    style={styles.closeBtn}
+                    onClick={onClose}
+                    onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                >
+                    <X size={18} />
+                </button>
+            </div>
+
+            <div style={styles.messages}>
+                {messages.length === 0 && !loading && (
+                    <div style={styles.emptyState}>
+                        <div style={styles.emptyIcon}>
+                            <MessageCircle size={20} />
+                        </div>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
+                            Tanya apa saja tentang Logic Gates, Gears, atau materi lain di BABFT Learning.
+                        </span>
+                    </div>
+                )}
+
+                {messages.map((msg, i) => (
+                    <div key={i} style={styles.bubbleRow(msg.role === 'user')}>
+                        <span style={styles.bubbleLabel(msg.role === 'user')}>
+                            {msg.role === 'user' ? 'Kamu' : 'AI'}
+                        </span>
+                        <div style={styles.bubble(msg.role === 'user')}>
+                            {msg.role === 'user' ? msg.content : <MarkdownContent content={msg.content} />}
+                        </div>
+                    </div>
+                ))}
+
+                {loading && (
+                    <div style={styles.bubbleRow(false)}>
+                        <span style={styles.bubbleLabel(false)}>AI</span>
+                        <div style={styles.loadingBubble}>AI sedang mengetik...</div>
+                    </div>
+                )}
+
+                {error && (
+                    <div style={{ ...styles.bubbleRow(false), alignItems: 'center' }}>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 12.5, color: '#f87171', padding: '0 4px' }}>
+                            {error}
+                        </span>
+                    </div>
+                )}
+
+                <div ref={messagesEndRef} />
+            </div>
+
+            <div style={styles.inputArea}>
+                <input
+                    ref={inputRef}
+                    style={styles.input}
+                    type="text"
+                    placeholder="Ketik pertanyaan..."
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={loading}
+                    onFocus={e => e.currentTarget.style.borderColor = '#475569'}
+                    onBlur={e => e.currentTarget.style.borderColor = '#253047'}
+                />
+                <button
+                    style={styles.sendBtn(!input.trim() || loading)}
+                    onClick={sendMessage}
+                    disabled={!input.trim() || loading}
+                    onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#475569'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = e.currentTarget.disabled ? '#1e293b' : '#334155'; }}
+                >
+                    <Send size={16} />
+                </button>
+            </div>
+        </div>
     );
 }

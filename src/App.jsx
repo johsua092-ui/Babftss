@@ -5,6 +5,7 @@ import { Cpu, Network, FlaskConical, Lock, ArrowLeft, User, LogOut, RotateCcw } 
 import GearIcon from './components/GearIcon';
 import LinkageIcon from './components/LinkageIcon';
 import LoginModal from './components/LoginModal';
+import AIHelperButton from './components/AIHelperButton';
 import { useAuth } from './contexts/AuthContext';
 import { useProgressSync } from './hooks/useProgressSync';
 
@@ -12,7 +13,7 @@ const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
 const GearsPage = lazy(() => import('./pages/GearsPage'));
 const LinkagesPage = lazy(() => import('./pages/LinkagesPage'));
-const AIHelper = lazy(() => import('./components/AIHelper'));
+const AIHelperPanel = lazy(() => import('./components/AIHelperPanel'));
 
 const pageFallback = (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px 0', color: '#475569', fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
@@ -24,6 +25,9 @@ export default function App() {
     const [page, setPage] = useState("welcome");
     const [showLogin, setShowLogin] = useState(false);
     const [progressLoaded, setProgressLoaded] = useState(false);
+    const [helperOpen, setHelperOpen] = useState(false);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [chatId, setChatId] = useState(null);
     const { user, loading: authLoading, logout } = useAuth();
     const { loadProgress, resetProgress } = useProgressSync(page);
 
@@ -226,7 +230,18 @@ export default function App() {
             </motion.div>}
         </AnimatePresence>
         </main>
-        <Suspense fallback={null}><AIHelper /></Suspense>
+        {!helperOpen && <AIHelperButton onClick={() => setHelperOpen(true)} />}
+        {helperOpen && (
+            <Suspense fallback={null}>
+                <AIHelperPanel
+                    onClose={() => setHelperOpen(false)}
+                    messages={chatMessages}
+                    setMessages={setChatMessages}
+                    chatId={chatId}
+                    setChatId={setChatId}
+                />
+            </Suspense>
+        )}
         </div>
     );
 }
