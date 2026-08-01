@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import linkageData from '../data/linkageData';
 import LinkageIcon from '../components/LinkageIcon';
 import { hexToRgbStr } from '../utils/colorHelper';
@@ -19,7 +20,7 @@ export default function LinkagesPage({ setPage }) {
             <p style={{ fontFamily: "Inter,sans-serif", fontSize: 12, color: "#475569", marginBottom: 22, lineHeight: 1.6 }}>Pilih jenis linkage untuk dipelajari. Mekanisme penghubung ini digunakan untuk mengubah gerakan rotasi menjadi gerakan linear atau osilasi.</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{linkageData.map(c => {
                 const d = hexToRgbStr(c.color);
-                return <button key={c.id} onClick={() => setPage("logic-gates-circuit")}
+                return <button key={c.id} onClick={() => toast.info(`${c.name} masih dalam pengerjaan`)}
                     style={{ width: "100%", padding: "14px 16px", borderRadius: 14, cursor: "pointer", backgroundColor: "#0e1420", border: `1px solid rgba(${d},0.28)`, display: "flex", alignItems: "center", gap: 14, transition: "all 0.22s", boxShadow: `0 0 12px rgba(${d},0.1)`, textAlign: "left" }}
                     onMouseEnter={r => { r.currentTarget.style.transform = "translateX(4px)"; r.currentTarget.style.boxShadow = `0 0 22px rgba(${d},0.28)`; r.currentTarget.style.borderColor = `rgba(${d},0.55)`; }}
                     onMouseLeave={r => { r.currentTarget.style.transform = "translateX(0)"; r.currentTarget.style.boxShadow = `0 0 12px rgba(${d},0.1)`; r.currentTarget.style.borderColor = `rgba(${d},0.28)`; }}

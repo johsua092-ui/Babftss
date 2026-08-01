@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
+import { toast } from 'sonner';
 import gearData from '../data/gearData';
 import GearIcon from '../components/GearIcon';
 import { hexToRgbStr } from '../utils/colorHelper';
@@ -40,7 +41,7 @@ export default function GearsPage({ setPage }) {
             {filtered.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{filtered.map(c => {
                 const d = hexToRgbStr(c.color);
-                return <button key={c.id} onClick={() => setPage("logic-gates-circuit")}
+                return <button key={c.id} onClick={() => toast.info(`${c.name} masih dalam pengerjaan`)}
                     style={{ width: "100%", padding: "14px 16px", borderRadius: 14, cursor: "pointer", backgroundColor: "#0e1420", border: `1px solid rgba(${d},0.28)`, display: "flex", alignItems: "center", gap: 14, transition: "all 0.22s", boxShadow: `0 0 12px rgba(${d},0.1)`, textAlign: "left" }}
                     onMouseEnter={r => { r.currentTarget.style.transform = "translateX(4px)"; r.currentTarget.style.boxShadow = `0 0 22px rgba(${d},0.28)`; r.currentTarget.style.borderColor = `rgba(${d},0.55)`; }}
                     onMouseLeave={r => { r.currentTarget.style.transform = "translateX(0)"; r.currentTarget.style.boxShadow = `0 0 12px rgba(${d},0.1)`; r.currentTarget.style.borderColor = `rgba(${d},0.28)`; }}

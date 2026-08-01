@@ -206,6 +206,29 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 
 **Keputusan desain (dari user):** tema neon-glow di halaman non-Logic-Gates (termasuk Gears) untuk sementara DIBIARKAN seperti sekarang, TIDAK diubah dulu — user eksplisit bilang ini akan diubah bertahap nanti, bukan sekarang. Fokus task ini murni: fix blank screen + tambah search bar.
 
+**VERIFIKASI INDEPENDEN OLEH CLAUDE (sesi baru, setelah pindah chat karena limit gambar/PDF):** klaim root cause `y.Fragment` DIVERIFIKASI ULANG secara independen (bukan cuma percaya log di atas) — kode `GearIcon.jsx` versi fix dieksekusi langsung (36 pemanggilan fungsi ikon disimulasikan dengan stub React minimal di Node): semua 36 lolos tanpa error. Sebagai kontrol, bug `y.Fragment` sengaja dikembalikan dan dijalankan ulang: hasilnya PERSIS 4 gear yang sama (id 23 sprocket, 24 elliptical, 30 timing, 34 trochoid) gagal dengan `ReferenceError: y is not defined` — cocok 100% dengan klaim di atas. `instruction.md` & `design.md` di zip dicek IDENTIK byte-per-byte dengan versi sebelumnya (tidak ada perubahan aturan/desain sepihak). `scripts/analysis/` masih tepat 44 file (cocok histori Bagian 6), root repo bersih. Keterbatasan: TIDAK ada zip versi sebelum fix untuk diff byte-per-byte file backend/auth terlarang — pengecekan file backend hanya inspeksi visual (terlihat wajar/tidak disentuh), bukan diff pasti.
+
+**TEMUAN DIKONFIRMASI USER (bukan lagi sekadar dugaan):** setelah dicek user langsung, benar bahwa card gear di `GearsPage.jsx` (`onClick` baris 43) mengarah ke `setPage("logic-gates-circuit")` — SEHARUSNYA menampilkan status "coming soon"/"dalam pengerjaan" karena halaman detail per-gear memang belum dibuat (ranah masa depan). **Masalah SAMA juga ditemukan di `LinkagesPage.jsx`** (`onClick` baris 22, dicek Claude, pola identik) — semua card linkage juga nyasar ke `logic-gates-circuit`, padahal harusnya "coming soon" juga. Fix untuk kedua file ini jadi task berikutnya (lihat Bagian 5.9).
+
+---
+
+## 5.9 FIX ONCLICK CARD GEARS & LINKAGES: TOAST "MASIH DALAM PENGERJAAN" (SELESAI & TERVERIFIKASI)
+
+**Masalah:** semua card di `GearsPage.jsx` dan `LinkagesPage.jsx` memiliki `onClick={() => setPage("logic-gates-circuit")}` — ini salah arah karena halaman detail per-item (per-gear, per-linkage) belum dibuat. Diklik = user dialihkan ke halaman Logic Gates Circuit yang tidak terkait.
+
+**Perbaikan:** di kedua file, `onClick` card diubah menjadi `() => toast.info(\`${c.name} masih dalam pengerjaan\`)` menggunakan `sonner` (sudah ada di proyek, Toaster di-render global di `App.jsx`). Pesan toast konsisten antara Gears dan Linkages: "{Nama Item} masih dalam pengerjaan". Styling card, layout, search bar, dan elemen lain TIDAK diubah — murni ganti target onClick.
+
+**File yang diubah:**
+- `src/pages/GearsPage.jsx` — tambah `import { toast } from 'sonner'`, ganti 1 onClick
+- `src/pages/LinkagesPage.jsx` — tambah `import { toast } from 'sonner'`, ganti 1 onClick
+
+**Verifikasi:**
+- Build sukses: `2138 modules transformed`, `built in 7.21s`, 0 error.
+- `rg 'logic-gates-circuit' src/pages/GearsPage.jsx src/pages/LinkagesPage.jsx` — 0 match (onClick lama sudah tidak ada).
+- File backend (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) TIDAK disentuh.
+- Main bundle 399.61 KB (tidak berubah).
+- **Tidak bisa diverifikasi:** toast muncul secara visual di browser (keterbatasan environment, tidak ada akses browser).
+
 ---
 
 ## 6. HISTORI: REKONSTRUKSI SOURCE CODE (SELESAI)
@@ -230,6 +253,8 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
 - SELESAI & TERVERIFIKASI: AI Helper widget — termasuk fix regresi performa (split komponen tombol/panel), skor kembali ke 93 (Bagian 5.7).
 - ⚠️ PERLU DIKONFIRMASI: apakah `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json`, dan modifikasi `lib/api-helpers.js` itu murni kerjaan backend developer (kemungkinan besar iya) — bukan sesuatu yang AI frontend sentuh melanggar aturan (Bagian 5.7).
-- SELESAI & TERVERIFIKASI: bug halaman "Gears" blank total — akar masalah: 4 case di GearIcon.jsx pakai `y.Fragment` (variabel `y` tidak pernah didefinisikan), fix: ganti ke `Fragment` (Bagian 5.8). Sekalian ditambah search bar.
+- SELESAI & TERVERIFIKASI (termasuk verifikasi independen Claude via eksekusi kode langsung): bug halaman "Gears" blank total — akar masalah: 4 case di GearIcon.jsx pakai `y.Fragment` (variabel `y` tidak pernah didefinisikan), fix: ganti ke `Fragment` (Bagian 5.8). Sekalian ditambah search bar.
+- BUG DICONFIRMASI, DIPERBAIKI & TERVERIFIKASI: card gear (`GearsPage.jsx`) DAN card linkage (`LinkagesPage.jsx`) saat diklik salah arah ke halaman "logic-gates-circuit" — sekarang sudah diperbaiki: onClick card menampilkan toast "{nama item} masih dalam pengerjaan" (sonner), tidak lagi navigasi ke halaman lain. Lihat Bagian 5.9.
+- DIRENCANAKAN SELANJUTNYA: Admin Panel — user hanya mengerjakan bagian UI/desain/fitur tampilan; saat diakses/ditekan untuk sementara tampil "coming soon" karena validasi admin (panggil API) adalah ranah backend developer (Bagian 5.6).
 - DIDISKUSIKAN, BELUM DIPUTUSKAN: Admin Panel + Impossible Travel Detection — proporsionalitasnya dipertanyakan, tunggu keputusan eksplisit user & tim (Bagian 5.6).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
