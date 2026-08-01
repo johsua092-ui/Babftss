@@ -794,7 +794,7 @@ export default function GearIcon({
                             [P, Q] = [c + g * Math.cos(L), d + g * Math.sin(L)];
                         T === 0 && (M += `M ${r(C)} ${r(N)} `), M += `L ${r(q)} ${r(I)} L ${r(P)} ${r(Q)} A ${r(g)} ${r(g)} 0 0,1 ${r(c+g*Math.cos(L+j*.56))} ${r(d+g*Math.sin(L+j*.56))} `
                     }
-                    return M += "Z", ce(y.Fragment, {
+                    return M += "Z", ce(Fragment, {
                         children: [ce("path", {
                             d: M,
                             fill: a,
@@ -833,7 +833,7 @@ export default function GearIcon({
                             R = d + (M + T) * Math.sin(S);
                         p.push(`${g===0?"M":"L"} ${r(k)} ${r(R)}`)
                     }
-                    return ce(y.Fragment, {
+                    return ce(Fragment, {
                         children: [ce("path", {
                             d: p.join(" ") + " Z",
                             fill: a,
@@ -1068,7 +1068,7 @@ export default function GearIcon({
                         const R = k * j - Math.PI / 2;
                         T += ` L ${r(c+g*Math.cos(R-M))} ${r(d+g*Math.sin(R-M))}`, T += ` L ${r(c+x*Math.cos(R-M))} ${r(d+x*Math.sin(R-M))}`, T += ` L ${r(c+x*Math.cos(R+M))} ${r(d+x*Math.sin(R+M))}`, T += ` L ${r(c+g*Math.cos(R+M))} ${r(d+g*Math.sin(R+M))}`
                     }
-                    return T += " Z", ce(y.Fragment, {
+                    return T += " Z", ce(Fragment, {
                         children: [ce("path", {
                             d: T,
                             fill: a,
@@ -1225,7 +1225,7 @@ export default function GearIcon({
                             k = l * .42 + l * .04 * Math.cos(3 * T);
                         j.push(`${M===0?"M":"L"} ${r(c+k*Math.cos(T))} ${r(d+k*Math.sin(T))}`)
                     }
-                    return ce(y.Fragment, {
+                    return ce(Fragment, {
                         children: [ce("path", {
                             d: j.join(" ") + " Z",
                             fill: "none",

@@ -161,31 +161,50 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 
 **Tetap disarankan sebelum eksekusi:** mulai dari scope kecil dulu (misal admin panel basic dengan login aman biasa), baru tambah lapisan impossible travel detection belakangan KALAU beneran kejadian ada percobaan akses mencurigakan — daripada bangun semua lapisan sekaligus di awal sebelum tau pola penyalahgunaan yang nyata seperti apa. Keputusan akhir tetap di tangan user & tim.
 
-## 5.7 AI HELPER WIDGET: IMPLEMENTASI + PERBAIKAN LAZY-LOAD (SELESAI & TERVERIFIKASI)
+## 5.7 AI HELPER WIDGET: SELESAI & TERVERIFIKASI (termasuk fix regresi performa)
 
-**Implementasi awal:** `src/components/AIHelper.jsx` dibuat (commit `ff6d1a4`), terhubung ke `/api/ai-chat`, styling dark/netral (tidak neon), multi-turn via chatId, markdown via `react-markdown`. Di-lazy-load via `React.lazy()` tapi **masalah**: komponen selalu ada di JSX tree dalam `<Suspense>`, sehingga React langsung fetch chunk-nya (termasuk `react-markdown` ~125 KB) saat halaman pertama dimuat. PageSpeed turun 94 → 73.
+**Status implementasi:** `src/components/AIHelper.jsx` sudah dibuat, terhubung ke `/api/ai-chat`, styling dark/netral (sesuai prinsip Bagian 0 design.md, tidak neon), multi-turn via chatId berfungsi, markdown di-render pakai `react-markdown` dengan custom styling. Sudah di-lazy-load via `React.lazy()`.
 
-**Perbaikan (SELESAI):** Pecah jadi 2 komponen:
-1. `src/components/AIHelperButton.jsx` — tombol FAB saja, import biasa (eager), TIDAK mengimpor `react-markdown`. Selalu muncul instant di semua halaman.
-2. `src/components/AIHelperPanel.jsx` — panel chat lengkap (header, messages, input, markdown). Import via `React.lazy()`, HANYA di-render ketika `helperOpen === true` di `App.jsx`.
-3. State chat (`messages`, `chatId`) dipindah ke `App.jsx` supaya tidak hilang saat panel ditutup-buka (panel unmount tapi state tetap hidup di parent).
-4. File lama `AIHelper.jsx` dihapus.
+**Masalah ditemukan:** PageSpeed Performance mobile turun 94 → 73 (FCP 2.4s→3.4s, LCP 2.6s→4.6s) setelah widget ini ditambahkan. Root cause: walau `AIHelper` di-lazy-load, komponennya dirender terus-menerus di dalam `<Suspense>` tanpa digembok kondisi `open` — sehingga React langsung memicu fetch chunk-nya (termasuk `react-markdown`) begitu halaman pertama kali dimuat, bukan menunggu user klik tombolnya. Konsisten dengan audit "Reduce unused JavaScript" naik jadi 142 KiB.
 
-**Hasil build:**
-- Bundle utama: **399.64 KB** (tidak naik dari sebelum AI Helper ditambahkan).
-- Chunk `AIHelperPanel`: 125.08 KB — hanya di-fetch saat user klik tombol FAB pertama kali.
-- `react-markdown` TIDAK ada di bundle utama (diverifikasi via `rg`).
+**Solusi yang diterapkan & TERVERIFIKASI:** dipecah jadi 2 komponen — `AIHelperButton.jsx` (tombol FAB, ringan, eager-load, tidak bawa `react-markdown`) dan `AIHelperPanel.jsx` (lazy-load, HANYA di-render/fetch saat state `helperOpen === true` di `App.jsx`, bukan selalu ada di JSX tree). State percakapan (`chatMessages`, `chatId`) diangkat ke level `App.jsx` supaya tidak reset saat panel ditutup-buka ulang. Diverifikasi lewat diff kode (scope sesuai, tidak nyerempet file lain) + log build AI sendiri (399.64 KB main bundle, 125.08 KB chunk panel terpisah) + PageSpeed **93** (post-fix, dikonfirmasi bukan noise karena dicek diff kode dulu).
+
+**Temuan tambahan (perlu dikonfirmasi ke backend developer, BUKAN tugas AI frontend):** Bersamaan dengan task ini, file `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json` (baru) dan `lib/api-helpers.js` (dimodifikasi — CORS origin sekarang dari env var `ALLOWED_CORS_ORIGINS`, bukan hardcoded) ikut muncul di repo. Gaya kodenya (readable/terformat, bukan minified) BEDA dari commit backend sebelumnya (yang minified) — kemungkinan besar ini pekerjaan backend developer sendiri yang dipush bersamaan, BUKAN AI frontend yang melanggar batas. PERLU DIKONFIRMASI ke user/backend developer untuk memastikan, bukan diasumsikan begitu saja.
+
+**Pelajaran proses:** di task pertama (implementasi awal), AI lupa update memory.md sendiri. Di task kedua (fix performa), AI sudah benar menuliskan log lengkap & jujur (termasuk mengakui keterbatasan tidak bisa tes DevTools langsung dari environment build). Konsisten dengan pola: instruksi eksplisit "jangan lupa update memory.md" efektif memperbaiki perilaku ini.
+
+---
+
+## 5.8 BUG: HALAMAN "GEARS" BLANK TOTAL (SELESAI & TERVERIFIKASI)
+
+**Masalah dilaporkan user:** halaman Gears (menu Logic Gates -> Gears) blank putih total, tidak ada konten sama sekali. Halaman Logic Gates dan Linkages normal, jadi masalah spesifik di Gears.
+
+**Investigasi awal (dari sesi sebelumnya):** dicek statis — `gearData.js` (36 entries, semua lengkap, tidak ada duplikat, valid via Node), `GearIcon.jsx` (syntax valid, semua 36 icon key di gearData match dengan case di switch statement, semua case punya return statement, ada default case), `colorHelper.js` (hexToRgbStr diuji ke semua 36 warna, tidak ada yang error), import path & case-sensitivity nama file (cocok semua). TIDAK DITEMUKAN bug dari pengecekan statis ini.
+
+**Akar masalah PASTI (ditemukan lewat Vite SSR loadModule + eksekusi fungsi sungguhan):** di `src/components/GearIcon.jsx`, 4 case dalam switch statement menggunakan `y.Fragment` — tetapi variabel `y` TIDAK PERNAH didefinisikan di scope komponen. File ini mendefinisikan `Fragment` (baris 5: `const Fragment = React.Fragment;`), bukan `y.Fragment`. Akibatnya, saat 4 gear ini dirender, React melempar `ReferenceError: y is not defined`. Tanpa ErrorBoundary, error ini crash seluruh React tree, menghasilkan layar blank putih.
+
+**4 case yang bermasalah (baris 797, 836, 1071, 1228):**
+- `sprocket` (id 23, Sprocket/Chain Drive Gear)
+- `elliptical` (id 24, Elliptical/Non-Circular Gear)
+- `timing` (id 30, Timing/Synchronous Gear)
+- `trochoid` (id 34, Trochoidal/Rotor Gear)
+
+**Mengapa pengecekan statis tidak menemukan ini:** `y.Fragment` secara sintaks valid — ini bukan syntax error, tapi runtime reference error. Code editor/linter tidak bisa menangkap ini tanpa actually menjalankan kode. Hanya dengan memanggil fungsi komponen secara sungguhan (bukan hanya `createElement`) errornya muncul.
+
+**Perbaikan:** mengganti semua 4 kemunculan `ce(y.Fragment, {` menjadi `ce(Fragment, {` di `src/components/GearIcon.jsx`. Diverifikasi lewat Vite SSR loadModule: semua 36 GearIcon berhasil dipanggil tanpa error setelah fix.
+
+**Fitur tambahan yang dikerjakan bareng:** search bar di halaman Gears. Input dengan placeholder "Cari gear...", ikon Search (lucide-react) di kiri, filter real-time case-insensitive berdasarkan nama gear, pesan "Gear tidak ditemukan" kalau hasil kosong. Tombol Back dipindahkan ke baris yang sama dengan search bar (sejajar kiri-kanan). Styling konsisten tema gelap netral, tanpa neon glow.
+
+**File yang diubah:** `src/components/GearIcon.jsx` (4 baris, fix `y.Fragment` -> `Fragment`) + `src/pages/GearsPage.jsx` (tambah search bar dengan useState, import Search icon). File backend TIDAK disentuh.
 
 **Verifikasi:**
-- Build sukses: `2138 modules transformed`, `built in 7.09s`, 0 error.
-- File yang diubah: `src/App.jsx` (+4 baris state, ganti import, render kondisional), `src/components/AIHelperButton.jsx` (baru), `src/components/AIHelperPanel.jsx` (baru, mengganti `AIHelper.jsx`), `src/components/AIHelper.jsx` (dihapus).
-- File backend (api/, lib/, AuthContext, firebase, LoginModal, useProgressSync) TIDAK disentuh.
-- Riwayat chat TIDAK hilang saat panel ditutup-buka (state di App.jsx, bukan di panel).
-- **Catatan jujur:** tidak bisa tes DevTools Network secara langsung dari environment build ini (tidak ada browser), jadi verifikasi bahwa chunk belum ter-fetch sebelum klik FAB hanya bisa dilakukan user setelah deploy. Namun secara arsitektural, pola `{helperOpen && <Suspense><lazyComponent /></Suspense>}` memastikan `import()` tidak dipicu sampai kondisi `true` — ini mekanisme baku React.
+- Build sukses: `2138 modules transformed`, `built in 7.17s`, 0 error.
+- GearsPage chunk: 9.95 KB (naik dari 8.69 KB karena tambah search bar + useState).
+- Main bundle: 399.61 KB (praktis tidak berubah dari 399.64 KB).
+- Vite SSR loadModule test: semua 36 GearIcon function calls OK setelah fix.
+- File backend (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) TIDAK disentuh.
 
-**Temuan tambahan (perlu dikonfirmasi ke backend developer, BUKAN tugas AI frontend):** Bersamaan dengan task ini, file `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json` (baru) dan `lib/api-helpers.js` (dimodifikasi — CORS origin sekarang dari env var `ALLOWED_CORS_ORIGINS`, bukan hardcoded) ikut muncul di repo. Gaya kodenya (readable/terformat, bukan minified) BEDA dari commit backend sebelumnya (yang minified) — kemungkinan besar ini pekerjaan backend developer sendiri yang dipush bersamaan, BUKAN AI frontend yang melanggar batas (AI frontend tidak diinstruksikan dan seharusnya tidak menyentuh folder ini). Tapi ini PERLU DIKONFIRMASI ke user/backend developer untuk memastikan, bukan diasumsikan begitu saja.
-
-**Catatan proses:** AI tidak menuliskan log penyelesaian task ini sendiri di `memory.md` (hanya menerapkan update yang dikirim user) — pengingat untuk selalu update memory.md di akhir setiap task.
+**Keputusan desain (dari user):** tema neon-glow di halaman non-Logic-Gates (termasuk Gears) untuk sementara DIBIARKAN seperti sekarang, TIDAK diubah dulu — user eksplisit bilang ini akan diubah bertahap nanti, bukan sekarang. Fokus task ini murni: fix blank screen + tambah search bar.
 
 ---
 
@@ -209,7 +228,8 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
-- SELESAI & TERVERIFIKASI: AI Helper widget -- fungsional jalan, lazy-load diperbaiki (split FAB vs panel, bundle utama tidak terpengaruh) (Bagian 5.7).
+- SELESAI & TERVERIFIKASI: AI Helper widget — termasuk fix regresi performa (split komponen tombol/panel), skor kembali ke 93 (Bagian 5.7).
 - ⚠️ PERLU DIKONFIRMASI: apakah `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json`, dan modifikasi `lib/api-helpers.js` itu murni kerjaan backend developer (kemungkinan besar iya) — bukan sesuatu yang AI frontend sentuh melanggar aturan (Bagian 5.7).
+- SELESAI & TERVERIFIKASI: bug halaman "Gears" blank total — akar masalah: 4 case di GearIcon.jsx pakai `y.Fragment` (variabel `y` tidak pernah didefinisikan), fix: ganti ke `Fragment` (Bagian 5.8). Sekalian ditambah search bar.
 - DIDISKUSIKAN, BELUM DIPUTUSKAN: Admin Panel + Impossible Travel Detection — proporsionalitasnya dipertanyakan, tunggu keputusan eksplisit user & tim (Bagian 5.6).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
