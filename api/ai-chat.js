@@ -1,6 +1,6 @@
 // api/ai-chat.js — AI Chat API Route (serverless)
 // POST /api/ai-chat — AI Tutor + Game FAQ endpoint
-// Pre-filter handles platform & game facts → AI handles Logic Gates tutoring
+// Pre-filter handles: coding request block, platform & game facts → AI handles Logic Gates tutoring
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
 
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
         .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
     }
 
-    // PRE-FILTER: game FAQ & platform info (accurate, no hallucination)
+    // PRE-FILTER: block coding + game FAQ + platform info (accurate, no hallucination)
     const canned = getCannedResponse(message);
     if (canned) {
       return res.status(200).json({
@@ -63,12 +63,13 @@ export default async function handler(req, res) {
 }
 
 // ============================================================
-// SMART PRE-FILTER — Platform & Game FAQ
-// Regex-based matching: only triggers on CLEAR fact questions
-// Returns null → pass through to AI tutoring
+// SMART PRE-FILTER — Security + Platform & Game FAQ
 // ============================================================
 function getCannedResponse(message) {
   const msg = message.toLowerCase().trim();
+
+  // ===== SECURITY: Block coding requests =====
+  if (isCodingRequest(msg)) return CODE_BLOCK_MSG;
 
   // Platform identity: "apa itu babft learning?"
   if (/^(apa|what|jelaskan|jelasin|info|definisi|tell me about).*(babft|platform ini|platform apa)/.test(msg) ||
@@ -82,35 +83,35 @@ function getCannedResponse(message) {
     return CREATOR_INFO;
   }
 
-  // Chests/Shop: "berapa harga legendary chest?"
+  // Chests/Shop
   if (/(chest|peti|harga|beli|gold|shop|toko).*(babft|game|build a boat|boat for treasure)/.test(msg) ||
       /(berapa|apa saja|sebutkan|jenis|macam).*(chest|peti)/.test(msg) ||
       /(common|uncommon|rare|epic|legendary).*(chest|peti)/.test(msg)) {
     return CHEST_INFO;
   }
 
-  // Quests: "quest apa aja yang ada?"
+  // Quests
   if (/(quest|misi|objective).*(babft|game|build a boat|boat for treasure)/.test(msg) ||
       /(quest|misi) (apa|yg|yang) (ada|tersedia|bisa)/.test(msg)) {
     return QUEST_INFO;
   }
 
-  // Codes: "kode yang masih aktif?"
+  // Codes
   if (/(kode|code|redeem).*(aktif|active|masih|babft|game|build a boat)/.test(msg)) {
     return CODE_INFO;
   }
 
-  // Events: "event apa aja?"
+  // Events
   if (/(event|acara|halloween|christmas|natal|easter|paskah).*(babft|game|build a boat|boat for treasure)/.test(msg)) {
     return EVENT_INFO;
   }
 
-  // Jetpack: "cara dapat jetpack?"
+  // Jetpack
   if (/jetpack|jet pack/.test(msg) && /dapat|dapetin|cara|beli|how|get/.test(msg)) {
     return JETPACK_INFO;
   }
 
-  // Tools: "alat apa aja yang ada?"
+  // Tools
   if (/(tool|alat).*(apa|yg|yang|ada|tersedia|bisa).*(babft|game|build a boat|boat for treasure)/.test(msg) ||
       /binding tool|scaling tool|property tool|trowel tool|paint tool|building tool|delete tool/.test(msg)) {
     return TOOLS_INFO;
@@ -120,8 +121,54 @@ function getCannedResponse(message) {
 }
 
 // ============================================================
-// CANNED RESPONSES — 100% accurate, sourced from official dataset
+// ANTI-CODING DETECTOR
 // ============================================================
+function isCodingRequest(msg) {
+  // Pattern: "buatkan kode", "tulis script", "bikinin program", "codingin", dll
+  const codePatterns = [
+    /\bbuat(?:kan|in|kode)?\b.*\b(?:kode|coding|script|program|aplikasi|app|bot|website|html|css|js|javascript|python|php|java|ruby|go|rust|c\+\+|sql|api|endpoint|function|fungsi|class)\b/i,
+    /\bbikin(?:in|kan)?\b.*\b(?:kode|coding|script|program|aplikasi|app|bot|website|html|css|js|javascript|python|php)\b/i,
+    /\btulis(?:kan|in)?\b.*\b(?:kode|coding|script|program|function|fungsi)\b/i,
+    /\bcoding(?:in|kan)?\b.*\b(?:dong|donk|pls|please|ya|yah|aku|gw|saya)\b/i,
+    /\bbuat\b.*\bnginx\b/i,
+    /\bdeploy\b.*\b(?:server|vps|docker|kubernetes)\b/i,
+    /\bconfig(?:urasi|ur)?\b.*\b(?:nginx|apache|server|firewall)\b/i,
+    /\bbagaimana\b.*\bcara\b.*\b(?:hack|hackin|bypass|exploit|ddos|phishing)\b/i,
+    /\b(?:hack|hackin|bypass|exploit|ddos|phishing|carding|deface)\b/i,
+  ];
+
+  for (const pattern of codePatterns) {
+    if (pattern.test(msg)) return true;
+  }
+
+  // Explicitly NOT matching: "apa itu javascript", "jelaskan apa itu python"
+  // Those are educational questions, not coding requests
+
+  return false;
+}
+
+// ============================================================
+// CANNED RESPONSES
+// ============================================================
+
+const CODE_BLOCK_MSG = `# 🚫 Maaf, Saya Tidak Bisa Membuat Kode
+
+Saya adalah **AI Tutor BABFT Learning** — tugas saya membantu kamu belajar tentang:
+
+- ⚡ **Logic Gates** (AND, OR, NOT, XOR, dll)
+- ⚙️ **Gears & Mechanisms**
+- 🔩 **Linkages Mechanic**
+- 🎮 **Build A Boat For Treasure** (informasi game)
+
+Saya **tidak bisa**:
+- ❌ Membuat kode/program/script
+- ❌ Membuat website/aplikasi
+- ❌ Konfigurasi server/nginx/docker
+- ❌ Hacking/exploit/aktivitas ilegal
+
+Kalau kamu butuh bantuan coding, coba tanya ke tools yang tepat seperti GitHub Copilot, ChatGPT, atau Stack Overflow ya! 
+
+Ada yang bisa saya bantu tentang Logic Gates atau BABFT? 😊`;
 
 const PLATFORM_INFO = `# 🏴‍☠️ BABFT Learning — Platform Belajar Logic Gates!
 
@@ -146,56 +193,51 @@ Rangkaian gabungan beberapa gate dengan sistem tier:
 ### ⚙️ Gears (36 jenis) | 🔩 Linkages Mechanic (45 jenis)
 
 ## 🎮 Fitur Unggulan:
-- Diagram interaktif dengan **neon glow** (terang = 1, redup = 0)
+- Diagram interaktif dengan **neon glow**
 - Truth table dinamis real-time
-- Auto-save progress (Firebase + Supabase)
-- Sistem tier untuk tantangan bertahap
+- Auto-save progress
 
 Mau belajar yang mana dulu? 😊`;
 
 const CREATOR_INFO = `# 👨‍💻 Pembuat Build A Boat For Treasure
 
-Game **Build A Boat For Treasure** dibuat oleh **chillthrill709** di bawah grup pengembangan **Chillz Studios**.
+Game **Build A Boat For Treasure** dibuat oleh **chillthrill709** di bawah grup **Chillz Studios**.
 
 ## Timeline:
-- **2016** — Rilis resmi, game membangun perahu sederhana
-- **2018** — "The Mechanic Update": roda, motor, engsel, pilot seat → jadi vehicle builder
-- **2019** — "The Tool Update": scaling, paint, trowel tools
-- **2020-2021** — "The Logic Update": switch, delay, piston, binding system → sirkuit logika!
-- **2022-Sekarang** — Ekspansi stage, event, optimasi server, quest baru
+- **2016** — Rilis resmi
+- **2018** — "The Mechanic Update": roda, motor, engsel
+- **2019** — "The Tool Update": scaling, paint, trowel
+- **2020-2021** — "The Logic Update": switch, delay, piston
+- **2022-Sekarang** — Ekspansi stage, event, quest baru
 
-chillthrill709 sangat aktif di komunitas — bahkan ada badge langka **"Meet the Creator"** untuk pemain yang beruntung berada di server yang sama dengannya!`;
+chillthrill709 sangat aktif — ada badge langka **"Meet the Creator"**!`;
 
 const CHEST_INFO = `# 🎁 Chest Shop — Build A Boat For Treasure
 
-Beli peti (chest) menggunakan **Gold**:
-
-| Chest | Harga | Jumlah Blok | Drop Utama |
+| Chest | Harga | Blok | Drop Utama |
 |---|---|---|---|
-| ⬜ **Common** | 5 Gold | 5 blok | 100% Blok Biasa (Kayu, Tanah) |
-| 🟦 **Uncommon** | 15 Gold | 15 blok | 75% Biasa + 25% Uncommon (Batu, Kaca) |
-| 🟪 **Rare** | 45 Gold | 45 blok | Dominan Langka. Bisa dapat Engsel & Roda |
-| 🟧 **Epic** | 135 Gold | 105 blok | Drop Epik (Titanium, Obsidian), peluang Senjata |
-| 🟨 **Legendary** | 405 Gold | 270 blok | ⭐ **Jetpack, Mega Thruster, Switch, Delay Block!** |
+| ⬜ **Common** | 5G | 5 | Blok Biasa |
+| 🟦 **Uncommon** | 15G | 15 | + Uncommon |
+| 🟪 **Rare** | 45G | 45 | Engsel & Roda |
+| 🟧 **Epic** | 135G | 105 | Titanium, Senjata |
+| 🟨 **Legendary** | 405G | 270 | ⭐ Jetpack, Mega Thruster! |
 
-💡 **Tips:** Tabung untuk Legendary Chest — cost per block paling efisien + drop paling worth it!`;
+💡 Tabung buat Legendary — paling worth it!`;
 
 const QUEST_INFO = `# 📋 Quest — Build A Boat For Treasure
 
-8 Quest dengan reward Gold dan item:
-
 | Quest | Objective | Reward |
 |---|---|---|
-| ☁️ **Cloud** | Capai awan | 100 Gold + 100 Balloons |
-| 🐉 **Dragon** | Kalahkan Naga | 25 Gold + 25 Cannons |
-| 🔍 **Find Me** | Temukan blok tersembunyi | 300 Gold + 500 Ice |
-| 🚀 **Ramp** | Luncurkan kendaraan dari tanjakan | 350 Gold + 250 Glue |
-| ⚽ **Soccer** | Cetak gol | 300 Gold + 1 Soccer Ball |
-| 🎯 **Target** | Tembak target | 200 Gold + 2 Thrusters |
-| 📦 **The Box** | Bertahan di dalam kotak | 350 Gold + 100 Wood |
-| 🧊 **Thin Ice** | Navigasi es mencair | 1000 Gold + 100 Ice |
+| ☁️ Cloud | Capai awan | 100G + 100 Balloons |
+| 🐉 Dragon | Kalahkan Naga | 25G + 25 Cannons |
+| 🔍 Find Me | Blok tersembunyi | 300G + 500 Ice |
+| 🚀 Ramp | Luncurkan kendaraan | 350G + 250 Glue |
+| ⚽ Soccer | Cetak gol | 300G + Soccer Ball |
+| 🎯 Target | Tembak target | 200G + 2 Thrusters |
+| 📦 The Box | Bertahan di kotak | 350G + 100 Wood |
+| 🧊 Thin Ice | Es mencair | 1000G + 100 Ice |
 
-💡 Quest paling profitable: **Thin Ice** (1000 Gold!)`;
+💡 **Thin Ice** paling profitable (1000G)!`;
 
 const CODE_INFO = `# 🔑 Kode Aktif — Build A Boat For Treasure
 
@@ -205,51 +247,43 @@ const CODE_INFO = `# 🔑 Kode Aktif — Build A Boat For Treasure
 | \`squid army\` | 22x Ice + 22x Gold |
 | \`chillthrill709 was here\` | Block Firework |
 
-> Kode kedaluwarsa: \`Happy Valentine's day\`, \`Be a big f00t print\`
-
-💡 Cara redeem: buka menu Settings di game → masukkan kode → klaim!`;
+💡 Redeem: Settings → masukkan kode → klaim!`;
 
 const EVENT_INFO = `# 🎉 Event Tahunan — Build A Boat For Treasure
 
 | Event | Waktu | Highlight |
 |---|---|---|
-| 🎃 **Halloween** | Oktober | Blok seram, boss Halloween, berburu permen |
-| 🎄 **Christmas/Winter** | Desember | Salju, es, Winter Boat Motor, kado Natal |
-| 🐣 **Easter** | Paskah | Berburu telur di stage, blok spesial |
-| ⚔️ **RB Battles** | Spesial (Selesai) | Kolaborasi Roblox Battles, Sword of Truth |
+| 🎃 Halloween | Oktober | Boss + berburu permen |
+| 🎄 Christmas | Desember | Salju + Winter Motor |
+| 🐣 Easter | Paskah | Berburu telur |
+| ⚔️ RB Battles | Selesai | Sword of Truth |
 
-Semua event tahunan gratis — tinggal main saat event berlangsung!`;
+Semua event gratis — tinggal main!`;
 
-const JETPACK_INFO = `# 🚀 Cara Dapat Jetpack — Build A Boat For Treasure
+const JETPACK_INFO = `# 🚀 Cara Dapat Jetpack
 
-Jetpack didapat melalui **Legendary Chest** (405 Gold).
+Didapat dari **Legendary Chest** (405 Gold).
 
-## Cara ngumpulin Gold:
-1. 🎯 **Selesaikan Quest** — terutama **Thin Ice** (1000 Gold!)
-2. 🏁 **Capai The End** — buka peti harta karun utama
-3. 🔍 **Cari Secret Areas** — beberapa kasih Gold tambahan
+## Strategi:
+1. 🎯 Quest **Thin Ice** = 1000G
+2. 🏁 Capai **The End** = harta karun
+3. 🔍 Cari **Secret Areas**
 
-## Varian Jetpack:
-- **Jetpack** — standar, dari Legendary Chest
-- **Ultra Jetpack** — lebih kuat & tahan lama
-- **Easter Jetpack** — edisi spesial event Paskah
-- **Star Jetpack** — edisi spesial
-- **Steampunk Jetpack** — edisi spesial
+## Varian:
+- Jetpack (standar) | Ultra Jetpack | Easter/Star/Steampunk Jetpack
 
-💡 Strategi: tabung 405 Gold → beli Legendary Chest → ulangi sampai dapat!`;
+💡 Tabung 405 Gold → Legendary Chest → ulangi sampai dapat!`;
 
 const TOOLS_INFO = `# 🔧 Tools — Build A Boat For Treasure
 
-7 alat (tools) tersedia untuk membangun:
-
 | Tool | Fungsi |
 |---|---|
-| 🔨 **Building Tool** | Menempatkan blok dan membangun struktur |
-| 🗑️ **Delete Tool** | Menghapus blok dari bangunan |
-| 🎨 **Paint Tool** | Mengubah warna blok |
-| 🔗 **Binding Tool** | Menghubungkan tombol/tuas ke pendorong/roda |
-| ⚙️ **Property Tool** | Mengatur properti blok (transparansi, kolisi) |
-| 📏 **Scaling Tool** | Meregangkan atau mengecilkan blok |
-| 🏗️ **Trowel Tool** | Memindahkan, memutar, atau menduplikasi bagian bangunan |
+| 🔨 Building | Menempatkan blok |
+| 🗑️ Delete | Menghapus blok |
+| 🎨 Paint | Mengubah warna |
+| 🔗 Binding | Tombol → pendorong/roda |
+| ⚙️ Property | Atur transparansi/kolisi |
+| 📏 Scaling | Peregangan blok |
+| 🏗️ Trowel | Pindah/duplikasi bagian |
 
-💡 Binding Tool adalah kunci untuk membuat mekanisme otomatis — hubungkan Switch ke Thruster = mesin otomatis!`;
+💡 Binding Tool = kunci mekanisme otomatis!`;
