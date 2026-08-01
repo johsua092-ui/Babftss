@@ -19,7 +19,7 @@ export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggl
     const andArcR = (andBotY - andTopY) / 2;
     const andEndX = andStartX + andW + andArcR;
     const outX = andEndX + 34 + outNodeR, outY = andMidY;
-    const svgW = outX + 1, svgH = 100;
+    const svgW = outX + outNodeR + 20, svgH = 100;
     const notGlow = bPrime
         ? `drop-shadow(0 0 4px rgba(${notRgb},0.9)) drop-shadow(0 0 10px rgba(${notRgb},0.5))`
         : "none";
@@ -51,11 +51,10 @@ export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggl
             <circle cx={notEndX + bubbleR} cy={notMidY} r={bubbleR} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
         </Fragment>
         <path d={`M ${notOutX},${notMidY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(bPrime, notColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
-        <text x={(notOutX + andStartX) / 2} y={notMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrimeColor} style={{ transition: "fill 0.3s" }}>B′</text>
+        <text x={(notOutX + andStartX) / 2} y={notMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrimeColor} style={{ transition: "fill 0.3s" }}>B</text>
+        <line x1={(notOutX + andStartX) / 2 - 4} y1={notMidY - 14} x2={(notOutX + andStartX) / 2 + 4} y2={notMidY - 14} stroke={bPrimeColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
-            <line x1={andStartX} y1={andTopY} x2={andStartX - 10} y2={andTopY - 6} stroke={andStroke} strokeWidth="1.2" opacity="0.45" />
-            <line x1={andStartX} y1={andBotY} x2={andStartX - 10} y2={andBotY + 6} stroke={andStroke} strokeWidth="1.2" opacity="0.45" />
         </Fragment>
         <line x1={andEndX} y1={andMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <text x={outX} y={outY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">OUT</text>
