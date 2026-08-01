@@ -52,7 +52,7 @@ export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggl
         </Fragment>
         <path d={`M ${notOutX},${notMidY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(bPrime, notColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <text x={(notOutX + andStartX) / 2} y={notMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrimeColor} style={{ transition: "fill 0.3s" }}>B</text>
-        <line x1={(notOutX + andStartX) / 2 - 4} y1={notMidY - 18} x2={(notOutX + andStartX) / 2 + 4} y2={notMidY - 18} stroke={bPrimeColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
+        <line x1={(notOutX + andStartX) / 2 - 4} y1={notMidY - 17} x2={(notOutX + andStartX) / 2 + 4} y2={notMidY - 17} stroke={bPrimeColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
         </Fragment>
