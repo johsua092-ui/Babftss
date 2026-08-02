@@ -14,7 +14,7 @@ function NotationSVG({ gate, color }) {
     const fontSize = 14;
     const font = "Orbitron,sans-serif";
     const textY = 22;
-    const overlineY = 5;
+    const overlineY = 8;
     const textAnchor = "middle";
     const svgH = 30;
 
@@ -34,8 +34,8 @@ function NotationSVG({ gate, color }) {
         case "NAND": {
             const cx = 40;
             return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
-                <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A·B</text>
-                <line x1={cx - 18} y1={overlineY} x2={cx + 18} y2={overlineY} stroke={color} strokeWidth="1.5" />
+                <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A · B</text>
+                <line x1={cx - 20} y1={overlineY} x2={cx + 20} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "OR": {
@@ -46,29 +46,29 @@ function NotationSVG({ gate, color }) {
         case "NOR": {
             const cx = 40;
             return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
-                <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A+B</text>
-                <line x1={cx - 20} y1={overlineY} x2={cx + 20} y2={overlineY} stroke={color} strokeWidth="1.5" />
+                <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A + B</text>
+                <line x1={cx - 22} y1={overlineY} x2={cx + 22} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "XOR": {
-            const circR = 7, circCx = 50, circCy = 13;
-            return <svg viewBox={`0 0 100 ${svgH}`} width={100} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+            const circR = 8, circCx = 60, circCy = 14;
+            return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={18} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
+                <text x={102} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
                 <circle cx={circCx} cy={circCy} r={circR} fill="none" stroke={color} strokeWidth="1.5" />
-                <line x1={circCx - 5} y1={circCy} x2={circCx + 5} y2={circCy} stroke={color} strokeWidth="1.5" />
-                <line x1={circCx} y1={circCy - 5} x2={circCx} y2={circCy + 5} stroke={color} strokeWidth="1.5" />
+                <line x1={circCx - 6} y1={circCy} x2={circCx + 6} y2={circCy} stroke={color} strokeWidth="1.5" />
+                <line x1={circCx} y1={circCy - 6} x2={circCx} y2={circCy + 6} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "XNOR": {
-            const circR = 7, circCx = 50, circCy = 13;
-            return <svg viewBox={`0 0 100 ${svgH}`} width={100} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+            const circR = 8, circCx = 60, circCy = 14;
+            return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={18} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
+                <text x={102} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
                 <circle cx={circCx} cy={circCy} r={circR} fill="none" stroke={color} strokeWidth="1.5" />
-                <line x1={circCx - 5} y1={circCy} x2={circCx + 5} y2={circCy} stroke={color} strokeWidth="1.5" />
-                <line x1={circCx} y1={circCy - 5} x2={circCx} y2={circCy + 5} stroke={color} strokeWidth="1.5" />
-                <line x1={10} y1={overlineY} x2={90} y2={overlineY} stroke={color} strokeWidth="1.5" />
+                <line x1={circCx - 6} y1={circCy} x2={circCx + 6} y2={circCy} stroke={color} strokeWidth="1.5" />
+                <line x1={circCx} y1={circCy - 6} x2={circCx} y2={circCy + 6} stroke={color} strokeWidth="1.5" />
+                <line x1={10} y1={overlineY} x2={110} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         default:
