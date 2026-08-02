@@ -141,6 +141,34 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Card 00, 01, 02, 03, 04 TIDAK disentuh.
 - Status: **SELESAI.** Menunggu verifikasi visual user di browser.
 
+**Card keenam (tier NORMAL) — "Half Adder":**
+- Struktur: 2 input (A, B), 2 gate PARALEL (bukan berurutan). XOR gate menghasilkan SUM, AND gate menghasilkan CARRY. `SUM = A XOR B`, `CARRY = A AND B`. Pertama kali rangkaian punya 2 OUTPUT dari input yang sama.
+- Insight: Half Adder adalah penjumlah biner paling dasar — konsep fundamental untuk aritmetika digital. Contoh: 1 + 1 = 10 biner (SUM=0, CARRY=1).
+- Truth table: 2 input -> 4 baris, 2 kolom output: `[[0,0,0,0],[0,1,1,0],[1,0,1,0],[1,1,0,1]]` (A, B, SUM, CARRY).
+- Warna tema card: `#facc15` (XOR/kuning, sesuai CircuitCard00.jsx baris 9). Border card menyala saat SUM atau CARRY true. AND gate warna `#4ade80`.
+- Diagram (OPSI B — Horizontal Side-by-Side, dipilih user): 2 input node vertikal di kiri (A atas Y=30, B bawah Y=90) -> kabel A & B masing-masing BERcabang (split) ke XOR gate (atas, midY=36) dan AND gate (bawah, midY=90) -> 2 node OUT terpisah: SUM (kanan XOR) dan CARRY (kanan AND).
+- [KEPUTUSAN OTONOM] Layout horizontal: XOR gate di atas (midY=36), AND gate di bawah (midY=90), svgH=130. Kabel input bercabang dengan junction point (A di X=75, B di X=85) — cabang ke XOR pakai warna XOR, cabang ke AND pakai warna AND.
+- [KEPUTUSAN OTONOM] Bentuk XOR gate: reuse path bezier dari GateDiagram.jsx case "xor" (body utama + back curve/tail terpisah). Bentuk AND gate: reuse D-shape dari GateDiagram.jsx case "and".
+- [KEPUTUSAN OTONOM] Tier badge NORMAL: styling kuning vivid (`rgba(250,204,21,0.12)` bg, `#facc15` teks) — mengikuti design.md 3.2 (warna terang/vivid, glow neon standar).
+- Semua pelajaran revisi Card 01 diterapkan: tidak ada pin nub dekoratif, `svgW = Math.max(sumOutX, carryOutX) + outNodeR + 20`, kabel solid siku-siku, label teks biasa tanpa overline.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram06.jsx` (baru)
+- `src/components/CircuitCard06.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard06, render di bawah CircuitCard05.
+
+**Verifikasi:**
+- Build sukses: `built in 6.97s`, 2149 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 52.30 KB (naik dari 43.67 KB di Card 05 — wajar karena ada card + diagram baru dengan 2 output).
+- Main bundle: 399.85 KB (tidak berubah).
+- Logika Half Adder benar untuk 4 kombinasi: A=0,B=0->SUM=0,CARRY=0; A=0,B=1->SUM=1,CARRY=0; A=1,B=0->SUM=1,CARRY=0; A=1,B=1->SUM=0,CARRY=1.
+- Bentuk gate XOR (bezier + back curve) dan AND (D-shape) reuse path dari GateDiagram.jsx.
+- Diff kode: HANYA `LogicGatesCircuit.jsx` yang berubah (2 baris: 1 import + 1 render) + 2 file baru. File backend TIDAK disentuh.
+- Card 00, 01, 02, 03, 04, 05 TIDAK disentuh.
+- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+
 ---
 
 ## 3.3 CARD 0: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
@@ -445,6 +473,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 03 "Bangun NAND Manual" — 2 input, AND lalu NOT, OUT=NOT(A AND B), truth table identik NAND asli (Bagian 3).
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 04 "Bangun NOR Manual" — 2 input, OR lalu NOT, OUT=NOT(A OR B), truth table identik NOR asli, pasangan kembar Card 03 (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 05 "Gerbang 3 Input Sederhana" — 3 input, (A AND B) OR C, truth table 8 baris, pengenalan input >2 (Bagian 3).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 06 "Half Adder" — 2 input, 2 gate paralel (XOR+AND), 2 output (SUM+CARRY), tier NORMAL, layout horizontal side-by-side (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
