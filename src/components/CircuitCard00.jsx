@@ -30,7 +30,7 @@ function NotationSVG({ gate, color }) {
             const dotCx = 60, dotCy = 17;
             return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={38} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <circle cx={dotCx} cy={dotCy} r={3} fill={color} />
+                <circle cx={dotCx} cy={dotCy} r={2.5} fill={color} />
                 <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
             </svg>;
         }
@@ -38,7 +38,7 @@ function NotationSVG({ gate, color }) {
             const dotCx = 60, dotCy = 17;
             return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={38} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <circle cx={dotCx} cy={dotCy} r={3} fill={color} />
+                <circle cx={dotCx} cy={dotCy} r={2.5} fill={color} />
                 <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
                 <line x1={28} y1={overlineY} x2={92} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
@@ -47,8 +47,8 @@ function NotationSVG({ gate, color }) {
             const plusCx = 60, plusCy = 17;
             return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={38} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <line x1={plusCx - 6} y1={plusCy} x2={plusCx + 6} y2={plusCy} stroke={color} strokeWidth="1.8" />
-                <line x1={plusCx} y1={plusCy - 6} x2={plusCx} y2={plusCy + 6} stroke={color} strokeWidth="1.8" />
+                <line x1={plusCx - 4} y1={plusCy} x2={plusCx + 4} y2={plusCy} stroke={color} strokeWidth="1.5" />
+                <line x1={plusCx} y1={plusCy - 4} x2={plusCx} y2={plusCy + 4} stroke={color} strokeWidth="1.5" />
                 <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
             </svg>;
         }
@@ -56,8 +56,8 @@ function NotationSVG({ gate, color }) {
             const plusCx = 60, plusCy = 17;
             return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={38} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <line x1={plusCx - 6} y1={plusCy} x2={plusCx + 6} y2={plusCy} stroke={color} strokeWidth="1.8" />
-                <line x1={plusCx} y1={plusCy - 6} x2={plusCx} y2={plusCy + 6} stroke={color} strokeWidth="1.8" />
+                <line x1={plusCx - 4} y1={plusCy} x2={plusCx + 4} y2={plusCy} stroke={color} strokeWidth="1.5" />
+                <line x1={plusCx} y1={plusCy - 4} x2={plusCx} y2={plusCy + 4} stroke={color} strokeWidth="1.5" />
                 <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
                 <line x1={28} y1={overlineY} x2={92} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
