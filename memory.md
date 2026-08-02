@@ -112,7 +112,7 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Diff kode: HANYA `LogicGatesCircuit.jsx` yang berubah (2 baris: 1 import + 1 render) + 2 file baru. File backend TIDAK disentuh.
 - Card 00, 01, 02, 03 TIDAK disentuh.
 
-- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+- Status: **SELESAI & TERVERIFIKASI.** (Verifikasi independen Claude: logika NOR benar, bentuk gate OR sesuai, diff bersih.)
 
 ---
 
@@ -416,7 +416,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 (Bagian 3), termasuk fix 3 masalah visual: hapus pin nub dekoratif, perbaiki svgW, ganti label B' jadi overline (Bagian 3.1).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 02 "Buffer (Negasi Ganda)" — 1 input, 2 NOT berurutan, OUT=A (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 03 "Bangun NAND Manual" — 2 input, AND lalu NOT, OUT=NOT(A AND B), truth table identik NAND asli (Bagian 3).
-- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 04 "Bangun NOR Manual" — 2 input, OR lalu NOT, OUT=NOT(A OR B), truth table identik NOR asli, pasangan kembar Card 03 (Bagian 3).
+- SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 04 "Bangun NOR Manual" — 2 input, OR lalu NOT, OUT=NOT(A OR B), truth table identik NOR asli, pasangan kembar Card 03 (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
