@@ -68,7 +68,7 @@ function NotationSVG({ gate, color }) {
                 <circle cx={circCx} cy={circCy} r={circR} fill="none" stroke={color} strokeWidth="1.5" />
                 <line x1={circCx - 6} y1={circCy} x2={circCx + 6} y2={circCy} stroke={color} strokeWidth="1.5" />
                 <line x1={circCx} y1={circCy - 6} x2={circCx} y2={circCy + 6} stroke={color} strokeWidth="1.5" />
-                <line x1={10} y1={overlineY} x2={110} y2={overlineY} stroke={color} strokeWidth="1.5" />
+                <line x1={28} y1={overlineY} x2={92} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         default:
