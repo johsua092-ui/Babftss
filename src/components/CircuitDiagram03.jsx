@@ -50,7 +50,7 @@ export default function CircuitDiagram03({ a, b, andOut, out, onToggleA, onToggl
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
         </Fragment>
         <line x1={andEndX} y1={andMidY} x2={notStartX} y2={notMidY} stroke={wc(andOut, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <text x={(andEndX + notStartX) / 2} y={andMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={abLabelColor} style={{ transition: "fill 0.3s" }}>AB</text>
+        <text x={(andEndX + notStartX) / 2} y={andMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={abLabelColor} style={{ transition: "fill 0.3s" }}>A · B</text>
         <Fragment>
             <polygon points={`${notStartX},${notTopY} ${notStartX},${notBotY} ${notEndX},${notMidY}`} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
             <circle cx={notEndX + bubbleR} cy={notMidY} r={bubbleR} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />

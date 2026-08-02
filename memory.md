@@ -86,6 +86,38 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 ---
 
+## 3.3 CARD 0: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
+
+**Card 0 "Simbol Boolean" (tier TUTORIAL):**
+- Card referensi non-interaktif, berisi 7 notasi aljabar Boolean standar internasional.
+- Tier TUTORIAL — badge silver/abu mengkilap (gradient `#94a3b8` ke `#e2e8f0`), efek shimmer pelan & halus monokrom abu.
+- 7 baris statis (NOT, AND, NAND, OR, NOR, XOR, XNOR), tiap baris: dot warna tema + nama gate + notasi simbol SVG.
+- Semua overline pakai `<line>` SVG manual (konsisten pelajaran revisi Card 01).
+- Simbol XOR/XNOR (circle + cross) digambar manual SVG, BUKAN karakter Unicode.
+- Diposisikan PALING ATAS di halaman Logic Gates Circuit, sebelum Card 01.
+
+**File yang dibuat:**
+- `src/components/CircuitCard00.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard00, render paling atas.
+- `design.md` — dioverwrite dari versi upload (tambah Bagian 2: Card 0 Simbol Boolean, update Bagian 3.2: tier TUTORIAL).
+
+**Fix label Card 03:**
+- Di `src/components/CircuitDiagram03.jsx`, label output AND gate diganti dari "AB" jadi "A · B" (middle dot U+00B7). HANYA 1 baris teks yang berubah, tidak ada perubahan lain.
+
+**Verifikasi:**
+- Build sukses: `built in 7.54s`, 2143 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 27.00 KB (naik dari 21.59 KB — wajar karena ada Card 00 baru).
+- Main bundle: 399.85 KB (tidak berubah).
+- Diff kode: `CircuitCard00.jsx` (baru), `LogicGatesCircuit.jsx` (+1 import, +1 render), `CircuitDiagram03.jsx` (1 baris label), `design.md` (overwrite). File backend TIDAK disentuh.
+- Card 01, 02, 03 diagram TIDAK disentuh (kecuali fix label Card 03 sesuai scope).
+- **Tidak bisa diverifikasi visual langsung di browser.**
+
+- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+
+---
+
 ## 3.2 FIX: 2 TOMBOL "COMING SOON" SALAH ARAH DI APP.JSX (SELESAI)
 
 **Masalah:** 2 tombol placeholder di `src/App.jsx` salah pakai `onClick={goToCircuit}` — diklik malah navigasi ke halaman Logic Gates Circuit, padahal seharusnya menunjukkan status "belum tersedia":
@@ -359,6 +391,6 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - ⚠️ PERLU DIKONFIRMASI: apakah `api/ai-chat.js`, `lib/ai-client.js`, `lib/ai-dataset.json`, dan modifikasi `lib/api-helpers.js` itu murni kerjaan backend developer (kemungkinan besar iya) — bukan sesuatu yang AI frontend sentuh melanggar aturan (Bagian 5.7).
 - SELESAI & TERVERIFIKASI (termasuk verifikasi independen Claude via eksekusi kode langsung): bug halaman "Gears" blank total — akar masalah: 4 case di GearIcon.jsx pakai `y.Fragment` (variabel `y` tidak pernah didefinisikan), fix: ganti ke `Fragment` (Bagian 5.8). Sekalian ditambah search bar.
 - SELESAI & TERVERIFIKASI: card gear (`GearsPage.jsx`) DAN card linkage (`LinkagesPage.jsx`) onClick diperbaiki jadi toast "{nama item} masih dalam pengerjaan" (sonner), tidak lagi navigasi salah ke halaman lain. Linkages juga ditambahkan search bar (permintaan langsung user, konsisten dengan Gears). Lihat Bagian 5.9.
-- DIRENCANAKAN SELANJUTNYA: Admin Panel — user hanya mengerjakan bagian UI/desain/fitur tampilan; saat diakses/ditekan untuk sementara tampil "coming soon" karena validasi admin (panggil API) adalah ranah backend developer (Bagian 5.6).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 00 "Simbol Boolean" — card referensi non-interaktif, 7 notasi Boolean SVG, tier TUTORIAL (Bagian 3.3).
 - DIDISKUSIKAN, BELUM DIPUTUSKAN: Admin Panel + Impossible Travel Detection — proporsionalitasnya dipertanyakan, tunggu keputusan eksplisit user & tim (Bagian 5.6).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.

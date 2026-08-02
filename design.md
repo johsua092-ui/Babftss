@@ -63,21 +63,45 @@ Hanya SATU baris di-highlight, yaitu baris yang nilai kolomnya PERSIS SAMA denga
 
 ---
 
-## 2. SPESIFIKASI "LOGIC GATES CIRCUIT"
+## 2. SPESIFIKASI "CARD 0: SIMBOL BOOLEAN" (REFERENSI TUTORIAL, WAJIB DI POSISI PALING ATAS)
+
+Card khusus non-interaktif (bukan circuit yang bisa di-toggle), berisi referensi 7 notasi aljabar Boolean standar internasional, untuk pemula sebelum masuk ke card circuit manapun. WAJIB tampil sebagai card PERTAMA (paling atas) di halaman Logic Gates Circuit, sebelum Card 01 dst.
+
+- Nomor: `0`. Tier: **TUTORIAL** (lihat 3.2).
+- Judul: "Simbol Boolean" (atau serupa).
+- Isi: daftar/grid 7 baris, satu per gate (NOT, AND, NAND, OR, NOR, XOR, XNOR — urutan sama seperti tabel warna di 1.5), tiap baris berisi: nama gate + notasi simbolnya + warna tema gate itu (dari tabel 1.5).
+
+### 2.1 Notasi 7 Simbol Boolean (baku, jangan diubah tanpa persetujuan)
+| Gate | Notasi | Cara render |
+|---|---|---|
+| NOT | Ā | teks "A" + `<line>` overline manual (pola sama seperti label sinyal ternegasi di Circuit Card 01/02) |
+| AND | A · B | teks biasa, titik tengah (middle dot, U+00B7) — aman lintas font |
+| NAND | garis di atas "A·B" | teks "A·B" + `<line>` overline manual selebar seluruh teks |
+| OR | A + B | teks biasa, tanda plus — aman lintas font |
+| NOR | garis di atas "A+B" | teks "A+B" + `<line>` overline manual selebar seluruh teks |
+| XOR | A ⊕ B | simbol ⊕ **WAJIB digambar manual pakai SVG** (lingkaran kecil + garis silang di dalamnya) — JANGAN pakai karakter Unicode ⊕, karena font Orbitron kemungkinan tidak punya glyph ini (risiko "tofu box"/kotak kosong) |
+| XNOR | garis di atas "A⊕B" | sama seperti XOR (⊕ digambar manual) + `<line>` overline manual selebar seluruh notasi |
+
+**Prinsip:** SEMUA notasi negasi (garis di atas) WAJIB pakai teknik `<line>` SVG manual, TIDAK PERNAH pakai karakter Unicode combining overline — pelajaran dari revisi Circuit Card 01, supaya konsisten lintas font/browser.
+
+---
+
+## 3. SPESIFIKASI "LOGIC GATES CIRCUIT"
 
 Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian (output gate 1 -> input gate 2, dst). Semua sistem visual & interaktif di Bagian 1 di atas dipertahankan 100% persis — bedanya sekarang gate-nya lebih dari satu dan saling terhubung dalam satu card. Wire antar gate yang tidak sejajar (beda posisi Y) WAJIB dirutekan siku-siku (right-angle/Manhattan path), BUKAN garis diagonal.
 
-### 2.1 Struktur card Circuit
+### 3.1 Struktur card Circuit
 - Pojok kiri: nomor urut card.
-- Pojok kanan: badge TIER (lihat 2.2).
+- Pojok kanan: badge TIER (lihat 3.2).
 - Judul: nama rangkaian deskriptif.
 - Deskripsi: 2-4 kalimat (lebih panjang dari card gate tunggal, karena lebih kompleks).
 - Diagram sirkuit: gate saling terhubung, bentuk & wire sesuai standar Bagian 1.3, neon glow ikut tema tiap gate, wire siku-siku kalau perlu belok.
 - Truth table: jumlah kolom input menyesuaikan jumlah input asli rangkaian (2^n baris untuk n input), highlight tetap dinamis real-time.
 
-### 2.2 Sistem TIER (badge, reusable untuk semua card Circuit)
+### 3.2 Sistem TIER (badge, reusable untuk semua card Circuit)
 | Tier | Styling |
 |---|---|
+| TUTORIAL | Silver/abu mengkilap (gradient halus abu muda-putih-abu muda, `#94a3b8` ke `#e2e8f0`), efek shimmer PELAN & HALUS (bukan warna-warni seperti Hard/Insane — tetap monokrom abu). Khusus untuk card referensi/edukasi non-interaktif (bukan bagian progresi kesulitan gate biasa). |
 | MUDAH | Warna solid biasa, border flat, tanpa glow berlebihan |
 | NORMAL | Warna terang/vivid, glow neon standar |
 | HARD | Border gradient RGB (2-3 warna), animasi bergerak pelan |
