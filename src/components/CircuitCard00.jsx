@@ -51,7 +51,7 @@ function NotationSVG({ gate, color }) {
             </svg>;
         }
         case "XOR": {
-            const circR = 8, circCx = 60, circCy = 14;
+            const circR = 8, circCx = 60, circCy = 17;
             return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={18} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
                 <text x={102} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
@@ -61,7 +61,7 @@ function NotationSVG({ gate, color }) {
             </svg>;
         }
         case "XNOR": {
-            const circR = 8, circCx = 60, circCy = 14;
+            const circR = 8, circCx = 60, circCy = 17;
             return <svg viewBox={`0 0 120 ${svgH}`} width={120} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={18} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
                 <text x={102} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
