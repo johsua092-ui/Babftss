@@ -54,6 +54,34 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Card 01 (CircuitDiagram01.jsx, CircuitCard01.jsx) TIDAK disentuh.
 - **Tidak bisa diverifikasi visual langsung di browser.**
 
+- Status: **SELESAI & TERVERIFIKASI.**
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram dirender ulang (headless browser) untuk kedua state, A=0 dan A=1, plus analisis pixel untuk cek batas kanan card. Hasil: (a) `OUT=A` benar di kedua state (A=0->OUT=0, A=1->OUT=1), (b) node OUT tidak overflow keluar card (pixel merah maksimal cuma 4px dari tepi luar card, jauh lebih aman daripada Card 01 versi awal yang bleeding 122px), (c) tidak ada garis dekoratif pin-nub, (d) label overline "A" pakai `<line>` terpisah, bukan karakter prime — ketiga pelajaran dari revisi Card 01 diterapkan dengan benar sejak awal, tidak perlu revisi ulang. Diff kode dicek: HANYA `CircuitDiagram02.jsx` (baru), `CircuitCard02.jsx` (baru), dan `LogicGatesCircuit.jsx` yang berubah — `CircuitDiagram01.jsx`/`CircuitCard01.jsx` tidak tersentuh.
+
+**Card ketiga (tier MUDAH) — "Bangun NAND Manual":**
+- Struktur: 2 input (A, B), gerbang AND dulu, output AND masuk gerbang NOT. `OUT = NOT(A AND B)`. Ini kebalikan urutan dari Card 01 (yang NOT dulu, AND sesudahnya).
+- Insight: NAND yang sudah dikenal sebagai basic gate sebenarnya bisa dibangun dari 2 gate primitif (AND + NOT). Truth table hasilnya identik dengan NAND asli.
+- Truth table: 2 input -> 4 baris: `[[0,0,1],[0,1,1],[1,0,1],[1,1,0]]`.
+- Warna tema card: `#f87171` (NOT, karena gate terakhir/output adalah NOT). AND gate menyala saat `andOut` true, NOT gate menyala saat `out` true.
+- Diagram: alur A (atas) & B (bawah) -> AND gate (D-shape, tanpa bubble) -> label perantara "AB" (teks biasa, tanpa overline karena bukan sinyal ternegasi) -> NOT gate (segitiga + bubble) -> OUT.
+- Semua pelajaran revisi Card 01 diterapkan: tidak ada pin nub dekoratif, `svgW = outX + outNodeR + 20`, kabel solid siku-siku, label teks biasa tanpa overline.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram03.jsx` (baru)
+- `src/components/CircuitCard03.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard03, render di bawah CircuitCard02.
+
+**Verifikasi:**
+- Build sukses: `built in 6.49s`, 2142 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 21.59 KB (naik dari 14.49 KB — wajar karena ada card + diagram baru).
+- Main bundle: 399.75 KB (tidak berubah).
+- Logika NAND benar untuk 4 kombinasi: A=0,B=0->OUT=1, A=0,B=1->OUT=1, A=1,B=0->OUT=1, A=1,B=1->OUT=0.
+- Diff kode: HANYA `LogicGatesCircuit.jsx` yang berubah (2 baris: 1 import + 1 render). File backend TIDAK disentuh.
+- Card 01 & Card 02 TIDAK disentuh.
+- **Tidak bisa diverifikasi visual langsung di browser.**
+
 - Status: **SELESAI.** Menunggu verifikasi visual user di browser.
 
 ---
@@ -79,6 +107,8 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Main bundle: 399.75 KB (praktis tidak berubah).
 - File backend (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) TIDAK disentuh.
 - **Tidak bisa diverifikasi visual langsung di browser** — keterbatasan environment, tidak ada akses browser. Verifikasi dilakukan lewat: (a) review kode manual memastikan 3 fix sesuai spesifikasi prompt kerja, (b) build sukses tanpa error.
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** ketiga fix dicek ulang lewat render SVG langsung (headless browser) + analisis pixel, bukan cuma baca kode. Hasil: (a) 2 garis pin-nub dikonfirmasi terhapus bersih dari diff, (b) node OUT yang sebelumnya bleeding ~122px keluar batas card sekarang tidak lagi tembus keluar (diuji di container 400px sebagai simulasi konservatif), (c) label overline dikonfirmasi pakai `<line>` terpisah — posisi Y final di kode adalah `notMidY - 17` (bukan `notMidY - 14` seperti disebut di log awal), karena user melakukan tuning manual sendiri 2x setelah versi awal AI (kependekan lalu kejauhan) sampai pas. Diff kode dicek: HANYA `CircuitDiagram01.jsx` yang berubah untuk task ini — perubahan lain di zip yang sama (`api/ai-chat.js`, `lib/ai-client.js`, file baru terkait Supabase RLS) dikonfirmasi user adalah kerjaan backend developer terpisah di repo yang sama, di luar scope & lane task frontend ini.
 
 ---
 
@@ -300,6 +330,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI: rekonstruksi source code + cleanup + verifikasi keamanan (Bagian 6).
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 (Bagian 3), termasuk fix 3 masalah visual: hapus pin nub dekoratif, perbaiki svgW, ganti label B' jadi overline (Bagian 3.1).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 02 "Buffer (Negasi Ganda)" — 1 input, 2 NOT berurutan, OUT=A (Bagian 3).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 03 "Bangun NAND Manual" — 2 input, AND lalu NOT, OUT=NOT(A AND B), truth table identik NAND asli (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
