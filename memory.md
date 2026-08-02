@@ -29,6 +29,33 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - **Status: SELESAI & TERVERIFIKASI.** Sempat ada 3 minor issue (wire diagonal, teks "AND"/"NOT" di dalam shape) — sudah diperbaiki di `src/components/CircuitDiagram01.jsx`, diverifikasi lewat: (a) diff kode cuma 2 file berubah (`memory.md` + file target, tidak nyerempet file lain), (b) review kode manual (path SVG siku-siku benar, teks terhapus, label "B'" tetap ada), (c) build log asli (`1969 modules transformed`, `built in 2.92s`).
 - Next: lanjut card ke-2 (tier NORMAL) — belum direncanakan konsepnya, perlu didiskusikan dulu.
 
+**Card kedua (tier MUDAH) — "Buffer (Negasi Ganda)":**
+- Struktur: 1 input (A), 2 gerbang NOT berurutan. `OUT = NOT(NOT(A)) = A`. Sinyal A dinegasi lalu dinegasi kembali — dasar konsep Buffer.
+- Truth table: 1 input -> 2 baris (A=0 OUT=0, A=1 OUT=1).
+- Warna tema: `#f87171` (merah/NOT) untuk kedua gate. Masing-masing menyala independen: NOT-1 menyala saat `notA` true, NOT-2 menyala saat `out` true.
+- Diagram: alur lurus horizontal (A -> NOT-1 -> label overline-A -> NOT-2 -> OUT), tanpa belokan siku-siku karena cuma 1 alur.
+- Label perantara NOT(A) pakai notasi overline manual (teks "A" + `<line>` SVG di atasnya, Y offset -17) — langsung benar dari awal, mengikuti pelajaran revisi Card 01.
+- `svgW = outX + outNodeR + 20` — langsung benar, tidak mengulang bug Card 01.
+- Tidak ada garis dekoratif pin nub — mengikuti pelajaran revisi Card 01.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram02.jsx` (baru)
+- `src/components/CircuitCard02.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard02, render di bawah CircuitCard01.
+
+**Verifikasi:**
+- Build sukses: `built in 7.44s`, 0 error.
+- LogicGatesCircuit chunk: 14.49 KB (naik dari 8.51 KB — wajar karena ada card + diagram baru).
+- Main bundle: 399.75 KB (tidak berubah).
+- Logika benar: OUT = A untuk kedua kombinasi (A=0->OUT=0, A=1->OUT=1).
+- File backend (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) TIDAK disentuh.
+- Card 01 (CircuitDiagram01.jsx, CircuitCard01.jsx) TIDAK disentuh.
+- **Tidak bisa diverifikasi visual langsung di browser.**
+
+- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+
 ---
 
 ## 3.1 REVISI: 3 MASALAH VISUAL DI CARD 01 (SELESAI & TERVERIFIKASI)
@@ -272,8 +299,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI & TERVERIFIKASI: halaman "7 Basic Logic Gates" — sudah di-revert ke spec `design.md` Bagian 1 (Bagian 3.5).
 - SELESAI: rekonstruksi source code + cleanup + verifikasi keamanan (Bagian 6).
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 (Bagian 3), termasuk fix 3 masalah visual: hapus pin nub dekoratif, perbaiki svgW, ganti label B' jadi overline (Bagian 3.1).
-- BANYAK PROGRESS DARI TEMAN (BACKEND): Login + auto-save + API routes sudah jalan (Bagian 4). Beberapa hal sudah diklarifikasi (file orphan, quiz/leaderboard opsional).
-- BELUM DIKERJAKAN: card Circuit berikutnya (tier NORMAL) — perlu didiskusikan konsepnya. "Create Logic Gates Simulator" (Bagian 5) — masih jauh.
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 02 "Buffer (Negasi Ganda)" — 1 input, 2 NOT berurutan, OUT=A (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
