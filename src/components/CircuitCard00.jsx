@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+
 
 const gates = [
     { name: "NOT",  color: "#f87171" },
@@ -78,33 +78,32 @@ function NotationSVG({ gate, color }) {
 }
 
 export default function CircuitCard00() {
-    const shimmerRef = useRef(null);
     return <div style={{
         backgroundColor: "#0e1420",
         borderRadius: 16, padding: "18px 14px",
         border: "1px solid rgba(148,163,184,0.25)",
-        position: "relative", overflow: "hidden",
     }}>
-        <div ref={shimmerRef} style={{
-            position: "absolute", inset: 0, borderRadius: 16,
-            background: "linear-gradient(110deg, transparent 30%, rgba(148,163,184,0.06) 50%, transparent 70%)",
-            backgroundSize: "250% 100%",
-            animation: "shimmer-tutorial 4s ease-in-out infinite",
-        }} />
-        <style>{`
-            @keyframes shimmer-tutorial {
-                0% { background-position: 200% 0; }
-                100% { background-position: -200% 0; }
-            }
-        `}</style>
-        <div style={{ position: "relative", zIndex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 11, fontWeight: 700, color: "#475569" }}>0</span>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg, #94a3b8, #e2e8f0, #94a3b8)" }} />
                     <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, background: "linear-gradient(135deg, #94a3b8, #e2e8f0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Simbol Boolean</span>
                 </div>
-                <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(148,163,184,0.2), rgba(226,232,240,0.15))", border: "1px solid rgba(148,163,184,0.35)", color: "#cbd5e1" }}>TUTORIAL</span>
+                <span className="badge-tutorial-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(148,163,184,0.2), rgba(226,232,240,0.15))", border: "1px solid rgba(148,163,184,0.35)", color: "#cbd5e1", position: "relative", overflow: "hidden", display: "inline-block" }}>TUTORIAL</span>
+                <style>{`
+                    .badge-tutorial-shimmer::after {
+                        content: "";
+                        position: absolute;
+                        top: 0; left: -100%; width: 60%; height: 100%;
+                        background: linear-gradient(90deg, transparent, rgba(226,232,240,0.25), transparent);
+                        animation: badge-shimmer-sweep 3s ease-in-out infinite;
+                    }
+                    @keyframes badge-shimmer-sweep {
+                        0% { left: -100%; }
+                        50% { left: 150%; }
+                        100% { left: 150%; }
+                    }
+                `}</style>
             </div>
             <p style={{ margin: "0 0 14px", fontSize: 12, color: "#64748b", fontFamily: "Inter,sans-serif", lineHeight: 1.6 }}>Notasi aljabar Boolean standar internasional untuk 7 gerbang logika dasar. Garis di atas simbol menunjukkan operasi negasi (NOT).</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -118,6 +117,5 @@ export default function CircuitCard00() {
                     </div>
                 ))}
             </div>
-        </div>
     </div>;
 }
