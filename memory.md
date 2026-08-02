@@ -114,6 +114,33 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 - Status: **SELESAI & TERVERIFIKASI.** (Verifikasi independen Claude: logika NOR benar, bentuk gate OR sesuai, diff bersih.)
 
+**Card kelima (tier MUDAH) — "Gerbang 3 Input Sederhana":**
+- Struktur: 3 input (A, B, C), 2 gate. AND gate menerima A & B, outputnya masuk OR gate bersama C. `OUT = (A AND B) OR C`. Pengenalan PALING AWAL soal input lebih dari 2 — tetap tier MUDAH karena cuma 2 gate.
+- Insight: mulai melatih baca circuit dengan >2 sinyal masuk. Contoh nyata: alarm nyala kalau (sensor A DAN sensor B aktif) ATAU tombol darurat C ditekan.
+- Truth table: 3 input -> 8 baris: `[[0,0,0,0],[0,0,1,1],[0,1,0,0],[0,1,1,1],[1,0,0,0],[1,0,1,1],[1,1,0,1],[1,1,1,1]]`.
+- Warna tema card: `#a78bfa` (OR, karena gate terakhir/output adalah OR). AND gate warna `#4ade80`, menyala saat `andOut` true. OR gate menyala saat `out` true.
+- Diagram: 3 input node vertikal (A atas, B tengah, C bawah) -> A&B masuk AND gate (D-shape) -> label "A · B" -> output AND belok turun masuk OR gate (bezier) bersama C (garis lurus horizontal) -> OUT.
+- [KEPUTUSAN OTONOM] Layout 3 input: node A/B/C ditumpuk vertikal di kiri (Y=20/52/84), svgH dinaikkan ke 110 (dari 100 di card 2-input). AND gate diposisikan atas (midY=36), OR gate bawah (midY=68) — mengikuti alur logika: A&B di atas, C di bawah, output OR sejajar dengan C.
+- [KEPUTUSAN OTONOM] Routing kabel AND→OR: dari output AND horizontal ke kanan, belok turun (V), lalu horizontal masuk sisi kiri atas OR gate. Kabel C: lurus horizontal dari input C langsung ke sisi kiri bawah OR gate.
+- Semua pelajaran revisi Card 01 diterapkan: tidak ada pin nub dekoratif, `svgW = outX + outNodeR + 20`, kabel solid siku-siku, label teks biasa tanpa overline.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram05.jsx` (baru)
+- `src/components/CircuitCard05.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard05, render di bawah CircuitCard04.
+
+**Verifikasi:**
+- Build sukses: `built in 7.69s`, 2147 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 43.67 KB (naik dari 35.28 KB di Card 04 — wajar karena ada card + diagram baru).
+- Main bundle: 399.85 KB (tidak berubah).
+- Logika (A AND B) OR C benar untuk 8 kombinasi: 000→0, 001→1, 010→0, 011→1, 100→0, 101→1, 110→1, 111→1.
+- Bentuk gate AND (D-shape) dan OR (bezier) reuse path dari GateDiagram.jsx / CircuitDiagram03/04.
+- Diff kode: HANYA `LogicGatesCircuit.jsx` yang berubah (2 baris: 1 import + 1 render) + 2 file baru. File backend TIDAK disentuh.
+- Card 00, 01, 02, 03, 04 TIDAK disentuh.
+- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+
 ---
 
 ## 3.3 CARD 0: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
@@ -417,6 +444,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 02 "Buffer (Negasi Ganda)" — 1 input, 2 NOT berurutan, OUT=A (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 03 "Bangun NAND Manual" — 2 input, AND lalu NOT, OUT=NOT(A AND B), truth table identik NAND asli (Bagian 3).
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 04 "Bangun NOR Manual" — 2 input, OR lalu NOT, OUT=NOT(A OR B), truth table identik NOR asli, pasangan kembar Card 03 (Bagian 3).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 05 "Gerbang 3 Input Sederhana" — 3 input, (A AND B) OR C, truth table 8 baris, pengenalan input >2 (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
