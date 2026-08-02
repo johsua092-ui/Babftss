@@ -180,7 +180,7 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
                         ><div style={{ backgroundColor: "rgba(99,102,241,0.18)", padding: 10, borderRadius: 10, flexShrink: 0 }}><LinkageIcon icon="fourbar" color="#818cf8" size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#818cf8" }}>Linkages Mechanic</span></button>
-                        <button onClick={goToCircuit}
+                        <button onClick={() => toast.info("Fitur ini masih dalam pengerjaan")}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: "rgba(14,20,32,0.6)", border: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 14, color: "#475569", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.9)"}
                             onMouseLeave={c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.6)"}
@@ -202,7 +202,7 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
                         ><div style={{ backgroundColor: "rgba(168,85,247,0.18)", padding: 12, borderRadius: 12, color: "#a855f7", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Logic Gates Circuit</span></button>
-                        <button onClick={goToCircuit}
+                        <button onClick={() => toast.info("Logic Gates Simulator masih dalam pengerjaan")}
                             className="animate-gold-pulse"
                             style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(251,191,36,0.5)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}

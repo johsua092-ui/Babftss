@@ -86,6 +86,27 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 ---
 
+## 3.2 FIX: 2 TOMBOL "COMING SOON" SALAH ARAH DI APP.JSX (SELESAI)
+
+**Masalah:** 2 tombol placeholder di `src/App.jsx` salah pakai `onClick={goToCircuit}` — diklik malah navigasi ke halaman Logic Gates Circuit, padahal seharusnya menunjukkan status "belum tersedia":
+1. Tombol "Coming Soon" (ikon `Lock`, halaman menu utama, baris ~183) — salah arah ke halaman Circuit.
+2. Tombol "Create Logic Gates Simulator" (ikon `FlaskConical`, halaman Logic Gates, baris ~205) — salah arah ke halaman Circuit.
+
+Bug ini sudah lama ada sejak awal, baru ketahuan saat user testing Card 03.
+
+**Perbaikan:** ganti `onClick={goToCircuit}` di kedua tombol menjadi `toast.info(...)` (sonner, sudah di-import di file ini). Pesan toast konsisten dengan pola `GearsPage.jsx`/`LinkagesPage.jsx`.
+
+**File yang diubah:** HANYA `src/App.jsx` (2 baris onClick). Tombol "Logic Gates Circuit" (baris ~200) TIDAK disentuh — `goToCircuit`-nya memang benar.
+
+**Verifikasi:**
+- Build sukses: `built in 6.83s`, 2142 modules transformed, 0 error.
+- Main bundle: 399.85 KB (perubahan minimal, wajar).
+- Diff kode: HANYA 2 baris onClick yang berubah, tidak ada baris lain yang tersentuh.
+- File backend TIDAK disentuh.
+- **Tidak bisa diverifikasi visual langsung di browser** (toast muncul saat tombol diklik).
+
+---
+
 ## 3.1 REVISI: 3 MASALAH VISUAL DI CARD 01 (SELESAI & TERVERIFIKASI)
 
 **Ditemukan oleh:** user (cek visual langsung) melaporkan 3 masalah di Card 01 yang sebelumnya sudah ditandai "selesai & terverifikasi":
