@@ -82,11 +82,9 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Card 01 & Card 02 TIDAK disentuh.
 - **Tidak bisa diverifikasi visual langsung di browser.**
 
-- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** kode dibaca langsung + logika dicek manual. Diff dikonfirmasi: HANYA `CircuitDiagram03.jsx` (baru), `CircuitCard03.jsx` (baru), `LogicGatesCircuit.jsx` yang berubah. Logika `andOut = a && b`, `out = !andOut` benar menghasilkan truth table NAND asli. Diagram: tidak ada garis pin-nub, `svgW` sudah pakai margin benar sejak awal, label output AND awalnya "AB" (kemudian direvisi jadi "A · B" di task terpisah, lihat Bagian 3.3) — semua pelajaran dari revisi Card 01 tetap diterapkan konsisten di card ketiga ini.
 
----
-
-## 3.3 CARD 0: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
+- Status: **SELESAI & TERVERIFIKASI.**: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
 
 **Card 0 "Simbol Boolean" (tier TUTORIAL):**
 - Card referensi non-interaktif, berisi 7 notasi aljabar Boolean standar internasional.
@@ -114,7 +112,9 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Card 01, 02, 03 diagram TIDAK disentuh (kecuali fix label Card 03 sesuai scope).
 - **Tidak bisa diverifikasi visual langsung di browser.**
 
-- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+- Status: **SELESAI & TERVERIFIKASI.**
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** kode `CircuitCard00.jsx` dibaca langsung + direkonstruksi render-nya (HTML+SVG manual meniru persis kode React) untuk cek visual ketujuh notasi. Hasil: (a) NOT pakai teks+`<line>` overline, (b) AND/NAND pakai lingkaran kecil terisi sebagai titik tengah (bukan cuma karakter "·" — pilihan implementasi lebih robust daripada instruksi asal, tetap sesuai maksud), (c) OR/NOR pakai 2 garis silang sebagai simbol plus (juga lebih robust dari karakter "+"), (d) XOR/XNOR pakai lingkaran+silang digambar SVG manual (BUKAN karakter Unicode ⊕, sesuai instruksi persis), (e) overline NAND/NOR/XNOR membentang menutupi seluruh lebar ekspresi, bukan cuma 1 huruf. Badge TUTORIAL pakai gradient silver + shimmer sweep animasi, monokrom abu (bukan RGB pelangi) — sesuai spesifikasi. Card 0 dikonfirmasi render sebagai card pertama sebelum Card 01. Diff kode bersih. User juga melakukan penyesuaian manual tambahan sendiri di luar prompt kerja sampai hasil final di zip ini sesuai keinginannya.
 
 ---
 
