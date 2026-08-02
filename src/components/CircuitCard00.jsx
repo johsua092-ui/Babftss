@@ -13,63 +13,62 @@ const gates = [
 function NotationSVG({ gate, color }) {
     const fontSize = 14;
     const font = "Orbitron,sans-serif";
-    const textY = 14;
+    const textY = 22;
+    const overlineY = 5;
     const textAnchor = "middle";
-    const svgH = 28;
+    const svgH = 30;
 
     switch (gate) {
         case "NOT": {
-            const cx = 20;
-            return <svg viewBox={`0 0 40 ${svgH}`} width={40} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+            const cx = 22;
+            return <svg viewBox={`0 0 44 ${svgH}`} width={44} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <line x1={cx - 6} y1={2} x2={cx + 6} y2={2} stroke={color} strokeWidth="1.5" />
+                <line x1={cx - 6} y1={overlineY} x2={cx + 6} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "AND": {
-            return <svg viewBox={`0 0 60 ${svgH}`} width={60} height={svgH} style={{ display: "block", flexShrink: 0 }}>
-                <text x={30} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A · B</text>
+            return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+                <text x={40} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A · B</text>
             </svg>;
         }
         case "NAND": {
-            const cx = 30;
-            return <svg viewBox={`0 0 60 ${svgH}`} width={60} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+            const cx = 40;
+            return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A·B</text>
-                <line x1={cx - 16} y1={2} x2={cx + 16} y2={2} stroke={color} strokeWidth="1.5" />
+                <line x1={cx - 18} y1={overlineY} x2={cx + 18} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "OR": {
-            return <svg viewBox={`0 0 60 ${svgH}`} width={60} height={svgH} style={{ display: "block", flexShrink: 0 }}>
-                <text x={30} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A + B</text>
+            return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+                <text x={40} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A + B</text>
             </svg>;
         }
         case "NOR": {
-            const cx = 30;
-            return <svg viewBox={`0 0 60 ${svgH}`} width={60} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+            const cx = 40;
+            return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
                 <text x={cx} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A+B</text>
-                <line x1={cx - 18} y1={2} x2={cx + 18} y2={2} stroke={color} strokeWidth="1.5" />
+                <line x1={cx - 20} y1={overlineY} x2={cx + 20} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "XOR": {
-            // Manual SVG XOR symbol: A [circle+cross] B
-            const circR = 7, circCx = 30, circCy = 11;
-            return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
-                <text x={16} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <text x={64} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
+            const circR = 7, circCx = 50, circCy = 13;
+            return <svg viewBox={`0 0 100 ${svgH}`} width={100} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+                <text x={18} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
+                <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
                 <circle cx={circCx} cy={circCy} r={circR} fill="none" stroke={color} strokeWidth="1.5" />
                 <line x1={circCx - 5} y1={circCy} x2={circCx + 5} y2={circCy} stroke={color} strokeWidth="1.5" />
                 <line x1={circCx} y1={circCy - 5} x2={circCx} y2={circCy + 5} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         case "XNOR": {
-            // Same as XOR + overline spanning entire notation
-            const circR = 7, circCx = 40, circCy = 11;
-            return <svg viewBox={`0 0 80 ${svgH}`} width={80} height={svgH} style={{ display: "block", flexShrink: 0 }}>
-                <text x={16} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
-                <text x={64} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
+            const circR = 7, circCx = 50, circCy = 13;
+            return <svg viewBox={`0 0 100 ${svgH}`} width={100} height={svgH} style={{ display: "block", flexShrink: 0 }}>
+                <text x={18} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>A</text>
+                <text x={82} y={textY} textAnchor={textAnchor} fontFamily={font} fontSize={fontSize} fontWeight="bold" fill={color}>B</text>
                 <circle cx={circCx} cy={circCy} r={circR} fill="none" stroke={color} strokeWidth="1.5" />
                 <line x1={circCx - 5} y1={circCy} x2={circCx + 5} y2={circCy} stroke={color} strokeWidth="1.5" />
                 <line x1={circCx} y1={circCy - 5} x2={circCx} y2={circCy + 5} stroke={color} strokeWidth="1.5" />
-                <line x1={10} y1={2} x2={70} y2={2} stroke={color} strokeWidth="1.5" />
+                <line x1={10} y1={overlineY} x2={90} y2={overlineY} stroke={color} strokeWidth="1.5" />
             </svg>;
         }
         default:
