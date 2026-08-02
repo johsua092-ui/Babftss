@@ -84,7 +84,39 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 
 **VERIFIKASI INDEPENDEN OLEH CLAUDE:** kode dibaca langsung + logika dicek manual. Diff dikonfirmasi: HANYA `CircuitDiagram03.jsx` (baru), `CircuitCard03.jsx` (baru), `LogicGatesCircuit.jsx` yang berubah. Logika `andOut = a && b`, `out = !andOut` benar menghasilkan truth table NAND asli. Diagram: tidak ada garis pin-nub, `svgW` sudah pakai margin benar sejak awal, label output AND awalnya "AB" (kemudian direvisi jadi "A · B" di task terpisah, lihat Bagian 3.3) — semua pelajaran dari revisi Card 01 tetap diterapkan konsisten di card ketiga ini.
 
-- Status: **SELESAI & TERVERIFIKASI.**: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
+- Status: **SELESAI & TERVERIFIKASI.**
+
+---
+
+**Card keempat (tier MUDAH) — "Bangun NOR Manual":**
+- Struktur: 2 input (A, B), gerbang OR dulu, output OR masuk gerbang NOT. `OUT = NOT(A OR B)`. PASANGAN KEMBAR dari Card 03 (Bangun NAND Manual) — sama-sama nunjukkin gate hasil-negasi bisa dibangun dari 2 primitif, beda gate dasarnya (OR vs AND).
+- Insight: NOR yang sudah dikenal sebagai basic gate sebenarnya bisa dibangun dari 2 gate primitif (OR + NOT). Truth table hasilnya identik dengan NOR asli.
+- Truth table: 2 input -> 4 baris: `[[0,0,1],[0,1,0],[1,0,0],[1,1,0]]` (OUT cuma 1 kalau A=0 DAN B=0).
+- Warna tema card: `#f87171` (NOT, karena gate terakhir/output adalah NOT). OR gate warna `#a78bfa` (ungu/violet, sesuai design.md 1.5), menyala saat `orOut` true. NOT gate menyala saat `out` true.
+- Diagram: alur A (atas) & B (bawah) -> OR gate (sisi kiri melengkung cekung, sisi kanan meruncing, TANPA bubble — path SVG reuse dari case "or" di GateDiagram.jsx) -> label perantara "A + B" (teks biasa, tanda plus, warna mengikuti tema OR) -> NOT gate (segitiga + bubble) -> OUT.
+- Semua pelajaran revisi Card 01 diterapkan: tidak ada pin nub dekoratif, `svgW = outX + outNodeR + 20`, kabel solid siku-siku, label teks biasa tanpa overline.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram04.jsx` (baru)
+- `src/components/CircuitCard04.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard04, render di bawah CircuitCard03.
+
+**Verifikasi:**
+- Build sukses: `built in 8.91s`, 2145 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 35.28 KB (naik dari 21.59 KB di Card 03 — wajar karena ada card + diagram baru).
+- Main bundle: 399.85 KB (naik tipis dari 399.75 KB).
+- Logika NOR benar untuk 4 kombinasi: A=0,B=0->OUT=1, A=0,B=1->OUT=0, A=1,B=0->OUT=0, A=1,B=1->OUT=0.
+- Bentuk gate OR dikonfirmasi BUKAN bentuk AND (D-shape) atau NOT (segitiga) — path SVG bezier reuse dari GateDiagram.jsx case "or".
+- Diff kode: HANYA `LogicGatesCircuit.jsx` yang berubah (2 baris: 1 import + 1 render) + 2 file baru. File backend TIDAK disentuh.
+- Card 00, 01, 02, 03 TIDAK disentuh.
+
+- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+
+---
+
+## 3.3 CARD 0: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
 
 **Card 0 "Simbol Boolean" (tier TUTORIAL):**
 - Card referensi non-interaktif, berisi 7 notasi aljabar Boolean standar internasional.
@@ -384,6 +416,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 01 (Bagian 3), termasuk fix 3 masalah visual: hapus pin nub dekoratif, perbaiki svgW, ganti label B' jadi overline (Bagian 3.1).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 02 "Buffer (Negasi Ganda)" — 1 input, 2 NOT berurutan, OUT=A (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 03 "Bangun NAND Manual" — 2 input, AND lalu NOT, OUT=NOT(A AND B), truth table identik NAND asli (Bagian 3).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 04 "Bangun NOR Manual" — 2 input, OR lalu NOT, OUT=NOT(A OR B), truth table identik NOR asli, pasangan kembar Card 03 (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
