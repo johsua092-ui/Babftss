@@ -543,3 +543,37 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - Status roadmap terkini: A1-A7 selesai & terverifikasi, A8 "Full Adder" KEMBALI ke status "belum dikerjakan" — akan dikerjakan ulang nanti mengikuti pola card-wrapper standar + `design.md` Bagian 3.3, bukan gaya bebas seperti percobaan pertama yang dihapus.
 
 **CATATAN PROSES (Claude):** saat task ini dikerjakan, `design.md` Bagian 3.3 (Layout Multi-Output) SEMPAT HILANG dari file yang di-push — kemungkinan besar AI pengerjanya memakai salinan lokal `design.md` yang belum ter-update, bukan versi yang diberikan bersama prompt kerja ini. Sudah direstore oleh Claude. Ini pola KEDUA kalinya dokumen permanen (`memory.md` sebelumnya, sekarang `design.md`) ke-overwrite tidak sengaja pakai versi basi. **Rekomendasi ke depan:** AI manapun yang mengerjakan task di proyek ini sebaiknya SELALU pakai file `instruction.md`/`design.md`/`memory.md` yang baru dilampirkan di setiap task sebagai basis edit, bukan salinan lokal yang mungkin sudah tertinggal beberapa versi.
+
+---
+
+## 3.4 CARD 08 "FULL ADDER" — KERJA ULANG, TIER HARD (SELESAI)
+
+**Konteks:** Card 08 pernah dibuat Qwen di sesi otonom dengan gaya card SAMA SEKALI BEDA dari pola established (lihat Bagian 8). Dihapus total, lalu dikerjakan ulang oleh Claude dengan 100% reuse pola standar.
+
+**Konsep:** Full Adder = 2 Half Adder + 1 OR gate. 3 input (A, B, Cin), 2 output (SUM, COUT). 5 gate: 2 XOR + 2 AND + 1 OR.
+- `s1 = A XOR B`, `c1 = A AND B`
+- `SUM = s1 XOR Cin`, `c2 = s1 AND Cin`
+- `COUT = c1 OR c2`
+
+**Tier:** HARD — pertama kali di proyek ini. Border gradient RGB 3 warna (kuning #facc15, hijau #4ade80, ungu #a78bfa) dengan animasi `background-position` bergerak pelan. Badge HARD menggunakan background gradient animasi serupa.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram08.jsx` (baru) — 5 gate SVG, 3 input node, 2 output node, semua wire siku-siku. Label intermediate (s1, c1, c2) ditampilkan di dekat wire-nya. Layout 3 tahap: Stage 1 (XOR1+AND1), Stage 2 (XOR2+AND2), Stage 3 (OR). Reuse bentuk gate dari Card 06/04.
+- `src/components/CircuitCard08.jsx` (baru) — reuse pola PERSIS CircuitCard06 (wrapper card standar, nomor+dot+judul+badge, status bar, deskripsi 2-4 kalimat, TABEL KEBENARAN dengan header). 8 baris truth table (2^3), 5 kolom (A, B, Cin, SUM, COUT). Highlight dinamis berdasarkan kombinasi A/B/Cin.
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard08, render di belakang Card07.
+
+**Card 00-07:** TIDAK disentuh.
+
+**Verifikasi:**
+- Build sukses: `built in 6.53s`, 2153 modules transformed, 0 error, 0 warning.
+- LogicGatesCircuit chunk: 72.89 KB (naik dari 61.96 KB — wajar karena Card 08 ditambahkan).
+- Truth table dihitung manual 8 kombinasi: semua benar.
+  - 000: SUM=0, COUT=0 | 001: SUM=1, COUT=0 | 010: SUM=1, COUT=0 | 011: SUM=0, COUT=1
+  - 100: SUM=1, COUT=0 | 101: SUM=0, COUT=1 | 110: SUM=0, COUT=1 | 111: SUM=1, COUT=1
+- Style: KONFIRMASI reuse pola card-wrapper standar (background #0e1420, borderRadius 16, header, badge tier, TABEL KEBENARAN). Tier HARD menggunakan animated gradient border (bukan gaya baru).
+- File backend TIDAK disentuh.
+- **Tidak bisa diverifikasi visual langsung di browser.**
+
+- Status: **SELESAI.** Perlu verifikasi visual oleh user.
