@@ -121,32 +121,29 @@ export default function LogicGatesCircuit({ setPage }) {
                     }
                     @keyframes tier-shimmer-hard { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
                     .tier-btn-insane-active {
-                        animation: insane-flicker 0.12s infinite alternate, insane-jitter 0.25s infinite;
+                        animation: insane-flicker 0.12s infinite alternate;
                     }
                     .tier-btn-insane-active::after {
                         content: ""; position: absolute; inset: 0; border-radius: 6px;
                         background:
-                            linear-gradient(130deg, transparent 42%, rgba(168,85,247,0.7) 42.5%, transparent 43%, transparent 100%),
-                            linear-gradient(47deg, transparent 25%, rgba(139,92,246,0.6) 25.3%, transparent 25.6%),
-                            linear-gradient(158deg, transparent 62%, rgba(192,132,252,0.7) 62.2%, transparent 62.5%),
-                            linear-gradient(95deg, transparent 15%, rgba(168,85,247,0.5) 15.3%, transparent 15.6%),
-                            linear-gradient(172deg, transparent 78%, rgba(139,92,246,0.6) 78.2%, transparent 78.5%);
-                        animation: crack-pulse 1.2s ease-in-out infinite alternate;
+                            linear-gradient(130deg, transparent 41%, rgba(168,85,247,0.9) 41.5%, rgba(168,85,247,0.9) 42%, transparent 42.5%),
+                            linear-gradient(47deg, transparent 24%, rgba(139,92,246,0.85) 24.5%, rgba(139,92,246,0.85) 25%, transparent 25.5%),
+                            linear-gradient(158deg, transparent 61%, rgba(192,132,252,0.9) 61.5%, rgba(192,132,252,0.9) 62%, transparent 62.5%),
+                            linear-gradient(95deg, transparent 14%, rgba(168,85,247,0.8) 14.5%, rgba(168,85,247,0.8) 15%, transparent 15.5%),
+                            linear-gradient(172deg, transparent 77%, rgba(139,92,246,0.85) 77.5%, rgba(139,92,246,0.85) 78%, transparent 78.5%),
+                            linear-gradient(110deg, transparent 50%, rgba(192,132,252,0.7) 50.3%, rgba(192,132,252,0.7) 50.6%, transparent 51%),
+                            linear-gradient(85deg, transparent 35%, rgba(168,85,247,0.75) 35.3%, rgba(168,85,247,0.75) 35.6%, transparent 36%);
+                        animation: crack-pulse 0.8s steps(2) infinite;
                         pointer-events: none;
                     }
                     @keyframes insane-flicker {
-                        0% { box-shadow: 0 0 8px rgba(168,85,247,0.6), 0 0 2px rgba(139,92,246,0.8), inset 0 0 4px rgba(168,85,247,0.2); }
-                        50% { box-shadow: 0 0 18px rgba(168,85,247,0.9), 0 0 5px rgba(139,92,246,1), inset 0 0 8px rgba(168,85,247,0.3); }
-                        100% { box-shadow: 0 0 5px rgba(168,85,247,0.4), 0 0 1px rgba(139,92,246,0.5), inset 0 0 2px rgba(168,85,247,0.1); }
-                    }
-                    @keyframes insane-jitter {
-                        0%, 100% { transform: translate(0, 0); }
-                        25% { transform: translate(0.5px, -0.5px); }
-                        50% { transform: translate(-0.5px, 0.5px); }
-                        75% { transform: translate(0.3px, 0.3px); }
+                        0% { box-shadow: 0 0 8px rgba(168,85,247,0.6), 0 0 2px rgba(139,92,246,0.8); }
+                        50% { box-shadow: 0 0 16px rgba(168,85,247,0.9), 0 0 4px rgba(139,92,246,1); }
+                        100% { box-shadow: 0 0 6px rgba(168,85,247,0.5), 0 0 1px rgba(139,92,246,0.6); }
                     }
                     @keyframes crack-pulse {
-                        0% { opacity: 0.3; } 30% { opacity: 1; } 60% { opacity: 0.6; } 100% { opacity: 0.9; }
+                        0%, 49% { opacity: 1; }
+                        50%, 100% { opacity: 0.15; }
                     }
                     .tier-btn-complex-active::before {
                         content: ""; position: absolute; inset: -1px; border-radius: 6px;
