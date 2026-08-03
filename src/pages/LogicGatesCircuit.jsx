@@ -23,10 +23,10 @@ const ALL_CARDS = [
 ];
 
 const TIERS = [
-    { label: 'EASY', bg: 'rgba(34,197,94,0.18)', border: 'rgba(34,197,94,0.4)', color: '#86efac', glow: '0 0 12px rgba(34,197,94,0.5)' },
-    { label: 'NORMAL', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.35)', color: '#facc15', glow: '0 0 12px rgba(250,204,21,0.5)' },
-    { label: 'HARD', bg: 'rgba(227,11,93,0.18)', border: 'rgba(227,11,93,0.4)', color: '#fda4af', glow: '0 0 12px rgba(227,11,93,0.5)' },
-    { label: 'INSANE', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.4)', color: '#c4b5fd', glow: '0 0 12px rgba(168,85,247,0.5)' },
+    { label: 'EASY', bg: 'rgba(34,197,94,0.18)', border: 'rgba(34,197,94,0.4)', color: '#86efac', dimColor: '#4ade80', glow: '0 0 12px rgba(34,197,94,0.5)', shimmer: false },
+    { label: 'NORMAL', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.35)', color: '#facc15', dimColor: '#eab308', glow: '0 0 12px rgba(250,204,21,0.5)', shimmer: false },
+    { label: 'HARD', bg: 'rgba(227,11,93,0.18)', border: 'rgba(227,11,93,0.4)', color: '#fda4af', dimColor: '#E30B5D', glow: '0 0 12px rgba(227,11,93,0.5)', shimmer: true, shimmerColor: '227,11,93' },
+    { label: 'INSANE', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.4)', color: '#c4b5fd', dimColor: '#a855f7', glow: '0 0 12px rgba(168,85,247,0.5)', shimmer: true, shimmerColor: '168,85,247' },
 ];
 
 const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, cursor: "pointer", transition: "all 0.3s ease", border: "none", whiteSpace: "nowrap" };
@@ -110,19 +110,37 @@ export default function LogicGatesCircuit({ setPage }) {
                 </div>
 
                 {/* Tier filter labels */}
+                <style>{`
+                    .tier-btn-hard-active, .tier-btn-insane-active { position: relative; overflow: hidden; }
+                    .tier-btn-hard-active::after, .tier-btn-insane-active::after {
+                        content: ""; position: absolute; width: 50%; height: 300%;
+                        background: linear-gradient(90deg, transparent, rgba(227,11,93,0.35), transparent);
+                        animation: tier-shimmer-hard 3s ease-in-out infinite;
+                        pointer-events: none;
+                    }
+                    .tier-btn-insane-active::after {
+                        background: linear-gradient(90deg, transparent, rgba(168,85,247,0.35), transparent);
+                        animation: tier-shimmer-insane 3s ease-in-out infinite;
+                    }
+                    @keyframes tier-shimmer-hard { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
+                    @keyframes tier-shimmer-insane { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
+                `}</style>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
                     {TIERS.map(t => {
                         const isActive = activeTier === t.label;
+                        const shimmerClass = isActive && t.shimmer ? `tier-btn-${t.label.toLowerCase()}-active` : "";
                         return (
                             <button
                                 key={t.label}
+                                className={shimmerClass}
                                 onClick={() => setActiveTier(isActive ? null : t.label)}
                                 style={{
                                     ...badgeBase,
-                                    backgroundColor: isActive ? t.bg : "rgba(148,163,184,0.08)",
-                                    border: isActive ? `1px solid ${t.border}` : "1px solid rgba(148,163,184,0.2)",
-                                    color: isActive ? t.color : "#64748b",
+                                    backgroundColor: isActive ? t.bg : "transparent",
+                                    border: isActive ? `1px solid ${t.border}` : `1px solid ${t.dimColor}40`,
+                                    color: isActive ? t.color : t.dimColor,
                                     boxShadow: isActive ? t.glow : "none",
+                                    opacity: isActive ? 1 : 0.5,
                                 }}
                             >{t.label}</button>
                         );
