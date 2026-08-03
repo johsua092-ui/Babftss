@@ -24,12 +24,10 @@ export default function CircuitCard08() {
 
     const isActive = sum || cout;
 
-    return <div style={{
-            backgroundColor: "#0e1420",
-            border: isActive ? `2px solid rgba(${themeRgb},0.5)` : "2px solid #1e293b",
+    return <div className="hard-card-08" style={{
             borderRadius: 16, padding: "18px 14px",
-            boxShadow: isActive ? `0 0 24px rgba(${themeRgb},0.18)` : "none",
-            transition: "all 0.4s ease"
+            boxShadow: isActive ? `0 0 28px rgba(${themeRgb},0.25), 0 0 6px rgba(${themeRgb},0.4)` : "0 0 0 rgba(0,0,0,0)",
+            transition: "box-shadow 0.4s ease"
         }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -37,7 +35,7 @@ export default function CircuitCard08() {
                     <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: isActive ? themeColor : "#334155", boxShadow: isActive ? `0 0 8px ${themeColor}` : "none", transition: "all 0.3s" }} />
                     <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: isActive ? themeColor : "#e2e8f0" }}>Full Adder</span>
                 </div>
-                <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(250,204,21,0.15), rgba(74,222,128,0.15), rgba(167,139,250,0.15))", border: "1px solid rgba(250,204,21,0.35)", color: "#e2e8f0" }}>HARD</span>
+                <span className="hard-badge-08" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, color: "#e2e8f0" }}>HARD</span>
             </div>
 
             <CircuitDiagram08 a={inputA} b={inputB} cin={inputCin} s1={s1} c1={c1} sum={sum} c2={c2} cout={cout} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} onToggleCin={() => setInputCin(v => !v)} />
@@ -80,4 +78,36 @@ export default function CircuitCard08() {
                 </table>
             </div>
     </div>;
+    // eslint-disable-next-line react/no-unescaped-entities
+}
+
+// Dedicated style block for HARD tier card
+if (typeof document !== 'undefined' && !document.getElementById('hard-card-08-style')) {
+    const s = document.createElement('style');
+    s.id = 'hard-card-08-style';
+    s.textContent = `
+        .hard-card-08 {
+            background: linear-gradient(#0e1420, #0e1420) padding-box,
+                        linear-gradient(135deg, #facc15, #4ade80, #a78bfa, #facc15) border-box;
+            background-size: 100% 100%, 300% 300%;
+            border: 3px solid transparent;
+            animation: hard-card-flow-08 4s ease infinite;
+        }
+        @keyframes hard-card-flow-08 {
+            0%   { background-position: 0% 0%, 0% 50%; }
+            50%  { background-position: 0% 0%, 100% 50%; }
+            100% { background-position: 0% 0%, 0% 50%; }
+        }
+        .hard-badge-08 {
+            background: linear-gradient(135deg, rgba(250,204,21,0.18), rgba(74,222,128,0.18), rgba(167,139,250,0.18));
+            background-size: 200% 200%;
+            animation: hard-badge-flow-08 4s ease infinite;
+        }
+        @keyframes hard-badge-flow-08 {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    `;
+    document.head.appendChild(s);
 }
