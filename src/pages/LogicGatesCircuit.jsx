@@ -30,7 +30,7 @@ const TIERS = [
     { label: 'COMPLEX', bg: 'rgba(100,116,139,0.2)', border: 'rgba(148,163,184,0.5)', color: '#e2e8f0', dimColor: '#94a3b8', glow: '0 0 12px rgba(148,163,184,0.5), 0 0 4px rgba(148,163,184,0.3)', shimmer: false, lightning: true },
 ];
 
-const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, cursor: "pointer", transition: "all 0.3s ease", border: "none", whiteSpace: "nowrap" };
+const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: 1.5, padding: "5px 14px", borderRadius: 6, cursor: "pointer", transition: "all 0.3s ease", border: "none", whiteSpace: "nowrap" };
 
 const backBtnStyle = { display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #1e293b", color: "#64748b", cursor: "pointer", fontFamily: "Inter,sans-serif", fontSize: 13, fontWeight: 600, transition: "color 0.2s" };
 
