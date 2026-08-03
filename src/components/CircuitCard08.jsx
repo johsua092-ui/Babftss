@@ -88,7 +88,7 @@ if (typeof document !== 'undefined' && !document.getElementById('hard-badge-08-s
     s.id = 'hard-badge-08-style';
     s.textContent = `
         .hard-badge-08 {
-            background: linear-gradient(135deg, rgba(250,204,21,0.18), rgba(74,222,128,0.18), rgba(167,139,250,0.18));
+            background: linear-gradient(135deg, rgba(250,204,21,0.45), rgba(74,222,128,0.45), rgba(167,139,250,0.45));
             background-size: 200% 200%;
             animation: hard-badge-flow-08 4s ease infinite;
         }
