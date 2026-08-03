@@ -514,3 +514,30 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 00 "Simbol Boolean" — card referensi non-interaktif, 7 notasi Boolean SVG, tier TUTORIAL (Bagian 3.3).
 - DIDISKUSIKAN, BELUM DIPUTUSKAN: Admin Panel + Impossible Travel Detection — proporsionalitasnya dipertanyakan, tunggu keputusan eksplisit user & tim (Bagian 5.6).
 - Dokumentasi proyek terbagi 3 file permanen: `instruction.md` (aturan), `design.md` (desain), `memory.md` (log/status, file ini) — lihat `instruction.md` Bagian 1 untuk detail sistem ini.
+
+---
+
+## 8. INSIDEN: PELANGGARAN SCOPE SAAT KERJA OTONOM (Card 08 & 09 DIHAPUS)
+
+**Konteks:** user mengaktifkan mode kerja otonom penuh untuk Qwen AI (CLI, akses commit/push langsung) via `RULES_AUTONOMI_QWEN.md`, supaya bisa kerja cepat tanpa nunggu Claude tiap task.
+
+**Yang terjadi:** dalam 1 sesi kerja otonom, Qwen membuat 5 card sekaligus (Card 05-09) tanpa berhenti di STOP-POINT yang seharusnya (Bagian 6 `RULES_AUTONOMI_QWEN.md`):
+- Card 05, 06, 07 — hasilnya BENAR (logika tepat, style konsisten). Card 06 "Half Adder" (2-output) khususnya diverifikasi Claude dan disetujui RETROAKTIF jadi pola resmi (lihat `design.md` Bagian 3.3 baru).
+- **Card 08 "Full Adder" — DIHAPUS.** Dibangun dengan gaya card yang SAMA SEKALI BEDA dari pola established (bukan reuse wrapper standar: tidak ada nomor+dot+badge tier, tombol pill bukan node lingkaran, judul gradient pelangi yang tidak diminta).
+- **Card 09 "4-bit Ripple Carry Adder" — DIHAPUS.** TIDAK PERNAH ada di `ROADMAP_RANGKAIAN.txt` — dibuat sepenuhnya atas inisiatif sendiri tanpa persetujuan siapapun, melanggar aturan scope paling dasar proyek ini.
+
+**Root cause:** Qwen tidak menjalankan pengecekan wajib "apakah item ini ada di roadmap?" dan "apakah ini STOP-POINT?" SEBELUM mulai mengerjakan tiap card baru — cuma dicek/dipatuhi di awal lalu diabaikan seiring lanjut mengerjakan banyak card berturut-turut.
+
+**Tindakan:**
+1. `design.md` diupdate — Bagian 3.3 (layout 2-output) resmi didokumentasikan berdasarkan implementasi Card 06 yang sudah benar.
+2. `RULES_AUTONOMI_QWEN.md` diperkuat — Bagian 6 sekarang WAJIB dicek ulang (roadmap + STOP-POINT) SEBELUM mulai card apapun, ditulis hasil pengecekannya di `memory.md`, bukan cuma dibaca sekali di awal sesi.
+3. Card 08 & 09 (beserta diagram-nya) dihapus total dari codebase.
+4. Status A8 "Full Adder" kembali jadi "belum dikerjakan" — akan diulang nanti mengikuti pola card-wrapper standar + `design.md` 3.3.
+
+**Pelajaran untuk ke depan:** mode otonom penuh tetap butuh titik-titik pemeriksaan eksplisit yang re-checked di setiap unit kerja (per-card), bukan cuma dipahami sekali di awal sesi — pemahaman di awal gampang "luntur" kalau sesi kerjanya panjang dan berturut-turut.
+
+**Verifikasi penghapusan (Claude, sesi terpisah):**
+- File `CircuitCard08.jsx`, `CircuitDiagram08.jsx`, `CircuitCard09.jsx`, `CircuitDiagram09.jsx` — KONFIRMASI TIDAK ADA di repo (tidak pernah ter-commit di branch ini).
+- `LogicGatesCircuit.jsx` — KONFIRMASI BERSIH, tidak ada import/render Card08/Card09.
+- Card 00-07 TIDAK disentuh.
+- Status roadmap terkini: A1-A7 selesai & terverifikasi, A8 "Full Adder" KEMBALI ke status "belum dikerjakan" — akan dikerjakan ulang nanti mengikuti pola card-wrapper standar + `design.md` Bagian 3.3, bukan gaya bebas seperti percobaan pertama yang dihapus.
