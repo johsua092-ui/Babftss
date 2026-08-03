@@ -24,7 +24,7 @@ export default function CircuitCard04() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: out ? notColor : "#334155", boxShadow: out ? `0 0 8px ${notColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: out ? notColor : "#e2e8f0" }}>Bangun NOR Manual</span>
             </div>
-            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.4)", color: "#86efac" }}>MUDAH</span>
+            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.4)", color: "#86efac" }}>EASY</span>
         </div>
         <CircuitDiagram04 a={inputA} b={inputB} orOut={orOut} out={out} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} />
         <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "10px 0 8px", fontFamily: "Orbitron,sans-serif", fontSize: 10, color: "#475569" }}>
