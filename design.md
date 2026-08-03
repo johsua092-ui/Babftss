@@ -106,3 +106,14 @@ Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian 
 | NORMAL | Warna terang/vivid, glow neon standar |
 | HARD | Border gradient RGB (2-3 warna), animasi bergerak pelan |
 | INSANE | Border RGB penuh spektrum, animasi cepat + shimmer/kelap-kelip, kesan premium |
+
+### 3.3 Layout MULTI-OUTPUT (2 output) — DISETUJUI RETROAKTIF dari implementasi Card 06 "Half Adder"
+
+Untuk rangkaian dengan lebih dari 1 output (misal Half Adder: SUM & CARRY), pola berikut jadi acuan baku:
+
+- Input di-fan-out (bercabang) dari satu titik junction ke masing-masing gate secara paralel — BUKAN dirutekan berurutan/seri. Tiap cabang tetap wire solid siku-siku (right-angle), tidak boleh dashed.
+- Kedua gate ditata bertumpuk vertikal (gate 1 di atas, gate 2 di bawah), masing-masing dengan output node & label sendiri (misal "SUM" di atas, "CARRY" di bawah) — BUKAN digabung jadi 1 output node.
+- `svgW` dihitung dari POSISI OUTPUT PALING JAUH di antara semua output node: `svgW = Math.max(...semua outX) + outNodeR + 20` — bukan cuma dari 1 output seperti card single-output.
+- `svgH` diperbesar secukupnya supaya 2 baris gate + wire-nya muat tanpa berhimpitan.
+- Truth table: jumlah kolom OUTPUT menyesuaikan (2 kolom untuk 2 output), tetap 2^n baris untuk n input, highlight tetap dinamis berdasarkan kombinasi input (bukan output).
+- Card wrapper (nomor+dot+judul+badge tier, deskripsi, style card) TETAP SAMA PERSIS seperti card single-output — yang beda HANYA jumlah output di diagram & truth table, BUKAN keseluruhan gaya card.
