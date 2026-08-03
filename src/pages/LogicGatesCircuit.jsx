@@ -120,24 +120,22 @@ export default function LogicGatesCircuit({ setPage }) {
                         pointer-events: none;
                     }
                     @keyframes tier-shimmer-hard { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
-                    .tier-btn-insane-active {
-                        text-shadow: 0 0 6px rgba(10,5,20,0.95), 0 0 12px rgba(10,5,20,0.6);
-                    }
                     .tier-btn-insane-active::after {
                         content: ""; position: absolute; inset: 0; border-radius: 6px;
                         background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20100%2040%27%3E%0A%3Cpath%20d%3D%27M3%2C22%20L10%2C17%20L15%2C24%20L22%2C14%20L27%2C21%20L34%2C10%20L39%2C18%20L48%2C8%20L54%2C16%20L61%2C22%20L69%2C13%20L77%2C18%20L84%2C24%20L97%2C19%27%20stroke%3D%27rgba%28168%2C85%2C247%2C0.95%29%27%20stroke-width%3D%273.5%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M22%2C14%20L26%2C6%20L22%2C1%20L28%2C0%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.85%29%27%20stroke-width%3D%272.5%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M39%2C18%20L43%2C26%20L39%2C32%20L46%2C37%20L44%2C40%27%20stroke%3D%27rgba%28139%2C92%2C246%2C0.85%29%27%20stroke-width%3D%272.5%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M54%2C16%20L58%2C6%20L54%2C0%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.75%29%27%20stroke-width%3D%272%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M61%2C22%20L65%2C30%20L61%2C36%20L66%2C40%27%20stroke%3D%27rgba%28168%2C85%2C247%2C0.7%29%27%20stroke-width%3D%271.8%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M34%2C10%20L38%2C3%20L34%2C0%27%20stroke%3D%27rgba%28139%2C92%2C246%2C0.7%29%27%20stroke-width%3D%271.8%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M69%2C13%20L73%2C5%20L69%2C0%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.6%29%27%20stroke-width%3D%271.5%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M10%2C17%20L13%2C9%20L9%2C3%27%20stroke%3D%27rgba%28168%2C85%2C247%2C0.6%29%27%20stroke-width%3D%271.5%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M48%2C8%20L51%2C3%20L48%2C0%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.5%29%27%20stroke-width%3D%271.2%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3Cpath%20d%3D%27M77%2C18%20L80%2C11%20L77%2C6%27%20stroke%3D%27rgba%28139%2C92%2C246%2C0.5%29%27%20stroke-width%3D%271.2%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%0A%3C%2Fsvg%3E");
                         background-size: 100% 100%;
                         background-position: center;
                         background-repeat: no-repeat;
-                        filter: drop-shadow(0 0 2px rgba(168,85,247,0.8)) drop-shadow(0 0 4px rgba(139,92,246,0.4));
-                        animation: crack-spread 2.5s ease-out infinite;
+                        mix-blend-mode: screen;
+                        filter: drop-shadow(0 0 3px rgba(168,85,247,0.6));
+                        animation: crack-spread 3s ease-out infinite;
                         pointer-events: none;
                     }
                     @keyframes crack-spread {
-                        0% { clip-path: inset(0 100% 0 0); }
-                        30% { clip-path: inset(0 0% 0 0); }
-                        70% { clip-path: inset(0 0% 0 0); }
-                        100% { clip-path: inset(0 100% 0 0); }
+                        0% { clip-path: inset(0 100% 0 0); opacity: 1; }
+                        30% { clip-path: inset(0 0% 0 0); opacity: 1; }
+                        65% { clip-path: inset(0 0% 0 0); opacity: 1; }
+                        100% { clip-path: inset(0 0% 0 0); opacity: 0; }
                     }
                     .tier-btn-complex-active::before {
                         content: ""; position: absolute; inset: -1px; border-radius: 6px;
