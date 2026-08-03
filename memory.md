@@ -169,6 +169,34 @@ BABFT Learning — platform edukasi web tema "Build A Boat For Treasure" yang me
 - Card 00, 01, 02, 03, 04, 05 TIDAK disentuh.
 - Status: **SELESAI.** Menunggu verifikasi visual user di browser.
 
+**Card ketujuh (tier NORMAL) — "Membangun XOR dari Gate Dasar":**
+- Struktur: 2 input (A, B), 5 gate: 2 NOT, 2 AND, 1 OR. `OUT = (A AND NOT B) OR (NOT A AND B)`. Lanjutan tema "compound dari primitif" (Card 03/04), level naik karena gate lebih banyak (5, bukan 2).
+- Insight: XOR yang di Basic Gates tampil sebagai gate tunggal dengan simbol unik, sebenarnya bisa dibangun penuh dari gate yang lebih primitif. Konsep baru: kabel input BERcabang (fan-out) — satu sinyal asli dipakai di dua tempat sekaligus.
+- Truth table: 2 input -> 4 baris: `[[0,0,0],[0,1,1],[1,0,1],[1,1,0]]` (identik XOR asli).
+- Warna tema card: `#a78bfa` (OR, karena gate terakhir/output adalah OR). NOT gate warna `#f87171`, AND gate warna `#4ade80` — konsisten dengan palette card sebelumnya.
+- Diagram: layout 2 baris. Baris atas: A (lurus) + B yang di-NOT (NOT B) -> AND1 (`A AND NOT B`). Baris bawah: A yang di-NOT (NOT A) + B (lurus) -> AND2 (`NOT A AND B`). Output kedua AND masuk OR gate di tengah-kanan -> OUT.
+- [KEPUTUSAN OTONOM] Layout 2 baris + OR di tengah-kanan: svgH=120, svgW=outX+outNodeR+20. Junction kabel A di X=75, kabel B di X=85. Ada 1 crossing kabel yang tak terhindarkan (cabang A->NOT A memotong cabang B->NOT B) — normal di skematik, tanpa junction dot artinya tidak terhubung.
+- [KEPUTUSAN OTONOM] Gate NOT B dipusatkan di lane input bawah AND1 (Y=46=and1BotY), gate NOT A di lane input atas AND2 (Y=78=and2TopY), sehingga kabel output NOT lurus horizontal masuk gate AND — mengikuti konvensi Card 04/05/06.
+- [AUTOCORRECT] Draft awal CircuitDiagram07.jsx punya bug geometri yang ditemukan sendiri saat self-verifikasi sebelum build: (1) kabel cabang B->NOT B lewat `V 14` dan A->NOT A lewat `V 110` — melayang, tidak menyentuh input gate NOT; (2) gate NOT terpusat di midY baris (Y=38/86) padahal kabel input tiba di lane Y=46/78. Fix: arahkan kabel cabang ke lane yang benar (`V ${and1BotY}` / `V ${and2TopY}`) dan pusatkan segitiga+bubble NOT di lane tersebut. Tidak ada perubahan logika — murni geometri.
+- Semua pelajaran revisi Card 01 diterapkan: tidak ada pin nub dekoratif, `svgW = outX + outNodeR + 20`, kabel solid siku-siku, label teks biasa tanpa overline.
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram07.jsx` (baru)
+- `src/components/CircuitCard07.jsx` (baru)
+
+**File yang diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — tambah import CircuitCard07, render di bawah CircuitCard06.
+
+**Verifikasi:**
+- Build sukses: `built in 17.93s`, 2151 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 61.96 KB (naik dari 52.30 KB di Card 06 — wajar karena card baru dengan 5 gate).
+- Main bundle: 399.85 KB (tidak berubah).
+- Logika XOR benar untuk 4 kombinasi: A=0,B=0->OUT=0; A=0,B=1->OUT=1; A=1,B=0->OUT=1; A=1,B=1->OUT=0.
+- Bentuk gate AND (D-shape), OR (bezier), NOT (segitiga+bubble) reuse path dari GateDiagram.jsx / CircuitDiagram03/04/06.
+- Diff kode: HANYA `LogicGatesCircuit.jsx` yang berubah (2 baris: 1 import + 1 render) + 2 file baru. File backend TIDAK disentuh.
+- Card 00, 01, 02, 03, 04, 05, 06 TIDAK disentuh.
+- Status: **SELESAI.** Menunggu verifikasi visual user di browser.
+
 ---
 
 ## 3.3 CARD 0: SIMBOL BOOLEAN + FIX LABEL CARD 03 (SELESAI)
@@ -474,6 +502,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 04 "Bangun NOR Manual" — 2 input, OR lalu NOT, OUT=NOT(A OR B), truth table identik NOR asli, pasangan kembar Card 03 (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 05 "Gerbang 3 Input Sederhana" — 3 input, (A AND B) OR C, truth table 8 baris, pengenalan input >2 (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 06 "Half Adder" — 2 input, 2 gate paralel (XOR+AND), 2 output (SUM+CARRY), tier NORMAL, layout horizontal side-by-side (Bagian 3).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 07 "Membangun XOR dari Gate Dasar" — 2 input, 5 gate (2 NOT + 2 AND + 1 OR), OUT=(A AND NOT B) OR (NOT A AND B), truth table identik XOR asli, kabel input bercabang/fan-out (Bagian 3).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
