@@ -134,10 +134,10 @@ export default function LogicGatesCircuit({ setPage }) {
                         pointer-events: none;
                     }
                     @keyframes crack-spread {
-                        0% { opacity: 0; transform: scale(0.15); }
-                        25% { opacity: 1; transform: scale(1); }
-                        75% { opacity: 1; transform: scale(1); }
-                        100% { opacity: 0; transform: scale(1.05); }
+                        0% { clip-path: inset(0 100% 0 0); }
+                        30% { clip-path: inset(0 0% 0 0); }
+                        70% { clip-path: inset(0 0% 0 0); }
+                        100% { clip-path: inset(0 100% 0 0); }
                     }
                     .tier-btn-complex-active::before {
                         content: ""; position: absolute; inset: -1px; border-radius: 6px;
