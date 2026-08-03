@@ -56,8 +56,8 @@ export default function LogicGatesCircuit({ setPage }) {
             <p style={{ fontFamily: "Inter,sans-serif", fontSize: 12, color: "#475569", marginBottom: 20, lineHeight: 1.6 }}>Gabungan beberapa gerbang logika yang saling terhubung membentuk rangkaian kompleks. Pelajari bagaimana sinyal mengalir melewati lebih dari satu gerbang.</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Search bar + card number — di bawah Card 0 */}
-                <div style={{ paddingTop: 4 }}>
+                {/* Search bar + card number — dibungkus label silver */}
+                <div style={{ backgroundColor: "rgba(148,163,184,0.06)", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 16, padding: "14px 16px" }}>
                     <div style={{ position: "relative", marginBottom: 6 }}>
                         <Search size={18} color="#64748b" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
                         <input
