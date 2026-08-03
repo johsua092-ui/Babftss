@@ -25,7 +25,7 @@ export default function CircuitCard05() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: out ? orColor : "#334155", boxShadow: out ? `0 0 8px ${orColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: out ? orColor : "#e2e8f0" }}>Gerbang 3 Input Sederhana</span>
             </div>
-            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(100,116,139,0.15)", border: "1px solid rgba(100,116,139,0.3)", color: "#94a3b8" }}>MUDAH</span>
+            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.4)", color: "#86efac" }}>MUDAH</span>
         </div>
         <CircuitDiagram05 a={inputA} b={inputB} c={inputC} andOut={andOut} out={out} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} onToggleC={() => setInputC(v => !v)} />
         <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "10px 0 8px", fontFamily: "Orbitron,sans-serif", fontSize: 10, color: "#475569" }}>
