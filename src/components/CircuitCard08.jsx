@@ -37,8 +37,22 @@ export default function CircuitCard08() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: isActive ? themeColor : "#334155", boxShadow: isActive ? `0 0 8px ${themeColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: isActive ? themeColor : "#e2e8f0" }}>Full Adder</span>
             </div>
-            <span className="hard-badge-08" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, color: "#e2e8f0" }}>HARD</span>
-        </div>
+            <span className="badge-hard-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(250,204,21,0.2), rgba(74,222,128,0.15), rgba(167,139,250,0.2))", border: "1px solid rgba(250,204,21,0.35)", color: "#e2e8f0", position: "relative", overflow: "hidden", display: "inline-block" }}>HARD
+                <style>{`
+                    .badge-hard-shimmer::after {
+                        content: "";
+                        position: absolute;
+                        top: 0; left: -100%; width: 60%; height: 100%;
+                        background: linear-gradient(90deg, transparent, rgba(250,204,21,0.3), transparent);
+                        animation: badge-hard-shimmer-sweep 3s ease-in-out infinite;
+                    }
+                    @keyframes badge-hard-shimmer-sweep {
+                        0% { left: -100%; }
+                        50% { left: 150%; }
+                        100% { left: 150%; }
+                    }
+                `}</style></span>
+            </div>
 
         <CircuitDiagram08 a={inputA} b={inputB} cin={inputCin} s1={s1} c1={c1} sum={sum} c2={c2} cout={cout} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} onToggleCin={() => setInputCin(v => !v)} />
 
@@ -82,21 +96,4 @@ export default function CircuitCard08() {
     </div>;
 }
 
-// Hanya badge HARD yang boleh punya animasi kilauan gradient
-if (typeof document !== 'undefined' && !document.getElementById('hard-badge-08-style')) {
-    const s = document.createElement('style');
-    s.id = 'hard-badge-08-style';
-    s.textContent = `
-        .hard-badge-08 {
-            background: linear-gradient(135deg, rgba(250,204,21,0.45), rgba(74,222,128,0.45), rgba(167,139,250,0.45));
-            background-size: 200% 200%;
-            animation: hard-badge-flow-08 4s ease infinite;
-        }
-        @keyframes hard-badge-flow-08 {
-            0%   { background-position: 0% 50%; }
-            50%  { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-    `;
-    document.head.appendChild(s);
-}
+
