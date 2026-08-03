@@ -11,22 +11,32 @@ import CircuitCard07 from '../components/CircuitCard07';
 import CircuitCard08 from '../components/CircuitCard08';
 
 const ALL_CARDS = [
-    { num: '00', name: 'Simbol Boolean', el: CircuitCard00 },
-    { num: '01', name: 'NOT AND Combo', el: CircuitCard01 },
-    { num: '02', name: 'Buffer Negasi Ganda', el: CircuitCard02 },
-    { num: '03', name: 'Bangun NAND Manual', el: CircuitCard03 },
-    { num: '04', name: 'Bangun NOR Manual', el: CircuitCard04 },
-    { num: '05', name: 'Gerbang 3 Input Sederhana', el: CircuitCard05 },
-    { num: '06', name: 'Half Adder', el: CircuitCard06 },
-    { num: '07', name: 'Membangun XOR dari Gate Dasar', el: CircuitCard07 },
-    { num: '08', name: 'Full Adder', el: CircuitCard08 },
+    { num: '00', name: 'Simbol Boolean', tier: 'TUTORIAL', el: CircuitCard00 },
+    { num: '01', name: 'NOT AND Combo', tier: 'EASY', el: CircuitCard01 },
+    { num: '02', name: 'Buffer Negasi Ganda', tier: 'EASY', el: CircuitCard02 },
+    { num: '03', name: 'Bangun NAND Manual', tier: 'EASY', el: CircuitCard03 },
+    { num: '04', name: 'Bangun NOR Manual', tier: 'EASY', el: CircuitCard04 },
+    { num: '05', name: 'Gerbang 3 Input Sederhana', tier: 'EASY', el: CircuitCard05 },
+    { num: '06', name: 'Half Adder', tier: 'NORMAL', el: CircuitCard06 },
+    { num: '07', name: 'Membangun XOR dari Gate Dasar', tier: 'NORMAL', el: CircuitCard07 },
+    { num: '08', name: 'Full Adder', tier: 'HARD', el: CircuitCard08 },
 ];
+
+const TIERS = [
+    { label: 'EASY', bg: 'rgba(34,197,94,0.18)', border: 'rgba(34,197,94,0.4)', color: '#86efac', glow: '0 0 12px rgba(34,197,94,0.5)' },
+    { label: 'NORMAL', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.35)', color: '#facc15', glow: '0 0 12px rgba(250,204,21,0.5)' },
+    { label: 'HARD', bg: 'rgba(227,11,93,0.18)', border: 'rgba(227,11,93,0.4)', color: '#fda4af', glow: '0 0 12px rgba(227,11,93,0.5)' },
+    { label: 'INSANE', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.4)', color: '#c4b5fd', glow: '0 0 12px rgba(168,85,247,0.5)' },
+];
+
+const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, cursor: "pointer", transition: "all 0.3s ease", border: "none", whiteSpace: "nowrap" };
 
 const backBtnStyle = { display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #1e293b", color: "#64748b", cursor: "pointer", fontFamily: "Inter,sans-serif", fontSize: 13, fontWeight: 600, transition: "color 0.2s" };
 
 export default function LogicGatesCircuit({ setPage }) {
     const [query, setQuery] = useState("");
     const [cardNum, setCardNum] = useState("");
+    const [activeTier, setActiveTier] = useState(null);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -35,11 +45,14 @@ export default function LogicGatesCircuit({ setPage }) {
         return ALL_CARDS.filter(card => {
             const matchSearch = !q || card.name.toLowerCase().includes(q) || card.num === q;
             const matchNum = !cn || card.num === cn || card.num === padded;
-            return matchSearch && matchNum;
+            const matchTier = !activeTier || card.tier === activeTier;
+            return matchSearch && matchNum && matchTier;
         });
-    }, [query, cardNum]);
+    }, [query, cardNum, activeTier]);
 
-    const hasFilter = query.trim() || cardNum.trim();
+    const hasFilter = query.trim() || cardNum.trim() || activeTier;
+
+    const handleClear = () => { setQuery(""); setCardNum(""); setActiveTier(null); };
 
     return (
         <div style={{ width: "100%", maxWidth: 500 }}>
@@ -86,7 +99,7 @@ export default function LogicGatesCircuit({ setPage }) {
                         }}
                     />
                     <button
-                        onClick={() => { setQuery(""); setCardNum(""); }}
+                        onClick={handleClear}
                         style={{
                             fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1,
                             padding: "4px 12px", borderRadius: 6, cursor: "pointer",
@@ -96,7 +109,27 @@ export default function LogicGatesCircuit({ setPage }) {
                     >CLEAR</button>
                 </div>
 
-                {/* Semua card termasuk Card 00 — difilter oleh search */}
+                {/* Tier filter labels */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                    {TIERS.map(t => {
+                        const isActive = activeTier === t.label;
+                        return (
+                            <button
+                                key={t.label}
+                                onClick={() => setActiveTier(isActive ? null : t.label)}
+                                style={{
+                                    ...badgeBase,
+                                    backgroundColor: isActive ? t.bg : "rgba(148,163,184,0.08)",
+                                    border: isActive ? `1px solid ${t.border}` : "1px solid rgba(148,163,184,0.2)",
+                                    color: isActive ? t.color : "#64748b",
+                                    boxShadow: isActive ? t.glow : "none",
+                                }}
+                            >{t.label}</button>
+                        );
+                    })}
+                </div>
+
+                {/* Cards — difilter */}
                 {filtered.map(card => <card.el key={card.num} />)}
                 {hasFilter && filtered.length === 0 && (
                     <div style={{ textAlign: "center", padding: "32px 0", color: "#475569", fontFamily: "Inter,sans-serif", fontSize: 13 }}>
