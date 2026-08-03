@@ -37,19 +37,20 @@ export default function CircuitCard08() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: isActive ? themeColor : "#334155", boxShadow: isActive ? `0 0 8px ${themeColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: isActive ? themeColor : "#e2e8f0" }}>Full Adder</span>
             </div>
-            <span className="badge-hard-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(250,204,21,0.2), rgba(74,222,128,0.15), rgba(167,139,250,0.2))", border: "1px solid rgba(250,204,21,0.35)", color: "#e2e8f0", position: "relative", overflow: "hidden", display: "inline-block" }}>HARD
+            <span className="badge-hard-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "rgba(227,11,93,0.18)", border: "1px solid rgba(227,11,93,0.4)", color: "#fda4af", position: "relative", overflow: "hidden", display: "inline-block" }}>HARD
                 <style>{`
                     .badge-hard-shimmer::after {
                         content: "";
                         position: absolute;
-                        top: 0; left: -100%; width: 60%; height: 100%;
-                        background: linear-gradient(90deg, transparent, rgba(250,204,21,0.3), transparent);
-                        animation: badge-hard-shimmer-sweep 3s ease-in-out infinite;
+                        width: 100%;
+                        height: 100%;
+                        background: linear-gradient(135deg, transparent 30%, rgba(227,11,93,0.35) 50%, transparent 70%);
+                        background-size: 200% 200%;
+                        animation: badge-hard-shimmer-sweep 3s linear infinite;
                     }
                     @keyframes badge-hard-shimmer-sweep {
-                        0% { left: -100%; }
-                        50% { left: 150%; }
-                        100% { left: 150%; }
+                        0% { background-position: 0% 100%; }
+                        100% { background-position: 100% 0%; }
                     }
                 `}</style></span>
             </div>
