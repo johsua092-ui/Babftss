@@ -42,15 +42,14 @@ export default function CircuitCard08() {
                     .badge-hard-shimmer::after {
                         content: "";
                         position: absolute;
-                        width: 100%;
-                        height: 100%;
-                        background: linear-gradient(135deg, transparent 30%, rgba(227,11,93,0.35) 50%, transparent 70%);
-                        background-size: 200% 200%;
-                        animation: badge-hard-shimmer-sweep 3s linear infinite;
+                        width: 50%;
+                        height: 300%;
+                        background: linear-gradient(90deg, transparent, rgba(227,11,93,0.35), transparent);
+                        animation: badge-hard-shimmer-sweep 3s ease-in-out infinite;
                     }
                     @keyframes badge-hard-shimmer-sweep {
-                        0% { background-position: 0% 100%; }
-                        100% { background-position: 100% 0%; }
+                        0% { left: -50%; top: 80%; }
+                        100% { left: 100%; top: -200%; }
                     }
                 `}</style></span>
             </div>
