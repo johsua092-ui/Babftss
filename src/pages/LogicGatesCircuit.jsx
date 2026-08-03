@@ -85,6 +85,15 @@ export default function LogicGatesCircuit({ setPage }) {
                             boxSizing: "border-box",
                         }}
                     />
+                    <button
+                        onClick={() => { setQuery(""); setCardNum(""); }}
+                        style={{
+                            fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                            padding: "4px 12px", borderRadius: 6, cursor: "pointer",
+                            backgroundColor: "rgba(236,72,153,0.15)", border: "1px solid rgba(236,72,153,0.4)",
+                            color: "#f9a8d4", whiteSpace: "nowrap",
+                        }}
+                    >CLEAR</button>
                 </div>
 
                 {/* Semua card termasuk Card 00 — difilter oleh search */}
