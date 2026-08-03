@@ -10,7 +10,8 @@ import CircuitCard06 from '../components/CircuitCard06';
 import CircuitCard07 from '../components/CircuitCard07';
 import CircuitCard08 from '../components/CircuitCard08';
 
-const SEARCHABLE = [
+const ALL_CARDS = [
+    { num: '00', name: 'Simbol Boolean', el: CircuitCard00 },
     { num: '01', name: 'NOT AND Combo', el: CircuitCard01 },
     { num: '02', name: 'Buffer Negasi Ganda', el: CircuitCard02 },
     { num: '03', name: 'Bangun NAND Manual', el: CircuitCard03 },
@@ -30,9 +31,10 @@ export default function LogicGatesCircuit({ setPage }) {
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         const cn = cardNum.trim();
-        return SEARCHABLE.filter(card => {
+        const padded = cn ? cn.padStart(2, '0') : '';
+        return ALL_CARDS.filter(card => {
             const matchSearch = !q || card.name.toLowerCase().includes(q) || card.num === q;
-            const matchNum = !cn || card.num === cn;
+            const matchNum = !cn || card.num === cn || card.num === padded;
             return matchSearch && matchNum;
         });
     }, [query, cardNum]);
@@ -54,9 +56,6 @@ export default function LogicGatesCircuit({ setPage }) {
             <p style={{ fontFamily: "Inter,sans-serif", fontSize: 12, color: "#475569", marginBottom: 20, lineHeight: 1.6 }}>Gabungan beberapa gerbang logika yang saling terhubung membentuk rangkaian kompleks. Pelajari bagaimana sinyal mengalir melewati lebih dari satu gerbang.</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Card 00 — selalu tampil */}
-                <CircuitCard00 />
-
                 {/* Search bar + card number — di bawah Card 0 */}
                 <div style={{ paddingTop: 4 }}>
                     <div style={{ position: "relative", marginBottom: 6 }}>
@@ -91,7 +90,7 @@ export default function LogicGatesCircuit({ setPage }) {
                     </div>
                 </div>
 
-                {/* Card 01–08 — difilter oleh search */}
+                {/* Semua card termasuk Card 00 — difilter oleh search */}
                 {filtered.map(card => <card.el key={card.num} />)}
                 {hasFilter && filtered.length === 0 && (
                     <div style={{ textAlign: "center", padding: "32px 0", color: "#475569", fontFamily: "Inter,sans-serif", fontSize: 13 }}>
