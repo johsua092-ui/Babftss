@@ -100,14 +100,14 @@ export default function CircuitCard00() {
                     <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg, #94a3b8, #e2e8f0, #94a3b8)" }} />
                     <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, background: "linear-gradient(135deg, #94a3b8, #e2e8f0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Simbol Boolean</span>
                 </div>
-                <span className="badge-tutorial-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(148,163,184,0.2), rgba(226,232,240,0.15))", border: "1px solid rgba(148,163,184,0.35)", color: "#cbd5e1", position: "relative", overflow: "hidden", display: "inline-block" }}>TUTORIAL</span>
+                <span className="badge-tutorial-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "linear-gradient(135deg, rgba(148,163,184,0.2), rgba(226,232,240,0.15))", border: "1px solid rgba(148,163,184,0.35)", color: "#94a3b8", position: "relative", overflow: "hidden", display: "inline-block" }}>TUTORIAL</span>
                 <style>{`
                     .badge-tutorial-shimmer::after {
                         content: "";
                         position: absolute;
                         top: 0; left: -100%; width: 60%; height: 100%;
                         background: linear-gradient(90deg, transparent, rgba(226,232,240,0.25), transparent);
-                        animation: badge-shimmer-sweep 3s ease-in-out infinite;
+                        animation: badge-shimmer-sweep 6s ease-in-out infinite;
                     }
                     @keyframes badge-shimmer-sweep {
                         0% { left: -100%; }
