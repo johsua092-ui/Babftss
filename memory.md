@@ -537,7 +537,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 **Pelajaran untuk ke depan:** mode otonom penuh tetap butuh titik-titik pemeriksaan eksplisit yang re-checked di setiap unit kerja (per-card), bukan cuma dipahami sekali di awal sesi — pemahaman di awal gampang "luntur" kalau sesi kerjanya panjang dan berturut-turut.
 
 **Verifikasi penghapusan (Claude, sesi terpisah):**
-- File `CircuitCard08.jsx`, `CircuitDiagram08.jsx`, `CircuitCard09.jsx`, `CircuitDiagram09.jsx` — KONFIRMASI TIDAK ADA di repo (tidak pernah ter-commit di branch ini).
-- `LogicGatesCircuit.jsx` — KONFIRMASI BERSIH, tidak ada import/render Card08/Card09.
+- File `CircuitCard08.jsx`, `CircuitDiagram08.jsx`, `CircuitCard09.jsx`, `CircuitDiagram09.jsx` — KONFIRMASI DIHAPUS dari repo (file-nya ada di remote hasil commit Qwen, sudah di-pull lalu di-delete).
+- `LogicGatesCircuit.jsx` — KONFIRMASI BERSIH: import Card08/Card09 dihapus, render `<CircuitCard08 />` dan `<CircuitCard09 />` dihapus. Urutan akhir: Card00, 01, 02, 03, 04, 05, 06, 07.
 - Card 00-07 TIDAK disentuh.
 - Status roadmap terkini: A1-A7 selesai & terverifikasi, A8 "Full Adder" KEMBALI ke status "belum dikerjakan" — akan dikerjakan ulang nanti mengikuti pola card-wrapper standar + `design.md` Bagian 3.3, bukan gaya bebas seperti percobaan pertama yang dihapus.
