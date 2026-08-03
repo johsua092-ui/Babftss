@@ -100,7 +100,7 @@ export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onT
     </Fragment>;
 
     // Helper: right-angle wire
-    const W = (d, val, col) => <path d={d} fill="none" stroke={wc(val, col)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
+    const W = ({ d, val, col }) => <path d={d} fill="none" stroke={wc(val, col)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
