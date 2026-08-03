@@ -48,8 +48,8 @@ export default function CircuitCard08() {
                         animation: badge-hard-shimmer-sweep 3s ease-in-out infinite;
                     }
                     @keyframes badge-hard-shimmer-sweep {
-                        0% { left: -50%; top: 80%; }
-                        100% { left: 100%; top: -200%; }
+                        0% { left: -50%; top: 0%; }
+                        100% { left: 100%; top: 0%; }
                     }
                 `}</style></span>
             </div>
