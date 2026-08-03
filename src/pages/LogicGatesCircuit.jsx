@@ -120,30 +120,21 @@ export default function LogicGatesCircuit({ setPage }) {
                         pointer-events: none;
                     }
                     @keyframes tier-shimmer-hard { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
-                    .tier-btn-insane-active {
-                        animation: insane-flicker 0.12s infinite alternate;
-                    }
                     .tier-btn-insane-active::after {
                         content: ""; position: absolute; inset: 0; border-radius: 6px;
-                        background:
-                            linear-gradient(130deg, transparent 41%, rgba(168,85,247,0.9) 41.5%, rgba(168,85,247,0.9) 42%, transparent 42.5%),
-                            linear-gradient(47deg, transparent 24%, rgba(139,92,246,0.85) 24.5%, rgba(139,92,246,0.85) 25%, transparent 25.5%),
-                            linear-gradient(158deg, transparent 61%, rgba(192,132,252,0.9) 61.5%, rgba(192,132,252,0.9) 62%, transparent 62.5%),
-                            linear-gradient(95deg, transparent 14%, rgba(168,85,247,0.8) 14.5%, rgba(168,85,247,0.8) 15%, transparent 15.5%),
-                            linear-gradient(172deg, transparent 77%, rgba(139,92,246,0.85) 77.5%, rgba(139,92,246,0.85) 78%, transparent 78.5%),
-                            linear-gradient(110deg, transparent 50%, rgba(192,132,252,0.7) 50.3%, rgba(192,132,252,0.7) 50.6%, transparent 51%),
-                            linear-gradient(85deg, transparent 35%, rgba(168,85,247,0.75) 35.3%, rgba(168,85,247,0.75) 35.6%, transparent 36%);
-                        animation: crack-pulse 0.8s steps(2) infinite;
+                        background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20100%2040%27%3E%3Cpath%20d%3D%27M5%2C22%20L12%2C19%20L16%2C23%20L24%2C16%20L28%2C21%20L36%2C13%20L40%2C19%20L50%2C11%20L55%2C17%20L62%2C21%20L70%2C15%20L78%2C19%20L85%2C23%20L95%2C20%27%20stroke%3D%27rgba%28168%2C85%2C247%2C0.95%29%27%20stroke-width%3D%272%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M24%2C16%20L27%2C10%20L24%2C5%20L29%2C2%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.85%29%27%20stroke-width%3D%271.2%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M40%2C19%20L43%2C25%20L40%2C30%20L45%2C35%20L43%2C39%27%20stroke%3D%27rgba%28139%2C92%2C246%2C0.85%29%27%20stroke-width%3D%271.2%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M55%2C17%20L58%2C9%20L55%2C4%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.7%29%27%20stroke-width%3D%271%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M62%2C21%20L65%2C27%20L62%2C32%20L66%2C37%27%20stroke%3D%27rgba%28168%2C85%2C247%2C0.65%29%27%20stroke-width%3D%270.8%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M36%2C13%20L39%2C7%20L36%2C2%27%20stroke%3D%27rgba%28139%2C92%2C246%2C0.65%29%27%20stroke-width%3D%270.8%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M70%2C15%20L73%2C9%20L70%2C5%27%20stroke%3D%27rgba%28192%2C132%2C252%2C0.55%29%27%20stroke-width%3D%270.7%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3Cpath%20d%3D%27M12%2C19%20L14%2C13%20L11%2C8%27%20stroke%3D%27rgba%28168%2C85%2C247%2C0.55%29%27%20stroke-width%3D%270.7%27%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%2F%3E%3C%2Fsvg%3E");
+                        background-size: 100% 100%;
+                        background-position: center;
+                        background-repeat: no-repeat;
+                        filter: drop-shadow(0 0 2px rgba(168,85,247,0.8)) drop-shadow(0 0 4px rgba(139,92,246,0.4));
+                        animation: crack-spread 2.5s ease-out infinite;
                         pointer-events: none;
                     }
-                    @keyframes insane-flicker {
-                        0% { box-shadow: 0 0 8px rgba(168,85,247,0.6), 0 0 2px rgba(139,92,246,0.8); }
-                        50% { box-shadow: 0 0 16px rgba(168,85,247,0.9), 0 0 4px rgba(139,92,246,1); }
-                        100% { box-shadow: 0 0 6px rgba(168,85,247,0.5), 0 0 1px rgba(139,92,246,0.6); }
-                    }
-                    @keyframes crack-pulse {
-                        0%, 49% { opacity: 1; }
-                        50%, 100% { opacity: 0.15; }
+                    @keyframes crack-spread {
+                        0% { opacity: 0; transform: scale(0.15); }
+                        25% { opacity: 1; transform: scale(1); }
+                        75% { opacity: 1; transform: scale(1); }
+                        100% { opacity: 0; transform: scale(1.05); }
                     }
                     .tier-btn-complex-active::before {
                         content: ""; position: absolute; inset: -1px; border-radius: 6px;
