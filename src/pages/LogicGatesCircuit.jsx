@@ -56,38 +56,35 @@ export default function LogicGatesCircuit({ setPage }) {
             <p style={{ fontFamily: "Inter,sans-serif", fontSize: 12, color: "#475569", marginBottom: 20, lineHeight: 1.6 }}>Gabungan beberapa gerbang logika yang saling terhubung membentuk rangkaian kompleks. Pelajari bagaimana sinyal mengalir melewati lebih dari satu gerbang.</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Search bar + card number — dibungkus label silver */}
-                <div style={{ backgroundColor: "rgba(148,163,184,0.06)", border: "1px solid rgba(148,163,184,0.2)", borderRadius: 16, padding: "14px 16px" }}>
-                    <div style={{ position: "relative", marginBottom: 6 }}>
-                        <Search size={18} color="#64748b" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-                        <input
-                            type="text"
-                            placeholder="Cari circuit..."
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            style={{
-                                width: "100%", height: 46, borderRadius: 14, backgroundColor: "#252836",
-                                border: "none", outline: "none", padding: "0 16px 0 42px",
-                                fontFamily: "Inter,sans-serif", fontSize: 14, color: "#e2e8f0",
-                                boxSizing: "border-box",
-                            }}
-                        />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontFamily: "Inter,sans-serif", fontSize: 12, color: "#475569", whiteSpace: "nowrap" }}>card number =</span>
-                        <input
-                            type="text"
-                            placeholder="..."
-                            value={cardNum}
-                            onChange={e => setCardNum(e.target.value.replace(/[^0-9]/g, ""))}
-                            style={{
-                                width: 60, height: 30, borderRadius: 8, backgroundColor: "#252836",
-                                border: "none", outline: "none", padding: "0 10px",
-                                fontFamily: "Orbitron,sans-serif", fontSize: 12, color: "#e2e8f0",
-                                boxSizing: "border-box",
-                            }}
-                        />
-                    </div>
+                <div style={{ position: "relative", marginBottom: 6 }}>
+                    <Search size={18} color="#64748b" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                    <input
+                        type="text"
+                        placeholder="Cari circuit..."
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                        style={{
+                            width: "100%", height: 46, borderRadius: 14, backgroundColor: "#252836",
+                            border: "none", outline: "none", padding: "0 16px 0 42px",
+                            fontFamily: "Inter,sans-serif", fontSize: 14, color: "#e2e8f0",
+                            boxSizing: "border-box",
+                        }}
+                    />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(148,163,184,0.15)", border: "1px solid rgba(148,163,184,0.3)", color: "#cbd5e1", whiteSpace: "nowrap" }}>card number =</span>
+                    <input
+                        type="text"
+                        placeholder="..."
+                        value={cardNum}
+                        onChange={e => setCardNum(e.target.value.replace(/[^0-9]/g, ""))}
+                        style={{
+                            width: 60, height: 30, borderRadius: 8, backgroundColor: "#252836",
+                            border: "none", outline: "none", padding: "0 10px",
+                            fontFamily: "Orbitron,sans-serif", fontSize: 12, color: "#e2e8f0",
+                            boxSizing: "border-box",
+                        }}
+                    />
                 </div>
 
                 {/* Semua card termasuk Card 00 — difilter oleh search */}
