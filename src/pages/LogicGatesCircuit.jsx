@@ -27,6 +27,7 @@ const TIERS = [
     { label: 'NORMAL', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.35)', color: '#facc15', dimColor: '#eab308', glow: '0 0 12px rgba(250,204,21,0.5)', shimmer: false },
     { label: 'HARD', bg: 'rgba(227,11,93,0.18)', border: 'rgba(227,11,93,0.4)', color: '#fda4af', dimColor: '#E30B5D', glow: '0 0 12px rgba(227,11,93,0.5)', shimmer: true, shimmerColor: '227,11,93' },
     { label: 'INSANE', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.4)', color: '#c4b5fd', dimColor: '#a855f7', glow: '0 0 12px rgba(168,85,247,0.5)', shimmer: true, shimmerColor: '168,85,247' },
+    { label: 'COMPLEX', bg: 'rgba(100,116,139,0.2)', border: 'rgba(148,163,184,0.5)', color: '#e2e8f0', dimColor: '#94a3b8', glow: '0 0 12px rgba(148,163,184,0.5), 0 0 4px rgba(148,163,184,0.3)', shimmer: false, lightning: true },
 ];
 
 const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, cursor: "pointer", transition: "all 0.3s ease", border: "none", whiteSpace: "nowrap" };
@@ -111,7 +112,7 @@ export default function LogicGatesCircuit({ setPage }) {
 
                 {/* Tier filter labels */}
                 <style>{`
-                    .tier-btn-hard-active, .tier-btn-insane-active { position: relative; overflow: hidden; }
+                    .tier-btn-hard-active, .tier-btn-insane-active, .tier-btn-complex-active { position: relative; overflow: hidden; }
                     .tier-btn-hard-active::after, .tier-btn-insane-active::after {
                         content: ""; position: absolute; width: 50%; height: 300%;
                         background: linear-gradient(90deg, transparent, rgba(227,11,93,0.35), transparent);
@@ -124,11 +125,19 @@ export default function LogicGatesCircuit({ setPage }) {
                     }
                     @keyframes tier-shimmer-hard { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
                     @keyframes tier-shimmer-insane { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
+                    .tier-btn-complex-active::before {
+                        content: ""; position: absolute; inset: -1px; border-radius: 6px;
+                        background: conic-gradient(from var(--lightning-angle, 0deg), transparent 0%, rgba(148,163,184,0.7) 1.5%, transparent 3%, transparent 28%, rgba(200,220,240,0.9) 30%, transparent 32%, transparent 58%, rgba(148,163,184,0.6) 60%, transparent 62%, transparent 100%);
+                        animation: lightning-rotate 1.8s linear infinite;
+                        pointer-events: none;
+                    }
+                    @keyframes lightning-rotate { 0% { --lightning-angle: 0deg; } 100% { --lightning-angle: 360deg; } }
+                    @property --lightning-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
                 `}</style>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
                     {TIERS.map(t => {
                         const isActive = activeTier === t.label;
-                        const shimmerClass = isActive && t.shimmer ? `tier-btn-${t.label.toLowerCase()}-active` : "";
+                        const shimmerClass = isActive && t.shimmer ? `tier-btn-${t.label.toLowerCase()}-active` : (isActive && t.lightning ? `tier-btn-${t.label.toLowerCase()}-active` : "");
                         return (
                             <button
                                 key={t.label}
