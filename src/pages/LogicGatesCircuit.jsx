@@ -26,7 +26,7 @@ const TIERS = [
     { label: 'EASY', bg: 'rgba(34,197,94,0.18)', border: 'rgba(34,197,94,0.4)', color: '#86efac', dimColor: '#4ade80', glow: '0 0 12px rgba(34,197,94,0.5)', shimmer: false },
     { label: 'NORMAL', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.35)', color: '#facc15', dimColor: '#eab308', glow: '0 0 12px rgba(250,204,21,0.5)', shimmer: false },
     { label: 'HARD', bg: 'rgba(227,11,93,0.18)', border: 'rgba(227,11,93,0.4)', color: '#fda4af', dimColor: '#E30B5D', glow: '0 0 12px rgba(227,11,93,0.5)', shimmer: true, shimmerColor: '227,11,93' },
-    { label: 'INSANE', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.4)', color: '#c4b5fd', dimColor: '#a855f7', glow: '0 0 12px rgba(168,85,247,0.5)', shimmer: true, shimmerColor: '168,85,247' },
+    { label: 'INSANE', bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.4)', color: '#c4b5fd', dimColor: '#a855f7', glow: '0 0 12px rgba(168,85,247,0.5)', shimmer: false, crack: true },
     { label: 'COMPLEX', bg: 'rgba(100,116,139,0.2)', border: 'rgba(148,163,184,0.5)', color: '#e2e8f0', dimColor: '#94a3b8', glow: '0 0 12px rgba(148,163,184,0.5), 0 0 4px rgba(148,163,184,0.3)', shimmer: false, lightning: true },
 ];
 
@@ -113,18 +113,41 @@ export default function LogicGatesCircuit({ setPage }) {
                 {/* Tier filter labels */}
                 <style>{`
                     .tier-btn-hard-active, .tier-btn-insane-active, .tier-btn-complex-active { position: relative; overflow: hidden; }
-                    .tier-btn-hard-active::after, .tier-btn-insane-active::after {
+                    .tier-btn-hard-active::after {
                         content: ""; position: absolute; width: 50%; height: 300%;
                         background: linear-gradient(90deg, transparent, rgba(227,11,93,0.35), transparent);
                         animation: tier-shimmer-hard 3s ease-in-out infinite;
                         pointer-events: none;
                     }
-                    .tier-btn-insane-active::after {
-                        background: linear-gradient(90deg, transparent, rgba(168,85,247,0.35), transparent);
-                        animation: tier-shimmer-insane 3s ease-in-out infinite;
-                    }
                     @keyframes tier-shimmer-hard { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
-                    @keyframes tier-shimmer-insane { 0% { left: -50%; top: 0%; } 100% { left: 100%; top: 0%; } }
+                    .tier-btn-insane-active {
+                        animation: insane-flicker 0.12s infinite alternate, insane-jitter 0.25s infinite;
+                    }
+                    .tier-btn-insane-active::after {
+                        content: ""; position: absolute; inset: 0; border-radius: 6px;
+                        background:
+                            linear-gradient(130deg, transparent 42%, rgba(168,85,247,0.7) 42.5%, transparent 43%, transparent 100%),
+                            linear-gradient(47deg, transparent 25%, rgba(139,92,246,0.6) 25.3%, transparent 25.6%),
+                            linear-gradient(158deg, transparent 62%, rgba(192,132,252,0.7) 62.2%, transparent 62.5%),
+                            linear-gradient(95deg, transparent 15%, rgba(168,85,247,0.5) 15.3%, transparent 15.6%),
+                            linear-gradient(172deg, transparent 78%, rgba(139,92,246,0.6) 78.2%, transparent 78.5%);
+                        animation: crack-pulse 1.2s ease-in-out infinite alternate;
+                        pointer-events: none;
+                    }
+                    @keyframes insane-flicker {
+                        0% { box-shadow: 0 0 8px rgba(168,85,247,0.6), 0 0 2px rgba(139,92,246,0.8), inset 0 0 4px rgba(168,85,247,0.2); }
+                        50% { box-shadow: 0 0 18px rgba(168,85,247,0.9), 0 0 5px rgba(139,92,246,1), inset 0 0 8px rgba(168,85,247,0.3); }
+                        100% { box-shadow: 0 0 5px rgba(168,85,247,0.4), 0 0 1px rgba(139,92,246,0.5), inset 0 0 2px rgba(168,85,247,0.1); }
+                    }
+                    @keyframes insane-jitter {
+                        0%, 100% { transform: translate(0, 0); }
+                        25% { transform: translate(0.5px, -0.5px); }
+                        50% { transform: translate(-0.5px, 0.5px); }
+                        75% { transform: translate(0.3px, 0.3px); }
+                    }
+                    @keyframes crack-pulse {
+                        0% { opacity: 0.3; } 30% { opacity: 1; } 60% { opacity: 0.6; } 100% { opacity: 0.9; }
+                    }
                     .tier-btn-complex-active::before {
                         content: ""; position: absolute; inset: -1px; border-radius: 6px;
                         background: conic-gradient(from var(--lightning-angle, 0deg), transparent 0%, rgba(148,163,184,0.7) 1.5%, transparent 3%, transparent 28%, rgba(200,220,240,0.9) 30%, transparent 32%, transparent 58%, rgba(148,163,184,0.6) 60%, transparent 62%, transparent 100%);
@@ -137,11 +160,11 @@ export default function LogicGatesCircuit({ setPage }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
                     {TIERS.map(t => {
                         const isActive = activeTier === t.label;
-                        const shimmerClass = isActive && t.shimmer ? `tier-btn-${t.label.toLowerCase()}-active` : (isActive && t.lightning ? `tier-btn-${t.label.toLowerCase()}-active` : "");
+                        const animClass = isActive && (t.shimmer || t.crack || t.lightning) ? `tier-btn-${t.label.toLowerCase()}-active` : "";
                         return (
                             <button
                                 key={t.label}
-                                className={shimmerClass}
+                                className={animClass}
                                 onClick={() => setActiveTier(isActive ? null : t.label)}
                                 style={{
                                     ...badgeBase,
