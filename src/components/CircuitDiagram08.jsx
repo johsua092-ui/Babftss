@@ -42,7 +42,7 @@ export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onT
     const and2EX = and2SX + and1W + and1AR;
 
     // --- Stage 3: OR (COUT = c1 OR c2) ---
-    const orSX = 365, orMY = 200;
+    const orSX = 365, orMY = 196;
     const orTY = orMY - 14, orBY = orMY + 14;
     const orEX = orSX + 45;
 
