@@ -10,7 +10,7 @@ export default function HeartButton() {
             style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginRight: 6, flexShrink: 0, transition: 'transform 0.2s',
+                marginRight: 10, flexShrink: 0, transition: 'transform 0.2s',
             }}
             onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
             onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
