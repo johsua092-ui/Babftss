@@ -18,8 +18,8 @@ const ALL_CARDS = [
     { num: '04', name: 'Bangun NOR Manual', tier: 'EASY', el: CircuitCard04 },
     { num: '05', name: 'Gerbang 3 Input Sederhana', tier: 'EASY', el: CircuitCard05 },
     { num: '06', name: 'Gerbang 4 Input Lanjutan', tier: 'NORMAL', el: CircuitCard06 },
-    { num: '07', name: 'Half Adder', tier: 'NORMAL', el: CircuitCard07 },
-    { num: '08', name: 'Membangun XOR dari Gate Dasar', tier: 'NORMAL', el: CircuitCard08 },
+    { num: '07', name: 'Membangun XOR dari Gate Dasar', tier: 'NORMAL', el: CircuitCard08 },
+    { num: '08', name: 'Half Adder', tier: 'NORMAL', el: CircuitCard07 },
     { num: '09', name: 'Full Adder', tier: 'HARD', el: CircuitCard09 },
     { num: '10', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard10 },
 ];
