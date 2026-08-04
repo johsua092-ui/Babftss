@@ -11,42 +11,44 @@ const gates = [
 ];
 
 function MiniGateIcon({ type, color }) {
-    const f = "none", s = color, sw = 1.8;
-    const w = 52, h = 28, cx = 28, cy = 14;
+    const s = color, sw = 2;
+    const w = 60, h = 32, cx = 8, cy = 16, sz = 13;
+    const glow = `drop-shadow(0 0 3px ${color})`;
+    const inner = sz - 2;
     switch (type) {
-        case "NOT":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <polygon points={`${cx},${cy-11} ${cx},${cy+11} ${cx+16},${cy}`} fill={f} stroke={s} strokeWidth={sw} />
-                <circle cx={cx+19} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+        case "not":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <polygon points={`${cx},${cy-sz} ${cx},${cy+sz} ${cx+inner},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <circle cx={cx+inner+4} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
             </svg>;
-        case "AND":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <path d={`M ${cx},${cy-11} L ${cx+12},${cy-11} A 11,11 0 0,1 ${cx+12},${cy+11} L ${cx},${cy+11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+        case "and":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <path d={`M ${cx},${cy-sz} L ${cx+sz},${cy-sz} A ${sz},${sz} 0 0,1 ${cx+sz},${cy+sz} L ${cx},${cy+sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
             </svg>;
-        case "NAND":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <path d={`M ${cx},${cy-11} L ${cx+10},${cy-11} A 11,11 0 0,1 ${cx+10},${cy+11} L ${cx},${cy+11} Z`} fill={f} stroke={s} strokeWidth={sw} />
-                <circle cx={cx+24} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+        case "nand":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <path d={`M ${cx},${cy-sz} L ${cx+sz-2},${cy-sz} A ${sz},${sz} 0 0,1 ${cx+sz-2},${cy+sz} L ${cx},${cy+sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <circle cx={cx+sz*2+2} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
             </svg>;
-        case "OR":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <path d={`M ${cx},${cy-11} C ${cx+8},${cy-11} ${cx+18},${cy-6} ${cx+22},${cy} C ${cx+18},${cy+6} ${cx+8},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+        case "or":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
             </svg>;
-        case "NOR":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <path d={`M ${cx},${cy-11} C ${cx+6},${cy-11} ${cx+14},${cy-6} ${cx+18},${cy} C ${cx+14},${cy+6} ${cx+6},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
-                <circle cx={cx+22} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+        case "nor":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${cx+sz*1.5},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <circle cx={cx+sz*1.5+5} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
             </svg>;
-        case "XOR":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <path d={`M ${cx-4},${cy-11} C ${cx+3},${cy-7} ${cx+3},${cy+7} ${cx-4},${cy+11}`} fill="none" stroke={s} strokeWidth={sw} />
-                <path d={`M ${cx},${cy-11} C ${cx+6},${cy-11} ${cx+16},${cy-6} ${cx+20},${cy} C ${cx+16},${cy+6} ${cx+6},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+        case "xor":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <path d={`M ${cx-3},${cy-sz} Q ${cx+sz*0.7},${cy} ${cx-3},${cy+sz}`} fill="none" stroke={s} strokeWidth={sw} />
+                <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
             </svg>;
-        case "XNOR":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
-                <path d={`M ${cx-4},${cy-11} C ${cx+3},${cy-7} ${cx+3},${cy+7} ${cx-4},${cy+11}`} fill="none" stroke={s} strokeWidth={sw} />
-                <path d={`M ${cx},${cy-11} C ${cx+4},${cy-11} ${cx+12},${cy-6} ${cx+16},${cy} C ${cx+12},${cy+6} ${cx+4},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
-                <circle cx={cx+20} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+        case "xnor":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <path d={`M ${cx-3},${cy-sz} Q ${cx+sz*0.7},${cy} ${cx-3},${cy+sz}`} fill="none" stroke={s} strokeWidth={sw} />
+                <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${cx+sz*1.5},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <circle cx={cx+sz*1.5+5} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
             </svg>;
         default:
             return null;
