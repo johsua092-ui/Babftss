@@ -40,12 +40,12 @@ function MiniGateIcon({ type, color }) {
                 <circle cx={cx+sz*1.5+5} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
             </svg>;
         case "xor":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+            return <svg viewBox={`${cx-14} 0 ${w+14} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
                 <path d={`M ${cx-12},${cy-sz-1} Q ${cx+sz*0.3},${cy} ${cx-12},${cy+sz+1}`} fill="none" stroke={s} strokeWidth={sw} />
                 <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
             </svg>;
         case "xnor":
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+            return <svg viewBox={`${cx-14} 0 ${w+14} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
                 <path d={`M ${cx-12},${cy-sz-1} Q ${cx+sz*0.2},${cy} ${cx-12},${cy+sz+1}`} fill="none" stroke={s} strokeWidth={sw} />
                 <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${cx+sz*1.5},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={cx+sz*1.5+5} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
