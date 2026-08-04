@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import { Heart, ShieldAlert, CheckCircle2, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useFavoritesContext } from '../context/FavoritesContext';
 
@@ -49,6 +50,7 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
                 description: 'Fitur favorit cuma buat member yang udah login.',
                 duration: 4000,
                 position: 'top-center',
+                icon: <ShieldAlert size={18} color="#fca5a5" />,
                 style: {
                     background: '#1e293b',
                     border: '1px solid #f87171',
@@ -88,6 +90,7 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
                 toast.success('Ditambahkan ke favorit!', {
                     duration: 2000,
                     position: 'top-center',
+                    icon: <Heart size={18} color="#ff6eb4" fill="#ff6eb4" />,
                     style: {
                         background: '#1e293b',
                         border: '1px solid #ff6eb4',
@@ -98,6 +101,7 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
                 toast('Dihapus dari favorit', {
                     duration: 2000,
                     position: 'top-center',
+                    icon: <XCircle size={18} color="#94a3b8" />,
                     style: {
                         background: '#1e293b',
                         border: '1px solid #475569',
@@ -109,6 +113,7 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
             toast.error(err.message || 'Gagal nyimpen favorit', {
                 duration: 4000,
                 position: 'top-center',
+                icon: <ShieldAlert size={18} color="#fca5a5" />,
                 style: {
                     background: '#1e293b',
                     border: '1px solid #f87171',
