@@ -137,9 +137,9 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <W d={`M ${s0pX},${andGates[0].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
         {/* S0' → AND2 top input */}
         <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
-        {/* S0' label */}
-        <text x={s0pX - 8} y={(s0Y + andGates[0].topIn) / 2 + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
-        <line x1={s0pX - 20} y1={(s0Y + andGates[0].topIn) / 2 - 5} x2={s0pX - 12} y2={(s0Y + andGates[0].topIn) / 2 - 5} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
+        {/* S0' label — tepat di output NOT S0 */}
+        <text x={notS0EX + 6} y={s0Y + 3} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
+        <line x1={notS0EX + 6} y1={s0Y - 5} x2={notS0EX + 18} y2={s0Y - 5} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S0 DIRECT BUS (S0 → AND1 top, AND3 top) ===== */}
         <W d={`M ${s0JX},${s0Y} V 38 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={andColor} rgb={andRgb} />
@@ -155,9 +155,9 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <W d={`M ${s1pX},${andGates[0].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
         {/* S1' → AND1 mid input */}
         <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
-        {/* S1' label */}
-        <text x={s1pX - 8} y={(s1Y + andGates[0].midIn) / 2 + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
-        <line x1={s1pX - 20} y1={(s1Y + andGates[0].midIn) / 2 - 5} x2={s1pX - 12} y2={(s1Y + andGates[0].midIn) / 2 - 5} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
+        {/* S1' label — tepat di output NOT S1 */}
+        <text x={notS1EX + 6} y={s1Y + 3} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
+        <line x1={notS1EX + 6} y1={s1Y - 5} x2={notS1EX + 18} y2={s1Y - 5} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
         <W d={`M ${s1JX},${s1Y} V 95 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={andColor} rgb={andRgb} />
