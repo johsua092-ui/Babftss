@@ -156,8 +156,8 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         {/* S1' → AND1 mid input */}
         <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
         {/* S1' label */}
-        <text x={s1pX + 8} y={(s1Y + andGates[0].midIn) / 2 + 3} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
-        <line x1={s1pX + 8} y1={(s1Y + andGates[0].midIn) / 2 - 5} x2={s1pX + 16} y2={(s1Y + andGates[0].midIn) / 2 - 5} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
+        <text x={s1pX - 8} y={(s1Y + andGates[0].midIn) / 2 + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
+        <line x1={s1pX - 20} y1={(s1Y + andGates[0].midIn) / 2 - 5} x2={s1pX - 12} y2={(s1Y + andGates[0].midIn) / 2 - 5} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
         <W d={`M ${s1JX},${s1Y} V 95 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={andColor} rgb={andRgb} />
