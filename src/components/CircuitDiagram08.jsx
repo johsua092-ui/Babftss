@@ -47,10 +47,10 @@ export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onT
     const orEX = orSX + 45;
 
     // --- Output nodes ---
-    const sumOutX = xor2EX + 34 + outNodeR;
-    const sumOutY = xor2MY;
     const coutOutX = orEX + 34 + outNodeR;
     const coutOutY = orMY;
+    const sumOutX = coutOutX;
+    const sumOutY = xor2MY;
     const svgW = Math.max(sumOutX, coutOutX) + outNodeR + 20;
     const svgH = 255;
 
