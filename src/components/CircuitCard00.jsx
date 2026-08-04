@@ -156,7 +156,7 @@ export default function CircuitCard00() {
                     }
                     @keyframes badge-shimmer-sweep {
                         0% { left: -100%; }
-                        50% { left: 150%; }
+                        40% { left: 150%; }
                         100% { left: 150%; }
                     }
                 `}</style>
