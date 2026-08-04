@@ -146,10 +146,10 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <line x1={notS0EX + 6} y1={s0Y - 15} x2={notS0EX + 18} y2={s0Y - 15} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S0 DIRECT BUS (S0 → AND1 top, AND3 top) ===== */}
-        {/* Trunk (red = select signal) */}
-        <W d={`M ${s0JX},${s0Y} V 48 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={notColor} rgb={notRgb} />
+        {/* Trunk (green = select signal) */}
+        <W d={`M ${s0JX},${s0Y} V 48 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={selColor} rgb={selRgb} />
         {/* Branch to AND1 top (D1 amber) */}
-        <circle cx={s0dX} cy={andGates[1].topIn} r={2.5} fill={s0 ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s0dX} cy={andGates[1].topIn} r={2.5} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0dX},${andGates[1].topIn} H ${andSX}`} val={s0} col={dCols[1]} rgb={dRgbs[1]} />
         {/* Branch to AND3 top (D3 blue) */}
         <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={dCols[3]} rgb={dRgbs[3]} />
@@ -168,10 +168,10 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <line x1={notS1EX + 6} y1={s1Y - 15} x2={notS1EX + 18} y2={s1Y - 15} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
-        {/* Trunk (red = select signal) */}
-        <W d={`M ${s1JX},${s1Y} V 118 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={notColor} rgb={notRgb} />
+        {/* Trunk (green = select signal) */}
+        <W d={`M ${s1JX},${s1Y} V 118 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={selColor} rgb={selRgb} />
         {/* Branch to AND2 mid (D2 orange) */}
-        <circle cx={s1dX} cy={andGates[2].midIn} r={2.5} fill={s1 ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s1dX} cy={andGates[2].midIn} r={2.5} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={dCols[2]} rgb={dRgbs[2]} />
         {/* Branch to AND3 mid (D3 blue) */}
         <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={dCols[3]} rgb={dRgbs[3]} />
