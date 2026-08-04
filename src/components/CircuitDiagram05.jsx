@@ -9,18 +9,18 @@ export default function CircuitDiagram05({ a, b, c, andOut, out, onToggleA, onTo
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
-    const inputAX = 1, inputAY = 20;
-    const inputBX = 1, inputBY = 52;
-    const inputCX = 1, inputCY = 84;
+    const inputAX = 1, inputAY = 22;
+    const inputBX = 1, inputBY = 70;
+    const inputCX = 1, inputCY = 118;
     const andStartX = 100, andW = 26;
-    const andTopY = 28, andBotY = 44, andMidY = 36;
+    const andTopY = 34, andBotY = 58, andMidY = 46;
     const andArcR = (andBotY - andTopY) / 2;
     const andEndX = andStartX + andW + andArcR;
     const orStartX = 190;
-    const orTopY = 60, orBotY = 76, orMidY = 68;
+    const orTopY = 72, orBotY = 92, orMidY = 82;
     const orEndX = 235;
     const outX = orEndX + 34 + outNodeR, outY = orMidY;
-    const svgW = outX + outNodeR + 20, svgH = 110;
+    const svgW = outX + outNodeR + 20, svgH = 148;
     const andGlow = andOut
         ? `drop-shadow(0 0 4px rgba(${andRgb},0.9)) drop-shadow(0 0 10px rgba(${andRgb},0.5))`
         : "none";
