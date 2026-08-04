@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { Cpu, Network, FlaskConical, Lock, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
+import { Cpu, Network, FlaskConical, CircuitBoard, Lock, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
 import GearIcon from './components/GearIcon';
 import LinkageIcon from './components/LinkageIcon';
 import LoginModal from './components/LoginModal';
@@ -11,6 +11,7 @@ import { useProgressSync } from './hooks/useProgressSync';
 
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
+const CircuitGenerator = lazy(() => import('./pages/CircuitGenerator'));
 const GearsPage = lazy(() => import('./pages/GearsPage'));
 const LinkagesPage = lazy(() => import('./pages/LinkagesPage'));
 const AIHelperPanel = lazy(() => import('./components/AIHelperPanel'));
@@ -202,6 +203,11 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
                         ><div style={{ backgroundColor: "rgba(168,85,247,0.18)", padding: 12, borderRadius: 12, color: "#a855f7", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Logic Gates Circuit</span></button>
+                        <button onClick={() => setPage("circuit-generator")}
+                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(6,182,212,0.35)", display: "flex", alignItems: "center", gap: 16, color: "#fff", boxShadow: "0 0 18px rgba(6,182,212,0.25)", transition: "all 0.2s" }}
+                            onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
+                            onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
+                        ><div style={{ backgroundColor: "rgba(6,182,212,0.18)", padding: 12, borderRadius: 12, color: "#06b6d4", flexShrink: 0 }}><CircuitBoard size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Circuit Generator</span></button>
                         <button onClick={() => toast.info("Logic Gates Simulator masih dalam pengerjaan")}
                             className="animate-gold-pulse"
                             style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(251,191,36,0.5)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s" }}
@@ -221,6 +227,9 @@ export default function App() {
             </motion.div>}
             {page === "logic-gates-circuit" && <motion.div key="logic-gates-circuit" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ padding: "32px 20px 48px", display: "flex", justifyContent: "center" }}>
                 <Suspense fallback={pageFallback}><LogicGatesCircuit setPage={setPage} /></Suspense>
+            </motion.div>}
+            {page === "circuit-generator" && <motion.div key="circuit-generator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ padding: "32px 20px 48px", display: "flex", justifyContent: "center" }}>
+                <Suspense fallback={pageFallback}><CircuitGenerator setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "gears" && <motion.div key="gears" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ padding: "32px 20px 48px", display: "flex", justifyContent: "center" }}>
                 <Suspense fallback={pageFallback}><GearsPage setPage={setPage} /></Suspense>

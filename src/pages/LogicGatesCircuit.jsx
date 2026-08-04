@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
-import CircuitCard00 from '../components/CircuitCard00';
 import CircuitCard01 from '../components/CircuitCard01';
 import CircuitCard02 from '../components/CircuitCard02';
 import CircuitCard03 from '../components/CircuitCard03';
@@ -13,7 +12,6 @@ import CircuitCard09 from '../components/CircuitCard09';
 import CircuitCard10 from '../components/CircuitCard10';
 
 const ALL_CARDS = [
-    { num: '00', name: 'Simbol Boolean', tier: 'TUTORIAL', el: CircuitCard00 },
     { num: '01', name: 'NOT AND Combo', tier: 'EASY', el: CircuitCard01 },
     { num: '02', name: 'Buffer Negasi Ganda', tier: 'EASY', el: CircuitCard02 },
     { num: '03', name: 'Bangun NAND Manual', tier: 'EASY', el: CircuitCard03 },
