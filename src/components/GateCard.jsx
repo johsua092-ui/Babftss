@@ -40,7 +40,7 @@ export default function GateCard({ config }) {
         }}>
             {/* 1. Header: <nomor> ● <Nama Gate> */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#64748b', fontSize: 12, fontWeight: 700, fontFamily: 'Orbitron, sans-serif', letterSpacing: 1 }}>
+                <span style={{ color: '#ffffff', fontSize: 14, fontWeight: 700, fontFamily: 'Orbitron, sans-serif', letterSpacing: 1, textShadow: '0 0 6px rgba(255,255,255,0.7), 0 0 12px rgba(255,255,255,0.4)' }}>
                     {String(config.id).padStart(2, '0')}
                 </span>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: config.color, boxShadow: `0 0 6px ${config.color}`, flexShrink: 0 }} />
