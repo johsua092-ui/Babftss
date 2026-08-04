@@ -40,7 +40,7 @@ export default function CircuitCard08() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
                 <HeartButton />
-                <span className="badge-hard-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, background: "rgba(227,11,93,0.18)", border: "1px solid rgba(227,11,93,0.4)", color: "#fda4af", position: "relative", overflow: "hidden", display: "inline-block" }}>HARD
+                <span className="badge-hard-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: 1.5, padding: "5px 12px", borderRadius: 6, background: "rgba(227,11,93,0.18)", border: "1px solid rgba(227,11,93,0.4)", color: "#fda4af", position: "relative", overflow: "hidden", display: "inline-block" }}>HARD
                 <style>{`
                     .badge-hard-shimmer::after {
                         content: "";
