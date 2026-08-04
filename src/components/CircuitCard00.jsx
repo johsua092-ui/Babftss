@@ -152,11 +152,11 @@ export default function CircuitCard00() {
                         position: absolute;
                         top: 0; left: -60%; width: 60%; height: 100%;
                         background: linear-gradient(90deg, transparent, rgba(226,232,240,0.25), transparent);
-                        animation: badge-tutorial-shimmer-sweep 2s ease-in-out infinite;
+                        animation: badge-tutorial-shimmer-sweep 2.5s ease-in-out infinite;
                     }
                     @keyframes badge-tutorial-shimmer-sweep {
                         0% { left: -60%; }
-                        65% { left: 100%; }
+                        52% { left: 100%; }
                         100% { left: 100%; }
                     }
                 `}</style>
