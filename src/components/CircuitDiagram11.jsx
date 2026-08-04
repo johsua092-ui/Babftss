@@ -3,9 +3,12 @@ import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not, g0, g1, g2, g3, y, onToggleS0, onToggleS1, onToggleD0, onToggleD1, onToggleD2, onToggleD3 }) {
     const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
-    const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
+
+    // 4 unique colors for D0-D3 AND gates + their wires
+    const dCols = ["#22d3ee", "#facc15", "#fb923c", "#60a5fa"];
+    const dRgbs = ["34,211,238", "250,204,21", "251,146,60", "96,165,250"];
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
@@ -42,13 +45,13 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
     // --- OR gates (standard 2-input) ---
     const or1SX = 385;
-    const or01MY = (d0Y + d1Y) / 2;   // 127.5
-    const or23MY = (d2Y + d3Y) / 2;   // 217.5
+    const or01MY = (d0Y + d1Y) / 2;   // 147.5
+    const or23MY = (d2Y + d3Y) / 2;   // 237.5
     const or01TY = or01MY - 14, or01BY = or01MY + 14, or01EX = or1SX + 45; // 430
     const or23TY = or23MY - 14, or23BY = or23MY + 14, or23EX = or1SX + 45; // 430
 
     const or2SX = 475;
-    const orFMY = (or01MY + or23MY) / 2; // 172.5
+    const orFMY = (or01MY + or23MY) / 2; // 192.5
     const orFTY = orFMY - 14, orFBY = orFMY + 14, orFEX = or2SX + 45; // 520
 
     // --- Output node ---
@@ -109,10 +112,10 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         {/* ===== INPUT NODES ===== */}
         <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={notColor} rgb={notRgb} />
         <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={notColor} rgb={notRgb} />
-        <InputNode ix={1} iy={d0Y} val={d0} label="D0" onToggle={onToggleD0} color={andColor} rgb={andRgb} />
-        <InputNode ix={1} iy={d1Y} val={d1} label="D1" onToggle={onToggleD1} color={andColor} rgb={andRgb} />
-        <InputNode ix={1} iy={d2Y} val={d2} label="D2" onToggle={onToggleD2} color={andColor} rgb={andRgb} />
-        <InputNode ix={1} iy={d3Y} val={d3} label="D3" onToggle={onToggleD3} color={andColor} rgb={andRgb} />
+        <InputNode ix={1} iy={d0Y} val={d0} label="D0" onToggle={onToggleD0} color={dCols[0]} rgb={dRgbs[0]} />
+        <InputNode ix={1} iy={d1Y} val={d1} label="D1" onToggle={onToggleD1} color={dCols[1]} rgb={dRgbs[1]} />
+        <InputNode ix={1} iy={d2Y} val={d2} label="D2" onToggle={onToggleD2} color={dCols[2]} rgb={dRgbs[2]} />
+        <InputNode ix={1} iy={d3Y} val={d3} label="D3" onToggle={onToggleD3} color={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== S0 INPUT → JUNCTION → NOT ===== */}
         <W d={`M 47,${s0Y} H ${s0JX}`} val={s0} col={notColor} rgb={notRgb} />
@@ -131,65 +134,62 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <NotGate sx={notSX} ty={notS1TY} by={notS1BY} my={notS1MY} triEx={notS1TriEX} bubR={notS1BubR} glow={notS1Glow} fill={notS1Fill} stroke={notS1Stk} />
 
         {/* ===== S0' BUS (inverted S0 → AND0 top, AND2 top) ===== */}
-        <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={andColor} rgb={andRgb} />
-        <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={andColor} rgb={andRgb} />
-        {/* S0' → AND0 top input */}
-        <W d={`M ${s0pX},${andGates[0].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
-        {/* S0' → AND2 top input */}
-        <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
+        {/* Trunk: NOT output → bus vertical (red = select signal) */}
+        <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        {/* Branch: S0' → AND0 top (D0 cyan) */}
+        <W d={`M ${s0pX},${andGates[0].topIn} H ${andSX}`} val={s0Not} col={dCols[0]} rgb={dRgbs[0]} />
+        {/* Branch: S0' → AND2 top (D2 orange) */}
+        <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={dCols[2]} rgb={dRgbs[2]} />
         {/* S0' label — tepat di output NOT S0 */}
         <text x={notS0EX + 6} y={s0Y - 8} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
         <line x1={notS0EX + 6} y1={s0Y - 15} x2={notS0EX + 18} y2={s0Y - 15} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S0 DIRECT BUS (S0 → AND1 top, AND3 top) ===== */}
-        <W d={`M ${s0JX},${s0Y} V 38 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={andColor} rgb={andRgb} />
-        {/* S0 → AND1 top input */}
-        <W d={`M ${s0dX},${andGates[1].topIn} H ${andSX}`} val={s0} col={andColor} rgb={andRgb} />
-        {/* S0 → AND3 top input */}
-        <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={andColor} rgb={andRgb} />
+        {/* Trunk (red = select signal) */}
+        <W d={`M ${s0JX},${s0Y} V 38 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={notColor} rgb={notRgb} />
+        {/* Branch: S0 → AND1 top (D1 amber) */}
+        <W d={`M ${s0dX},${andGates[1].topIn} H ${andSX}`} val={s0} col={dCols[1]} rgb={dRgbs[1]} />
+        {/* Branch: S0 → AND3 top (D3 blue) */}
+        <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== S1' BUS (inverted S1 → AND0 mid, AND1 mid) ===== */}
-        <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={andColor} rgb={andRgb} />
-        <W d={`M ${s1pX},${s1Y} V ${andGates[1].midIn}`} val={s1Not} col={andColor} rgb={andRgb} />
-        {/* S1' → AND0 mid input */}
-        <W d={`M ${s1pX},${andGates[0].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
-        {/* S1' → AND1 mid input */}
-        <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
+        {/* Trunk: NOT output → bus vertical (red = select signal) */}
+        <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${s1pX},${s1Y} V ${andGates[1].midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
+        {/* Branch: S1' → AND0 mid (D0 cyan) */}
+        <W d={`M ${s1pX},${andGates[0].midIn} H ${andSX}`} val={s1Not} col={dCols[0]} rgb={dRgbs[0]} />
+        {/* Branch: S1' → AND1 mid (D1 amber) */}
+        <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={dCols[1]} rgb={dRgbs[1]} />
         {/* S1' label — tepat di output NOT S1 */}
         <text x={notS1EX + 6} y={s1Y - 8} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
         <line x1={notS1EX + 6} y1={s1Y - 15} x2={notS1EX + 18} y2={s1Y - 15} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
-        <W d={`M ${s1JX},${s1Y} V 95 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={andColor} rgb={andRgb} />
-        {/* S1 → AND2 mid input */}
-        <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={andColor} rgb={andRgb} />
-        {/* S1 → AND3 mid input */}
-        <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={andColor} rgb={andRgb} />
+        {/* Trunk (red = select signal) */}
+        <W d={`M ${s1JX},${s1Y} V 95 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={notColor} rgb={notRgb} />
+        {/* Branch: S1 → AND2 mid (D2 orange) */}
+        <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={dCols[2]} rgb={dRgbs[2]} />
+        {/* Branch: S1 → AND3 mid (D3 blue) */}
+        <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={dCols[3]} rgb={dRgbs[3]} />
 
-        {/* ===== D0 WIRE → AND0 bottom input ===== */}
-        <W d={`M 47,${d0Y} H 218 V ${andGates[0].botIn} H ${andSX}`} val={d0} col={andColor} rgb={andRgb} />
-        {/* ===== D1 WIRE → AND1 bottom input ===== */}
-        <W d={`M 47,${d1Y} H 218 V ${andGates[1].botIn} H ${andSX}`} val={d1} col={andColor} rgb={andRgb} />
-        {/* ===== D2 WIRE → AND2 bottom input ===== */}
-        <W d={`M 47,${d2Y} H 218 V ${andGates[2].botIn} H ${andSX}`} val={d2} col={andColor} rgb={andRgb} />
-        {/* ===== D3 WIRE → AND3 bottom input ===== */}
-        <W d={`M 47,${d3Y} H 218 V ${andGates[3].botIn} H ${andSX}`} val={d3} col={andColor} rgb={andRgb} />
+        {/* ===== D WIRES → AND bottom inputs (each D color) ===== */}
+        <W d={`M 47,${d0Y} H 218 V ${andGates[0].botIn} H ${andSX}`} val={d0} col={dCols[0]} rgb={dRgbs[0]} />
+        <W d={`M 47,${d1Y} H 218 V ${andGates[1].botIn} H ${andSX}`} val={d1} col={dCols[1]} rgb={dRgbs[1]} />
+        <W d={`M 47,${d2Y} H 218 V ${andGates[2].botIn} H ${andSX}`} val={d2} col={dCols[2]} rgb={dRgbs[2]} />
+        <W d={`M 47,${d3Y} H 218 V ${andGates[3].botIn} H ${andSX}`} val={d3} col={dCols[3]} rgb={dRgbs[3]} />
 
-        {/* ===== AND GATES ===== */}
+        {/* ===== AND GATES (each with its own D color) ===== */}
         {andGates.map((g, i) => (
             <AndGate3 key={i} sx={andSX} ty={g.ty} by={g.by} my={g.my} w={andW} ar={andAR}
-                glow={mkGlow(g.val, andRgb)} fill={mkFill(g.val, andRgb)} stroke={mkStroke(g.val, andColor)} />
+                glow={mkGlow(g.val, dRgbs[i])} fill={mkFill(g.val, dRgbs[i])} stroke={mkStroke(g.val, dCols[i])} />
         ))}
 
-        {/* ===== AND OUTPUTS → OR TREE ===== */}
-        {/* g0 → OR01 top */}
-        <W d={`M ${andEX},${andGates[0].my} H 360 V ${or01TY} H ${or1SX}`} val={g0} col={orColor} rgb={orRgb} />
-        {/* g1 → OR01 bottom */}
-        <W d={`M ${andEX},${andGates[1].my} H 365 V ${or01BY} H ${or1SX}`} val={g1} col={orColor} rgb={orRgb} />
-        {/* g2 → OR23 top */}
-        <W d={`M ${andEX},${andGates[2].my} H 360 V ${or23TY} H ${or1SX}`} val={g2} col={orColor} rgb={orRgb} />
-        {/* g3 → OR23 bottom */}
-        <W d={`M ${andEX},${andGates[3].my} H 365 V ${or23BY} H ${or1SX}`} val={g3} col={orColor} rgb={orRgb} />
+        {/* ===== AND OUTPUTS → OR TREE (each wire = D color) ===== */}
+        <W d={`M ${andEX},${andGates[0].my} H 360 V ${or01TY} H ${or1SX}`} val={g0} col={dCols[0]} rgb={dRgbs[0]} />
+        <W d={`M ${andEX},${andGates[1].my} H 365 V ${or01BY} H ${or1SX}`} val={g1} col={dCols[1]} rgb={dRgbs[1]} />
+        <W d={`M ${andEX},${andGates[2].my} H 360 V ${or23TY} H ${or1SX}`} val={g2} col={dCols[2]} rgb={dRgbs[2]} />
+        <W d={`M ${andEX},${andGates[3].my} H 365 V ${or23BY} H ${or1SX}`} val={g3} col={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== OR GATES ===== */}
         <OrGate sx={or1SX} ty={or01TY} by={or01BY} my={or01MY} ex={or01EX} glow={or01Glow} fill={or01Fill} stroke={or01Stk} />
@@ -197,9 +197,7 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <OrGate sx={or2SX} ty={orFTY} by={orFBY} my={orFMY} ex={orFEX} glow={orFGlow} fill={orFFill} stroke={orFStk} />
 
         {/* ===== OR TREE WIRES ===== */}
-        {/* OR01 → OR_final top */}
         <W d={`M ${or01EX},${or01MY} H 455 V ${orFTY} H ${or2SX}`} val={or01Val} col={orColor} rgb={orRgb} />
-        {/* OR23 → OR_final bottom */}
         <W d={`M ${or23EX},${or23MY} H 455 V ${orFBY} H ${or2SX}`} val={or23Val} col={orColor} rgb={orRgb} />
 
         {/* ===== OUTPUT WIRE & NODE ===== */}
@@ -207,10 +205,10 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
             stroke={wc(y, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <OutputNode ox={outX} oy={outY} val={y} label="Y" color={orColor} rgb={orRgb} />
 
-        {/* ===== GATE LABELS ===== */}
-        <text x={(andEX + 360) / 2} y={andGates[0].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g0 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D0</text>
-        <text x={(andEX + 365) / 2} y={andGates[1].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D1</text>
-        <text x={(andEX + 360) / 2} y={andGates[2].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D2</text>
-        <text x={(andEX + 365) / 2} y={andGates[3].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g3 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D3</text>
+        {/* ===== GATE LABELS (each D color) ===== */}
+        <text x={(andEX + 360) / 2} y={andGates[0].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g0 ? dCols[0] : "#475569"} style={{ transition: "fill 0.3s" }}>D0</text>
+        <text x={(andEX + 365) / 2} y={andGates[1].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g1 ? dCols[1] : "#475569"} style={{ transition: "fill 0.3s" }}>D1</text>
+        <text x={(andEX + 360) / 2} y={andGates[2].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g2 ? dCols[2] : "#475569"} style={{ transition: "fill 0.3s" }}>D2</text>
+        <text x={(andEX + 365) / 2} y={andGates[3].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g3 ? dCols[3] : "#475569"} style={{ transition: "fill 0.3s" }}>D3</text>
     </svg>;
 }
