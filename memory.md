@@ -506,6 +506,7 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 07 "Membangun XOR dari Gate Dasar" — 2 input, 5 gate (2 NOT + 2 AND + 1 OR), OUT=(A AND NOT B) OR (NOT A AND B), truth table identik XOR asli, kabel input bercabang/fan-out (Bagian 3).
 - SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 08 "Full Adder" — 3 input, 2 output (SUM+COUT), 5 gate, tier HARD (Bagian 3.4).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 09 "2:1 Multiplexer (Mux)" — 3 input (S, D0, D1), 1 output (Y), 4 gate, tier NORMAL, Bab B pertama (Bagian 3.5).
+- SELESAI & FIX VISUAL: "Logic Gates Circuit" Card 11 "4:1 Multiplexer (Mux)" — 6 input (S0,S1,D0-D3), 1 output (Y), 9 gate (2 NOT+4 AND+3 OR), tier NORMAL, 4 warna unik per D, fix kritis overlap kabel (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
@@ -622,3 +623,36 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - **Tidak bisa diverifikasi visual langsung di browser.**
 
 - Status: **SELESAI.** Perlu verifikasi visual oleh user.
+
+---
+
+## 3.6 CARD 11 "4:1 MULTIPLEXER (MUX)" — TIER NORMAL (SELESAI, FIX VISUAL)
+
+**Konsep:** 4:1 Multiplexer — 2 sinyal SELECT (S0, S1), 4 data input (D0, D1, D2, D3), 1 output (Y). `Y = (NOT(S0) AND NOT(S1) AND D0) OR (S0 AND NOT(S1) AND D1) OR (NOT(S0) AND S1 AND D2) OR (S0 AND S1 AND D3)`. Rangkaian: 2 NOT + 4 AND (3-input) + 3 OR tree.
+
+**Tier:** NORMAL.
+
+**Fitur visual khusus:**
+- 4 warna unik per jalur D: D0=cyan (#22d3ee), D1=amber (#facc15), D2=orange (#fb923c), D3=blue (#60a5fa)
+- Sinyal seleksi (S0, S1, S0', S1') tetap merah (#f87171)
+- Gerbang OR tetap ungu (#a78bfa)
+- Label S0' dan S1' (overline manual) diposisikan di dekat output NOT gate masing-masing, dinaikkan agar tidak menyatu dengan kabel
+
+**Serangkaian fix visual (6+ commit):**
+1. Perbaikan posisi label S0'/S1' — dipindah dari tengah bus ke depan NOT gate output, lalu dinaikkan (Y-8 untuk teks, Y-15 untuk overline)
+2. Rename g0-g3 jadi D0-D3 sesuai konvensi Mux
+3. 4 warna unik per jalur D (sebelumnya semua AND gate sama warna)
+4. Perbesaran vertikal rangkaian — D inputs dari 45px spacing jadi 85px+, svgH dari 295 ke 530
+5. **Fix kritis: routing kabel D agar tidak overlap dengan kabel S-branch** (lihat detail di bawah)
+
+**INSIDEN OVERLAP KABEL (pelajaran penting untuk semua card ke depan):**
+Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1'/S1 branch ke input mid AND gate juga berada di Y yang sama (= dY) dengan range X yang tumpang tindih (misal D0 horizontal di y=205 dari x=47-255, S1' branch di y=205 dari x=225-280 — overlap dari x=225-255). Akibatnya kabel D tertimpa kabel S dan tidak terlihat.
+
+**Fix:** titik belok kabel D dipindah dari x=255 ke x=160 (di KIRI semua bus seleksi yang mulai dari x=185). Dengan ini:
+- D horizontal di level dY: hanya x=47-160 (tidak sampai area bus S)
+- S-branch horizontal di level midIn: x=185/225/245-280 (tidak tumpang tindih dengan D)
+- D horizontal di level botIn: x=160-280 (di Y unik yang tidak dipakai S-branch manapun)
+
+**Aturan baru yang lahir dari insiden ini** (ditulis ke `instruction.md` aturan #8 dan `design.md` Bagian 3.0): DILARANG KERAS kabel saling menimpa (overlap total di jalur sama arah). Setiap kabel WAJIB punya jalur sendiri. Kalau ruang kurang, besarkan rangkaian ke bawah (unlimited). Card 11 jadi referensi contoh untuk semua card berikutnya.
+
+**File yang diubah:** `src/components/CircuitDiagram11.jsx` saja (beberapa iterasi fix visual). Card 01-10 TIDAK disentuh. File backend TIDAK disentuh.

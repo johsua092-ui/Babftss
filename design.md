@@ -90,6 +90,19 @@ Card khusus non-interaktif (bukan circuit yang bisa di-toggle), berisi referensi
 
 Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian (output gate 1 -> input gate 2, dst). Semua sistem visual & interaktif di Bagian 1 di atas dipertahankan 100% persis — bedanya sekarang gate-nya lebih dari satu dan saling terhubung dalam satu card. Wire antar gate yang tidak sejajar (beda posisi Y) WAJIB dirutekan siku-siku (right-angle/Manhattan path), BUKAN garis diagonal.
 
+### 3.0 ATURAN ROUTING KABEL — DILARANG OVERLAY (LAHIR DARI INSIDEN CARD 11)
+
+> Aturan ini berlaku untuk **SEMUA** card Circuit tanpa kecuali — Card 00 sampai card terakhir di masa depan.
+
+**DILARANG KERAS:** 2+ kabel/wire yang **overlap total** (menimpa di segmen yang sama arah — horizontal di Y yang sama dengan range X yang tumpang tindih, atau vertikal di X yang sama dengan range Y yang tumpang tindih). Overlap membuat kabel tidak terlihat & membingungkan pemula.
+
+**Yang BOLEH:** silangan perpendicular (kabel horizontal menyeberang kabel vertikal, atau sebaliknya) — ini normal di diagram rangkaian dan bisa dibedakan secara visual.
+
+**Cara mencegah overlap:**
+1. **Route kabel di lane/channel X yang berbeda** — setiap grup kabel yang sejajar harus punya koordinat X unik untuk segmen horizontalnya, atau koordinat Y unik untuk segmen vertikalnya. Contoh: kabel data (D0-D3) di lane X=160, bus seleksi (S0', S1', S0, S1) di lane X=185/205/225/245 — tidak ada yang berbagi range X di Y yang sama.
+2. **Kalau ruang horizontal kurang, BESARKAN RANGKAIAN KE BAWAH.** Arah samping (X) punya batas lebar layar, tapi arah bawah (Y) itu **UNLIMITED** — SVG viewBox bisa diperbesar sesuka hati. JANGAN pernah berkata "tidak cukup ruang" — kalau mentok ke samping, kasih spacing lebih ke bawah. Contoh: Card 11 (4:1 Mux) awalnya D inputs cuma 45px terpisah, diperbesar jadi 85px+ dan svgH naik dari 295 ke 530, sehingga setiap AND gate punya ruang sendiri.
+3. **Warna berbeda BUKAN jaminan kabel terlihat** — walau 2 kabel overlap punya warna beda, kabel yang di bawah tetap tidak terlihat jelas. Warna berbeda itu bonus, BUKAN solusi overlap.
+
 ### 3.1 Struktur card Circuit
 - Pojok kiri: nomor urut card.
 - Pojok kanan: `<HeartButton />` (fitur "My Favorite Circuit", akan datang) SEJAJAR bersebelahan dengan badge TIER (lihat 3.2) — WAJIB ada di SETIAP card, tanpa kecuali, termasuk semua card baru ke depannya. Reuse `HeartButton.jsx` yang sudah ada (dipanggil tanpa props tambahan, `<HeartButton />` saja — komponennya sendiri yang urus konteks/identitas item via `FavoritesContext`).

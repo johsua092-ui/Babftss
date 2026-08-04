@@ -94,6 +94,7 @@ Aturan berikut lahir dari masalah nyata yang pernah terjadi di proyek ini — WA
 5. **File kerja/analisis/debug sementara** WAJIB dibersihkan atau dipindah ke folder terpisah (misal `scripts/analysis/`), TIDAK BOLEH ditinggal di root repo.
 6. **Laporan progress WAJIB jujur** — sebutkan eksplisit bagian yang belum selesai/belum diverifikasi, jangan bikin terdengar lebih beres dari kenyataan.
 7. Sebelum menyatakan task selesai, WAJIB ada checklist verifikasi manual (bukan cuma asumsi "harusnya udah bener").
+8. **DILARANG KERAS: kabel/wire di diagram sirkuit saling menimpa (overlap) di jalur yang sama arah.** Setiap kabel WAJIB punya jalur sendiri yang bisa dibedakan secara visual — tidak boleh ada 2+ kabel yang berbagi segmen horizontal/vertikal yang identik (overlap total), karena ini membuat kabel tidak terlihat & membingungkan pemula. Cross/perpendicular silangan antar kabel itu boleh (normal di diagram rangkaian), tapi overlap di jalur yang sama arah DILARANG. **Solusi kalau ruang kurang:** besarkan rangkaian ke arah VERTIKAL (ke bawah). Arah samping (horizontal) ada batasnya karena lebar layar, tapi arah bawah itu UNLIMITED — SVG viewBox bisa diperbesar sesuka hati. Contoh referensi: Card 11 (4:1 Mux) — kabel D0-D3 awalnya overlap dengan kabel S-branch di jalur horizontal yang sama, diperbaiki dengan meroute kabel D di lane X terpisah (x=160) yang berada di KIRI semua bus seleksi (x=185+), sehingga setiap kabel punya jalur horizontal sendiri-sendiri tanpa menimpa kabel lain.
 
 ---
 
