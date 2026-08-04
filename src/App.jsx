@@ -202,12 +202,12 @@ export default function App() {
                             style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", gap: 16, color: "#fff", boxShadow: "0 0 18px rgba(168,85,247,0.25)", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: "rgba(168,85,247,0.18)", padding: 12, borderRadius: 12, color: "#a855f7", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Logic Gates Circuit</span></button>
+                        ><div style={{ backgroundColor: "rgba(168,85,247,0.18)", padding: 12, borderRadius: 12, color: "#a855f7", flexShrink: 0 }}><CircuitBoard size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Logic Gates Circuit</span></button>
                         <button onClick={() => setPage("circuit-generator")}
                             style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(6,182,212,0.35)", display: "flex", alignItems: "center", gap: 16, color: "#fff", boxShadow: "0 0 18px rgba(6,182,212,0.25)", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: "rgba(6,182,212,0.18)", padding: 12, borderRadius: 12, color: "#06b6d4", flexShrink: 0 }}><CircuitBoard size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Circuit Generator</span></button>
+                        ><div style={{ backgroundColor: "rgba(6,182,212,0.18)", padding: 12, borderRadius: 12, color: "#06b6d4", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Circuit Generator</span></button>
                         <button onClick={() => toast.info("Logic Gates Simulator masih dalam pengerjaan")}
                             className="animate-gold-pulse"
                             style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(251,191,36,0.5)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s" }}
