@@ -11,9 +11,9 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
     const nodeR = 8, outNodeR = 13;
 
     // --- Input positions ---
-    const s0Y = 22, s1Y = 55;
-    const d0Y = 105, d1Y = 150, d2Y = 195, d3Y = 240;
-    const svgH = 275;
+    const s0Y = 22, s1Y = 75;
+    const d0Y = 125, d1Y = 170, d2Y = 215, d3Y = 260;
+    const svgH = 295;
 
     // --- NOT gates ---
     const notSX = 100;
@@ -160,7 +160,7 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <line x1={s1pX + 8} y1={(s1Y + andGates[0].midIn) / 2 - 5} x2={s1pX + 16} y2={(s1Y + andGates[0].midIn) / 2 - 5} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
-        <W d={`M ${s1JX},${s1Y} V 68 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={andColor} rgb={andRgb} />
+        <W d={`M ${s1JX},${s1Y} V 95 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={andColor} rgb={andRgb} />
         {/* S1 → AND2 mid input */}
         <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={andColor} rgb={andRgb} />
         {/* S1 → AND3 mid input */}
