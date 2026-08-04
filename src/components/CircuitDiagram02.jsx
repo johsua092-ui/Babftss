@@ -37,10 +37,10 @@ export default function CircuitDiagram02({ a, notA, out, onToggleA }) {
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* Input A node */}
         <g onClick={onToggleA} style={{ cursor: "pointer" }}>
-            <rect x={inputAX} y={inputAY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={a ? `rgba(${notRgb},0.2)` : "#0f172a"} stroke={a ? notColor : "#334155"} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
+            <rect x={inputAX} y={inputAY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={a ? `rgba(${notRgb},0.2)` : `rgba(${notRgb},0.1)`} stroke={a ? notColor : `rgba(${notRgb},0.3)`} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
             <text x={inputAX + 24} y={inputAY - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">A</text>
-            <circle cx={inputAX + 24} cy={inputAY} r={nodeR} fill={a ? notColor : "#1e293b"} stroke={a ? notColor : "#334155"} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${notRgb},0.8))` : "none", transition: "all 0.25s" }} />
-            <text x={inputAX + 24} y={inputAY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? notColor : "#475569"}>{a ? "1" : "0"}</text>
+            <circle cx={inputAX + 24} cy={inputAY} r={nodeR} fill={a ? notColor : `rgba(${notRgb},0.15)`} stroke={a ? notColor : `rgba(${notRgb},0.4)`} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${notRgb},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x={inputAX + 24} y={inputAY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? notColor : `rgba(${notRgb},0.5)`}>{a ? "1" : "0"}</text>
         </g>
         {/* Wire: Input A -> NOT gate 1 */}
         <line x1={inputAX + inputNodeW} y1={midY} x2={not1StartX} y2={midY} stroke={wc(a, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />

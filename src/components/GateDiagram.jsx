@@ -4,8 +4,8 @@ import { Fragment } from 'react';
 export default function GateDiagram({ type, dualInput, a, b, output, onToggleA, onToggleB, color }) {
     const r = hexToRgbStr(color),
         p = _ => _ ? color : "#1e293b",
-        x = _ => _ ? `rgba(${r},0.2)` : "#0f172a",
-        g = _ => _ ? color : "#334155",
+        x = _ => _ ? `rgba(${r},0.2)` : `rgba(${r},0.1)`,
+        g = _ => _ ? color : `rgba(${r},0.3)`,
         S = output ? color : "#475569",
         j = output ? `rgba(${r},0.13)` : "#0f172a",
         M = output ? `drop-shadow(0 0 4px rgba(${r},0.9)) drop-shadow(0 0 10px rgba(${r},0.5))` : "none",
@@ -118,14 +118,14 @@ export default function GateDiagram({ type, dualInput, a, b, output, onToggleA, 
         <g onClick={onToggleA} style={{ cursor: "pointer" }}>
             <rect x="1" y={k - 21} width="46" height="42" rx="7" fill={x(a)} stroke={g(a)} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
             <text x="24" y={k - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">A</text>
-            <circle cx="24" cy={k} r="8" fill={a ? color : "#1e293b"} stroke={a ? color : "#334155"} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${r},0.8))` : "none", transition: "all 0.25s" }} />
-            <text x="24" y={k + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? color : "#475569"}>{a ? "1" : "0"}</text>
+            <circle cx="24" cy={k} r="8" fill={a ? color : `rgba(${r},0.15)`} stroke={a ? color : `rgba(${r},0.4)`} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${r},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x="24" y={k + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? color : `rgba(${r},0.5)`}>{a ? "1" : "0"}</text>
         </g>
         {dualInput && <g onClick={onToggleB} style={{ cursor: "pointer" }}>
             <rect x="1" y={R - 21} width="46" height="42" rx="7" fill={x(b)} stroke={g(b)} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
             <text x="24" y={R - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">B</text>
-            <circle cx="24" cy={R} r="8" fill={b ? color : "#1e293b"} stroke={b ? color : "#334155"} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${r},0.8))` : "none", transition: "all 0.25s" }} />
-            <text x="24" y={R + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? color : "#475569"}>{b ? "1" : "0"}</text>
+            <circle cx="24" cy={R} r="8" fill={b ? color : `rgba(${r},0.15)`} stroke={b ? color : `rgba(${r},0.4)`} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${r},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x="24" y={R + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? color : `rgba(${r},0.5)`}>{b ? "1" : "0"}</text>
         </g>}
         {type === "wire" ? <line x1="48" y1={L} x2={bt - dt} y2={L} stroke={p(a)} strokeWidth="3" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} /> : <Fragment>
             <line x1="48" y1={k} x2={O} y2={k} stroke={p(a)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />

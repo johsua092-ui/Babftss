@@ -34,22 +34,22 @@ export default function CircuitDiagram05({ a, b, c, andOut, out, onToggleA, onTo
     const andLabelColor = andOut ? andColor : "#475569";
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         <g onClick={onToggleA} style={{ cursor: "pointer" }}>
-            <rect x={inputAX} y={inputAY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={a ? `rgba(${andRgb},0.2)` : "#0f172a"} stroke={a ? andColor : "#334155"} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
+            <rect x={inputAX} y={inputAY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={a ? `rgba(${andRgb},0.2)` : `rgba(${andRgb},0.1)`} stroke={a ? andColor : `rgba(${andRgb},0.3)`} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
             <text x={inputAX + 24} y={inputAY - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">A</text>
-            <circle cx={inputAX + 24} cy={inputAY} r={nodeR} fill={a ? andColor : "#1e293b"} stroke={a ? andColor : "#334155"} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${andRgb},0.8))` : "none", transition: "all 0.25s" }} />
-            <text x={inputAX + 24} y={inputAY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? andColor : "#475569"}>{a ? "1" : "0"}</text>
+            <circle cx={inputAX + 24} cy={inputAY} r={nodeR} fill={a ? andColor : `rgba(${andRgb},0.15)`} stroke={a ? andColor : `rgba(${andRgb},0.4)`} strokeWidth="1.5" style={{ filter: a ? `drop-shadow(0 0 5px rgba(${andRgb},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x={inputAX + 24} y={inputAY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? andColor : `rgba(${andRgb},0.5)`}>{a ? "1" : "0"}</text>
         </g>
         <g onClick={onToggleB} style={{ cursor: "pointer" }}>
-            <rect x={inputBX} y={inputBY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={b ? `rgba(${andRgb},0.2)` : "#0f172a"} stroke={b ? andColor : "#334155"} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
+            <rect x={inputBX} y={inputBY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={b ? `rgba(${andRgb},0.2)` : `rgba(${andRgb},0.1)`} stroke={b ? andColor : `rgba(${andRgb},0.3)`} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
             <text x={inputBX + 24} y={inputBY - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">B</text>
-            <circle cx={inputBX + 24} cy={inputBY} r={nodeR} fill={b ? andColor : "#1e293b"} stroke={b ? andColor : "#334155"} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${andRgb},0.8))` : "none", transition: "all 0.25s" }} />
-            <text x={inputBX + 24} y={inputBY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? andColor : "#475569"}>{b ? "1" : "0"}</text>
+            <circle cx={inputBX + 24} cy={inputBY} r={nodeR} fill={b ? andColor : `rgba(${andRgb},0.15)`} stroke={b ? andColor : `rgba(${andRgb},0.4)`} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${andRgb},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x={inputBX + 24} y={inputBY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? andColor : `rgba(${andRgb},0.5)`}>{b ? "1" : "0"}</text>
         </g>
         <g onClick={onToggleC} style={{ cursor: "pointer" }}>
-            <rect x={inputCX} y={inputCY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={c ? `rgba(${orRgb},0.2)` : "#0f172a"} stroke={c ? orColor : "#334155"} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
+            <rect x={inputCX} y={inputCY - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={c ? `rgba(${orRgb},0.2)` : `rgba(${orRgb},0.1)`} stroke={c ? orColor : `rgba(${orRgb},0.3)`} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
             <text x={inputCX + 24} y={inputCY - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">C</text>
-            <circle cx={inputCX + 24} cy={inputCY} r={nodeR} fill={c ? orColor : "#1e293b"} stroke={c ? orColor : "#334155"} strokeWidth="1.5" style={{ filter: c ? `drop-shadow(0 0 5px rgba(${orRgb},0.8))` : "none", transition: "all 0.25s" }} />
-            <text x={inputCX + 24} y={inputCY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={c ? orColor : "#475569"}>{c ? "1" : "0"}</text>
+            <circle cx={inputCX + 24} cy={inputCY} r={nodeR} fill={c ? orColor : `rgba(${orRgb},0.15)`} stroke={c ? orColor : `rgba(${orRgb},0.4)`} strokeWidth="1.5" style={{ filter: c ? `drop-shadow(0 0 5px rgba(${orRgb},0.8))` : "none", transition: "all 0.25s" }} />
+            <text x={inputCX + 24} y={inputCY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={c ? orColor : `rgba(${orRgb},0.5)`}>{c ? "1" : "0"}</text>
         </g>
         <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <path d={`M ${inputBX + inputNodeW},${inputBY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(b, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
