@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useFavoritesContext } from '../context/FavoritesContext';
 
@@ -9,7 +10,6 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
     const ctx = useFavoritesContext();
     const [liked, setLiked] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
 
     // ── Auto-detect itemId & itemType ──────────────────
     // Priority: context > props > null
@@ -45,14 +45,21 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
     const handleToggle = useCallback(async () => {
         // Guest check — user must be logged in
         if (!user) {
-            setError('Login dulu ya buat simpen favorit!');
-            setTimeout(() => setError(null), 3000);
+            toast.error('Login dulu ya buat simpen favorit!', {
+                description: 'Fitur favorit cuma buat member yang udah login.',
+                duration: 4000,
+                position: 'top-center',
+                style: {
+                    background: '#1e293b',
+                    border: '1px solid #f87171',
+                    color: '#fca5a5',
+                },
+            });
             return;
         }
         if (!itemId) return;
 
         setLoading(true);
-        setError(null);
 
         try {
             const token = await getIdToken();
@@ -75,9 +82,39 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
 
             setLiked(newLiked);
             if (onToggle) onToggle(newLiked, itemId, itemType);
+
+            // Success toast
+            if (newLiked) {
+                toast.success('Ditambahkan ke favorit!', {
+                    duration: 2000,
+                    position: 'top-center',
+                    style: {
+                        background: '#1e293b',
+                        border: '1px solid #ff6eb4',
+                        color: '#ff6eb4',
+                    },
+                });
+            } else {
+                toast('Dihapus dari favorit', {
+                    duration: 2000,
+                    position: 'top-center',
+                    style: {
+                        background: '#1e293b',
+                        border: '1px solid #475569',
+                        color: '#94a3b8',
+                    },
+                });
+            }
         } catch (err) {
-            setError(err.message || 'Gagal nyimpen favorit');
-            setTimeout(() => setError(null), 3000);
+            toast.error(err.message || 'Gagal nyimpen favorit', {
+                duration: 4000,
+                position: 'top-center',
+                style: {
+                    background: '#1e293b',
+                    border: '1px solid #f87171',
+                    color: '#fca5a5',
+                },
+            });
         } finally {
             setLoading(false);
         }
@@ -90,77 +127,61 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
     const disabled = loading || !itemId;
 
     return (
-        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
-            <button
-                onClick={handleToggle}
-                disabled={disabled}
-                title={
-                    !user
-                        ? 'Login dulu buat simpen favorit!'
-                        : liked
-                        ? 'Hapus dari favorit'
-                        : 'Simpan ke favorit'
-                }
+        <button
+            onClick={handleToggle}
+            disabled={disabled}
+            title={
+                !user
+                    ? 'Login dulu buat simpen favorit!'
+                    : liked
+                    ? 'Hapus dari favorit'
+                    : 'Simpan ke favorit'
+            }
+            style={{
+                background: 'none',
+                border: 'none',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 10,
+                flexShrink: 0,
+                transition: 'transform 0.2s',
+                opacity: disabled ? 0.5 : 1,
+            }}
+            onMouseEnter={e => {
+                if (!disabled) e.currentTarget.style.transform = 'scale(1.15)';
+            }}
+            onMouseLeave={e => {
+                e.currentTarget.style.transform = 'scale(1)';
+            }}
+        >
+            <svg
+                width={size}
+                height={size}
+                viewBox="0 0 24 24"
                 style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 10,
-                    flexShrink: 0,
-                    transition: 'transform 0.2s',
-                    opacity: disabled ? 0.5 : 1,
-                }}
-                onMouseEnter={e => {
-                    if (!disabled) e.currentTarget.style.transform = 'scale(1.15)';
-                }}
-                onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'scale(1)';
+                    display: 'block',
+                    filter: glow,
+                    transition: 'filter 0.3s',
                 }}
             >
-                <svg
-                    width={size}
-                    height={size}
-                    viewBox="0 0 24 24"
-                    style={{
-                        display: 'block',
-                        filter: glow,
-                        transition: 'filter 0.3s',
-                    }}
-                >
-                    {liked ? (
-                        <path
-                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                            fill={c}
-                        />
-                    ) : (
-                        <path
-                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                            fill="none"
-                            stroke={c}
-                            strokeWidth="2"
-                            strokeLinejoin="round"
-                        />
-                    )}
-                </svg>
-            </button>
-            {error && (
-                <span
-                    style={{
-                        position: 'absolute',
-                        bottom: -24,
-                        fontSize: 10,
-                        color: '#f87171',
-                        whiteSpace: 'nowrap',
-                        fontWeight: 500,
-                    }}
-                >
-                    {error}
-                </span>
-            )}
-        </div>
+                {liked ? (
+                    <path
+                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                        fill={c}
+                    />
+                ) : (
+                    <path
+                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                        fill="none"
+                        stroke={c}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                    />
+                )}
+            </svg>
+        </button>
     );
 }
