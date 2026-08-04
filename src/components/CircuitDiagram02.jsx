@@ -4,7 +4,7 @@ import { hexToRgbStr } from '../utils/colorHelper';
 export default function CircuitDiagram02({ a, notA, out, onToggleA }) {
     const notColor = "#f87171";
     const notRgb = hexToRgbStr(notColor);
-    const wc = (val, col) => val ? col : "#1e293b";
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
     const midY = 50;
@@ -43,14 +43,14 @@ export default function CircuitDiagram02({ a, notA, out, onToggleA }) {
             <text x={inputAX + 24} y={inputAY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={a ? notColor : `rgba(${notRgb},0.5)`}>{a ? "1" : "0"}</text>
         </g>
         {/* Wire: Input A -> NOT gate 1 */}
-        <line x1={inputAX + inputNodeW} y1={midY} x2={not1StartX} y2={midY} stroke={wc(a, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={inputAX + inputNodeW} y1={midY} x2={not1StartX} y2={midY} stroke={wc(a, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         {/* NOT gate 1 */}
         <Fragment>
             <polygon points={`${not1StartX},${not1TopY} ${not1StartX},${not1BotY} ${not1EndX},${not1MidY}`} fill={not1Fill} stroke={not1Stroke} strokeWidth="2" style={{ filter: not1Glow, transition: "all 0.3s" }} />
             <circle cx={not1EndX + bubbleR} cy={not1MidY} r={bubbleR} fill={not1Fill} stroke={not1Stroke} strokeWidth="2" style={{ filter: not1Glow, transition: "all 0.3s" }} />
         </Fragment>
         {/* Wire: NOT 1 -> NOT 2 */}
-        <line x1={not1OutX} y1={midY} x2={not2StartX} y2={midY} stroke={wc(notA, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={not1OutX} y1={midY} x2={not2StartX} y2={midY} stroke={wc(notA, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         {/* Label NOT(A) with overline */}
         <text x={(not1OutX + not2StartX) / 2} y={midY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={aPrimeColor} style={{ transition: "fill 0.3s" }}>A</text>
         <line x1={(not1OutX + not2StartX) / 2 - 4} y1={midY - 17} x2={(not1OutX + not2StartX) / 2 + 4} y2={midY - 17} stroke={aPrimeColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
@@ -60,7 +60,7 @@ export default function CircuitDiagram02({ a, notA, out, onToggleA }) {
             <circle cx={not2EndX + bubbleR} cy={not2MidY} r={bubbleR} fill={not2Fill} stroke={not2Stroke} strokeWidth="2" style={{ filter: not2Glow, transition: "all 0.3s" }} />
         </Fragment>
         {/* Wire: NOT 2 -> OUT */}
-        <line x1={not2OutX} y1={midY} x2={outX - outNodeR} y2={outY} stroke={wc(out, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={not2OutX} y1={midY} x2={outX - outNodeR} y2={outY} stroke={wc(out, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         {/* Output node */}
         <text x={outX} y={outY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">OUT</text>
         <circle cx={outX} cy={outY} r={outNodeR} fill={out ? notColor : "#1e293b"} stroke={out ? notColor : "#334155"} strokeWidth="2" style={{ filter: out ? `drop-shadow(0 0 8px rgba(${notRgb},0.9)) drop-shadow(0 0 18px rgba(${notRgb},0.5))` : "none", transition: "all 0.3s" }} />

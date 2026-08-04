@@ -5,7 +5,7 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
     const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
     const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
-    const wc = (val, col) => val ? col : "#1e293b";
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
@@ -87,7 +87,7 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <text x={ox} y={oy + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={val ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{val ? "1" : "0"}</text>
     </Fragment>;
 
-    const W = ({ d, val, col }) => <path d={d} fill="none" stroke={wc(val, col)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
+    const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
     // Label color for S': follow NOT color when active, gray when not
     const sPrimeLabelColor = sNot ? notColor : "#475569";
@@ -99,28 +99,28 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <InputNode ix={inputD1X} iy={inputD1Y} val={d1} label="D1" onToggle={onToggleD1} color={andColor} rgb={andRgb} />
 
         {/* ===== WIRE S: horizontal to junction, then fan-out ===== */}
-        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={notColor} />
+        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={notColor} rgb={notRgb} />
         {/* S branch up -> NOT gate */}
-        <W d={`M ${sJX},${inputSY} H ${notSX}`} val={s} col={notColor} />
+        <W d={`M ${sJX},${inputSY} H ${notSX}`} val={s} col={notColor} rgb={notRgb} />
         {/* S branch down -> AND2 top input (route down then right) */}
-        <W d={`M ${sJX},${inputSY} V ${and2TY} H ${and2SX}`} val={s} col={andColor} />
+        <W d={`M ${sJX},${inputSY} V ${and2TY} H ${and2SX}`} val={s} col={andColor} rgb={andRgb} />
         {/* Junction dot at S fan-out point */}
-        <circle cx={sJX} cy={inputSY} r={3} fill={s ? notColor : "#1e293b"} style={{ transition: "fill 0.3s" }} />
+        <circle cx={sJX} cy={inputSY} r={3} fill={s ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== NOT GATE ===== */}
         <NotGate sx={notSX} ty={notTY} by={notBY} my={notMY} triEx={notTriEX} bubR={notBubR} ex={notEX} glow={notGlow} fill={notFill} stroke={notStroke} />
 
         {/* ===== WIRE S' (NOT output) -> AND1 top input ===== */}
-        <W d={`M ${notEX},${notMY} H ${and1SX - 30} V ${and1TY} H ${and1SX}`} val={sNot} col={andColor} />
+        <W d={`M ${notEX},${notMY} H ${and1SX - 30} V ${and1TY} H ${and1SX}`} val={sNot} col={andColor} rgb={andRgb} />
         {/* Label S' */}
         <text x={(notEX + and1SX - 30) / 2} y={notMY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
         <line x1={(notEX + and1SX - 30) / 2 - 4} y1={notMY - 13} x2={(notEX + and1SX - 30) / 2 + 4} y2={notMY - 13} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== WIRE D0 -> AND1 bottom input ===== */}
-        <W d={`M ${inputD0X + inputNodeW},${inputD0Y} H ${and1SX}`} val={d0} col={andColor} />
+        <W d={`M ${inputD0X + inputNodeW},${inputD0Y} H ${and1SX}`} val={d0} col={andColor} rgb={andRgb} />
 
         {/* ===== WIRE D1 -> AND2 bottom input ===== */}
-        <W d={`M ${inputD1X + inputNodeW},${inputD1Y} H ${and2SX}`} val={d1} col={andColor} />
+        <W d={`M ${inputD1X + inputNodeW},${inputD1Y} H ${and2SX}`} val={d1} col={andColor} rgb={andRgb} />
 
         {/* ===== AND1 GATE (S' AND D0 -> g1) ===== */}
         <AndGate sx={and1SX} ty={and1TY} by={and1BY} my={and1MY} w={and1W} ar={and1AR} glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
@@ -129,12 +129,12 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <AndGate sx={and2SX} ty={and2TY} by={and2BY} my={and2MY} w={and2W} ar={and2AR} glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
 
         {/* ===== WIRE g1: AND1 output -> OR top input ===== */}
-        <W d={`M ${and1EX},${and1MY} H ${orSX - 20} V ${orTY} H ${orSX}`} val={g1} col={orColor} />
+        <W d={`M ${and1EX},${and1MY} H ${orSX - 20} V ${orTY} H ${orSX}`} val={g1} col={orColor} rgb={orRgb} />
         {/* Label g1 */}
         <text x={(and1EX + orSX - 20) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g1</text>
 
         {/* ===== WIRE g2: AND2 output -> OR bottom input ===== */}
-        <W d={`M ${and2EX},${and2MY} H ${orSX - 10} V ${orBY} H ${orSX}`} val={g2} col={orColor} />
+        <W d={`M ${and2EX},${and2MY} H ${orSX - 10} V ${orBY} H ${orSX}`} val={g2} col={orColor} rgb={orRgb} />
         {/* Label g2 */}
         <text x={(and2EX + orSX - 10) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g2</text>
 
@@ -142,7 +142,7 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <OrGate sx={orSX} ty={orTY} by={orBY} my={orMY} ex={orEX} glow={orGlow} fill={orFill} stroke={orStroke} />
 
         {/* ===== OUTPUT WIRE & NODE ===== */}
-        <line x1={orEX} y1={orMY} x2={outX - outNodeR} y2={outY} stroke={wc(y, orColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={orEX} y1={orMY} x2={outX - outNodeR} y2={outY} stroke={wc(y, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <OutputNode ox={outX} oy={outY} val={y} label="Y" color={orColor} rgb={orRgb} />
     </svg>;
 }

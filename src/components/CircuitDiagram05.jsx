@@ -6,7 +6,7 @@ export default function CircuitDiagram05({ a, b, c, andOut, out, onToggleA, onTo
     const orColor = "#a78bfa";
     const andRgb = hexToRgbStr(andColor);
     const orRgb = hexToRgbStr(orColor);
-    const wc = (val, col) => val ? col : "#1e293b";
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
     const inputAX = 1, inputAY = 20;
@@ -51,18 +51,18 @@ export default function CircuitDiagram05({ a, b, c, andOut, out, onToggleA, onTo
             <circle cx={inputCX + 24} cy={inputCY} r={nodeR} fill={c ? orColor : `rgba(${orRgb},0.15)`} stroke={c ? orColor : `rgba(${orRgb},0.4)`} strokeWidth="1.5" style={{ filter: c ? `drop-shadow(0 0 5px rgba(${orRgb},0.8))` : "none", transition: "all 0.25s" }} />
             <text x={inputCX + 24} y={inputCY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={c ? orColor : `rgba(${orRgb},0.5)`}>{c ? "1" : "0"}</text>
         </g>
-        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
-        <path d={`M ${inputBX + inputNodeW},${inputBY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(b, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
-        <path d={`M ${inputCX + inputNodeW},${inputCY} H ${orStartX}`} fill="none" stroke={wc(c, orColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputBX + inputNodeW},${inputBY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(b, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputCX + inputNodeW},${inputCY} H ${orStartX}`} fill="none" stroke={wc(c, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
         </Fragment>
-        <path d={`M ${andEndX},${andMidY} H ${orStartX - 20} V ${orTopY} H ${orStartX}`} fill="none" stroke={wc(andOut, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${andEndX},${andMidY} H ${orStartX - 20} V ${orTopY} H ${orStartX}`} fill="none" stroke={wc(andOut, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <text x={(andEndX + orStartX - 20) / 2 + 8} y={andMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={andLabelColor} style={{ transition: "fill 0.3s" }}>A · B</text>
         <Fragment>
             <path d={`M ${orStartX},${orTopY} C ${orStartX + 14},${orTopY} ${orEndX - 12},${orMidY - 6} ${orEndX},${orMidY} C ${orEndX - 12},${orMidY + 6} ${orStartX + 14},${orBotY} ${orStartX},${orBotY} C ${orStartX + 10},${orMidY + 5} ${orStartX + 10},${orMidY - 5} ${orStartX},${orTopY} Z`} fill={orFill} stroke={orStroke} strokeWidth="2" style={{ filter: orGlow, transition: "all 0.3s" }} />
         </Fragment>
-        <line x1={orEndX} y1={orMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, orColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={orEndX} y1={orMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <text x={outX} y={outY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">OUT</text>
         <circle cx={outX} cy={outY} r={outNodeR} fill={out ? orColor : "#1e293b"} stroke={out ? orColor : "#334155"} strokeWidth="2" style={{ filter: out ? `drop-shadow(0 0 8px rgba(${orRgb},0.9)) drop-shadow(0 0 18px rgba(${orRgb},0.5))` : "none", transition: "all 0.3s" }} />
         <text x={outX} y={outY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={out ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{out ? "1" : "0"}</text>

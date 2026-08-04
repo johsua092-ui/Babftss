@@ -6,7 +6,7 @@ export default function CircuitDiagram06({ a, b, sum, carry, onToggleA, onToggle
     const andColor = "#4ade80";
     const xorRgb = hexToRgbStr(xorColor);
     const andRgb = hexToRgbStr(andColor);
-    const wc = (val, col) => val ? col : "#1e293b";
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
@@ -64,18 +64,18 @@ export default function CircuitDiagram06({ a, b, sum, carry, onToggleA, onToggle
         </g>
 
         {/* Wire A: from input A → junction → branch to XOR top input & AND top input */}
-        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${junctionAX}`} fill="none" stroke={wc(a, xorColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${junctionAX}`} fill="none" stroke={wc(a, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch A → XOR (top) */}
-        <path d={`M ${junctionAX},${inputAY} V ${xorTopY} H ${xorStartX}`} fill="none" stroke={wc(a, xorColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionAX},${inputAY} V ${xorTopY} H ${xorStartX}`} fill="none" stroke={wc(a, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch A → AND (bottom) */}
-        <path d={`M ${junctionAX},${inputAY} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionAX},${inputAY} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* Wire B: from input B → junction → branch to XOR bottom input & AND bottom input */}
-        <path d={`M ${inputBX + inputNodeW},${inputBY} H ${junctionBX}`} fill="none" stroke={wc(b, xorColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputBX + inputNodeW},${inputBY} H ${junctionBX}`} fill="none" stroke={wc(b, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch B → XOR (top) */}
-        <path d={`M ${junctionBX},${inputBY} V ${xorBotY} H ${xorStartX}`} fill="none" stroke={wc(b, xorColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionBX},${inputBY} V ${xorBotY} H ${xorStartX}`} fill="none" stroke={wc(b, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch B → AND (bottom) */}
-        <path d={`M ${junctionBX},${inputBY} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(b, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionBX},${inputBY} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(b, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* XOR gate — bezier shape with back curve (reuse from GateDiagram.jsx case "xor") */}
         <Fragment>
@@ -91,13 +91,13 @@ export default function CircuitDiagram06({ a, b, sum, carry, onToggleA, onToggle
         </Fragment>
 
         {/* SUM output wire + node */}
-        <line x1={xorEndX} y1={xorMidY} x2={sumOutX - outNodeR} y2={sumOutY} stroke={wc(sum, xorColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={xorEndX} y1={xorMidY} x2={sumOutX - outNodeR} y2={sumOutY} stroke={wc(sum, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <text x={sumOutX} y={sumOutY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">SUM</text>
         <circle cx={sumOutX} cy={sumOutY} r={outNodeR} fill={sum ? xorColor : "#1e293b"} stroke={sum ? xorColor : "#334155"} strokeWidth="2" style={{ filter: sum ? `drop-shadow(0 0 8px rgba(${xorRgb},0.9)) drop-shadow(0 0 18px rgba(${xorRgb},0.5))` : "none", transition: "all 0.3s" }} />
         <text x={sumOutX} y={sumOutY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={sum ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{sum ? "1" : "0"}</text>
 
         {/* CARRY output wire + node */}
-        <line x1={andEndX} y1={andMidY} x2={carryOutX - outNodeR} y2={carryOutY} stroke={wc(carry, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={andEndX} y1={andMidY} x2={carryOutX - outNodeR} y2={carryOutY} stroke={wc(carry, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <text x={carryOutX} y={carryOutY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">CARRY</text>
         <circle cx={carryOutX} cy={carryOutY} r={outNodeR} fill={carry ? andColor : "#1e293b"} stroke={carry ? andColor : "#334155"} strokeWidth="2" style={{ filter: carry ? `drop-shadow(0 0 8px rgba(${andRgb},0.9)) drop-shadow(0 0 18px rgba(${andRgb},0.5))` : "none", transition: "all 0.3s" }} />
         <text x={carryOutX} y={carryOutY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={carry ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{carry ? "1" : "0"}</text>

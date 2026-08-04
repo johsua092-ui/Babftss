@@ -6,7 +6,7 @@ export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggl
     const andColor = "#4ade80";
     const notRgb = hexToRgbStr(notColor);
     const andRgb = hexToRgbStr(andColor);
-    const wc = (val, col) => val ? col : "#1e293b";
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
     const inputAX = 1, inputAY = 28;
@@ -44,19 +44,19 @@ export default function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggl
             <circle cx={inputBX + 24} cy={inputBY} r={nodeR} fill={b ? notColor : `rgba(${notRgb},0.15)`} stroke={b ? notColor : `rgba(${notRgb},0.4)`} strokeWidth="1.5" style={{ filter: b ? `drop-shadow(0 0 5px rgba(${notRgb},0.8))` : "none", transition: "all 0.25s" }} />
             <text x={inputBX + 24} y={inputBY + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={b ? notColor : `rgba(${notRgb},0.5)`}>{b ? "1" : "0"}</text>
         </g>
-        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
-        <line x1={inputBX + inputNodeW} y1={inputBY} x2={notStartX} y2={notMidY} stroke={wc(b, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={inputBX + inputNodeW} y1={inputBY} x2={notStartX} y2={notMidY} stroke={wc(b, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <polygon points={`${notStartX},${notTopY} ${notStartX},${notBotY} ${notEndX},${notMidY}`} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
             <circle cx={notEndX + bubbleR} cy={notMidY} r={bubbleR} fill={notFill} stroke={notStroke} strokeWidth="2" style={{ filter: notGlow, transition: "all 0.3s" }} />
         </Fragment>
-        <path d={`M ${notOutX},${notMidY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(bPrime, notColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${notOutX},${notMidY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(bPrime, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <text x={(notOutX + andStartX) / 2} y={notMidY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="bold" fill={bPrimeColor} style={{ transition: "fill 0.3s" }}>B</text>
         <line x1={(notOutX + andStartX) / 2 - 4} y1={notMidY - 17} x2={(notOutX + andStartX) / 2 + 4} y2={notMidY - 17} stroke={bPrimeColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
         </Fragment>
-        <line x1={andEndX} y1={andMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, andColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={andEndX} y1={andMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <text x={outX} y={outY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">OUT</text>
         <circle cx={outX} cy={outY} r={outNodeR} fill={out ? andColor : "#1e293b"} stroke={out ? andColor : "#334155"} strokeWidth="2" style={{ filter: out ? `drop-shadow(0 0 8px rgba(${andRgb},0.9)) drop-shadow(0 0 18px rgba(${andRgb},0.5))` : "none", transition: "all 0.3s" }} />
         <text x={outX} y={outY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={out ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{out ? "1" : "0"}</text>

@@ -8,7 +8,7 @@ export default function CircuitDiagram07({ a, b, notB, notA, and1Out, and2Out, o
     const andRgb = hexToRgbStr(andColor);
     const notRgb = hexToRgbStr(notColor);
     const orRgb = hexToRgbStr(orColor);
-    const wc = (val, col) => val ? col : "#1e293b";
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
 
@@ -93,18 +93,18 @@ export default function CircuitDiagram07({ a, b, notB, notA, and1Out, and2Out, o
         </g>
 
         {/* Wire A: input -> junction -> branch up (top row, straight) & down (bottom row, via NOT A) */}
-        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${junctionAX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputAX + inputNodeW},${inputAY} H ${junctionAX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch A -> AND1 top input (straight, stays at Y=30) */}
-        <path d={`M ${junctionAX},${inputAY} H ${and1StartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionAX},${inputAY} H ${and1StartX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch A -> NOT A (drop down to bottom row lane Y=78) */}
-        <path d={`M ${junctionAX},${inputAY} V ${and2TopY} H ${notAStartX}`} fill="none" stroke={wc(a, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionAX},${inputAY} V ${and2TopY} H ${notAStartX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* Wire B: input -> junction -> branch up (top row, via NOT B) & down (bottom row, straight) */}
-        <path d={`M ${inputBX + inputNodeW},${inputBY} H ${junctionBX}`} fill="none" stroke={wc(b, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputBX + inputNodeW},${inputBY} H ${junctionBX}`} fill="none" stroke={wc(b, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch B -> NOT B (rise up to top row lane Y=46) */}
-        <path d={`M ${junctionBX},${inputBY} V ${and1BotY} H ${notBStartX}`} fill="none" stroke={wc(b, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionBX},${inputBY} V ${and1BotY} H ${notBStartX}`} fill="none" stroke={wc(b, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Branch B -> AND2 bottom input (dip to Y=94, stays in bottom lane) */}
-        <path d={`M ${junctionBX},${inputBY} V ${and2BotY} H ${and2StartX}`} fill="none" stroke={wc(b, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${junctionBX},${inputBY} V ${and2BotY} H ${and2StartX}`} fill="none" stroke={wc(b, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* NOT B gate (top row, centered on AND1 bottom input lane Y=46) */}
         <Fragment>
@@ -112,7 +112,7 @@ export default function CircuitDiagram07({ a, b, notB, notA, and1Out, and2Out, o
             <circle cx={notBEndX + bubbleR} cy={and1BotY} r={bubbleR} fill={notBFill} stroke={notBStroke} strokeWidth="2" style={{ filter: notBGlow, transition: "all 0.3s" }} />
         </Fragment>
         {/* Wire NOT B -> AND1 bottom input */}
-        <line x1={notBOutX} y1={and1BotY} x2={and1StartX} y2={and1BotY} stroke={wc(notB, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={notBOutX} y1={and1BotY} x2={and1StartX} y2={and1BotY} stroke={wc(notB, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* NOT A gate (bottom row, centered on AND2 top input lane Y=78) */}
         <Fragment>
@@ -120,7 +120,7 @@ export default function CircuitDiagram07({ a, b, notB, notA, and1Out, and2Out, o
             <circle cx={notAEndX + bubbleR} cy={and2TopY} r={bubbleR} fill={notAFill} stroke={notAStroke} strokeWidth="2" style={{ filter: notAGlow, transition: "all 0.3s" }} />
         </Fragment>
         {/* Wire NOT A -> AND2 top input */}
-        <line x1={notAOutX} y1={and2TopY} x2={and2StartX} y2={and2TopY} stroke={wc(notA, notColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={notAOutX} y1={and2TopY} x2={and2StartX} y2={and2TopY} stroke={wc(notA, notColor, notRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* AND1 gate (top row): A AND NOT B */}
         <Fragment>
@@ -133,9 +133,9 @@ export default function CircuitDiagram07({ a, b, notB, notA, and1Out, and2Out, o
         </Fragment>
 
         {/* Wire AND1 output -> OR top input */}
-        <path d={`M ${and1EndX},${and1MidY} H ${orStartX - 18} V ${orTopY} H ${orStartX}`} fill="none" stroke={wc(and1Out, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${and1EndX},${and1MidY} H ${orStartX - 18} V ${orTopY} H ${orStartX}`} fill="none" stroke={wc(and1Out, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         {/* Wire AND2 output -> OR bottom input */}
-        <path d={`M ${and2EndX},${and2MidY} H ${orStartX - 18} V ${orBotY} H ${orStartX}`} fill="none" stroke={wc(and2Out, andColor)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${and2EndX},${and2MidY} H ${orStartX - 18} V ${orBotY} H ${orStartX}`} fill="none" stroke={wc(and2Out, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
 
         {/* OR gate — bezier shape (reuse from GateDiagram.jsx case "or") */}
         <Fragment>
@@ -143,7 +143,7 @@ export default function CircuitDiagram07({ a, b, notB, notA, and1Out, and2Out, o
         </Fragment>
 
         {/* Output wire + OUT node */}
-        <line x1={orEndX} y1={orMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, orColor)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <line x1={orEndX} y1={orMidY} x2={outX - outNodeR} y2={outY} stroke={wc(out, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
         <text x={outX} y={outY - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">OUT</text>
         <circle cx={outX} cy={outY} r={outNodeR} fill={out ? orColor : "#1e293b"} stroke={out ? orColor : "#334155"} strokeWidth="2" style={{ filter: out ? `drop-shadow(0 0 8px rgba(${orRgb},0.9)) drop-shadow(0 0 18px rgba(${orRgb},0.5))` : "none", transition: "all 0.3s" }} />
         <text x={outX} y={outY + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={out ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{out ? "1" : "0"}</text>
