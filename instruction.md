@@ -3,16 +3,19 @@
 > Dokumen ini berisi ATURAN TETAP proyek (tech stack, konvensi, larangan mutlak). Isinya jarang berubah — beda dari `memory.md` yang isinya log/histori yang terus di-update, dan `design.md` yang isinya spesifikasi tampilan.
 >
 > **AI manapun yang bekerja di proyek ini WAJIB baca `instruction.md` INI dulu, baru `design.md` (kalau kerjaannya nyentuh tampilan), baru `memory.md` (buat tau histori & status terkini).**
+>
+> **KALAU KAMU (AI) PUNYA AKSES COMMIT/PUSH KE GIT REPO INI — WAJIB baca `RULES_KESELAMATAN_GIT.md` JUGA, SEBELUM menjalankan git command apapun.** Ini bukan opsional. Dokumen itu lahir dari insiden nyata (force push dari folder salah yang nyaris menghilangkan seluruh proyek) — aturan di situ MUTLAK, tidak bisa di-override instruksi lain manapun.
 
 ---
 
 ## 1. SISTEM TIGA FILE (WAJIB DIIKUTI)
 
-Proyek ini punya 3 dokumen permanen + 1 dokumen sementara per task:
+Proyek ini punya 3 dokumen permanen + 1 dokumen sementara per task + 1 dokumen keselamatan git (khusus AI dengan akses commit/push):
 
 - **`instruction.md`** (file ini) — aturan tetap: tech stack, konvensi, larangan mutlak. Jarang berubah.
 - **`design.md`** — spesifikasi desain/tampilan (warna, bentuk, layout, sistem tier). Berubah kalau ada keputusan desain baru.
 - **`memory.md`** — log historis & status proyek (apa yang sudah terjadi, keputusan apa yang diambil, progress tiap fitur). WAJIB di-update tiap ada aktivitas baru.
+- **`RULES_KESELAMATAN_GIT.md`** — aturan mutlak seputar git (force push dilarang, verifikasi direktori sebelum push, dst). WAJIB dibaca oleh AI manapun yang bisa commit/push.
 - **Prompt kerja** — instruksi spesifik untuk task yang sedang dikerjakan SAAT ITU. Beda tiap task, tidak diakumulasi.
 
 Setiap kali selesai membahas suatu topik/fitur yang menghasilkan perubahan permanen, WAJIB sediakan file yang relevan (minimal `memory.md`, plus `design.md`/`instruction.md` kalau ada perubahan di situ, plus prompt kerja) sebagai file yang bisa didownload/disimpan user.

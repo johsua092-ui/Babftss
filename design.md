@@ -99,15 +99,23 @@ Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian 
 - Truth table: jumlah kolom input menyesuaikan jumlah input asli rangkaian (2^n baris untuk n input), highlight tetap dinamis real-time.
 
 ### 3.2 Sistem TIER (badge, reusable untuk semua card Circuit)
+
+> **UPDATE (keputusan langsung user):** label tier "MUDAH" diganti jadi **"EASY"** (Inggris, konsisten sama NORMAL/HARD/INSANE yang sudah Inggris), warna badge-nya jadi hijau (`rgba(34,197,94,...)`, teks `#86efac`). Tier baru **COMPLEX** ditambahkan (warna abu terang/putih, efek kilat/lightning berputar) — disiapkan di sistem filter, belum dipakai card manapun, kemungkinan untuk tier di atas Insane nanti.
+
 | Tier | Styling |
 |---|---|
 | TUTORIAL | Silver/abu mengkilap (gradient halus abu muda-putih-abu muda, `#94a3b8` ke `#e2e8f0`), efek shimmer PELAN & HALUS (bukan warna-warni seperti Hard/Insane — tetap monokrom abu). Khusus untuk card referensi/edukasi non-interaktif (bukan bagian progresi kesulitan gate biasa). |
-| MUDAH | Warna solid biasa, border flat, tanpa glow berlebihan |
-| NORMAL | Warna terang/vivid, glow neon standar |
-| HARD | Border gradient RGB (2-3 warna), animasi bergerak pelan |
-| INSANE | Border RGB penuh spektrum, animasi cepat + shimmer/kelap-kelip, kesan premium |
+| EASY (dulu "MUDAH") | Warna hijau (`rgba(34,197,94,0.18)` bg, `#86efac` teks), border flat, tanpa glow berlebihan |
+| NORMAL | Warna terang/vivid (kuning `#facc15`), glow neon standar |
+| HARD | Warna pink/merah (`#E30B5D`/`#fda4af`), badge shimmer sweep 3s |
+| INSANE | Ungu (`#8B5CF6`/`#D946EF`), efek "crack"/retak animasi + flash shimmer, kesan premium |
+| COMPLEX | Abu terang/putih (`#94a3b8`/`#e2e8f0`), efek lightning berputar (conic-gradient animasi rotasi) — DISIAPKAN, belum ada card yang pakai |
 
-### 3.3 Layout MULTI-OUTPUT (2 output) — DISETUJUI RETROAKTIF dari implementasi Card 06 "Half Adder"
+### 3.3 Sistem Pencarian & Registrasi Card (WAJIB diikuti untuk SETIAP card baru)
+
+Halaman Logic Gates Circuit punya search bar (cari nama/nomor) + filter tombol tier, didukung array registry `ALL_CARDS` di `src/pages/LogicGatesCircuit.jsx`. **Setiap kali membuat card Circuit baru, WAJIB tambahkan entrinya ke `ALL_CARDS`** dengan format: `{ num: '<nomor 2 digit>', name: '<judul card>', tier: '<EASY|NORMAL|HARD|INSANE|COMPLEX|TUTORIAL>', el: <ComponentCard> }`. Tanpa ini, card baru TIDAK akan muncul di hasil pencarian/filter walau komponennya sudah dirender di halaman.
+
+### 3.4 Layout MULTI-OUTPUT (2 output) — DISETUJUI RETROAKTIF dari implementasi Card 06 "Half Adder"
 
 Untuk rangkaian dengan lebih dari 1 output (misal Half Adder: SUM & CARRY), pola berikut jadi acuan baku:
 

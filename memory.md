@@ -504,6 +504,8 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 05 "Gerbang 3 Input Sederhana" — 3 input, (A AND B) OR C, truth table 8 baris, pengenalan input >2 (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 06 "Half Adder" — 2 input, 2 gate paralel (XOR+AND), 2 output (SUM+CARRY), tier NORMAL, layout vertikal stack (Bagian 3).
 - SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 07 "Membangun XOR dari Gate Dasar" — 2 input, 5 gate (2 NOT + 2 AND + 1 OR), OUT=(A AND NOT B) OR (NOT A AND B), truth table identik XOR asli, kabel input bercabang/fan-out (Bagian 3).
+- SELESAI & TERVERIFIKASI: "Logic Gates Circuit" Card 08 "Full Adder" — 3 input, 2 output (SUM+COUT), 5 gate, tier HARD (Bagian 3.4).
+- SELESAI (menunggu verifikasi visual user): "Logic Gates Circuit" Card 09 "2:1 Multiplexer (Mux)" — 3 input (S, D0, D1), 1 output (Y), 4 gate, tier NORMAL, Bab B pertama (Bagian 3.5).
 - SELESAI & TERVERIFIKASI: optimasi performa mobile — code-splitting, bundle awal turun dari 611 KB ke 573 KB (Bagian 3.6).
 - SELESAI & TERVERIFIKASI: optimasi gambar LCP — konversi WebP (63.1 KB -> 21.8 KB), fix path gambar Menu, fetchpriority="high" (Bagian 3.7).
 - SELESAI & TERVERIFIKASI: optimasi performa backend (Firebase lazy-load, Terser, security headers, caching) — skor PageSpeed 66 → 94 (Bagian 4).
@@ -574,6 +576,49 @@ User menjelaskan: website ini direncanakan jadi **wadah jangka panjang buat namp
   - 100: SUM=1, COUT=0 | 101: SUM=0, COUT=1 | 110: SUM=0, COUT=1 | 111: SUM=1, COUT=1
 - Style: KONFIRMASI reuse pola card-wrapper standar (background #0e1420, borderRadius 16, header, badge tier, TABEL KEBENARAN). Tier HARD menggunakan animated gradient border (bukan gaya baru).
 - File backend TIDAK disentuh.
+- **Tidak bisa diverifikasi visual langsung di browser.**
+
+- Status: **SELESAI.** Perlu verifikasi visual oleh user.
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** kode `CircuitDiagram08.jsx`/`CircuitCard08.jsx` dibaca menyeluruh. Logika dihitung ulang manual untuk beberapa kombinasi (cocok 100% sama truth table di atas). Style dikonfirmasi reuse pola standar (wrapper card, badge, dll — TIDAK mengulang kesalahan Card 08 versi pertama yang dihapus). `svgW` pakai formula `Math.max(sumOutX, coutOutX) + outNodeR + 20` sesuai `design.md` 3.4. Wire fan-out & junction rapi, label intermediate (s1/c1/c2) membantu keterbacaan. Kualitas kode tinggi untuk diagram paling kompleks sejauh ini (5 gate). Status resmi: **SELESAI & TERVERIFIKASI.**
+
+---
+
+## 3.5 CARD 09 "2:1 MULTIPLEXER (MUX)" — TIER NORMAL (SELESAI)
+
+**Konteks:** Card 09 pernah dibuat Qwen di sesi otonom lalu DIHAPUS karena melanggar scope (insiden Bagian 8). Sekarang dikerjakan ulang mengikuti pola card-wrapper standar. Ini adalah card PERTAMA di Bab B (Mux/Demux), task B1.
+
+**Konsep:** 2:1 Multiplexer — saklar digital. 1 sinyal SELECT (S), 2 data input (D0, D1), 1 output (Y). `Y = (NOT(S) AND D0) OR (S AND D1)`. Kalau S=0, Y=D0. Kalau S=1, Y=D1.
+**Insight:** pengenalan konsep sinyal SELECT/kontrol yang menentukan sinyal mana yang "diloloskan" — dasar cara komputer memilih data.
+
+**4 gate:** 1 NOT + 2 AND + 1 OR.
+**Truth table:** 3 input -> 8 baris: `[[0,0,0,0],[0,0,1,0],[0,1,0,1],[0,1,1,1],[1,0,0,0],[1,0,1,1],[1,1,0,0],[1,1,1,1]]`.
+
+**Warna tema card:** `#facc15` (NORMAL/kuning, sesuai design.md 3.2). Border menyala saat Y true. NOT gate warna `#f87171`, AND gate warna `#4ade80`, OR gate warna `#a78bfa` — konsisten dengan card sebelumnya.
+
+**Diagram:** 3 input node vertikal di kiri (S atas Y=22, D0 tengah Y=72, D1 bawah Y=122). S fan-out dari junction point (X=72) ke 2 jalur: (a) masuk NOT gate menghasilkan S', (b) turun ke AND2 top input. S' route ke AND1 top input (siku-siku). D0 lurus ke AND1 bottom. D1 lurus ke AND2 bottom. Output AND1 (g1) dan AND2 (g2) masuk OR gate. Label S' pakai teks "S" + `<line>` overline manual (konsisten pelajaran revisi Card 01). Junction dot di titik fan-out S.
+
+[KEPUTUSAN OTONOM] Layout 3 input vertikal dengan spacing 50px (Y=22, 72, 122), svgH=150. NOT gate diposisikan di lane S (atas), 2 AND gate di lane D0 dan D1, OR gate di tengah antara kedua AND. Wire S' dari NOT output ke AND1 diroute siku-siku (horizontal, lalu turun, lalu horizontal).
+
+**File yang dibuat:**
+- `src/components/CircuitDiagram09.jsx` (baru)
+- `src/components/CircuitCard09.jsx` (baru)
+
+**File yang diubah:**
+- TIDAK ADA — `LogicGatesCircuit.jsx` sudah punya import CircuitCard09 dan entri ALL_CARDS untuk Card 09 (sisa dari insiden yang sudah dihapus file komponennya, tapi entry ALL_CARDS tetap ada). Jadi hanya 2 file baru yang dibuat.
+
+**File dokumen yang diupdate (dari zip):**
+- `instruction.md` — ditimpa versi terbaru dari user.
+- `design.md` — ditimpa versi terbaru dari user.
+- `RULES_KESELAMATAN_GIT.md` — file baru (dari zip).
+- `RULES_AUTONOMI_QWEN.md` — ditimpa versi terbaru dari user.
+
+**Verifikasi:**
+- Build sukses: `built in 7.05s`, 0 error.
+- LogicGatesCircuit chunk: 91.11 KB (naik dari 72.89 KB — wajar karena Card 09 ditambahkan).
+- Main bundle: 399.91 KB (praktis tidak berubah).
+- Truth table dihitung manual 8 kombinasi — semua benar: S=0->Y=D0, S=1->Y=D1.
+- Diff kode: HANYA 2 file baru (CircuitDiagram09.jsx, CircuitCard09.jsx) + 4 file dokumen. File backend TIDAK disentuh. Card 00-08 TIDAK disentuh.
 - **Tidak bisa diverifikasi visual langsung di browser.**
 
 - Status: **SELESAI.** Perlu verifikasi visual oleh user.

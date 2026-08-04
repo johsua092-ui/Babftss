@@ -9,6 +9,7 @@ import CircuitCard05 from '../components/CircuitCard05';
 import CircuitCard06 from '../components/CircuitCard06';
 import CircuitCard07 from '../components/CircuitCard07';
 import CircuitCard08 from '../components/CircuitCard08';
+import CircuitCard09 from '../components/CircuitCard09';
 
 const ALL_CARDS = [
     { num: '00', name: 'Simbol Boolean', tier: 'TUTORIAL', el: CircuitCard00 },
@@ -20,6 +21,7 @@ const ALL_CARDS = [
     { num: '06', name: 'Half Adder', tier: 'NORMAL', el: CircuitCard06 },
     { num: '07', name: 'Membangun XOR dari Gate Dasar', tier: 'NORMAL', el: CircuitCard07 },
     { num: '08', name: 'Full Adder', tier: 'HARD', el: CircuitCard08 },
+    { num: '09', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard09 },
 ];
 
 const TIERS = [
