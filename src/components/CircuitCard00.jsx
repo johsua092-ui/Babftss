@@ -1,14 +1,57 @@
 
 
 const gates = [
-    { name: "NOT",  color: "#f87171" },
-    { name: "AND",  color: "#4ade80" },
-    { name: "NAND", color: "#fb923c" },
-    { name: "OR",   color: "#a78bfa" },
-    { name: "NOR",  color: "#f472b6" },
-    { name: "XOR",  color: "#facc15" },
-    { name: "XNOR", color: "#2dd4bf" },
+    { name: "NOT",  type: "not",  color: "#f87171" },
+    { name: "AND",  type: "and",  color: "#4ade80" },
+    { name: "NAND", type: "nand", color: "#fb923c" },
+    { name: "OR",   type: "or",   color: "#a78bfa" },
+    { name: "NOR",  type: "nor",  color: "#f472b6" },
+    { name: "XOR",  type: "xor",  color: "#facc15" },
+    { name: "XNOR", type: "xnor", color: "#2dd4bf" },
 ];
+
+function MiniGateIcon({ type, color }) {
+    const f = "none", s = color, sw = 1.8;
+    const w = 52, h = 28, cx = 28, cy = 14;
+    switch (type) {
+        case "NOT":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <polygon points={`${cx},${cy-11} ${cx},${cy+11} ${cx+16},${cy}`} fill={f} stroke={s} strokeWidth={sw} />
+                <circle cx={cx+19} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        case "AND":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <path d={`M ${cx},${cy-11} L ${cx+12},${cy-11} A 11,11 0 0,1 ${cx+12},${cy+11} L ${cx},${cy+11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        case "NAND":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <path d={`M ${cx},${cy-11} L ${cx+10},${cy-11} A 11,11 0 0,1 ${cx+10},${cy+11} L ${cx},${cy+11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+                <circle cx={cx+24} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        case "OR":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <path d={`M ${cx},${cy-11} C ${cx+8},${cy-11} ${cx+18},${cy-6} ${cx+22},${cy} C ${cx+18},${cy+6} ${cx+8},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        case "NOR":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <path d={`M ${cx},${cy-11} C ${cx+6},${cy-11} ${cx+14},${cy-6} ${cx+18},${cy} C ${cx+14},${cy+6} ${cx+6},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+                <circle cx={cx+22} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        case "XOR":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <path d={`M ${cx-4},${cy-11} C ${cx+3},${cy-7} ${cx+3},${cy+7} ${cx-4},${cy+11}`} fill="none" stroke={s} strokeWidth={sw} />
+                <path d={`M ${cx},${cy-11} C ${cx+6},${cy-11} ${cx+16},${cy-6} ${cx+20},${cy} C ${cx+16},${cy+6} ${cx+6},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        case "XNOR":
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0 }}>
+                <path d={`M ${cx-4},${cy-11} C ${cx+3},${cy-7} ${cx+3},${cy+7} ${cx-4},${cy+11}`} fill="none" stroke={s} strokeWidth={sw} />
+                <path d={`M ${cx},${cy-11} C ${cx+4},${cy-11} ${cx+12},${cy-6} ${cx+16},${cy} C ${cx+12},${cy+6} ${cx+4},${cy+11} ${cx},${cy+11} C ${cx+5},${cy+5} ${cx+5},${cy-5} ${cx},${cy-11} Z`} fill={f} stroke={s} strokeWidth={sw} />
+                <circle cx={cx+20} cy={cy} r={3} fill={f} stroke={s} strokeWidth={sw} />
+            </svg>;
+        default:
+            return null;
+    }
+}
 
 function NotationSVG({ gate, color }) {
     const fontSize = 14;
@@ -96,7 +139,7 @@ export default function CircuitCard00() {
     }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 14, fontWeight: 700, color: "#ffffff", textShadow: "0 0 4px rgba(255,255,255,0.35), 0 0 8px rgba(255,255,255,0.15)" }}>0</span>
+                    <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 14, fontWeight: 700, color: "#ffffff", textShadow: "0 0 4px rgba(255,255,255,0.35), 0 0 8px rgba(255,255,255,0.15)" }}>01</span>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg, #94a3b8, #e2e8f0, #94a3b8)" }} />
                     <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, background: "linear-gradient(135deg, #94a3b8, #e2e8f0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Simbol Boolean</span>
                 </div>
@@ -125,6 +168,7 @@ export default function CircuitCard00() {
                         <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
                             <NotationSVG gate={g.name} color={g.color} />
                         </div>
+                        <MiniGateIcon type={g.type} color={g.color} />
                     </div>
                 ))}
             </div>
