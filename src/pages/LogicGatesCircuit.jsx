@@ -16,11 +16,11 @@ const ALL_CARDS = [
     { num: '02', name: 'Buffer Negasi Ganda', tier: 'EASY', el: CircuitCard02 },
     { num: '03', name: 'Bangun NAND Manual', tier: 'EASY', el: CircuitCard03 },
     { num: '04', name: 'Bangun NOR Manual', tier: 'EASY', el: CircuitCard04 },
-    { num: '05', name: 'Membangun XOR dari Gate Dasar', tier: 'NORMAL', el: CircuitCard08 },
+    { num: '05', name: 'Membangun XOR dari Gate Dasar', tier: 'EASY', el: CircuitCard08 },
     { num: '06', name: 'Gerbang 3 Input Sederhana', tier: 'EASY', el: CircuitCard05 },
-    { num: '07', name: 'Gerbang 4 Input Lanjutan', tier: 'NORMAL', el: CircuitCard06 },
-    { num: '08', name: 'Half Adder', tier: 'NORMAL', el: CircuitCard07 },
-    { num: '09', name: 'Full Adder', tier: 'HARD', el: CircuitCard09 },
+    { num: '07', name: 'Gerbang 4 Input Lanjutan', tier: 'EASY', el: CircuitCard06 },
+    { num: '08', name: 'Half Adder', tier: 'EASY', el: CircuitCard07 },
+    { num: '09', name: 'Full Adder', tier: 'NORMAL', el: CircuitCard09 },
     { num: '10', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard10 },
 ];
 

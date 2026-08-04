@@ -38,23 +38,7 @@ export default function CircuitCard08() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: isActive ? themeColor : "#334155", boxShadow: isActive ? `0 0 8px ${themeColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: isActive ? themeColor : "#e2e8f0" }}>Full Adder</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-                <HeartButton />
-                <span className="badge-hard-shimmer" style={{ fontFamily: "Orbitron,sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: 1.5, padding: "5px 12px", borderRadius: 6, background: "rgba(227,11,93,0.18)", border: "1px solid rgba(227,11,93,0.4)", color: "#fda4af", position: "relative", overflow: "hidden", display: "inline-block" }}>HARD
-                <style>{`
-                    .badge-hard-shimmer::after {
-                        content: "";
-                        position: absolute;
-                        width: 50%;
-                        height: 300%;
-                        background: linear-gradient(90deg, transparent, rgba(227,11,93,0.35), transparent);
-                        animation: badge-hard-shimmer-sweep 3s ease-in-out infinite;
-                    }
-                    @keyframes badge-hard-shimmer-sweep {
-                        0% { left: -50%; top: 0%; }
-                        100% { left: 100%; top: 0%; }
-                    }
-                `}</style></span></div>
+            <div style={{ display: "flex", alignItems: "center" }}><HeartButton /><span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: 1.5, padding: "5px 12px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}>NORMAL</span></div>
             </div>
 
         <CircuitDiagram09 a={inputA} b={inputB} cin={inputCin} s1={s1} c1={c1} sum={sum} c2={c2} cout={cout} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} onToggleCin={() => setInputCin(v => !v)} />
