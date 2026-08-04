@@ -150,9 +150,9 @@ export default function CircuitCard00() {
                     .badge-tutorial-shimmer::after {
                         content: "";
                         position: absolute;
-                        width: 60%;
-                        height: 100%;
-                        background: linear-gradient(90deg, transparent, rgba(226,232,240,0.25), transparent);
+                        width: 50%;
+                        height: 300%;
+                        background: linear-gradient(90deg, transparent, rgba(226,232,240,0.35), transparent);
                         animation: badge-tutorial-shimmer-sweep 3s ease-in-out infinite;
                     }
                     @keyframes badge-tutorial-shimmer-sweep {
