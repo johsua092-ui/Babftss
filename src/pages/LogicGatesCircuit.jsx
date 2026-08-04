@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
+import { FavoritesProvider } from '../context/FavoritesContext';
 import CircuitCard01 from '../components/CircuitCard01';
 import CircuitCard02 from '../components/CircuitCard02';
 import CircuitCard03 from '../components/CircuitCard03';
@@ -186,8 +187,12 @@ export default function LogicGatesCircuit({ setPage }) {
                     })}
                 </div>
 
-                {/* Cards — difilter */}
-                {filtered.map(card => <card.el key={card.num} />)}
+                {/* Cards — difilter, auto-wrap dengan FavoritesProvider */}
+                {filtered.map(card => (
+                    <FavoritesProvider key={card.num} itemId={`circuit-${card.num}`} itemType="circuit">
+                        <card.el />
+                    </FavoritesProvider>
+                ))}
                 {hasFilter && filtered.length === 0 && (
                     <div style={{ textAlign: "center", padding: "32px 0", color: "#475569", fontFamily: "Inter,sans-serif", fontSize: 13 }}>
                         Tidak ada circuit yang cocok.

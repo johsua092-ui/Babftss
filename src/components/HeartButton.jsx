@@ -1,13 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useFavoritesContext } from '../context/FavoritesContext';
 
 const API_BASE = '/api/favorites';
 
-export default function HeartButton({ itemId, itemType = 'gate', size = 20, onToggle }) {
+export default function HeartButton({ itemId: propItemId, itemType: propItemType, size = 20, onToggle }) {
     const { user, getIdToken } = useAuth();
+    const ctx = useFavoritesContext();
     const [liked, setLiked] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    // ── Auto-detect itemId & itemType ──────────────────
+    // Priority: context > props > null
+    const itemId = ctx?.itemId || propItemId || null;
+    const itemType = ctx?.itemType || propItemType || 'gate';
 
     // ── Fetch initial state ─────────────────────────────
     useEffect(() => {
