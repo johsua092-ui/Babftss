@@ -128,9 +128,9 @@ export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onT
         <W d={`M ${s1JX},${xor1MY} V ${and2TY} H ${and2SX}`} val={s1} col={andColor} rgb={andRgb} />
         <text x={(xor1EX + s1JX) / 2} y={xor1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={s1 ? xorColor : "#475569"} style={{ transition: "fill 0.3s" }}>s1</text>
 
-        {/* ===== WIRE c1: AND1 output → routing channel → OR top ===== */}
-        <W d={`M ${and1EX},${and1MY} H ${cRouteX} V ${orTY} H ${orSX}`} val={c1} col={orColor} rgb={orRgb} />
-        <text x={(and1EX + cRouteX) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>c1</text>
+        {/* ===== WIRE c1: AND1 output → route ABOVE XOR2 → OR top ===== */}
+        <W d={`M ${and1EX},${and1MY} H ${xor2SX - 12} V ${xor2TY - 16} H ${cRouteX} V ${orTY} H ${orSX}`} val={c1} col={orColor} rgb={orRgb} />
+        <text x={(xor2SX - 12 + cRouteX) / 2} y={xor2TY - 20} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>c1</text>
 
         {/* ===== WIRE Cin: fan-out to XOR2 & AND2 ===== */}
         <W d={`M ${inputCinX + inputNodeW},${inputCinY} H ${cinJX}`} val={cin} col={xorColor} rgb={xorRgb} />
