@@ -114,7 +114,7 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <W d={`M ${notEX},${notMY} H ${and1SX - 30} V ${and1TY} H ${and1SX}`} val={sNot} col={andColor} rgb={andRgb} />
         {/* Label S' */}
         <text x={(notEX + and1SX - 30) / 2} y={notMY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
-        <line x1={(notEX + and1SX - 30) / 2 - 4} y1={notMY - 13} x2={(notEX + and1SX - 30) / 2 + 4} y2={notMY - 13} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
+        <line x1={(notEX + and1SX - 30) / 2 - 4} y1={notMY - 16} x2={(notEX + and1SX - 30) / 2 + 4} y2={notMY - 16} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== WIRE D0 -> AND1 bottom input ===== */}
         <W d={`M ${inputD0X + inputNodeW},${inputD0Y} H ${and1SX}`} val={d0} col={andColor} rgb={andRgb} />
@@ -131,12 +131,12 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         {/* ===== WIRE g1: AND1 output -> OR top input ===== */}
         <W d={`M ${and1EX},${and1MY} H ${orSX - 20} V ${orTY} H ${orSX}`} val={g1} col={orColor} rgb={orRgb} />
         {/* Label g1 */}
-        <text x={(and1EX + orSX - 20) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g1</text>
+        <text x={(and1EX + orSX - 20) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D1</text>
 
         {/* ===== WIRE g2: AND2 output -> OR bottom input ===== */}
         <W d={`M ${and2EX},${and2MY} H ${orSX - 10} V ${orBY} H ${orSX}`} val={g2} col={orColor} rgb={orRgb} />
         {/* Label g2 */}
-        <text x={(and2EX + orSX - 10) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g2</text>
+        <text x={(and2EX + orSX - 10) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D2</text>
 
         {/* ===== OR GATE (g1 OR g2 -> Y) ===== */}
         <OrGate sx={orSX} ty={orTY} by={orBY} my={orMY} ex={orEX} glow={orGlow} fill={orFill} stroke={orStroke} />
