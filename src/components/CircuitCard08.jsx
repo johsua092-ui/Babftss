@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CircuitDiagram08 from './CircuitDiagram08';
 import { hexToRgbStr } from '../utils/colorHelper';
+import HeartButton from './HeartButton';
 
 export default function CircuitCard07() {
     const [inputA, setInputA] = useState(false);
@@ -33,7 +34,7 @@ export default function CircuitCard07() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: out ? orColor : "#334155", boxShadow: out ? `0 0 8px ${orColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: out ? orColor : "#e2e8f0" }}>Membangun XOR dari Gate Dasar</span>
             </div>
-            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}>NORMAL</span>
+            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}><HeartButton /><HeartButton />NORMAL</span>
         </div>
 
         <CircuitDiagram08 a={inputA} b={inputB} notA={notA} notB={notB} and1Out={and1Out} and2Out={and2Out} out={out} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} />

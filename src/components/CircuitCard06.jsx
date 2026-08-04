@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CircuitDiagram06 from './CircuitDiagram06';
 import { hexToRgbStr } from '../utils/colorHelper';
+import HeartButton from './HeartButton';
 
 export default function CircuitCard06() {
     const [inputA, setInputA] = useState(false);
@@ -31,7 +32,7 @@ export default function CircuitCard06() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: out ? andColor : "#334155", boxShadow: out ? `0 0 8px ${andColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: out ? andColor : "#e2e8f0" }}>Gerbang 4 Input Lanjutan</span>
             </div>
-            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}>NORMAL</span>
+            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}><HeartButton /><HeartButton />NORMAL</span>
         </div>
         <CircuitDiagram06 a={inputA} b={inputB} c={inputC} d={inputD} andOut1={andOut1} andOut2={andOut2} out={out} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} onToggleC={() => setInputC(v => !v)} onToggleD={() => setInputD(v => !v)} />
         <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "10px 0 8px", fontFamily: "Orbitron,sans-serif", fontSize: 10, color: "#475569", flexWrap: "wrap" }}>

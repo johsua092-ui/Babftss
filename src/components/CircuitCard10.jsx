@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CircuitDiagram10 from './CircuitDiagram10';
 import { hexToRgbStr } from '../utils/colorHelper';
+import HeartButton from './HeartButton';
 
 export default function CircuitCard09() {
     const [inputS, setInputS] = useState(false);
@@ -36,7 +37,7 @@ export default function CircuitCard09() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: isActive ? themeColor : "#334155", boxShadow: isActive ? `0 0 8px ${themeColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: isActive ? themeColor : "#e2e8f0" }}>2:1 Multiplexer (Mux)</span>
             </div>
-            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}>NORMAL</span>
+            <div style={{ display: "flex", alignItems: "center" }}><HeartButton /><span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}>NORMAL</span></div>
         </div>
 
         <CircuitDiagram10 s={inputS} d0={inputD0} d1={inputD1} sNot={sNot} g1={g1} g2={g2} y={y} onToggleS={() => setInputS(v => !v)} onToggleD0={() => setInputD0(v => !v)} onToggleD1={() => setInputD1(v => !v)} />
