@@ -92,7 +92,7 @@ Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian 
 
 ### 3.1 Struktur card Circuit
 - Pojok kiri: nomor urut card.
-- Pojok kanan: badge TIER (lihat 3.2).
+- Pojok kanan: `<HeartButton />` (fitur "My Favorite Circuit", akan datang) SEJAJAR bersebelahan dengan badge TIER (lihat 3.2) — WAJIB ada di SETIAP card, tanpa kecuali, termasuk semua card baru ke depannya. Reuse `HeartButton.jsx` yang sudah ada (dipanggil tanpa props tambahan, `<HeartButton />` saja — komponennya sendiri yang urus konteks/identitas item via `FavoritesContext`).
 - Judul: nama rangkaian deskriptif.
 - Deskripsi: 2-4 kalimat (lebih panjang dari card gate tunggal, karena lebih kompleks).
 - Diagram sirkuit: gate saling terhubung, bentuk & wire sesuai standar Bagian 1.3, neon glow ikut tema tiap gate, wire siku-siku kalau perlu belok.
