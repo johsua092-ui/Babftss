@@ -72,3 +72,22 @@ CREATE POLICY "Anyone can read leaderboard" ON leaderboard
 
 -- Leaderboard: NO user INSERT/UPDATE/DELETE policies
 -- = Admin-only modification via service_role
+
+-- ============================================================
+-- TABLE: favorites
+-- ============================================================
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own favorites" ON favorites;
+CREATE POLICY "Users can read own favorites" ON favorites
+  FOR SELECT USING (auth.uid()::text = firebase_uid);
+
+DROP POLICY IF EXISTS "Users can insert own favorites" ON favorites;
+CREATE POLICY "Users can insert own favorites" ON favorites
+  FOR INSERT WITH CHECK (auth.uid()::text = firebase_uid);
+
+DROP POLICY IF EXISTS "Users can delete own favorites" ON favorites;
+CREATE POLICY "Users can delete own favorites" ON favorites
+  FOR DELETE USING (auth.uid()::text = firebase_uid);
+
+-- NO update policy needed — favorites are created/deleted, never updated
