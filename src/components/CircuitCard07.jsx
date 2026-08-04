@@ -28,7 +28,7 @@ export default function CircuitCard06() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: (sum || carry) ? xorColor : "#334155", boxShadow: (sum || carry) ? `0 0 8px ${xorColor}` : "none", transition: "all 0.3s" }} />
                 <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: (sum || carry) ? xorColor : "#e2e8f0" }}>Half Adder</span>
             </div>
-            <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}><HeartButton /><HeartButton />NORMAL</span>
+            <div style={{ display: "flex", alignItems: "center" }}><HeartButton /><span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.35)", color: "#facc15" }}>NORMAL</span></div>
         </div>
 
         <CircuitDiagram07 a={inputA} b={inputB} sum={sum} carry={carry} onToggleA={() => setInputA(v => !v)} onToggleB={() => setInputB(v => !v)} />
