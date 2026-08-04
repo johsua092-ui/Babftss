@@ -176,10 +176,11 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== D WIRES → AND bottom inputs (each D color) ===== */}
-        <W d={`M 47,${d0Y} H 255 V ${andGates[0].botIn} H ${andSX}`} val={d0} col={dCols[0]} rgb={dRgbs[0]} />
-        <W d={`M 47,${d1Y} H 255 V ${andGates[1].botIn} H ${andSX}`} val={d1} col={dCols[1]} rgb={dRgbs[1]} />
-        <W d={`M 47,${d2Y} H 255 V ${andGates[2].botIn} H ${andSX}`} val={d2} col={dCols[2]} rgb={dRgbs[2]} />
-        <W d={`M 47,${d3Y} H 255 V ${andGates[3].botIn} H ${andSX}`} val={d3} col={dCols[3]} rgb={dRgbs[3]} />
+        {/* D wires → turn LEFT of all select buses (x=160) to avoid overlapping S-branch horizontals */}
+        <W d={`M 47,${d0Y} H 160 V ${andGates[0].botIn} H ${andSX}`} val={d0} col={dCols[0]} rgb={dRgbs[0]} />
+        <W d={`M 47,${d1Y} H 160 V ${andGates[1].botIn} H ${andSX}`} val={d1} col={dCols[1]} rgb={dRgbs[1]} />
+        <W d={`M 47,${d2Y} H 160 V ${andGates[2].botIn} H ${andSX}`} val={d2} col={dCols[2]} rgb={dRgbs[2]} />
+        <W d={`M 47,${d3Y} H 160 V ${andGates[3].botIn} H ${andSX}`} val={d3} col={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== AND GATES (each with its own D color) ===== */}
         {andGates.map((g, i) => (
