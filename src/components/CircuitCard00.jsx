@@ -150,14 +150,14 @@ export default function CircuitCard00() {
                     .badge-tutorial-shimmer::after {
                         content: "";
                         position: absolute;
-                        top: 0; left: -100%; width: 60%; height: 100%;
+                        width: 60%;
+                        height: 100%;
                         background: linear-gradient(90deg, transparent, rgba(226,232,240,0.25), transparent);
-                        animation: badge-shimmer-sweep 2.5s ease-in-out infinite;
+                        animation: badge-tutorial-shimmer-sweep 3s ease-in-out infinite;
                     }
-                    @keyframes badge-shimmer-sweep {
-                        0% { left: -100%; }
-                        35% { left: 150%; }
-                        100% { left: 150%; }
+                    @keyframes badge-tutorial-shimmer-sweep {
+                        0% { left: -60%; }
+                        100% { left: 100%; }
                     }
                 `}</style>
             </div>
