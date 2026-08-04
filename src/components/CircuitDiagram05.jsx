@@ -53,7 +53,7 @@ export default function CircuitDiagram05({ a, b, c, andOut, out, onToggleA, onTo
         </g>
         <path d={`M ${inputAX + inputNodeW},${inputAY} H ${andStartX - 14} V ${andTopY} H ${andStartX}`} fill="none" stroke={wc(a, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <path d={`M ${inputBX + inputNodeW},${inputBY} H ${andStartX - 14} V ${andBotY} H ${andStartX}`} fill="none" stroke={wc(b, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
-        <path d={`M ${inputCX + inputNodeW},${inputCY} H ${orStartX}`} fill="none" stroke={wc(c, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${inputCX + inputNodeW},${inputCY} H ${orStartX - 20} V ${orBotY} H ${orStartX}`} fill="none" stroke={wc(c, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />
         <Fragment>
             <path d={`M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`} fill={andFill} stroke={andStroke} strokeWidth="2" style={{ filter: andGlow, transition: "all 0.3s" }} />
         </Fragment>
