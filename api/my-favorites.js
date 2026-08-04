@@ -1,6 +1,7 @@
 // api/my-favorites.js — "My Favorites" page API
-// Returns enriched favorites dengan metadata item (nama, tier, warna, deskripsi)
+// Returns enriched favorites dengan metadata item dari database
 // Auth: Firebase token (Bearer) REQUIRED
+// Zero hardcoded data — semua metadata dari tabel `items` di Supabase
 import {
   applyCors,
   applySecurityHeaders,
@@ -9,7 +10,7 @@ import {
   safeError,
   getSupabaseAdmin,
 } from '../lib/api-helpers.js';
-import { enrichFavorites } from '../lib/favorites-catalog.js';
+import { enrichFavorites, VALID_TYPES } from '../lib/favorites-catalog.js';
 
 export default async function handler(req, res) {
   applyCors(req, res, 'GET, OPTIONS');
@@ -37,6 +38,12 @@ export default async function handler(req, res) {
     const supabase = await getSupabaseAdmin();
     const { type } = req.query || {};
 
+    if (type && !VALID_TYPES.has(type)) {
+      return res.status(400).json({
+        error: `Invalid type. Must be one of: ${[...VALID_TYPES].join(', ')}`,
+      });
+    }
+
     // ── Fetch favorites ──────────────────────────────────
     let query = supabase
       .from('favorites')
@@ -54,10 +61,10 @@ export default async function handler(req, res) {
       return safeError(res, 500, 'my-favorites', error);
     }
 
-    // ── Enrich dengan metadata ───────────────────────────
-    const enriched = enrichFavorites(favorites || []);
+    // ── Enrich dengan metadata dari database ─────────────
+    const enriched = await enrichFavorites(supabase, favorites || []);
 
-    // ── Group by type buat frontend ──────────────────────
+    // ── Group by type ────────────────────────────────────
     const grouped = {};
     for (const fav of enriched) {
       const t = fav.item_type;
@@ -69,7 +76,6 @@ export default async function handler(req, res) {
       favorites: enriched,
       total: enriched.length,
       grouped,
-      // Stats: count per type
       counts: {
         gate: (grouped.gate || []).length,
         circuit: (grouped.circuit || []).length,
