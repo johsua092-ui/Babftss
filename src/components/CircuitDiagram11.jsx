@@ -208,9 +208,9 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <OutputNode ox={outX} oy={outY} val={y} label="Y" color={orColor} rgb={orRgb} />
 
         {/* ===== GATE LABELS ===== */}
-        <text x={(andEX + 360) / 2} y={andGates[0].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g0 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g0</text>
-        <text x={(andEX + 365) / 2} y={andGates[1].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g1</text>
-        <text x={(andEX + 360) / 2} y={andGates[2].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g2</text>
-        <text x={(andEX + 365) / 2} y={andGates[3].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g3 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g3</text>
+        <text x={(andEX + 360) / 2} y={andGates[0].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g0 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D0</text>
+        <text x={(andEX + 365) / 2} y={andGates[1].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D1</text>
+        <text x={(andEX + 360) / 2} y={andGates[2].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D2</text>
+        <text x={(andEX + 365) / 2} y={andGates[3].my - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={g3 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D3</text>
     </svg>;
 }
