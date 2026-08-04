@@ -3,6 +3,7 @@ import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not, g0, g1, g2, g3, y, onToggleS0, onToggleS1, onToggleD0, onToggleD1, onToggleD2, onToggleD3 }) {
     const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
+    const selColor = "#4ade80", selRgb = hexToRgbStr(selColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
@@ -110,22 +111,22 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
-        <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={notColor} rgb={notRgb} />
-        <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={notColor} rgb={notRgb} />
+        <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={selColor} rgb={selRgb} />
+        <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={selColor} rgb={selRgb} />
         <InputNode ix={1} iy={d0Y} val={d0} label="D0" onToggle={onToggleD0} color={dCols[0]} rgb={dRgbs[0]} />
         <InputNode ix={1} iy={d1Y} val={d1} label="D1" onToggle={onToggleD1} color={dCols[1]} rgb={dRgbs[1]} />
         <InputNode ix={1} iy={d2Y} val={d2} label="D2" onToggle={onToggleD2} color={dCols[2]} rgb={dRgbs[2]} />
         <InputNode ix={1} iy={d3Y} val={d3} label="D3" onToggle={onToggleD3} color={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== S0 INPUT → JUNCTION → NOT ===== */}
-        <W d={`M 47,${s0Y} H ${s0JX}`} val={s0} col={notColor} rgb={notRgb} />
-        <W d={`M ${s0JX},${s0Y} H ${notSX}`} val={s0} col={notColor} rgb={notRgb} />
-        <circle cx={s0JX} cy={s0Y} r={3} fill={s0 ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M 47,${s0Y} H ${s0JX}`} val={s0} col={selColor} rgb={selRgb} />
+        <W d={`M ${s0JX},${s0Y} H ${notSX}`} val={s0} col={selColor} rgb={selRgb} />
+        <circle cx={s0JX} cy={s0Y} r={3} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== S1 INPUT → JUNCTION → NOT ===== */}
-        <W d={`M 47,${s1Y} H ${s1JX}`} val={s1} col={notColor} rgb={notRgb} />
-        <W d={`M ${s1JX},${s1Y} H ${notSX}`} val={s1} col={notColor} rgb={notRgb} />
-        <circle cx={s1JX} cy={s1Y} r={3} fill={s1 ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M 47,${s1Y} H ${s1JX}`} val={s1} col={selColor} rgb={selRgb} />
+        <W d={`M ${s1JX},${s1Y} H ${notSX}`} val={s1} col={selColor} rgb={selRgb} />
+        <circle cx={s1JX} cy={s1Y} r={3} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== NOT GATES ===== */}
         <NotGate sx={notSX} ty={notS0TY} by={notS0BY} my={notS0MY} triEx={notS0TriEX} bubR={notS0BubR} glow={notS0Glow} fill={notS0Fill} stroke={notS0Stk} />
