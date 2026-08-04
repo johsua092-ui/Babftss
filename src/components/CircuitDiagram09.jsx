@@ -1,8 +1,8 @@
 import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 
-export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS, onToggleD0, onToggleD1 }) {
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
+export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onToggleA, onToggleB, onToggleCin }) {
+    const xorColor = "#facc15", xorRgb = hexToRgbStr(xorColor);
     const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
@@ -10,70 +10,81 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
 
-    // --- Input positions (left side, 3 nodes vertically) ---
-    const inputSX = 1, inputSY = 22;
-    const inputD0X = 1, inputD0Y = 72;
-    const inputD1X = 1, inputD1Y = 122;
+    // --- Inputs (left side) ---
+    const inputAX = 1, inputAY = 40;
+    const inputBX = 1, inputBY = 120;
+    const inputCinX = 1, inputCinY = 210;
 
-    // --- Junction for S fan-out ---
-    const sJX = 72;
+    // --- Junction points for fan-out ---
+    const jA = 68, jB = 78;
+    const s1JX = 185, cinJX = 160;
+    const cRouteX = 330;
 
-    // --- NOT gate (S -> S') ---
-    const notSX = 100, notMY = inputSY;
-    const notTY = notMY - 14, notBY = notMY + 14;
-    const notTriEX = notSX + 28;
-    const notBubR = 5, notEX = notTriEX + notBubR * 2;
+    // --- Stage 1: XOR1 (s1 = A XOR B) ---
+    const xor1SX = 110, xor1MY = 75;
+    const xor1TY = xor1MY - 14, xor1BY = xor1MY + 14;
+    const xor1EX = xor1SX + 55;
 
-    // --- AND1 gate (S' AND D0 -> g1) ---
-    const and1SX = 210, and1MY = inputD0Y;
+    // --- Stage 1: AND1 (c1 = A AND B) ---
+    const and1SX = 110, and1MY = 120;
     const and1TY = and1MY - 14, and1BY = and1MY + 14;
     const and1W = 26, and1AR = 14;
     const and1EX = and1SX + and1W + and1AR;
 
-    // --- AND2 gate (S AND D1 -> g2) ---
-    const and2SX = 210, and2MY = inputD1Y;
-    const and2TY = and2MY - 14, and2BY = and2MY + 14;
-    const and2W = 26, and2AR = 14;
-    const and2EX = and2SX + and2W + and2AR;
+    // --- Stage 2: XOR2 (SUM = s1 XOR Cin) ---
+    const xor2SX = 250, xor2MY = 130;
+    const xor2TY = xor2MY - 14, xor2BY = xor2MY + 14;
+    const xor2EX = xor2SX + 55;
 
-    // --- OR gate (g1 OR g2 -> Y) ---
-    const orSX = 340, orMY = (and1MY + and2MY) / 2;
+    // --- Stage 2: AND2 (c2 = s1 AND Cin) ---
+    const and2SX = 250, and2MY = 210;
+    const and2TY = and2MY - 14, and2BY = and2MY + 14;
+    const and2EX = and2SX + and1W + and1AR;
+
+    // --- Stage 3: OR (COUT = c1 OR c2) ---
+    const orSX = 365, orMY = 196;
     const orTY = orMY - 14, orBY = orMY + 14;
     const orEX = orSX + 45;
 
-    // --- Output node ---
-    const outX = orEX + 34 + outNodeR;
-    const outY = orMY;
-    const svgW = outX + outNodeR + 20;
-    const svgH = 150;
+    // --- Output nodes ---
+    const coutOutX = orEX + 34 + outNodeR;
+    const coutOutY = orMY;
+    const sumOutX = coutOutX;
+    const sumOutY = xor2MY;
+    const svgW = Math.max(sumOutX, coutOutX) + outNodeR + 20;
+    const svgH = 255;
 
-    // --- Gate glow/fill/stroke helpers ---
+    // --- Gate glow/fill/stroke ---
     const mkGlow = (val, rgb) => val
         ? `drop-shadow(0 0 4px rgba(${rgb},0.9)) drop-shadow(0 0 10px rgba(${rgb},0.5))` : "none";
     const mkFill = (val, rgb) => val ? `rgba(${rgb},0.13)` : "#0f172a";
     const mkStroke = (val, col) => val ? col : "#475569";
 
-    const notGlow = mkGlow(sNot, notRgb), notFill = mkFill(sNot, notRgb), notStroke = mkStroke(sNot, notColor);
-    const and1Glow = mkGlow(g1, andRgb), and1Fill = mkFill(g1, andRgb), and1Stroke = mkStroke(g1, andColor);
-    const and2Glow = mkGlow(g2, andRgb), and2Fill = mkFill(g2, andRgb), and2Stroke = mkStroke(g2, andColor);
-    const orGlow = mkGlow(y, orRgb), orFill = mkFill(y, orRgb), orStroke = mkStroke(y, orColor);
+    const xor1Glow = mkGlow(s1, xorRgb), xor1Fill = mkFill(s1, xorRgb), xor1Stroke = mkStroke(s1, xorColor);
+    const and1Glow = mkGlow(c1, andRgb), and1Fill = mkFill(c1, andRgb), and1Stroke = mkStroke(c1, andColor);
+    const xor2Glow = mkGlow(sum, xorRgb), xor2Fill = mkFill(sum, xorRgb), xor2Stroke = mkStroke(sum, xorColor);
+    const and2Glow = mkGlow(c2, andRgb), and2Fill = mkFill(c2, andRgb), and2Stroke = mkStroke(c2, andColor);
+    const orGlow = mkGlow(cout, orRgb), orFill = mkFill(cout, orRgb), orStroke = mkStroke(cout, orColor);
 
-    // --- Component helpers ---
-    const NotGate = ({ sx, ty, by, my, triEx, bubR, ex, glow, fill, stroke }) => <Fragment>
-        <path d={`M ${sx},${ty} L ${triEx},${my} L ${sx},${by} Z`} fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: "all 0.3s" }} />
-        <circle cx={triEx + bubR} cy={my} r={bubR} fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: "all 0.3s" }} />
+    // Helper: render XOR gate shape (with back curve)
+    const XorGate = ({ sx, ty, by, my, ex, glow, fill, stroke }) => <Fragment>
+        <path d={`M ${sx - 9},${ty} C ${sx + 4},${my - 9} ${sx + 4},${my + 9} ${sx - 9},${by}`} fill="none" stroke={stroke} strokeWidth="2" style={{ transition: "stroke 0.3s" }} />
+        <path d={`M ${sx},${ty} C ${sx + 14},${ty} ${ex - 12},${my - 6} ${ex},${my} C ${ex - 12},${my + 6} ${sx + 14},${by} ${sx},${by} C ${sx + 10},${my + 5} ${sx + 10},${my - 5} ${sx},${ty} Z`} fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: "all 0.3s" }} />
     </Fragment>;
 
+    // Helper: render AND gate shape (D-shape)
     const AndGate = ({ sx, ty, by, my, w, ar, glow, fill, stroke }) => <path
         d={`M ${sx},${ty} L ${sx + w},${ty} A ${ar},${ar} 0 0,1 ${sx + w},${by} L ${sx},${by} Z`}
         fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: "all 0.3s" }}
     />;
 
+    // Helper: render OR gate shape (curved, no back curve)
     const OrGate = ({ sx, ty, by, my, ex, glow, fill, stroke }) => <path
         d={`M ${sx},${ty} C ${sx + 14},${ty} ${ex - 12},${my - 6} ${ex},${my} C ${ex - 12},${my + 6} ${sx + 14},${by} ${sx},${by} C ${sx + 10},${my + 5} ${sx + 10},${my - 5} ${sx},${ty} Z`}
         fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: "all 0.3s" }}
     />;
 
+    // Helper: input node
     const InputNode = ({ ix, iy, val, label, onToggle, color, rgb }) => <g onClick={onToggle} style={{ cursor: "pointer" }}>
         <rect x={ix} y={iy - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx} fill={val ? `rgba(${rgb},0.2)` : `rgba(${rgb},0.1)`} stroke={val ? color : `rgba(${rgb},0.3)`} strokeWidth="1.5" style={{ transition: "all 0.25s" }} />
         <text x={ix + 24} y={iy - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">{label}</text>
@@ -81,68 +92,67 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <text x={ix + 24} y={iy + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold" fill={val ? color : `rgba(${rgb},0.5)`}>{val ? "1" : "0"}</text>
     </g>;
 
+    // Helper: output node
     const OutputNode = ({ ox, oy, val, label, color, rgb }) => <Fragment>
         <text x={ox} y={oy - outNodeR - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="7" fill="#475569" letterSpacing="1">{label}</text>
         <circle cx={ox} cy={oy} r={outNodeR} fill={val ? color : "#1e293b"} stroke={val ? color : "#334155"} strokeWidth="2" style={{ filter: val ? `drop-shadow(0 0 8px rgba(${rgb},0.9)) drop-shadow(0 0 18px rgba(${rgb},0.5))` : "none", transition: "all 0.3s" }} />
         <text x={ox} y={oy + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold" fill={val ? "#000" : "#475569"} style={{ transition: "fill 0.3s" }}>{val ? "1" : "0"}</text>
     </Fragment>;
 
+    // Helper: right-angle wire
     const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
-
-    // Label color for S': follow NOT color when active, gray when not
-    const sPrimeLabelColor = sNot ? notColor : "#475569";
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
-        <InputNode ix={inputSX} iy={inputSY} val={s} label="S" onToggle={onToggleS} color={notColor} rgb={notRgb} />
-        <InputNode ix={inputD0X} iy={inputD0Y} val={d0} label="D0" onToggle={onToggleD0} color={andColor} rgb={andRgb} />
-        <InputNode ix={inputD1X} iy={inputD1Y} val={d1} label="D1" onToggle={onToggleD1} color={andColor} rgb={andRgb} />
+        <InputNode ix={inputAX} iy={inputAY} val={a} label="A" onToggle={onToggleA} color={xorColor} rgb={xorRgb} />
+        <InputNode ix={inputBX} iy={inputBY} val={b} label="B" onToggle={onToggleB} color={xorColor} rgb={xorRgb} />
+        <InputNode ix={inputCinX} iy={inputCinY} val={cin} label="Cin" onToggle={onToggleCin} color={orColor} rgb={orRgb} />
 
-        {/* ===== WIRE S: horizontal to junction, then fan-out ===== */}
-        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={notColor} rgb={notRgb} />
-        {/* S branch up -> NOT gate */}
-        <W d={`M ${sJX},${inputSY} H ${notSX}`} val={s} col={notColor} rgb={notRgb} />
-        {/* S branch down -> AND2 top input (route down then right) */}
-        <W d={`M ${sJX},${inputSY} V ${and2TY} H ${and2SX}`} val={s} col={andColor} rgb={andRgb} />
-        {/* Junction dot at S fan-out point */}
-        <circle cx={sJX} cy={inputSY} r={3} fill={s ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        {/* ===== WIRE A: fan-out to XOR1 & AND1 ===== */}
+        <W d={`M ${inputAX + inputNodeW},${inputAY} H ${jA}`} val={a} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${jA},${inputAY} V ${xor1TY} H ${xor1SX}`} val={a} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${jA},${inputAY} V ${and1TY} H ${and1SX}`} val={a} col={andColor} rgb={andRgb} />
 
-        {/* ===== NOT GATE ===== */}
-        <NotGate sx={notSX} ty={notTY} by={notBY} my={notMY} triEx={notTriEX} bubR={notBubR} ex={notEX} glow={notGlow} fill={notFill} stroke={notStroke} />
+        {/* ===== WIRE B: fan-out to XOR1 & AND1 ===== */}
+        <W d={`M ${inputBX + inputNodeW},${inputBY} H ${jB}`} val={b} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${jB},${inputBY} V ${xor1BY} H ${xor1SX}`} val={b} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${jB},${inputBY} V ${and1BY} H ${and1SX}`} val={b} col={andColor} rgb={andRgb} />
 
-        {/* ===== WIRE S' (NOT output) -> AND1 top input ===== */}
-        <W d={`M ${notEX},${notMY} H ${and1SX - 30} V ${and1TY} H ${and1SX}`} val={sNot} col={andColor} rgb={andRgb} />
-        {/* Label S' */}
-        <text x={(notEX + and1SX - 30) / 2} y={notMY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
-        <line x1={(notEX + and1SX - 30) / 2 - 4} y1={notMY - 13} x2={(notEX + and1SX - 30) / 2 + 4} y2={notMY - 13} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
-
-        {/* ===== WIRE D0 -> AND1 bottom input ===== */}
-        <W d={`M ${inputD0X + inputNodeW},${inputD0Y} H ${and1SX}`} val={d0} col={andColor} rgb={andRgb} />
-
-        {/* ===== WIRE D1 -> AND2 bottom input ===== */}
-        <W d={`M ${inputD1X + inputNodeW},${inputD1Y} H ${and2SX}`} val={d1} col={andColor} rgb={andRgb} />
-
-        {/* ===== AND1 GATE (S' AND D0 -> g1) ===== */}
+        {/* ===== STAGE 1 GATES ===== */}
+        <XorGate sx={xor1SX} ty={xor1TY} by={xor1BY} my={xor1MY} ex={xor1EX} glow={xor1Glow} fill={xor1Fill} stroke={xor1Stroke} />
         <AndGate sx={and1SX} ty={and1TY} by={and1BY} my={and1MY} w={and1W} ar={and1AR} glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
 
-        {/* ===== AND2 GATE (S AND D1 -> g2) ===== */}
-        <AndGate sx={and2SX} ty={and2TY} by={and2BY} my={and2MY} w={and2W} ar={and2AR} glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
+        {/* ===== WIRE s1: XOR1 output → junction → XOR2 & AND2 ===== */}
+        <W d={`M ${xor1EX},${xor1MY} H ${s1JX}`} val={s1} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${s1JX},${xor1MY} V ${xor2TY} H ${xor2SX}`} val={s1} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${s1JX},${xor1MY} V ${and2TY} H ${and2SX}`} val={s1} col={andColor} rgb={andRgb} />
+        <text x={(xor1EX + s1JX) / 2} y={xor1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={s1 ? xorColor : "#475569"} style={{ transition: "fill 0.3s" }}>s1</text>
 
-        {/* ===== WIRE g1: AND1 output -> OR top input ===== */}
-        <W d={`M ${and1EX},${and1MY} H ${orSX - 20} V ${orTY} H ${orSX}`} val={g1} col={orColor} rgb={orRgb} />
-        {/* Label g1 */}
-        <text x={(and1EX + orSX - 20) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g1</text>
+        {/* ===== WIRE c1: AND1 output → route ABOVE XOR2 → OR top ===== */}
+        <W d={`M ${and1EX},${and1MY} H ${xor1EX + 8} V ${xor2TY - 16} H ${cRouteX} V ${orTY} H ${orSX}`} val={c1} col={orColor} rgb={orRgb} />
+        <text x={(xor1EX + 8 + cRouteX) / 2} y={xor2TY - 20} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>c1</text>
 
-        {/* ===== WIRE g2: AND2 output -> OR bottom input ===== */}
-        <W d={`M ${and2EX},${and2MY} H ${orSX - 10} V ${orBY} H ${orSX}`} val={g2} col={orColor} rgb={orRgb} />
-        {/* Label g2 */}
-        <text x={(and2EX + orSX - 10) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>g2</text>
+        {/* ===== WIRE Cin: fan-out to XOR2 & AND2 ===== */}
+        <W d={`M ${inputCinX + inputNodeW},${inputCinY} H ${cinJX}`} val={cin} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${cinJX},${inputCinY} V ${xor2BY} H ${xor2SX}`} val={cin} col={xorColor} rgb={xorRgb} />
+        <W d={`M ${cinJX},${inputCinY} V ${and2BY} H ${and2SX}`} val={cin} col={andColor} rgb={andRgb} />
 
-        {/* ===== OR GATE (g1 OR g2 -> Y) ===== */}
+        {/* ===== STAGE 2 GATES ===== */}
+        <XorGate sx={xor2SX} ty={xor2TY} by={xor2BY} my={xor2MY} ex={xor2EX} glow={xor2Glow} fill={xor2Fill} stroke={xor2Stroke} />
+        <AndGate sx={and2SX} ty={and2TY} by={and2BY} my={and2MY} w={and1W} ar={and1AR} glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
+
+        {/* ===== WIRE c2: AND2 output → routing channel → OR bottom ===== */}
+        <W d={`M ${and2EX},${and2MY} H ${cRouteX} V ${orBY} H ${orSX}`} val={c2} col={orColor} rgb={orRgb} />
+        <text x={(and2EX + cRouteX) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>c2</text>
+
+        {/* ===== STAGE 3 GATE ===== */}
         <OrGate sx={orSX} ty={orTY} by={orBY} my={orMY} ex={orEX} glow={orGlow} fill={orFill} stroke={orStroke} />
 
-        {/* ===== OUTPUT WIRE & NODE ===== */}
-        <line x1={orEX} y1={orMY} x2={outX - outNodeR} y2={outY} stroke={wc(y, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <OutputNode ox={outX} oy={outY} val={y} label="Y" color={orColor} rgb={orRgb} />
+        {/* ===== OUTPUT WIRES & NODES ===== */}
+        <line x1={xor2EX} y1={xor2MY} x2={sumOutX - outNodeR} y2={sumOutY} stroke={wc(sum, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={sumOutX} oy={sumOutY} val={sum} label="SUM" color={xorColor} rgb={xorRgb} />
+
+        <line x1={orEX} y1={orMY} x2={coutOutX - outNodeR} y2={coutOutY} stroke={wc(cout, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={coutOutX} oy={coutOutY} val={cout} label="COUT" color={orColor} rgb={orRgb} />
     </svg>;
 }
