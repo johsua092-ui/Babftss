@@ -26,7 +26,7 @@ const TIERS = [
     { label: 'EASY', bg: 'rgba(34,197,94,0.18)', border: 'rgba(34,197,94,0.4)', color: '#86efac', dimColor: '#4ade80', glow: '0 0 12px rgba(34,197,94,0.5)', shimmer: false },
     { label: 'NORMAL', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.35)', color: '#facc15', dimColor: '#eab308', glow: '0 0 12px rgba(250,204,21,0.5)', shimmer: false },
     { label: 'HARD', bg: 'rgba(227,11,93,0.18)', border: 'rgba(227,11,93,0.4)', color: '#fda4af', dimColor: '#E30B5D', glow: '0 0 12px rgba(227,11,93,0.5)', shimmer: true, shimmerColor: '227,11,93' },
-    { label: 'INSANE', bg: 'rgba(74,45,124,0.2)', border: 'rgba(106,50,144,0.5)', color: '#A855F7', dimColor: '#8B5CF6', glow: '0 0 12px rgba(168,85,247,0.5), 0 0 4px rgba(192,132,252,0.3)', shimmer: false, crack: true },
+    { label: 'INSANE', bg: 'rgba(74,45,124,0.2)', border: 'rgba(106,50,144,0.5)', color: '#A855F7', dimColor: '#8B5CF6', glow: '0 0 14px rgba(168,85,247,0.7), 0 0 6px rgba(192,132,252,0.5), 0 0 2px rgba(216,180,254,0.4)', shimmer: false, crack: true },
     { label: 'COMPLEX', bg: 'rgba(100,116,139,0.2)', border: 'rgba(148,163,184,0.5)', color: '#e2e8f0', dimColor: '#94a3b8', glow: '0 0 18px rgba(148,163,184,0.95), 0 0 10px rgba(148,163,184,0.8), 0 0 4px rgba(148,163,184,0.7)', shimmer: false, lightning: true },
 ];
 
