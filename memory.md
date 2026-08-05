@@ -655,4 +655,6 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 
 **Aturan baru yang lahir dari insiden ini** (ditulis ke `instruction.md` aturan #8 dan `design.md` Bagian 3.0): DILARANG KERAS kabel saling menimpa (overlap total di jalur sama arah). Setiap kabel WAJIB punya jalur sendiri. Kalau ruang kurang, besarkan rangkaian ke bawah (unlimited). Card 11 jadi referensi contoh untuk semua card berikutnya.
 
+**Fitur tabel kebenaran ringkas (condensed truth table):** Card 10 dan Card 11 menggunakan format tabel kebenaran ringkas — hanya menampilkan baris per kombinasi SELECT (bukan semua kombinasi input), dengan highlight kuning (baris S aktif) dan hijau (kolom Y saat D=1). **ATURAN PENTING:** format ringkas HANYA untuk rangkaian yang punya sinyal SELECT/data-routing (Mux, Demux, dsb). Rangkaian biasa (NOT→AND, Half Adder, Full Adder, XOR dari gate dasar, dst) WAJIB pakai format normal (2^n baris penuh). Lihat `design.md` Bagian 3.1.1 untuk detail lengkap dua format ini.
+
 **File yang diubah:** `src/components/CircuitDiagram11.jsx` saja (beberapa iterasi fix visual). Card 01-10 TIDAK disentuh. File backend TIDAK disentuh.

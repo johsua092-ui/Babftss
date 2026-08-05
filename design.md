@@ -111,6 +111,19 @@ Gabungan beberapa gate dari "7 Basic Logic Gates" disambung jadi satu rangkaian 
 - Diagram sirkuit: gate saling terhubung, bentuk & wire sesuai standar Bagian 1.3, neon glow ikut tema tiap gate, wire siku-siku kalau perlu belok.
 - Truth table: jumlah kolom input menyesuaikan jumlah input asli rangkaian (2^n baris untuk n input), highlight tetap dinamis real-time.
 
+### 3.1.1 DUA FORMAT TABEL KEBENARAN (WAJIB DIPATUHI)
+
+Ada 2 format truth table, pemilihannya **berdasarkan jenis rangkaian**:
+
+**Format 1 — Normal (2^n baris penuh):** Dipakai untuk rangkaian **biasa** (NOT→AND, Half Adder, Full Adder, XOR dari gate dasar, dsb). Semua kolom input ditampilkan lengkap, setiap baris adalah kombinasi unik semua input. Highlight: SATU baris kuning yang cocok dengan kombinasi input saat ini.
+
+**Format 2 — Ringkas (satu baris per kombinasi select):** **HANYA** untuk rangkaian yang punya sinyal SELECT/KONTROL yang memilih jalur data (Multiplexer, Demultiplexer, dan rangkaian data-routing serupa). Kolom D tidak ditampilkan sebagai kolom terpisah — malah ditampilkan sebagai nilai dinamis di kolom Y (misal `D0=1`). Jumlah baris = 2^s (s = jumlah bit select), BUKAN 2^n (n = total input).
+  - **Highlight kuning:** baris yang cocok dengan kombinasi SELECT saat ini (bergerak kalau user toggle S)
+  - **Highlight hijau (di kolom Y):** muncul di baris MANAPUN yang D-nya bernilai 1, menggunakan `<span>` di dalam `<td>` dengan padding lebih kecil dari sel agar terlihat seperti kotak kecil di dalam baris. Jika semua D=0, hijau tidak muncul sama sekali.
+  - **Contoh:** Card 10 (2:1 Mux, 2 baris: S=0→Y=D0, S=1→Y=D1) dan Card 11 (4:1 Mux, 4 baris: S1S0=00→D0, 01→D1, 10→D2, 11→D3).
+
+**DILARANG:** menggunakan Format 2 (ringkas) untuk rangkaian biasa yang TIDAK punya mekanisme select/data-routing.
+
 ### 3.2 Sistem TIER (badge, reusable untuk semua card Circuit)
 
 > **UPDATE (keputusan langsung user):** label tier "MUDAH" diganti jadi **"EASY"** (Inggris, konsisten sama NORMAL/HARD/INSANE yang sudah Inggris), warna badge-nya jadi hijau (`rgba(34,197,94,...)`, teks `#86efac`). Tier baru **COMPLEX** ditambahkan (warna abu terang/putih, efek kilat/lightning berputar) — disiapkan di sistem filter, belum dipakai card manapun, kemungkinan untuk tier di atas Insane nanti.
