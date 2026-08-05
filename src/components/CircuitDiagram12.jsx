@@ -37,7 +37,9 @@ export default function CircuitDiagram12({
         return { my: dy, ty: dy - and3HH, by: dy + and3HH, topIn: dy - 17, midIn: dy, botIn: dy + 17 };
     });
 
-    const and2SX = 420, and2EX = 462, and2HH = 14;
+    const and2SX = 420, and2HH = 14, and2W = 24, and2Ar = 18;
+    const _and2h = Math.sqrt(and2Ar * and2Ar - and2HH * and2HH);
+    const and2EX = Math.round(and2SX + and2W - _and2h + and2Ar);
     const datG = dYs.map(function(dy) {
         return { my: dy + 38, ty: dy + 24, by: dy + 52, topIn: dy + 30, botIn: dy + 46 };
     });
