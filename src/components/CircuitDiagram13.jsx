@@ -56,8 +56,8 @@ export default function CircuitDiagram13(props) {
     });
 
     // AND-2 data gates
-    var and2SX=465, and2HH=14, and2W=24, and2Ar=18; // arc from (sx+w,ty)→(sx+w,by), h=sqrt(ar²-(height/2)²)
-    var _and2h=Math.sqrt(and2Ar*and2Ar-and2HH*and2HH), and2EX=Math.round(and2SX+and2W-and2h+and2Ar); // ≈496
+    var and2SX=465, and2HH=14, and2W=24, and2Ar=18;
+    var _and2h=Math.sqrt(and2Ar*and2Ar-and2HH*and2HH), and2EX=Math.round(and2SX+and2W-_and2h+and2Ar);
     var datG=dYs.map(function(dy){
         return {my:dy+38, ty:dy+24, by:dy+52, tIn:dy+30, bIn:dy+46};
     });
