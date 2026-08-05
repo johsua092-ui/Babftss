@@ -222,7 +222,7 @@ export default function CircuitDiagram13(props) {
 
         {/* DECODE AND-4 OUTPUT -> DATA AND-2 TOP INPUT — after AND-2 gates so wire draws on top */}
         {decG.map(function(g,i){
-            return <W key={'d2d'+i} d={'M '+(and4EX-2)+','+g.my+' H '+decodeOutLane+' V '+datG[i].tIn+' H '+(and2SX+5)} val={enVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
+            return <W key={'d2d'+i} d={'M '+and4EX+','+g.my+' H '+decodeOutLane+' V '+datG[i].tIn+' H '+(and2SX+5)} val={enVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
         })}
 
         {/* OR GATES LAYER 1 (8 gates) */}
@@ -234,7 +234,7 @@ export default function CircuitDiagram13(props) {
         {datG.map(function(g,i){
             var orIdx=Math.floor(i/2);
             var orSlot=i%2===0?-1:1;
-            return <W key={'d2or'+i} d={'M '+(and2EX-2)+','+g.my+' H '+dataToOrLane+' V '+(or1MY[orIdx]+orSlot*orHH)+' H '+(or1SX+4)} val={gVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
+            return <W key={'d2or'+i} d={'M '+and2EX+','+g.my+' H '+dataToOrLane+' V '+(or1MY[orIdx]+orSlot*orHH)+' H '+(or1SX+4)} val={gVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
         })}
 
         {/* OR GATES LAYER 2 (4 gates) */}
@@ -246,7 +246,7 @@ export default function CircuitDiagram13(props) {
         {or1MY.map(function(my,i){
             var orIdx=Math.floor(i/2);
             var orSlot=i%2===0?-1:1;
-            return <W key={'o1o2'+i} d={'M '+(or1EX-2)+','+my+' H '+orL1Lane+' V '+(or2MY[orIdx]+orSlot*orHH)+' H '+(or2SX+4)} val={or1Vals[i]} col={orColor} rgb={orRgb} />;
+            return <W key={'o1o2'+i} d={'M '+or1EX+','+my+' H '+orL1Lane+' V '+(or2MY[orIdx]+orSlot*orHH)+' H '+(or2SX+4)} val={or1Vals[i]} col={orColor} rgb={orRgb} />;
         })}
 
         {/* OR GATES LAYER 3 (2 gates) */}
@@ -257,7 +257,7 @@ export default function CircuitDiagram13(props) {
         {/* OR L2 -> L3 — after OR L3 gates so wire draws on top */}
         {or2MY.map(function(my,i){
             var orSlot=i%2===0?-1:1;
-            return <W key={'o2o3'+i} d={'M '+(or2EX-2)+','+my+' H '+orL2Lane+' V '+(or3MY[Math.floor(i/2)]+orSlot*orHH)+' H '+(or3SX+4)} val={or2Vals[i]} col={orColor} rgb={orRgb} />;
+            return <W key={'o2o3'+i} d={'M '+or2EX+','+my+' H '+orL2Lane+' V '+(or3MY[Math.floor(i/2)]+orSlot*orHH)+' H '+(or3SX+4)} val={or2Vals[i]} col={orColor} rgb={orRgb} />;
         })}
 
         {/* OR GATE FINAL (Layer 4) */}
@@ -266,7 +266,7 @@ export default function CircuitDiagram13(props) {
         {/* OR L3 -> L4 — after OR L4 gate so wire draws on top */}
         {or3MY.map(function(my,i){
             var orSlot=i===0?-1:1;
-            return <W key={'o3o4'+i} d={'M '+(or3EX-2)+','+my+' H '+orL3Lane+' V '+(orFMY+orSlot*orHH)+' H '+(or4SX+4)} val={or3Vals[i]} col={orColor} rgb={orRgb} />;
+            return <W key={'o3o4'+i} d={'M '+or3EX+','+my+' H '+orL3Lane+' V '+(orFMY+orSlot*orHH)+' H '+(or4SX+4)} val={or3Vals[i]} col={orColor} rgb={orRgb} />;
         })}
 
         {/* OUTPUT */}
