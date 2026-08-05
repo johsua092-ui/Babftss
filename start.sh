@@ -1,152 +1,159 @@
 #!/bin/bash
-# start.sh — Auto-deploy + smart polling (backend-only restart)
+# start.sh — Bootstrap + smart polling (backend-only restart)
 # CMD_RUN di Pterodactyl: bash start.sh
 #
-# Setiap 5 menit:
-# 1. Cek commit SHA terbaru via GitHub API
-# 2. Kalo ada commit baru → cek file apa yg berubah
-# 3. HANYA redeploy kalo berubah: api/ lib/ server/ package.json start.sh
-# 4. Frontend doang (src/ assets/ dll) → skip, log aja
+# Download pakai Node.js (no curl/wget needed — container pasti ada node)
+# Kalo api/ belum ada → download ZIP + ekstrak otomatis
 # ================================================================
-
 set -e
 
 REPO="johsua092-ui/Babftss"
 BRANCH="main"
-ZIP_URL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.zip"
 COMMITS_URL="https://api.github.com/repos/${REPO}/commits/${BRANCH}"
 WORK_DIR="/home/container"
-POLL_INTERVAL=300  # 5 menit
+POLL_INTERVAL=300
+SHA_FILE="/tmp/babftss_sha"
 
-# Path yang trigger restart
-BACKEND_PATHS="^(api/|lib/|server/|package\\.json|package-lock\\.json|start\\.sh)"
-
-# ── Helper: log with timestamp ───────────────────────────────
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
-# ── Deploy fresh ─────────────────────────────────────────────
-deploy() {
-  local ZIP_FILE="/tmp/babftss.zip"
-  local TMP_DIR="/tmp/babftss-new"
+# ── Download file pakai Node.js (no curl/wget) ───────────────
+node_download() {
+  local URL="$1" OUT="$2"
+  node -e "
+    const u='${URL}';
+    const o='${OUT}';
+    const m=u.startsWith('https')?require('https'):require('http');
+    m.get(u,{headers:{'User-Agent':'babftss'}},r=>{
+      if(r.statusCode>=300&&r.statusCode<400){m.get(r.headers.location,{headers:{'User-Agent':'babftss'}},r2=>{
+        const d=[];r2.on('data',c=>d.push(c));
+        r2.on('end',()=>require('fs').writeFileSync(o,Buffer.concat(d)))
+      })}else{
+        const d=[];r.on('data',c=>d.push(c));
+        r.on('end',()=>require('fs').writeFileSync(o,Buffer.concat(d)))
+      }
+    }).on('error',()=>process.exit(1))
+  "
+}
 
+# ── HTTP GET as string ───────────────────────────────────────
+node_get() {
+  local URL="$1"
+  node -e "
+    const u='${URL}';
+    require('https').get(u,{headers:{'User-Agent':'babftss'}},r=>{
+      let d='';
+      r.on('data',c=>d+=c);
+      r.on('end',()=>{try{console.log(JSON.parse(d).sha||'')}catch(e){console.log(d)}})
+    }).on('error',()=>process.exit(1))
+  "
+}
+
+# ── Latest commit SHA ────────────────────────────────────────
+get_latest_sha() {
+  node_get "${COMMITS_URL}" | tr -d '\n\r'
+}
+
+# ── Cek apakah diff ada backend files ────────────────────────
+check_backend() {
+  local OLD="$1" NEW="$2"
+  node -e "
+    const u='https://api.github.com/repos/${REPO}/compare/${OLD}...${NEW}';
+    require('https').get(u,{headers:{'User-Agent':'babftss'}},r=>{
+      let d='';
+      r.on('data',c=>d+=c);
+      r.on('end',()=>{
+        try{
+          const files=JSON.parse(d).files||[];
+          const re=/^(api\/|lib\/|server\/|package\.json|package-lock\.json|start\.sh)/;
+          console.log(files.some(f=>re.test(f.filename))?'yes':'no')
+        }catch(e){console.log('yes')}
+      })
+    }).on('error',()=>process.exit(1))
+  "
+}
+
+# ── Deploy full ──────────────────────────────────────────────
+deploy() {
   echo "========================================"
   log "Deploying ${BRANCH}..."
   echo "========================================"
 
-  # 1. Download
-  echo "[1/4] Downloading..."
-  curl -fsSL "${ZIP_URL}" -o "${ZIP_FILE}" 2>/dev/null || {
-    wget -q "${ZIP_URL}" -O "${ZIP_FILE}"
-  }
-  log "✓ $(du -h "$ZIP_FILE" | cut -f1)"
+  echo "[1/3] Downloading repo ZIP..."
+  node_download "https://github.com/${REPO}/archive/refs/heads/${BRANCH}.zip" "/tmp/babftss.zip"
+  log "✓ Downloaded"
 
-  # 2. Clean
-  echo "[2/4] Cleaning..."
+  echo "[2/3] Extracting..."
   cd "${WORK_DIR}"
   [ -d node_modules ] && mv node_modules /tmp/node_modules_bak 2>/dev/null || true
-  find . -mindepth 1 -maxdepth 1 ! -name '.' ! -name '..' -exec rm -rf {} +
-  log "✓ Old files deleted"
+  rm -rf /tmp/babftss-new 2>/dev/null || true
+  mkdir -p /tmp/babftss-new
+  unzip -oq /tmp/babftss.zip -d /tmp/babftss-new
+  rm -f /tmp/babftss.zip
 
-  # 3. Extract
-  echo "[3/4] Extracting..."
-  mkdir -p "${TMP_DIR}"
-  unzip -oq "${ZIP_FILE}" -d "${TMP_DIR}"
-  rm -f "${ZIP_FILE}"
-
-  local EXTRACTED=$(ls -d "${TMP_DIR}"/*/ 2>/dev/null | head -1)
+  SRC=$(ls -d /tmp/babftss-new/*/ 2>/dev/null | head -1)
   shopt -s dotglob
-  cp -r "${EXTRACTED}"* "${WORK_DIR}/" 2>/dev/null || true
+  cp -r "${SRC}"* "${WORK_DIR}/" 2>/dev/null || true
   shopt -u dotglob
-  rm -rf "${TMP_DIR}"
+  rm -rf /tmp/babftss-new
   log "✓ Source replaced"
 
-  # 4. Deps
-  echo "[4/4] Dependencies..."
-  if [ -d /tmp/node_modules_bak ] && [ -f package.json ]; then
-    mv /tmp/node_modules_bak node_modules 2>/dev/null && log "✓ Restored cache"
-  fi
+  echo "[3/3] Dependencies..."
+  [ -d /tmp/node_modules_bak ] && mv /tmp/node_modules_bak node_modules 2>/dev/null && log "✓ Cache restored"
   cd "${WORK_DIR}"
   npm install --omit=dev --no-audit --no-fund --prefer-offline 2>&1 | tail -1
   rm -rf /tmp/node_modules_bak 2>/dev/null || true
   log "✓ Done"
 }
 
-# ── Helper: latest commit SHA ────────────────────────────────
-get_latest_sha() {
-  curl -s "${COMMITS_URL}" 2>/dev/null | grep -m1 '"sha"' | head -1 | \
-    sed 's/.*"sha": *"\([^"]*\)".*/\1/'
-}
-
 # ══════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════
 
-# Deploy awal
-deploy
-LATEST_SHA=$(get_latest_sha)
-echo "${LATEST_SHA}" > /tmp/babftss_sha
-log "✓ Deployed commit: ${LATEST_SHA:0:7}"
-log "✓ Polling every ${POLL_INTERVAL}s (backend-only restart)"
+# First time? Download semua
+if [ ! -d "${WORK_DIR}/api" ]; then
+  log "🔧 First run — downloading full repo..."
+  deploy
+fi
+
+SHA=$(get_latest_sha)
+echo "${SHA}" > "${SHA_FILE}"
+log "✓ Running: ${SHA:0:7}"
+log "✓ Poll every ${POLL_INTERVAL}s (backend only)"
 echo ""
 
-# ── Background poll loop ─────────────────────────────────────
-auto_update_loop() {
+# ── Polling loop ─────────────────────────────────────────────
+poll_loop() {
   while true; do
     sleep "${POLL_INTERVAL}"
+    NSHA=$(get_latest_sha)
+    OSHA=$(cat "${SHA_FILE}" 2>/dev/null || echo "")
 
-    local NEW_SHA=$(get_latest_sha)
-    local OLD_SHA=$(cat /tmp/babftss_sha 2>/dev/null || echo "")
+    [ -z "${NSHA}" ] || [ "${NSHA}" = "null" ] && { log "⚠ GitHub down"; continue; }
+    [ "${NSHA}" = "${OSHA}" ] && { log "✓ ${NSHA:0:7}"; continue; }
 
-    if [ -z "${NEW_SHA}" ] || [ "${NEW_SHA}" = "null" ]; then
-      log "⚠ GitHub unreachable, retry in ${POLL_INTERVAL}s"
-      continue
-    fi
-
-    if [ "${NEW_SHA}" = "${OLD_SHA}" ]; then
-      log "✓ Up to date (${NEW_SHA:0:7})"
-      continue
-    fi
-
-    # ── Commit baru → cek file apa yg berubah ─────────────
-    log "🔍 NEW COMMITS: ${OLD_SHA:0:7} → ${NEW_SHA:0:7}"
-
-    local CHANGED_FILES=$(curl -s \
-      "https://api.github.com/repos/${REPO}/compare/${OLD_SHA}...${NEW_SHA}" 2>/dev/null | \
-      grep '"filename"' | sed 's/.*"filename": *"\([^"]*\)".*/\1/')
-
-    log "   Changed:"
-    echo "$CHANGED_FILES" | while read f; do [ -n "$f" ] && log "     $f"; done
-
-    if echo "$CHANGED_FILES" | grep -qE "${BACKEND_PATHS}" 2>/dev/null; then
-      # ── Backend berubah → redeploy ──────────────────────
-      log "🔄 BACKEND CHANGED — redeploying..."
-
-      kill "${SERVER_PID}" 2>/dev/null || true
-      wait "${SERVER_PID}" 2>/dev/null || true
-
+    log "🔍 NEW: ${OSHA:0:7} → ${NSHA:0:7}"
+    if [ "$(check_backend "${OSHA}" "${NSHA}")" = "yes" ]; then
+      log "🔄 BACKEND — redeploying..."
+      kill "${SPID}" 2>/dev/null || true
+      wait "${SPID}" 2>/dev/null || true
       deploy
-      echo "${NEW_SHA}" > /tmp/babftss_sha
-
-      log "Starting server..."
+      echo "${NSHA}" > "${SHA_FILE}"
       node server/index.js &
-      SERVER_PID=$!
-      log "✓ Updated to ${NEW_SHA:0:7}"
+      SPID=$!
+      log "✓ Updated → ${NSHA:0:7}"
     else
-      # ── Frontend doang → skip ───────────────────────────
-      log "⏭ Frontend-only — skipping redeploy"
-      echo "${NEW_SHA}" > /tmp/babftss_sha
+      log "⏭ Frontend only — skip"
+      echo "${NSHA}" > "${SHA_FILE}"
     fi
-
     echo ""
   done
 }
 
-# ── Start server ─────────────────────────────────────────────
+# ── Start ────────────────────────────────────────────────────
 echo "========================================"
 log "Starting server..."
 echo "========================================"
 node server/index.js &
-SERVER_PID=$!
+SPID=$!
 
-# ── Start poll loop ──────────────────────────────────────────
-auto_update_loop
+poll_loop
