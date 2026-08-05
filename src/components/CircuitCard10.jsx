@@ -15,12 +15,13 @@ export default function CircuitCard09() {
 
     const themeColor = "#facc15";
     const themeRgb = hexToRgbStr(themeColor);
-    const orColor = "#a78bfa";
 
+    // Condensed truth table (one row per select combination)
     const truthTable = [
-        [0,0,0,0],[0,0,1,0],[0,1,0,1],[0,1,1,1],
-        [1,0,0,0],[1,0,1,1],[1,1,0,0],[1,1,1,1]
+        [0, 'D0'],
+        [1, 'D1']
     ];
+    const dMap = { D0: inputD0, D1: inputD1 };
 
     const isActive = y;
 
@@ -58,19 +59,26 @@ export default function CircuitCard09() {
             <div style={{ fontFamily: "Orbitron,sans-serif", fontSize: 10, fontWeight: 700, color: "#475569", marginBottom: 6, letterSpacing: "0.5px" }}>TABEL KEBENARAN</div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "Orbitron,sans-serif" }}>
                 <thead><tr style={{ borderBottom: "2px solid #1e293b" }}>
-                    <th style={{ padding: "4px 6px", textAlign: "center", color: "#64748b", fontWeight: 600, fontSize: 10 }}>S</th>
-                    <th style={{ padding: "4px 6px", textAlign: "center", color: "#64748b", fontWeight: 600, fontSize: 10 }}>D0</th>
-                    <th style={{ padding: "4px 6px", textAlign: "center", color: "#64748b", fontWeight: 600, fontSize: 10 }}>D1</th>
-                    <th style={{ padding: "4px 6px", textAlign: "center", color: "#64748b", fontWeight: 600, fontSize: 10 }}>Y</th>
+                    <th style={{ padding: "4px 8px", textAlign: "center", color: "#64748b", fontWeight: 600, fontSize: 10 }}>S</th>
+                    <th style={{ padding: "4px 8px", textAlign: "center", color: "#64748b", fontWeight: 600, fontSize: 10 }}>Y</th>
                 </tr></thead>
                 <tbody>{truthTable.map(function(row) {
-                    var rs = row[0], rd0 = row[1], rd1 = row[2], ry = row[3];
-                    var isHl = (rs === (inputS ? 1 : 0)) && (rd0 === (inputD0 ? 1 : 0)) && (rd1 === (inputD1 ? 1 : 0));
-                    return <tr key={rs+','+rd0+','+rd1} style={{ background: isHl ? `rgba(${themeRgb},0.18)` : "transparent", transition: "background 0.2s" }}>
-                        <td style={{ padding: "3px 6px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rs}</td>
-                        <td style={{ padding: "3px 6px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rd0}</td>
-                        <td style={{ padding: "3px 6px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rd1}</td>
-                        <td style={{ padding: "3px 6px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 800 }}>{ry}</td>
+                    var rs = row[0], dLabel = row[1];
+                    var isHl = (rs === (inputS ? 1 : 0));
+                    var yVal = dMap[dLabel] ? 1 : 0;
+                    var isGreenHl = yVal === 1;
+                    var greenCol = isGreenHl ? "#4ade80" : undefined;
+                    return <tr key={rs} style={{ background: isHl ? `rgba(${themeRgb},0.18)` : "transparent", transition: "background 0.2s" }}>
+                        <td style={{ padding: "3px 8px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rs}</td>
+                        <td style={{ padding: "3px 8px", textAlign: "center", fontWeight: 800, transition: "all 0.2s" }}>
+                            <span style={{
+                                background: isGreenHl ? "rgba(74,222,128,0.25)" : "transparent",
+                                color: greenCol || (isHl ? themeColor : "#94a3b8"),
+                                padding: isGreenHl ? "1px 6px" : "0",
+                                display: "block",
+                                transition: "all 0.2s"
+                            }}>{dLabel}={yVal}</span>
+                        </td>
                     </tr>
                 })}</tbody>
             </table>
