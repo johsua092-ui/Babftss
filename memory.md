@@ -658,3 +658,44 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 **Fitur tabel kebenaran ringkas (condensed truth table):** Card 10 dan Card 11 menggunakan format tabel kebenaran ringkas — hanya menampilkan baris per kombinasi SELECT (bukan semua kombinasi input), dengan highlight kuning (baris S aktif) dan hijau (kolom Y saat D=1). **ATURAN PENTING:** format ringkas HANYA untuk rangkaian yang punya sinyal SELECT/data-routing (Mux, Demux, dsb). Rangkaian biasa (NOT→AND, Half Adder, Full Adder, XOR dari gate dasar, dst) WAJIB pakai format normal (2^n baris penuh). Lihat `design.md` Bagian 3.1.1 untuk detail lengkap dua format ini.
 
 **File yang diubah:** `src/components/CircuitDiagram11.jsx` saja (beberapa iterasi fix visual). Card 01-10 TIDAK disentuh. File backend TIDAK disentuh.
+
+---
+
+## 3.7 CARD 12 "8:1 MULTIPLEXER (MUX)" — TIER NORMAL (SELESAI)
+
+**Konsep:** 8:1 Multiplexer — 3 sinyal select (S0, S1, S2), 8 data input (D0-D7), 1 output (Y). `Y = data yang dipilih kombinasi S2S1S0` (000=D0, 001=D1, ..., 111=D7). Arsitektur: 3 NOT + 8 AND 3-input (decode select) + 8 AND 2-input (enable AND data) + 7 OR tree.
+
+**Tier:** NORMAL.
+
+**Fitur visual:**
+- 8 warna unik per jalur D: D0=#22d3ee (cyan), D1=#facc15 (amber), D2=#fb923c (orange), D3=#60a5fa (blue), D4=#f472b6 (pink), D5=#34d399 (emerald), D6=#e879f9 (fuchsia), D7=#a3e635 (lime)
+- Sinyal select input (S0,S1,S2) = hijau #4ade80, NOT output (S0',S1',S2') = merah #f87171
+- OR gates = ungu #a78bfa
+- Decode AND-3 gate glow berdasarkan enable signal (en), Data AND-2 gate glow berdasarkan g (final output)
+- Label overline S0', S1', S2' pakai `<line>` manual di dekat output NOT gate
+- HeartButton sejajar badge tier
+
+**Routing (anti-overlap, mengikuti aturan design.md 3.0):**
+- D wires di x=160 (kiri semua bus seleksi yang mulai dari x=185)
+- 6 bus seleksi vertikal: S2'=185, S2=205, S1'=225, S1=245, S0'=265, S0=285
+- Direct bus trunk horizontals di Y berbeda (55, 110, 170) di antara NOT gates
+- D wire horizontal 2 di Y=dY+46 (di bawah decode AND bottom di dY+22)
+- Decode AND output ke Data AND di x=395
+- Data AND ke OR tree di x=492
+- OR tree interconnects di x=610 dan x=712
+- 8 data inputs dengan spacing 85px, svgH=890
+
+**File yang dibuat:**
+- `src/components/CircuitCard12.jsx` (baru)
+- `src/components/CircuitDiagram12.jsx` (baru)
+
+**File yang diubah:** TIDAK ADA (LogicGatesCircuit.jsx sudah punya import + ALL_CARDS entry untuk Card 12 sebelumnya). Card 01-11 TIDAK disentuh. File backend TIDAK disentuh.
+
+**Verifikasi:**
+- Build sukses: `built in 7.48s`, 0 error.
+- LogicGatesCircuit chunk: 128.46 KB (naik dari ~91 KB, wajar karena Card 12 ditambahkan).
+- Truth table: 8 baris ringkas (format 2, design.md 3.1.1), highlight kuning + hijau sesuai spesifikasi.
+- Logic terverifikasi manual: S2S1S0=000->Y=D0, 010->Y=D2, 101->Y=D5, 111->Y=D7 (semua benar).
+- Wire overlap: TIDAK ADA — setiap kabel punya jalur X/Y unik (diprancang dengan analisis menyeluruh).
+- HeartButton: ada, posisi sejajar badge tier.
+- Format tabel: ringkas (bukan 2^11 = 2048 baris), sesuai aturan Mux/data-routing.

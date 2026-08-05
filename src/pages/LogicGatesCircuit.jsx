@@ -12,6 +12,7 @@ import CircuitCard08 from '../components/CircuitCard08';
 import CircuitCard09 from '../components/CircuitCard09';
 import CircuitCard10 from '../components/CircuitCard10';
 import CircuitCard11 from '../components/CircuitCard11';
+import CircuitCard12 from '../components/CircuitCard12';
 
 const ALL_CARDS = [
     { num: '01', name: 'NOT AND Combo', tier: 'EASY', el: CircuitCard01 },
@@ -25,6 +26,7 @@ const ALL_CARDS = [
     { num: '09', name: 'Full Adder', tier: 'NORMAL', el: CircuitCard09 },
     { num: '10', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard10 },
     { num: '11', name: '4:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard11 },
+    { num: '12', name: '8:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard12 },
 ];
 
 const TIERS = [
