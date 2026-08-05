@@ -1,13 +1,12 @@
 #!/bin/bash
-# start.sh — Auto-update + fresh deploy setiap restart
+# start.sh — Auto-deploy + smart polling (backend-only restart)
 # CMD_RUN di Pterodactyl: bash start.sh
 #
-# Setiap restart:
-# 1. Download ZIP terbaru dari GitHub
-# 2. HAPUS SEMUA file lama (kecuali node_modules)
-# 3. Ekstrak ZIP → ganti total
-# 4. npm install (kalo ada package.json baru)
-# 5. Jalankan server
+# Setiap 5 menit:
+# 1. Cek commit SHA terbaru via GitHub API
+# 2. Kalo ada commit baru → cek file apa yg berubah
+# 3. HANYA redeploy kalo berubah: api/ lib/ server/ package.json start.sh
+# 4. Frontend doang (src/ assets/ dll) → skip, log aja
 # ================================================================
 
 set -e
@@ -15,88 +14,139 @@ set -e
 REPO="johsua092-ui/Babftss"
 BRANCH="main"
 ZIP_URL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.zip"
-ZIP_FILE="/tmp/babftss.zip"
-TMP_DIR="/tmp/babftss-new"
+COMMITS_URL="https://api.github.com/repos/${REPO}/commits/${BRANCH}"
 WORK_DIR="/home/container"
+POLL_INTERVAL=300  # 5 menit
 
-echo "========================================"
-echo " BABFT API — Auto Deploy (fresh)"
-echo "========================================"
+# Path yang trigger restart
+BACKEND_PATHS="^(api/|lib/|server/|package\\.json|package-lock\\.json|start\\.sh)"
 
-# ── 1. Download ZIP terbaru ─────────────────────────────────
-echo "[1/4] Downloading ${BRANCH}.zip ..."
-if command -v curl &>/dev/null; then
-  curl -fsSL "${ZIP_URL}" -o "${ZIP_FILE}"
-elif command -v wget &>/dev/null; then
-  wget -q "${ZIP_URL}" -O "${ZIP_FILE}"
-else
-  echo "ERROR: curl / wget not found"
-  exit 1
-fi
-echo "      ✓ $(du -h "$ZIP_FILE" | cut -f1)"
+# ── Helper: log with timestamp ───────────────────────────────
+log() { echo "[$(date +%H:%M:%S)] $*"; }
 
-# ── 2. HAPUS semua file lama ────────────────────────────────
-echo "[2/4] Cleaning old files..."
-cd "${WORK_DIR}"
+# ── Deploy fresh ─────────────────────────────────────────────
+deploy() {
+  local ZIP_FILE="/tmp/babftss.zip"
+  local TMP_DIR="/tmp/babftss-new"
 
-# Simpan node_modules sementara biar kalo ga ada perubahan dep ga install ulang
-if [ -d node_modules ]; then
-  mv node_modules /tmp/node_modules_bak 2>/dev/null || true
-fi
+  echo "========================================"
+  log "Deploying ${BRANCH}..."
+  echo "========================================"
 
-# Hapus semua file & folder
-find . -mindepth 1 -maxdepth 1 ! -name '.' ! -name '..' -exec rm -rf {} +
+  # 1. Download
+  echo "[1/4] Downloading..."
+  curl -fsSL "${ZIP_URL}" -o "${ZIP_FILE}" 2>/dev/null || {
+    wget -q "${ZIP_URL}" -O "${ZIP_FILE}"
+  }
+  log "✓ $(du -h "$ZIP_FILE" | cut -f1)"
 
-echo "      ✓ Old files deleted"
+  # 2. Clean
+  echo "[2/4] Cleaning..."
+  cd "${WORK_DIR}"
+  [ -d node_modules ] && mv node_modules /tmp/node_modules_bak 2>/dev/null || true
+  find . -mindepth 1 -maxdepth 1 ! -name '.' ! -name '..' -exec rm -rf {} +
+  log "✓ Old files deleted"
 
-# ── 3. Ekstrak ZIP ke work dir ──────────────────────────────
-echo "[3/4] Extracting new source..."
-unzip -oq "${ZIP_FILE}" -d "${TMP_DIR}"
-rm -f "${ZIP_FILE}"
+  # 3. Extract
+  echo "[3/4] Extracting..."
+  mkdir -p "${TMP_DIR}"
+  unzip -oq "${ZIP_FILE}" -d "${TMP_DIR}"
+  rm -f "${ZIP_FILE}"
 
-# GitHub ZIP format: Babftss-main/ → copy isinya ke WORK_DIR
-EXTRACTED=$(ls -d "${TMP_DIR}"/*/ 2>/dev/null | head -1)
-if [ -z "${EXTRACTED}" ]; then
-  echo "ERROR: ZIP empty or broken"
-  exit 1
-fi
+  local EXTRACTED=$(ls -d "${TMP_DIR}"/*/ 2>/dev/null | head -1)
+  shopt -s dotglob
+  cp -r "${EXTRACTED}"* "${WORK_DIR}/" 2>/dev/null || true
+  shopt -u dotglob
+  rm -rf "${TMP_DIR}"
+  log "✓ Source replaced"
 
-# Copy semua isi folder hasil ekstrak ke WORK_DIR
-shopt -s dotglob
-cp -r "${EXTRACTED}"* "${WORK_DIR}/" 2>/dev/null || true
-shopt -u dotglob
-
-rm -rf "${TMP_DIR}"
-echo "      ✓ Source replaced"
-
-# ── 4. Restore node_modules & install ───────────────────────
-echo "[4/4] Checking dependencies..."
-
-# Bandingin package.json — kalo sama, restore node_modules lama
-RESTORED=0
-if [ -d /tmp/node_modules_bak ]; then
-  if [ -f "${WORK_DIR}/package.json" ]; then
-    mv /tmp/node_modules_bak "${WORK_DIR}/node_modules" 2>/dev/null && RESTORED=1 || true
-  else
-    rm -rf /tmp/node_modules_bak
+  # 4. Deps
+  echo "[4/4] Dependencies..."
+  if [ -d /tmp/node_modules_bak ] && [ -f package.json ]; then
+    mv /tmp/node_modules_bak node_modules 2>/dev/null && log "✓ Restored cache"
   fi
-fi
-
-if [ "${RESTORED}" = "0" ] || [ ! -d "${WORK_DIR}/node_modules" ]; then
-  echo "      Installing fresh..."
   cd "${WORK_DIR}"
   npm install --omit=dev --no-audit --no-fund --prefer-offline 2>&1 | tail -1
-else
-  echo "      ✓ Dependencies unchanged, skipped install"
-fi
+  rm -rf /tmp/node_modules_bak 2>/dev/null || true
+  log "✓ Done"
+}
 
-# Bersihin sisa tmp
-rm -rf /tmp/node_modules_bak 2>/dev/null || true
+# ── Helper: latest commit SHA ────────────────────────────────
+get_latest_sha() {
+  curl -s "${COMMITS_URL}" 2>/dev/null | grep -m1 '"sha"' | head -1 | \
+    sed 's/.*"sha": *"\([^"]*\)".*/\1/'
+}
 
+# ══════════════════════════════════════════════════════════════
+# MAIN
+# ══════════════════════════════════════════════════════════════
+
+# Deploy awal
+deploy
+LATEST_SHA=$(get_latest_sha)
+echo "${LATEST_SHA}" > /tmp/babftss_sha
+log "✓ Deployed commit: ${LATEST_SHA:0:7}"
+log "✓ Polling every ${POLL_INTERVAL}s (backend-only restart)"
 echo ""
-echo "========================================"
-echo " Server starting..."
-echo "========================================"
 
-# ── 5. Start ────────────────────────────────────────────────
-exec node server/index.js
+# ── Background poll loop ─────────────────────────────────────
+auto_update_loop() {
+  while true; do
+    sleep "${POLL_INTERVAL}"
+
+    local NEW_SHA=$(get_latest_sha)
+    local OLD_SHA=$(cat /tmp/babftss_sha 2>/dev/null || echo "")
+
+    if [ -z "${NEW_SHA}" ] || [ "${NEW_SHA}" = "null" ]; then
+      log "⚠ GitHub unreachable, retry in ${POLL_INTERVAL}s"
+      continue
+    fi
+
+    if [ "${NEW_SHA}" = "${OLD_SHA}" ]; then
+      log "✓ Up to date (${NEW_SHA:0:7})"
+      continue
+    fi
+
+    # ── Commit baru → cek file apa yg berubah ─────────────
+    log "🔍 NEW COMMITS: ${OLD_SHA:0:7} → ${NEW_SHA:0:7}"
+
+    local CHANGED_FILES=$(curl -s \
+      "https://api.github.com/repos/${REPO}/compare/${OLD_SHA}...${NEW_SHA}" 2>/dev/null | \
+      grep '"filename"' | sed 's/.*"filename": *"\([^"]*\)".*/\1/')
+
+    log "   Changed:"
+    echo "$CHANGED_FILES" | while read f; do [ -n "$f" ] && log "     $f"; done
+
+    if echo "$CHANGED_FILES" | grep -qE "${BACKEND_PATHS}" 2>/dev/null; then
+      # ── Backend berubah → redeploy ──────────────────────
+      log "🔄 BACKEND CHANGED — redeploying..."
+
+      kill "${SERVER_PID}" 2>/dev/null || true
+      wait "${SERVER_PID}" 2>/dev/null || true
+
+      deploy
+      echo "${NEW_SHA}" > /tmp/babftss_sha
+
+      log "Starting server..."
+      node server/index.js &
+      SERVER_PID=$!
+      log "✓ Updated to ${NEW_SHA:0:7}"
+    else
+      # ── Frontend doang → skip ───────────────────────────
+      log "⏭ Frontend-only — skipping redeploy"
+      echo "${NEW_SHA}" > /tmp/babftss_sha
+    fi
+
+    echo ""
+  done
+}
+
+# ── Start server ─────────────────────────────────────────────
+echo "========================================"
+log "Starting server..."
+echo "========================================"
+node server/index.js &
+SERVER_PID=$!
+
+# ── Start poll loop ──────────────────────────────────────────
+auto_update_loop
