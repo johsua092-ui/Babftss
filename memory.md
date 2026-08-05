@@ -703,3 +703,50 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - Wire overlap: TIDAK ADA — setiap kabel punya jalur X/Y unik (diprancang dengan analisis menyeluruh).
 - HeartButton: ada, posisi sejajar badge tier.
 - Format tabel: ringkas (bukan 2^11 = 2048 baris), sesuai aturan Mux/data-routing.
+
+---
+
+## 3.8 CARD 13 "16:1 MULTIPLEXER (MUX)" — TIER NORMAL (SELESAI)
+
+**Konsep:** 16:1 Multiplexer — 4 sinyal select (S0, S1, S2, S3), 16 data input (D0-D15), 1 output (Y). `Y = data yang dipilih kombinasi S3S2S1S0` (0000=D0, 0001=D1, ..., 1111=D15). Arsitektur: 4 NOT + 16 AND 4-input (decode select) + 16 AND 2-input (enable AND data) + 15 OR tree (4 level binary tree).
+
+**Tier:** NORMAL.
+
+**Fitur visual:**
+- 16 warna D dibagi 2 grup: 8 cool tones (D0-D7: cyan/blue/indigo) dan 8 warm tones (D8-D15: orange/pink/yellow/green) — lebih tenang dibanding 16 warna acak, tetap bisa dibedakan per jalur.
+- Sinyal select input (S0,S1,S2,S3) = hijau #4ade80, NOT output (S0',S1',S2',S3') = merah #f87171
+- OR gates = ungu #a78bfa
+- Helper `AndGate4` (D-shape, w=30, ar=26, 4 input: top/mid1/mid2/bot) — baru, untuk decode AND 4-input
+- Label overline S0', S1', S2', S3' pakai `<line>` manual
+- HeartButton sejajar badge tier
+
+**Routing (anti-overlap, mengikuti aturan design.md 3.0):**
+- D wires horizontal 1: Y=dYs[i], X=47..150
+- D wires vertical: X=150, Y=dYs[i]..dYs[i]+46
+- D wires horizontal 2: Y=dYs[i]+46, X=150..450 (ke data AND-2 bot input)
+- 8 bus seleksi vertikal di lane X unik: S3'=185, S3=205, S2'=225, S2=245, S1'=265, S1=285, S0'=305, S0=325
+- Prime bus horizontals di Y=30/80/130/180 (sama dengan S input Y)
+- Direct bus horizontals di Y=65/120/175/225 (unik, di antara NOT gates dan D inputs)
+- Bus branch horizontals: dari busX ke AND-4 (360), Y unik per gate input
+- Decode AND-4 output ke Data AND-2: via collector lane X=435 (horizontal 416..435, vertical, horizontal 435..450)
+- Data AND-2 output ke OR tree: via collector lane X=530 (horizontal 492..530, vertical, horizontal 530..570)
+- OR L1->L2 collector X=650, L2->L3 X=750, L3->L4 X=850
+- 16 data inputs dengan spacing 80px, svgH=1535
+- dSpacing dinaikkan dari 70 ke 80 untuk mencegah D wire horizontal melewati body gate baris berikutnya
+- and4EX=416 (bukan 410) — disesuaikan dengan rightmost point D-shape (w=30+ar=26=56)
+
+**File yang dibuat:**
+- `src/components/CircuitCard13.jsx` (baru)
+- `src/components/CircuitDiagram13.jsx` (baru)
+
+**File yang diubah:** `src/pages/LogicGatesCircuit.jsx` (2 baris: 1 import `CircuitCard13` + 1 entri baru di `ALL_CARDS`). Card 01-12 TIDAK disentuh. File backend TIDAK disentuh.
+
+**Verifikasi:**
+- Build sukses: `built in 7.14s`, 2166 modules transformed, 0 error.
+- LogicGatesCircuit chunk: 146.16 KB (naik dari 128.46 KB — wajar karena Card 13 ditambahkan).
+- Truth table: 16 baris ringkas (format 2, design.md 3.1.1), highlight kuning + hijau sesuai spesifikasi.
+- Logic terverifikasi manual: S3S2S1S0=0000->Y=D0, 0011->Y=D3, 1010->Y=D10, 1111->Y=D15 (semua benar).
+- Wire overlap: TIDAK ADA — analisis lane-by-lane mengkonfirmasi: (a) setiap horizontal segment punya Y unik atau X range yang tidak tumpang tindih, (b) setiap vertical segment punya X unik atau Y range yang tidak tumpang tindih (30px/46px segments vs 80px spacing), (c) satu-satunya persilangan yang ada adalah perpendicular (horizontal motong vertikal 1 titik) yang diperbolehkan design.md 3.0.
+- HeartButton: ada, posisi sejajar badge tier.
+- Format tabel: ringkas (bukan 2^20 = 1048576 baris), sesuai aturan Mux/data-routing.
+- **Tidak bisa diverifikasi visual langsung di browser.**
