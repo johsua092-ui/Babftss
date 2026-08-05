@@ -109,11 +109,11 @@ export default function CircuitCard11() {
                     return <tr key={rs1+','+rs0} style={{ background: isHl ? `rgba(${themeRgb},0.18)` : "transparent", transition: "background 0.2s" }}>
                         <td style={{ padding: "3px 8px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rs1}</td>
                         <td style={{ padding: "3px 8px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rs0}</td>
-                        <td style={{ padding: "3px 8px", textAlign: "center", fontWeight: 800, transition: "all 0.2s", background: isHl && !isGreenHl ? `rgba(${themeRgb},0.18)` : "transparent" }}>
+                        <td style={{ padding: "3px 8px", textAlign: "center", fontWeight: 800, transition: "all 0.2s" }}>
                             <span style={{
-                                background: isGreenHl ? "rgba(74,222,128,0.25)" : (isHl ? `rgba(${themeRgb},0.18)` : "transparent"),
+                                background: isGreenHl ? "rgba(74,222,128,0.25)" : "transparent",
                                 color: greenCol || (isHl ? themeColor : "#94a3b8"),
-                                padding: isGreenHl ? "1px 6px" : "3px 0",
+                                padding: isGreenHl ? "1px 6px" : "0",
                                 display: "block",
                                 transition: "all 0.2s"
                             }}>{dLabel}={yVal}</span>
