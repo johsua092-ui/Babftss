@@ -147,7 +147,7 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
         {/* ===== S0 DIRECT BUS (S0 → AND1 top, AND3 top) ===== */}
         {/* Trunk (green = select signal) */}
-        <W d={`M ${s0JX},${s0Y} V 48 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={selColor} rgb={selRgb} />
+        <W d={`M ${s0JX},${s0Y} V 65 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={selColor} rgb={selRgb} />
         {/* Branch to AND1 top (D1 amber) */}
         <circle cx={s0dX} cy={andGates[1].topIn} r={2.5} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0dX},${andGates[1].topIn} H ${andSX}`} val={s0} col={dCols[1]} rgb={dRgbs[1]} />
@@ -169,7 +169,7 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
         {/* Trunk (green = select signal) */}
-        <W d={`M ${s1JX},${s1Y} V 118 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={selColor} rgb={selRgb} />
+        <W d={`M ${s1JX},${s1Y} V 135 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={selColor} rgb={selRgb} />
         {/* Branch to AND2 mid (D2 orange) */}
         <circle cx={s1dX} cy={andGates[2].midIn} r={2.5} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={dCols[2]} rgb={dRgbs[2]} />
