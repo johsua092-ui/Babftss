@@ -1,0 +1,18 @@
+# docker-compose.yml — Local testing (skip if deploying to Pterodactyl)
+# Run: docker compose up -d
+# View logs: docker compose logs -f
+
+services:
+  api:
+    build: .
+    container_name: babft-api
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
