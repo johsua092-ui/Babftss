@@ -90,7 +90,7 @@ async function deploy() {
   const nm = path.join(WORK_DIR, 'node_modules');
   let hasNm = false;
 
-  if (fs.existsSync(nm)) { fs.renameSync(nm, '/tmp/nm_bak'); hasNm = true; }
+  if (fs.existsSync(nm)) { fs.cpSync(nm, '/tmp/nm_bak', { recursive: true }); fs.rmSync(nm, { recursive: true }); hasNm = true; }
   for (const f of fs.readdirSync(WORK_DIR))
     if (f !== '.' && f !== '..') fs.rmSync(path.join(WORK_DIR, f), { recursive: true, force: true });
   for (const f of fs.readdirSync(src))
@@ -100,7 +100,7 @@ async function deploy() {
 
   // 3. Deps
   console.log('[3/3] Dependencies...');
-  if (hasNm) { fs.renameSync('/tmp/nm_bak', nm); log('✓ Cache restored'); }
+  if (hasNm) { fs.cpSync('/tmp/nm_bak', nm, { recursive: true }); fs.rmSync('/tmp/nm_bak', { recursive: true }); log('✓ Cache restored'); }
   cp.execSync('npm install --omit=dev --no-audit --no-fund --prefer-offline',
     { cwd: WORK_DIR, stdio: 'inherit' });
   try { fs.rmSync('/tmp/nm_bak', { recursive: true }); } catch {}
