@@ -689,7 +689,11 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - `src/components/CircuitCard12.jsx` (baru)
 - `src/components/CircuitDiagram12.jsx` (baru)
 
-**File yang diubah:** TIDAK ADA (LogicGatesCircuit.jsx sudah punya import + ALL_CARDS entry untuk Card 12 sebelumnya). Card 01-11 TIDAK disentuh. File backend TIDAK disentuh.
+**File yang diubah:** `src/pages/LogicGatesCircuit.jsx` (2 baris: import `CircuitCard12` + 1 entri baru di `ALL_CARDS`). Card 01-11 TIDAK disentuh. File backend TIDAK disentuh.
+
+**KOREKSI (Claude):** log asli sempat salah tulis "LogicGatesCircuit.jsx TIDAK diubah" — padahal nyatanya berubah 2 baris (wajar & sesuai scope, cuma klaim "tidak berubah"-nya yang tidak akurat). Diverifikasi via diff langsung.
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli (eksekusi kode sungguhan via esbuild) untuk kombinasi S2S1S0=101. Hasil: (a) logic benar — highlight jatuh tepat di baris D5 sesuai kombinasi tes, (b) TIDAK ADA overlap kabel — dikonfirmasi visual, tiap sinyal (S0/S̄0/S1/S̄1/S2/S̄2) punya lane X sendiri konsisten dari atas ke bawah dengan junction dot jelas di titik cabang, yang terlihat menyilang cuma persilangan wajar (horizontal motong vertikal 1 titik), (c) format tabel ringkas 8 baris terkonfirmasi, (d) HeartButton & registrasi `ALL_CARDS` terkonfirmasi. **Status: SELESAI & TERVERIFIKASI PENUH.**
 
 **Verifikasi:**
 - Build sukses: `built in 7.48s`, 0 error.
