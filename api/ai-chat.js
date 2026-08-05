@@ -1,7 +1,7 @@
 // api/ai-chat.js — AI Chat API Route (serverless)
 // POST /api/ai-chat — AI Tutor + Game FAQ endpoint
 // Pre-filter handles: identity, coding block, platform & game facts → AI handles Logic Gates tutoring
-import { applyCors, applySecurityHeaders, checkRateLimit, validateStr } from "../lib/api-helpers.js";
+import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
 
 export default async function handler(req, res) {
@@ -12,6 +12,10 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
+    // Require auth — prevent open proxy abuse
+    const user = await authenticateRequest(req);
+    if (!user) return res.status(401).json({ error: "Login required to use AI chat" });
+
     const ip = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
     if (!checkRateLimit("ai-chat:" + ip, 30, 60000)) {
       return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
