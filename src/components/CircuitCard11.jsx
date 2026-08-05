@@ -103,10 +103,13 @@ export default function CircuitCard11() {
                     var rs1 = row[0], rs0 = row[1], dLabel = row[2];
                     var isHl = (rs1 === (inputS1 ? 1 : 0)) && (rs0 === (inputS0 ? 1 : 0));
                     var yVal = dMap[dLabel] ? 1 : 0;
+                    var isGreenHl = isHl && yVal === 1;
+                    var greenBg = isGreenHl ? "rgba(74,222,128,0.25)" : "transparent";
+                    var greenCol = isGreenHl ? "#4ade80" : undefined;
                     return <tr key={rs1+','+rs0} style={{ background: isHl ? `rgba(${themeRgb},0.18)` : "transparent", transition: "background 0.2s" }}>
                         <td style={{ padding: "3px 8px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rs1}</td>
                         <td style={{ padding: "3px 8px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{rs0}</td>
-                        <td style={{ padding: "3px 8px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 800 }}>{dLabel}={yVal}</td>
+                        <td style={{ padding: "3px 8px", textAlign: "center", background: greenBg, color: greenCol || (isHl ? themeColor : "#94a3b8"), fontWeight: 800, borderRadius: isGreenHl ? 4 : 0, transition: "all 0.2s" }}>{dLabel}={yVal}</td>
                     </tr>
                 })}</tbody>
             </table>
