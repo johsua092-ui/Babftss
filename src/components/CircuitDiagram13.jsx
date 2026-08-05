@@ -195,7 +195,14 @@ export default function CircuitDiagram13(props) {
         <W d={'M '+jX+','+s1Y+' V '+sDirectY.s1+' H '+busX.s1d+' V '+decG[15].m2In} val={s1} col={selColor} rgb={selRgb} />
         <W d={'M '+jX+','+s0Y+' V '+sDirectY.s0+' H '+busX.s0d+' V '+decG[15].bIn} val={s0} col={selColor} rgb={selRgb} />
 
-        {/* SELECT BUS BRANCHES (junction dot + horizontal to AND-4) */}
+        {/* === GATES FIRST, THEN WIRES ON TOP (so wire endpoints aren't hidden by gate fill) === */}
+
+        {/* DECODE AND-4 GATES */}
+        {decG.map(function(g,i){
+            return <AndGate4 key={'dec'+i} sx={and4SX} ty={g.ty} by={g.by} w={30} ar={26} glow={mkGlow(enVals[i],dRgbs[i])} fill={mkFill(enVals[i],dRgbs[i])} stroke={mkStroke(enVals[i],dCols[i])} />;
+        })}
+
+        {/* SELECT BUS BRANCHES (junction dot + horizontal to AND-4) — after gates so wire draws on top */}
         {busBranches.map(function(b){
             return <Fragment key={b.key}>
                 <circle cx={b.bx} cy={b.inputY} r={2.5} fill={b.bVal?b.bCol:'rgba('+b.bRgb+',0.25)'} style={{transition:'fill 0.3s'}} />
@@ -203,32 +210,19 @@ export default function CircuitDiagram13(props) {
             </Fragment>;
         })}
 
-        {/* D WIRES -> DATA AND-2 BOT INPUTS */}
-        {/* Route: input node → right to x=340 (past bus trunks) → down 46px → right to data AND gate */}
-        {dYs.map(function(dy,i){
-            return <W key={'dw'+i} d={'M 47,'+dy+' H '+dVertLane+' V '+(dy+46)+' H '+and2SX} val={dVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
-        })}
-
-        {/* DECODE AND-4 GATES */}
-        {decG.map(function(g,i){
-            return <AndGate4 key={'dec'+i} sx={and4SX} ty={g.ty} by={g.by} w={30} ar={26} glow={mkGlow(enVals[i],dRgbs[i])} fill={mkFill(enVals[i],dRgbs[i])} stroke={mkStroke(enVals[i],dCols[i])} />;
-        })}
-
-        {/* DECODE AND-4 OUTPUT -> DATA AND-2 TOP INPUT (via decodeOutLane=448) */}
-        {decG.map(function(g,i){
-            return <W key={'d2d'+i} d={'M '+and4EX+','+g.my+' H '+decodeOutLane+' V '+datG[i].tIn+' H '+and2SX} val={enVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
-        })}
-
         {/* DATA AND-2 GATES */}
         {datG.map(function(g,i){
             return <AndGate2 key={'dat'+i} sx={and2SX} ty={g.ty} by={g.by} w={24} ar={18} glow={mkGlow(gVals[i],dRgbs[i])} fill={mkFill(gVals[i],dRgbs[i])} stroke={mkStroke(gVals[i],dCols[i])} />;
         })}
 
-        {/* DATA AND OUTPUTS -> OR TREE LAYER 1 (via dataToOrLane=548) */}
-        {datG.map(function(g,i){
-            var orIdx=Math.floor(i/2);
-            var orSlot=i%2===0?-1:1;
-            return <W key={'d2or'+i} d={'M '+and2EX+','+g.my+' H '+dataToOrLane+' V '+(or1MY[orIdx]+orSlot*orHH)+' H '+or1SX} val={gVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
+        {/* D WIRES -> DATA AND-2 BOT INPUTS — after AND-2 gates so wire draws on top */}
+        {dYs.map(function(dy,i){
+            return <W key={'dw'+i} d={'M 47,'+dy+' H '+dVertLane+' V '+(dy+46)+' H '+and2SX} val={dVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
+        })}
+
+        {/* DECODE AND-4 OUTPUT -> DATA AND-2 TOP INPUT — after AND-2 gates so wire draws on top */}
+        {decG.map(function(g,i){
+            return <W key={'d2d'+i} d={'M '+and4EX+','+g.my+' H '+decodeOutLane+' V '+datG[i].tIn+' H '+and2SX} val={enVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
         })}
 
         {/* OR GATES LAYER 1 (8 gates) */}
@@ -236,11 +230,11 @@ export default function CircuitDiagram13(props) {
             return <OrGate key={'or1'+i} sx={or1SX} ty={my-orHH} by={my+orHH} my={my} ex={or1EX} glow={mkGlow(or1Vals[i],orRgb)} fill={mkFill(or1Vals[i],orRgb)} stroke={mkStroke(or1Vals[i],orColor)} />;
         })}
 
-        {/* OR L1 -> L2 (via orL1Lane=665) */}
-        {or1MY.map(function(my,i){
+        {/* DATA AND OUTPUTS -> OR TREE LAYER 1 — after OR L1 gates so wire draws on top */}
+        {datG.map(function(g,i){
             var orIdx=Math.floor(i/2);
             var orSlot=i%2===0?-1:1;
-            return <W key={'o1o2'+i} d={'M '+or1EX+','+my+' H '+orL1Lane+' V '+(or2MY[orIdx]+orSlot*orHH)+' H '+or2SX} val={or1Vals[i]} col={orColor} rgb={orRgb} />;
+            return <W key={'d2or'+i} d={'M '+and2EX+','+g.my+' H '+dataToOrLane+' V '+(or1MY[orIdx]+orSlot*orHH)+' H '+or1SX} val={gVals[i]} col={dCols[i]} rgb={dRgbs[i]} />;
         })}
 
         {/* OR GATES LAYER 2 (4 gates) */}
@@ -248,10 +242,11 @@ export default function CircuitDiagram13(props) {
             return <OrGate key={'or2'+i} sx={or2SX} ty={my-orHH} by={my+orHH} my={my} ex={or2EX} glow={mkGlow(or2Vals[i],orRgb)} fill={mkFill(or2Vals[i],orRgb)} stroke={mkStroke(or2Vals[i],orColor)} />;
         })}
 
-        {/* OR L2 -> L3 (via orL2Lane=765) */}
-        {or2MY.map(function(my,i){
+        {/* OR L1 -> L2 — after OR L2 gates so wire draws on top */}
+        {or1MY.map(function(my,i){
+            var orIdx=Math.floor(i/2);
             var orSlot=i%2===0?-1:1;
-            return <W key={'o2o3'+i} d={'M '+or2EX+','+my+' H '+orL2Lane+' V '+(or3MY[Math.floor(i/2)]+orSlot*orHH)+' H '+or3SX} val={or2Vals[i]} col={orColor} rgb={orRgb} />;
+            return <W key={'o1o2'+i} d={'M '+or1EX+','+my+' H '+orL1Lane+' V '+(or2MY[orIdx]+orSlot*orHH)+' H '+or2SX} val={or1Vals[i]} col={orColor} rgb={orRgb} />;
         })}
 
         {/* OR GATES LAYER 3 (2 gates) */}
@@ -259,14 +254,20 @@ export default function CircuitDiagram13(props) {
             return <OrGate key={'or3'+i} sx={or3SX} ty={my-orHH} by={my+orHH} my={my} ex={or3EX} glow={mkGlow(or3Vals[i],orRgb)} fill={mkFill(or3Vals[i],orRgb)} stroke={mkStroke(or3Vals[i],orColor)} />;
         })}
 
-        {/* OR L3 -> L4 (via orL3Lane=862) */}
-        {or3MY.map(function(my,i){
-            var orSlot=i===0?-1:1;
-            return <W key={'o3o4'+i} d={'M '+or3EX+','+my+' H '+orL3Lane+' V '+(orFMY+orSlot*orHH)+' H '+or4SX} val={or3Vals[i]} col={orColor} rgb={orRgb} />;
+        {/* OR L2 -> L3 — after OR L3 gates so wire draws on top */}
+        {or2MY.map(function(my,i){
+            var orSlot=i%2===0?-1:1;
+            return <W key={'o2o3'+i} d={'M '+or2EX+','+my+' H '+orL2Lane+' V '+(or3MY[Math.floor(i/2)]+orSlot*orHH)+' H '+or3SX} val={or2Vals[i]} col={orColor} rgb={orRgb} />;
         })}
 
         {/* OR GATE FINAL (Layer 4) */}
         <OrGate sx={or4SX} ty={orFMY-orHH} by={orFMY+orHH} my={orFMY} ex={or4EX} glow={mkGlow(y,orRgb)} fill={mkFill(y,orRgb)} stroke={mkStroke(y,orColor)} />
+
+        {/* OR L3 -> L4 — after OR L4 gate so wire draws on top */}
+        {or3MY.map(function(my,i){
+            var orSlot=i===0?-1:1;
+            return <W key={'o3o4'+i} d={'M '+or3EX+','+my+' H '+orL3Lane+' V '+(orFMY+orSlot*orHH)+' H '+or4SX} val={or3Vals[i]} col={orColor} rgb={orRgb} />;
+        })}
 
         {/* OUTPUT */}
         <line x1={or4EX} y1={orFMY} x2={outX-outNodeR} y2={outY} stroke={wc(y,orColor,orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{transition:'stroke 0.3s'}} />
