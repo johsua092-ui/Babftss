@@ -56,7 +56,6 @@ export default async function handler(req, res) {
     return res.status(200).json({
       answer: result.answer,
       chatId: result.chatId,
-      model: result.model,
     });
   } catch (e) {
     console.error("[ai-chat]", e?.message || e);
