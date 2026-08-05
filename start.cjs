@@ -79,31 +79,33 @@ async function deploy() {
   await download(`https://github.com/${REPO}/archive/refs/heads/${BRANCH}.zip`, zip);
   log('✓ Downloaded');
 
-  // 2. Extract
-  console.log('[2/3] Extracting...');
+  // 2. Replace source (keep node_modules)
+  console.log('[2/3] Replacing source...');
   const tmp = '/tmp/babftss-new';
   cp.execSync(`unzip -oq ${zip} -d ${tmp}`);
   fs.rmSync(zip);
 
   const entries = fs.readdirSync(tmp);
   const src = path.join(tmp, entries[0]);
-  const nm = path.join(WORK_DIR, 'node_modules');
-  let hasNm = false;
 
-  if (fs.existsSync(nm)) { fs.cpSync(nm, '/tmp/nm_bak', { recursive: true }); fs.rmSync(nm, { recursive: true }); hasNm = true; }
-  for (const f of fs.readdirSync(WORK_DIR))
-    if (f !== '.' && f !== '..') fs.rmSync(path.join(WORK_DIR, f), { recursive: true, force: true });
-  for (const f of fs.readdirSync(src))
+  // Preserve node_modules — just delete everything else
+  for (const f of fs.readdirSync(WORK_DIR)) {
+    if (f === '.' || f === '..' || f === 'node_modules') continue;
+    fs.rmSync(path.join(WORK_DIR, f), { recursive: true, force: true });
+  }
+
+  // Copy new source files
+  for (const f of fs.readdirSync(src)) {
+    if (f === 'node_modules') continue;
     fs.cpSync(path.join(src, f), path.join(WORK_DIR, f), { recursive: true });
+  }
   fs.rmSync(tmp, { recursive: true, force: true });
-  log('✓ Source replaced');
+  log('✓ Source replaced (node_modules preserved)');
 
   // 3. Deps
   console.log('[3/3] Dependencies...');
-  if (hasNm) { fs.cpSync('/tmp/nm_bak', nm, { recursive: true }); fs.rmSync('/tmp/nm_bak', { recursive: true }); log('✓ Cache restored'); }
   cp.execSync('npm install --omit=dev --no-audit --no-fund --prefer-offline',
     { cwd: WORK_DIR, stdio: 'inherit' });
-  try { fs.rmSync('/tmp/nm_bak', { recursive: true }); } catch {}
   log('✓ Done');
 }
 
