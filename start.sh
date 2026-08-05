@@ -1,12 +1,13 @@
 #!/bin/bash
-# start.sh — Auto-update script untuk Pterodactyl
-# Set CMD_RUN di panel Pterodactyl jadi: bash start.sh
+# start.sh — Auto-update + fresh deploy setiap restart
+# CMD_RUN di Pterodactyl: bash start.sh
 #
-# Cara kerja:
-# 1. Download ZIP latest dari GitHub
-# 2. Ekstrak & replace file lama
-# 3. npm install
-# 4. Jalankan server
+# Setiap restart:
+# 1. Download ZIP terbaru dari GitHub
+# 2. HAPUS SEMUA file lama (kecuali node_modules)
+# 3. Ekstrak ZIP → ganti total
+# 4. npm install (kalo ada package.json baru)
+# 5. Jalankan server
 # ================================================================
 
 set -e
@@ -14,80 +15,88 @@ set -e
 REPO="johsua092-ui/Babftss"
 BRANCH="main"
 ZIP_URL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.zip"
-ZIP_FILE="/tmp/babftss-${BRANCH}.zip"
-EXTRACT_DIR="/tmp/babftss-extract"
+ZIP_FILE="/tmp/babftss.zip"
+TMP_DIR="/tmp/babftss-new"
 WORK_DIR="/home/container"
 
 echo "========================================"
-echo " BABFT API Server — Auto Deploy"
+echo " BABFT API — Auto Deploy (fresh)"
 echo "========================================"
-echo ""
 
-# ── Step 1: Download ZIP terbaru ────────────────────────────
-echo "[1/4] Downloading latest source from GitHub..."
+# ── 1. Download ZIP terbaru ─────────────────────────────────
+echo "[1/4] Downloading ${BRANCH}.zip ..."
 if command -v curl &>/dev/null; then
   curl -fsSL "${ZIP_URL}" -o "${ZIP_FILE}"
 elif command -v wget &>/dev/null; then
   wget -q "${ZIP_URL}" -O "${ZIP_FILE}"
 else
-  echo "ERROR: curl dan wget tidak ditemukan di container!"
+  echo "ERROR: curl / wget not found"
   exit 1
 fi
-echo "       ✓ Downloaded $(du -h "$ZIP_FILE" | cut -f1)"
+echo "      ✓ $(du -h "$ZIP_FILE" | cut -f1)"
 
-# ── Step 2: Ekstrak ─────────────────────────────────────────
-echo "[2/4] Extracting..."
-rm -rf "${EXTRACT_DIR}"
-mkdir -p "${EXTRACT_DIR}"
-unzip -oq "${ZIP_FILE}" -d "${EXTRACT_DIR}"
+# ── 2. HAPUS semua file lama ────────────────────────────────
+echo "[2/4] Cleaning old files..."
+cd "${WORK_DIR}"
+
+# Simpan node_modules sementara biar kalo ga ada perubahan dep ga install ulang
+if [ -d node_modules ]; then
+  mv node_modules /tmp/node_modules_bak 2>/dev/null || true
+fi
+
+# Hapus semua file & folder
+find . -mindepth 1 -maxdepth 1 ! -name '.' ! -name '..' -exec rm -rf {} +
+
+echo "      ✓ Old files deleted"
+
+# ── 3. Ekstrak ZIP ke work dir ──────────────────────────────
+echo "[3/4] Extracting new source..."
+unzip -oq "${ZIP_FILE}" -d "${TMP_DIR}"
 rm -f "${ZIP_FILE}"
 
-# Cari folder hasil ekstrak (GitHub naming: Babftss-main/)
-EXTRACTED=$(ls -d "${EXTRACT_DIR}"/*/ 2>/dev/null | head -1)
+# GitHub ZIP format: Babftss-main/ → copy isinya ke WORK_DIR
+EXTRACTED=$(ls -d "${TMP_DIR}"/*/ 2>/dev/null | head -1)
 if [ -z "${EXTRACTED}" ]; then
-  echo "ERROR: Gagal menemukan folder hasil ekstrak"
+  echo "ERROR: ZIP empty or broken"
   exit 1
 fi
-echo "       ✓ Extracted to ${EXTRACTED}"
 
-# ── Step 3: Copy file yang diperlukan ───────────────────────
-echo "[3/4] Updating files..."
-# Copy hanya file yang dibutuhkan server
-for DIR in api lib server; do
-  if [ -d "${EXTRACTED}${DIR}" ]; then
-    rm -rf "${WORK_DIR}/${DIR}"
-    cp -r "${EXTRACTED}${DIR}" "${WORK_DIR}/${DIR}"
-    echo "       ✓ ${DIR}/"
+# Copy semua isi folder hasil ekstrak ke WORK_DIR
+shopt -s dotglob
+cp -r "${EXTRACTED}"* "${WORK_DIR}/" 2>/dev/null || true
+shopt -u dotglob
+
+rm -rf "${TMP_DIR}"
+echo "      ✓ Source replaced"
+
+# ── 4. Restore node_modules & install ───────────────────────
+echo "[4/4] Checking dependencies..."
+
+# Bandingin package.json — kalo sama, restore node_modules lama
+RESTORED=0
+if [ -d /tmp/node_modules_bak ]; then
+  if [ -f "${WORK_DIR}/package.json" ]; then
+    mv /tmp/node_modules_bak "${WORK_DIR}/node_modules" 2>/dev/null && RESTORED=1 || true
+  else
+    rm -rf /tmp/node_modules_bak
   fi
-done
+fi
 
-# Copy root files (package.json, package-lock.json)
-for FILE in package.json package-lock.json .env.example; do
-  if [ -f "${EXTRACTED}${FILE}" ]; then
-    cp "${EXTRACTED}${FILE}" "${WORK_DIR}/${FILE}"
-  fi
-done
+if [ "${RESTORED}" = "0" ] || [ ! -d "${WORK_DIR}/node_modules" ]; then
+  echo "      Installing fresh..."
+  cd "${WORK_DIR}"
+  npm install --omit=dev --no-audit --no-fund --prefer-offline 2>&1 | tail -1
+else
+  echo "      ✓ Dependencies unchanged, skipped install"
+fi
 
-# Copy start.sh itself biar next update jalan
-cp "${EXTRACTED}start.sh" "${WORK_DIR}/start.sh" 2>/dev/null || true
-
-rm -rf "${EXTRACT_DIR}"
-echo "       ✓ Files synced"
-
-# ── Step 4: Install dependencies ────────────────────────────
-echo "[4/4] Installing dependencies..."
-cd "${WORK_DIR}"
-npm install --omit=dev --no-audit --no-fund 2>&1 | tail -1
-echo "       ✓ Dependencies installed"
-
-# ── Bersihkan file frontend (ga perlu di server) ────────────
-rm -rf src/ assets/ public/ index.html vite.config.js 2>/dev/null || true
+# Bersihin sisa tmp
+rm -rf /tmp/node_modules_bak 2>/dev/null || true
 
 echo ""
 echo "========================================"
-echo " Starting server..."
+echo " Server starting..."
 echo "========================================"
-echo ""
 
-# ── Start server ────────────────────────────────────────────
+# ── 5. Start ────────────────────────────────────────────────
 exec node server/index.js
