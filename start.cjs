@@ -88,9 +88,9 @@ async function deploy() {
   const entries = fs.readdirSync(tmp);
   const src = path.join(tmp, entries[0]);
 
-  // Preserve node_modules — just delete everything else
+  // Preserve node_modules & .env — just delete everything else
   for (const f of fs.readdirSync(WORK_DIR)) {
-    if (f === '.' || f === '..' || f === 'node_modules') continue;
+    if (f === '.' || f === '..' || f === 'node_modules' || f === '.env') continue;
     fs.rmSync(path.join(WORK_DIR, f), { recursive: true, force: true });
   }
 
