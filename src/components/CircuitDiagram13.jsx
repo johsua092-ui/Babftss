@@ -179,12 +179,15 @@ export default function CircuitDiagram13(props) {
         <OverlineLabel x={146} y={s2Y-8} text="S2" color={s2pLC} />
         <OverlineLabel x={146} y={s3Y-8} text="S3" color={s3pLC} />
 
-        {/* SELECT BUS TRUNKS — Prime (NOT output) */}
-        {/* S3 NOT: horizontal at s3Y, then vertical to bottom gate top input */}
-        <W d={'M 140,'+s3Y+' H '+busX.s3p+' V '+decG[15].tIn} val={s3Not} col={notColor} rgb={notRgb} />
-        <W d={'M 140,'+s2Y+' H '+busX.s2p+' V '+decG[15].m1In} val={s2Not} col={notColor} rgb={notRgb} />
-        <W d={'M 140,'+s1Y+' H '+busX.s1p+' V '+decG[15].m2In} val={s1Not} col={notColor} rgb={notRgb} />
-        <W d={'M 140,'+s0Y+' H '+busX.s0p+' V '+decG[15].bIn} val={s0Not} col={notColor} rgb={notRgb} />
+        {/* SELECT BUS TRUNKS — Prime (NOT output) — trimmed to furthest gate that uses each */}
+        {/* S3 NOT: gates 0-7 (S3=0), furthest=gate7 top input */}
+        <W d={'M 140,'+s3Y+' H '+busX.s3p+' V '+decG[7].tIn} val={s3Not} col={notColor} rgb={notRgb} />
+        {/* S2 NOT: gates 0-3,8-11 (S2=0), furthest=gate11 mid1 input */}
+        <W d={'M 140,'+s2Y+' H '+busX.s2p+' V '+decG[11].m1In} val={s2Not} col={notColor} rgb={notRgb} />
+        {/* S1 NOT: gates 0-1,4-5,8-9,12-13 (S1=0), furthest=gate13 mid2 input */}
+        <W d={'M 140,'+s1Y+' H '+busX.s1p+' V '+decG[13].m2In} val={s1Not} col={notColor} rgb={notRgb} />
+        {/* S0 NOT: gates 0,2,4,6,8,10,12,14 (S0=0), furthest=gate14 bot input */}
+        <W d={'M 140,'+s0Y+' H '+busX.s0p+' V '+decG[14].bIn} val={s0Not} col={notColor} rgb={notRgb} />
 
         {/* SELECT BUS TRUNKS — Direct (from junction, detour to avoid NOT overlap) */}
         <W d={'M '+jX+','+s3Y+' V '+sDirectY.s3+' H '+busX.s3d+' V '+decG[15].tIn} val={s3} col={selColor} rgb={selRgb} />
