@@ -21,8 +21,8 @@ dY = andGates[0]['my']   # 90
 s0Y = andGates[1]['my']  # 175
 s1Y = andGates[2]['my']  # 260
 
-dJX = 62
-sJX = 51
+dJX = 65  # no longer used for D, but S junction
+sJX = 65
 notSX = 82
 notEX = 122  # notSX + 30 + 10
 
@@ -39,8 +39,7 @@ def add_seg(x1, y1, x2, y2, label):
 
 # D: input -> junction -> trunk
 def add_D():
-    add_seg(47, dY, dJX, dY, 'D_input')
-    add_seg(dJX, dY, dTrunkX, dY, 'D_junc_to_trunk')
+    add_seg(47, dY, dTrunkX, dY, 'D_input_to_trunk')
     add_seg(dTrunkX, dY, dTrunkX, andGates[3]['botIn'], 'D_trunk_v')
     for i, g in enumerate(andGates):
         add_seg(dTrunkX, g['botIn'], andSX, g['botIn'], f'D_branch_{i}')

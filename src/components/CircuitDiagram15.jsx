@@ -32,8 +32,7 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
     const s1Y = andGates[2].my;    // 260
 
     // --- Junction points for fan-out ---
-    const dJX = 62;
-    const sJX = 51;  // shared junction X for S0 and S1
+    const sJX = 65;  // shared junction X for S0 and S1 (18px gap from input node)
 
     // --- NOT gates (x=82) ---
     const notSX = 82, notHH = 16;
@@ -99,10 +98,8 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={selColor} rgb={selRgb} />
         <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={selColor} rgb={selRgb} />
 
-        {/* ===== D: input -> junction -> trunk ===== */}
-        <W d={`M 47,${dY} H ${dJX}`} val={d} col={andColor} rgb={andRgb} />
-        <circle cx={dJX} cy={dY} r={3} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
-        <W d={`M ${dJX},${dY} H ${dTrunkX}`} val={d} col={andColor} rgb={andRgb} />
+        {/* ===== D: input -> trunk (no junction needed, fan-out at trunk) ===== */}
+        <W d={`M 47,${dY} H ${dTrunkX}`} val={d} col={andColor} rgb={andRgb} />
         {/* D trunk vertical */}
         <W d={`M ${dTrunkX},${dY} V ${andGates[3].botIn}`} val={d} col={andColor} rgb={andRgb} />
         {/* D branches to each AND3 bottom input */}

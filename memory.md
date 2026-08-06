@@ -806,19 +806,19 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - 5 bus lane vertikal unik: x=148 (D trunk), x=163 (S0'), x=178 (S0), x=193 (S1'), x=208 (S1)
 - svgH = 392 (down dari 592 di versi awal — hemat 200px). svgW = 355.
 - NOT gate output: notEX = 122 (notSX=82). Jarak ke D trunk (x=148) = 26px.
-- S junction: sJX = 51. NOT di x=82. D junction di x=62.
+- S junction: sJX = 65 (18px gap dari input node). NOT di x=82. D langsung ke trunk tanpa junction.
 
 **Routing kabel (zero overlap, 34 segmen):**
 - Semua input & NOT gate sejajar Y dengan AND gate — signal masuk AND secara horizontal, bukan turun dari atas
 - D fan-out via trunk vertikal x=148, branch horizontal ke setiap AND3 bottom input
-- S0 fan-out: junction (51,175) -> NOT gate (82,175) + naik ke y=158 -> kanan ke bus x=178
-- S1 fan-out: junction (51,260) -> NOT gate (82,260) + turun ke y=345 -> kanan ke bus x=208
+- S0 fan-out: junction (65,175) -> NOT gate (82,175) + naik ke y=158 -> kanan ke bus x=178
+- S1 fan-out: junction (65,260) -> NOT gate (82,260) + turun ke y=345 -> kanan ke bus x=208
 - S0' dari NOT output (122,175) -> bus x=163 -> branch ke AND0 top (y=73) & AND2 top (y=243)
 - S1' dari NOT output (122,260) -> bus x=193 -> branch ke AND0 mid (y=90) & AND1 mid (y=175)
-- Programmatic overlap check: 30 segmen, 0 overlap (H-H dan V-V). Perpendicular crossing diperbolehkan.
+- Programmatic overlap check: 29 segmen, 0 overlap (H-H dan V-V). Perpendicular crossing diperbolehkan.
 - Output wires (x=275-309) di kanan AND gates.
 
-**File yang diubah:** `src/components/CircuitDiagram15.jsx` (notSX: 95->56->70->82 final, sJX=51, notEX=122). Card 01-14 TIDAK disentuh.
+**File yang diubah:** `src/components/CircuitDiagram15.jsx` (hapus anomali junction D di x=62, sJX: 51->65, D langsung ke trunk). Card 01-14 TIDAK disentuh.
 
 **Verifikasi:**
 - Build sukses: 0 error. LogicGatesCircuit chunk: 167.04 KB.
