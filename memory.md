@@ -948,3 +948,13 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 2. Untuk undo: `git revert` + push biasa. Itu saja.
 3. "Darurat" dan "user panik" BUKAN alasan untuk melanggar aturan keselamatan
 4. Aturan yang sudah tertulis HARUS dipatuhi, bukan diabaikan saat tekanan
+
+---
+
+## 13. VERIFIKASI CLAUDE: CARD 16 + PENERAPAN RETROAKTIF MULTI-NOT (SELESAI & TERVERIFIKASI PENUH)
+
+**Card 16 (8:1 Demux):** logika 8 kombinasi decode benar (dicek manual). Render SVG asli mengonfirmasi: (a) tidak ada overlap kabel (pixel-scan bersih), (b) Regulasi Multi-NOT (3.5.8) diterapkan benar — NOT S0=merah #f87171, NOT S1=pink #f472b6, NOT S2=teal #2dd4bf, sesuai tabel. HeartButton, format tabel ringkas, registrasi ALL_CARDS semua terkonfirmasi.
+
+**Penerapan retroaktif ke Card 11, 12, 13, 15:** dicek via diff terarah — dikonfirmasi HANYA variabel warna yang berubah (rename notColor -> not1Color/not2Color/dst, nilai sesuai tabel warna per card di design.md 3.5.8). TIDAK ADA perubahan koordinat wire, struktur gate, atau logika. Eksekusi bersih & presisi.
+
+**Soal Insiden Force-Push #2 (6 Agustus 2026):** dikonfirmasi state akhir di GitHub AMAN (commit `72141dd`, Card 16 + semua regulasi utuh — sudah diverifikasi Claude langsung dari zip). Claude menambahkan **Aturan 4C** ke `RULES_KESELAMATAN_GIT.md`: sebelum panik "undo" karena website down setelah push, WAJIB diagnosis dulu apakah itu benar-benar masalah git atau cuma bug/syntax error di kode (yang solusinya cukup fix kecil + push biasa, bukan revert/force). Ini menyasar akar kebingungan yang memicu seluruh rangkaian insiden #2 kemarin.

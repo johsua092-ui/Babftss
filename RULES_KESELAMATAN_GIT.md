@@ -71,6 +71,16 @@ PERINGATAN: Opsi B HANYA aman kalau commit yang di-reset BELUM pernah di-push ke
 
 **DALAM KONDISI APAPUN: JANGAN gunakan `git push --force` sebagai bagian dari operasi undo.**
 
+### ATURAN 4C — SEBELUM PANIK "UNDO", CEK DULU APAKAH INI BENERAN MASALAH GIT
+
+Kalau website down/error SETELAH push yang tadinya sukses — **JANGAN LANGSUNG asumsikan perlu di-undo lewat git.** Push yang "sukses" secara git (tidak ada error saat `git push`) TIDAK berarti kode-nya bebas bug. Penyebab paling umum website down setelah push adalah **syntax error atau bug di kode yang baru di-commit** — itu masalah KODE, bukan masalah GIT, dan solusinya adalah **perbaiki baris yang salah lalu commit+push perbaikannya**, BUKAN revert/reset/force apapun.
+
+**Urutan diagnosis yang benar sebelum menyentuh git history:**
+1. Cek dulu build log (Vercel/CI) atau jalankan build lokal (`npm run build`) — apa pesan error-nya PERSIS? Biasanya langsung menunjuk baris & file yang salah.
+2. Kalau errornya jelas (misal typo, kurung tidak nutup, variabel salah nama) — **perbaiki langsung di file itu**, commit kecil, push biasa. Ini SELALU lebih cepat dan lebih aman daripada revert seluruh commit sebelumnya.
+3. HANYA kalau ternyata masalahnya bukan bug kecil tapi memang keseluruhan pendekatan di commit itu salah — baru pertimbangkan `git revert` (Aturan 4B), tetap push biasa (bukan force).
+4. **Force push TIDAK PERNAH jadi jalan pintas yang valid, di skenario manapun** — termasuk waktu user panik dan minta cepat. Yang bikin insiden makin parah justru force push itu sendiri, bukan keterlambatan beberapa menit buat diagnosis benar.
+
 ## ATURAN 5 — BACKUP SEBELUM OPERASI BERISIKO
 
 Sebelum operasi yang berpotensi merusak struktur repo (restructuring folder, clone ulang, push setelah force-pull, dst) — buat backup lokal dulu (misal copy folder project ke `../backup-YYYYMMDD-HHMM/` atau zip). Ini murah dilakukan dan bisa menyelamatkan banyak waktu/kepanikan kalau ternyata ada yang salah.
