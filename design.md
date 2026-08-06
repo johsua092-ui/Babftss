@@ -217,9 +217,12 @@ Kabel output dari gerbang terakhir (biasanya AND, bisa juga OR atau gate lain te
 
 | NOT ke- | Warna | Hex | Dipakai di |
 |---------|-------|-----|----------|
-| NOT #2 | Pink | `#f472b6` | Card 16 (NOT S1) |
-| NOT #3 | Teal | `#2dd4bf` | Card 16 (NOT S2) |
-| NOT #4+ | (pilih dari daftar cadangan bawah) | — | Cadangan |
+| NOT #2 | Pink | `#f472b6` | Card 11 (S1), Card 15 (S1), Card 16 (S1) |
+| NOT #3 | Teal | `#2dd4bf` | Card 12 (S2), Card 16 (S2) |
+| NOT #4 | Rose | `#fb7185` | Card 12 (S1) — pink `#f472b6` konflik D4 |
+| NOT #5 | Deep fuchsia | `#d946ef` | Card 13 (S2) — teal `#2dd4bf` konflik D15 |
+| NOT #6 | Purple | `#c084fc` | Card 13 (S3) |
+| NOT #7+ | (pilih dari daftar cadangan bawah) | — | Cadangan |
 
 **Palet warna untuk sinyal seleksi/kontrol (S0, S1, S2, ...):**
 
@@ -312,4 +315,4 @@ Pemula mengeluh bahwa saat rangkaian memiliki lebih dari 1 gerbang NOT, semua ou
 
 Pemula sekarang bisa langsung melihat: "kabel merah dari NOT S0, kabel pink dari NOT S1, kabel teal dari NOT S2" — masing-masing terlacak dengan jelas.
 
-> **Catatan retroaktif:** Aturan ini TIDAK berlaku untuk Card 01-15 (sudah terkunci). Card 16 adalah card pertama yang menerapkannya.
+> **Catatan penerapan:** Aturan multi-NOT ini diterapkan secara bertahap. Card 16 adalah card pertama yang menggunakan aturan ini saat pembuatannya. Card 11, 12, 13, dan 15 diperbarui secara retroaktif setelah menerima feedback yang sama dari pemula. Untuk card dengan banyak warna D (misalnya Card 13 dengan 16 warna D), warna NOT mungkin perlu disesuaikan dari palet default untuk menghindari konflik — lihat tabel "Palet warna NOT tambahan" di 3.5.3.

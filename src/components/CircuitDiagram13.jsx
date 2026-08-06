@@ -17,7 +17,10 @@ export default function CircuitDiagram13(props) {
     var dVals = [d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15];
     var dToggles = [props.onToggleD0,props.onToggleD1,props.onToggleD2,props.onToggleD3,props.onToggleD4,props.onToggleD5,props.onToggleD6,props.onToggleD7,props.onToggleD8,props.onToggleD9,props.onToggleD10,props.onToggleD11,props.onToggleD12,props.onToggleD13,props.onToggleD14,props.onToggleD15];
 
-    var notColor="#f87171", notRgb=hexToRgbStr(notColor);
+    var notColor="#f87171", notRgb=hexToRgbStr(notColor);      // NOT #1 (S0)
+    var not2Color="#fb7185", not2Rgb=hexToRgbStr(not2Color); // NOT #2 (S1) — pink #f472b6 conflicts D9
+    var not3Color="#d946ef", not3Rgb=hexToRgbStr(not3Color); // NOT #3 (S2) — teal #2dd4bf conflicts D15
+    var not4Color="#c084fc", not4Rgb=hexToRgbStr(not4Color); // NOT #4 (S3)
     var selColor="#4ade80", selRgb=hexToRgbStr(selColor);
     var orColor="#a78bfa", orRgb=hexToRgbStr(orColor);
     var wc = function(val,col,rgb){return val?col:'rgba('+rgb+',0.25)';};
@@ -74,8 +77,8 @@ export default function CircuitDiagram13(props) {
         });
     }
     var busValMap = { s3p:s3Not, s3d:s3, s2p:s2Not, s2d:s2, s1p:s1Not, s1d:s1, s0p:s0Not, s0d:s0 };
-    var busColMap = { s3p:notColor, s3d:selColor, s2p:notColor, s2d:selColor, s1p:notColor, s1d:selColor, s0p:notColor, s0d:selColor };
-    var busRgbMap = { s3p:notRgb, s3d:selRgb, s2p:notRgb, s2d:selRgb, s1p:notRgb, s1d:selRgb, s0p:notRgb, s0d:selRgb };
+    var busColMap = { s3p:not4Color, s3d:selColor, s2p:not3Color, s2d:selColor, s1p:not2Color, s1d:selColor, s0p:notColor, s0d:selColor };
+    var busRgbMap = { s3p:not4Rgb, s3d:selRgb, s2p:not3Rgb, s2d:selRgb, s1p:not2Rgb, s1d:selRgb, s0p:notRgb, s0d:selRgb };
 
     // Precompute bus branches (junction dot + horizontal wire to AND-4 input)
     var busBranches=[];
@@ -119,15 +122,15 @@ export default function CircuitDiagram13(props) {
 
     var notSt=[
         {glow:mkGlow(s0Not,notRgb),fill:mkFill(s0Not,notRgb),stroke:mkStroke(s0Not,notColor)},
-        {glow:mkGlow(s1Not,notRgb),fill:mkFill(s1Not,notRgb),stroke:mkStroke(s1Not,notColor)},
-        {glow:mkGlow(s2Not,notRgb),fill:mkFill(s2Not,notRgb),stroke:mkStroke(s2Not,notColor)},
-        {glow:mkGlow(s3Not,notRgb),fill:mkFill(s3Not,notRgb),stroke:mkStroke(s3Not,notColor)},
+        {glow:mkGlow(s1Not,not2Rgb),fill:mkFill(s1Not,not2Rgb),stroke:mkStroke(s1Not,not2Color)},
+        {glow:mkGlow(s2Not,not3Rgb),fill:mkFill(s2Not,not3Rgb),stroke:mkStroke(s2Not,not3Color)},
+        {glow:mkGlow(s3Not,not4Rgb),fill:mkFill(s3Not,not4Rgb),stroke:mkStroke(s3Not,not4Color)},
     ];
 
     var s0pLC=s0Not?notColor:'#475569';
-    var s1pLC=s1Not?notColor:'#475569';
-    var s2pLC=s2Not?notColor:'#475569';
-    var s3pLC=s3Not?notColor:'#475569';
+    var s1pLC=s1Not?not2Color:'#475569';
+    var s2pLC=s2Not?not3Color:'#475569';
+    var s3pLC=s3Not?not4Color:'#475569';
 
     // === LANE ASSIGNMENTS (all unique X, no same-direction overlap) ===
     // D wire vertical: x=340 (past all bus trunks, before and4SX=375)
@@ -182,11 +185,11 @@ export default function CircuitDiagram13(props) {
 
         {/* SELECT BUS TRUNKS — Prime (NOT output) — trimmed to furthest gate that uses each */}
         {/* S3 NOT: gates 0-7 (S3=0), furthest=gate7 top input */}
-        <W d={'M 140,'+s3Y+' H '+busX.s3p+' V '+decG[7].tIn} val={s3Not} col={notColor} rgb={notRgb} />
+        <W d={'M 140,'+s3Y+' H '+busX.s3p+' V '+decG[7].tIn} val={s3Not} col={not4Color} rgb={not4Rgb} />
         {/* S2 NOT: gates 0-3,8-11 (S2=0), furthest=gate11 mid1 input */}
-        <W d={'M 140,'+s2Y+' H '+busX.s2p+' V '+decG[11].m1In} val={s2Not} col={notColor} rgb={notRgb} />
+        <W d={'M 140,'+s2Y+' H '+busX.s2p+' V '+decG[11].m1In} val={s2Not} col={not3Color} rgb={not3Rgb} />
         {/* S1 NOT: gates 0-1,4-5,8-9,12-13 (S1=0), furthest=gate13 mid2 input */}
-        <W d={'M 140,'+s1Y+' H '+busX.s1p+' V '+decG[13].m2In} val={s1Not} col={notColor} rgb={notRgb} />
+        <W d={'M 140,'+s1Y+' H '+busX.s1p+' V '+decG[13].m2In} val={s1Not} col={not2Color} rgb={not2Rgb} />
         {/* S0 NOT: gates 0,2,4,6,8,10,12,14 (S0=0), furthest=gate14 bot input */}
         <W d={'M 140,'+s0Y+' H '+busX.s0p+' V '+decG[14].bIn} val={s0Not} col={notColor} rgb={notRgb} />
 

@@ -908,4 +908,10 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - Fix: kabel decode AND3→AND2 tidak muncul — `g.a3.my` undefined, diganti `g.my`
 - Fix: S1 & S2 direct wire clearance dari NOT gate (notHH+2 → notHH+15)
 - Fix: S0' trunk horizontal digeser (y=248 → y=253) agar tidak terlalu dekat dengan S2p green branch
-- **REVISI REGULASI design.md 3.5.8**: Aturan Multi-NOT — lahir dari feedback pemula bahwa rangkaian dengan >1 NOT terlalu sulit dilacak jika semua NOT sama merah. NOT #1 tetap merah, NOT tambahan dapat warna unik. Card 16 menjadi card pertama yang menerapkan: NOT S0=merah, NOT S1=pink (#f472b6), NOT S2=teal (#2dd4bf). Update juga: Prinsip 2 (tambah pengecualian multi-NOT), Prinsip 3 (referensi warna_NOT), Larangan #2, Palet 3.5.3 (tambah tabel NOT tambahan), cadangan (pindahkan teal ke NOT, hapus S3=pink). Card 01-15 tidak disentuh.
+- **REVISI REGULASI design.md 3.5.8**: Aturan Multi-NOT — lahir dari feedback pemula bahwa rangkaian dengan >1 NOT terlalu sulit dilacak jika semua NOT sama merah. NOT #1 tetap merah, NOT tambahan dapat warna unik. Card 16 menjadi card pertama yang menerapkan: NOT S0=merah, NOT S1=pink (#f472b6), NOT S2=teal (#2dd4bf). Update juga: Prinsip 2 (tambah pengecualian multi-NOT), Prinsip 3 (referensi warna_NOT), Larangan #2, Palet 3.5.3 (tambah tabel NOT tambahan), cadangan (pindahkan teal ke NOT, hapus S3=pink).
+- **RETROAKTIF Multi-NOT ke Card 11, 12, 13, 15**: Setelah pemula memberi feedback yang sama, aturan multi-NOT diterapkan ke semua card dengan >1 NOT. Warna NOT per-card (disesuaikan jika default konflik dengan warna D):
+  - Card 11 (4:1 Mux, 2 NOT): S0=merah, S1=pink (#f472b6)
+  - Card 12 (8:1 Mux, 3 NOT): S0=merah, S1=rose (#fb7185, pink konflik D4), S2=teal (#2dd4bf)
+  - Card 13 (16:1 Mux, 4 NOT): S0=merah, S1=rose (#fb7185, pink konflik D9), S2=deep fuchsia (#d946ef, teal konflik D15), S3=purple (#c084fc)
+  - Card 15 (4:1 Demux, 2 NOT): S0=merah, S1=pink (#f472b6)
+  - design.md 3.5.3: tabel NOT tambahan di-update dengan alokasi per-card. Catatan retroaktif dihapus.
