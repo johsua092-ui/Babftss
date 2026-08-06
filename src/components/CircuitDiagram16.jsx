@@ -203,7 +203,7 @@ export default function CircuitDiagram16({
         <NotGate sy={s2Y} />
 
         {/* ===== OVERLINE LABELS ===== */}
-        <OverlineLabel x={notEX + 8} y={s0Y - 25} text="S0" color={s0pLC} />
+        <OverlineLabel x={notEX + 8} y={s0Y - 15} text="S0" color={s0pLC} />
         <OverlineLabel x={notEX + 8} y={s1Y - 5} text="S1" color={s1pLC} />
         <OverlineLabel x={notEX + 8} y={s2Y - 5} text="S2" color={s2pLC} />
 
