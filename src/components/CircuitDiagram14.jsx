@@ -18,7 +18,7 @@ export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onTogg
     const sJX = 68;  // S fan-out: branches to NOT & AND2 bottom
 
     // --- NOT gate (S -> S') ---
-    const notSX = 100, notMY = inputSY;
+    const notSX = 100, notMY = 75;
     const notTY = notMY - 14, notBY = notMY + 14;
     const notTriEX = notSX + 28;
     const notBubR = 5, notEX = notTriEX + notBubR * 2;
@@ -98,7 +98,7 @@ export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onTogg
         {/* ===== WIRE S: input -> junction -> fan-out ===== */}
         <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={notColor} rgb={notRgb} />
         {/* S branch -> NOT gate input */}
-        <W d={`M ${sJX},${inputSY} H ${notSX}`} val={s} col={notColor} rgb={notRgb} />
+        <W d={`M ${sJX},${inputSY} V ${notMY} H ${notSX}`} val={s} col={notColor} rgb={notRgb} />
         {/* S branch down -> AND2 bottom input */}
         <W d={`M ${sJX},${inputSY} V ${and2BY} H ${and2SX}`} val={s} col={andColor} rgb={andRgb} />
         {/* Junction dot at S fan-out */}
@@ -110,8 +110,8 @@ export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onTogg
         {/* ===== WIRE S' (NOT output) -> AND1 bottom input ===== */}
         <W d={`M ${notEX},${notMY} H 160 V ${and1BY} H ${and1SX}`} val={sNot} col={andColor} rgb={andRgb} />
         {/* Label S' with overline */}
-        <text x={190} y={and1BY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
-        <line x1={186} y1={and1BY - 16} x2={194} y2={and1BY - 16} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
+        <text x={170} y={62} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
+        <line x1={170} y1={54} x2={180} y2={54} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== AND1 GATE (D AND S' -> Y0) ===== */}
         <AndGate sx={and1SX} ty={and1TY} by={and1BY} w={and1W} ar={and1AR} glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
