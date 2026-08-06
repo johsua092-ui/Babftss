@@ -792,3 +792,38 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - Registrasi ALL_CARDS: `{ num: '14', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 }`.
 
 **VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli untuk D=1,S=1. Hasil: (a) logic benar, Y0=0/Y1=1 sesuai ekspektasi, (b) TIDAK ADA overlap — dikonfirmasi visual, tiap jalur (D fan-out, S langsung, S' via NOT) punya lane terpisah jelas, (c) HeartButton & format tabel ringkas & registrasi ALL_CARDS terkonfirmasi. Card pertama keluarga Demux — arsitektur multi-output (bukan pola Mux) diterapkan dengan benar. Status: **SELESAI & TERVERIFIKASI PENUH.**
+
+### Card 15 — 4:1 Demultiplexer (Demux) [B6 roadmap]
+
+**Status: SELESAI & TERVERIFIKASI**
+
+**Logika:** Y0 = D AND NOT(S1) AND NOT(S0), Y1 = D AND NOT(S1) AND S0, Y2 = D AND S1 AND NOT(S0), Y3 = D AND S1 AND S0. 1 data input D, 2 select (S0, S1), 4 output (Y0-Y3). Pasangan kembar Card 11 (4:1 Mux), arsitektur kebalikan.
+
+**Arsitektur diagram (6 gate: 2 NOT + 4 AND3, TANPA OR tree):**
+- Input D (y=30), S0 (y=100), S1 (y=170) di kiri
+- 2 NOT gate: S0->S0' dan S1->S1' di x=100
+- 4 bus lane select: S0' x=185, S0 x=205, S1' x=225, S1 x=245
+- D fan-out via trunk vertikal x=155 (kiri semua bus select) ke 4 AND3 bottom input
+- 4 AND3 gate (andSX=280, andW=28, andAR=22, andHH=22) tersusun vertikal spacing 95px
+- 4 output node Y0-Y3 langsung dari masing-masing AND3 (TIDAK ada OR tree — beda dari Mux)
+
+**Routing kabel (zero overlap, 33 segmen: 26 horizontal + 7 vertical):**
+- 7 lane vertikal terpisah: x=60 (D junction), x=78 (S0/S1 junction), x=155 (D trunk), x=185 (S0'), x=205 (S0), x=225 (S1'), x=245 (S1)
+- D trunk x=155 cross bus horizontals secara perpendicular (diperbolehkan)
+- Setiap horizontal branch punya Y unik (tiap AND3 punya 3 input Y berbeda)
+- Output wires (x=330-364) di kanan semua bus branches (berakhir di x=280)
+
+**File yang dibuat:**
+- `src/components/CircuitCard15.jsx` (baru)
+- `src/components/CircuitDiagram15.jsx` (baru)
+
+**File yang diubah:** `src/pages/LogicGatesCircuit.jsx` (2 baris: 1 import `CircuitCard15` + 1 entri `ALL_CARDS`). Card 01-14 TIDAK disentuh. File backend TIDAK disentuh.
+
+**Verifikasi:**
+- Build sukses: 0 error. LogicGatesCircuit chunk: 166.18 KB.
+- Logic terverifikasi 8 kombinasi D x S0 x S1: D=0 => semua Y=0; D=1,S0=0,S1=0 => Y0=1; D=1,S0=1,S1=0 => Y1=1; D=1,S0=0,S1=1 => Y2=1; D=1,S0=1,S1=1 => Y3=1 (semua benar).
+- Wire overlap: TIDAK ADA — analisis terprogram (33 segmen, 0 overlap).
+- HeartButton: ada, posisi sejajar badge tier.
+- Truth table: Format 2 ringkas (4 baris, kolom S1/S0/Y0-Y3), highlight kuning pada baris aktif, highlight hijau pada cell output bernilai 1.
+- Multi-output layout: 4 output node terpisah tanpa OR tree (desain.md 3.4).
+- Registrasi ALL_CARDS: `{ num: '15', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 }`.
