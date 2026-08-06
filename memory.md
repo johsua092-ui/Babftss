@@ -865,11 +865,13 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - Decode output collector lane x=335, AND2 di x=385, output di ~x=462
 - 8 gate pairs, spacing 85px, svgH=731
 
-**Regulasi Warna Kabel (design.md 3.5) — TERPATUHI PENUH:**
+**Regulasi Warna Kabel (design.md 3.5 + 3.5.8 Multi-NOT) — TERPATUHI PENUH:**
 - D = hijau (#4ade80) sepanjang jalur — dari tombol, detour, trunk, branches, output Y
 - S0 = cyan (#22d3ee), S1 = orange (#fb923c), S2 = ungu (#a78bfa) — warna unik dari palet 3.5.3
-- NOT output (S0', S1', S2') = merah (#f87171) di bus/trunk distribusi
-- NOT-to-gerbang branch = hijau (#4ade80) (Prinsip 3)
+- NOT S0 (NOT #1) = merah (#f87171) — badan gate, trunk, bus distribusi
+- NOT S1 (NOT #2) = pink (#f472b6) — badan gate, trunk, bus distribusi
+- NOT S2 (NOT #3) = teal (#2dd4bf) — badan gate, trunk, bus distribusi
+- NOT-to-gerbang branch = hijau (#4ade80) (Prinsip 3, berlaku untuk semua NOT)
 - Direct select branch = warna sinyal masing-masing (Prinsip 5)
 - Output gerbang = hijau (Prinsip 6)
 
@@ -897,6 +899,13 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - Logic terverifikasi 8 kombinasi D x S2 x S1 x S0: D=0 => semua Y=0; D=1,S2=0,S1=0,S0=0=>Y0=1; D=1,S2=0,S1=0,S0=1=>Y1=1; D=1,S2=1,S1=1,S0=1=>Y7=1.
 - HeartButton: ada, posisi sejajar badge tier.
 - Truth table: Format 2 ringkas (8 baris, kolom S2/S1/S0/Y0-Y7), highlight kuning pada baris aktif, highlight hijau pada cell output bernilai 1.
-- Regulasi Warna Kabel (design.md 3.5): dipatuhi PENUH — S0=cyan, S1=orange, S2=ungu, D=hijau, NOT=merah, NOT-to-gate=hijau.
+- Regulasi Warna Kabel (design.md 3.5 + 3.5.8): dipatuhi PENUH — S0=cyan, S1=orange, S2=ungu, D=hijau, NOT S0=merah, NOT S1=pink, NOT S2=teal, NOT-to-gate=hijau.
 - Registrasi ALL_CARDS: sudah ada di `LogicGatesCircuit.jsx` (dari sesi sebelumnya).
 - **Tidak bisa diverifikasi visual langsung di browser.**
+
+**Sesi perbaikan lanjutan (setelah Card 16 terverifikasi):**
+- Fix: label S̄0 position (y-5 → y-15) agar tidak nabrak kabel trunk
+- Fix: kabel decode AND3→AND2 tidak muncul — `g.a3.my` undefined, diganti `g.my`
+- Fix: S1 & S2 direct wire clearance dari NOT gate (notHH+2 → notHH+15)
+- Fix: S0' trunk horizontal digeser (y=248 → y=253) agar tidak terlalu dekat dengan S2p green branch
+- **REVISI REGULASI design.md 3.5.8**: Aturan Multi-NOT — lahir dari feedback pemula bahwa rangkaian dengan >1 NOT terlalu sulit dilacak jika semua NOT sama merah. NOT #1 tetap merah, NOT tambahan dapat warna unik. Card 16 menjadi card pertama yang menerapkan: NOT S0=merah, NOT S1=pink (#f472b6), NOT S2=teal (#2dd4bf). Update juga: Prinsip 2 (tambah pengecualian multi-NOT), Prinsip 3 (referensi warna_NOT), Larangan #2, Palet 3.5.3 (tambah tabel NOT tambahan), cadangan (pindahkan teal ke NOT, hapus S3=pink). Card 01-15 tidak disentuh.

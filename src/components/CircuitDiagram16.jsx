@@ -6,12 +6,15 @@ export default function CircuitDiagram16({
     y0, y1, y2, y3, y4, y5, y6, y7,
     onToggleD, onToggleS0, onToggleS1, onToggleS2
 }) {
-    // === COLORS — Regulasi Warna Kabel (design.md 3.5) ===
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
+    // === COLORS — Regulasi Warna Kabel (design.md 3.5 + 3.5.8 Multi-NOT) ===
     const s0Color = "#22d3ee", s0Rgb = hexToRgbStr(s0Color);  // cyan — S0
     const s1Color = "#fb923c", s1Rgb = hexToRgbStr(s1Color);  // orange — S1
     const s2Color = "#a78bfa", s2Rgb = hexToRgbStr(s2Color);  // ungu — S2
     const andColor = "#4ade80", andRgb = hexToRgbStr(andColor); // hijau — D, output, NOT-ke-gerbang
+    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=pink, NOT #3=S2=teal
+    const not1Color = "#f87171", not1Rgb = hexToRgbStr(not1Color); // NOT S0 — merah (NOT #1)
+    const not2Color = "#f472b6", not2Rgb = hexToRgbStr(not2Color); // NOT S1 — pink  (NOT #2)
+    const not3Color = "#2dd4bf", not3Rgb = hexToRgbStr(not3Color); // NOT S2 — teal  (NOT #3)
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
@@ -78,8 +81,8 @@ export default function CircuitDiagram16({
         gMap.push({ top: b2 ? 's2d' : 's2p', mid: b1 ? 's1d' : 's1p', bot: b0 ? 's0d' : 's0p' });
     }
     const busValMap = { s2p: s2Not, s2d: s2, s1p: s1Not, s1d: s1, s0p: s0Not, s0d: s0 };
-    const busColMap = { s2p: notColor, s2d: s2Color, s1p: notColor, s1d: s1Color, s0p: notColor, s0d: s0Color };
-    const busRgbMap = { s2p: notRgb, s2d: s2Rgb, s1p: notRgb, s1d: s1Rgb, s0p: notRgb, s0d: s0Rgb };
+    const busColMap = { s2p: not3Color, s2d: s2Color, s1p: not2Color, s1d: s1Color, s0p: not1Color, s0d: s0Color };
+    const busRgbMap = { s2p: not3Rgb, s2d: s2Rgb, s1p: not2Rgb, s1d: s1Rgb, s0p: not1Rgb, s0d: s0Rgb };
     // Branch color: NOT->gerbang = hijau (Prinsip 3), direct = warna sinyal (Prinsip 5)
     const brColMap = { s2p: andColor, s2d: s2Color, s1p: andColor, s1d: s1Color, s0p: andColor, s0d: s0Color };
     const brRgbMap = { s2p: andRgb,  s2d: s2Rgb,  s1p: andRgb,  s1d: s1Rgb,  s0p: andRgb,  s0d: s0Rgb };
@@ -105,16 +108,16 @@ export default function CircuitDiagram16({
     const mkStroke = (val, col) => val ? col : "#475569";
 
     // === COMPONENTS ===
-    const NotGate = ({ sy }) => {
+    const NotGate = ({ sy, col, rgb }) => {
         const ty = sy - notHH, by = sy + notHH;
         const val = busValMap[{ 260: 's0p', 430: 's1p', 600: 's2p' }[sy]] || false;
         return <Fragment>
             <path d={`M ${notSX},${ty} L ${notSX + notTriW},${sy} L ${notSX},${by} Z`}
-                fill={mkFill(val, notRgb)} stroke={mkStroke(val, notColor)} strokeWidth="2"
-                style={{ filter: mkGlow(val, notRgb), transition: "all 0.3s" }} />
+                fill={mkFill(val, rgb)} stroke={mkStroke(val, col)} strokeWidth="2"
+                style={{ filter: mkGlow(val, rgb), transition: "all 0.3s" }} />
             <circle cx={notSX + notTriW + notBubR} cy={sy} r={notBubR}
-                fill={mkFill(val, notRgb)} stroke={mkStroke(val, notColor)} strokeWidth="2"
-                style={{ filter: mkGlow(val, notRgb), transition: "all 0.3s" }} />
+                fill={mkFill(val, rgb)} stroke={mkStroke(val, col)} strokeWidth="2"
+                style={{ filter: mkGlow(val, rgb), transition: "all 0.3s" }} />
         </Fragment>;
     };
 
@@ -155,10 +158,10 @@ export default function CircuitDiagram16({
         <line x1={x} y1={y - 7} x2={x + 12} y2={y - 7} stroke={color} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
     </Fragment>;
 
-    // Label colors for NOT outputs
-    const s0pLC = s0Not ? notColor : "#475569";
-    const s1pLC = s1Not ? notColor : "#475569";
-    const s2pLC = s2Not ? notColor : "#475569";
+    // Label colors for NOT outputs (multi-NOT: masing-masing warna NOT-nya)
+    const s0pLC = s0Not ? not1Color : "#475569";
+    const s1pLC = s1Not ? not2Color : "#475569";
+    const s2pLC = s2Not ? not3Color : "#475569";
 
     // === WHICH GATES EACH BUS REACHES ===
     // S2': AND3[0-3] topIn; S2: AND3[4-7] topIn
@@ -198,26 +201,26 @@ export default function CircuitDiagram16({
         <W d={`M ${sJX},${s2Y} H ${notSX}`} val={s2} col={s2Color} rgb={s2Rgb} />
 
         {/* ===== NOT GATES ===== */}
-        <NotGate sy={s0Y} />
-        <NotGate sy={s1Y} />
-        <NotGate sy={s2Y} />
+        <NotGate sy={s0Y} col={not1Color} rgb={not1Rgb} />
+        <NotGate sy={s1Y} col={not2Color} rgb={not2Rgb} />
+        <NotGate sy={s2Y} col={not3Color} rgb={not3Rgb} />
 
         {/* ===== OVERLINE LABELS ===== */}
         <OverlineLabel x={notEX + 8} y={s0Y - 15} text="S0" color={s0pLC} />
         <OverlineLabel x={notEX + 8} y={s1Y - 5} text="S1" color={s1pLC} />
         <OverlineLabel x={notEX + 8} y={s2Y - 5} text="S2" color={s2pLC} />
 
-        {/* ===== SELECT BUS TRUNKS — NOT output (merah) ===== */}
-        {/* S2' trunk: NOT output -> bus -> up to AND3[0] topIn=73 (all S2' gates 0-3 are above NOT at y=600) */}
-        <W d={`M ${notEX},${s2Y} H ${busX.s2p} V ${gates[0].a3.topIn}`} val={s2Not} col={notColor} rgb={notRgb} />
-        {/* S1' trunk: NOT output -> bus at x=178, then UP to AND3[0] midIn=90, DOWN to AND3[5] midIn=515 */}
-        <W d={`M ${notEX},${s1Y} H ${busX.s1p}`} val={s1Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${busX.s1p},${s1Y} V ${gates[0].a3.midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${busX.s1p},${s1Y} V ${gates[5].a3.midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
-        {/* S0' trunk: NOT output -> detour up to y=253 to avoid overlap with S1d branch at y=260 -> bus at x=208, then UP to AND3[0] botIn=107, DOWN to AND3[6] botIn=617 */}
-        <W d={`M ${notEX},${s0Y} H 135 V 253 H ${busX.s0p}`} val={s0Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${busX.s0p},253 V ${gates[0].a3.botIn}`} val={s0Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${busX.s0p},253 V ${gates[6].a3.botIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        {/* ===== SELECT BUS TRUNKS — NOT output (multi-NOT: masing-masing warna NOT-nya) ===== */}
+        {/* S2' trunk (NOT #3 teal): NOT output -> bus -> up to AND3[0] topIn=73 */}
+        <W d={`M ${notEX},${s2Y} H ${busX.s2p} V ${gates[0].a3.topIn}`} val={s2Not} col={not3Color} rgb={not3Rgb} />
+        {/* S1' trunk (NOT #2 pink): NOT output -> bus at x=178, then UP/DOWN */}
+        <W d={`M ${notEX},${s1Y} H ${busX.s1p}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
+        <W d={`M ${busX.s1p},${s1Y} V ${gates[0].a3.midIn}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
+        <W d={`M ${busX.s1p},${s1Y} V ${gates[5].a3.midIn}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
+        {/* S0' trunk (NOT #1 merah): NOT output -> detour y=253 -> bus at x=208, then UP/DOWN */}
+        <W d={`M ${notEX},${s0Y} H 135 V 253 H ${busX.s0p}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        <W d={`M ${busX.s0p},253 V ${gates[0].a3.botIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        <W d={`M ${busX.s0p},253 V ${gates[6].a3.botIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
 
         {/* ===== SELECT BUS TRUNKS — DIRECT (warna sinyal masing-masing) ===== */}
         {/* S0 direct: junction -> up to AND3[1] botIn=192 -> H to bus -> down to AND3[7] botIn=702 */}

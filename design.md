@@ -172,17 +172,19 @@ Input pertama di suatu card (biasanya D / data) mendapat **hak eksklusif** atas 
 
 > **Kenapa:** Input pertama adalah sinyal utama yang "ditransmisikan" atau "diproses" oleh rangkaian. Warnanya paling dominan karena dialah subjek rangkaian — sinyal seleksi hanya mengatur ke mana sinyal ini pergi.
 
-**PRINSIP 2 — Warna Mutlak NOT: Merah (`#f87171`)**
+**PRINSIP 2 — Warna Mutlak NOT: Merah (`#f87171`), DENGAN PENGECEUALIAN Multi-NOT (lihat 3.5.8)**
 
 Output gerbang NOT **SELALU** berwarna **merah (`#f87171`)** — ini adalah warna mutlak yang merepresentasikan negasi (inversi). Tidak ada kompromi, tidak ada pengecualian. Kabel dari titik output NOT (setelah bubble) sampai ke bus/trunk distribusinya harus merah.
 
 > **Kenapa:** Merah adalah warna peringatan universal. Ketika pemula melihat kabel merah, mereka langsung tahu: "ini sinyal yang sudah di-NEGASI/DIBALIK." Ini konsisten dengan warna tema gate NOT di bagian 1.5.
+>
+> **Pengecualian:** Jika rangkaian memiliki **lebih dari 1 gerbang NOT**, lihat **Bagian 3.5.8 (Aturan Multi-NOT)** — NOT pertama tetap merah, NOT tambahan mendapat warna unik sendiri.
 
 **PRINSIP 3 — Transisi Warna: NOT ke Gerbang = Hijau**
 
-Ketika kabel dari output NOT (merah) bercabang dan **memasuki input gerbang lain** (misalnya AND), kabel branch tersebut **berubah menjadi hijau (`#4ade80`)**. Jadi alur warnanya: merah di bus/trunk NOT, lalu **beralih ke hijau** di percabangan yang masuk ke gerbang.
+Ketika kabel dari output NOT (warna NOT — lihat Prinsip 2 & 3.5.8) bercabang dan **memasuki input gerbang lain** (misalnya AND), kabel branch tersebut **berubah menjadi hijau (`#4ade80`)**. Jadi alur warnanya: warna_NOT di bus/trunk NOT, lalu **beralih ke hijau** di percabangan yang masuk ke gerbang.
 
-> **Kenapa:** Di titik masuk gerbang, warna kabel berfungsi sebagai penanda "ini input gerbang" — bukan "ini output NOT." Dengan berubah hijau, kabel tersebut menyatu secara visual dengan kabel input lainnya (yang juga hijau), menandakan bahwa di dalam gerbang, semua input diperlakukan setara. Kabel merah HANYA untuk perjalanan di luar gerbang (distribusi sinyal ternegasi), BUKAN untuk jalur masuk gerbang.
+> **Kenapa:** Di titik masuk gerbang, warna kabel berfungsi sebagai penanda "ini input gerbang" — bukan "ini output NOT." Dengan berubah hijau, kabel tersebut menyatu secara visual dengan kabel input lainnya (yang juga hijau), menandakan bahwa di dalam gerbang, semua input diperlakukan setara. Kabel warna_NOT HANYA untuk perjalanan di luar gerbang (distribusi sinyal ternegasi), BUKAN untuk jalur masuk gerbang.
 
 **PRINSIP 4 — Setiap Input Seleksi/Kontrol Punya Warna Unik**
 
@@ -209,7 +211,15 @@ Kabel output dari gerbang terakhir (biasanya AND, bisa juga OR atau gate lain te
 | Warna | Hex | Pemilik | Keterangan |
 |-------|-----|---------|------------|
 | Hijau | `#4ade80` | Input pertama (D) + output gerbang + branch NOT-ke-gerbang | Hak eksklusif data path |
-| Merah | `#f87171` | Output NOT (bus/trunk distribusi negasi) | Hak mutlak negasi |
+| Merah | `#f87171` | Output NOT pertama / NOT tunggal (bus/trunk distribusi negasi) | Hak mutlak negasi NOT #1 (lihat 3.5.8 untuk multi-NOT) |
+
+**Palet warna NOT tambahan (hanya dipakai jika rangkaian punya >1 NOT, lihat 3.5.8):**
+
+| NOT ke- | Warna | Hex | Dipakai di |
+|---------|-------|-----|----------|
+| NOT #2 | Pink | `#f472b6` | Card 16 (NOT S1) |
+| NOT #3 | Teal | `#2dd4bf` | Card 16 (NOT S2) |
+| NOT #4+ | (pilih dari daftar cadangan bawah) | — | Cadangan |
 
 **Palet warna untuk sinyal seleksi/kontrol (S0, S1, S2, ...):**
 
@@ -218,16 +228,18 @@ Kabel output dari gerbang terakhir (biasanya AND, bisa juga OR atau gate lain te
 | S0 | Cyan | `#22d3ee` | Aktif, sudah dipakai Card 15 |
 | S1 | Orange | `#fb923c` | Aktif, sudah dipakai Card 15 |
 | S2 | Ungu | `#a78bfa` | Cadangan |
-| S3 | Pink | `#f472b6` | Cadangan |
+| S3 | (pilih dari cadangan) | (lihat bawah) | Cadangan |
 | S4+ | (pilih dari daftar cadangan) | (lihat bawah) | Cadangan |
 
-**Daftar cadangan warna tambahan (kalau S4+ dibutuhkan di masa depan):**
+**Daftar cadangan warna tambahan (kalau S3+/NOT#4+ dibutuhkan di masa depan):**
 - Kuning/emas: `#facc15`
-- Teal/cyan gelap: `#2dd4bf`
 - Biru muda: `#60a5fa`
 - Rose/coral: `#fb7185`
+- Lime: `#a3e635`
+- Fuchsia: `#d946ef`
+- Sky: `#38bdf8`
 
-> **Aturan pemilihan warna cadangan:** Pilih warna yang **secara visual mudah dibedakan** dari hijau, merah, DAN dari semua warna seleksi yang sudah dipakai di card tersebut. Jangan memilih warna yang terlalu mirip satu sama lain (misalnya cyan `#22d3ee` dan teal `#2dd4bf` terlalu mirip — tidak boleh keduanya aktif di card yang sama).
+> **Aturan pemilihan warna cadangan:** Pilih warna yang **secara visual mudah dibedakan** dari hijau, merah, DAN dari semua warna seleksi dan NOT yang sudah dipakai di card tersebut. Jangan memilih warna yang terlalu mirip satu sama lain (misalnya cyan `#22d3ee` dan teal `#2dd4bf` terlalu mirip — tidak boleh keduanya aktif di card yang sama). Perhatikan juga bahwa pink (`#f472b6`) dan teal (`#2dd4bf`) sudah dialokasikan untuk NOT tambahan.
 
 #### 3.5.4 Ringkasan Visual — Alur Warna di Contoh Card 15 (4:1 Demux)
 
@@ -254,7 +266,7 @@ Perhatikan transisi merah→hijau pada kabel NOT yang masuk ke gerbang (Prinsip 
 #### 3.5.6 Larangan Mutlak
 
 1. **DILARANG** menggunakan hijau (`#4ade80`) untuk kabel sinyal seleksi/kontrol (S0, S1, dst.) — hijau adalah hak eksklusif input pertama.
-2. **DILARANG** menggunakan merah (`#f87171`) untuk kabel selain output NOT — merah adalah hak mutlak negasi.
+2. **DILARANG** menggunakan merah (`#f87171`) untuk kabel selain output NOT pertama — merah adalah hak mutlak negasi NOT pertama. NOT tambahan menggunakan warna sendiri sesuai 3.5.8.
 3. **DILARANG** memberikan warna yang sama (atah terlalu mirip) kepada dua sinyal seleksi yang berbeda di card yang sama.
 4. **DILARANG** mengubah warna sinyal seleksi di tengah jalurnya — satu sinyal, satu warna, dari awal sampai akhir.
 5. **DILARANG** menggunakan warna merah untuk kabel branch yang masuk ke gerbang lain — di titik itu kabel HARUS hijau (Prinsip 3).
@@ -267,3 +279,37 @@ Prinsip 2 bilang output NOT SELALU merah tanpa kompromi; Prinsip 6 bilang output
 
 **Kasus B — Card tanpa "input pertama" yang jelas (misal rangkaian arah Mux: banyak data -> 1 output):**
 Prinsip 1 mengasumsikan ada SATU sinyal data utama. Di rangkaian arah Mux (Card 09-13, dibangun SEBELUM regulasi ini ada), semua Dx setara, tidak ada "input pertama" tunggal — jadi Prinsip 1 secara harfiah tidak berlaku bersih di situ. **Resolusi:** Card 09-13 DIKECUALIKAN dari regulasi ini (sudah terkunci final, lihat Bagian 11 `memory.md`, TIDAK PERLU/BOLEH direvisi demi kepatuhan warna). Untuk card BARU di masa depan yang punya pola serupa (banyak sumber -> 1 tujuan, tanpa satu "input utama" jelas), regulasi warna kabel versi 3.5 ini TIDAK otomatis berlaku secara harfiah — kalau situasi itu muncul, desain warnanya didiskusikan dulu sebagai kasus baru, jangan dipaksakan ikut Prinsip 1.
+
+#### 3.5.8 Aturan Multi-NOT — Setiap NOT Punya Warna Berbeda (LAHIR DARI FEEDBACK PEMULA Card 16)
+
+**Latar Belakang:**
+Pemula mengeluh bahwa saat rangkaian memiliki lebih dari 1 gerbang NOT, semua output NOT berwarna merah sama — membuat mereka tidak bisa membedakan jalur NOT mana menuju mana. Mereka secara eksplisit meminta: "entah bagaimana caranya, jika kabel NOT lebih dari 1, wajib beda warnanya." Masukan ini diterima karena sangat masuk akal untuk tujuan edukasi.
+
+**Aturan:**
+
+1. **NOT tunggal (card hanya punya 1 NOT):** Tetap merah (`#f87171`) sesuai Prinsip 2. Tidak ada perubahan.
+
+2. **NOT pertama (card punya >1 NOT):** Tetap merah (`#f87171`). Merah selalu ada di rangkaian multi-NOT, milik NOT yang pertama.
+
+3. **NOT tambahan (NOT ke-2, ke-3, dst.):** Masing-masing mendapat warna unik dari **Palet Warna NOT Tambahan** (lihat tabel di 3.5.3). Warna-warna ini:
+   - **TIDAK BOLEH** sama dengan warna sinyal lain di card tersebut (hijau, warna seleksi S0/S1/S2/dst., atau warna NOT lain)
+   - **TIDAK BOLEH** terlalu mirip secara visual dengan warna kabel lain
+   - **TIDAK BOLEH** menggunakan warna yang sudah dialokasikan (merah = NOT #1, hijau = data path, palet seleksi)
+
+4. **Prinsip 3 tetap berlaku:** Branch dari NOT (warna apapun) yang masuk ke gerbang lain **TETAP berubah hijau** di titik masuk gerbang. Jadi alurnya: warna_NOT di bus/trunk, lalu hijau di branch masuk gerbang.
+
+5. **Urutan penomoran NOT:** NOT #1 = NOT pertama berdasarkan urutan sinyal (biasanya S0 NOT = NOT #1, S1 NOT = NOT #2, dst.) atau berdasarkan posisi atas-bawah di diagram.
+
+6. **Warna NOT konsisten:** Setiap NOT mempertahankan warnanya di SELURUH jalur — badan gate NOT, kabel output, bus/trunk distribusi, dan label overline. Sama seperti Prinsip 5 untuk sinyal seleksi.
+
+**Contoh penerapan — Card 16 (8:1 Demux, 3 NOT):**
+
+```
+  NOT S0 (NOT #1): [Gate merah] --merah--> [bus merah] --hijau--> [AND input]     (merah = #f87171)
+  NOT S1 (NOT #2): [Gate pink] --pink-->  [bus pink]  --hijau--> [AND input]     (pink  = #f472b6)
+  NOT S2 (NOT #3): [Gate teal] --teal-->  [bus teal]  --hijau--> [AND input]     (teal  = #2dd4bf)
+```
+
+Pemula sekarang bisa langsung melihat: "kabel merah dari NOT S0, kabel pink dari NOT S1, kabel teal dari NOT S2" — masing-masing terlacak dengan jelas.
+
+> **Catatan retroaktif:** Aturan ini TIDAK berlaku untuk Card 01-15 (sudah terkunci). Card 16 adalah card pertama yang menerapkannya.
