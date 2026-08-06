@@ -143,9 +143,9 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         {/* Branch to AND2 top */}
         <circle cx={s0pX} cy={andGates[2].topIn} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
-        {/* S0' label (just above the S0' output wire at y=175) */}
-        <text x={notS0EX + 8} y={s0Y - 10} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
-        <line x1={notS0EX + 8} y1={s0Y - 18} x2={notS0EX + 22} y2={s0Y - 18} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
+        {/* S0' label (near NOT output red wire) */}
+        <text x={notS0EX + 8} y={s0Y - 5} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
+        <line x1={notS0EX + 8} y1={s0Y - 13} x2={notS0EX + 22} y2={s0Y - 13} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S0 DIRECT BUS (S0 -> AND1 top, AND3 top) ===== */}
         {/* Trunk: from AND1 topIn level down to AND3 topIn level */}
@@ -168,9 +168,9 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         {/* Branch to AND1 mid */}
         <circle cx={s1pX} cy={andGates[1].midIn} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
-        {/* S1' label (just above the S1' output wire at y=260) */}
-        <text x={notS1EX + 8} y={s1Y - 10} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
-        <line x1={notS1EX + 8} y1={s1Y - 18} x2={notS1EX + 22} y2={s1Y - 18} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
+        {/* S1' label (near NOT output red wire) */}
+        <text x={notS1EX + 8} y={s1Y - 5} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
+        <line x1={notS1EX + 8} y1={s1Y - 13} x2={notS1EX + 22} y2={s1Y - 13} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 -> AND2 mid, AND3 mid) ===== */}
         {/* Trunk: from AND3 midIn level up to AND2 midIn level */}
