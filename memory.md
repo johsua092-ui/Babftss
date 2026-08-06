@@ -829,3 +829,11 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - Multi-output layout: 4 output node terpisah tanpa OR tree (desain.md 3.4).
 - Registrasi ALL_CARDS: `{ num: '15', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 }`.
 - **Layout revision**: input nodes & NOT gates dipindah dari atas (y=30-170) ke sejajar AND gate (y=90-260). Tujuan: menghemat ruang vertikal card. svgH turun dari 592 ke 392 (-200px, -34%). Jumlah segmen naik dari 33 ke 34 (tambahan 1 segmen S0 fan-out vertical).
+
+**Revisi warna kabel (Regulasi Warna Kabel — ditetapkan MUTLAK):**
+- Awalnya semua kabel input ke AND berwarna hijau (sama dengan D) — pemula tidak bisa bedakan sinyal.
+- Perubahan 1: S0 dan S1 diberi warna berbeda — S0 = cyan (#22d3ee), S1 = orange (#fb923c). Warna tetap konsisten dari tombol input sampai branch masuk AND.
+- Perubahan 2: Kabel output NOT (S0', S1') ke AND dikembalikan ke hijau — output NOT tetap merah di bus/trunk distribusinya, tapi saat bercabang masuk gerbang lain, berubah hijau.
+- Keputusan ini ditetapkan sebagai **Regulasi Warna Kabel (design.md 3.5)** yang berlaku MUTLAK untuk semua card Circuit tanpa kecuali.
+- 6 prinsip: (1) Hak Hijau untuk input pertama, (2) NOT mutlak merah, (3) Transisi NOT-ke-gerbang = hijau, (4) Setiap input seleksi punya warna unik, (5) Konsistensi warna sepanjang jalur, (6) Output gerbang = hijau.
+- **File yang diubah:** `src/components/CircuitDiagram15.jsx` (warna branch S0/S1 ke AND: andColor -> s0Color/s1Color; NOT-to-AND branch tetap andColor), `design.md` (tambah seksi 3.5 Regulasi Warna Kabel).
