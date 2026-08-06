@@ -105,8 +105,10 @@ export default function CircuitCard16() {
                             <td style={{ padding: "3px 5px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{row.s1}</td>
                             <td style={{ padding: "3px 5px", textAlign: "center", color: isHl ? themeColor : "#94a3b8", fontWeight: 600 }}>{row.s0}</td>
                             {[0,1,2,3,4,5,6,7].map(function (oi) {
-                                var val = ri === oi ? (inputD ? 1 : 0) : 0;
+                                var isAct = ri === oi;
+                                var val = isAct ? (inputD ? 1 : 0) : 0;
                                 var isGreen = val === 1;
+                                var text = isAct ? `D=${val}` : '0';
                                 return <td key={oi} style={{ padding: "3px 4px", textAlign: "center", fontWeight: 800, transition: "all 0.2s" }}>
                                     <span style={{
                                         background: isGreen ? "rgba(74,222,128,0.25)" : "transparent",
@@ -114,7 +116,7 @@ export default function CircuitCard16() {
                                         padding: isGreen ? "1px 4px" : "0",
                                         display: "block",
                                         transition: "all 0.2s"
-                                    }}>{isGreen ? "D=1" : "0"}</span>
+                                    }}>{text}</span>
                                 </td>;
                             })}
                         </tr>;
