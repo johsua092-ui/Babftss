@@ -23,8 +23,8 @@ s1Y = andGates[2]['my']  # 260
 
 dJX = 62
 sJX = 51
-notSX = 56
-notEX = 96  # notSX + 30 + 10
+notSX = 70
+notEX = 110  # notSX + 30 + 10
 
 dTrunkX = 148
 s0pX = 163
