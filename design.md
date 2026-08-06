@@ -259,3 +259,11 @@ Perhatikan transisi merah→hijau pada kabel NOT yang masuk ke gerbang (Prinsip 
 4. **DILARANG** mengubah warna sinyal seleksi di tengah jalurnya — satu sinyal, satu warna, dari awal sampai akhir.
 5. **DILARANG** menggunakan warna merah untuk kabel branch yang masuk ke gerbang lain — di titik itu kabel HARUS hijau (Prinsip 3).
 6. **DILARANG** mengabaikan regulasi ini dengan alasan "card ini sederhana jadi tidak perlu" atau "supaya lebih minimalis" — regulasi ini berlaku untuk SEMUA card tanpa kecuali.
+
+#### 3.5.7 Klarifikasi Kasus Khusus (tambahan Claude — mengisi celah yang belum tercakup 3.5.1-3.5.6)
+
+**Kasus A — NOT sebagai gerbang TERAKHIR dalam rangkaian (bukan gerbang tengah):**
+Prinsip 2 bilang output NOT SELALU merah tanpa kompromi; Prinsip 6 bilang output gerbang terakhir SELALU hijau. Ini kontradiksi kalau NOT kebetulan jadi gerbang paling akhir (contoh: card yang alurnya `... -> NOT -> OUTPUT`, TIDAK ada gerbang lain sesudah NOT). **Resolusi:** Prinsip 2 berlaku untuk kabel NOT yang menuju gerbang LAIN (trunk distribusi). Kalau output NOT itu LANGSUNG menuju node output rangkaian (tidak masuk gerbang lain lagi), berlaku transisi yang sama seperti Prinsip 3: merah di badan NOT, lalu **hijau** tepat di kabel pendek menuju node output — konsisten dengan semangat "output akhir = hijau" di Prinsip 6. *(Catatan: kasus ini tidak mempengaruhi Card 01-13 yang sudah terkunci — cuma relevan kalau ada card BARU di masa depan yang polanya berakhir di NOT.)*
+
+**Kasus B — Card tanpa "input pertama" yang jelas (misal rangkaian arah Mux: banyak data -> 1 output):**
+Prinsip 1 mengasumsikan ada SATU sinyal data utama. Di rangkaian arah Mux (Card 09-13, dibangun SEBELUM regulasi ini ada), semua Dx setara, tidak ada "input pertama" tunggal — jadi Prinsip 1 secara harfiah tidak berlaku bersih di situ. **Resolusi:** Card 09-13 DIKECUALIKAN dari regulasi ini (sudah terkunci final, lihat Bagian 11 `memory.md`, TIDAK PERLU/BOLEH direvisi demi kepatuhan warna). Untuk card BARU di masa depan yang punya pola serupa (banyak sumber -> 1 tujuan, tanpa satu "input utama" jelas), regulasi warna kabel versi 3.5 ini TIDAK otomatis berlaku secara harfiah — kalau situasi itu muncul, desain warnanya didiskusikan dulu sebagai kasus baru, jangan dipaksakan ikut Prinsip 1.
