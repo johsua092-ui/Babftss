@@ -12,9 +12,7 @@ export default function CircuitDiagram12({
     onToggleS0, onToggleS1, onToggleS2,
     onToggleD0, onToggleD1, onToggleD2, onToggleD3, onToggleD4, onToggleD5, onToggleD6, onToggleD7,
 }) {
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);      // NOT #1 (S0)
-    const not2Color = "#fb7185", not2Rgb = hexToRgbStr(not2Color); // NOT #2 (S1) — pink #f472b6 conflicts D4
-    const not3Color = "#2dd4bf", not3Rgb = hexToRgbStr(not3Color); // NOT #3 (S2)
+    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
     const selColor = "#4ade80", selRgb = hexToRgbStr(selColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
@@ -54,8 +52,8 @@ export default function CircuitDiagram12({
     ];
     const busXMap = { s2p: s2pX, s2d: s2dX, s1p: s1pX, s1d: s1dX, s0p: s0pX, s0d: s0dX };
     const busValMap = { s2p: s2Not, s2d: s2, s1p: s1Not, s1d: s1, s0p: s0Not, s0d: s0 };
-    const busColMap = { s2p: not3Color, s2d: selColor, s1p: not2Color, s1d: selColor, s0p: notColor, s0d: selColor };
-    const busRgbMap = { s2p: not3Rgb, s2d: selRgb, s1p: not2Rgb, s1d: selRgb, s0p: notRgb, s0d: selRgb };
+    const busColMap = { s2p: notColor, s2d: selColor, s1p: notColor, s1d: selColor, s0p: notColor, s0d: selColor };
+    const busRgbMap = { s2p: notRgb, s2d: selRgb, s1p: notRgb, s1d: selRgb, s0p: notRgb, s0d: selRgb };
 
     // Precompute bus branches
     var busBranches = [];
@@ -91,8 +89,8 @@ export default function CircuitDiagram12({
 
     var notSt = [
         { glow: mkGlow(s0Not, notRgb), fill: mkFill(s0Not, notRgb), stroke: mkStroke(s0Not, notColor) },
-        { glow: mkGlow(s1Not, not2Rgb), fill: mkFill(s1Not, not2Rgb), stroke: mkStroke(s1Not, not2Color) },
-        { glow: mkGlow(s2Not, not3Rgb), fill: mkFill(s2Not, not3Rgb), stroke: mkStroke(s2Not, not3Color) },
+        { glow: mkGlow(s1Not, notRgb), fill: mkFill(s1Not, notRgb), stroke: mkStroke(s1Not, notColor) },
+        { glow: mkGlow(s2Not, notRgb), fill: mkFill(s2Not, notRgb), stroke: mkStroke(s2Not, notColor) },
     ];
     var or01Val = gVals[0] || gVals[1];
     var or23Val = gVals[2] || gVals[3];
@@ -101,8 +99,8 @@ export default function CircuitDiagram12({
     var or0123Val = or01Val || or23Val;
     var or4567Val = or45Val || or67Val;
     var s0pLC = s0Not ? notColor : '#475569';
-    var s1pLC = s1Not ? not2Color : '#475569';
-    var s2pLC = s2Not ? not3Color : '#475569';
+    var s1pLC = s1Not ? notColor : '#475569';
+    var s2pLC = s2Not ? notColor : '#475569';
 
     return <svg viewBox={'0 0 ' + svgW + ' ' + svgH} width="100%" style={{ overflow: 'visible', display: 'block' }}>
         {/* INPUT NODES */}
@@ -135,9 +133,9 @@ export default function CircuitDiagram12({
         <OverlineLabel x={146} y={s2Y - 8} text="S2" color={s2pLC} />
 
         {/* SELECT BUS TRUNKS */}
-        <W d={'M 140,' + s2Y + ' H ' + s2pX + ' V ' + decG[3].topIn} val={s2Not} col={not3Color} rgb={not3Rgb} />
+        <W d={'M 140,' + s2Y + ' H ' + s2pX + ' V ' + decG[3].topIn} val={s2Not} col={notColor} rgb={notRgb} />
         <W d={'M ' + jX + ',' + s2Y + ' V 170 H ' + s2dX + ' V ' + decG[7].topIn} val={s2} col={selColor} rgb={selRgb} />
-        <W d={'M 140,' + s1Y + ' H ' + s1pX + ' V ' + decG[5].midIn} val={s1Not} col={not2Color} rgb={not2Rgb} />}
+        <W d={'M 140,' + s1Y + ' H ' + s1pX + ' V ' + decG[5].midIn} val={s1Not} col={notColor} rgb={notRgb} />
         <W d={'M ' + jX + ',' + s1Y + ' V 110 H ' + s1dX + ' V ' + decG[7].midIn} val={s1} col={selColor} rgb={selRgb} />
         <W d={'M 140,' + s0Y + ' H ' + s0pX + ' V ' + decG[6].botIn} val={s0Not} col={notColor} rgb={notRgb} />
         <W d={'M ' + jX + ',' + s0Y + ' V 55 H ' + s0dX + ' V ' + decG[7].botIn} val={s0} col={selColor} rgb={selRgb} />
