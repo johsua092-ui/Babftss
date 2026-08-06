@@ -801,24 +801,24 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 
 **Arsitektur diagram (6 gate: 2 NOT + 4 AND3, TANPA OR tree) — REVISED compact layout: **
 - Input D (y=90, sama level AND0), S0 (y=175, sama level AND1), S1 (y=260, sama level AND2) di kiri — semua input **sejajar dengan AND gate** (bukan di atas), menghemat ~200px vertikal
-- 2 NOT gate: S0->S0' (y=175, sama Y dengan S0 input) dan S1->S1' (y=260, sama Y dengan S1 input) — **notSX=70** (antara S junction dan D area, gap 23px dari input node)
+- 2 NOT gate: S0->S0' (y=175) dan S1->S1' (y=260) — **notSX=82** (gap 35px dari input node, 26px dari NOT output ke D trunk)
 - 4 AND3 gate (andSX=225, andW=28, andAR=22, andHH=22) tersusun vertikal spacing 85px: my=90, 175, 260, 345
 - 5 bus lane vertikal unik: x=148 (D trunk), x=163 (S0'), x=178 (S0), x=193 (S1'), x=208 (S1)
 - svgH = 392 (down dari 592 di versi awal — hemat 200px). svgW = 355.
-- NOT gate output: notEX = 110 (notSX=70 + triEX=100 + bubR=10). Jarak ke D trunk (x=148) = 38px, aman.
-- S junction: sJX = 51 (setelah input node x=47). NOT di x=70. D junction di x=62. Semua terpisah.
+- NOT gate output: notEX = 122 (notSX=82). Jarak ke D trunk (x=148) = 26px.
+- S junction: sJX = 51. NOT di x=82. D junction di x=62.
 
 **Routing kabel (zero overlap, 34 segmen):**
 - Semua input & NOT gate sejajar Y dengan AND gate — signal masuk AND secara horizontal, bukan turun dari atas
 - D fan-out via trunk vertikal x=148, branch horizontal ke setiap AND3 bottom input
-- S0 fan-out: junction (51,175) -> NOT gate (70,175) + naik ke y=158 -> kanan ke bus x=178
-- S1 fan-out: junction (51,260) -> NOT gate (70,260) + turun ke y=345 -> kanan ke bus x=208
-- S0' dari NOT output (110,175) -> bus x=163 -> branch ke AND0 top (y=73) & AND2 top (y=243)
-- S1' dari NOT output (110,260) -> bus x=193 -> branch ke AND0 mid (y=90) & AND1 mid (y=175)
+- S0 fan-out: junction (51,175) -> NOT gate (82,175) + naik ke y=158 -> kanan ke bus x=178
+- S1 fan-out: junction (51,260) -> NOT gate (82,260) + turun ke y=345 -> kanan ke bus x=208
+- S0' dari NOT output (122,175) -> bus x=163 -> branch ke AND0 top (y=73) & AND2 top (y=243)
+- S1' dari NOT output (122,260) -> bus x=193 -> branch ke AND0 mid (y=90) & AND1 mid (y=175)
 - Programmatic overlap check: 30 segmen, 0 overlap (H-H dan V-V). Perpendicular crossing diperbolehkan.
 - Output wires (x=275-309) di kanan AND gates.
 
-**File yang diubah:** `src/components/CircuitDiagram15.jsx` (notSX disesuaikan: 95->56->70 final, sJX=51, notEX=110). `src/pages/LogicGatesCircuit.jsx` (TIDAK diubah di sesi ini). Card 01-14 TIDAK disentuh.
+**File yang diubah:** `src/components/CircuitDiagram15.jsx` (notSX: 95->56->70->82 final, sJX=51, notEX=122). Card 01-14 TIDAK disentuh.
 
 **Verifikasi:**
 - Build sukses: 0 error. LogicGatesCircuit chunk: 167.04 KB.

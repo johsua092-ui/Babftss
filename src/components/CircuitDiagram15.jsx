@@ -35,12 +35,12 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
     const dJX = 62;
     const sJX = 51;  // shared junction X for S0 and S1
 
-    // --- NOT gates (x=70, between S junction and D area) ---
-    const notSX = 70, notHH = 16;
+    // --- NOT gates (x=82) ---
+    const notSX = 82, notHH = 16;
     const notS0MY = s0Y, notS0TY = s0Y - notHH, notS0BY = s0Y + notHH;
-    const notS0TriEX = notSX + 30, notS0BubR = 5, notS0EX = notS0TriEX + notS0BubR * 2; // 110
+    const notS0TriEX = notSX + 30, notS0BubR = 5, notS0EX = notS0TriEX + notS0BubR * 2; // 122
     const notS1MY = s1Y, notS1TY = s1Y - notHH, notS1BY = s1Y + notHH;
-    const notS1TriEX = notSX + 30, notS1BubR = 5, notS1EX = notS1TriEX + notS1BubR * 2; // 110
+    const notS1TriEX = notSX + 30, notS1BubR = 5, notS1EX = notS1TriEX + notS1BubR * 2; // 122
 
     // --- Bus lanes (unique X per signal, no overlap) ---
     const dTrunkX = 148;   // D trunk
@@ -116,7 +116,7 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         {/* ===== S0: input -> junction -> NOT + direct bus ===== */}
         <W d={`M 47,${s0Y} H ${sJX}`} val={s0} col={selColor} rgb={selRgb} />
         <circle cx={sJX} cy={s0Y} r={3} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
-        {/* S0 -> NOT gate (at x=70) */}
+        {/* S0 -> NOT gate (at x=82) */}
         <W d={`M ${sJX},${s0Y} H ${notSX}`} val={s0} col={selColor} rgb={selRgb} />
         {/* S0 -> direct bus: up then right to bus lane at AND1 topIn level */}
         <W d={`M ${sJX},${s0Y} V ${andGates[1].topIn} H ${s0dX}`} val={s0} col={selColor} rgb={selRgb} />
@@ -124,12 +124,12 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         {/* ===== S1: input -> junction -> NOT + direct bus ===== */}
         <W d={`M 47,${s1Y} H ${sJX}`} val={s1} col={selColor} rgb={selRgb} />
         <circle cx={sJX} cy={s1Y} r={3} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
-        {/* S1 -> NOT gate (at x=70) */}
+        {/* S1 -> NOT gate (at x=82) */}
         <W d={`M ${sJX},${s1Y} H ${notSX}`} val={s1} col={selColor} rgb={selRgb} />
         {/* S1 -> direct bus: down then right to bus lane at AND3 midIn level */}
         <W d={`M ${sJX},${s1Y} V ${andGates[3].midIn} H ${s1dX}`} val={s1} col={selColor} rgb={selRgb} />
 
-        {/* ===== NOT GATES (at x=70) ===== */}
+        {/* ===== NOT GATES (at x=82) ===== */}
         <NotGate sx={notSX} ty={notS0TY} by={notS0BY} my={notS0MY} triEx={notS0TriEX} bubR={notS0BubR} glow={notS0Glow} fill={notS0Fill} stroke={notS0Stk} />
         <NotGate sx={notSX} ty={notS1TY} by={notS1BY} my={notS1MY} triEx={notS1TriEX} bubR={notS1BubR} glow={notS1Glow} fill={notS1Fill} stroke={notS1Stk} />
 
