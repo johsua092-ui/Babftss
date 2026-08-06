@@ -217,9 +217,9 @@ Kabel output dari gerbang terakhir (biasanya AND, bisa juga OR atau gate lain te
 
 | NOT ke- | Warna | Hex | Dipakai di |
 |---------|-------|-----|----------|
-| NOT #2 | Pink | `#f472b6` | Card 16 (NOT S1) |
-| NOT #3 | Teal | `#2dd4bf` | Card 16 (NOT S2) |
-| NOT #4+ | (pilih dari daftar cadangan bawah) | — | Cadangan |
+| NOT #2 | Pink | `#f472b6` | Card 16 (NOT S1), Card 11 (NOT S1), Card 15 (NOT S1) |
+| NOT #3 | Teal | `#2dd4bf` | Card 16 (NOT S2), Card 12 (NOT S2) |
+| NOT #4+ | (pilih dari daftar cadangan bawah) | — | Cadangan; Rose `#fb7185` dipakai Card 12/13 (NOT S1), Fuchsia `#d946ef` dipakai Card 13 (NOT S2), Purple `#c084fc` dipakai Card 13 (NOT S3) |
 
 **Palet warna untuk sinyal seleksi/kontrol (S0, S1, S2, ...):**
 
@@ -312,4 +312,14 @@ Pemula mengeluh bahwa saat rangkaian memiliki lebih dari 1 gerbang NOT, semua ou
 
 Pemula sekarang bisa langsung melihat: "kabel merah dari NOT S0, kabel pink dari NOT S1, kabel teal dari NOT S2" — masing-masing terlacak dengan jelas.
 
-> **Catatan retroaktif:** Aturan ini TIDAK berlaku untuk Card 01-15 (sudah terkunci). Card 16 adalah card pertama yang menerapkannya.
+> **Catatan retroaktif:** Aturan ini awalnya diterapkan mulai Card 16 saja. Setelah menerima feedback pemula bahwa rangkaian Card 11, 12, 13, 15 (yang memiliki >1 NOT) juga sulit dilacak, aturan ini diterapkan secara retroaktif ke card-card tersebut. Pemilihan warna disesuaikan per-card untuk menghindari konflik dengan warna D/sinyal yang sudah ada di card tersebut.
+
+**Tabel penerapan multi-NOT per card:**
+
+| Card | Rangkaian | Jumlah NOT | NOT #1 (S0) | NOT #2 (S1) | NOT #3 (S2) | NOT #4 (S3) | Catatan |
+|------|-----------|-----------|-------------|-------------|-------------|-------------|--------|
+| 11 | 4:1 Mux | 2 | Merah `#f87171` | Pink `#f472b6` | — | — | |
+| 12 | 8:1 Mux | 3 | Merah `#f87171` | Rose `#fb7185` | Teal `#2dd4bf` | — | Pink konflik D4 |
+| 13 | 16:1 Mux | 4 | Merah `#f87171` | Rose `#fb7185` | Fuchsia `#d946ef` | Purple `#c084fc` | Teal konflik D15 |
+| 15 | 4:1 Demux | 2 | Merah `#f87171` | Pink `#f472b6` | — | — | |
+| 16 | 8:1 Demux | 3 | Merah `#f87171` | Pink `#f472b6` | Teal `#2dd4bf` | — | Referensi awal |

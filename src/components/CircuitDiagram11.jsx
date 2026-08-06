@@ -2,7 +2,9 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not, g0, g1, g2, g3, y, onToggleS0, onToggleS1, onToggleD0, onToggleD1, onToggleD2, onToggleD3 }) {
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
+    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=pink
+    const not1Color = "#f87171", not1Rgb = hexToRgbStr(not1Color); // NOT S0 — merah (NOT #1)
+    const not2Color = "#f472b6", not2Rgb = hexToRgbStr(not2Color); // NOT S1 — pink  (NOT #2)
     const selColor = "#4ade80", selRgb = hexToRgbStr(selColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
@@ -66,8 +68,8 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
     const mkFill = (val, rgb) => val ? `rgba(${rgb},0.13)` : "#0f172a";
     const mkStroke = (val, col) => val ? col : "#475569";
 
-    const notS0Glow = mkGlow(s0Not, notRgb), notS0Fill = mkFill(s0Not, notRgb), notS0Stk = mkStroke(s0Not, notColor);
-    const notS1Glow = mkGlow(s1Not, notRgb), notS1Fill = mkFill(s1Not, notRgb), notS1Stk = mkStroke(s1Not, notColor);
+    const notS0Glow = mkGlow(s0Not, not1Rgb), notS0Fill = mkFill(s0Not, not1Rgb), notS0Stk = mkStroke(s0Not, not1Color);
+    const notS1Glow = mkGlow(s1Not, not2Rgb), notS1Fill = mkFill(s1Not, not2Rgb), notS1Stk = mkStroke(s1Not, not2Color);
 
     const or01Val = g0 || g1;
     const or23Val = g2 || g3;
@@ -106,8 +108,8 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
     const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
-    const s0pLblCol = s0Not ? notColor : "#475569";
-    const s1pLblCol = s1Not ? notColor : "#475569";
+    const s0pLblCol = s0Not ? not1Color : "#475569";
+    const s1pLblCol = s1Not ? not2Color : "#475569";
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
@@ -133,11 +135,11 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <NotGate sx={notSX} ty={notS1TY} by={notS1BY} my={notS1MY} triEx={notS1TriEX} bubR={notS1BubR} glow={notS1Glow} fill={notS1Fill} stroke={notS1Stk} />
 
         {/* ===== S0' BUS (inverted S0 → AND0 top, AND2 top) ===== */}
-        {/* Trunk from NOT output to bus vertical (red = select signal) */}
-        <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        {/* Trunk from NOT output to bus vertical (NOT #1 merah) */}
+        <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
         {/* Branch to AND0 top (D0 cyan) */}
-        <circle cx={s0pX} cy={andGates[0].topIn} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s0pX} cy={andGates[0].topIn} r={2.5} fill={s0Not ? not1Color : `rgba(${not1Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0pX},${andGates[0].topIn} H ${andSX}`} val={s0Not} col={dCols[0]} rgb={dRgbs[0]} />
         {/* Branch to AND2 top (D2 orange) */}
         <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={dCols[2]} rgb={dRgbs[2]} />
@@ -155,11 +157,11 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
         <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== S1' BUS (inverted S1 → AND0 mid, AND1 mid) ===== */}
-        {/* Trunk from NOT output to bus vertical (red = select signal) */}
-        <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${s1pX},${s1Y} V ${andGates[1].midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
+        {/* Trunk from NOT output to bus vertical (NOT #2 pink) */}
+        <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
+        <W d={`M ${s1pX},${s1Y} V ${andGates[1].midIn}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
         {/* Branch to AND0 mid (D0 cyan) */}
-        <circle cx={s1pX} cy={andGates[0].midIn} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s1pX} cy={andGates[0].midIn} r={2.5} fill={s1Not ? not2Color : `rgba(${not2Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1pX},${andGates[0].midIn} H ${andSX}`} val={s1Not} col={dCols[0]} rgb={dRgbs[0]} />
         {/* Branch to AND1 mid (D1 amber) */}
         <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={dCols[1]} rgb={dRgbs[1]} />

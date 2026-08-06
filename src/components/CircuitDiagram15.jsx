@@ -2,7 +2,9 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, y3, onToggleD, onToggleS0, onToggleS1 }) {
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
+    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=pink
+    const not1Color = "#f87171", not1Rgb = hexToRgbStr(not1Color); // NOT S0 — merah (NOT #1)
+    const not2Color = "#f472b6", not2Rgb = hexToRgbStr(not2Color); // NOT S1 — pink  (NOT #2)
     const s0Color = "#22d3ee", s0Rgb = hexToRgbStr(s0Color);  // cyan for S0
     const s1Color = "#fb923c", s1Rgb = hexToRgbStr(s1Color);  // orange for S1
     const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
@@ -60,8 +62,8 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
     const mkFill = (val, rgb) => val ? `rgba(${rgb},0.13)` : "#0f172a";
     const mkStroke = (val, col) => val ? col : "#475569";
 
-    const notS0Glow = mkGlow(s0Not, notRgb), notS0Fill = mkFill(s0Not, notRgb), notS0Stk = mkStroke(s0Not, notColor);
-    const notS1Glow = mkGlow(s1Not, notRgb), notS1Fill = mkFill(s1Not, notRgb), notS1Stk = mkStroke(s1Not, notColor);
+    const notS0Glow = mkGlow(s0Not, not1Rgb), notS0Fill = mkFill(s0Not, not1Rgb), notS0Stk = mkStroke(s0Not, not1Color);
+    const notS1Glow = mkGlow(s1Not, not2Rgb), notS1Fill = mkFill(s1Not, not2Rgb), notS1Stk = mkStroke(s1Not, not2Color);
 
     // --- Components ---
     const NotGate = ({ sx, ty, by, my, triEx, bubR, glow, fill, stroke }) => <Fragment>
@@ -90,8 +92,8 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
     const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
     // Label colors for S0' and S1'
-    const s0pLblCol = s0Not ? notColor : "#475569";
-    const s1pLblCol = s1Not ? notColor : "#475569";
+    const s0pLblCol = s0Not ? not1Color : "#475569";
+    const s1pLblCol = s1Not ? not2Color : "#475569";
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES (aligned with AND gate levels) ===== */}
@@ -132,17 +134,17 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         <NotGate sx={notSX} ty={notS1TY} by={notS1BY} my={notS1MY} triEx={notS1TriEX} bubR={notS1BubR} glow={notS1Glow} fill={notS1Fill} stroke={notS1Stk} />
 
         {/* ===== S0' BUS (NOT S0 output -> AND0 top, AND2 top) ===== */}
-        <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={notColor} rgb={notRgb} />
-        <circle cx={s0pX} cy={s0Y} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        <circle cx={s0pX} cy={s0Y} r={2.5} fill={s0Not ? not1Color : `rgba(${not1Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         {/* S0' trunk: up to AND0 topIn */}
-        <W d={`M ${s0pX},${s0Y} V ${andGates[0].topIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${s0pX},${s0Y} V ${andGates[0].topIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
         {/* S0' trunk: down to AND2 topIn */}
-        <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
         {/* Branch to AND0 top */}
-        <circle cx={s0pX} cy={andGates[0].topIn} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s0pX} cy={andGates[0].topIn} r={2.5} fill={s0Not ? not1Color : `rgba(${not1Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0pX},${andGates[0].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
         {/* Branch to AND2 top */}
-        <circle cx={s0pX} cy={andGates[2].topIn} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s0pX} cy={andGates[2].topIn} r={2.5} fill={s0Not ? not1Color : `rgba(${not1Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
         {/* S0' label (near NOT output red wire) */}
         <text x={notS0EX + 8} y={s0Y - 5} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
@@ -159,15 +161,15 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={s0Color} rgb={s0Rgb} />
 
         {/* ===== S1' BUS (NOT S1 output -> AND0 mid, AND1 mid) ===== */}
-        <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={notColor} rgb={notRgb} />
-        <circle cx={s1pX} cy={s1Y} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
+        <circle cx={s1pX} cy={s1Y} r={2.5} fill={s1Not ? not2Color : `rgba(${not2Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         {/* S1' trunk: up to AND0 midIn (covers AND1 midIn at y=175 too) */}
-        <W d={`M ${s1pX},${s1Y} V ${andGates[0].midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${s1pX},${s1Y} V ${andGates[0].midIn}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
         {/* Branch to AND0 mid */}
-        <circle cx={s1pX} cy={andGates[0].midIn} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s1pX} cy={andGates[0].midIn} r={2.5} fill={s1Not ? not2Color : `rgba(${not2Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1pX},${andGates[0].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
         {/* Branch to AND1 mid */}
-        <circle cx={s1pX} cy={andGates[1].midIn} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s1pX} cy={andGates[1].midIn} r={2.5} fill={s1Not ? not2Color : `rgba(${not2Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
         {/* S1' label (near NOT output red wire) */}
         <text x={notS1EX + 8} y={s1Y - 5} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
