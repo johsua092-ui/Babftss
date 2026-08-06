@@ -12,11 +12,11 @@ export default function CircuitDiagram12({
     onToggleS0, onToggleS1, onToggleS2,
     onToggleD0, onToggleD1, onToggleD2, onToggleD3, onToggleD4, onToggleD5, onToggleD6, onToggleD7,
 }) {
-    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=rose, NOT #3=S2=teal
-    // Rose (bukan pink) untuk NOT S1 karena pink #f472b6 sudah dipakai D4
-    const not1Color = "#f87171", not1Rgb = hexToRgbStr(not1Color); // NOT S0 — merah (NOT #1)
-    const not2Color = "#fb7185", not2Rgb = hexToRgbStr(not2Color); // NOT S1 — rose  (NOT #2)
-    const not3Color = "#2dd4bf", not3Rgb = hexToRgbStr(not3Color); // NOT S2 — teal  (NOT #3)
+    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=fuchsia, NOT #3=S2=teal
+    // Fuchsia (bukan pink/rose) untuk NOT S1 — pink=#f472b6 dipakai D4, rose=#fb7185 terlalu mirip merah
+    const not1Color = "#f87171", not1Rgb = hexToRgbStr(not1Color); // NOT S0 — merah  (NOT #1)
+    const not2Color = "#d946ef", not2Rgb = hexToRgbStr(not2Color); // NOT S1 — fuchsia (NOT #2)
+    const not3Color = "#2dd4bf", not3Rgb = hexToRgbStr(not3Color); // NOT S2 — teal   (NOT #3)
     const selColor = "#4ade80", selRgb = hexToRgbStr(selColor);
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;

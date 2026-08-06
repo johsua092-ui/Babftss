@@ -17,10 +17,10 @@ export default function CircuitDiagram13(props) {
     var dVals = [d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15];
     var dToggles = [props.onToggleD0,props.onToggleD1,props.onToggleD2,props.onToggleD3,props.onToggleD4,props.onToggleD5,props.onToggleD6,props.onToggleD7,props.onToggleD8,props.onToggleD9,props.onToggleD10,props.onToggleD11,props.onToggleD12,props.onToggleD13,props.onToggleD14,props.onToggleD15];
 
-    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=rose, NOT #3=S2=fuchsia, NOT #4=S3=purple
-    // Rose (bukan pink) untuk S1; Fuchsia untuk S2 (teal = D15 warna); Purple untuk S3
-    var not1Color="#f87171", not1Rgb=hexToRgbStr(not1Color); // NOT S0 — merah (NOT #1)
-    var not2Color="#fb7185", not2Rgb=hexToRgbStr(not2Color); // NOT S1 — rose  (NOT #2)
+    // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=teal, NOT #3=S2=fuchsia, NOT #4=S3=purple
+    // Teal untuk S1 (rose=#fb7185 terlalu mirip merah); Fuchsia untuk S2 (teal=#2dd4bf dipakai D15 beda konteks); Purple untuk S3
+    var not1Color="#f87171", not1Rgb=hexToRgbStr(not1Color); // NOT S0 — merah  (NOT #1)
+    var not2Color="#2dd4bf", not2Rgb=hexToRgbStr(not2Color); // NOT S1 — teal   (NOT #2)
     var not3Color="#d946ef", not3Rgb=hexToRgbStr(not3Color); // NOT S2 — fuchsia (NOT #3)
     var not4Color="#c084fc", not4Rgb=hexToRgbStr(not4Color); // NOT S3 — purple (NOT #4)
     var selColor="#4ade80", selRgb=hexToRgbStr(selColor);

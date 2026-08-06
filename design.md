@@ -319,7 +319,7 @@ Pemula sekarang bisa langsung melihat: "kabel merah dari NOT S0, kabel pink dari
 | Card | Rangkaian | Jumlah NOT | NOT #1 (S0) | NOT #2 (S1) | NOT #3 (S2) | NOT #4 (S3) | Catatan |
 |------|-----------|-----------|-------------|-------------|-------------|-------------|--------|
 | 11 | 4:1 Mux | 2 | Merah `#f87171` | Pink `#f472b6` | — | — | |
-| 12 | 8:1 Mux | 3 | Merah `#f87171` | Rose `#fb7185` | Teal `#2dd4bf` | — | Pink konflik D4 |
-| 13 | 16:1 Mux | 4 | Merah `#f87171` | Rose `#fb7185` | Fuchsia `#d946ef` | Purple `#c084fc` | Teal konflik D15 |
+| 12 | 8:1 Mux | 3 | Merah `#f87171` | Fuchsia `#d946ef` | Teal `#2dd4bf` | — | Pink konflik D4, rose terlalu mirip merah |
+| 13 | 16:1 Mux | 4 | Merah `#f87171` | Teal `#2dd4bf` | Fuchsia `#d946ef` | Purple `#c084fc` | Rose terlalu mirip merah, teal beda konteks dari D15 |
 | 15 | 4:1 Demux | 2 | Merah `#f87171` | Pink `#f472b6` | — | — | |
 | 16 | 8:1 Demux | 3 | Merah `#f87171` | Pink `#f472b6` | Teal `#2dd4bf` | — | Referensi awal |
