@@ -754,3 +754,39 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 **VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli (eksekusi kode sungguhan via esbuild) untuk kombinasi S3S2S1S0=1011 (pilih D11). Hasil: (a) logic benar — highlight jatuh tepat di baris D11, propagasi ke Y=1 benar, (b) TIDAK ADA overlap kabel — dikonfirmasi lewat analisis pixel terprogram (bukan cuma visual): scan horizontal di beberapa baris Y menunjukkan 7-8 segmen garis vertikal terpisah bersih, masing-masing tipis (2-5px) dengan jarak konsisten ~26px, tidak ada segmen menyatu/melebar yang mengindikasikan overlap, (c) format tabel ringkas 16 baris terkonfirmasi, (d) HeartButton & registrasi `ALL_CARDS` terkonfirmasi. **Ini eksekusi terbaik & paling presisi sejauh ini untuk diagram terbesar di proyek.** Status: **SELESAI & TERVERIFIKASI PENUH.**
 
 **Catatan tambahan (di luar scope Card 13):** zip yang sama juga membawa file infrastruktur backend baru (`Dockerfile`, `docker-compose.yml`, `bootstrap.sh`, `start.sh`, `start.cjs`, folder `server/`) — dikonfirmasi user itu kerjaan backend developer terpisah (setup hosting API server via Docker/Pterodactyl, di luar Vercel). Dicek sepintas: tidak ada hardcode secret, script narik dari repo GitHub proyek sendiri. Di luar lane Claude untuk audit mendalam. `CircuitDiagram12.jsx` juga sempat berubah (fix kecil trigonometri posisi X gerbang AND, menutup gap visual kabel) — dikonfirmasi user sebagai perbaikan sah via komando langsung.
+
+### Card 14 — 2:1 Demultiplexer (Demux) [B5 roadmap]
+
+**Status: SELESAI & TERVERIFIKASI**
+
+**Logika:** Y0 = D AND NOT(S), Y1 = D AND S. 1 data input D, 1 select S, 2 output (Y0, Y1). Kebalikan dari Card 10 (2:1 Mux).
+
+**Arsitektur diagram (3 gate: 1 NOT + 2 AND):**
+- Input D (atas, y=35) dan S (bawah, y=120) di kiri
+- NOT gate memproses S menjadi S' di x=100, y=120
+- AND1 (atas, y=35): D AND S' -> Y0
+- AND2 (bawah, y=120): D AND S -> Y1
+- 2 output node terpisah: Y0 (atas) dan Y1 (bawah), masing-masing dengan label
+
+**Routing kabel (zero overlap):**
+- D fan-out di junction x=80: cabang atas ke AND1 top input (y=21), cabang bawah ke AND2 top input (y=106)
+- S fan-out di junction x=68: cabang kanan ke NOT (y=120), cabang bawah ke AND2 bottom input (y=134)
+- S' dari NOT output (x=138) route: horizontal ke x=160, vertikal naik ke y=49, horizontal ke AND1 bottom input (x=220)
+- Setiap horizontal segment punya Y unik atau X range non-tumpang tindih
+- Setiap vertical segment punya X unik (x=68, x=80, x=160)
+- Cross/perpendicular silangan diperbolehkan (design.md 3.0)
+
+**File yang dibuat:**
+- `src/components/CircuitCard14.jsx` (baru)
+- `src/components/CircuitDiagram14.jsx` (baru)
+
+**File yang diubah:** `src/pages/LogicGatesCircuit.jsx` (2 baris: 1 import + 1 entri ALL_CARDS). Card 01-13 TIDAK disentuh. File backend TIDAK disentuh.
+
+**Verifikasi:**
+- Build sukses: 0 error.
+- Logic terverifikasi: D=0,S=0->Y0=0,Y1=0; D=0,S=1->Y0=0,Y1=0; D=1,S=0->Y0=1,Y1=0; D=1,S=1->Y0=0,Y1=1 (semua benar).
+- Wire overlap: TIDAK ADA — analisis terprogram (14 segmen: 10 horizontal + 4 vertical, 0 overlap).
+- HeartButton: ada, posisi sejajar badge tier.
+- Truth table: Format 2 ringkas (2 baris, kolom S/Y0/Y1), highlight kuning pada baris S aktif, highlight hijau pada cell output bernilai 1.
+- Multi-output layout: mengikuti pola Card 08 (Half Adder) dari design.md 3.4, svgW dihitung dari max output X.
+- Registrasi ALL_CARDS: `{ num: '14', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 }`.
