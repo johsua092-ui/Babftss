@@ -252,7 +252,7 @@ export default function CircuitDiagram16({
         {/* ===== DECODE OUTPUT: AND3 -> AND2 top input ===== */}
         {gates.map(function (g, i) {
             return <W key={"dec" + i}
-                d={`M ${and3EX},${g.a3.my} H ${decodeOutLane} V ${g.a2.topIn} H ${and2SX}`}
+                d={`M ${and3EX},${g.my} H ${decodeOutLane} V ${g.a2.topIn} H ${and2SX}`}
                 val={g.a3.val} col={andColor} rgb={andRgb} />;
         })}
 
