@@ -788,5 +788,7 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 - Wire overlap: TIDAK ADA — analisis terprogram (14 segmen: 10 horizontal + 4 vertical, 0 overlap).
 - HeartButton: ada, posisi sejajar badge tier.
 - Truth table: Format 2 ringkas (2 baris, kolom S/Y0/Y1), highlight kuning pada baris S aktif, highlight hijau pada cell output bernilai 1.
-- Multi-output layout: mengikuti pola Card 08 (Half Adder) dari design.md 3.4, svgW dihitung dari max output X.
+- Multi-output layout: mengikuti pola Card 06 (Half Adder) dari design.md 3.4 [KOREKSI: log asli salah sebut "Card 08" — Card 08 itu Full Adder, Half Adder adalah Card 06], svgW dihitung dari max output X.
 - Registrasi ALL_CARDS: `{ num: '14', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 }`.
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli untuk D=1,S=1. Hasil: (a) logic benar, Y0=0/Y1=1 sesuai ekspektasi, (b) TIDAK ADA overlap — dikonfirmasi visual, tiap jalur (D fan-out, S langsung, S' via NOT) punya lane terpisah jelas, (c) HeartButton & format tabel ringkas & registrasi ALL_CARDS terkonfirmasi. Card pertama keluarga Demux — arsitektur multi-output (bukan pola Mux) diterapkan dengan benar. Status: **SELESAI & TERVERIFIKASI PENUH.**
