@@ -10,27 +10,11 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 13;
 
-    // --- Input positions ---
-    const dY = 30, s0Y = 100, s1Y = 170;
-
-    // --- Junction points for fan-out ---
-    const dJX = 60, s0JX = 78, s1JX = 78;
-
-    // --- NOT gates ---
-    const notSX = 100, notHH = 16;
-    const notS0MY = s0Y, notS0TY = s0Y - notHH, notS0BY = s0Y + notHH;
-    const notS0TriEX = notSX + 30, notS0BubR = 5, notS0EX = notS0TriEX + notS0BubR * 2;
-    const notS1MY = s1Y, notS1TY = s1Y - notHH, notS1BY = s1Y + notHH;
-    const notS1TriEX = notSX + 30, notS1BubR = 5, notS1EX = notS1TriEX + notS1BubR * 2;
-
-    // --- Select bus channels ---
-    const s0pX = 185, s0dX = 205, s1pX = 225, s1dX = 245;
-
-    // --- AND3 gates (half-height=22, arc=22, w=28) ---
-    const andSX = 280, andW = 28, andAR = 22, andHH = 22;
-    const andEX = andSX + andW + andAR; // 330
-    const gateSpacing = 95;
-    const startMY = 260;
+    // --- AND3 gates (inputs aligned with AND gate levels for compact layout) ---
+    const andSX = 225, andW = 28, andAR = 22, andHH = 22;
+    const andEX = andSX + andW + andAR; // 275
+    const gateSpacing = 85;
+    const startMY = 90;
     const andGates = [];
     for (var i = 0; i < 4; i++) {
         var my = startMY + i * gateSpacing;
@@ -40,14 +24,38 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
             val: [y0, y1, y2, y3][i]
         });
     }
+    // AND0: my=90, AND1: my=175, AND2: my=260, AND3: my=345
 
-    // --- D trunk lane ---
-    const dTrunkX = 155;
+    // --- Input nodes (aligned with AND gate levels) ---
+    const dY = andGates[0].my;     // 90  (same as AND0)
+    const s0Y = andGates[1].my;    // 175 (same as AND1)
+    const s1Y = andGates[2].my;    // 260 (same as AND2)
+
+    // --- Junction points for fan-out ---
+    const dJX = 62;
+    const s0JX = 68;
+    const s1JX = 72;
+
+    // --- NOT gates (at same Y as their input) ---
+    const notSX = 95, notHH = 16;
+    // NOT S0 at y=175
+    const notS0MY = s0Y, notS0TY = s0Y - notHH, notS0BY = s0Y + notHH;
+    const notS0TriEX = notSX + 30, notS0BubR = 5, notS0EX = notS0TriEX + notS0BubR * 2; // 135
+    // NOT S1 at y=260
+    const notS1MY = s1Y, notS1TY = s1Y - notHH, notS1BY = s1Y + notHH;
+    const notS1TriEX = notSX + 30, notS1BubR = 5, notS1EX = notS1TriEX + notS1BubR * 2; // 135
+
+    // --- Bus lanes (unique X per signal, no overlap) ---
+    const dTrunkX = 148;   // D trunk
+    const s0pX = 163;      // S0' bus
+    const s0dX = 178;      // S0 direct bus
+    const s1pX = 193;      // S1' bus
+    const s1dX = 208;      // S1 direct bus
 
     // --- Output nodes ---
-    const outBaseX = andEX + 34 + outNodeR; // 377
-    const svgW = outBaseX + outNodeR + 20;
-    const svgH = andGates[3].by + 25;
+    const outBaseX = andEX + 34 + outNodeR; // 322
+    const svgW = outBaseX + outNodeR + 20;  // 355
+    const svgH = andGates[3].by + 25;       // 392
 
     // --- Gate style helpers ---
     const mkGlow = (val, rgb) => val
@@ -89,12 +97,12 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
     const s1pLblCol = s1Not ? notColor : "#475569";
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
-        {/* ===== INPUT NODES ===== */}
+        {/* ===== INPUT NODES (aligned with AND gate levels) ===== */}
         <InputNode ix={1} iy={dY} val={d} label="D" onToggle={onToggleD} color={andColor} rgb={andRgb} />
         <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={selColor} rgb={selRgb} />
         <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={selColor} rgb={selRgb} />
 
-        {/* ===== D INPUT -> JUNCTION -> TRUNK LANE ===== */}
+        {/* ===== D: input -> junction -> trunk ===== */}
         <W d={`M 47,${dY} H ${dJX}`} val={d} col={andColor} rgb={andRgb} />
         <W d={`M ${dJX},${dY} H ${dTrunkX}`} val={d} col={andColor} rgb={andRgb} />
         <circle cx={dJX} cy={dY} r={3} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
@@ -102,26 +110,27 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         <W d={`M ${dTrunkX},${dY} V ${andGates[3].botIn}`} val={d} col={andColor} rgb={andRgb} />
         {/* D branches to each AND3 bottom input */}
         {andGates.map(function(g) {
-            return <W key={"db_" + g.my} d={`M ${dTrunkX},${g.botIn} H ${andSX}`} val={d} col={andColor} rgb={andRgb} />;
-        })}
-        {/* D junction dots on trunk */}
-        {andGates.map(function(g) {
-            return <circle key={"dd_" + g.my} cx={dTrunkX} cy={g.botIn} r={2.5} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />;
+            return <Fragment key={"db_" + g.my}>
+                <circle cx={dTrunkX} cy={g.botIn} r={2.5} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+                <W d={`M ${dTrunkX},${g.botIn} H ${andSX}`} val={d} col={andColor} rgb={andRgb} />
+            </Fragment>;
         })}
 
-        {/* ===== S0 INPUT -> JUNCTION -> NOT + DIRECT BUS ===== */}
+        {/* ===== S0: input -> junction -> NOT + direct bus ===== */}
         <W d={`M 47,${s0Y} H ${s0JX}`} val={s0} col={selColor} rgb={selRgb} />
-        <W d={`M ${s0JX},${s0Y} H ${notSX}`} val={s0} col={selColor} rgb={selRgb} />
         <circle cx={s0JX} cy={s0Y} r={3} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
-        {/* S0 direct trunk: junction down, right to bus lane, then down */}
-        <W d={`M ${s0JX},${s0Y} V 145 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={selColor} rgb={selRgb} />
+        {/* S0 -> NOT gate */}
+        <W d={`M ${s0JX},${s0Y} H ${notSX}`} val={s0} col={selColor} rgb={selRgb} />
+        {/* S0 -> direct bus: up then right to bus lane at AND1 topIn level */}
+        <W d={`M ${s0JX},${s0Y} V ${andGates[1].topIn} H ${s0dX}`} val={s0} col={selColor} rgb={selRgb} />
 
-        {/* ===== S1 INPUT -> JUNCTION -> NOT + DIRECT BUS ===== */}
+        {/* ===== S1: input -> junction -> NOT + direct bus ===== */}
         <W d={`M 47,${s1Y} H ${s1JX}`} val={s1} col={selColor} rgb={selRgb} />
-        <W d={`M ${s1JX},${s1Y} H ${notSX}`} val={s1} col={selColor} rgb={selRgb} />
         <circle cx={s1JX} cy={s1Y} r={3} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
-        {/* S1 direct trunk: junction down, right to bus lane, then down */}
-        <W d={`M ${s1JX},${s1Y} V 215 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={selColor} rgb={selRgb} />
+        {/* S1 -> NOT gate */}
+        <W d={`M ${s1JX},${s1Y} H ${notSX}`} val={s1} col={selColor} rgb={selRgb} />
+        {/* S1 -> direct bus: down then right to bus lane at AND3 midIn level */}
+        <W d={`M ${s1JX},${s1Y} V ${andGates[3].midIn} H ${s1dX}`} val={s1} col={selColor} rgb={selRgb} />
 
         {/* ===== NOT GATES ===== */}
         <NotGate sx={notSX} ty={notS0TY} by={notS0BY} my={notS0MY} triEx={notS0TriEX} bubR={notS0BubR} glow={notS0Glow} fill={notS0Fill} stroke={notS0Stk} />
@@ -129,41 +138,55 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
 
         {/* ===== S0' BUS (NOT S0 -> AND0 top, AND2 top) ===== */}
         <W d={`M ${notS0EX},${s0Y} H ${s0pX}`} val={s0Not} col={notColor} rgb={notRgb} />
+        <circle cx={s0pX} cy={s0Y} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        {/* S0' trunk: up to AND0 topIn */}
+        <W d={`M ${s0pX},${s0Y} V ${andGates[0].topIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        {/* S0' trunk: down to AND2 topIn */}
         <W d={`M ${s0pX},${s0Y} V ${andGates[2].topIn}`} val={s0Not} col={notColor} rgb={notRgb} />
         {/* Branch to AND0 top */}
         <circle cx={s0pX} cy={andGates[0].topIn} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0pX},${andGates[0].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
         {/* Branch to AND2 top */}
+        <circle cx={s0pX} cy={andGates[2].topIn} r={2.5} fill={s0Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0pX},${andGates[2].topIn} H ${andSX}`} val={s0Not} col={andColor} rgb={andRgb} />
         {/* S0' label */}
         <text x={notS0EX + 6} y={s0Y - 8} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s0pLblCol} style={{ transition: "fill 0.3s" }}>S0</text>
         <line x1={notS0EX + 6} y1={s0Y - 15} x2={notS0EX + 18} y2={s0Y - 15} stroke={s0pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S0 DIRECT BUS (S0 -> AND1 top, AND3 top) ===== */}
+        {/* Trunk: from AND1 topIn level down to AND3 topIn level */}
+        <W d={`M ${s0dX},${andGates[1].topIn} V ${andGates[3].topIn}`} val={s0} col={selColor} rgb={selRgb} />
         {/* Branch to AND1 top */}
         <circle cx={s0dX} cy={andGates[1].topIn} r={2.5} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0dX},${andGates[1].topIn} H ${andSX}`} val={s0} col={andColor} rgb={andRgb} />
         {/* Branch to AND3 top */}
+        <circle cx={s0dX} cy={andGates[3].topIn} r={2.5} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={andColor} rgb={andRgb} />
 
         {/* ===== S1' BUS (NOT S1 -> AND0 mid, AND1 mid) ===== */}
         <W d={`M ${notS1EX},${s1Y} H ${s1pX}`} val={s1Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${s1pX},${s1Y} V ${andGates[1].midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
+        <circle cx={s1pX} cy={s1Y} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        {/* S1' trunk: up to AND0 midIn (covers AND1 midIn at y=175 too) */}
+        <W d={`M ${s1pX},${s1Y} V ${andGates[0].midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
         {/* Branch to AND0 mid */}
         <circle cx={s1pX} cy={andGates[0].midIn} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1pX},${andGates[0].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
         {/* Branch to AND1 mid */}
+        <circle cx={s1pX} cy={andGates[1].midIn} r={2.5} fill={s1Not ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1pX},${andGates[1].midIn} H ${andSX}`} val={s1Not} col={andColor} rgb={andRgb} />
         {/* S1' label */}
         <text x={notS1EX + 6} y={s1Y - 8} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="7" fontWeight="bold" fill={s1pLblCol} style={{ transition: "fill 0.3s" }}>S1</text>
         <line x1={notS1EX + 6} y1={s1Y - 15} x2={notS1EX + 18} y2={s1Y - 15} stroke={s1pLblCol} strokeWidth="1.2" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== S1 DIRECT BUS (S1 -> AND2 mid, AND3 mid) ===== */}
+        {/* Trunk: from AND3 midIn level up to AND2 midIn level */}
+        <W d={`M ${s1dX},${andGates[3].midIn} V ${andGates[2].midIn}`} val={s1} col={selColor} rgb={selRgb} />
+        {/* Branch to AND3 mid */}
+        <circle cx={s1dX} cy={andGates[3].midIn} r={2.5} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={andColor} rgb={andRgb} />
         {/* Branch to AND2 mid */}
         <circle cx={s1dX} cy={andGates[2].midIn} r={2.5} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={andColor} rgb={andRgb} />
-        {/* Branch to AND3 mid */}
-        <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={andColor} rgb={andRgb} />
 
         {/* ===== AND3 GATES ===== */}
         {andGates.map(function(g, idx) {

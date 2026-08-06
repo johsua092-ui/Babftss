@@ -799,31 +799,35 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 
 **Logika:** Y0 = D AND NOT(S1) AND NOT(S0), Y1 = D AND NOT(S1) AND S0, Y2 = D AND S1 AND NOT(S0), Y3 = D AND S1 AND S0. 1 data input D, 2 select (S0, S1), 4 output (Y0-Y3). Pasangan kembar Card 11 (4:1 Mux), arsitektur kebalikan.
 
-**Arsitektur diagram (6 gate: 2 NOT + 4 AND3, TANPA OR tree):**
-- Input D (y=30), S0 (y=100), S1 (y=170) di kiri
-- 2 NOT gate: S0->S0' dan S1->S1' di x=100
-- 4 bus lane select: S0' x=185, S0 x=205, S1' x=225, S1 x=245
-- D fan-out via trunk vertikal x=155 (kiri semua bus select) ke 4 AND3 bottom input
-- 4 AND3 gate (andSX=280, andW=28, andAR=22, andHH=22) tersusun vertikal spacing 95px
-- 4 output node Y0-Y3 langsung dari masing-masing AND3 (TIDAK ada OR tree — beda dari Mux)
+**Arsitektur diagram (6 gate: 2 NOT + 4 AND3, TANPA OR tree) — REVISED compact layout: **
+- Input D (y=90, sama level AND0), S0 (y=175, sama level AND1), S1 (y=260, sama level AND2) di kiri — semua input **sejajar dengan AND gate** (bukan di atas), menghemat ~200px vertikal
+- 2 NOT gate: S0->S0' (y=175, sama Y dengan S0 input) dan S1->S1' (y=260, sama Y dengan S1 input)
+- 4 AND3 gate (andSX=225, andW=28, andAR=22, andHH=22) tersusun vertikal spacing 85px: my=90, 175, 260, 345
+- 5 bus lane vertikal unik: x=148 (D trunk), x=163 (S0'), x=178 (S0), x=193 (S1'), x=208 (S1)
+- svgH = 392 (down dari 592 di versi awal — hemat 200px). svgW = 355.
 
-**Routing kabel (zero overlap, 33 segmen: 26 horizontal + 7 vertical):**
-- 7 lane vertikal terpisah: x=60 (D junction), x=78 (S0/S1 junction), x=155 (D trunk), x=185 (S0'), x=205 (S0), x=225 (S1'), x=245 (S1)
-- D trunk x=155 cross bus horizontals secara perpendicular (diperbolehkan)
-- Setiap horizontal branch punya Y unik (tiap AND3 punya 3 input Y berbeda)
-- Output wires (x=330-364) di kanan semua bus branches (berakhir di x=280)
+**Routing kabel (zero overlap, 34 segmen):**
+- Semua input & NOT gate sejajar Y dengan AND gate — signal masuk AND secara horizontal, bukan turun dari atas
+- D fan-out via trunk vertikal x=148, branch horizontal ke setiap AND3 bottom input
+- S0 fan-out: junction (68,175) -> NOT gate (95,175) + naik ke y=158 -> kanan ke bus x=178
+- S1 fan-out: junction (72,260) -> NOT gate (95,260) + turun ke y=345 -> kanan ke bus x=208
+- S0' dari NOT output (135,175) -> bus x=163 -> branch ke AND0 top (y=73) & AND2 top (y=243)
+- S1' dari NOT output (135,260) -> bus x=193 -> branch ke AND0 mid (y=90) & AND1 mid (y=175)
+- Programmatic overlap check: 34 segmen, 0 overlap (H-H dan V-V). Perpendicular crossing diperbolehkan.
+- Output wires (x=275-309) di kanan AND gates.
 
 **File yang dibuat:**
 - `src/components/CircuitCard15.jsx` (baru)
-- `src/components/CircuitDiagram15.jsx` (baru)
+- `src/components/CircuitDiagram15.jsx` (baru, lalu di-rewrite untuk compact layout)
 
 **File yang diubah:** `src/pages/LogicGatesCircuit.jsx` (2 baris: 1 import `CircuitCard15` + 1 entri `ALL_CARDS`). Card 01-14 TIDAK disentuh. File backend TIDAK disentuh.
 
 **Verifikasi:**
-- Build sukses: 0 error. LogicGatesCircuit chunk: 166.18 KB.
+- Build sukses: 0 error. LogicGatesCircuit chunk: 167.04 KB.
 - Logic terverifikasi 8 kombinasi D x S0 x S1: D=0 => semua Y=0; D=1,S0=0,S1=0 => Y0=1; D=1,S0=1,S1=0 => Y1=1; D=1,S0=0,S1=1 => Y2=1; D=1,S0=1,S1=1 => Y3=1 (semua benar).
-- Wire overlap: TIDAK ADA — analisis terprogram (33 segmen, 0 overlap).
+- Wire overlap: TIDAK ADA — analisis terprogram (34 segmen, 0 overlap).
 - HeartButton: ada, posisi sejajar badge tier.
 - Truth table: Format 2 ringkas (4 baris, kolom S1/S0/Y0-Y3), highlight kuning pada baris aktif, highlight hijau pada cell output bernilai 1.
 - Multi-output layout: 4 output node terpisah tanpa OR tree (desain.md 3.4).
 - Registrasi ALL_CARDS: `{ num: '15', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 }`.
+- **Layout revision**: input nodes & NOT gates dipindah dari atas (y=30-170) ke sejajar AND gate (y=90-260). Tujuan: menghemat ruang vertikal card. svgH turun dari 592 ke 392 (-200px, -34%). Jumlah segmen naik dari 33 ke 34 (tambahan 1 segmen S0 fan-out vertical).
