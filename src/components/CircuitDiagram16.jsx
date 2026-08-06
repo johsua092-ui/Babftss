@@ -214,10 +214,10 @@ export default function CircuitDiagram16({
         <W d={`M ${notEX},${s1Y} H ${busX.s1p}`} val={s1Not} col={notColor} rgb={notRgb} />
         <W d={`M ${busX.s1p},${s1Y} V ${gates[0].a3.midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
         <W d={`M ${busX.s1p},${s1Y} V ${gates[5].a3.midIn}`} val={s1Not} col={notColor} rgb={notRgb} />
-        {/* S0' trunk: NOT output -> detour up to y=248 to avoid overlap with S1d branch at y=260 -> bus at x=208, then UP to AND3[0] botIn=107, DOWN to AND3[6] botIn=617 */}
-        <W d={`M ${notEX},${s0Y} H 135 V 248 H ${busX.s0p}`} val={s0Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${busX.s0p},248 V ${gates[0].a3.botIn}`} val={s0Not} col={notColor} rgb={notRgb} />
-        <W d={`M ${busX.s0p},248 V ${gates[6].a3.botIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        {/* S0' trunk: NOT output -> detour up to y=253 to avoid overlap with S1d branch at y=260 -> bus at x=208, then UP to AND3[0] botIn=107, DOWN to AND3[6] botIn=617 */}
+        <W d={`M ${notEX},${s0Y} H 135 V 253 H ${busX.s0p}`} val={s0Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${busX.s0p},253 V ${gates[0].a3.botIn}`} val={s0Not} col={notColor} rgb={notRgb} />
+        <W d={`M ${busX.s0p},253 V ${gates[6].a3.botIn}`} val={s0Not} col={notColor} rgb={notRgb} />
 
         {/* ===== SELECT BUS TRUNKS — DIRECT (warna sinyal masing-masing) ===== */}
         {/* S0 direct: junction -> up to AND3[1] botIn=192 -> H to bus -> down to AND3[7] botIn=702 */}
