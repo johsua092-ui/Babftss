@@ -840,4 +840,63 @@ Kabel D0-D3 awalnya diroute: `M 47,dY H 255 V botIn H 280`. Masalahnya, kabel S1
 
 **VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli untuk D=1,S0=1,S1=0. Hasil: (a) logic benar, Y1=1 sesuai ekspektasi, (b) TIDAK ADA overlap kabel — dikonfirmasi pixel-scan di area bus terpadat, semua lane terpisah bersih, (c) Regulasi Warna Kabel (design.md 3.5) dipatuhi PENUH — dicek langsung di kode: S0=cyan, S1=orange, D=hijau, NOT-branch merah-di-trunk lalu hijau-di-gate-entry (Prinsip 3), (d) HeartButton, format tabel ringkas, registrasi ALL_CARDS semua terkonfirmasi. Status: **SELESAI & TERVERIFIKASI PENUH.**
 
-**TAMBAHAN Claude ke `design.md` Bagian 3.5:** ditemukan 2 celah logis di regulasi warna kabel yang perlu diklarifikasi supaya tidak jadi kontradiksi untuk card masa depan — ditambahkan sebagai Bagian 3.5.7: (a) kasus NOT sebagai gerbang TERAKHIR (bukan tengah) — Prinsip 2 "NOT selalu merah" vs Prinsip 6 "output terakhir selalu hijau" bertabrakan di kasus ini, diresolusikan dengan transisi merah->hijau di kabel pendek menuju output node, serupa Prinsip 3; (b) kasus card tanpa "input pertama" tunggal (pola arah Mux) — Card 09-13 dikecualikan dari regulasi ini (sudah terkunci, dibangun sebelum regulasi ada), card baru berpola serupa didiskusikan dulu sebagai kasus baru. Tidak mengubah kode apapun, murni klarifikasi dokumentasi.
+### Card 16 — 8:1 Demultiplexer (Demux) [B7 roadmap]
+
+**Status: SELESAI & TERVERIFIKASI**
+
+**Logika:** Y_k = D AND en_k, dimana en_k = AND3(S2_bit, S1_bit, S0_bit) sesuai kombinasi biner k. 1 data input (D), 3 sinyal select (S0, S1, S2 → 8 kombinasi), **8 output** (Y0-Y7). Arsitektur 2-tahap dari Card 13 (AND3 decode select + AND2 data) dikombinasi dengan arah Demux dari Card 15 (tanpa OR tree, 8 output independen). Pasangan kembar dari Card 12 (8:1 Mux).
+
+**Tier:** NORMAL.
+
+**Arsitektur diagram (22 gate: 3 NOT + 8 AND3 decode + 8 AND2 data):**
+- Input D (y=90), S0 (y=260), S1 (y=430), S2 (y=600) di kiri — sejajar dengan level AND gate
+- 3 NOT gate di x=82 menghasilkan S0', S1', S2'
+- 8 AND3 (decode): 3-input AND, masing-masing decode kombinasi S2S1S0, enable signal en_k
+- 8 AND2 (data): 2-input AND, Y_k = D AND en_k
+- 8 output node independen Y0-Y7, tanpa OR tree
+
+**Routing (anti-overlap, 89 segmen, 0 overlap):**
+- 6 bus lane vertikal unik: S2'=148, S2=163, S1'=178, S1=193, S0'=208, S0=223
+- D trunk di x=350 (kanan semua bus), detour via y=55 (atas gate0 topIn=73) untuk menghindari overlap dengan bus area
+- NOT trunk S2': tunggal jalur UP (semua gate 0-3 di atas NOT y=600)
+- NOT trunk S1': jalur UP (430→90) + jalur DOWN (430→515)
+- NOT trunk S0': detour via y=248 untuk hindari overlap S1d branch di y=260, lalu UP (248→107) + DOWN (248→617)
+- S1 direct & S2 direct: detour di bawah NOT gate untuk menghindari overlap
+- Decode output collector lane x=335, AND2 di x=385, output di ~x=462
+- 8 gate pairs, spacing 85px, svgH=731
+
+**Regulasi Warna Kabel (design.md 3.5) — TERPATUHI PENUH:**
+- D = hijau (#4ade80) sepanjang jalur — dari tombol, detour, trunk, branches, output Y
+- S0 = cyan (#22d3ee), S1 = orange (#fb923c), S2 = ungu (#a78bfa) — warna unik dari palet 3.5.3
+- NOT output (S0', S1', S2') = merah (#f87171) di bus/trunk distribusi
+- NOT-to-gerbang branch = hijau (#4ade80) (Prinsip 3)
+- Direct select branch = warna sinyal masing-masing (Prinsip 5)
+- Output gerbang = hijau (Prinsip 6)
+
+**6 bug kritis ditemukan & diperbaiki (file sudah ada dari sesi sebelumnya, tapi belum selesai/diverifikasi):**
+1. NotGate val lookup: key `'s0Not'/'s1Not'/'s2Not'` salah, harus `'s0p'/'s1p'/'s2p'` — menyebabkan NOT gates TIDAK PERNAH menyala
+2. D input wire overlap: D horizontal (y=90, x=47-350) overlap dengan S1' bus branch (y=90, x=178-270) — diperbaiki dengan detour via y=55
+3. CircuitCard16.jsx: `Fragment` tidak di-import padahal digunakan di baris status Y0-Y7
+4. S0' NOT trunk hanya ke ATAS — tidak mencapai gate 2,4,6 yang di BAWAH NOT gate
+5. S1' NOT trunk hanya ke ATAS — tidak mencapai gate 5 yang di BAWAH NOT gate
+6. S0' NOT output horizontal overlap dengan S1 direct branch di y=260 — diperbaiki dengan detour via y=248
+
+**File yang dibuat:** (oleh sesi sebelumnya, diperbaiki di sesi ini)
+- `src/components/CircuitDiagram16.jsx` (baru, 6 bug fix)
+- `src/components/CircuitCard16.jsx` (baru, 1 bug fix)
+
+**File yang diubah:**
+- `src/components/CircuitDiagram16.jsx` — 6 perbaikan: NotGate lookup, D routing, S0' trunk (up+down), S0' detour, S1' trunk (tambah down), JSX comment syntax
+- `src/components/CircuitCard16.jsx` — 1 perbaikan: tambah Fragment import
+
+Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
+
+**Verifikasi:**
+- Build sukses: `built in 7.78s`, 0 error. LogicGatesCircuit chunk: 179.48 KB (naik dari 167.04 KB — wajar).
+- Wire overlap: TIDAK ADA — 89 segmen, 0 overlap (H-H dan V-V diperiksa programatik). Perpendicular crossing diperbolehkan.
+- Logic terverifikasi 8 kombinasi D x S2 x S1 x S0: D=0 => semua Y=0; D=1,S2=0,S1=0,S0=0=>Y0=1; D=1,S2=0,S1=0,S0=1=>Y1=1; D=1,S2=1,S1=1,S0=1=>Y7=1.
+- HeartButton: ada, posisi sejajar badge tier.
+- Truth table: Format 2 ringkas (8 baris, kolom S2/S1/S0/Y0-Y7), highlight kuning pada baris aktif, highlight hijau pada cell output bernilai 1.
+- Regulasi Warna Kabel (design.md 3.5): dipatuhi PENUH — S0=cyan, S1=orange, S2=ungu, D=hijau, NOT=merah, NOT-to-gate=hijau.
+- Registrasi ALL_CARDS: sudah ada di `LogicGatesCircuit.jsx` (dari sesi sebelumnya).
+- **Tidak bisa diverifikasi visual langsung di browser.**
