@@ -224,9 +224,9 @@ export default function CircuitDiagram16({
         <W d={`M ${sJX},${s0Y} V ${gates[1].a3.botIn} H ${busX.s0d}`} val={s0} col={s0Color} rgb={s0Rgb} />
         <W d={`M ${busX.s0d},${gates[1].a3.botIn} V ${gates[7].a3.botIn}`} val={s0} col={s0Color} rgb={s0Rgb} />
         {/* S1 direct: junction -> down past NOT -> detour -> bus -> cover AND3[2-7] midIn */}
-        <W d={`M ${sJX},${s1Y} V ${s1Y + notHH + 2} H 133 V ${gates[7].a3.midIn} H ${busX.s1d} V ${gates[2].a3.midIn}`} val={s1} col={s1Color} rgb={s1Rgb} />
+        <W d={`M ${sJX},${s1Y} V ${s1Y + notHH + 15} H 133 V ${gates[7].a3.midIn} H ${busX.s1d} V ${gates[2].a3.midIn}`} val={s1} col={s1Color} rgb={s1Rgb} />
         {/* S2 direct: junction -> down past NOT -> detour -> bus -> cover AND3[4-7] topIn */}
-        <W d={`M ${sJX},${s2Y} V ${s2Y + notHH + 2} H 140 V ${gates[7].a3.topIn} H ${busX.s2d} V ${gates[4].a3.topIn}`} val={s2} col={s2Color} rgb={s2Rgb} />
+        <W d={`M ${sJX},${s2Y} V ${s2Y + notHH + 15} H 140 V ${gates[7].a3.topIn} H ${busX.s2d} V ${gates[4].a3.topIn}`} val={s2} col={s2Color} rgb={s2Rgb} />
 
         {/* ===== AND3 DECODE GATES ===== */}
         {gates.map(function (g, i) {
