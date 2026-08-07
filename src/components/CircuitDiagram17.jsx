@@ -236,10 +236,10 @@ export default function CircuitDiagram17({
         <W d={`M ${notEX},${s1Y} H ${busX.s1p}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
         <W d={`M ${busX.s1p},${s1Y} V ${gates[0].a4.m2In}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
         <W d={`M ${busX.s1p},${s1Y} V ${gates[13].a4.m2In}`} val={s1Not} col={not2Color} rgb={not2Rgb} />
-        {/* S0' trunk (NOT #1 merah): NOT output -> detour y=215 -> bus s0p -> up & down */}
-        <W d={`M ${notEX},${s0Y} H 135 V 215 H ${busX.s0p}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
-        <W d={`M ${busX.s0p},215 V ${gates[0].a4.bIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
-        <W d={`M ${busX.s0p},215 V ${gates[14].a4.bIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        {/* S0' trunk (NOT #1 merah): NOT output -> detour y=305 -> bus s0p -> up & down */}
+        <W d={`M ${notEX},${s0Y} H 135 V 305 H ${busX.s0p}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        <W d={`M ${busX.s0p},305 V ${gates[0].a4.bIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
+        <W d={`M ${busX.s0p},305 V ${gates[14].a4.bIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
 
         {/* ===== SELECT BUS TRUNKS — DIRECT (warna sinyal masing-masing) ===== */}
         {/* S0 direct: junction -> up to detour y=170 -> bus s0d -> down to gate[15] bIn */}
