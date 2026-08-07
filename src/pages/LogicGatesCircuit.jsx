@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { FavoritesProvider } from '../context/FavoritesContext';
+import { CardNavigationProvider, useCardNavigation } from '../context/CardNavigationContext';
 import CircuitCard01 from '../components/CircuitCard01';
 import CircuitCard02 from '../components/CircuitCard02';
 import CircuitCard03 from '../components/CircuitCard03';
@@ -51,7 +52,8 @@ const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 11, fontWeight:
 
 const backBtnStyle = { display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #1e293b", color: "#64748b", cursor: "pointer", fontFamily: "Inter,sans-serif", fontSize: 13, fontWeight: 600, transition: "color 0.2s" };
 
-export default function LogicGatesCircuit({ setPage }) {
+function CircuitList({ setPage }) {
+    const { highlightedCard } = useCardNavigation();
     const [query, setQuery] = useState("");
     const [cardNum, setCardNum] = useState("");
     const [activeTier, setActiveTier] = useState(null);
@@ -199,10 +201,24 @@ export default function LogicGatesCircuit({ setPage }) {
                     })}
                 </div>
 
-                {/* Cards — difilter, auto-wrap dengan FavoritesProvider */}
+                {/* Cards — difilter, auto-wrap dengan FavoritesProvider + CardNavigation glow */}
+                <style>{`
+                    @keyframes ic-pulse-glow {
+                        0%, 100% { box-shadow: 0 0 8px rgba(255,255,255,0.15), inset 0 0 4px rgba(255,255,255,0.03); outline-color: rgba(255,255,255,0.3); }
+                        50% { box-shadow: 0 0 20px rgba(255,255,255,0.35), 0 0 40px rgba(255,255,255,0.1), inset 0 0 8px rgba(255,255,255,0.06); outline-color: rgba(255,255,255,0.7); }
+                    }
+                    .ic-highlighted-card {
+                        outline: 2px solid rgba(255,255,255,0.5);
+                        outline-offset: 3px;
+                        border-radius: 18px;
+                        animation: ic-pulse-glow 1.5s ease-in-out infinite;
+                    }
+                `}</style>
                 {filtered.map(card => (
                     <FavoritesProvider key={card.num} itemId={`circuit-${card.num}`} itemType="circuit">
-                        <card.el />
+                        <div id={`card-${card.num}`} className={highlightedCard === card.num ? 'ic-highlighted-card' : ''}>
+                            <card.el />
+                        </div>
                     </FavoritesProvider>
                 ))}
                 {hasFilter && filtered.length === 0 && (
@@ -212,5 +228,13 @@ export default function LogicGatesCircuit({ setPage }) {
                 )}
             </div>
         </div>
+    );
+}
+
+export default function LogicGatesCircuit({ setPage }) {
+    return (
+        <CardNavigationProvider>
+            <CircuitList setPage={setPage} />
+        </CardNavigationProvider>
     );
 }

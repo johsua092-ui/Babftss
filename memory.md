@@ -1001,3 +1001,35 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - B8: Card 17 (16:1 Demux) NORMAL
 
 **VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli untuk S3S2S1S0=1101 (pilih Y13). Hasil: (a) logic benar, Y13 aktif sesuai ekspektasi, (b) TIDAK ADA overlap — dikonfirmasi definitif dari source: 8 bus lane (`busX`) di X=148,163,178,193,208,223,238,253, semua unik berjarak 15 unit, (c) Regulasi Multi-NOT dipatuhi: NOT S0=merah, NOT S1=pink, NOT S2=teal, NOT S3=fuchsia — 4 warna berbeda terkonfirmasi di kode, (d) HeartButton, format tabel ringkas, registrasi ALL_CARDS terkonfirmasi. **Bab B (Mux & Demux) resmi TUNTAS — 8 card (B1-B8), semua terverifikasi independen oleh Claude, tidak ada satupun yang gagal verifikasi.** Status Card 17: **SELESAI & TERVERIFIKASI PENUH.**
+
+## 15. TAHAP A: FONDASI FITUR IC BLOCK (SELESAI & BUILD SUKSES)
+
+**Tujuan:** Membangun infrastruktur teknis agar card manapun bisa mereferensikan card lain sebagai "IC Block" (kotak kecil dengan pin input/output). Task ini FONDASI saja — belum ada card yang pakai fitur ini sampai Tahap B.
+
+**File yang dibuat:**
+1. **`src/context/CardNavigationContext.jsx`** — React Context yang menyediakan:
+   - `highlightedCard` (string|null) — nomor card yang sedang di-highlight
+   - `navigateToCard(targetNum)` — scroll ke `#card-{targetNum}` + set highlight
+   - `clearHighlight()` — hapus highlight
+   - Document-level click listener: klik di mana saja = clear highlight (tanpa timeout)
+   - `isNavigatingRef` flag + double `requestAnimationFrame` supaya klik ICBlock (yang `stopPropagation`) tidak langsung ke-clear oleh document listener di event cycle yang sama
+   - Export: `CardNavigationProvider` (wrapper), `useCardNavigation()` (hook)
+
+2. **`src/components/ICBlockRef.jsx`** — Komponen SVG reusable (bukan HTML div, bisa ditempel di dalam `<svg>`):
+   - Props: `{ targetNum, label, inputs[], outputs[], x, y, width, height }`
+   - Kotak `<rect>` background gelap + border, pin kiri (input) & kanan (output) dengan garis pendek
+   - Label utama di tengah, teks "click me" dengan SVG `<linearGradient>` aurora (hijau-cyan-ungu-pink)
+   - Hover effect: overlay transparan berubah saat mouse masuk
+   - `onClick` = `navigateToCard(targetNum)` + `e.stopPropagation()`
+
+**File yang di-edit:**
+3. **`src/pages/LogicGatesCircuit.jsx`**:
+   - Import `CardNavigationProvider` + `useCardNavigation`
+   - Refactor: render logic dipindah ke inner component `CircuitList` (supaya bisa consume `useCardNavigation` hook)
+   - `export default` sekarang membungkus `<CardNavigationProvider>` di luar `CircuitList`
+   - Tiap card dibungkus `<div id="card-{num}">` (untuk scroll target)
+   - Tiap card mendapat class `ic-highlighted-card` (CSS animation pulsing glow putih 1.5s infinite) ketika `highlightedCard === card.num`
+
+**Verifikasi:** `npm run build` sukses (2175 modules, 0 error). Card 01-17 TIDAK disentuh.
+
+**Cara pakai (Tahap B nanti):** Di `CircuitDiagramXX.jsx` manapun, import `ICBlockRef`, taruh `<ICBlockRef targetNum="09" label="Full Adder 1 Bit" inputs={["A","B","Cin"]} outputs={["Sum","Cout"]} x={...} y={...} width={140} height={60} />` langsung di dalam JSX SVG — otomatis jadi kotak IC yang bisa diklik untuk navigasi ke card aslinya.
