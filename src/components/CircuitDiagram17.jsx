@@ -187,11 +187,11 @@ export default function CircuitDiagram17({
         {/* D horizontal stops at x=140 (before bus lanes at x=148+), goes up to y=55 (above gate0 tIn=70), then right to trunk */}
         <W d={`M 47,${dY} H 140 V 55 H ${dTrunkX}`} val={d} col={andColor} rgb={andRgb} />
         {/* D trunk: vertical from y=55 down to last AND2 botIn */}
-        <W d={`M ${dTrunkX},55 V ${gates[15].a2.botIn}`} val={d} col={andColor} rgb={andRgb} />
+        <W d={`M ${dTrunkX},55 V ${gates[15].a2.bIn}`} val={d} col={andColor} rgb={andRgb} />
         {gates.map(function (g, i) {
             return <Fragment key={"db" + i}>
-                <circle cx={dTrunkX} cy={g.a2.botIn} r={2.5} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
-                <W d={`M ${dTrunkX},${g.a2.botIn} H ${and2SX}`} val={d} col={andColor} rgb={andRgb} />
+                <circle cx={dTrunkX} cy={g.a2.bIn} r={2.5} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+                <W d={`M ${dTrunkX},${g.a2.bIn} H ${and2SX}`} val={d} col={andColor} rgb={andRgb} />
             </Fragment>;
         })}
 
