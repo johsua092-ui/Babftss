@@ -958,3 +958,44 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 **Penerapan retroaktif ke Card 11, 12, 13, 15:** dicek via diff terarah — dikonfirmasi HANYA variabel warna yang berubah (rename notColor -> not1Color/not2Color/dst, nilai sesuai tabel warna per card di design.md 3.5.8). TIDAK ADA perubahan koordinat wire, struktur gate, atau logika. Eksekusi bersih & presisi.
 
 **Soal Insiden Force-Push #2 (6 Agustus 2026):** dikonfirmasi state akhir di GitHub AMAN (commit `72141dd`, Card 16 + semua regulasi utuh — sudah diverifikasi Claude langsung dari zip). Claude menambahkan **Aturan 4C** ke `RULES_KESELAMATAN_GIT.md`: sebelum panik "undo" karena website down setelah push, WAJIB diagnosis dulu apakah itu benar-benar masalah git atau cuma bug/syntax error di kode (yang solusinya cukup fix kecil + push biasa, bukan revert/force). Ini menyasar akar kebingungan yang memicu seluruh rangkaian insiden #2 kemarin.
+
+---
+
+## 14. CARD 17: 16:1 DEMULTIPLEXER (DEMUX) — PENUTUP BAB B (SELESAI & TERVERIFIKASI)
+
+**Tanggal:** 7 Agustus 2026
+
+**File dibuat:**
+- `src/components/CircuitDiagram17.jsx` — diagram SVG, 297 baris, template Card 16 + teknik decode 4-bit Card 13
+- `src/components/CircuitCard17.jsx` — wrapper card + truth table ringkas 16 baris
+
+**File diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — import CircuitCard17, tambah entri ALL_CARDS
+- `design.md` — tambah baris Card 17 di tabel 3.5.8 multi-NOT
+
+**Spesifikasi:**
+- 1 input data (D = hijau), 4 sinyal select (S0=cyan, S1=orange, S2=ungu, S3=lime), 4 NOT gate, 16 output (Y0-Y15)
+- 4 warna NOT: merah #f87171 (S0'), pink #f472b6 (S1'), teal #2dd4bf (S2'), fuchsia #d946ef (S3')
+- 8 bus lane unik (15px spacing), D trunk di x=380, decode out lane di x=368
+- 16 AND4 decode + 16 AND2 data, tanpa OR tree
+- Tier: NORMAL, HeartButton sejajar badge
+- Truth table: format ringkas (16 baris, D=val di sel aktif, 0 di sel non-aktif)
+
+**Verifikasi:**
+- Build: sukses (0 error)
+- Logika: 16 kombinasi decode benar (Y_k = D AND decode_k)
+- Warna multi-NOT: 4 warna berbeda, semua terverifikasi dari kode
+- Overlap kabel: 8 bus lane X unik, lane assignments terpisah (dTrunkX=380, decodeOutLane=368, sDirectY detour Y berbeda)
+- HeartButton: ada
+- Format tabel ringkas: D=val (bukan hanya D=1), konsisten Card 15/16
+- Registrasi ALL_CARDS: { num: '17', name: '16:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard17 }
+
+**Status Bab B (Mux & Demux):** **TUNTAS.** Semua card B1-B8 selesai & terverifikasi.
+- B1: Card 10 (2:1 Mux) NORMAL
+- B2: Card 11 (4:1 Mux) NORMAL
+- B3: Card 12 (8:1 Mux) NORMAL
+- B4: Card 13 (16:1 Mux) NORMAL
+- B5: Card 14 (2:1 Demux) NORMAL
+- B6: Card 15 (4:1 Demux) NORMAL
+- B7: Card 16 (8:1 Demux) NORMAL
+- B8: Card 17 (16:1 Demux) NORMAL

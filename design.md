@@ -323,3 +323,4 @@ Pemula sekarang bisa langsung melihat: "kabel merah dari NOT S0, kabel pink dari
 | 13 | 16:1 Mux | 4 | Merah `#f87171` | Teal `#2dd4bf` | Fuchsia `#d946ef` | Purple `#c084fc` | Rose terlalu mirip merah, teal beda konteks dari D15 |
 | 15 | 4:1 Demux | 2 | Merah `#f87171` | Pink `#f472b6` | — | — | |
 | 16 | 8:1 Demux | 3 | Merah `#f87171` | Pink `#f472b6` | Teal `#2dd4bf` | — | Referensi awal |
+| 17 | 16:1 Demux | 4 | Merah `#f87171` | Pink `#f472b6` | Teal `#2dd4bf` | Fuchsia `#d946ef` | S3=lime `#a3e635` |
