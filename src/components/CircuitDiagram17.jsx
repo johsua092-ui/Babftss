@@ -77,7 +77,7 @@ export default function CircuitDiagram17({
     const dTrunkX = 380;       // D fan-out trunk
 
     // === S DIRECT BUS DETOUR Y (gaps between NOT gates / gate areas) ===
-    const sDirectY = { s3: 1350, s2: 1000, s1: 600, s0: 170 };
+    const sDirectY = { s3: 1350, s2: 1000, s1: 600, s0: 140 };
 
     // === DECODE MAP (which bus signal connects to each AND4 input) ===
     const gMap = [];
@@ -242,7 +242,7 @@ export default function CircuitDiagram17({
         <W d={`M ${busX.s0p},305 V ${gates[14].a4.bIn}`} val={s0Not} col={not1Color} rgb={not1Rgb} />
 
         {/* ===== SELECT BUS TRUNKS — DIRECT (warna sinyal masing-masing) ===== */}
-        {/* S0 direct: junction -> up to detour y=170 -> bus s0d -> down to gate[15] bIn */}
+        {/* S0 direct: junction -> up to detour y=140 -> bus s0d -> down to gate[15] bIn */}
         <W d={`M ${sJX},${s0Y} V ${sDirectY.s0} H ${busX.s0d}`} val={s0} col={s0Color} rgb={s0Rgb} />
         <W d={`M ${busX.s0d},${sDirectY.s0} V ${gates[15].a4.bIn}`} val={s0} col={s0Color} rgb={s0Rgb} />
         {/* S1 direct: junction -> down to detour y=600 -> bus s1d -> up & down */}
