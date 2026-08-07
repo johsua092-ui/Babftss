@@ -999,3 +999,5 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - B6: Card 15 (4:1 Demux) NORMAL
 - B7: Card 16 (8:1 Demux) NORMAL
 - B8: Card 17 (16:1 Demux) NORMAL
+
+**VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli untuk S3S2S1S0=1101 (pilih Y13). Hasil: (a) logic benar, Y13 aktif sesuai ekspektasi, (b) TIDAK ADA overlap — dikonfirmasi definitif dari source: 8 bus lane (`busX`) di X=148,163,178,193,208,223,238,253, semua unik berjarak 15 unit, (c) Regulasi Multi-NOT dipatuhi: NOT S0=merah, NOT S1=pink, NOT S2=teal, NOT S3=fuchsia — 4 warna berbeda terkonfirmasi di kode, (d) HeartButton, format tabel ringkas, registrasi ALL_CARDS terkonfirmasi. **Bab B (Mux & Demux) resmi TUNTAS — 8 card (B1-B8), semua terverifikasi independen oleh Claude, tidak ada satupun yang gagal verifikasi.** Status Card 17: **SELESAI & TERVERIFIKASI PENUH.**
