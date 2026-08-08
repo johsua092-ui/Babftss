@@ -25,7 +25,7 @@ export default function CircuitDiagram_FullAdder4bit({
     const carryColors = [
         { hex: '#a3e635', rgb: hexToRgbStr('#a3e635') }, // c1 (0→1) - lime
         { hex: '#818cf8', rgb: hexToRgbStr('#818cf8') }, // c2 (1→2) - indigo
-        { hex: '#fbbf24', rgb: hexToRgbStr('#fbbf24') }, // c3 (2→3) - amber
+        { hex: '#fb7185', rgb: hexToRgbStr('#fb7185') }, // c3 (2→3) - rose
     ];
     // 8 unique input colors (A0 B0 A1 B1 A2 B2 A3 B3)
     const inputColors = [
