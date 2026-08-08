@@ -34,7 +34,7 @@ export default function CircuitDiagram_FullAdder4bit({
     ];
 
     // Carry lane X (right side, unique per wire to avoid overlap)
-    const carryLaneX = [blockX + blockW + pinLen + 10, blockX + blockW + pinLen + 15, blockX + blockW + pinLen + 20];
+    const carryLaneX = [blockX + blockW + pinLen + 10, blockX + blockW + pinLen + 20, blockX + blockW + pinLen + 30];
 
     // Input node positions (single column: A above, B below)
     const inputNodeX = 28;
