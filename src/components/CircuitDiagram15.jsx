@@ -118,8 +118,8 @@ export default function CircuitDiagram15({ d, s0, s1, s0Not, s1Not, y0, y1, y2, 
         <circle cx={sJX} cy={s0Y} r={3} fill={s0 ? s0Color : `rgba(${s0Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         {/* S0 -> NOT gate (at x=82) */}
         <W d={`M ${sJX},${s0Y} H ${notSX}`} val={s0} col={s0Color} rgb={s0Rgb} />
-        {/* S0 -> direct bus: up then right to bus lane at AND1 topIn level */}
-        <W d={`M ${sJX},${s0Y} V ${andGates[1].topIn} H ${s0dX}`} val={s0} col={s0Color} rgb={s0Rgb} />
+        {/* S0 -> direct bus: up past NOT gate then right to bus lane, then down to AND1 topIn level */}
+        <W d={`M ${sJX},${s0Y} V 148 H ${s0dX} V ${andGates[1].topIn}`} val={s0} col={s0Color} rgb={s0Rgb} />
 
         {/* ===== S1: input -> junction -> NOT + direct bus ===== */}
         <W d={`M 47,${s1Y} H ${sJX}`} val={s1} col={s1Color} rgb={s1Rgb} />
