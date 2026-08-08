@@ -16,10 +16,15 @@ export default function CircuitDiagram_FullAdder4bit({
     const nodeR = 12;
     const inputBoxW = 38, inputBoxH = 22;
 
-    // Colors (per design.md 3.5: data path = green)
-    const wireColor = '#4ade80';
-    const wireRgb = hexToRgbStr(wireColor);
-    const labelColor = '#94a3b8';
+    // ── Color palette (per design.md §3.5) ──
+    // A & B = hijau (input pertama & kedua, §3.5.5)
+    const dataColor = '#4ade80', dataRgb = hexToRgbStr(dataColor);
+    // Cin = cyan (sinyal kontrol, warna unik, §3.5.4)
+    const cinColor = '#22d3ee', cinRgb = hexToRgbStr(cinColor);
+    // Carry chain (c1,c2,c3,Cout) = orange (warna unik, §3.5.4)
+    const carryColor = '#fb923c', carryRgb = hexToRgbStr(carryColor);
+    // Sum output = hijau (output gerbang terakhir, §3.5.6 Prinsip 6)
+    const sumColor = '#4ade80', sumRgb = hexToRgbStr(sumColor);
 
     // Color helpers (per design.md regulation)
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
@@ -72,81 +77,79 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Global Cin → Block 0 Cin pin ── */}
+            {/* ── Global Cin → Block 0 Cin pin (cyan) ── */}
             <g>
                 <rect x={inputNodeX - inputBoxW / 2} y={cinNodeY - inputBoxH / 2}
                     width={inputBoxW} height={inputBoxH} rx={5}
-                    fill={cin ? `rgba(${wireRgb},0.2)` : `rgba(${wireRgb},0.1)`}
-                    stroke={cin ? wireColor : `rgba(${wireRgb},0.3)`} strokeWidth={1.5}
+                    fill={cin ? `rgba(${cinRgb},0.2)` : `rgba(${cinRgb},0.1)`}
+                    stroke={cin ? cinColor : `rgba(${cinRgb},0.3)`} strokeWidth={1.5}
                     onClick={onToggleCin} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                 />
                 <text x={inputNodeX} y={cinNodeY + 4} textAnchor="middle"
                     fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                    fill={cin ? wireColor : `rgba(${wireRgb},0.5)`}
+                    fill={cin ? cinColor : `rgba(${cinRgb},0.5)`}
                     onClick={onToggleCin} style={{ cursor: 'pointer' }}
                 >Cin={cin ? 1 : 0}</text>
-                {/* Cin wire: right from node, down to Cin pin Y, right to Cin pin */}
                 <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + cinNodeY +
                     " H " + (blockX - pinLen - 15) +
                     " V " + inPinY(blocks[0].y, 2) +
                     " H " + (blockX - pinLen)}
-                    fill="none" stroke={wc(cin, wireColor, wireRgb)}
+                    fill="none" stroke={wc(cin, cinColor, cinRgb)}
                     strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                     style={{ transition: "stroke 0.3s" }}
                 />
             </g>
 
-            {/* ── A inputs → Block A pins (straight horizontal wire) ── */}
+            {/* ── A inputs → Block A pins (green) ── */}
             {[[a0, 'A0', onToggleA0, 0], [a1, 'A1', onToggleA1, 1], [a2, 'A2', onToggleA2, 2], [a3, 'A3', onToggleA3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
-                var py = inPinY(blk.y, 0); // aligned to pin A
+                var py = inPinY(blk.y, 0);
                 return (
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? `rgba(${wireRgb},0.2)` : `rgba(${wireRgb},0.1)`}
-                            stroke={val ? wireColor : `rgba(${wireRgb},0.3)`} strokeWidth={1.5}
+                            fill={val ? `rgba(${dataRgb},0.2)` : `rgba(${dataRgb},0.1)`}
+                            stroke={val ? dataColor : `rgba(${dataRgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? wireColor : `rgba(${wireRgb},0.5)`}
+                            fill={val ? dataColor : `rgba(${dataRgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         <line x1={inputNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
-                            stroke={wc(val, wireColor, wireRgb)} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, dataColor, dataRgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                     </g>
                 );
             })}
 
-            {/* ── B inputs → Block B pins (below A, wire jogs up to pin B) ── */}
+            {/* ── B inputs → Block B pins (green, wire jogs up to pin B) ── */}
             {[[b0, 'B0', onToggleB0, 0], [b1, 'B1', onToggleB1, 1], [b2, 'B2', onToggleB2, 2], [b3, 'B3', onToggleB3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
                 var aPinY = inPinY(blk.y, 0);
-                var py = aPinY + inputBoxH + 5; // A bottom + 5px gap
-                var bPinY = inPinY(blk.y, 1); // actual pin B on IC block
+                var py = aPinY + inputBoxH + 5;
+                var bPinY = inPinY(blk.y, 1);
                 var jogX = inputNodeX + inputBoxW / 2 + (blockX - pinLen - inputNodeX - inputBoxW / 2) * 0.4;
                 return (
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? `rgba(${wireRgb},0.2)` : `rgba(${wireRgb},0.1)`}
-                            stroke={val ? wireColor : `rgba(${wireRgb},0.3)`} strokeWidth={1.5}
+                            fill={val ? `rgba(${dataRgb},0.2)` : `rgba(${dataRgb},0.1)`}
+                            stroke={val ? dataColor : `rgba(${dataRgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? wireColor : `rgba(${wireRgb},0.5)`}
+                            fill={val ? dataColor : `rgba(${dataRgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
-                        {/* Wire: right from button, jog up to pin B, right to IC block */}
                         <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + py +
                             " H " + jogX + " V " + bPinY + " H " + (blockX - pinLen)}
-                            fill="none" stroke={wc(val, wireColor, wireRgb)}
+                            fill="none" stroke={wc(val, dataColor, dataRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
@@ -154,17 +157,17 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Carry chain wires (Cout block N → Cin block N+1) ── */}
+            {/* ── Carry chain wires (orange) ── */}
             {[[c1, 0, 1], [c2, 1, 2], [c3, 2, 3]].map(function(arr) {
                 var carryVal = arr[0], fromIdx = arr[1], toIdx = arr[2];
                 var fromBlk = blocks[fromIdx];
                 var toBlk = blocks[toIdx];
-                var fromX = blockX + blockW + pinLen; // Cout pin end
-                var fromPY = outPinY(fromBlk.y, 1); // Cout = output pin 1
-                var toX = blockX - pinLen; // Cin pin start
-                var toPY = inPinY(toBlk.y, 2); // Cin = input pin 2
+                var fromX = blockX + blockW + pinLen;
+                var fromPY = outPinY(fromBlk.y, 1);
+                var toX = blockX - pinLen;
+                var toPY = inPinY(toBlk.y, 2);
                 var laneX = carryLaneX[fromIdx];
-                var belowBlockY = toBlk.y + blockH + 18; // route well below the target block
+                var belowBlockY = toBlk.y + blockH + 18;
 
                 return (
                     <path key={"carry-" + fromIdx}
@@ -173,29 +176,29 @@ export default function CircuitDiagram_FullAdder4bit({
                            " V " + belowBlockY +
                            " H " + toX +
                            " V " + toPY}
-                        fill="none" stroke={wc(carryVal, wireColor, wireRgb)}
+                        fill="none" stroke={wc(carryVal, carryColor, carryRgb)}
                         strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                         style={{ transition: "stroke 0.3s" }}
                     />
                 );
             })}
 
-            {/* ── Sum outputs → output nodes ── */}
+            {/* ── Sum outputs (green, per §3.5.6 Prinsip 6) ── */}
             {[[sum0, 'S0', 0], [sum1, 'S1', 1], [sum2, 'S2', 2], [sum3, 'S3', 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], idx = arr[2];
                 var blk = blocks[idx];
                 var pinX = blockX + blockW + pinLen;
-                var pinY = outPinY(blk.y, 0); // Sum = output pin 0
+                var pinY = outPinY(blk.y, 0);
                 return (
                     <g key={label}>
                         <line x1={pinX} y1={pinY} x2={sumNodeX - nodeR} y2={pinY}
-                            stroke={wc(val, wireColor, wireRgb)} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, sumColor, sumRgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={sumNodeX} cy={pinY} r={nodeR}
-                            fill={val ? wireColor : '#1e293b'}
-                            stroke={val ? wireColor : '#334155'} strokeWidth={1.5}
-                            filter={mkGlow(val, wireRgb)}
+                            fill={val ? sumColor : '#1e293b'}
+                            stroke={val ? sumColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(val, sumRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={sumNodeX} y={pinY + 3.5} textAnchor="middle"
@@ -207,25 +210,25 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Final Cout output (below S3) ── */}
+            {/* ── Final Cout output (orange, below S3) ── */}
             {function() {
                 var coutPinX = blockX + blockW + pinLen;
                 var coutPinY = outPinY(blocks[3].y, 1);
                 var s3CircleY = outPinY(blocks[3].y, 0);
-                var coutCircleY = s3CircleY + nodeR + 10 + nodeR; // below S3 circle with gap
+                var coutCircleY = s3CircleY + nodeR + 10 + nodeR;
                 var jogX = coutPinX + (coutNodeX - nodeR - coutPinX) * 0.65;
                 return (
                     <g>
                         <path d={"M " + coutPinX + " " + coutPinY +
                             " H " + jogX + " V " + coutCircleY + " H " + (coutNodeX - nodeR)}
-                            fill="none" stroke={wc(cout, wireColor, wireRgb)}
+                            fill="none" stroke={wc(cout, carryColor, carryRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={coutNodeX} cy={coutCircleY} r={nodeR}
-                            fill={cout ? wireColor : '#1e293b'}
-                            stroke={cout ? wireColor : '#334155'} strokeWidth={1.5}
-                            filter={mkGlow(cout, wireRgb)}
+                            fill={cout ? carryColor : '#1e293b'}
+                            stroke={cout ? carryColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(cout, carryRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={coutNodeX} y={coutCircleY + 3.5} textAnchor="middle"
