@@ -28,7 +28,7 @@ export default function CircuitDiagram_FullAdder4bit({
         { hex: '#38bdf8', rgb: hexToRgbStr('#38bdf8') }, // A1 - biru langit
         { hex: '#f472b6', rgb: hexToRgbStr('#f472b6') }, // B1 - pink
         { hex: '#fb923c', rgb: hexToRgbStr('#fb923c') }, // A2 - oranye
-        { hex: '#a78bfa', rgb: hexToRgbStr('#a78bfa') }, // B2 - ungu muda
+        { hex: '#2dd4bf', rgb: hexToRgbStr('#2dd4bf') }, // B2 - teal
         { hex: '#22d3ee', rgb: hexToRgbStr('#22d3ee') }, // A3 - cyan
         { hex: '#f87171', rgb: hexToRgbStr('#f87171') }, // B3 - merah
     ];
