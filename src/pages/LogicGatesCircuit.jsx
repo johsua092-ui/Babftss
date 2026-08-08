@@ -26,7 +26,7 @@ const ALL_CARDS = [
     { num: '06', name: 'Gerbang 3 Input Sederhana', tier: 'EASY', el: CircuitCard05 },
     { num: '07', name: 'Gerbang 4 Input Lanjutan', tier: 'EASY', el: CircuitCard06 },
     { num: '08', name: 'Half Adder', tier: 'EASY', el: CircuitCard07 },
-    { num: '09', name: 'Full Adder', tier: 'NORMAL', el: CircuitCard09 },
+    { num: '09', name: 'Full Adder (1 Bit)', tier: 'NORMAL', el: CircuitCard09 },
     { num: '10', name: 'Full Adder 4-bit', tier: 'HARD', el: CircuitCard_FullAdder4bit },
     { num: '11', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard10 },
     { num: '12', name: '4:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard11 },
