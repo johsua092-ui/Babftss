@@ -116,13 +116,11 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── B inputs → Block B pins (aligned to same Y as A) ── */}
+            {/* ── B inputs → Block B pins ── */}
             {[[b0, 'B0', onToggleB0, 0], [b1, 'B1', onToggleB1, 1], [b2, 'B2', onToggleB2, 2], [b3, 'B3', onToggleB3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
-                var py = inPinY(blk.y, 0); // same Y as A buttons (pin index 0)
-                var targetPy = inPinY(blk.y, 1); // actual B pin Y on IC block
-                var jogX = bNodeX + inputBoxW / 2 + (blockX - pinLen - bNodeX - inputBoxW / 2) * 0.5;
+                var py = inPinY(blk.y, 1);
                 return (
                     <g key={label}>
                         <rect x={bNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
@@ -136,10 +134,8 @@ export default function CircuitDiagram_FullAdder4bit({
                             fill={val ? '#0e1420' : labelColor}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
-                        <path d={"M " + (bNodeX + inputBoxW / 2) + " " + py +
-                            " H " + jogX + " V " + targetPy + " H " + (blockX - pinLen)}
-                            fill="none" stroke={val ? wireColor : dimColor}
-                            strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                        <line x1={bNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
+                            stroke={val ? wireColor : dimColor} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                     </g>
