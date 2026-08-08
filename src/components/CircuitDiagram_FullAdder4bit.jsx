@@ -11,7 +11,7 @@ export default function CircuitDiagram_FullAdder4bit({
     const blockW = 140, blockH = 60, pinLen = 12;
     const blockX = 130;
     const blockStartY = 45;
-    const blockVGap = 80;
+    const blockVGap = 42;
     const nodeR = 12;
     const inputBoxW = 38, inputBoxH = 22;
 
