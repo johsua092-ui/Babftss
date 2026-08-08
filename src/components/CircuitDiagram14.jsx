@@ -2,8 +2,13 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onToggleS }) {
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
-    const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
+    // ── Unique colors per signal (regulasi warna) ──
+    const dCol = '#facc15', dRgb = hexToRgbStr(dCol);           // D - kuning
+    const sCol = '#f87171', sRgb = hexToRgbStr(sCol);           // S - merah
+    const sNotCol = '#fb923c', sNotRgb = hexToRgbStr(sNotCol); // S' - oranye (internal)
+    const y0Col = '#4ade80', y0Rgb = hexToRgbStr(y0Col);       // Y0 - hijau
+    const y1Col = '#a78bfa', y1Rgb = hexToRgbStr(y1Col);       // Y1 - ungu
+
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
@@ -48,9 +53,9 @@ export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onTogg
     const mkFill = (val, rgb) => val ? `rgba(${rgb},0.13)` : "#0f172a";
     const mkStroke = (val, col) => val ? col : "#475569";
 
-    const notGlow = mkGlow(sNot, notRgb), notFill = mkFill(sNot, notRgb), notStroke = mkStroke(sNot, notColor);
-    const and1Glow = mkGlow(y0, andRgb), and1Fill = mkFill(y0, andRgb), and1Stroke = mkStroke(y0, andColor);
-    const and2Glow = mkGlow(y1, andRgb), and2Fill = mkFill(y1, andRgb), and2Stroke = mkStroke(y1, andColor);
+    const notGlow = mkGlow(sNot, sNotRgb), notFill = mkFill(sNot, sNotRgb), notStroke = mkStroke(sNot, sNotCol);
+    const and1Glow = mkGlow(y0, y0Rgb), and1Fill = mkFill(y0, y0Rgb), and1Stroke = mkStroke(y0, y0Col);
+    const and2Glow = mkGlow(y1, y1Rgb), and2Fill = mkFill(y1, y1Rgb), and2Stroke = mkStroke(y1, y1Col);
 
     // --- Component helpers ---
     const NotGate = ({ sx, ty, by, my, triEx, bubR, glow, fill, stroke }) => <Fragment>
@@ -79,36 +84,36 @@ export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onTogg
     const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
     // S' label color
-    const sPrimeLabelColor = sNot ? notColor : "#475569";
+    const sPrimeLabelColor = sNot ? sNotCol : "#475569";
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
-        <InputNode ix={inputDX} iy={inputDY} val={d} label="D" onToggle={onToggleD} color={andColor} rgb={andRgb} />
-        <InputNode ix={inputSX} iy={inputSY} val={s} label="S" onToggle={onToggleS} color={notColor} rgb={notRgb} />
+        <InputNode ix={inputDX} iy={inputDY} val={d} label="D" onToggle={onToggleD} color={dCol} rgb={dRgb} />
+        <InputNode ix={inputSX} iy={inputSY} val={s} label="S" onToggle={onToggleS} color={sCol} rgb={sRgb} />
 
         {/* ===== WIRE D: input -> junction -> fan-out ===== */}
-        <W d={`M ${inputDX + inputNodeW},${inputDY} H ${dJX}`} val={d} col={andColor} rgb={andRgb} />
+        <W d={`M ${inputDX + inputNodeW},${inputDY} H ${dJX}`} val={d} col={dCol} rgb={dRgb} />
         {/* D branch up -> AND1 top input */}
-        <W d={`M ${dJX},${inputDY} V ${and1TY} H ${and1SX}`} val={d} col={andColor} rgb={andRgb} />
+        <W d={`M ${dJX},${inputDY} V ${and1TY} H ${and1SX}`} val={d} col={dCol} rgb={dRgb} />
         {/* D branch down -> AND2 top input */}
-        <W d={`M ${dJX},${inputDY} V ${and2TY} H ${and2SX}`} val={d} col={andColor} rgb={andRgb} />
+        <W d={`M ${dJX},${inputDY} V ${and2TY} H ${and2SX}`} val={d} col={dCol} rgb={dRgb} />
         {/* Junction dot at D fan-out */}
-        <circle cx={dJX} cy={inputDY} r={3} fill={d ? andColor : `rgba(${andRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={dJX} cy={inputDY} r={3} fill={d ? dCol : `rgba(${dRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== WIRE S: input -> junction -> fan-out ===== */}
-        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={notColor} rgb={notRgb} />
+        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={sCol} rgb={sRgb} />
         {/* S branch -> NOT gate input */}
-        <W d={`M ${sJX},${inputSY} V ${notMY} H ${notSX}`} val={s} col={notColor} rgb={notRgb} />
+        <W d={`M ${sJX},${inputSY} V ${notMY} H ${notSX}`} val={s} col={sCol} rgb={sRgb} />
         {/* S branch down -> AND2 bottom input */}
-        <W d={`M ${sJX},${inputSY} V ${and2BY} H ${and2SX}`} val={s} col={andColor} rgb={andRgb} />
+        <W d={`M ${sJX},${inputSY} V ${and2BY} H ${and2SX}`} val={s} col={sCol} rgb={sRgb} />
         {/* Junction dot at S fan-out */}
-        <circle cx={sJX} cy={inputSY} r={3} fill={s ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={sJX} cy={inputSY} r={3} fill={s ? sCol : `rgba(${sRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== NOT GATE ===== */}
         <NotGate sx={notSX} ty={notTY} by={notBY} my={notMY} triEx={notTriEX} bubR={notBubR} glow={notGlow} fill={notFill} stroke={notStroke} />
 
         {/* ===== WIRE S' (NOT output) -> AND1 bottom input ===== */}
-        <W d={`M ${notEX},${notMY} H 160 V ${and1BY} H ${and1SX}`} val={sNot} col={andColor} rgb={andRgb} />
+        <W d={`M ${notEX},${notMY} H 160 V ${and1BY} H ${and1SX}`} val={sNot} col={sNotCol} rgb={sNotRgb} />
         {/* Label S' with overline */}
         <text x={170} y={62} textAnchor="start" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
         <line x1={170} y1={54} x2={180} y2={54} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
@@ -120,11 +125,11 @@ export default function CircuitDiagram14({ d, s, sNot, y0, y1, onToggleD, onTogg
         <AndGate sx={and2SX} ty={and2TY} by={and2BY} w={and2W} ar={and2AR} glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
 
         {/* ===== OUTPUT Y0 wire & node ===== */}
-        <line x1={and1EX} y1={and1MY} x2={y0OutX - outNodeR} y2={y0OutY} stroke={wc(y0, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <OutputNode ox={y0OutX} oy={y0OutY} val={y0} label="Y0" color={andColor} rgb={andRgb} />
+        <line x1={and1EX} y1={and1MY} x2={y0OutX - outNodeR} y2={y0OutY} stroke={wc(y0, y0Col, y0Rgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={y0OutX} oy={y0OutY} val={y0} label="Y0" color={y0Col} rgb={y0Rgb} />
 
         {/* ===== OUTPUT Y1 wire & node ===== */}
-        <line x1={and2EX} y1={and2MY} x2={y1OutX - outNodeR} y2={y1OutY} stroke={wc(y1, andColor, andRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <OutputNode ox={y1OutX} oy={y1OutY} val={y1} label="Y1" color={andColor} rgb={andRgb} />
+        <line x1={and2EX} y1={and2MY} x2={y1OutX - outNodeR} y2={y1OutY} stroke={wc(y1, y1Col, y1Rgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={y1OutX} oy={y1OutY} val={y1} label="Y1" color={y1Col} rgb={y1Rgb} />
     </svg>;
 }

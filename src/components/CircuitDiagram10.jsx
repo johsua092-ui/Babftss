@@ -2,9 +2,15 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS, onToggleD0, onToggleD1 }) {
-    const notColor = "#f87171", notRgb = hexToRgbStr(notColor);
-    const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
-    const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
+    // ── Unique colors per signal (regulasi warna) ──
+    const sCol = '#f87171', sRgb = hexToRgbStr(sCol);             // S - merah
+    const d0Col = '#facc15', d0Rgb = hexToRgbStr(d0Col);         // D0 - kuning
+    const d1Col = '#38bdf8', d1Rgb = hexToRgbStr(d1Col);         // D1 - biru langit
+    const sNotCol = '#fb923c', sNotRgb = hexToRgbStr(sNotCol);   // S' - oranye (internal)
+    const g1Col = '#4ade80', g1Rgb = hexToRgbStr(g1Col);         // g1 (S'·D0) - hijau
+    const g2Col = '#22d3ee', g2Rgb = hexToRgbStr(g2Col);         // g2 (S·D1) - cyan
+    const yCol = '#a78bfa', yRgb = hexToRgbStr(yCol);             // Y - ungu
+
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
@@ -53,10 +59,10 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
     const mkFill = (val, rgb) => val ? `rgba(${rgb},0.13)` : "#0f172a";
     const mkStroke = (val, col) => val ? col : "#475569";
 
-    const notGlow = mkGlow(sNot, notRgb), notFill = mkFill(sNot, notRgb), notStroke = mkStroke(sNot, notColor);
-    const and1Glow = mkGlow(g1, andRgb), and1Fill = mkFill(g1, andRgb), and1Stroke = mkStroke(g1, andColor);
-    const and2Glow = mkGlow(g2, andRgb), and2Fill = mkFill(g2, andRgb), and2Stroke = mkStroke(g2, andColor);
-    const orGlow = mkGlow(y, orRgb), orFill = mkFill(y, orRgb), orStroke = mkStroke(y, orColor);
+    const notGlow = mkGlow(sNot, sNotRgb), notFill = mkFill(sNot, sNotRgb), notStroke = mkStroke(sNot, sNotCol);
+    const and1Glow = mkGlow(g1, g1Rgb), and1Fill = mkFill(g1, g1Rgb), and1Stroke = mkStroke(g1, g1Col);
+    const and2Glow = mkGlow(g2, g2Rgb), and2Fill = mkFill(g2, g2Rgb), and2Stroke = mkStroke(g2, g2Col);
+    const orGlow = mkGlow(y, yRgb), orFill = mkFill(y, yRgb), orStroke = mkStroke(y, yCol);
 
     // --- Component helpers ---
     const NotGate = ({ sx, ty, by, my, triEx, bubR, ex, glow, fill, stroke }) => <Fragment>
@@ -89,38 +95,38 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
 
     const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
-    // Label color for S': follow NOT color when active, gray when not
-    const sPrimeLabelColor = sNot ? notColor : "#475569";
+    // Label color for S': follow S' color when active, gray when not
+    const sPrimeLabelColor = sNot ? sNotCol : "#475569";
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
-        <InputNode ix={inputSX} iy={inputSY} val={s} label="S" onToggle={onToggleS} color={notColor} rgb={notRgb} />
-        <InputNode ix={inputD0X} iy={inputD0Y} val={d0} label="D0" onToggle={onToggleD0} color={andColor} rgb={andRgb} />
-        <InputNode ix={inputD1X} iy={inputD1Y} val={d1} label="D1" onToggle={onToggleD1} color={andColor} rgb={andRgb} />
+        <InputNode ix={inputSX} iy={inputSY} val={s} label="S" onToggle={onToggleS} color={sCol} rgb={sRgb} />
+        <InputNode ix={inputD0X} iy={inputD0Y} val={d0} label="D0" onToggle={onToggleD0} color={d0Col} rgb={d0Rgb} />
+        <InputNode ix={inputD1X} iy={inputD1Y} val={d1} label="D1" onToggle={onToggleD1} color={d1Col} rgb={d1Rgb} />
 
         {/* ===== WIRE S: horizontal to junction, then fan-out ===== */}
-        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={notColor} rgb={notRgb} />
+        <W d={`M ${inputSX + inputNodeW},${inputSY} H ${sJX}`} val={s} col={sCol} rgb={sRgb} />
         {/* S branch up -> NOT gate */}
-        <W d={`M ${sJX},${inputSY} H ${notSX}`} val={s} col={notColor} rgb={notRgb} />
+        <W d={`M ${sJX},${inputSY} H ${notSX}`} val={s} col={sCol} rgb={sRgb} />
         {/* S branch down -> AND2 top input (route down then right) */}
-        <W d={`M ${sJX},${inputSY} V ${and2TY} H ${and2SX}`} val={s} col={andColor} rgb={andRgb} />
+        <W d={`M ${sJX},${inputSY} V ${and2TY} H ${and2SX}`} val={s} col={sCol} rgb={sRgb} />
         {/* Junction dot at S fan-out point */}
-        <circle cx={sJX} cy={inputSY} r={3} fill={s ? notColor : `rgba(${notRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={sJX} cy={inputSY} r={3} fill={s ? sCol : `rgba(${sRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== NOT GATE ===== */}
         <NotGate sx={notSX} ty={notTY} by={notBY} my={notMY} triEx={notTriEX} bubR={notBubR} ex={notEX} glow={notGlow} fill={notFill} stroke={notStroke} />
 
         {/* ===== WIRE S' (NOT output) -> AND1 top input ===== */}
-        <W d={`M ${notEX},${notMY} H ${and1SX - 30} V ${and1TY} H ${and1SX}`} val={sNot} col={andColor} rgb={andRgb} />
+        <W d={`M ${notEX},${notMY} H ${and1SX - 30} V ${and1TY} H ${and1SX}`} val={sNot} col={sNotCol} rgb={sNotRgb} />
         {/* Label S' */}
         <text x={(notEX + and1SX - 30) / 2} y={notMY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={sPrimeLabelColor} style={{ transition: "fill 0.3s" }}>S</text>
         <line x1={(notEX + and1SX - 30) / 2 - 4} y1={notMY - 16} x2={(notEX + and1SX - 30) / 2 + 4} y2={notMY - 16} stroke={sPrimeLabelColor} strokeWidth="1.3" style={{ transition: "stroke 0.3s" }} />
 
         {/* ===== WIRE D0 -> AND1 bottom input ===== */}
-        <W d={`M ${inputD0X + inputNodeW},${inputD0Y} H ${and1SX}`} val={d0} col={andColor} rgb={andRgb} />
+        <W d={`M ${inputD0X + inputNodeW},${inputD0Y} H ${and1SX}`} val={d0} col={d0Col} rgb={d0Rgb} />
 
         {/* ===== WIRE D1 -> AND2 bottom input ===== */}
-        <W d={`M ${inputD1X + inputNodeW},${inputD1Y} H ${and2SX}`} val={d1} col={andColor} rgb={andRgb} />
+        <W d={`M ${inputD1X + inputNodeW},${inputD1Y} H ${and2SX}`} val={d1} col={d1Col} rgb={d1Rgb} />
 
         {/* ===== AND1 GATE (S' AND D0 -> g1) ===== */}
         <AndGate sx={and1SX} ty={and1TY} by={and1BY} my={and1MY} w={and1W} ar={and1AR} glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
@@ -129,20 +135,20 @@ export default function CircuitDiagram09({ s, d0, d1, sNot, g1, g2, y, onToggleS
         <AndGate sx={and2SX} ty={and2TY} by={and2BY} my={and2MY} w={and2W} ar={and2AR} glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
 
         {/* ===== WIRE g1: AND1 output -> OR top input ===== */}
-        <W d={`M ${and1EX},${and1MY} H ${orSX - 20} V ${orTY} H ${orSX}`} val={g1} col={orColor} rgb={orRgb} />
+        <W d={`M ${and1EX},${and1MY} H ${orSX - 20} V ${orTY} H ${orSX}`} val={g1} col={g1Col} rgb={g1Rgb} />
         {/* Label g1 */}
-        <text x={(and1EX + orSX - 20) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D1</text>
+        <text x={(and1EX + orSX - 20) / 2} y={and1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g1 ? g1Col : "#475569"} style={{ transition: "fill 0.3s" }}>g1</text>
 
         {/* ===== WIRE g2: AND2 output -> OR bottom input ===== */}
-        <W d={`M ${and2EX},${and2MY} H ${orSX - 10} V ${orBY} H ${orSX}`} val={g2} col={orColor} rgb={orRgb} />
+        <W d={`M ${and2EX},${and2MY} H ${orSX - 10} V ${orBY} H ${orSX}`} val={g2} col={g2Col} rgb={g2Rgb} />
         {/* Label g2 */}
-        <text x={(and2EX + orSX - 10) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>D2</text>
+        <text x={(and2EX + orSX - 10) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={g2 ? g2Col : "#475569"} style={{ transition: "fill 0.3s" }}>g2</text>
 
         {/* ===== OR GATE (g1 OR g2 -> Y) ===== */}
         <OrGate sx={orSX} ty={orTY} by={orBY} my={orMY} ex={orEX} glow={orGlow} fill={orFill} stroke={orStroke} />
 
         {/* ===== OUTPUT WIRE & NODE ===== */}
-        <line x1={orEX} y1={orMY} x2={outX - outNodeR} y2={outY} stroke={wc(y, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <OutputNode ox={outX} oy={outY} val={y} label="Y" color={orColor} rgb={orRgb} />
+        <line x1={orEX} y1={orMY} x2={outX - outNodeR} y2={outY} stroke={wc(y, yCol, yRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={outX} oy={outY} val={y} label="Y" color={yCol} rgb={yRgb} />
     </svg>;
 }
