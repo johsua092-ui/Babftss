@@ -990,15 +990,11 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - Format tabel ringkas: D=val (bukan hanya D=1), konsisten Card 15/16
 - Registrasi ALL_CARDS: { num: '17', name: '16:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard17 }
 
-**Status Bab B (Mux & Demux):** **TUNTAS.** Semua card B1-B8 selesai & terverifikasi.
+**Status Bab B (Mux & Demux):** awalnya TUNTAS dengan 8 card (B1-B8). Setelah keputusan pedagogis (Bagian 16), 4 card besar (8:1 & 16:1) dihapus permanen. Sisa: 4 card (B1+B2 Mux, B5+B6 Demux), nomor tampilan sudah dirapatkan.
 - B1: Card 10 (2:1 Mux) NORMAL
 - B2: Card 11 (4:1 Mux) NORMAL
-- B3: Card 12 (8:1 Mux) NORMAL
-- B4: Card 13 (16:1 Mux) NORMAL
-- B5: Card 14 (2:1 Demux) NORMAL
-- B6: Card 15 (4:1 Demux) NORMAL
-- B7: Card 16 (8:1 Demux) NORMAL
-- B8: Card 17 (16:1 Demux) NORMAL
+- B5: Card 12 (2:1 Demux) NORMAL [sebelumnya num 14]
+- B6: Card 13 (4:1 Demux) NORMAL [sebelumnya num 15]
 
 **VERIFIKASI INDEPENDEN OLEH CLAUDE:** diagram di-render jadi SVG asli untuk S3S2S1S0=1101 (pilih Y13). Hasil: (a) logic benar, Y13 aktif sesuai ekspektasi, (b) TIDAK ADA overlap — dikonfirmasi definitif dari source: 8 bus lane (`busX`) di X=148,163,178,193,208,223,238,253, semua unik berjarak 15 unit, (c) Regulasi Multi-NOT dipatuhi: NOT S0=merah, NOT S1=pink, NOT S2=teal, NOT S3=fuchsia — 4 warna berbeda terkonfirmasi di kode, (d) HeartButton, format tabel ringkas, registrasi ALL_CARDS terkonfirmasi. **Bab B (Mux & Demux) resmi TUNTAS — 8 card (B1-B8), semua terverifikasi independen oleh Claude, tidak ada satupun yang gagal verifikasi.** Status Card 17: **SELESAI & TERVERIFIKASI PENUH.**
 
@@ -1033,3 +1029,47 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 **Verifikasi:** `npm run build` sukses (2175 modules, 0 error). Card 01-17 TIDAK disentuh.
 
 **Cara pakai (Tahap B nanti):** Di `CircuitDiagramXX.jsx` manapun, import `ICBlockRef`, taruh `<ICBlockRef targetNum="09" label="Full Adder 1 Bit" inputs={["A","B","Cin"]} outputs={["Sum","Cout"]} x={...} y={...} width={140} height={60} />` langsung di dalam JSX SVG — otomatis jadi kotak IC yang bisa diklik untuk navigasi ke card aslinya.
+
+---
+
+## 16. KEPUTUSAN PEDAGOGIS: HAPUS PERMANEN 8:1 & 16:1 MUX/DEMUX
+
+**Tanggal:** 8 Agustus 2026
+
+**Konteks:** tester pemula memberi kritik keras — card dengan 8/16 input dianggap terlalu ribet, mematikan semangat belajar, bertentangan dengan tujuan utama proyek (bikin pemula senang belajar). User memutuskan SADAR PENUH untuk menghapus permanen 4 card ini.
+
+**Card yang dihapus:**
+- 8:1 Multiplexer (Mux) — num='12' (file: CircuitCard12.jsx + CircuitDiagram12.jsx)
+- 16:1 Multiplexer (Mux) — num='13' (file: CircuitCard13.jsx + CircuitDiagram13.jsx)
+- 8:1 Demultiplexer (Demux) — num='16' (file: CircuitCard16.jsx + CircuitDiagram16.jsx)
+- 16:1 Demultiplexer (Demux) — num='17' (file: CircuitCard17.jsx + CircuitDiagram17.jsx)
+
+**Total file dihapus:** 8 file komponen (4 CircuitCard + 4 CircuitDiagram). Tidak ada file sampah/orphan yang ditinggal.
+
+**Renumbering (gap ditutup):**
+- num '14' (2:1 Demux, el=CircuitCard14) -> num **'12'**
+- num '15' (4:1 Demux, el=CircuitCard15) -> num **'13'**
+- Catatan: nama file komponen TIDAK diubah (sesuai pola proyek: num vs el terpisah)
+
+**Urutan ALL_CARDS final setelah task ini:**
+```
+01: NOT AND Combo (EASY)
+02: Buffer Negasi Ganda (EASY)
+03: Bangun NAND Manual (EASY)
+04: Bangun NOR Manual (EASY)
+05: Membangun XOR dari Gate Dasar (EASY)
+06: Gerbang 3 Input Sederhana (EASY)
+07: Gerbang 4 Input Lanjutan (EASY)
+08: Half Adder (EASY)
+09: Full Adder (NORMAL)
+10: 2:1 Multiplexer (Mux) (NORMAL)
+11: 4:1 Multiplexer (Mux) (NORMAL)
+12: 2:1 Demultiplexer (Demux) (NORMAL)
+13: 4:1 Demultiplexer (Demux) (NORMAL)
+```
+
+**Card 01-11:** TIDAK disentuh sama sekali.
+
+**Status Bab B:** sekarang cuma 4 card (B1+B2 Mux, B5+B6 Demux), bukan 8. B3/B4/B7/B8 dihapus permanen. Rencana pengganti belum ditentukan.
+
+**Catatan soal Tahap B (rencana Full Adder 4-bit):** keputusan ini TIDAK MEMBATALKAN rencana itu — cuma mengubah keadaan sebelum rencana itu dieksekusi. Perlu didiskusikan ulang apakah posisi penyisipan num='10' masih relevan.
