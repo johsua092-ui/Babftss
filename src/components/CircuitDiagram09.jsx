@@ -2,9 +2,16 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onToggleA, onToggleB, onToggleCin }) {
-    const xorColor = "#facc15", xorRgb = hexToRgbStr(xorColor);
-    const andColor = "#4ade80", andRgb = hexToRgbStr(andColor);
-    const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
+    // ── Unique colors per input, output & internal signal (regulasi warna) ──
+    const aCol = '#facc15', aRgb = hexToRgbStr(aCol);           // A - kuning
+    const bCol = '#38bdf8', bRgb = hexToRgbStr(bCol);           // B - biru langit
+    const cinCol = '#a78bfa', cinRgb = hexToRgbStr(cinCol);     // Cin - ungu
+    const s1Col = '#fb923c', s1Rgb = hexToRgbStr(s1Col);       // s1 - oranye (internal)
+    const c1Col = '#22d3ee', c1Rgb = hexToRgbStr(c1Col);       // c1 - cyan (internal)
+    const c2Col = '#fb7185', c2Rgb = hexToRgbStr(c2Col);       // c2 - rose (internal)
+    const sumCol = '#4ade80', sumRgb = hexToRgbStr(sumCol);     // SUM - hijau
+    const coutCol = '#e879f9', coutRgb = hexToRgbStr(coutCol); // COUT - fuchsia
+
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
@@ -54,17 +61,17 @@ export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onT
     const svgW = Math.max(sumOutX, coutOutX) + outNodeR + 20;
     const svgH = 255;
 
-    // --- Gate glow/fill/stroke ---
+    // --- Gate glow/fill/stroke (each gate uses its output signal color) ---
     const mkGlow = (val, rgb) => val
         ? `drop-shadow(0 0 4px rgba(${rgb},0.9)) drop-shadow(0 0 10px rgba(${rgb},0.5))` : "none";
     const mkFill = (val, rgb) => val ? `rgba(${rgb},0.13)` : "#0f172a";
     const mkStroke = (val, col) => val ? col : "#475569";
 
-    const xor1Glow = mkGlow(s1, xorRgb), xor1Fill = mkFill(s1, xorRgb), xor1Stroke = mkStroke(s1, xorColor);
-    const and1Glow = mkGlow(c1, andRgb), and1Fill = mkFill(c1, andRgb), and1Stroke = mkStroke(c1, andColor);
-    const xor2Glow = mkGlow(sum, xorRgb), xor2Fill = mkFill(sum, xorRgb), xor2Stroke = mkStroke(sum, xorColor);
-    const and2Glow = mkGlow(c2, andRgb), and2Fill = mkFill(c2, andRgb), and2Stroke = mkStroke(c2, andColor);
-    const orGlow = mkGlow(cout, orRgb), orFill = mkFill(cout, orRgb), orStroke = mkStroke(cout, orColor);
+    const xor1Glow = mkGlow(s1, s1Rgb), xor1Fill = mkFill(s1, s1Rgb), xor1Stroke = mkStroke(s1, s1Col);
+    const and1Glow = mkGlow(c1, c1Rgb), and1Fill = mkFill(c1, c1Rgb), and1Stroke = mkStroke(c1, c1Col);
+    const xor2Glow = mkGlow(sum, sumRgb), xor2Fill = mkFill(sum, sumRgb), xor2Stroke = mkStroke(sum, sumCol);
+    const and2Glow = mkGlow(c2, c2Rgb), and2Fill = mkFill(c2, c2Rgb), and2Stroke = mkStroke(c2, c2Col);
+    const orGlow = mkGlow(cout, coutRgb), orFill = mkFill(cout, coutRgb), orStroke = mkStroke(cout, coutCol);
 
     // Helper: render XOR gate shape (with back curve)
     const XorGate = ({ sx, ty, by, my, ex, glow, fill, stroke }) => <Fragment>
@@ -103,56 +110,56 @@ export default function CircuitDiagram08({ a, b, cin, s1, c1, sum, c2, cout, onT
     const W = ({ d, val, col, rgb }) => <path d={d} fill="none" stroke={wc(val, col, rgb)} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.3s" }} />;
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
-        {/* ===== INPUT NODES ===== */}
-        <InputNode ix={inputAX} iy={inputAY} val={a} label="A" onToggle={onToggleA} color={xorColor} rgb={xorRgb} />
-        <InputNode ix={inputBX} iy={inputBY} val={b} label="B" onToggle={onToggleB} color={xorColor} rgb={xorRgb} />
-        <InputNode ix={inputCinX} iy={inputCinY} val={cin} label="Cin" onToggle={onToggleCin} color={orColor} rgb={orRgb} />
+        {/* ===== INPUT NODES (warna unik tiap input) ===== */}
+        <InputNode ix={inputAX} iy={inputAY} val={a} label="A" onToggle={onToggleA} color={aCol} rgb={aRgb} />
+        <InputNode ix={inputBX} iy={inputBY} val={b} label="B" onToggle={onToggleB} color={bCol} rgb={bRgb} />
+        <InputNode ix={inputCinX} iy={inputCinY} val={cin} label="Cin" onToggle={onToggleCin} color={cinCol} rgb={cinRgb} />
 
-        {/* ===== WIRE A: fan-out to XOR1 & AND1 ===== */}
-        <W d={`M ${inputAX + inputNodeW},${inputAY} H ${jA}`} val={a} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${jA},${inputAY} V ${xor1TY} H ${xor1SX}`} val={a} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${jA},${inputAY} V ${and1TY} H ${and1SX}`} val={a} col={andColor} rgb={andRgb} />
+        {/* ===== WIRE A: fan-out to XOR1 & AND1 (kuning) ===== */}
+        <W d={`M ${inputAX + inputNodeW},${inputAY} H ${jA}`} val={a} col={aCol} rgb={aRgb} />
+        <W d={`M ${jA},${inputAY} V ${xor1TY} H ${xor1SX}`} val={a} col={aCol} rgb={aRgb} />
+        <W d={`M ${jA},${inputAY} V ${and1TY} H ${and1SX}`} val={a} col={aCol} rgb={aRgb} />
 
-        {/* ===== WIRE B: fan-out to XOR1 & AND1 ===== */}
-        <W d={`M ${inputBX + inputNodeW},${inputBY} H ${jB}`} val={b} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${jB},${inputBY} V ${xor1BY} H ${xor1SX}`} val={b} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${jB},${inputBY} V ${and1BY} H ${and1SX}`} val={b} col={andColor} rgb={andRgb} />
+        {/* ===== WIRE B: fan-out to XOR1 & AND1 (biru langit) ===== */}
+        <W d={`M ${inputBX + inputNodeW},${inputBY} H ${jB}`} val={b} col={bCol} rgb={bRgb} />
+        <W d={`M ${jB},${inputBY} V ${xor1BY} H ${xor1SX}`} val={b} col={bCol} rgb={bRgb} />
+        <W d={`M ${jB},${inputBY} V ${and1BY} H ${and1SX}`} val={b} col={bCol} rgb={bRgb} />
 
-        {/* ===== STAGE 1 GATES ===== */}
+        {/* ===== STAGE 1 GATES (glow = warna output sinyal) ===== */}
         <XorGate sx={xor1SX} ty={xor1TY} by={xor1BY} my={xor1MY} ex={xor1EX} glow={xor1Glow} fill={xor1Fill} stroke={xor1Stroke} />
         <AndGate sx={and1SX} ty={and1TY} by={and1BY} my={and1MY} w={and1W} ar={and1AR} glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
 
-        {/* ===== WIRE s1: XOR1 output → junction → XOR2 & AND2 ===== */}
-        <W d={`M ${xor1EX},${xor1MY} H ${s1JX}`} val={s1} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${s1JX},${xor1MY} V ${xor2TY} H ${xor2SX}`} val={s1} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${s1JX},${xor1MY} V ${and2TY} H ${and2SX}`} val={s1} col={andColor} rgb={andRgb} />
-        <text x={(xor1EX + s1JX) / 2} y={xor1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={s1 ? xorColor : "#475569"} style={{ transition: "fill 0.3s" }}>s1</text>
+        {/* ===== WIRE s1: XOR1 output → junction → XOR2 & AND2 (oranye) ===== */}
+        <W d={`M ${xor1EX},${xor1MY} H ${s1JX}`} val={s1} col={s1Col} rgb={s1Rgb} />
+        <W d={`M ${s1JX},${xor1MY} V ${xor2TY} H ${xor2SX}`} val={s1} col={s1Col} rgb={s1Rgb} />
+        <W d={`M ${s1JX},${xor1MY} V ${and2TY} H ${and2SX}`} val={s1} col={s1Col} rgb={s1Rgb} />
+        <text x={(xor1EX + s1JX) / 2} y={xor1MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={s1 ? s1Col : "#475569"} style={{ transition: "fill 0.3s" }}>s1</text>
 
-        {/* ===== WIRE c1: AND1 output → route ABOVE XOR2 → OR top ===== */}
-        <W d={`M ${and1EX},${and1MY} H ${xor1EX + 8} V ${xor2TY - 16} H ${cRouteX} V ${orTY} H ${orSX}`} val={c1} col={orColor} rgb={orRgb} />
-        <text x={(xor1EX + 8 + cRouteX) / 2} y={xor2TY - 20} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c1 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>c1</text>
+        {/* ===== WIRE c1: AND1 output → route ABOVE XOR2 → OR top (cyan) ===== */}
+        <W d={`M ${and1EX},${and1MY} H ${xor1EX + 8} V ${xor2TY - 16} H ${cRouteX} V ${orTY} H ${orSX}`} val={c1} col={c1Col} rgb={c1Rgb} />
+        <text x={(xor1EX + 8 + cRouteX) / 2} y={xor2TY - 20} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c1 ? c1Col : "#475569"} style={{ transition: "fill 0.3s" }}>c1</text>
 
-        {/* ===== WIRE Cin: fan-out to XOR2 & AND2 ===== */}
-        <W d={`M ${inputCinX + inputNodeW},${inputCinY} H ${cinJX}`} val={cin} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${cinJX},${inputCinY} V ${xor2BY} H ${xor2SX}`} val={cin} col={xorColor} rgb={xorRgb} />
-        <W d={`M ${cinJX},${inputCinY} V ${and2BY} H ${and2SX}`} val={cin} col={andColor} rgb={andRgb} />
+        {/* ===== WIRE Cin: fan-out to XOR2 & AND2 (ungu) ===== */}
+        <W d={`M ${inputCinX + inputNodeW},${inputCinY} H ${cinJX}`} val={cin} col={cinCol} rgb={cinRgb} />
+        <W d={`M ${cinJX},${inputCinY} V ${xor2BY} H ${xor2SX}`} val={cin} col={cinCol} rgb={cinRgb} />
+        <W d={`M ${cinJX},${inputCinY} V ${and2BY} H ${and2SX}`} val={cin} col={cinCol} rgb={cinRgb} />
 
         {/* ===== STAGE 2 GATES ===== */}
         <XorGate sx={xor2SX} ty={xor2TY} by={xor2BY} my={xor2MY} ex={xor2EX} glow={xor2Glow} fill={xor2Fill} stroke={xor2Stroke} />
         <AndGate sx={and2SX} ty={and2TY} by={and2BY} my={and2MY} w={and1W} ar={and1AR} glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
 
-        {/* ===== WIRE c2: AND2 output → routing channel → OR bottom ===== */}
-        <W d={`M ${and2EX},${and2MY} H ${cRouteX} V ${orBY} H ${orSX}`} val={c2} col={orColor} rgb={orRgb} />
-        <text x={(and2EX + cRouteX) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c2 ? andColor : "#475569"} style={{ transition: "fill 0.3s" }}>c2</text>
+        {/* ===== WIRE c2: AND2 output → routing channel → OR bottom (rose) ===== */}
+        <W d={`M ${and2EX},${and2MY} H ${cRouteX} V ${orBY} H ${orSX}`} val={c2} col={c2Col} rgb={c2Rgb} />
+        <text x={(and2EX + cRouteX) / 2} y={and2MY - 8} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="bold" fill={c2 ? c2Col : "#475569"} style={{ transition: "fill 0.3s" }}>c2</text>
 
-        {/* ===== STAGE 3 GATE ===== */}
+        {/* ===== STAGE 3 GATE (OR) ===== */}
         <OrGate sx={orSX} ty={orTY} by={orBY} my={orMY} ex={orEX} glow={orGlow} fill={orFill} stroke={orStroke} />
 
-        {/* ===== OUTPUT WIRES & NODES ===== */}
-        <line x1={xor2EX} y1={xor2MY} x2={sumOutX - outNodeR} y2={sumOutY} stroke={wc(sum, xorColor, xorRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <OutputNode ox={sumOutX} oy={sumOutY} val={sum} label="SUM" color={xorColor} rgb={xorRgb} />
+        {/* ===== OUTPUT WIRES & NODES (warna unik tiap output) ===== */}
+        <line x1={xor2EX} y1={xor2MY} x2={sumOutX - outNodeR} y2={sumOutY} stroke={wc(sum, sumCol, sumRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={sumOutX} oy={sumOutY} val={sum} label="SUM" color={sumCol} rgb={sumRgb} />
 
-        <line x1={orEX} y1={orMY} x2={coutOutX - outNodeR} y2={coutOutY} stroke={wc(cout, orColor, orRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
-        <OutputNode ox={coutOutX} oy={coutOutY} val={cout} label="COUT" color={orColor} rgb={orRgb} />
+        <line x1={orEX} y1={orMY} x2={coutOutX - outNodeR} y2={coutOutY} stroke={wc(cout, coutCol, coutRgb)} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "stroke 0.3s" }} />
+        <OutputNode ox={coutOutX} oy={coutOutY} val={cout} label="COUT" color={coutCol} rgb={coutRgb} />
     </svg>;
 }
