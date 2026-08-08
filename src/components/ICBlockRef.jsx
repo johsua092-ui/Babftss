@@ -12,7 +12,7 @@ export default function ICBlockRef({ targetNum, label, inputs, outputs, x, y, wi
     const pinLen = 12;
     const pinFontSize = 8;
     const labelFontSize = 9;
-    const clickFontSize = 7;
+    const clickFontSize = 9;
     const pinSpacing = Math.min(18, (height - 20) / Math.max(inputs.length, outputs.length, 1));
     const totalInputH = inputs.length * pinSpacing;
     const totalOutputH = outputs.length * pinSpacing;
