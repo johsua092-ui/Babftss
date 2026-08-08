@@ -1,4 +1,5 @@
 import ICBlockRef from './ICBlockRef';
+import { hexToRgbStr } from '../utils/colorHelper';
 
 export default function CircuitDiagram_FullAdder4bit({
     a0, a1, a2, a3, b0, b1, b2, b3, cin,
@@ -17,8 +18,14 @@ export default function CircuitDiagram_FullAdder4bit({
 
     // Colors (per design.md 3.5: data path = green)
     const wireColor = '#4ade80';
-    const dimColor = '#334155';
+    const wireRgb = hexToRgbStr(wireColor);
     const labelColor = '#94a3b8';
+
+    // Color helpers (per design.md regulation)
+    const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
+    const mkGlow = (val, rgb) => val
+        ? `drop-shadow(0 0 4px rgba(${rgb},0.9)) drop-shadow(0 0 10px rgba(${rgb},0.5))`
+        : "none";
 
     // Pin spacing must match ICBlockRef internal calculation
     const pinSpacing = Math.min(18, (blockH - 20) / Math.max(3, 2, 1));
@@ -69,13 +76,13 @@ export default function CircuitDiagram_FullAdder4bit({
             <g>
                 <rect x={inputNodeX - inputBoxW / 2} y={cinNodeY - inputBoxH / 2}
                     width={inputBoxW} height={inputBoxH} rx={5}
-                    fill={cin ? wireColor : '#0e1420'}
-                    stroke={cin ? wireColor : dimColor} strokeWidth={1.5}
+                    fill={cin ? `rgba(${wireRgb},0.2)` : `rgba(${wireRgb},0.1)`}
+                    stroke={cin ? wireColor : `rgba(${wireRgb},0.3)`} strokeWidth={1.5}
                     onClick={onToggleCin} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                 />
                 <text x={inputNodeX} y={cinNodeY + 4} textAnchor="middle"
                     fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                    fill={cin ? '#0e1420' : labelColor}
+                    fill={cin ? wireColor : `rgba(${wireRgb},0.5)`}
                     onClick={onToggleCin} style={{ cursor: 'pointer' }}
                 >Cin={cin ? 1 : 0}</text>
                 {/* Cin wire: right from node, down to Cin pin Y, right to Cin pin */}
@@ -83,7 +90,7 @@ export default function CircuitDiagram_FullAdder4bit({
                     " H " + (blockX - pinLen - 15) +
                     " V " + inPinY(blocks[0].y, 2) +
                     " H " + (blockX - pinLen)}
-                    fill="none" stroke={cin ? wireColor : dimColor}
+                    fill="none" stroke={wc(cin, wireColor, wireRgb)}
                     strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                     style={{ transition: "stroke 0.3s" }}
                 />
@@ -98,17 +105,17 @@ export default function CircuitDiagram_FullAdder4bit({
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? wireColor : '#0e1420'}
-                            stroke={val ? wireColor : dimColor} strokeWidth={1.5}
+                            fill={val ? `rgba(${wireRgb},0.2)` : `rgba(${wireRgb},0.1)`}
+                            stroke={val ? wireColor : `rgba(${wireRgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? '#0e1420' : labelColor}
+                            fill={val ? wireColor : `rgba(${wireRgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         <line x1={inputNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
-                            stroke={val ? wireColor : dimColor} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, wireColor, wireRgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                     </g>
@@ -127,19 +134,19 @@ export default function CircuitDiagram_FullAdder4bit({
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? wireColor : '#0e1420'}
-                            stroke={val ? wireColor : dimColor} strokeWidth={1.5}
+                            fill={val ? `rgba(${wireRgb},0.2)` : `rgba(${wireRgb},0.1)`}
+                            stroke={val ? wireColor : `rgba(${wireRgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? '#0e1420' : labelColor}
+                            fill={val ? wireColor : `rgba(${wireRgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         {/* Wire: right from button, jog up to pin B, right to IC block */}
                         <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + py +
                             " H " + jogX + " V " + bPinY + " H " + (blockX - pinLen)}
-                            fill="none" stroke={val ? wireColor : dimColor}
+                            fill="none" stroke={wc(val, wireColor, wireRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
@@ -166,7 +173,7 @@ export default function CircuitDiagram_FullAdder4bit({
                            " V " + belowBlockY +
                            " H " + toX +
                            " V " + toPY}
-                        fill="none" stroke={carryVal ? wireColor : dimColor}
+                        fill="none" stroke={wc(carryVal, wireColor, wireRgb)}
                         strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                         style={{ transition: "stroke 0.3s" }}
                     />
@@ -182,17 +189,18 @@ export default function CircuitDiagram_FullAdder4bit({
                 return (
                     <g key={label}>
                         <line x1={pinX} y1={pinY} x2={sumNodeX - nodeR} y2={pinY}
-                            stroke={val ? wireColor : dimColor} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, wireColor, wireRgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={sumNodeX} cy={pinY} r={nodeR}
-                            fill={val ? wireColor : '#0e1420'}
-                            stroke={wireColor} strokeWidth={1.5}
+                            fill={val ? wireColor : '#1e293b'}
+                            stroke={val ? wireColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(val, wireRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={sumNodeX} y={pinY + 3.5} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={8} fontWeight={700}
-                            fill={val ? '#0e1420' : labelColor}
+                            fill={val ? '#000' : '#475569'}
                             style={{ pointerEvents: 'none' }}
                         >{label}</text>
                     </g>
@@ -210,18 +218,19 @@ export default function CircuitDiagram_FullAdder4bit({
                     <g>
                         <path d={"M " + coutPinX + " " + coutPinY +
                             " H " + jogX + " V " + coutCircleY + " H " + (coutNodeX - nodeR)}
-                            fill="none" stroke={cout ? wireColor : dimColor}
+                            fill="none" stroke={wc(cout, wireColor, wireRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={coutNodeX} cy={coutCircleY} r={nodeR}
-                            fill={cout ? wireColor : '#0e1420'}
-                            stroke={wireColor} strokeWidth={1.5}
+                            fill={cout ? wireColor : '#1e293b'}
+                            stroke={cout ? wireColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(cout, wireRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={coutNodeX} y={coutCircleY + 3.5} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={8} fontWeight={700}
-                            fill={cout ? '#0e1420' : labelColor}
+                            fill={cout ? '#000' : '#475569'}
                             style={{ pointerEvents: 'none' }}
                         >Cout</text>
                     </g>
