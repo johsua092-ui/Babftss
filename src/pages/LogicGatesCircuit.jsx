@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { FavoritesProvider } from '../context/FavoritesContext';
 import { CardNavigationProvider, useCardNavigation } from '../context/CardNavigationContext';
@@ -47,10 +47,15 @@ const badgeBase = { fontFamily: "Orbitron,sans-serif", fontSize: 11, fontWeight:
 const backBtnStyle = { display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #1e293b", color: "#64748b", cursor: "pointer", fontFamily: "Inter,sans-serif", fontSize: 13, fontWeight: 600, transition: "color 0.2s" };
 
 function CircuitList({ setPage }) {
-    const { highlightedCard } = useCardNavigation();
+    const { highlightedCard, registerClearFilters } = useCardNavigation();
     const [query, setQuery] = useState("");
     const [cardNum, setCardNum] = useState("");
     const [activeTier, setActiveTier] = useState(null);
+
+    const handleClear = useCallback(() => { setQuery(""); setCardNum(""); setActiveTier(null); }, []);
+
+    // Daftarkan handleClear ke CardNavigationContext supaya click-me bisa clear filter
+    useEffect(() => { registerClearFilters(handleClear); }, [registerClearFilters, handleClear]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -66,7 +71,7 @@ function CircuitList({ setPage }) {
 
     const hasFilter = query.trim() || cardNum.trim() || activeTier;
 
-    const handleClear = () => { setQuery(""); setCardNum(""); setActiveTier(null); };
+
 
     return (
         <div style={{ width: "100%", maxWidth: 500 }}>
