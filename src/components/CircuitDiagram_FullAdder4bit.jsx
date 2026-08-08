@@ -36,9 +36,8 @@ export default function CircuitDiagram_FullAdder4bit({
     // Carry lane X (right side, unique per wire to avoid overlap)
     const carryLaneX = [blockX + blockW + pinLen + 15, blockX + blockW + pinLen + 25, blockX + blockW + pinLen + 35];
 
-    // Input node positions
-    const aNodeX = 28;
-    const bNodeX = 76;
+    // Input node positions (single column: A above, B below)
+    const inputNodeX = 28;
     const sumNodeX = blockX + blockW + pinLen + 55;
     const coutNodeX = blockX + blockW + pinLen + 55;
 
@@ -68,19 +67,19 @@ export default function CircuitDiagram_FullAdder4bit({
 
             {/* ── Global Cin → Block 0 Cin pin ── */}
             <g>
-                <rect x={aNodeX - inputBoxW / 2} y={cinNodeY - inputBoxH / 2}
+                <rect x={inputNodeX - inputBoxW / 2} y={cinNodeY - inputBoxH / 2}
                     width={inputBoxW} height={inputBoxH} rx={5}
                     fill={cin ? wireColor : '#0e1420'}
                     stroke={cin ? wireColor : dimColor} strokeWidth={1.5}
                     onClick={onToggleCin} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                 />
-                <text x={aNodeX} y={cinNodeY + 4} textAnchor="middle"
+                <text x={inputNodeX} y={cinNodeY + 4} textAnchor="middle"
                     fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
                     fill={cin ? '#0e1420' : labelColor}
                     onClick={onToggleCin} style={{ cursor: 'pointer' }}
                 >Cin={cin ? 1 : 0}</text>
                 {/* Cin wire: right from node, down to Cin pin Y, right to Cin pin */}
-                <path d={"M " + (aNodeX + inputBoxW / 2) + " " + cinNodeY +
+                <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + cinNodeY +
                     " H " + (blockX - pinLen - 15) +
                     " V " + inPinY(blocks[0].y, 2) +
                     " H " + (blockX - pinLen)}
@@ -90,25 +89,25 @@ export default function CircuitDiagram_FullAdder4bit({
                 />
             </g>
 
-            {/* ── A inputs → Block A pins ── */}
+            {/* ── A inputs → Block A pins (straight horizontal wire) ── */}
             {[[a0, 'A0', onToggleA0, 0], [a1, 'A1', onToggleA1, 1], [a2, 'A2', onToggleA2, 2], [a3, 'A3', onToggleA3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
-                var py = inPinY(blk.y, 0);
+                var py = inPinY(blk.y, 0); // aligned to pin A
                 return (
                     <g key={label}>
-                        <rect x={aNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
+                        <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
                             fill={val ? wireColor : '#0e1420'}
                             stroke={val ? wireColor : dimColor} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
-                        <text x={aNodeX} y={py + 4} textAnchor="middle"
+                        <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
                             fill={val ? '#0e1420' : labelColor}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
-                        <line x1={aNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
+                        <line x1={inputNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
                             stroke={val ? wireColor : dimColor} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
@@ -116,26 +115,32 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── B inputs → Block B pins ── */}
+            {/* ── B inputs → Block B pins (below A, wire jogs up to pin B) ── */}
             {[[b0, 'B0', onToggleB0, 0], [b1, 'B1', onToggleB1, 1], [b2, 'B2', onToggleB2, 2], [b3, 'B3', onToggleB3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
-                var py = inPinY(blk.y, 1);
+                var aPinY = inPinY(blk.y, 0);
+                var py = aPinY + inputBoxH + 5; // A bottom + 5px gap
+                var bPinY = inPinY(blk.y, 1); // actual pin B on IC block
+                var jogX = inputNodeX + inputBoxW / 2 + (blockX - pinLen - inputNodeX - inputBoxW / 2) * 0.4;
                 return (
                     <g key={label}>
-                        <rect x={bNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
+                        <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
                             fill={val ? wireColor : '#0e1420'}
                             stroke={val ? wireColor : dimColor} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
-                        <text x={bNodeX} y={py + 4} textAnchor="middle"
+                        <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
                             fill={val ? '#0e1420' : labelColor}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
-                        <line x1={bNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
-                            stroke={val ? wireColor : dimColor} strokeWidth={2} strokeLinecap="round"
+                        {/* Wire: right from button, jog up to pin B, right to IC block */}
+                        <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + py +
+                            " H " + jogX + " V " + bPinY + " H " + (blockX - pinLen)}
+                            fill="none" stroke={val ? wireColor : dimColor}
+                            strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                     </g>
