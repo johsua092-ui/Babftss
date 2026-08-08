@@ -16,11 +16,22 @@ export default function CircuitDiagram_FullAdder4bit({
     const nodeR = 12;
     const inputBoxW = 38, inputBoxH = 22;
 
-    // ── Color palette (per CircuitDiagram09.jsx regulasi warna) ──
-    // A, B, Sum = kuning #facc15 (jalur XOR / data path)
-    const sumPathColor = '#facc15', sumPathRgb = hexToRgbStr(sumPathColor);
+    // ── Color palette ──
     // Cin, Carry chain, Cout = ungu #a78bfa (jalur OR / carry path)
     const carryPathColor = '#a78bfa', carryPathRgb = hexToRgbStr(carryPathColor);
+    // Sum outputs = kuning #facc15 (jalur XOR / sum path)
+    const sumPathColor = '#facc15', sumPathRgb = hexToRgbStr(sumPathColor);
+    // 8 unique input colors (A0 B0 A1 B1 A2 B2 A3 B3)
+    const inputColors = [
+        { hex: '#facc15', rgb: hexToRgbStr('#facc15') }, // A0 - kuning
+        { hex: '#4ade80', rgb: hexToRgbStr('#4ade80') }, // B0 - hijau
+        { hex: '#38bdf8', rgb: hexToRgbStr('#38bdf8') }, // A1 - biru langit
+        { hex: '#f472b6', rgb: hexToRgbStr('#f472b6') }, // B1 - pink
+        { hex: '#fb923c', rgb: hexToRgbStr('#fb923c') }, // A2 - oranye
+        { hex: '#a78bfa', rgb: hexToRgbStr('#a78bfa') }, // B2 - ungu muda
+        { hex: '#22d3ee', rgb: hexToRgbStr('#22d3ee') }, // A3 - cyan
+        { hex: '#f87171', rgb: hexToRgbStr('#f87171') }, // B3 - merah
+    ];
 
     // Color helpers (per design.md regulation)
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
@@ -96,33 +107,34 @@ export default function CircuitDiagram_FullAdder4bit({
                 />
             </g>
 
-            {/* ── A inputs → Block A pins (kuning / sum path) ── */}
+            {/* ── A inputs → Block A pins (warna unik tiap input) ── */}
             {[[a0, 'A0', onToggleA0, 0], [a1, 'A1', onToggleA1, 1], [a2, 'A2', onToggleA2, 2], [a3, 'A3', onToggleA3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
                 var py = inPinY(blk.y, 0);
+                var ic = inputColors[idx * 2]; // A0=0, A1=2, A2=4, A3=6
                 return (
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? `rgba(${sumPathRgb},0.2)` : `rgba(${sumPathRgb},0.1)`}
-                            stroke={val ? sumPathColor : `rgba(${sumPathRgb},0.3)`} strokeWidth={1.5}
+                            fill={val ? `rgba(${ic.rgb},0.2)` : `rgba(${ic.rgb},0.1)`}
+                            stroke={val ? ic.hex : `rgba(${ic.rgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? sumPathColor : `rgba(${sumPathRgb},0.5)`}
+                            fill={val ? ic.hex : `rgba(${ic.rgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         <line x1={inputNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
-                            stroke={wc(val, sumPathColor, sumPathRgb)} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, ic.hex, ic.rgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                     </g>
                 );
             })}
 
-            {/* ── B inputs → Block B pins (kuning / sum path, wire jogs to pin B) ── */}
+            {/* ── B inputs → Block B pins (warna unik tiap input, wire jogs to pin B) ── */}
             {[[b0, 'B0', onToggleB0, 0], [b1, 'B1', onToggleB1, 1], [b2, 'B2', onToggleB2, 2], [b3, 'B3', onToggleB3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
@@ -130,22 +142,23 @@ export default function CircuitDiagram_FullAdder4bit({
                 var py = aPinY + inputBoxH + 5;
                 var bPinY = inPinY(blk.y, 1);
                 var jogX = inputNodeX + inputBoxW / 2 + (blockX - pinLen - inputNodeX - inputBoxW / 2) * 0.4;
+                var ic = inputColors[idx * 2 + 1]; // B0=1, B1=3, B2=5, B3=7
                 return (
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? `rgba(${sumPathRgb},0.2)` : `rgba(${sumPathRgb},0.1)`}
-                            stroke={val ? sumPathColor : `rgba(${sumPathRgb},0.3)`} strokeWidth={1.5}
+                            fill={val ? `rgba(${ic.rgb},0.2)` : `rgba(${ic.rgb},0.1)`}
+                            stroke={val ? ic.hex : `rgba(${ic.rgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? sumPathColor : `rgba(${sumPathRgb},0.5)`}
+                            fill={val ? ic.hex : `rgba(${ic.rgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + py +
                             " H " + jogX + " V " + bPinY + " H " + (blockX - pinLen)}
-                            fill="none" stroke={wc(val, sumPathColor, sumPathRgb)}
+                            fill="none" stroke={wc(val, ic.hex, ic.rgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
