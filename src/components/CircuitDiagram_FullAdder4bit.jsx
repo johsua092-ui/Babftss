@@ -16,15 +16,11 @@ export default function CircuitDiagram_FullAdder4bit({
     const nodeR = 12;
     const inputBoxW = 38, inputBoxH = 22;
 
-    // ── Color palette (per design.md §3.5) ──
-    // A & B = hijau (input pertama & kedua, §3.5.5)
-    const dataColor = '#4ade80', dataRgb = hexToRgbStr(dataColor);
-    // Cin = cyan (sinyal kontrol, warna unik, §3.5.4)
-    const cinColor = '#22d3ee', cinRgb = hexToRgbStr(cinColor);
-    // Carry chain (c1,c2,c3,Cout) = orange (warna unik, §3.5.4)
-    const carryColor = '#fb923c', carryRgb = hexToRgbStr(carryColor);
-    // Sum output = hijau (output gerbang terakhir, §3.5.6 Prinsip 6)
-    const sumColor = '#4ade80', sumRgb = hexToRgbStr(sumColor);
+    // ── Color palette (per CircuitDiagram09.jsx regulasi warna) ──
+    // A, B, Sum = kuning #facc15 (jalur XOR / data path)
+    const sumPathColor = '#facc15', sumPathRgb = hexToRgbStr(sumPathColor);
+    // Cin, Carry chain, Cout = ungu #a78bfa (jalur OR / carry path)
+    const carryPathColor = '#a78bfa', carryPathRgb = hexToRgbStr(carryPathColor);
 
     // Color helpers (per design.md regulation)
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
@@ -77,30 +73,30 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Global Cin → Block 0 Cin pin (cyan) ── */}
+            {/* ── Global Cin → Block 0 Cin pin (ungu / carry path) ── */}
             <g>
                 <rect x={inputNodeX - inputBoxW / 2} y={cinNodeY - inputBoxH / 2}
                     width={inputBoxW} height={inputBoxH} rx={5}
-                    fill={cin ? `rgba(${cinRgb},0.2)` : `rgba(${cinRgb},0.1)`}
-                    stroke={cin ? cinColor : `rgba(${cinRgb},0.3)`} strokeWidth={1.5}
+                    fill={cin ? `rgba(${carryPathRgb},0.2)` : `rgba(${carryPathRgb},0.1)`}
+                    stroke={cin ? carryPathColor : `rgba(${carryPathRgb},0.3)`} strokeWidth={1.5}
                     onClick={onToggleCin} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                 />
                 <text x={inputNodeX} y={cinNodeY + 4} textAnchor="middle"
                     fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                    fill={cin ? cinColor : `rgba(${cinRgb},0.5)`}
+                    fill={cin ? carryPathColor : `rgba(${carryPathRgb},0.5)`}
                     onClick={onToggleCin} style={{ cursor: 'pointer' }}
                 >Cin={cin ? 1 : 0}</text>
                 <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + cinNodeY +
                     " H " + (blockX - pinLen - 15) +
                     " V " + inPinY(blocks[0].y, 2) +
                     " H " + (blockX - pinLen)}
-                    fill="none" stroke={wc(cin, cinColor, cinRgb)}
+                    fill="none" stroke={wc(cin, carryPathColor, carryPathRgb)}
                     strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                     style={{ transition: "stroke 0.3s" }}
                 />
             </g>
 
-            {/* ── A inputs → Block A pins (green) ── */}
+            {/* ── A inputs → Block A pins (kuning / sum path) ── */}
             {[[a0, 'A0', onToggleA0, 0], [a1, 'A1', onToggleA1, 1], [a2, 'A2', onToggleA2, 2], [a3, 'A3', onToggleA3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
@@ -109,24 +105,24 @@ export default function CircuitDiagram_FullAdder4bit({
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? `rgba(${dataRgb},0.2)` : `rgba(${dataRgb},0.1)`}
-                            stroke={val ? dataColor : `rgba(${dataRgb},0.3)`} strokeWidth={1.5}
+                            fill={val ? `rgba(${sumPathRgb},0.2)` : `rgba(${sumPathRgb},0.1)`}
+                            stroke={val ? sumPathColor : `rgba(${sumPathRgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? dataColor : `rgba(${dataRgb},0.5)`}
+                            fill={val ? sumPathColor : `rgba(${sumPathRgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         <line x1={inputNodeX + inputBoxW / 2} y1={py} x2={blockX - pinLen} y2={py}
-                            stroke={wc(val, dataColor, dataRgb)} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, sumPathColor, sumPathRgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                     </g>
                 );
             })}
 
-            {/* ── B inputs → Block B pins (green, wire jogs up to pin B) ── */}
+            {/* ── B inputs → Block B pins (kuning / sum path, wire jogs to pin B) ── */}
             {[[b0, 'B0', onToggleB0, 0], [b1, 'B1', onToggleB1, 1], [b2, 'B2', onToggleB2, 2], [b3, 'B3', onToggleB3, 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], toggle = arr[2], idx = arr[3];
                 var blk = blocks[idx];
@@ -138,18 +134,18 @@ export default function CircuitDiagram_FullAdder4bit({
                     <g key={label}>
                         <rect x={inputNodeX - inputBoxW / 2} y={py - inputBoxH / 2}
                             width={inputBoxW} height={inputBoxH} rx={5}
-                            fill={val ? `rgba(${dataRgb},0.2)` : `rgba(${dataRgb},0.1)`}
-                            stroke={val ? dataColor : `rgba(${dataRgb},0.3)`} strokeWidth={1.5}
+                            fill={val ? `rgba(${sumPathRgb},0.2)` : `rgba(${sumPathRgb},0.1)`}
+                            stroke={val ? sumPathColor : `rgba(${sumPathRgb},0.3)`} strokeWidth={1.5}
                             onClick={toggle} style={{ cursor: 'pointer', transition: 'all 0.3s' }}
                         />
                         <text x={inputNodeX} y={py + 4} textAnchor="middle"
                             fontFamily="Orbitron,sans-serif" fontSize={9} fontWeight={700}
-                            fill={val ? dataColor : `rgba(${dataRgb},0.5)`}
+                            fill={val ? sumPathColor : `rgba(${sumPathRgb},0.5)`}
                             onClick={toggle} style={{ cursor: 'pointer' }}
                         >{label}={val ? 1 : 0}</text>
                         <path d={"M " + (inputNodeX + inputBoxW / 2) + " " + py +
                             " H " + jogX + " V " + bPinY + " H " + (blockX - pinLen)}
-                            fill="none" stroke={wc(val, dataColor, dataRgb)}
+                            fill="none" stroke={wc(val, sumPathColor, sumPathRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
@@ -157,7 +153,7 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Carry chain wires (orange) ── */}
+            {/* ── Carry chain wires (ungu / carry path) ── */}
             {[[c1, 0, 1], [c2, 1, 2], [c3, 2, 3]].map(function(arr) {
                 var carryVal = arr[0], fromIdx = arr[1], toIdx = arr[2];
                 var fromBlk = blocks[fromIdx];
@@ -176,14 +172,14 @@ export default function CircuitDiagram_FullAdder4bit({
                            " V " + belowBlockY +
                            " H " + toX +
                            " V " + toPY}
-                        fill="none" stroke={wc(carryVal, carryColor, carryRgb)}
+                        fill="none" stroke={wc(carryVal, carryPathColor, carryPathRgb)}
                         strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                         style={{ transition: "stroke 0.3s" }}
                     />
                 );
             })}
 
-            {/* ── Sum outputs (green, per §3.5.6 Prinsip 6) ── */}
+            {/* ── Sum outputs (kuning / sum path) ── */}
             {[[sum0, 'S0', 0], [sum1, 'S1', 1], [sum2, 'S2', 2], [sum3, 'S3', 3]].map(function(arr) {
                 var val = arr[0], label = arr[1], idx = arr[2];
                 var blk = blocks[idx];
@@ -192,13 +188,13 @@ export default function CircuitDiagram_FullAdder4bit({
                 return (
                     <g key={label}>
                         <line x1={pinX} y1={pinY} x2={sumNodeX - nodeR} y2={pinY}
-                            stroke={wc(val, sumColor, sumRgb)} strokeWidth={2} strokeLinecap="round"
+                            stroke={wc(val, sumPathColor, sumPathRgb)} strokeWidth={2} strokeLinecap="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={sumNodeX} cy={pinY} r={nodeR}
-                            fill={val ? sumColor : '#1e293b'}
-                            stroke={val ? sumColor : '#334155'} strokeWidth={1.5}
-                            filter={mkGlow(val, sumRgb)}
+                            fill={val ? sumPathColor : '#1e293b'}
+                            stroke={val ? sumPathColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(val, sumPathRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={sumNodeX} y={pinY + 3.5} textAnchor="middle"
@@ -210,7 +206,7 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Final Cout output (orange, below S3) ── */}
+            {/* ── Final Cout output (ungu / carry path, below S3) ── */}
             {function() {
                 var coutPinX = blockX + blockW + pinLen;
                 var coutPinY = outPinY(blocks[3].y, 1);
@@ -221,14 +217,14 @@ export default function CircuitDiagram_FullAdder4bit({
                     <g>
                         <path d={"M " + coutPinX + " " + coutPinY +
                             " H " + jogX + " V " + coutCircleY + " H " + (coutNodeX - nodeR)}
-                            fill="none" stroke={wc(cout, carryColor, carryRgb)}
+                            fill="none" stroke={wc(cout, carryPathColor, carryPathRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={coutNodeX} cy={coutCircleY} r={nodeR}
-                            fill={cout ? carryColor : '#1e293b'}
-                            stroke={cout ? carryColor : '#334155'} strokeWidth={1.5}
-                            filter={mkGlow(cout, carryRgb)}
+                            fill={cout ? carryPathColor : '#1e293b'}
+                            stroke={cout ? carryPathColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(cout, carryPathRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={coutNodeX} y={coutCircleY + 3.5} textAnchor="middle"
