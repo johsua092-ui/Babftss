@@ -17,10 +17,16 @@ export default function CircuitDiagram_FullAdder4bit({
     const inputBoxW = 38, inputBoxH = 22;
 
     // ── Color palette ──
-    // Cin, Carry chain, Cout = ungu #a78bfa (jalur OR / carry path)
+    // Cin input = ungu #a78bfa
     const carryPathColor = '#a78bfa', carryPathRgb = hexToRgbStr(carryPathColor);
     // Sum outputs = kuning #facc15 (jalur XOR / sum path)
     const sumPathColor = '#facc15', sumPathRgb = hexToRgbStr(sumPathColor);
+    // 3 unique carry chain wire colors (c1, c2, c3)
+    const carryColors = [
+        { hex: '#a3e635', rgb: hexToRgbStr('#a3e635') }, // c1 (0→1) - lime
+        { hex: '#818cf8', rgb: hexToRgbStr('#818cf8') }, // c2 (1→2) - indigo
+        { hex: '#fbbf24', rgb: hexToRgbStr('#fbbf24') }, // c3 (2→3) - amber
+    ];
     // 8 unique input colors (A0 B0 A1 B1 A2 B2 A3 B3)
     const inputColors = [
         { hex: '#facc15', rgb: hexToRgbStr('#facc15') }, // A0 - kuning
@@ -166,7 +172,7 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Carry chain wires (ungu / carry path) ── */}
+            {/* ── Carry chain wires (warna unik tiap kabel) ── */}
             {[[c1, 0, 1], [c2, 1, 2], [c3, 2, 3]].map(function(arr) {
                 var carryVal = arr[0], fromIdx = arr[1], toIdx = arr[2];
                 var fromBlk = blocks[fromIdx];
@@ -177,6 +183,7 @@ export default function CircuitDiagram_FullAdder4bit({
                 var toPY = inPinY(toBlk.y, 2);
                 var laneX = carryLaneX[fromIdx];
                 var belowBlockY = toBlk.y + blockH + 18;
+                var cc = carryColors[fromIdx];
 
                 return (
                     <path key={"carry-" + fromIdx}
@@ -185,7 +192,7 @@ export default function CircuitDiagram_FullAdder4bit({
                            " V " + belowBlockY +
                            " H " + toX +
                            " V " + toPY}
-                        fill="none" stroke={wc(carryVal, carryPathColor, carryPathRgb)}
+                        fill="none" stroke={wc(carryVal, cc.hex, cc.rgb)}
                         strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                         style={{ transition: "stroke 0.3s" }}
                     />
