@@ -198,22 +198,22 @@ function CircuitList({ setPage }) {
                 {/* Cards — difilter, auto-wrap dengan FavoritesProvider + CardNavigation glow */}
                 <style>{`
                     @keyframes ic-pulse-glow {
-                        0%    { box-shadow: 0 0 10px rgba(0,255,136,0.18), 0 0 24px rgba(0,255,136,0.07), 0 0 44px rgba(0,255,136,0.03), inset 0 0 5px rgba(0,255,136,0.03); outline-color: rgba(0,255,136,0.25); }
-                        8.3%  { box-shadow: 0 0 11px rgba(5,255,139,0.2),  0 0 26px rgba(5,255,139,0.08), 0 0 46px rgba(5,255,139,0.035), inset 0 0 5.5px rgba(5,255,139,0.035); outline-color: rgba(5,255,139,0.29); }
-                        16.6% { box-shadow: 0 0 12px rgba(10,255,142,0.22), 0 0 28px rgba(10,255,142,0.09), 0 0 48px rgba(10,255,142,0.04),  inset 0 0 6px rgba(10,255,142,0.04); outline-color: rgba(10,255,142,0.33); }
-                        25%   { box-shadow: 0 0 13px rgba(15,255,145,0.24), 0 0 30px rgba(15,255,145,0.1),  0 0 50px rgba(15,255,145,0.045), inset 0 0 6.5px rgba(15,255,145,0.045); outline-color: rgba(15,255,145,0.37); }
-                        33.3% { box-shadow: 0 0 14px rgba(20,255,148,0.27), 0 0 32px rgba(20,255,148,0.11), 0 0 52px rgba(20,255,148,0.05),  inset 0 0 7px rgba(20,255,148,0.05); outline-color: rgba(20,255,148,0.41); }
-                        41.6% { box-shadow: 0 0 15px rgba(25,255,154,0.3),  0 0 34px rgba(25,255,154,0.12), 0 0 55px rgba(25,255,154,0.055), inset 0 0 7.5px rgba(25,255,154,0.055); outline-color: rgba(25,255,154,0.45); }
-                        50%   { box-shadow: 0 0 16px rgba(30,255,160,0.33), 0 0 36px rgba(30,255,160,0.13), 0 0 58px rgba(30,255,160,0.06),  inset 0 0 8px rgba(30,255,160,0.06); outline-color: rgba(30,255,160,0.5); }
-                        58.3% { box-shadow: 0 0 15px rgba(25,255,154,0.3),  0 0 34px rgba(25,255,154,0.12), 0 0 55px rgba(25,255,154,0.055), inset 0 0 7.5px rgba(25,255,154,0.055); outline-color: rgba(25,255,154,0.45); }
-                        66.6% { box-shadow: 0 0 14px rgba(20,255,148,0.27), 0 0 32px rgba(20,255,148,0.11), 0 0 52px rgba(20,255,148,0.05),  inset 0 0 7px rgba(20,255,148,0.05); outline-color: rgba(20,255,148,0.41); }
-                        75%   { box-shadow: 0 0 13px rgba(15,255,145,0.24), 0 0 30px rgba(15,255,145,0.1),  0 0 50px rgba(15,255,145,0.045), inset 0 0 6.5px rgba(15,255,145,0.045); outline-color: rgba(15,255,145,0.37); }
-                        83.3% { box-shadow: 0 0 12px rgba(10,255,142,0.22), 0 0 28px rgba(10,255,142,0.09), 0 0 48px rgba(10,255,142,0.04),  inset 0 0 6px rgba(10,255,142,0.04); outline-color: rgba(10,255,142,0.33); }
-                        91.6% { box-shadow: 0 0 11px rgba(5,255,139,0.2),  0 0 26px rgba(5,255,139,0.08), 0 0 46px rgba(5,255,139,0.035), inset 0 0 5.5px rgba(5,255,139,0.035); outline-color: rgba(5,255,139,0.29); }
-                        100%  { box-shadow: 0 0 10px rgba(0,255,136,0.18), 0 0 24px rgba(0,255,136,0.07), 0 0 44px rgba(0,255,136,0.03), inset 0 0 5px rgba(0,255,136,0.03); outline-color: rgba(0,255,136,0.25); }
+                        0%    { box-shadow: 0 0 6px  rgba(0,255,136,0.05), 0 0 14px rgba(0,255,136,0.02), 0 0 26px rgba(0,255,136,0.01), inset 0 0 3px rgba(0,255,136,0.01); outline-color: rgba(0,255,136,0.08); }
+                        8.3%  { box-shadow: 0 0 8px  rgba(3,255,137,0.09), 0 0 18px rgba(3,255,137,0.04), 0 0 32px rgba(3,255,137,0.018), inset 0 0 4px rgba(3,255,137,0.018); outline-color: rgba(3,255,137,0.13); }
+                        16.6% { box-shadow: 0 0 10px rgba(6,255,138,0.13), 0 0 22px rgba(6,255,138,0.06), 0 0 38px rgba(6,255,138,0.026), inset 0 0 5px rgba(6,255,138,0.026); outline-color: rgba(6,255,138,0.2); }
+                        25%   { box-shadow: 0 0 12px rgba(10,255,141,0.18), 0 0 27px rgba(10,255,141,0.09), 0 0 44px rgba(10,255,141,0.035), inset 0 0 6px rgba(10,255,141,0.035); outline-color: rgba(10,255,141,0.28); }
+                        33.3% { box-shadow: 0 0 14px rgba(15,255,145,0.24), 0 0 32px rgba(15,255,145,0.12), 0 0 50px rgba(15,255,145,0.048), inset 0 0 7px rgba(15,255,145,0.048); outline-color: rgba(15,255,145,0.37); }
+                        41.6% { box-shadow: 0 0 17px rgba(22,255,152,0.32), 0 0 38px rgba(22,255,152,0.16), 0 0 58px rgba(22,255,152,0.065), inset 0 0 9px rgba(22,255,152,0.065); outline-color: rgba(22,255,152,0.48); }
+                        50%   { box-shadow: 0 0 20px rgba(30,255,160,0.42), 0 0 44px rgba(30,255,160,0.2),  0 0 68px rgba(30,255,160,0.08),  inset 0 0 11px rgba(30,255,160,0.08); outline-color: rgba(30,255,160,0.6); }
+                        58.3% { box-shadow: 0 0 17px rgba(22,255,152,0.32), 0 0 38px rgba(22,255,152,0.16), 0 0 58px rgba(22,255,152,0.065), inset 0 0 9px rgba(22,255,152,0.065); outline-color: rgba(22,255,152,0.48); }
+                        66.6% { box-shadow: 0 0 14px rgba(15,255,145,0.24), 0 0 32px rgba(15,255,145,0.12), 0 0 50px rgba(15,255,145,0.048), inset 0 0 7px rgba(15,255,145,0.048); outline-color: rgba(15,255,145,0.37); }
+                        75%   { box-shadow: 0 0 12px rgba(10,255,141,0.18), 0 0 27px rgba(10,255,141,0.09), 0 0 44px rgba(10,255,141,0.035), inset 0 0 6px rgba(10,255,141,0.035); outline-color: rgba(10,255,141,0.28); }
+                        83.3% { box-shadow: 0 0 10px rgba(6,255,138,0.13), 0 0 22px rgba(6,255,138,0.06), 0 0 38px rgba(6,255,138,0.026), inset 0 0 5px rgba(6,255,138,0.026); outline-color: rgba(6,255,138,0.2); }
+                        91.6% { box-shadow: 0 0 8px  rgba(3,255,137,0.09), 0 0 18px rgba(3,255,137,0.04), 0 0 32px rgba(3,255,137,0.018), inset 0 0 4px rgba(3,255,137,0.018); outline-color: rgba(3,255,137,0.13); }
+                        100%  { box-shadow: 0 0 6px  rgba(0,255,136,0.05), 0 0 14px rgba(0,255,136,0.02), 0 0 26px rgba(0,255,136,0.01), inset 0 0 3px rgba(0,255,136,0.01); outline-color: rgba(0,255,136,0.08); }
                     }
                     .ic-highlighted-card {
-                        outline: 2px solid rgba(0,255,136,0.35);
+                        outline: 2px solid rgba(0,255,136,0.2);
                         outline-offset: 3px;
                         border-radius: 18px;
                         animation: ic-pulse-glow 2.2s ease-in-out infinite;
