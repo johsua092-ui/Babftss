@@ -1073,3 +1073,25 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 **Status Bab B:** sekarang cuma 4 card (B1+B2 Mux, B5+B6 Demux), bukan 8. B3/B4/B7/B8 dihapus permanen. Rencana pengganti belum ditentukan.
 
 **Catatan soal Tahap B (rencana Full Adder 4-bit):** keputusan ini TIDAK MEMBATALKAN rencana itu — cuma mengubah keadaan sebelum rencana itu dieksekusi. Perlu didiskusikan ulang apakah posisi penyisipan num='10' masih relevan.
+
+---
+
+## [SESSION TERBARU] AURORA GREEN GLOW — DITETAPKAN SEBAGAI ATURAN MUTLAK ABSOLUT
+
+**Tanggal:** 2026-08-08
+
+**Keputusan:** Sistem glow navigasi card (efek denyut pada card tujuan saat diklik "click me" dari komponen lain) RESMI ditetapkan sebagai **aturan mutlak absolut** yang berlaku ke SELURUH fitur navigasi card di proyek ini.
+
+**Riwayat evolusi glow navigasi card:**
+1. Versi awal: putih polos, 2 keyframe, 1.5s — user bilang "jelek banget warna putih"
+2. Diganti aurora green, 4 keyframe, 2s — transisi warnanya masih "kaget" (lompatan warna terlalu jauh)
+3. Diperhalus: 8 keyframe, 3.5s — smooth tapi glow-nya tidak kelihatan bertransisi (range terlalu sempit)
+4. Range diperlebar: min opacity 0.05, max 0.42 (selisih ~8.4x) — transisi terlihat jelas
+5. Speed dinaikkan: 4s -> 2.2s -> 1.4s — denyutan lebih hidup
+6. FINAL: 12 keyframe, 1.4s, aurora green, dynamic range besar
+
+**Dokumen yang diperbarui:**
+- `design.md` Bagian 4 — Spesifikasi lengkap CSS, parameter teknis, prinsip desain, larangan mutlak
+- `instruction.md` Bagian 8 poin 9 — Referensi ke design.md Bagian 4 sebagai aturan mutlak
+
+**Implementasi saat ini:** Hanya di `LogicGatesCircuit.jsx` (halaman Logic Gates Circuit). Saat fitur navigasi card ditambahkan ke halaman lain, WAJIB copy-paste CSS persis dari `design.md` Bagian 4.2.

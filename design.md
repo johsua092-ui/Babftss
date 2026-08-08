@@ -324,3 +324,115 @@ Pemula sekarang bisa langsung melihat: "kabel merah dari NOT S0, kabel pink dari
 | 15 | 4:1 Demux | 2 | Merah `#f87171` | Pink `#f472b6` | — | — | |
 | 16 | 8:1 Demux | 3 | Merah `#f87171` | Pink `#f472b6` | Teal `#2dd4bf` | — | Referensi awal |
 | 17 | 16:1 Demux | 4 | Merah `#f87171` | Pink `#f472b6` | Teal `#2dd4bf` | Fuchsia `#d946ef` | S3=lime `#a3e635` |
+
+---
+
+## 4. SISTEM GLOW NAVIGASI CARD: AURORA GREEN (ATURAN MUTLAK, BERLAKU KE SEMUA FITUR)
+
+> **Status: MUTLAK ABSOLUT.** Aturan ini berlaku ke SETIAP fitur navigasi card di seluruh proyek — tidak terbatas pada halaman Logic Gates Circuit saja. Setiap kali ada komponen kotak/card yang memiliki tombol "click me" atau mekanisme navigasi serupa (klik komponen A di halaman X lalu di-scroll ke card asal di halaman Y), efek glow pada card tujuan **WAJIB** mengikuti spesifikasi ini **PERSIS**. Tidak boleh ditafsirkan, dimodifikasi, atau diganti tanpa persetujuan eksplisit dari user.
+
+### 4.1 Deskripsi Sistem
+
+Ketika user mengklik elemen navigasi (misalnya tombol "Click Me" pada IC Block Reference di halaman Full Adder 4-bit), sistem akan:
+1. Meng-scroll otomatis ke card tujuan (menggunakan `scrollIntoView({ behavior: 'smooth', block: 'center' })`).
+2. Menerapkan efek glow aurora green berdenyut pada card tujuan (class `ic-highlighted-card`).
+3. Efek hilang saat user mengklik di mana saja di luar card (document click listener).
+
+### 4.2 Spesifikasi Glow — CSS Keyframe Lengkap (COPY-PASTE THIS EXACTLY)
+
+**Nama class:** `ic-highlighted-card`
+
+**CSS exa
+
+---
+
+## 4. SISTEM GLOW NAVIGASI CARD: AURORA GREEN (ATURAN MUTLAK, BERLAKU KE SEMUA FITUR)
+
+> **Status: MUTLAK ABSOLUT.** Aturan ini berlaku ke SETIAP fitur navigasi card di seluruh proyek — tidak terbatas pada halaman Logic Gates Circuit saja. Setiap kali ada komponen kotak/card yang memiliki tombol "click me" atau mekanisme navigasi serupa (klik komponen A di halaman X lalu di-scroll ke card asal di halaman Y), efek glow pada card tujuan **WAJIB** mengikuti spesifikasi ini **PERSIS**. Tidak boleh ditafsirkan, dimodifikasi, atau diganti tanpa persetujuan eksplisit dari user.
+
+### 4.1 Deskripsi Sistem
+
+Ketika user mengklik elemen navigasi (misalnya tombol "Click Me" pada IC Block Reference di halaman Full Adder 4-bit), sistem akan:
+1. Meng-scroll otomatis ke card tujuan (menggunakan `scrollIntoView({ behavior: 'smooth', block: 'center' })`).
+2. Menerapkan efek glow aurora green berdenyut pada card tujuan (class `ic-highlighted-card`).
+3. Efek hilang saat user mengklik di mana saja di luar card (document click listener).
+
+### 4.2 Spesifikasi Glow — CSS Lengkap (WAJIB COPY-PASTE PERSIS)
+
+**Nama class:** `ic-highlighted-card`
+
+**CSS exact (copy-paste ini persis, JANGAN dimodifikasi):**
+
+```css
+@keyframes ic-pulse-glow {
+    0%    { box-shadow: 0 0 6px  rgba(0,255,136,0.05), 0 0 14px rgba(0,255,136,0.02), 0 0 26px rgba(0,255,136,0.01), inset 0 0 3px rgba(0,255,136,0.01); outline-color: rgba(0,255,136,0.08); }
+    8.3%  { box-shadow: 0 0 8px  rgba(3,255,137,0.09), 0 0 18px rgba(3,255,137,0.04), 0 0 32px rgba(3,255,137,0.018), inset 0 0 4px rgba(3,255,137,0.018); outline-color: rgba(3,255,137,0.13); }
+    16.6% { box-shadow: 0 0 10px rgba(6,255,138,0.13), 0 0 22px rgba(6,255,138,0.06), 0 0 38px rgba(6,255,138,0.026), inset 0 0 5px rgba(6,255,138,0.026); outline-color: rgba(6,255,138,0.2); }
+    25%   { box-shadow: 0 0 12px rgba(10,255,141,0.18), 0 0 27px rgba(10,255,141,0.09), 0 0 44px rgba(10,255,141,0.035), inset 0 0 6px rgba(10,255,141,0.035); outline-color: rgba(10,255,141,0.28); }
+    33.3% { box-shadow: 0 0 14px rgba(15,255,145,0.24), 0 0 32px rgba(15,255,145,0.12), 0 0 50px rgba(15,255,145,0.048), inset 0 0 7px rgba(15,255,145,0.048); outline-color: rgba(15,255,145,0.37); }
+    41.6% { box-shadow: 0 0 17px rgba(22,255,152,0.32), 0 0 38px rgba(22,255,152,0.16), 0 0 58px rgba(22,255,152,0.065), inset 0 0 9px rgba(22,255,152,0.065); outline-color: rgba(22,255,152,0.48); }
+    50%   { box-shadow: 0 0 20px rgba(30,255,160,0.42), 0 0 44px rgba(30,255,160,0.2),  0 0 68px rgba(30,255,160,0.08),  inset 0 0 11px rgba(30,255,160,0.08); outline-color: rgba(30,255,160,0.6); }
+    58.3% { box-shadow: 0 0 17px rgba(22,255,152,0.32), 0 0 38px rgba(22,255,152,0.16), 0 0 58px rgba(22,255,152,0.065), inset 0 0 9px rgba(22,255,152,0.065); outline-color: rgba(22,255,152,0.48); }
+    66.6% { box-shadow: 0 0 14px rgba(15,255,145,0.24), 0 0 32px rgba(15,255,145,0.12), 0 0 50px rgba(15,255,145,0.048), inset 0 0 7px rgba(15,255,145,0.048); outline-color: rgba(15,255,145,0.37); }
+    75%   { box-shadow: 0 0 12px rgba(10,255,141,0.18), 0 0 27px rgba(10,255,141,0.09), 0 0 44px rgba(10,255,141,0.035), inset 0 0 6px rgba(10,255,141,0.035); outline-color: rgba(10,255,141,0.28); }
+    83.3% { box-shadow: 0 0 10px rgba(6,255,138,0.13), 0 0 22px rgba(6,255,138,0.06), 0 0 38px rgba(6,255,138,0.026), inset 0 0 5px rgba(6,255,138,0.026); outline-color: rgba(6,255,138,0.2); }
+    91.6% { box-shadow: 0 0 8px  rgba(3,255,137,0.09), 0 0 18px rgba(3,255,137,0.04), 0 0 32px rgba(3,255,137,0.018), inset 0 0 4px rgba(3,255,137,0.018); outline-color: rgba(3,255,137,0.13); }
+    100%  { box-shadow: 0 0 6px  rgba(0,255,136,0.05), 0 0 14px rgba(0,255,136,0.02), 0 0 26px rgba(0,255,136,0.01), inset 0 0 3px rgba(0,255,136,0.01); outline-color: rgba(0,255,136,0.08); }
+}
+.ic-highlighted-card {
+    outline: 2px solid rgba(0,255,136,0.2);
+    outline-offset: 3px;
+    border-radius: 18px;
+    animation: ic-pulse-glow 1.4s ease-in-out infinite;
+    will-change: box-shadow, outline-color;
+}
+```
+
+### 4.3 Parameter Teknis (JANGAN DIUBAH)
+
+| Parameter | Nilai | Keterangan |
+|-----------|-------|------------|
+| **Warna dasar** | `rgb(0,255,136)` (aurora green) | Hue aurora hijau kutub. JANGAN ganti ke warna lain (putih, biru, kuning, dll). |
+| **Hue shift** | `0 -> 30` pada channel G (255->160) | Perpindahan warna halus antara keyframe, memberi kesan "kelap-kelip aurora" |
+| **Jumlah keyframe** | 12 titik (0%, 8.3%, 16.6%, 25%, 33.3%, 41.6%, 50%, 58.3%, 66.6%, 75%, 83.3%, 100%) | Simetris: naik 0-50%, turun 50-100%. JANGAN kurangi atau ubah distribusi |
+| **Durasi siklus** | `1.4s` | Kecepatan denyut. JANGAN ubah tanpa persetujuan user |
+| **Easing** | `ease-in-out` | Transisi halus di kedua ujung |
+| **State gelap (0%/100%)** | Shadow terkecil: blur 6/14/26px, opacity 0.05/0.02/0.01, outline 0.08 | Harus TERLIHAT GELAP — inilah yang bikin transisi kelihatan |
+| **State terang (50%)** | Shadow terbesar: blur 20/44/68px, opacity 0.42/0.20/0.08, outline 0.60 | Glow moderat, JANGAN extreme (bikin sakit mata) |
+| **Dynamic range opacity** | 0.05 -> 0.42 (selisih ~8.4x) | Range besar ini WAJIB dipertahankan supaya transisi terlihat jelas |
+| **Outline** | `2px solid rgba(0,255,136,0.2)`, offset `3px` | Border luar tipis yang ikut berdenyut |
+| **Border radius** | `18px` | Sesuaikan dengan border radius card container |
+| **Inset shadow** | Ada di semua keyframe, ikut denyut | Memberi efek glow dari dalam, bukan hanya luar |
+| **will-change** | `box-shadow, outline-color` | WAJIB ada untuk performa rendering |
+| **Jumlah layer box-shadow** | 3 outer + 1 inset = 4 total | Semua layer WAJIB ada di SETIAP keyframe — DILARANG ada layer yang muncul/hilang tiba-tiba |
+
+### 4.4 Prinsip Desain Glow
+
+1. **Transisi warna HALUS (smooth):** Perubahan warna antar keyframe mikroskopis (selisih R max 30, G max 24, B max 24). Tidak boleh ada lompatan warna yang terlihat kasat mata.
+2. **Transisi glow BESAR (visible):** Perubahan intensity/opacity antara state gelap dan terang HARUS kontras tinggi (min 8x selisih). Ini yang membuat denyutan terlihat jelas.
+3. **Konsistensi layer:** Semua layer shadow (3 outer + 1 inset) ada di SETIAP keyframe. Tidak boleh ada layer yang muncul di satu keyframe tapi hilang di keyframe lain — itu menyebabkan efek "kaget".
+4. **Pola simetris:** Keyframe 0-50% naik, 50-100% turun (mirror persis). Tidak boleh asimetris.
+5. **Bukan dekorasi semata:** Glow ini adalah penanda navigasi fungsional — memberi tahu user "ini card yang kamu tuju". Harus cukup terlihat tapi tidak mengganggu konten card.
+
+### 4.5 Implementasi Teknis (Reuse Pattern)
+
+Sistem ini diimplementasikan menggunakan:
+- **`CardNavigationContext.jsx`** — Context React yang menyediakan `highlightedCard` state, `navigateToCard(num)`, dan `clearHighlight()`.
+- **Class `ic-highlighted-card`** — Diterapkan pada wrapper div card ketika `highlightedCard === card.num`.
+- **Document click listener** — Menghapus highlight saat user klik di mana saja.
+
+**Saat menambahkan fitur navigasi card BARU di halaman manapun:**
+1. Wrap halaman dengan `<CardNavigationProvider>`.
+2. Gunakan `useCardNavigation()` untuk akses `navigateToCard`.
+3. Terapkan class `ic-highlighted-card` pada card yang di-highlight.
+4. Copy-paste CSS keyframe persis dari Bagian 4.2.
+5. JANGAN buat versi "modifikasi" dari glow ini — pakai PERSIS sama.
+
+### 4.6 Larangan Mutlak
+
+- **DILARANG** mengganti warna glow ke selain aurora green (`rgb(0,255,136)` basis).
+- **DILARANG** mengurangi jumlah keyframe dari 12.
+- **DILARANG** mempersempit dynamic range (opacity gelap-terang).
+- **DILARANG** membuat layer shadow yang muncul/hilang di tengah animasi.
+- **DILARANG** mengubah durasi, easing, atau warna tanpa persetujuan eksplisit user.
+- **DILARANG** menggunakan glow style yang berbeda untuk fitur navigasi card di halaman lain — konsistensi adalah KENISCAYAAN.
