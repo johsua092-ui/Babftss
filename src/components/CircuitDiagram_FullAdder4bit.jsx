@@ -157,13 +157,15 @@ export default function CircuitDiagram_FullAdder4bit({
                 var toX = blockX - pinLen; // Cin pin start
                 var toPY = inPinY(toBlk.y, 2); // Cin = input pin 2
                 var laneX = carryLaneX[fromIdx];
+                var belowBlockY = toBlk.y + blockH + 5; // route below the target block
 
                 return (
                     <path key={"carry-" + fromIdx}
                         d={"M " + fromX + " " + fromPY +
                            " H " + laneX +
-                           " V " + toPY +
-                           " H " + toX}
+                           " V " + belowBlockY +
+                           " H " + toX +
+                           " V " + toPY}
                         fill="none" stroke={carryVal ? wireColor : dimColor}
                         strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                         style={{ transition: "stroke 0.3s" }}
