@@ -338,25 +338,6 @@ Ketika user mengklik elemen navigasi (misalnya tombol "Click Me" pada IC Block R
 2. Menerapkan efek glow aurora green berdenyut pada card tujuan (class `ic-highlighted-card`).
 3. Efek hilang saat user mengklik di mana saja di luar card (document click listener).
 
-### 4.2 Spesifikasi Glow — CSS Keyframe Lengkap (COPY-PASTE THIS EXACTLY)
-
-**Nama class:** `ic-highlighted-card`
-
-**CSS exa
-
----
-
-## 4. SISTEM GLOW NAVIGASI CARD: AURORA GREEN (ATURAN MUTLAK, BERLAKU KE SEMUA FITUR)
-
-> **Status: MUTLAK ABSOLUT.** Aturan ini berlaku ke SETIAP fitur navigasi card di seluruh proyek — tidak terbatas pada halaman Logic Gates Circuit saja. Setiap kali ada komponen kotak/card yang memiliki tombol "click me" atau mekanisme navigasi serupa (klik komponen A di halaman X lalu di-scroll ke card asal di halaman Y), efek glow pada card tujuan **WAJIB** mengikuti spesifikasi ini **PERSIS**. Tidak boleh ditafsirkan, dimodifikasi, atau diganti tanpa persetujuan eksplisit dari user.
-
-### 4.1 Deskripsi Sistem
-
-Ketika user mengklik elemen navigasi (misalnya tombol "Click Me" pada IC Block Reference di halaman Full Adder 4-bit), sistem akan:
-1. Meng-scroll otomatis ke card tujuan (menggunakan `scrollIntoView({ behavior: 'smooth', block: 'center' })`).
-2. Menerapkan efek glow aurora green berdenyut pada card tujuan (class `ic-highlighted-card`).
-3. Efek hilang saat user mengklik di mana saja di luar card (document click listener).
-
 ### 4.2 Spesifikasi Glow — CSS Lengkap (WAJIB COPY-PASTE PERSIS)
 
 **Nama class:** `ic-highlighted-card`

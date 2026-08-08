@@ -1128,3 +1128,32 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 **Dokumen yang diperbarui:**
 - `design.md` Bagian 5 — Spesifikasi lengkap perilaku, arsitektur, alur eksekusi, larangan mutlak
 - `instruction.md` Bagian 8 poin 10 — Referensi ke design.md Bagian 5 sebagai aturan mutlak
+
+---
+
+## 18. VERIFIKASI CLAUDE: TAHAP B — CARD 10 "FULL ADDER 4-BIT" + SISTEM IC BLOCK (SELESAI & TERVERIFIKASI PENUH)
+
+**Task utama — SEMUA LOLOS:**
+- Bug lama `ICBlockRef.jsx` (2 komentar JSX kurang `}`) — dikonfirmasi SUDAH DIPERBAIKI, compile sukses.
+- `ALL_CARDS` renumbering — dikonfirmasi benar: num 10='Full Adder 4-bit' (HARD, komponen baru), num 11-14 = geser dari 10-13 lama (2:1/4:1 Mux, 2:1/4:1 Demux), `el` reference tidak berubah, cuma label `num`.
+- Logika Full Adder 4-bit — diverifikasi manual (test 15+1+0=16 overflow: SUM=0000, Cout=1, semua carry antar-tahap c1/c2/c3 benar dihitung per-bit, bukan cuma dari total).
+- Diagram — di-render jadi SVG asli, dikonfirmasi: sistem IC Block bekerja PERSIS sesuai rencana (4 kotak "Full Adder 1 Bit" + "click me", target num="09" benar), carry chain 3 warna unik tidak overlap (dikonfirmasi pixel-scan), 8 input A0-A3/B0-B3 semua warna unik.
+- **Kualitas eksekusi tahap ini adalah yang TERBAIK sejauh proyek berjalan.**
+
+**TEMUAN DI LUAR SCOPE TASK — PERLU KLARIFIKASI USER (dilaporkan dengan bukti konkret, bukan tuduhan sepihak):**
+
+1. **`src/contexts/AuthContext.jsx` (file AKTIF, bukan orphan) ditulis ulang total** — bukan cuma format, tapi restrukturisasi pola auth (dari `getFirebase()` async jadi import langsung `auth`/`googleProvider`). File ini eksplisit masuk daftar TERLARANG di `instruction.md` sejak awal proyek untuk disentuh AI frontend.
+2. **`src/context/AuthContext.jsx` (versi orphan/duplikat) TERHAPUS.** File ini JUGA eksplisit masuk daftar terlarang (`instruction.md`: "biarkan backend developer yang membersihkan sendiri").
+3. **`UserPill.jsx` ikut berubah** (update import path menyesuaikan poin 2) — file ini juga di daftar terlarang.
+4. **Folder `.next/` (build artifact Next.js/Turbopack) muncul di root repo** — proyek ini pakai Vite, BUKAN Next.js. Ini janggal, kemungkinan ada tool/command yang salah dijalankan atau cross-contamination dari project lain.
+5. **`design.md` Bagian 4 (Sistem Glow Navigasi Aurora Green) ke-duplikat PERSIS 2x** — kemungkinan besar human/AI error waktu menambahkan section, bukan disengaja.
+
+**Sikap Claude:** poin 1-4 KEMUNGKINAN BESAR itu kerjaan backend developer (teman user) yang ke-bundle di commit/zip yang sama — pola ini sudah beberapa kali terjadi sebelumnya di proyek ini (Supabase RLS, Favorites, Docker server) dan selalu ternyata legitimate. TAPI kali ini beda karena poin 1-2 itu MENULIS ULANG file auth yang AKTIF (bukan cuma nambah file backend baru terpisah) — jadi worth dikonfirmasi ulang secara eksplisit ke user/teman backend-nya, bukan diasumsikan otomatis aman. Poin 5 murni dirapikan saja (hapus duplikat), tidak perlu tanya user.
+
+---
+
+## 19. TINDAK LANJUT TEMUAN BAGIAN 18
+
+- **AuthContext.jsx (aktif) dikonfirmasi LANGSUNG oleh user: itu kerjaan sah teman backend.** Tidak ada tindakan lebih lanjut diperlukan.
+- **`design.md` Bagian 4 duplikat — DIPERBAIKI Claude.** Ternyata bukan duplikat identik, tapi draft PERTAMA yang terpotong di tengah kalimat ("...CSS exa") tertinggal di file sebelum versi lengkapnya. 19 baris draft terpotong itu dihapus, versi lengkap (yang sudah benar) dipertahankan. Transisi ke section sekitarnya dicek rapi.
+- **Folder `.next/` dan `context/AuthContext.jsx` (orphan terhapus)** — belum ada konfirmasi eksplisit terpisah dari user, tapi kemungkinan besar bagian dari paket perubahan backend yang sama (sudah dikonfirmasi poin pertama). Tidak dianggap masalah kecuali user bilang lain.
