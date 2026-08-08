@@ -198,17 +198,22 @@ function CircuitList({ setPage }) {
                 {/* Cards — difilter, auto-wrap dengan FavoritesProvider + CardNavigation glow */}
                 <style>{`
                     @keyframes ic-pulse-glow {
-                        0%   { box-shadow: 0 0 10px rgba(0,255,136,0.25), 0 0 25px rgba(0,255,136,0.1), inset 0 0 6px rgba(0,255,136,0.05); outline-color: rgba(0,255,136,0.4); }
-                        25%  { box-shadow: 0 0 16px rgba(34,255,170,0.4), 0 0 35px rgba(34,255,170,0.15), inset 0 0 8px rgba(34,255,170,0.08); outline-color: rgba(34,255,170,0.6); }
-                        50%  { box-shadow: 0 0 22px rgba(0,255,102,0.5), 0 0 50px rgba(0,255,102,0.2), 0 0 80px rgba(0,255,102,0.08), inset 0 0 10px rgba(0,255,102,0.1); outline-color: rgba(0,255,102,0.8); }
-                        75%  { box-shadow: 0 0 14px rgba(57,255,180,0.35), 0 0 30px rgba(57,255,180,0.12), inset 0 0 7px rgba(57,255,180,0.06); outline-color: rgba(57,255,180,0.55); }
-                        100% { box-shadow: 0 0 10px rgba(0,255,136,0.25), 0 0 25px rgba(0,255,136,0.1), inset 0 0 6px rgba(0,255,136,0.05); outline-color: rgba(0,255,136,0.4); }
+                        0%    { box-shadow: 0 0 12px rgba(0,255,136,0.2),  0 0 28px rgba(0,255,136,0.08), inset 0 0 6px rgba(0,255,136,0.04); outline-color: rgba(0,255,136,0.3); }
+                        12.5% { box-shadow: 0 0 14px rgba(10,255,142,0.25), 0 0 32px rgba(10,255,142,0.1),  inset 0 0 7px rgba(10,255,142,0.05); outline-color: rgba(10,255,142,0.38); }
+                        25%   { box-shadow: 0 0 17px rgba(20,255,150,0.32), 0 0 38px rgba(20,255,150,0.12), inset 0 0 8px rgba(20,255,150,0.06); outline-color: rgba(20,255,150,0.46); }
+                        37.5% { box-shadow: 0 0 19px rgba(30,255,158,0.37), 0 0 42px rgba(30,255,158,0.14), inset 0 0 9px rgba(30,255,158,0.07); outline-color: rgba(30,255,158,0.52); }
+                        50%   { box-shadow: 0 0 22px rgba(40,255,166,0.42), 0 0 48px rgba(40,255,166,0.16), 0 0 72px rgba(40,255,166,0.06), inset 0 0 10px rgba(40,255,166,0.08); outline-color: rgba(40,255,166,0.6); }
+                        62.5% { box-shadow: 0 0 19px rgba(30,255,158,0.37), 0 0 42px rgba(30,255,158,0.14), inset 0 0 9px rgba(30,255,158,0.07); outline-color: rgba(30,255,158,0.52); }
+                        75%   { box-shadow: 0 0 17px rgba(20,255,150,0.32), 0 0 38px rgba(20,255,150,0.12), inset 0 0 8px rgba(20,255,150,0.06); outline-color: rgba(20,255,150,0.46); }
+                        87.5% { box-shadow: 0 0 14px rgba(10,255,142,0.25), 0 0 32px rgba(10,255,142,0.1),  inset 0 0 7px rgba(10,255,142,0.05); outline-color: rgba(10,255,142,0.38); }
+                        100%  { box-shadow: 0 0 12px rgba(0,255,136,0.2),  0 0 28px rgba(0,255,136,0.08), inset 0 0 6px rgba(0,255,136,0.04); outline-color: rgba(0,255,136,0.3); }
                     }
                     .ic-highlighted-card {
-                        outline: 2px solid rgba(0,255,136,0.5);
+                        outline: 2px solid rgba(0,255,136,0.4);
                         outline-offset: 3px;
                         border-radius: 18px;
-                        animation: ic-pulse-glow 2s ease-in-out infinite;
+                        animation: ic-pulse-glow 3.5s ease-in-out infinite;
+                        will-change: box-shadow, outline-color;
                     }
                 `}</style>
                 {filtered.map(card => (
