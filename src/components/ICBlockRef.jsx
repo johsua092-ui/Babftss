@@ -34,10 +34,10 @@ export default function ICBlockRef({ targetNum, label, inputs, outputs, x, y, wi
                 </linearGradient>
             </defs>
             <g onClick={handleClick} style={{ cursor: 'pointer' }}>
-                {/* Background rect */
+                {/* Background rect */}
                 <rect x={x} y={y} width={width} height={height} rx={6} ry={6}
                     fill="#0f172a" stroke="#334155" strokeWidth="1.5" />
-                {/* Hover overlay */
+                {/* Hover overlay */}
                 <rect x={x} y={y} width={width} height={height} rx={6} ry={6}
                     fill="transparent" stroke="transparent" strokeWidth="1.5"
                     style={{ transition: 'fill 0.2s, stroke 0.2s' }}

@@ -11,6 +11,7 @@ import CircuitCard06 from '../components/CircuitCard06';
 import CircuitCard07 from '../components/CircuitCard07';
 import CircuitCard08 from '../components/CircuitCard08';
 import CircuitCard09 from '../components/CircuitCard09';
+import CircuitCard_FullAdder4bit from '../components/CircuitCard_FullAdder4bit';
 import CircuitCard10 from '../components/CircuitCard10';
 import CircuitCard11 from '../components/CircuitCard11';
 import CircuitCard14 from '../components/CircuitCard14';
@@ -26,10 +27,11 @@ const ALL_CARDS = [
     { num: '07', name: 'Gerbang 4 Input Lanjutan', tier: 'EASY', el: CircuitCard06 },
     { num: '08', name: 'Half Adder', tier: 'EASY', el: CircuitCard07 },
     { num: '09', name: 'Full Adder', tier: 'NORMAL', el: CircuitCard09 },
-    { num: '10', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard10 },
-    { num: '11', name: '4:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard11 },
-    { num: '12', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 },
-    { num: '13', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 },
+    { num: '10', name: 'Full Adder 4-bit', tier: 'HARD', el: CircuitCard_FullAdder4bit },
+    { num: '11', name: '2:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard10 },
+    { num: '12', name: '4:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard11 },
+    { num: '13', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 },
+    { num: '14', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 },
 ];
 
 const TIERS = [
