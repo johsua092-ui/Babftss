@@ -5,7 +5,8 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
     // Multi-NOT colors (3.5.8): NOT #1=S0=merah, NOT #2=S1=pink
     const not1Color = "#f87171", not1Rgb = hexToRgbStr(not1Color); // NOT S0 — merah (NOT #1)
     const not2Color = "#f472b6", not2Rgb = hexToRgbStr(not2Color); // NOT S1 — pink  (NOT #2)
-    const selColor = "#4ade80", selRgb = hexToRgbStr(selColor);
+    const s0Color = "#4ade80", s0Rgb = hexToRgbStr(s0Color);  // S0 - hijau
+    const s1Color = "#2dd4bf", s1Rgb = hexToRgbStr(s1Color);  // S1 - teal
     const orColor = "#a78bfa", orRgb = hexToRgbStr(orColor);
     const wc = (val, col, rgb) => val ? col : `rgba(${rgb},0.25)`;
 
@@ -113,22 +114,22 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
     return <svg viewBox={`0 0 ${svgW} ${svgH}`} width="100%" style={{ overflow: "visible", display: "block" }}>
         {/* ===== INPUT NODES ===== */}
-        <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={selColor} rgb={selRgb} />
-        <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={selColor} rgb={selRgb} />
+        <InputNode ix={1} iy={s0Y} val={s0} label="S0" onToggle={onToggleS0} color={s0Color} rgb={s0Rgb} />
+        <InputNode ix={1} iy={s1Y} val={s1} label="S1" onToggle={onToggleS1} color={s1Color} rgb={s1Rgb} />
         <InputNode ix={1} iy={d0Y} val={d0} label="D0" onToggle={onToggleD0} color={dCols[0]} rgb={dRgbs[0]} />
         <InputNode ix={1} iy={d1Y} val={d1} label="D1" onToggle={onToggleD1} color={dCols[1]} rgb={dRgbs[1]} />
         <InputNode ix={1} iy={d2Y} val={d2} label="D2" onToggle={onToggleD2} color={dCols[2]} rgb={dRgbs[2]} />
         <InputNode ix={1} iy={d3Y} val={d3} label="D3" onToggle={onToggleD3} color={dCols[3]} rgb={dRgbs[3]} />
 
         {/* ===== S0 INPUT → JUNCTION → NOT ===== */}
-        <W d={`M 47,${s0Y} H ${s0JX}`} val={s0} col={selColor} rgb={selRgb} />
-        <W d={`M ${s0JX},${s0Y} H ${notSX}`} val={s0} col={selColor} rgb={selRgb} />
-        <circle cx={s0JX} cy={s0Y} r={3} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M 47,${s0Y} H ${s0JX}`} val={s0} col={s0Color} rgb={s0Rgb} />
+        <W d={`M ${s0JX},${s0Y} H ${notSX}`} val={s0} col={s0Color} rgb={s0Rgb} />
+        <circle cx={s0JX} cy={s0Y} r={3} fill={s0 ? s0Color : `rgba(${s0Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== S1 INPUT → JUNCTION → NOT ===== */}
-        <W d={`M 47,${s1Y} H ${s1JX}`} val={s1} col={selColor} rgb={selRgb} />
-        <W d={`M ${s1JX},${s1Y} H ${notSX}`} val={s1} col={selColor} rgb={selRgb} />
-        <circle cx={s1JX} cy={s1Y} r={3} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <W d={`M 47,${s1Y} H ${s1JX}`} val={s1} col={s1Color} rgb={s1Rgb} />
+        <W d={`M ${s1JX},${s1Y} H ${notSX}`} val={s1} col={s1Color} rgb={s1Rgb} />
+        <circle cx={s1JX} cy={s1Y} r={3} fill={s1 ? s1Color : `rgba(${s1Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
 
         {/* ===== NOT GATES ===== */}
         <NotGate sx={notSX} ty={notS0TY} by={notS0BY} my={notS0MY} triEx={notS0TriEX} bubR={notS0BubR} glow={notS0Glow} fill={notS0Fill} stroke={notS0Stk} />
@@ -149,9 +150,9 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
         {/* ===== S0 DIRECT BUS (S0 → AND1 top, AND3 top) ===== */}
         {/* Trunk (green = select signal) */}
-        <W d={`M ${s0JX},${s0Y} V 65 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={selColor} rgb={selRgb} />
+        <W d={`M ${s0JX},${s0Y} V 65 H ${s0dX} V ${andGates[3].topIn}`} val={s0} col={s0Color} rgb={s0Rgb} />
         {/* Branch to AND1 top (D1 amber) */}
-        <circle cx={s0dX} cy={andGates[1].topIn} r={2.5} fill={s0 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s0dX} cy={andGates[1].topIn} r={2.5} fill={s0 ? s0Color : `rgba(${s0Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s0dX},${andGates[1].topIn} H ${andSX}`} val={s0} col={dCols[1]} rgb={dRgbs[1]} />
         {/* Branch to AND3 top (D3 blue) */}
         <W d={`M ${s0dX},${andGates[3].topIn} H ${andSX}`} val={s0} col={dCols[3]} rgb={dRgbs[3]} />
@@ -171,9 +172,9 @@ export default function CircuitDiagram11({ s0, s1, d0, d1, d2, d3, s0Not, s1Not,
 
         {/* ===== S1 DIRECT BUS (S1 → AND2 mid, AND3 mid) ===== */}
         {/* Trunk (green = select signal) */}
-        <W d={`M ${s1JX},${s1Y} V 135 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={selColor} rgb={selRgb} />
+        <W d={`M ${s1JX},${s1Y} V 135 H ${s1dX} V ${andGates[3].midIn}`} val={s1} col={s1Color} rgb={s1Rgb} />
         {/* Branch to AND2 mid (D2 orange) */}
-        <circle cx={s1dX} cy={andGates[2].midIn} r={2.5} fill={s1 ? selColor : `rgba(${selRgb},0.25)`} style={{ transition: "fill 0.3s" }} />
+        <circle cx={s1dX} cy={andGates[2].midIn} r={2.5} fill={s1 ? s1Color : `rgba(${s1Rgb},0.25)`} style={{ transition: "fill 0.3s" }} />
         <W d={`M ${s1dX},${andGates[2].midIn} H ${andSX}`} val={s1} col={dCols[2]} rgb={dRgbs[2]} />
         {/* Branch to AND3 mid (D3 blue) */}
         <W d={`M ${s1dX},${andGates[3].midIn} H ${andSX}`} val={s1} col={dCols[3]} rgb={dRgbs[3]} />
