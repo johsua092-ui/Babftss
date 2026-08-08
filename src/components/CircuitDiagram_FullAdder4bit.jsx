@@ -39,7 +39,7 @@ export default function CircuitDiagram_FullAdder4bit({
     // Input node positions (single column: A above, B below)
     const inputNodeX = 28;
     const sumNodeX = blockX + blockW + pinLen + 55;
-    const coutNodeX = blockX + blockW + pinLen + 55;
+    const coutNodeX = blockX + blockW + pinLen + 90;
 
     // SVG dimensions
     const svgW = coutNodeX + nodeR + 20;
