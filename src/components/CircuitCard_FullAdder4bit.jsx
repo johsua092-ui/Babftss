@@ -130,7 +130,7 @@ export default function CircuitCard_FullAdder4bit() {
                 </div>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#94a3b8", fontSize: 9, marginBottom: 3, fontFamily: "Inter,sans-serif", fontWeight: 600, letterSpacing: "0.3px" }}>SUM (Binary)</div>
-                    <div style={{ fontWeight: 700, fontSize: 11 }}>{sb(sum3)}{gap}{sb(sum2)}{gap}{sb(sum1)}{gap}{sb(sum0)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>{coutVal ? <>{sb(true)}{gap}</> : null}{sb(sum3)}{gap}{sb(sum2)}{gap}{sb(sum1)}{gap}{sb(sum0)}</div>
                 </div>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#94a3b8", fontSize: 9, marginBottom: 3, fontFamily: "Inter,sans-serif", fontWeight: 600, letterSpacing: "0.3px" }}>SUM (Decimal)</div>
