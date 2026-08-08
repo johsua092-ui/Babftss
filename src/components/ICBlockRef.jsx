@@ -12,7 +12,7 @@ export default function ICBlockRef({ targetNum, label, inputs, outputs, x, y, wi
     const pinLen = 12;
     const pinFontSize = 8;
     const labelFontSize = 9;
-    const clickFontSize = 9;
+    const clickFontSize = 11;
     const pinSpacing = Math.min(18, (height - 20) / Math.max(inputs.length, outputs.length, 1));
     const totalInputH = inputs.length * pinSpacing;
     const totalOutputH = outputs.length * pinSpacing;
@@ -88,7 +88,7 @@ export default function ICBlockRef({ targetNum, label, inputs, outputs, x, y, wi
                 </text>
 
                 {/* "click me" aurora gradient text */}
-                <text x={x + width / 2} y={y + height / 2 + 8} fontFamily="Orbitron,sans-serif"
+                <text x={x + width / 2} y={y + height / 2 + 10} fontFamily="Orbitron,sans-serif"
                     fontSize={clickFontSize} fontWeight={600} textAnchor="middle"
                     style={{ transition: 'opacity 0.2s' }}
                     onMouseEnter={(e) => { e.currentTarget.setAttribute('opacity', '1'); }}
