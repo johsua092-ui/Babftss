@@ -39,7 +39,7 @@ export default function CircuitDiagram_FullAdder4bit({
     // Input node positions (single column: A above, B below)
     const inputNodeX = 28;
     const sumNodeX = blockX + blockW + pinLen + 55;
-    const coutNodeX = blockX + blockW + pinLen + 90;
+    const coutNodeX = blockX + blockW + pinLen + 55;
 
     // SVG dimensions
     const svgW = coutNodeX + nodeR + 20;
@@ -199,24 +199,34 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Final Cout output (from block 3) ── */}
-            <g>
-                <line x1={blockX + blockW + pinLen} y1={outPinY(blocks[3].y, 1)}
-                    x2={coutNodeX - nodeR} y2={outPinY(blocks[3].y, 1)}
-                    stroke={cout ? wireColor : dimColor} strokeWidth={2} strokeLinecap="round"
-                    style={{ transition: "stroke 0.3s" }}
-                />
-                <circle cx={coutNodeX} cy={outPinY(blocks[3].y, 1)} r={nodeR}
-                    fill={cout ? wireColor : '#0e1420'}
-                    stroke={wireColor} strokeWidth={1.5}
-                    style={{ transition: 'all 0.3s' }}
-                />
-                <text x={coutNodeX} y={outPinY(blocks[3].y, 1) + 3.5} textAnchor="middle"
-                    fontFamily="Orbitron,sans-serif" fontSize={8} fontWeight={700}
-                    fill={cout ? '#0e1420' : labelColor}
-                    style={{ pointerEvents: 'none' }}
-                >Cout</text>
-            </g>
+            {/* ── Final Cout output (below S3) ── */}
+            {function() {
+                var coutPinX = blockX + blockW + pinLen;
+                var coutPinY = outPinY(blocks[3].y, 1);
+                var s3CircleY = outPinY(blocks[3].y, 0);
+                var coutCircleY = s3CircleY + nodeR + 10 + nodeR; // below S3 circle with gap
+                var jogX = coutPinX + (coutNodeX - nodeR - coutPinX) * 0.45;
+                return (
+                    <g>
+                        <path d={"M " + coutPinX + " " + coutPinY +
+                            " H " + jogX + " V " + coutCircleY + " H " + (coutNodeX - nodeR)}
+                            fill="none" stroke={cout ? wireColor : dimColor}
+                            strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                            style={{ transition: "stroke 0.3s" }}
+                        />
+                        <circle cx={coutNodeX} cy={coutCircleY} r={nodeR}
+                            fill={cout ? wireColor : '#0e1420'}
+                            stroke={wireColor} strokeWidth={1.5}
+                            style={{ transition: 'all 0.3s' }}
+                        />
+                        <text x={coutNodeX} y={coutCircleY + 3.5} textAnchor="middle"
+                            fontFamily="Orbitron,sans-serif" fontSize={8} fontWeight={700}
+                            fill={cout ? '#0e1420' : labelColor}
+                            style={{ pointerEvents: 'none' }}
+                        >Cout</text>
+                    </g>
+                );
+            }()}
         </svg>
     );
 }
