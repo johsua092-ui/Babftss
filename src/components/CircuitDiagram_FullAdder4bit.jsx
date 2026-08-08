@@ -219,25 +219,26 @@ export default function CircuitDiagram_FullAdder4bit({
                 );
             })}
 
-            {/* ── Final Cout output (ungu / carry path, below S3) ── */}
+            {/* ── Final Cout output (fuchsia, warna unik) ── */}
             {function() {
                 var coutPinX = blockX + blockW + pinLen;
                 var coutPinY = outPinY(blocks[3].y, 1);
                 var s3CircleY = outPinY(blocks[3].y, 0);
                 var coutCircleY = s3CircleY + nodeR + 10 + nodeR;
                 var jogX = coutPinX + (coutNodeX - nodeR - coutPinX) * 0.65;
+                var coutColor = '#e879f9', coutRgb = hexToRgbStr(coutColor);
                 return (
                     <g>
                         <path d={"M " + coutPinX + " " + coutPinY +
                             " H " + jogX + " V " + coutCircleY + " H " + (coutNodeX - nodeR)}
-                            fill="none" stroke={wc(cout, carryPathColor, carryPathRgb)}
+                            fill="none" stroke={wc(cout, coutColor, coutRgb)}
                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                             style={{ transition: "stroke 0.3s" }}
                         />
                         <circle cx={coutNodeX} cy={coutCircleY} r={nodeR}
-                            fill={cout ? carryPathColor : '#1e293b'}
-                            stroke={cout ? carryPathColor : '#334155'} strokeWidth={1.5}
-                            filter={mkGlow(cout, carryPathRgb)}
+                            fill={cout ? coutColor : '#1e293b'}
+                            stroke={cout ? coutColor : '#334155'} strokeWidth={1.5}
+                            filter={mkGlow(cout, coutRgb)}
                             style={{ transition: 'all 0.3s' }}
                         />
                         <text x={coutNodeX} y={coutCircleY + 3.5} textAnchor="middle"
