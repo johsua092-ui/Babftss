@@ -205,7 +205,7 @@ export default function CircuitDiagram_FullAdder4bit({
                 var coutPinY = outPinY(blocks[3].y, 1);
                 var s3CircleY = outPinY(blocks[3].y, 0);
                 var coutCircleY = s3CircleY + nodeR + 10 + nodeR; // below S3 circle with gap
-                var jogX = coutPinX + (coutNodeX - nodeR - coutPinX) * 0.45;
+                var jogX = coutPinX + (coutNodeX - nodeR - coutPinX) * 0.65;
                 return (
                     <g>
                         <path d={"M " + coutPinX + " " + coutPinY +
