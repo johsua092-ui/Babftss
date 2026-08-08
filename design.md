@@ -436,3 +436,52 @@ Sistem ini diimplementasikan menggunakan:
 - **DILARANG** membuat layer shadow yang muncul/hilang di tengah animasi.
 - **DILARANG** mengubah durasi, easing, atau warna tanpa persetujuan eksplisit user.
 - **DILARANG** menggunakan glow style yang berbeda untuk fitur navigasi card di halaman lain — konsistensi adalah KENISCAYAAN.
+
+---
+
+## 5. SISTEM NAVIGASI "CLICK ME": CLEAR FILTER SEBELUM NAVIGASI (ATURAN MUTLAK, BERLAKU KE SEMUA FITUR)
+
+> **Status: MUTLAK ABSOLUT.** Aturan ini berlaku ke SETIAP fitur navigasi card di seluruh proyek — tidak terbatas pada halaman Logic Gates Circuit saja. Setiap kali ada komponen kotak/card yang memiliki tombol "click me" atau mekanisme navigasi serupa (klik komponen A lalu di-scroll ke card asal B), **WAJIB** mengikuti perilaku ini.
+
+### 5.1 Deskripsi Perilaku
+
+Ketika user mengklik elemen navigasi ("click me" pada ICBlockRef, atau mekanisme navigasi card serupa di masa depan), sistem **WAJIB** melakukan hal ini secara berurutan:
+
+1. **CLEAR semua filter aktif** — search text, card number input, difficulty tier filter, dan SEMUA filter lainnya yang mungkin ada di halaman tersebut harus di-reset ke keadaan kosong/tidak aktif.
+2. **Set highlight** pada card tujuan (state `highlightedCard = targetNum`).
+3. **Tunggu render selesai** (setelah filter clear, card tujuan pasti sudah muncul di DOM).
+4. **Scroll otomatis** ke card tujuan (`scrollIntoView({ behavior: 'smooth', block: 'center' })`).
+5. Terapkan efek **glow aurora green** (Bagian 4) pada card tujuan.
+
+**MENGAPA ini mutlak?** Kalau filter tidak di-clear dulu, card tujuan mungkin tidak muncul (karena difilter), sehingga navigasi gagal secara diam-diam — user bingung karena tidak terjadi apa-apa atau di-scroll ke tempat kosong.
+
+### 5.2 Implementasi Teknis (Reuse Pattern)
+
+**Arsitektur:**
+- **`CardNavigationContext.jsx`** menyediakan:
+  - `navigateToCard(targetNum)` — fungsi utama navigasi
+  - `registerClearFilters(fn)` — dipanggil oleh halaman yang punya filter, mendaftarkan fungsi clear-nya
+  - `clearFiltersRef` (internal ref) — menyimpan referensi fungsi clear dari halaman aktif
+- **Halaman yang punya filter** (misal `LogicGatesCircuit.jsx`):
+  - Menggunakan `useEffect(() => { registerClearFilters(handleClear); }, [...])` untuk mendaftarkan fungsi clear-nya
+  - `handleClear` harus mereset SEMUA state filter (query, cardNum, activeTier, dan filter lainnya)
+- **`ICBlockRef.jsx`** (atau komponen navigasi serupa):
+  - Tetap hanya memanggil `navigateToCard(targetNum)` — tidak perlu tahu soal filter
+
+**Alur eksekusi di `navigateToCard`:**
+```
+1. isNavigatingRef.current = true  (flag supaya doc click listener gak clear highlight)
+2. clearFiltersRef.current()         (clear semua filter di halaman)
+3. setHighlightedCard(targetNum)    (set highlight)
+4. requestAnimationFrame x2:        (tunggu React render selesai)
+   - scrollIntoView ke card target
+   - isNavigatingRef.current = false
+```
+
+### 5.3 Larangan Mutlak
+
+- **DILARANG** memanggil `navigateToCard` tanpa mekanisme clear filter — navigasi KEWAJIBAN dimulai dengan clear filter dulu.
+- **DILARANG** membuat mekanisme navigasi card baru (di halaman manapun) yang tidak mendaftarkan `registerClearFilters`.
+- **DILARANG** skip step "tunggu render selesai" — scroll HARUS dilakukan setelah filter clear + React selesai render, bukan sebelumnya. Gunakan `requestAnimationFrame` double-nested.
+- **DILARANG** mengubah urutan eksekusi (clear filter harus PERTAMA, sebelum highlight/scroll).
+- **DILARANG** memasukkan logika filter-specific ke dalam `CardNavigationContext` atau `ICBlockRef` — context hanya menyimpan ref, halaman yang menentukan apa yang di-clear.

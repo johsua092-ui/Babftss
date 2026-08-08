@@ -1095,3 +1095,36 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - `instruction.md` Bagian 8 poin 9 — Referensi ke design.md Bagian 4 sebagai aturan mutlak
 
 **Implementasi saat ini:** Hanya di `LogicGatesCircuit.jsx` (halaman Logic Gates Circuit). Saat fitur navigasi card ditambahkan ke halaman lain, WAJIB copy-paste CSS persis dari `design.md` Bagian 4.2.
+
+---
+
+## [SESSION TERBARU] NAVIGASI CLICK ME: CLEAR FILTER SEBELUM NAVIGASI — ATURAN MUTLAK ABSOLUT
+
+**Tanggal:** 2026-08-08
+
+**Masalah ditemukan:** Ketika user sedang memfilter card (search text, card number, atau difficulty tier) lalu mengklik "click me" pada ICBlockRef (misal dari card 10 Full Adder 4-bit menuju card 09 Full Adder 1-bit), navigasi gagal secara diam-diam — card tujuan tidak muncul karena masih difilter. User hanya melihat scroll ke tempat kosong.
+
+**Solusi:** Tambahkan mekanisme `registerClearFilters` pada `CardNavigationContext`. Halaman yang punya filter mendaftarkan fungsi clear-nya, dan `navigateToCard` WAJIB memanggil clear filter terlebih dahulu sebelum highlight & scroll.
+
+**File yang di-edit:**
+1. **`src/context/CardNavigationContext.jsx`**:
+   - Tambah `clearFiltersRef` (useRef) — menyimpan referensi fungsi clear dari halaman aktif
+   - Tambah `registerClearFilters(fn)` — dipanggil oleh halaman via useEffect
+   - `navigateToCard` diubah: clear filter dulu → set highlight → tunggu 2 rAF → scroll
+   - Scroll dipindah ke dalam double requestAnimationFrame (tunggu React render selesai setelah filter clear)
+
+2. **`src/pages/LogicGatesCircuit.jsx`**:
+   - Import `useCallback`, `useEffect`
+   - `handleClear` diubah jadi `useCallback` supaya stabil sebagai referensi
+   - Tambah `useEffect(() => { registerClearFilters(handleClear); }, [...])` untuk mendaftarkan clear function
+   - `handleClear` mereset: query, cardNum, activeTier
+
+**Alur navigasi final (WAJIB dipatuhi di semua fitur navigasi card):**
+1. `isNavigatingRef.current = true`
+2. `clearFiltersRef.current()` — clear semua filter
+3. `setHighlightedCard(targetNum)` — set highlight
+4. Double `requestAnimationFrame` → `scrollIntoView` + `isNavigatingRef = false`
+
+**Dokumen yang diperbarui:**
+- `design.md` Bagian 5 — Spesifikasi lengkap perilaku, arsitektur, alur eksekusi, larangan mutlak
+- `instruction.md` Bagian 8 poin 10 — Referensi ke design.md Bagian 5 sebagai aturan mutlak
