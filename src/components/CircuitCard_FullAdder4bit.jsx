@@ -134,7 +134,7 @@ export default function CircuitCard_FullAdder4bit() {
                 </div>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#64748b", fontSize: 8, marginBottom: 3 }}>SUM (Decimal Number)</div>
-                    <div style={{ fontWeight: 700, fontSize: 11, color: isActive ? "#38bdf8" : "#e2e8f0", textShadow: isActive ? "0 0 2px rgba(56,189,248,0.15)" : "none", letterSpacing: 7 }}>{coutVal ? sumDec + 16 : sumDec}</div>
+                    <div style={{ fontWeight: 700, fontSize: 11, color: isActive ? "#38bdf8" : "#e2e8f0", textShadow: isActive ? "0 0 4px rgba(56,189,248,0.5)" : "none", letterSpacing: 2 }}>{coutVal ? sumDec + 16 : sumDec}</div>
                 </div>
             </div>
         </div>
