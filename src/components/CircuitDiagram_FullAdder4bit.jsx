@@ -157,7 +157,7 @@ export default function CircuitDiagram_FullAdder4bit({
                 var toX = blockX - pinLen; // Cin pin start
                 var toPY = inPinY(toBlk.y, 2); // Cin = input pin 2
                 var laneX = carryLaneX[fromIdx];
-                var belowBlockY = toBlk.y + blockH + 5; // route below the target block
+                var belowBlockY = toBlk.y + blockH + 18; // route well below the target block
 
                 return (
                     <path key={"carry-" + fromIdx}
