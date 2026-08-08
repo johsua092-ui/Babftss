@@ -198,14 +198,17 @@ function CircuitList({ setPage }) {
                 {/* Cards — difilter, auto-wrap dengan FavoritesProvider + CardNavigation glow */}
                 <style>{`
                     @keyframes ic-pulse-glow {
-                        0%, 100% { box-shadow: 0 0 8px rgba(255,255,255,0.15), inset 0 0 4px rgba(255,255,255,0.03); outline-color: rgba(255,255,255,0.3); }
-                        50% { box-shadow: 0 0 20px rgba(255,255,255,0.35), 0 0 40px rgba(255,255,255,0.1), inset 0 0 8px rgba(255,255,255,0.06); outline-color: rgba(255,255,255,0.7); }
+                        0%   { box-shadow: 0 0 10px rgba(0,255,136,0.25), 0 0 25px rgba(0,255,136,0.1), inset 0 0 6px rgba(0,255,136,0.05); outline-color: rgba(0,255,136,0.4); }
+                        25%  { box-shadow: 0 0 16px rgba(34,255,170,0.4), 0 0 35px rgba(34,255,170,0.15), inset 0 0 8px rgba(34,255,170,0.08); outline-color: rgba(34,255,170,0.6); }
+                        50%  { box-shadow: 0 0 22px rgba(0,255,102,0.5), 0 0 50px rgba(0,255,102,0.2), 0 0 80px rgba(0,255,102,0.08), inset 0 0 10px rgba(0,255,102,0.1); outline-color: rgba(0,255,102,0.8); }
+                        75%  { box-shadow: 0 0 14px rgba(57,255,180,0.35), 0 0 30px rgba(57,255,180,0.12), inset 0 0 7px rgba(57,255,180,0.06); outline-color: rgba(57,255,180,0.55); }
+                        100% { box-shadow: 0 0 10px rgba(0,255,136,0.25), 0 0 25px rgba(0,255,136,0.1), inset 0 0 6px rgba(0,255,136,0.05); outline-color: rgba(0,255,136,0.4); }
                     }
                     .ic-highlighted-card {
-                        outline: 2px solid rgba(255,255,255,0.5);
+                        outline: 2px solid rgba(0,255,136,0.5);
                         outline-offset: 3px;
                         border-radius: 18px;
-                        animation: ic-pulse-glow 1.5s ease-in-out infinite;
+                        animation: ic-pulse-glow 2s ease-in-out infinite;
                     }
                 `}</style>
                 {filtered.map(card => (
