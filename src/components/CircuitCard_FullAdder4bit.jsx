@@ -54,9 +54,9 @@ export default function CircuitCard_FullAdder4bit() {
     const themeRgb = hexToRgbStr(themeColor);
     const isActive = aDec > 0 || bDec > 0 || cinVal > 0;
 
-    // Binary digit renderer: 1 = red neon, 0 = white
+    // Binary digit renderer: 1 = yellow neon, 0 = white
     const bd = (bit) => bit
-        ? <span style={{ color: themeColor, textShadow: "0 0 6px rgba(227,11,93,0.9), 0 0 14px rgba(227,11,93,0.5)" }}>1</span>
+        ? <span style={{ color: "#facc15", textShadow: "0 0 6px rgba(250,204,21,0.9), 0 0 14px rgba(250,204,21,0.5)" }}>1</span>
         : <span style={{ color: "#e2e8f0" }}>0</span>;
 
     return <div style={{
