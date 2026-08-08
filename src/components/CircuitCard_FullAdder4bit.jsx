@@ -54,9 +54,15 @@ export default function CircuitCard_FullAdder4bit() {
     const themeRgb = hexToRgbStr(themeColor);
     const isActive = aDec > 0 || bDec > 0 || cinVal > 0;
 
-    // Binary digit renderer: 1 = yellow neon, 0 = white
+    // Binary digit renderers
+    const gap = <span style={{ display: "inline-block", width: 4 }} />;
+    // Input bits: 1 = yellow neon, 0 = white
     const bd = (bit) => bit
         ? <span style={{ color: "#facc15", textShadow: "0 0 6px rgba(250,204,21,0.9), 0 0 14px rgba(250,204,21,0.5)" }}>1</span>
+        : <span style={{ color: "#e2e8f0" }}>0</span>;
+    // SUM bits: 1 = blue neon, 0 = white
+    const sb = (bit) => bit
+        ? <span style={{ color: "#38bdf8", textShadow: "0 0 6px rgba(56,189,248,0.9), 0 0 14px rgba(56,189,248,0.5)" }}>1</span>
         : <span style={{ color: "#e2e8f0" }}>0</span>;
 
     return <div style={{
@@ -116,19 +122,19 @@ export default function CircuitCard_FullAdder4bit() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, fontFamily: "Orbitron,sans-serif", fontSize: 9 }}>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#64748b", fontSize: 8, marginBottom: 3 }}>A (input 1)</div>
-                    <div style={{ fontWeight: 700, fontSize: 11 }}>{bd(a3)}{bd(a2)}{bd(a1)}{bd(a0)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>{bd(a3)}{gap}{bd(a2)}{gap}{bd(a1)}{gap}{bd(a0)}</div>
                 </div>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#64748b", fontSize: 8, marginBottom: 3 }}>B (input 2)</div>
-                    <div style={{ fontWeight: 700, fontSize: 11 }}>{bd(b3)}{bd(b2)}{bd(b1)}{bd(b0)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>{bd(b3)}{gap}{bd(b2)}{gap}{bd(b1)}{gap}{bd(b0)}</div>
                 </div>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#64748b", fontSize: 8, marginBottom: 3 }}>SUM (Binary Number)</div>
-                    <div style={{ fontWeight: 700, fontSize: 11 }}>{bd(sum3)}{bd(sum2)}{bd(sum1)}{bd(sum0)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>{sb(sum3)}{gap}{sb(sum2)}{gap}{sb(sum1)}{gap}{sb(sum0)}</div>
                 </div>
                 <div style={{ textAlign: "center", padding: "6px 4px", borderRadius: 8, backgroundColor: "rgba(227,11,93,0.08)", border: "1px solid rgba(227,11,93,0.2)" }}>
                     <div style={{ color: "#64748b", fontSize: 8, marginBottom: 3 }}>SUM (Decimal Number)</div>
-                    <div style={{ color: isActive ? themeColor : "#e2e8f0", fontWeight: 700, fontSize: 11, textShadow: isActive ? "0 0 6px rgba(227,11,93,0.9), 0 0 14px rgba(227,11,93,0.5)" : "none" }}>{sumDec}{coutVal ? "+" : ""}</div>
+                    <div style={{ fontWeight: 700, fontSize: 11, color: isActive ? "#38bdf8" : "#e2e8f0", textShadow: isActive ? "0 0 6px rgba(56,189,248,0.9), 0 0 14px rgba(56,189,248,0.5)" : "none" }}>{coutVal ? sumDec + 16 : sumDec}</div>
                 </div>
             </div>
         </div>
