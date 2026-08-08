@@ -216,7 +216,7 @@ function CircuitList({ setPage }) {
                         outline: 2px solid rgba(0,255,136,0.2);
                         outline-offset: 3px;
                         border-radius: 18px;
-                        animation: ic-pulse-glow 2.2s ease-in-out infinite;
+                        animation: ic-pulse-glow 1.4s ease-in-out infinite;
                         will-change: box-shadow, outline-color;
                     }
                 `}</style>
