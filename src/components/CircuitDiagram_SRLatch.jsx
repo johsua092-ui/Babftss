@@ -31,9 +31,11 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     const inRouteX = 60;
     const qJX = nor1EX + 30;
     const qBarJX = nor2EX + 30;
-    const fbRouteX = 370;
-    const qOutX = fbRouteX + 50, qOutY = nor1MY;
-    const qBarOutX = fbRouteX + 50, qBarOutY = nor2MY;
+    const fbLeftX = 105;
+    const fbTopY = 42, fbBotY = 318;
+    const fbRightQ = 385, fbRightQbar = 400;
+    const qOutX = 450, qOutY = nor1MY;
+    const qBarOutX = 450, qBarOutY = nor2MY;
 
     const nor1Glow = mkGlow(q, norRgb), nor1Fill = mkFill(q, norRgb), nor1Stroke = mkStroke(q, norCol);
     const nor2Glow = mkGlow(qBar, norRgb), nor2Fill = mkFill(qBar, norRgb), nor2Stroke = mkStroke(qBar, norCol);
@@ -83,8 +85,8 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     const wireS = 'M ' + (sInX + inputNodeW) + ',' + sInY + ' H 75 V ' + nor2BY + ' H ' + norSX;
     const wireQout = 'M ' + (nor1EX + 6) + ',' + nor1MY + ' H ' + qJX;
     const wireQBarout = 'M ' + (nor2EX + 6) + ',' + nor2MY + ' H ' + qBarJX;
-    const wireQfb = 'M ' + qJX + ',' + nor1MY + ' H ' + fbRouteX + ' V ' + nor2TY + ' H ' + norSX;
-    const wireQbarfb = 'M ' + qBarJX + ',' + nor2MY + ' H ' + (fbRouteX + 10) + ' V ' + nor1BY + ' H ' + norSX;
+    const wireQfb = 'M ' + fbRightQ + ',' + nor1MY + ' V ' + fbBotY + ' H ' + fbLeftX + ' V ' + nor2TY + ' H ' + norSX;
+    const wireQbarfb = 'M ' + fbRightQbar + ',' + nor2MY + ' V ' + fbTopY + ' H ' + fbLeftX + ' V ' + nor1BY + ' H ' + norSX;
     const wireQoutFinal = 'M ' + qJX + ',' + nor1MY + ' H ' + (qOutX - outNodeR);
     const wireQBaroutFinal = 'M ' + qBarJX + ',' + nor2MY + ' H ' + (qBarOutX - outNodeR);
 
@@ -107,11 +109,13 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
         <W d={wireQout} val={q} col={qOutCol} rgb={qOutRgb} />
         <W d={wireQBarout} val={qBar} col={qBarOutCol} rgb={qBarOutRgb} />
 
+        <circle cx={fbRightQ} cy={nor1MY} r={3.5} fill={wc(q, qFbCol, qFbRgb)} style={{ transition: 'fill 0.3s' }} />
         <W d={wireQfb} val={q} col={qFbCol} rgb={qFbRgb} />
-        <text x={fbRouteX + 6} y={(nor1MY + nor2TY) / 2 + 3} fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700" fill={q ? qFbCol : '#475569'} style={{ transition: 'fill 0.3s' }}>Q</text>
+        <text x={fbLeftX - 10} y={(nor2TY + fbBotY) / 2 + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700" fill={q ? qFbCol : '#475569'} style={{ transition: 'fill 0.3s' }}>Q</text>
 
+        <circle cx={fbRightQbar} cy={nor2MY} r={3.5} fill={wc(qBar, qBarFbCol, qBarFbRgb)} style={{ transition: 'fill 0.3s' }} />
         <W d={wireQbarfb} val={qBar} col={qBarFbCol} rgb={qBarFbRgb} />
-        <text x={fbRouteX + 16} y={(nor1BY + nor2MY) / 2 + 3} fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700" fill={qBar ? qBarFbCol : '#475569'} style={{ transition: 'fill 0.3s' }}>Q'</text>
+        <text x={fbLeftX - 10} y={(fbTopY + nor1BY) / 2 + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700" fill={qBar ? qBarFbCol : '#475569'} style={{ transition: 'fill 0.3s' }}>Q'</text>
 
         <W d={wireQoutFinal} val={q} col={qOutCol} rgb={qOutRgb} />
         <OutputNode ox={qOutX} oy={qOutY} val={q} label="Q" color={qOutCol} rgb={qOutRgb} />
