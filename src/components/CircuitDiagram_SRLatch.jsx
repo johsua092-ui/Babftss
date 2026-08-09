@@ -60,20 +60,20 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     </g>;
 
     const OutputNode = ({ ox, oy, val, label, color, rgb, overline }) => {
-        const ly = oy - outNodeR - 5;
+        const ly = oy - outNodeR - 8;
         return <Fragment>
             {overline
                 ? <g>
-                    <text x={ox} y={ly} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="600" fill="#475569">Q</text>
-                    <line x1={ox - 5} y1={ly - 10.5} x2={ox + 5} y2={ly - 10.5} stroke="#475569" strokeWidth="1.3" strokeLinecap="round" />
+                    <text x={ox} y={ly} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="12" fontWeight="700" fill="#cbd5e1">Q</text>
+                    <line x1={ox - 7} y1={ly - 11} x2={ox + 7} y2={ly - 11} stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" />
                   </g>
-                : <text x={ox} y={ly} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="600" fill="#475569">{label}</text>}
+                : <text x={ox} y={ly} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="12" fontWeight="700" fill="#cbd5e1">{label}</text>}
             <circle cx={ox} cy={oy} r={outNodeR}
                 fill={val ? color : '#1e293b'}
                 stroke={val ? color : '#334155'} strokeWidth="2"
                 style={{ filter: val ? 'drop-shadow(0 0 8px rgba(' + rgb + ',0.9)) drop-shadow(0 0 18px rgba(' + rgb + ',0.5))' : 'none', transition: 'all 0.3s' }} />
-            <text x={ox} y={oy + 6} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="14" fontWeight="800"
-                fill={val ? '#fff' : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>{val ? '1' : '0'}</text>
+            <text x={ox} y={oy} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="13" fontWeight="800"
+                fill={val ? '#ffffff' : '#64748b'} style={{ transition: 'fill 0.3s', dominantBaseline: 'central' }}>{val ? '1' : '0'}</text>
         </Fragment>;
     };
 
@@ -119,12 +119,12 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
 
         <circle cx={fbRightQ} cy={nor1MY} r={3.5} fill={wc(q, qFbCol, qFbRgb)} style={{ transition: 'fill 0.3s' }} />
         <W d={wireQfb} val={q} col={qFbCol} rgb={qFbRgb} />
-        <text x={fbLeftX - 8} y={(nor2TY + fbBotY) / 2 + 3} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600" fill={q ? qFbCol : '#475569'} style={{ transition: 'fill 0.3s' }}>Q</text>
+        <text x={fbLeftX - 8} y={(nor2TY + fbBotY) / 2 + 3} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={q ? qFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
 
         <circle cx={fbRightQbar} cy={nor2MY} r={3.5} fill={wc(qBar, qBarFbCol, qBarFbRgb)} style={{ transition: 'fill 0.3s' }} />
         <W d={wireQbarfb} val={qBar} col={qBarFbCol} rgb={qBarFbRgb} />
-        <text x={fbLeftX - 8} y={(fbTopY + nor1BY) / 2 + 3} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600" fill={qBar ? qBarFbCol : '#475569'} style={{ transition: 'fill 0.3s' }}>Q</text>
-        <line x1={fbLeftX - 17} y1={(fbTopY + nor1BY) / 2 - 8} x2={fbLeftX - 7} y2={(fbTopY + nor1BY) / 2 - 8} stroke={qBar ? qBarFbCol : '#475569'} strokeWidth="1.3" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
+        <text x={fbLeftX - 8} y={(fbTopY + nor1BY) / 2 + 3} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={qBar ? qBarFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
+        <line x1={fbLeftX - 18} y1={(fbTopY + nor1BY) / 2 - 9} x2={fbLeftX - 6} y2={(fbTopY + nor1BY) / 2 - 9} stroke={qBar ? qBarFbCol : '#94a3b8'} strokeWidth="1.5" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
 
         <W d={wireQoutFinal} val={q} col={qOutCol} rgb={qOutRgb} />
         <OutputNode ox={qOutX} oy={qOutY} val={q} label="Q" color={qOutCol} rgb={qOutRgb} />
