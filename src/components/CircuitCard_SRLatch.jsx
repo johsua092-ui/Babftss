@@ -15,9 +15,6 @@ export default function CircuitCard_SRLatch() {
     // Mode is determined by OUTPUT state, not input
     const mode = (inputS && inputR) ? 'INVALID' : q ? 'SET' : 'RESET';
 
-    // Input combination for table highlighting
-    const inputMode = inputS && inputR ? 'INVALID' : inputS ? 'SET' : inputR ? 'RESET' : 'HOLD';
-
     // useEffect: update Q based on input changes
     useEffect(() => {
         if (inputS && inputR) { setQ(false); return; }
@@ -89,7 +86,7 @@ export default function CircuitCard_SRLatch() {
                     <th style={{ padding: '4px 6px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Keterangan</th>
                 </tr></thead>
                 <tbody>{modes.map(function(row) {
-                    var isHl = (row.name === inputMode);
+                    var isHl = (row.name === mode);
                     var qDisp = row.qVal === null ? (q ? 1 : 0) : row.qVal;
                     var qbDisp = row.qBarVal === null ? (qBar ? 1 : 0) : row.qBarVal;
                     var modeCol = row.name === 'SET' ? '#4ade80' : row.name === 'RESET' ? '#22d3ee' : row.name === 'HOLD' ? '#facc15' : '#ef4444';
