@@ -60,7 +60,7 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     </g>;
 
     const OutputNode = ({ ox, oy, val, label, color, rgb, overline }) => {
-        const ly = oy - outNodeR - 20;
+        const ly = oy - outNodeR - 8;
         return <Fragment>
             {overline
                 ? <g>
@@ -119,12 +119,12 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
 
         <circle cx={fbRightQ} cy={nor1MY} r={3.5} fill={wc(q, qFbCol, qFbRgb)} style={{ transition: 'fill 0.3s' }} />
         <W d={wireQfb} val={q} col={qFbCol} rgb={qFbRgb} />
-        <text x={fbLeftX - 8} y={(nor2TY + fbBotY) / 2 + 3} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={q ? qFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
+        <text x={fbLeftX - 8} y={306} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={q ? qFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
 
         <circle cx={fbRightQbar} cy={nor2MY} r={3.5} fill={wc(qBar, qBarFbCol, qBarFbRgb)} style={{ transition: 'fill 0.3s' }} />
         <W d={wireQbarfb} val={qBar} col={qBarFbCol} rgb={qBarFbRgb} />
-        <text x={fbLeftX - 8} y={(fbTopY + nor1BY) / 2 + 3} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={qBar ? qBarFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
-        <line x1={fbLeftX - 18} y1={(fbTopY + nor1BY) / 2 - 9} x2={fbLeftX - 6} y2={(fbTopY + nor1BY) / 2 - 9} stroke={qBar ? qBarFbCol : '#94a3b8'} strokeWidth="1.5" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
+        <text x={fbLeftX - 8} y={93} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={qBar ? qBarFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
+        <line x1={fbLeftX - 18} y1={84} x2={fbLeftX - 6} y2={84} stroke={qBar ? qBarFbCol : '#94a3b8'} strokeWidth="1.5" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
 
         <W d={wireQoutFinal} val={q} col={qOutCol} rgb={qOutRgb} />
         <OutputNode ox={qOutX} oy={qOutY} val={q} label="Q" color={qOutCol} rgb={qOutRgb} />
