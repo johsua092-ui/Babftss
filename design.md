@@ -466,3 +466,41 @@ Ketika user mengklik elemen navigasi ("click me" pada ICBlockRef, atau mekanisme
 - **DILARANG** skip step "tunggu render selesai" — scroll HARUS dilakukan setelah filter clear + React selesai render, bukan sebelumnya. Gunakan `requestAnimationFrame` double-nested.
 - **DILARANG** mengubah urutan eksekusi (clear filter harus PERTAMA, sebelum highlight/scroll).
 - **DILARANG** memasukkan logika filter-specific ke dalam `CardNavigationContext` atau `ICBlockRef` — context hanya menyimpan ref, halaman yang menentukan apa yang di-clear.
+
+---
+
+## 6. KONVENSI VISUAL UNTUK RANGKAIAN SEKUENSIAL
+
+### 6.1 Notasi Sinyal Inversed: Overline, BUKAN Apostrophe (ATURAN MUTLAK)
+
+Sinyal inversed (negated) di diagram dan card WAJIB ditulis dengan **garis di atas (overline)**, BUKAN apostrophe.
+
+- ❌ `Q'`, `D'`, `PRE'`, `CLR'`
+- ✅ `Q̄`, `D̄`, `PRĒ`, `CLR̄` (Q + combining overline U+0304, atau render garis atas)
+
+**Implementasi per medium:**
+- **SVG diagram:** render Q text + `<line>` SVG sebagai garis atas. Komponen `OutputNode` punya prop `overline` — set `true` untuk sinyal inversed.
+- **HTML (JSX):** `<span style={{ textDecoration: 'overline' }}>Q</span>`
+- **String biasa (desc, tooltip):** `Q\u0304` (Unicode combining overline)
+
+Berlaku ke SEMUA sinyal inversed di semua card ke depannya (Q̄, D̄, PRĒ, CLR̄, J̄, K̄, dll).
+
+### 6.2 Label & Font di Diagram SVG
+
+| Elemen | Font | Size | Weight | Catatan |
+|--------|------|------|--------|--------|
+| Label gate (NOR1, NOR2, dll) | Orbitron | 8px | 700 | Tetap Orbitron untuk identitas komponen |
+| Label feedback wire (Q, Q̄) | Inter | 10px | 600 | Inter lebih mudah dibaca untuk karakter tunggal |
+| Label output node (di atas lingkaran) | Inter | 9px | 600 | Juga pakai Inter untuk konsistensi |
+| Label input node (S, R, A, B) | Orbitron | 8px | normal | Orbitron OK untuk label di dalam kotak |
+| Nilai 1/0 di output node | Inter | 12px | 700 | Lihat §6.3 |
+| Nilai 1/0 di input node | Orbitron | 11px | bold | Tetap Orbitron, sudah terbukti readable |
+
+### 6.3 Kontras Output Node (ATURAN MUTLAK)
+
+Angka di dalam lingkaran output node HARUS memenuhi kontras tinggi:
+
+- **Saat aktif (val=true, angka 1):** `fill="#fff"` (putih) di atas lingkaran berwarna terang — BUKAN hitam.
+- **Saat non-aktif (val=false, angka 0):** `fill="#94a3b8"` (abu terang) di atas lingkaran gelap — BUKAN abu gelap.
+- **Font:** Inter 12px weight 700 — BUKAN Orbitron (terlalu tipis untuk digit tunggal).
+- **DILARANG** menggunakan `#000` atau warna gelap sebagai fill teks di atas lingkaran glow — kontrasnya terlalu rendah.

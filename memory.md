@@ -1203,3 +1203,37 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - HeartButton terpasang
 - ALL_CARDS terdaftar
 - Feedback loop wire TIDAK overlap (Q feedback di kanan bawah via x=440, Q' feedback di kiri via x=160)
+
+**Iterasi Fix (session yang sama):**
+
+1. **Wire feedback putus/nabrak gate body — DIPERBAIKI.**
+   - Masalah: wireQfb horizontal di y=252 dari x=370 ke x=190 nembus body NOR2. wireQbarfb horizontal di y=108 dari x=380 ke x=190 nembus body NOR1.
+   - Solusi: Feedback wire sekarang muter ke luar gate body:
+     - Q feedback (oranye): dari junction (275,90) → kanan ke x=385 → turun ke y=318 → kiri ke x=105 → naik ke y=252 → kanan ke NOR2 top input (190,252). Horizontal terakhir (x=105→190) di KIRI gate body.
+     - Q' feedback (ungu): dari junction (275,270) → kanan ke x=400 → naik ke y=42 → kiri ke x=105 → turun ke y=108 → kanan ke NOR1 bottom input (190,108). Horizontal terakhir (x=105→190) di KIRI gate body.
+   - Output node dipindah ke x=450 (dari 420) supaya output wire melewati feedback branch point.
+   - Ditambah junction dot (r=3.5) di (385,90) dan (400,270) untuk menandai cabang output↔feedback.
+   - Label feedback Q dan Q̄ dipindah ke sisi kiri (x=95) di vertical segment masing-masing.
+
+2. **Q' → Q̄ (Q dengan garis atas / overline) — BERLAKU KE SEMUA INVersed.**
+   - Notasi Q' (apostrophe) diubah ke Q̄ (Q + overline/garis di atas). Ini notasi standar sinyal inversed di digital logic.
+   - **SVG diagram:** overline dirender sebagai `<line>` SVG di atas huruf Q. OutputNode component sekarang punya prop `overline` yang menggambar Q + garis atas.
+   - **HTML (card):** pakai `text-decoration: overline` pada `<span>Q</span>` untuk status bar dan table header. Untuk string biasa (deskripsi HOLD) pakai Unicode Q + combining overline (U+0304).
+   - **Aturan:** semua sinyal inversed ke depannya WAJIB pakai overline, BUKAN apostrophe. Ini termasuk Q̄, D̄, PRĒ, CLR̄, dll.
+
+3. **Q feedback label font susah dibaca — DIPERBAIKI.**
+   - Label Q dan Q̄ di feedback wire: Orbitron 8px → **Inter 10px**. Alasan: Orbitron di ukuran kecil terlalu stylistic, hurufnya sulit dibaca terutama karakter tunggal.
+   - Output node label (Q di atas lingkaran): Orbitron 7px → **Inter 9px**. Lebih bersih.
+
+4. **Angka 1/0 di output node susah dibaca — DIPERBAIKI.**
+   - Masalah: angka `1` pakai fill `#000` (hitam) di atas lingkaran glow terang → low contrast. Angka `0` pakai `#475569` (abu gelap) di atas lingkaran gelap → juga low contrast. Font Orbitron 10px terlalu tipis untuk digit tunggal.
+   - Solusi:
+     - Font: Orbitron 10px bold → **Inter 12px weight 700**
+     - Warna aktif (1): `#000` → **`#fff`** (putih di atas lingkaran terang)
+     - Warna non-aktif (0): `#475569` → **`#94a3b8`** (abu terang di atas lingkaran gelap)
+   - Y offset: +4 → +5 (karena font lebih besar, sedikit turun agar center)
+
+**File terkait Card 15:**
+- `src/components/CircuitDiagram_SRLatch.jsx` — diagram SVG (several iterations of fixes)
+- `src/components/CircuitCard_SRLatch.jsx` — card wrapper + tabel mode
+- `src/pages/LogicGatesCircuit.jsx` — registrasi card di ALL_CARDS

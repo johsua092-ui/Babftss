@@ -72,8 +72,8 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
                 fill={val ? color : '#1e293b'}
                 stroke={val ? color : '#334155'} strokeWidth="2"
                 style={{ filter: val ? 'drop-shadow(0 0 8px rgba(' + rgb + ',0.9)) drop-shadow(0 0 18px rgba(' + rgb + ',0.5))' : 'none', transition: 'all 0.3s' }} />
-            <text x={ox} y={oy + 4} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="10" fontWeight="bold"
-                fill={val ? '#000' : '#475569'} style={{ transition: 'fill 0.3s' }}>{val ? '1' : '0'}</text>
+            <text x={ox} y={oy + 5} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="12" fontWeight="700"
+                fill={val ? '#fff' : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>{val ? '1' : '0'}</text>
         </Fragment>;
     };
 
