@@ -17,7 +17,7 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     const mkStroke = (val, col) => val ? col : '#475569';
 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
-    const nodeR = 8, outNodeR = 13;
+    const nodeR = 8, outNodeR = 15;
 
     const svgW = 500, svgH = 360;
 
@@ -72,7 +72,7 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
                 fill={val ? color : '#1e293b'}
                 stroke={val ? color : '#334155'} strokeWidth="2"
                 style={{ filter: val ? 'drop-shadow(0 0 8px rgba(' + rgb + ',0.9)) drop-shadow(0 0 18px rgba(' + rgb + ',0.5))' : 'none', transition: 'all 0.3s' }} />
-            <text x={ox} y={oy + 5} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="12" fontWeight="700"
+            <text x={ox} y={oy + 6} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="14" fontWeight="800"
                 fill={val ? '#fff' : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>{val ? '1' : '0'}</text>
         </Fragment>;
     };
