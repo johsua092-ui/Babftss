@@ -60,7 +60,7 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     </g>;
 
     const OutputNode = ({ ox, oy, val, label, color, rgb, overline }) => {
-        const ly = oy - outNodeR - 8;
+        const ly = oy - outNodeR - 20;
         return <Fragment>
             {overline
                 ? <g>
