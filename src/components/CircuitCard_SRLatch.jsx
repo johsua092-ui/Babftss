@@ -53,7 +53,7 @@ export default function CircuitCard_SRLatch() {
                 <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: isActive ? themeColor : '#334155', boxShadow: isActive ? `0 0 8px ${themeColor}` : 'none', transition: 'all 0.3s' }} />
                 <span style={{ fontFamily: 'Orbitron,sans-serif', fontWeight: 800, fontSize: 13, color: isActive ? themeColor : '#e2e8f0' }}>SR Latch</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}><HeartButton /><span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, padding: '5px 12px', borderRadius: 6, backgroundColor: 'rgba(139,92,246,0.18)', border: '1px solid rgba(139,92,246,0.5)', color: '#D946EF' }}>HARD</span></div>
+            <div style={{ display: 'flex', alignItems: 'center' }}><HeartButton /><span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, padding: '5px 12px', borderRadius: 6, backgroundColor: 'rgba(227,11,93,0.18)', border: '1px solid rgba(227,11,93,0.4)', color: '#fda4af' }}>HARD</span></div>
         </div>
 
         {/* Diagram */}
