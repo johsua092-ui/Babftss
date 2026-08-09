@@ -33,7 +33,7 @@ const ALL_CARDS = [
     { num: '12', name: '4:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard11 },
     { num: '13', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 },
     { num: '14', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 },
-    { num: '15', name: 'SR Latch', tier: 'INSANE', el: CircuitCard_SRLatch },
+    { num: '15', name: 'SR Latch', tier: 'HARD', el: CircuitCard_SRLatch },
 ];
 
 const TIERS = [
