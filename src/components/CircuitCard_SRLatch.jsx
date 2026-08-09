@@ -12,8 +12,12 @@ export default function CircuitCard_SRLatch() {
     // Q' is always complement of Q (except INVALID)
     const qBar = (inputS && inputR) ? false : !q;
 
-    // Mode is determined by OUTPUT state, not input
-    const mode = (inputS && inputR) ? 'INVALID' : q ? 'SET' : 'RESET';
+    // Mode is determined by current INPUT combination (S, R), not by Q.
+    // S=1,R=1 -> INVALID | S=1,R=0 -> SET | S=0,R=1 -> RESET | S=0,R=0 -> HOLD
+    const mode = (inputS && inputR) ? 'INVALID'
+               : (inputS && !inputR) ? 'SET'
+               : (!inputS && inputR) ? 'RESET'
+               : 'HOLD';
 
     // useEffect: update Q based on input changes
     useEffect(() => {
