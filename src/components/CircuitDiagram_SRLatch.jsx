@@ -50,7 +50,7 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
         <rect x={ix} y={iy - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx}
             fill={val ? 'rgba(' + rgb + ',0.2)' : 'rgba(' + rgb + ',0.1)'}
             stroke={val ? color : 'rgba(' + rgb + ',0.3)'} strokeWidth="1.5" style={{ transition: 'all 0.25s' }} />
-        <text x={ix + 24} y={iy - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#64748b">{label}</text>
+        <text x={ix + 24} y={iy - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#e2e8f0">{label}</text>
         <circle cx={ix + 24} cy={iy} r={nodeR}
             fill={val ? color : 'rgba(' + rgb + ',0.15)'}
             stroke={val ? color : 'rgba(' + rgb + ',0.4)'} strokeWidth="1.5"
