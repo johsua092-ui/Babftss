@@ -1157,3 +1157,49 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - **AuthContext.jsx (aktif) dikonfirmasi LANGSUNG oleh user: itu kerjaan sah teman backend.** Tidak ada tindakan lebih lanjut diperlukan.
 - **`design.md` Bagian 4 duplikat — DIPERBAIKI Claude.** Ternyata bukan duplikat identik, tapi draft PERTAMA yang terpotong di tengah kalimat ("...CSS exa") tertinggal di file sebelum versi lengkapnya. 19 baris draft terpotong itu dihapus, versi lengkap (yang sudah benar) dipertahankan. Transisi ke section sekitarnya dicek rapi.
 - **Folder `.next/` dan `context/AuthContext.jsx` (orphan terhapus)** — belum ada konfirmasi eksplisit terpisah dari user, tapi kemungkinan besar bagian dari paket perubahan backend yang sama (sudah dikonfirmasi poin pertama). Tidak dianggap masalah kecuali user bilang lain.
+
+---
+
+## [SESSION TERBARU] CARD 15: SR LATCH (RANGKAIAN SEKUENSIAL PERTAMA)
+
+**Tanggal:** 2026-08-09
+
+**Konsep:** SR Latch — 2 gerbang NOR saling silang (cross-coupled feedback loop). Ini card PERTAMA yang bukan kombinasional — punya "ingatan" (state). Tier: **INSANE**.
+
+**4 Mode:**
+- S=1,R=0 → SET: Q=1, Q'=0
+- S=0,R=1 → RESET: Q=0, Q'=1
+- S=0,R=0 → HOLD: Q,Q' tetap (butuh useState+useEffect)
+- S=1,R=1 → INVALID: Q=0, Q'=0
+
+**File dibuat:**
+1. **`src/components/CircuitDiagram_SRLatch.jsx`** — Diagram SVG:
+   - 2 NOR gate (bentuk OR + bubble output, warna pink #f472b6)
+   - NOR1 (atas): input R + Q' → output Q
+   - NOR2 (bawah): input S + Q → output Q'
+   - 2 input node: S (hijau #4ade80), R (cyan #22d3ee)
+   - 2 output node: Q (hijau), Q' (pink #f472b6)
+   - Feedback wire Q→NOR2 (oranye #fb923c) — route kanan lalu turun
+   - Feedback wire Q'→NOR1 (ungu #a78bfa) — route bawah lalu naik
+   - Mode badge di atas diagram menunjukkan mode aktif (SET/RESET/HOLD/INVALID)
+   - Semua feedback wire di lane terpisah, TIDAK overlap
+
+2. **`src/components/CircuitCard_SRLatch.jsx`** — Card wrapper:
+   - `useState(false)` untuk `q` — nilai yang "diingat"
+   - `useEffect` yang hanya update `q` pada mode SET/RESET/INVALID, TIDAK update pada HOLD
+   - `useMemo` untuk derive `mode` dan `qBar` dari inputs + q
+   - Tabel 4-mode (bukan truth table biasa) sesuai design.md §6.2
+   - Baris HOLD menampilkan nilai aktual Q/Q' (bergantung state sebelumnya) ditandai *
+   - HeartButton sejajar badge INSANE
+   - Deskripsi menyebut konsep sekuensial + aplikasi debouncer
+
+**File diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — import CircuitCard_SRLatch, tambah ALL_CARDS num='15' tier='INSANE'
+
+**Verifikasi:**
+- Build sukses: `2172 modules transformed`, `built in 9.23s`, 0 error
+- LogicGatesCircuit chunk: 160.51 KB (naik ~10KB dari sebelumnya, wajar)
+- Card 01-14 TIDAK disentuh sama sekali
+- HeartButton terpasang
+- ALL_CARDS terdaftar
+- Feedback loop wire TIDAK overlap (Q feedback di kanan bawah via x=440, Q' feedback di kiri via x=160)

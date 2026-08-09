@@ -16,6 +16,7 @@ import CircuitCard10 from '../components/CircuitCard10';
 import CircuitCard11 from '../components/CircuitCard11';
 import CircuitCard14 from '../components/CircuitCard14';
 import CircuitCard15 from '../components/CircuitCard15';
+import CircuitCard_SRLatch from '../components/CircuitCard_SRLatch';
 
 const ALL_CARDS = [
     { num: '01', name: 'NOT AND Combo', tier: 'EASY', el: CircuitCard01 },
@@ -32,6 +33,7 @@ const ALL_CARDS = [
     { num: '12', name: '4:1 Multiplexer (Mux)', tier: 'NORMAL', el: CircuitCard11 },
     { num: '13', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 },
     { num: '14', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 },
+    { num: '15', name: 'SR Latch', tier: 'INSANE', el: CircuitCard_SRLatch },
 ];
 
 const TIERS = [
