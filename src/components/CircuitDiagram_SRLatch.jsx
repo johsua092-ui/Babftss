@@ -29,8 +29,6 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     const nor2MY = 270, nor2TY = nor2MY - 18, nor2BY = nor2MY + 18, nor2EX = norSX + 55;
 
     const inRouteX = 60;
-    const qJX = nor1EX + 30;
-    const qBarJX = nor2EX + 30;
     const fbLeftX = 105;
     const fbTopY = 42, fbBotY = 318;
     const fbRightQ = 385, fbRightQbar = 400;
@@ -91,12 +89,8 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
     // Wire paths
     const wireR = 'M ' + (rInX + inputNodeW) + ',' + rInY + ' H ' + inRouteX + ' V ' + nor1TY + ' H ' + norSX;
     const wireS = 'M ' + (sInX + inputNodeW) + ',' + sInY + ' H 75 V ' + nor2BY + ' H ' + norSX;
-    const wireQout = 'M ' + (nor1EX + 6) + ',' + nor1MY + ' H ' + qJX;
-    const wireQBarout = 'M ' + (nor2EX + 6) + ',' + nor2MY + ' H ' + qBarJX;
     const wireQfb = 'M ' + fbRightQ + ',' + nor1MY + ' V ' + fbBotY + ' H ' + fbLeftX + ' V ' + nor2TY + ' H ' + norSX;
     const wireQbarfb = 'M ' + fbRightQbar + ',' + nor2MY + ' V ' + fbTopY + ' H ' + fbLeftX + ' V ' + nor1BY + ' H ' + norSX;
-    const wireQoutFinal = 'M ' + qJX + ',' + nor1MY + ' H ' + (qOutX - outNodeR);
-    const wireQBaroutFinal = 'M ' + qBarJX + ',' + nor2MY + ' H ' + (qBarOutX - outNodeR);
 
     return <svg viewBox={'0 0 ' + svgW + ' ' + svgH} width="100%" style={{ overflow: 'visible', display: 'block' }}>
         <rect x={svgW / 2 - 55} y={4} width={110} height={22} rx={6} fill={mc.bg} stroke={mc.border} strokeWidth="1.5" />
@@ -114,8 +108,8 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
         <NorGate sx={norSX} ty={nor2TY} by={nor2BY} my={nor2MY} ex={nor2EX} glow={nor2Glow} fill={nor2Fill} stroke={nor2Stroke} />
         <text x={norSX - 10} y={nor2MY + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700" fill={qBar ? norCol : '#475569'} style={{ transition: 'fill 0.3s' }}>NOR2</text>
 
-        <W d={wireQout} val={q} col={qOutCol} rgb={qOutRgb} />
-        <W d={wireQBarout} val={qBar} col={qBarOutCol} rgb={qBarOutRgb} />
+        <W d={'M ' + (nor1EX + 6) + ',' + nor1MY + ' H ' + (qOutX - outNodeR)} val={q} col={qOutCol} rgb={qOutRgb} />
+        <W d={'M ' + (nor2EX + 6) + ',' + nor2MY + ' H ' + (qBarOutX - outNodeR)} val={qBar} col={qBarOutCol} rgb={qBarOutRgb} />
 
         <W d={wireQfb} val={q} col={qFbCol} rgb={qFbRgb} />
         <text x={fbLeftX - 8} y={306} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={q ? qFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
@@ -124,10 +118,8 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
         <text x={fbLeftX - 8} y={93} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={qBar ? qBarFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
         <line x1={fbLeftX - 18} y1={84} x2={fbLeftX - 6} y2={84} stroke={qBar ? qBarFbCol : '#94a3b8'} strokeWidth="1.5" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
 
-        <W d={wireQoutFinal} val={q} col={qOutCol} rgb={qOutRgb} />
         <OutputNode ox={qOutX} oy={qOutY} val={q} label="Q" color={qOutCol} rgb={qOutRgb} />
 
-        <W d={wireQBaroutFinal} val={qBar} col={qBarOutCol} rgb={qBarOutRgb} />
         <OutputNode ox={qBarOutX} oy={qBarOutY} val={qBar} label="Q" color={qBarOutCol} rgb={qBarOutRgb} overline />
     </svg>;
 }
