@@ -35,7 +35,7 @@ export default function CircuitCard_SRLatch() {
     const modes = [
         { name: 'SET',    cond: 'S=1, R=0', qVal: 1, qBarVal: 0, desc: 'Output "diset" ke 1' },
         { name: 'RESET',  cond: 'S=0, R=1', qVal: 0, qBarVal: 1, desc: 'Output "direset" ke 0' },
-        { name: 'HOLD',   cond: 'S=0, R=0', qVal: null, qBarVal: null, desc: 'Q, Q\' = TETAP (nilai sebelumnya)' },
+        { name: 'HOLD',   cond: 'S=0, R=0', qVal: null, qBarVal: null, desc: 'Q, Q\u0304 = TETAP (nilai sebelumnya)' },
         { name: 'INVALID', cond: 'S=1, R=1', qVal: 0, qBarVal: 0, desc: 'Kondisi terlarang, keduanya 0' },
     ];
 
@@ -71,7 +71,7 @@ export default function CircuitCard_SRLatch() {
             <span style={{ color: '#334155' }}>{'\u2192'}</span>
             <span style={{ color: q ? '#4ade80' : '#334155', fontWeight: 700 }}>Q={q ? 1 : 0}</span>
             <span>,</span>
-            <span style={{ color: qBar ? '#f472b6' : '#334155', fontWeight: 700 }}>Q'={qBar ? 1 : 0}</span>
+            <span style={{ color: qBar ? '#f472b6' : '#334155', fontWeight: 700 }}><span style={{ textDecoration: 'overline' }}>Q</span>={qBar ? 1 : 0}</span>
             <span style={{ marginLeft: 4, padding: '2px 8px', borderRadius: 4, backgroundColor: mode === 'SET' ? 'rgba(74,222,128,0.18)' : mode === 'RESET' ? 'rgba(34,211,238,0.18)' : mode === 'HOLD' ? 'rgba(250,204,21,0.18)' : 'rgba(239,68,68,0.18)', color: mode === 'SET' ? '#4ade80' : mode === 'RESET' ? '#22d3ee' : mode === 'HOLD' ? '#facc15' : '#ef4444', fontWeight: 700, fontSize: 9 }}>{mode}</span>
         </div>
 
@@ -86,7 +86,7 @@ export default function CircuitCard_SRLatch() {
                     <th style={{ padding: '4px 6px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Mode</th>
                     <th style={{ padding: '4px 6px', textAlign: 'center', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Kondisi</th>
                     <th style={{ padding: '4px 6px', textAlign: 'center', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Q</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'center', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Q'</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'center', color: '#64748b', fontWeight: 600, fontSize: 9 }}><span style={{ textDecoration: 'overline' }}>Q</span></th>
                     <th style={{ padding: '4px 6px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Keterangan</th>
                 </tr></thead>
                 <tbody>{modes.map(function(row) {
