@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import CircuitDiagram_SRLatch from './CircuitDiagram_SRLatch';
 import { hexToRgbStr } from '../utils/colorHelper';
 import HeartButton from './HeartButton';
@@ -9,23 +9,22 @@ export default function CircuitCard_SRLatch() {
     // Q is "remembered" state — NOT recomputed from inputs each render
     const [q, setQ] = useState(false);
 
-    // Derive mode and Q' from inputs + remembered Q
-    const { mode, qBar } = useMemo(() => {
-        if (inputS && inputR) return { mode: 'INVALID', qBar: false };
-        if (inputS && !inputR) return { mode: 'SET', qBar: false };
-        if (!inputS && inputR) return { mode: 'RESET', qBar: true };
-        // HOLD: S=0, R=0 — keep current Q, Q' = NOT Q
-        return { mode: 'HOLD', qBar: !q };
-    }, [inputS, inputR, q]);
+    // Q' is always complement of Q (except INVALID)
+    const qBar = (inputS && inputR) ? false : !q;
 
-    // useEffect: only update Q on SET or RESET, NOT on HOLD
+    // Mode is determined by OUTPUT state, not input
+    const mode = (inputS && inputR) ? 'INVALID' : q ? 'SET' : 'RESET';
+
+    // Input combination for table highlighting
+    const inputMode = inputS && inputR ? 'INVALID' : inputS ? 'SET' : inputR ? 'RESET' : 'HOLD';
+
+    // useEffect: update Q based on input changes
     useEffect(() => {
-        if (mode === 'SET') setQ(true);
-        else if (mode === 'RESET') setQ(false);
-        // HOLD: do nothing, keep previous Q
-        // INVALID: force both to 0
-        else if (mode === 'INVALID') setQ(false);
-    }, [mode]);
+        if (inputS && inputR) { setQ(false); return; }
+        if (inputS && !inputR) { setQ(true); return; }
+        if (!inputS && inputR) { setQ(false); return; }
+        // HOLD: S=0, R=0 — do nothing, keep previous Q
+    }, [inputS, inputR]);
 
     const themeColor = '#8B5CF6';
     const themeRgb = hexToRgbStr(themeColor);
@@ -90,7 +89,7 @@ export default function CircuitCard_SRLatch() {
                     <th style={{ padding: '4px 6px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 9 }}>Keterangan</th>
                 </tr></thead>
                 <tbody>{modes.map(function(row) {
-                    var isHl = (row.name === mode);
+                    var isHl = (row.name === inputMode);
                     var qDisp = row.qVal === null ? (q ? 1 : 0) : row.qVal;
                     var qbDisp = row.qBarVal === null ? (qBar ? 1 : 0) : row.qBarVal;
                     var modeCol = row.name === 'SET' ? '#4ade80' : row.name === 'RESET' ? '#22d3ee' : row.name === 'HOLD' ? '#facc15' : '#ef4444';
