@@ -175,3 +175,7 @@
 *.lz
 *.lzma
 *.iso
+
+# Build artifacts (Vite project — Next.js build output should not be tracked)
+.next/
+.next
