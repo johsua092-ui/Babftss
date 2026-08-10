@@ -1237,3 +1237,84 @@ Card 01-15 TIDAK disentuh. File backend TIDAK disentuh.
 - `src/components/CircuitDiagram_SRLatch.jsx` — diagram SVG (several iterations of fixes)
 - `src/components/CircuitCard_SRLatch.jsx` — card wrapper + tabel mode
 - `src/pages/LogicGatesCircuit.jsx` — registrasi card di ALL_CARDS
+
+---
+
+## [SESSION INI] BUG FIX SR LATCH: VARIABEL mode DIHITUNG DARI Q (SALAH) → DARI KOMBINASI INPUT S/R (FIX)
+
+**Tanggal:** 2026-08-10
+
+**Sumber laporan:** user (lanjutan sesi setelah sesi sebelumnya hilang).
+
+**Bug:** Di `CircuitCard_SRLatch.jsx` baris 15-16, variabel `mode` dihitung dari nilai `q` (output), BUKAN dari kombinasi input `inputS`/`inputR` saat ini. Akibatnya:
+- Status `HOLD` (S=0, R=0) tidak pernah muncul — selalu ditampilkan SET kalau Q=1, RESET kalau Q=0.
+- Tabel mode highlight salah (baris yang di-highlight tidak sesuai kombinasi input yang sebenarnya aktif).
+- Badge mode di status bar menyesatkan pemula: kelihatan seperti mode berganti saat user TIDAK menyentuh S/R, padahal yang berubah cuma Q karena feedback loop.
+
+**Root cause:** kemungkinan AI sebelumnya salah mengira "mode = output state", padahal di rangkaian sekuensial SR Latch, mode adalah fungsi INPUT (S,R) — bukan output. Q hanyalah "nilai yang diingat", BUKAN penentu mode.
+
+**Sebelum (buggy):**
+```js
+// Mode is determined by OUTPUT state, not input
+const mode = (inputS && inputR) ? 'INVALID' : q ? 'SET' : 'RESET';
+```
+
+**Sesudah (fix):**
+```js
+// Mode is determined by current INPUT combination (S, R), not by Q.
+// S=1,R=1 -> INVALID | S=1,R=0 -> SET | S=0,R=1 -> RESET | S=0,R=0 -> HOLD
+const mode = (inputS && inputR) ? 'INVALID'
+           : (inputS && !inputR) ? 'SET'
+           : (!inputS && inputR) ? 'RESET'
+           : 'HOLD';
+```
+
+**Verifikasi logika (manual truth table):**
+| S | R | mode sebelum (buggy) | mode setelah (fix) |
+|---|---|---|---|
+| 0 | 0 | q ? SET : RESET (salah, tidak pernah HOLD) | HOLD ✅ |
+| 0 | 1 | q ? SET : RESET (bisa salah) | RESET ✅ |
+| 1 | 0 | q ? SET : RESET (bisa salah) | SET ✅ |
+| 1 | 1 | INVALID (sudah benar) | INVALID ✅ |
+
+**File yang diubah:**
+- `src/components/CircuitCard_SRLatch.jsx` — HANYA baris 15-16 (comment + 1 const mode). Tidak ada perubahan lain.
+
+**File TIDAK disentuh:**
+- `src/components/CircuitDiagram_SRLatch.jsx` — TIDAK disentuh (diagram sudah benar, hanya wrapper card yang salah logika mode-nya).
+- `src/pages/LogicGatesCircuit.jsx` — TIDAK disentuh.
+- Semua file Card 01-14 — TIDAK disentuh.
+- Semua file backend/auth (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) — TIDAK disentuh.
+
+**Build check:** `npm run build` sukses — `2172 modules transformed`, `built in 9.12s`, 0 error. LogicGatesCircuit chunk: 161.75 KB (naik tipis dari 160.51 KB — wajar karena ada tambahan baris comment+logika nested ternary).
+
+**Verifikasi visual:** TIDAK bisa dilakukan langsung di browser di environment ini — verifikasi hanya lewat pembacaan kode & build sukses. Saat user review di production, perlu dicek visual: (a) badge mode di status bar harus tampil "HOLD" saat S=0,R=0; (b) baris HOLD di tabel mode harus ter-highlight kuning saat S=0,R=0; (c) baris SET/RESET/INVALID ter-highlight sesuai kombinasi S,R saat ini.
+
+---
+
+## [SESSION INI] TAMBAH DOKUMENTASI PROYEK: map.md, review.md, backend.md
+
+**Tanggal:** 2026-08-10
+
+**Sumber:** user melampirkan 3 file ini (dibuat oleh Claude di sesi sebelumnya yang hilang) untuk disimpan ke root repo.
+
+**File yang disimpan ke root repo (apa adanya, tanpa edit):**
+- `map.md` — peta arsitektur proyek (struktur direktori, routing, data flow, API endpoints, checklist status).
+- `review.md` — review kualitas proyek (skor dokumen, checklist kualitas, temuan utama, rekomendasi, verdict).
+- `backend.md` — draft awal dokumentasi backend (bagian `[LENGKAPI]` menunggu backend developer mengisi).
+
+**Catatan:**
+- Tidak ada file lain yang disentuh saat menyimpan 3 file ini.
+- File `ROADMAP_RANGKAIAN.txt` yang dirujuk di `RULES_AUTONOMI_QWEN.md` Bagian 6 dan beberapa entri `memory.md` TIDAK ditemukan di repo saat ini. Kemungkinan hilang saat sesi sebelumnya, atau memang tidak pernah di-persist ke repo. **Perlu user konfirmasi:** apakah perlu restore `ROADMAP_RANGKAIAN.txt` dari sumber lain, atau cukup pakai referensi roadmap yang ada di `memory.md` (Bab A kombinasional, Bab B Mux/Demux, Bab C sequential)?
+
+---
+
+**STATUS PROYEK TERKINI (per session ini):**
+
+- Card 01-09 (Bab A kombinasional: NOT-AND s/d Full Adder 1-bit): SELESAI & TERVERIFIKASI.
+- Card 10 (Full Adder 4-bit + sistem IC Block): SELESAI & TERVERIFIKASI.
+- Card 11-12 (Bab B Mux: 2:1 dan 4:1): SELESAI & TERVERIFIKASI. Versi 8:1/16:1 DIHAPUS PERMANEN (keputusan pedagogis).
+- Card 13-14 (Bab B Demux: 2:1 dan 4:1): SELESAI & TERVERIFIKASI. Versi 8:1/16:1 DIHAPUS PERMANEN.
+- Card 15 (Bab C sequential pertama: SR Latch): SELESAI, 1 bug mode-variable ditemukan & DIPERBAIKI di session ini.
+- Bab C berikutnya (D Flip-Flop, Rising Edge Detector, dst): BELUM DIKERJAKAN. D Flip-Flop adalah STOP-POINT (perlu proposal cara tampilan sekuensial dulu sebelum eksekusi — lihat `RULES_AUTONOMI_QWEN.md` Bagian 6).
+- Create Logic Gates Simulator: BELUM DIKERJAKAN (paling terakhir).
