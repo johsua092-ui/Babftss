@@ -1318,3 +1318,70 @@ const mode = (inputS && inputR) ? 'INVALID'
 - Card 15 (Bab C sequential pertama: SR Latch): SELESAI, 1 bug mode-variable ditemukan & DIPERBAIKI di session ini.
 - Bab C berikutnya (D Flip-Flop, Rising Edge Detector, dst): BELUM DIKERJAKAN. D Flip-Flop adalah STOP-POINT (perlu proposal cara tampilan sekuensial dulu sebelum eksekusi — lihat `RULES_AUTONOMI_QWEN.md` Bagian 6).
 - Create Logic Gates Simulator: BELUM DIKERJAKAN (paling terakhir).
+
+---
+
+## 21. KLARIFIKASI PENTING: MODE DETECTION SR LATCH vs KELUARGA FLIP-FLOP MASA DEPAN
+
+**Konteks:** teman backend user sempat mengusulkan mode badge SR Latch (SET/RESET/HOLD/INVALID) dideteksi dari OUTPUT (Q), bukan dari INPUT (S,R) — ini SAMA PERSIS dengan bug yang baru saja diperbaiki (commit `065f218`+`c879a67`, lihat Bagian 20). Setelah didiskusikan, disepakati **SR Latch TIDAK diubah** — implementasi sekarang (mode dari input S/R) sudah benar dan TETAP DIPERTAHANKAN.
+
+**Klarifikasi teknis penting untuk card masa depan:** usulan "deteksi dari output" itu VALID tapi untuk keluarga Flip-Flop YANG BEDA — **JK Flip-Flop** dan **T Flip-Flop**, dimana next-state SECARA MATEMATIS memang bergantung ke Q saat ini (`Q(next) = T XOR Q(current)` untuk T-FF, serupa untuk JK-FF mode toggle). Untuk KEDUA jenis itu, mode detection nanti WAJIB factor-in nilai Q saat ini.
+
+**SR Flip-Flop** (kemungkinan besar jadi card FF pertama, next setelah SR Latch) — perilakunya SAMA seperti SR Latch (mode dari S, R, DITAMBAH sinyal Clock — Clock tidak aktif = HOLD, walau S/R apapun), BUKAN dari Q. Jangan sampai ke-influence usulan JK/T di atas waktu bikin SR Flip-Flop nanti.
+
+**Aksi konkret:** prompt kerja terpisah dibuat untuk restore junction dot (r=3.5) di titik percabangan output→feedback SR Latch (dot ini sempat hilang di commit `9b4bf0e`, disepakati perlu dikembalikan demi kejelasan pedagogis — TANPA revert penggabungan wire dari commit `0227af2` yang memang valid memperbaiki bug artifact visual).
+
+---
+
+## 22. RESTORE JUNCTION DOT SR LATCH (SELESAI & TERVERIFIKASI)
+
+**Tanggal:** 2026-08-11
+
+**Sumber:** prompt kerja `PROMPT_KERJA_SRLatch_JunctionDot.md` dari user.
+
+**Masalah:** Audit histori commit (Bagian 20) menemukan bahwa junction dot (lingkaran kecil penanda percabangan kabel) di titik dimana output Q dan Q' bercabang jadi sinyal feedback sempat dihapus di commit `9b4bf0e`. Bersamaan dengan itu, commit `0227af2` menggabungkan 2 segmen wire output jadi 1 path utuh (memang valid, untuk menghilangkan artifact "titik hitam" di ujung stroke dengan `linecap=round`). Akibat gabungan kedua commit itu: titik percabangan output↔feedback tidak lagi ditandai secara visual — pemula bisa salah baca diagram, mengira feedback wire hanya "melintas" (persilangan biasa) bukan bercabang dari sinyal Q/Q'.
+
+**Keputusan:** JANGAN revert `0227af2` (wire merge itu valid). CUKUP tambahkan kembali 2 `<circle>` junction dot di titik cabang yang tepat.
+
+**Implementasi di `src/components/CircuitDiagram_SRLatch.jsx`:**
+
+Ditambahkan 2 elemen `<circle>` baru, diletakkan TEPAT sebelum wire feedback dirender (supaya render order: wire output → junction dot → wire feedback — dot tampil di atas wire output, di bawah wire feedback, supaya terlihat jelas sebagai node percabangan):
+
+```jsx
+{/* Junction dots — titik percabangan output → feedback.
+    Commit 9b4bf0e sempat menghapus ini; direstore utk kejelasan pedagogis
+    (tanpa dot, pemula bisa salah baca: mengira feedback wire hanya "melintas",
+    bukan bercabang dari sinyal Q/Q'). Wire merge dari 0227af2 TETAP dipERTAHANKAN. */}
+<circle cx={fbRightQ} cy={nor1MY} r={3.5} fill={wc(q, qOutCol, qOutRgb)} style={{ transition: 'fill 0.3s' }} />
+<circle cx={fbRightQbar} cy={nor2MY} r={3.5} fill={wc(qBar, qBarOutCol, qBarOutRgb)} style={{ transition: 'fill 0.3s' }} />
+```
+
+**Koordinat yang dipakai:**
+- Junction dot Q: `(fbRightQ, nor1MY)` = **(385, 90)** — titik dimana wire output Q (horizontal di y=90, dari NOR1 exit x=251 menuju output node x=435) bercabang ke bawah jadi wire feedback (turun ke y=318, belok kiri ke x=105, naik ke y=252, masuk NOR2 top input).
+- Junction dot Q': `(fbRightQbar, nor2MY)` = **(400, 270)** — titik dimana wire output Q' (horizontal di y=270, dari NOR2 exit x=251 menuju output node x=435) bercabang ke atas jadi wire feedback (naik ke y=42, belok kiri ke x=105, turun ke y=108, masuk NOR1 bottom input).
+
+**Catatan teknis:**
+- Variabel `fbRightQ` dan `fbRightQbar` masih ada di kode saat ini (line 34) — sama persis dengan referensi koordinat lama sebelum commit `9b4bf0e`. Tidak perlu hitung ulang.
+- Dot memakai helper `wc(val, col, rgb)` yang sudah ada di komponen — supaya dot ikut menyala (warna penuh `qOutCol`/`qBarOutCol`) saat nilai `q`/`qBar` = 1, dan redup (`rgba(...,0.25)`) saat = 0. Ini konsisten dengan perilaku wire di sekitarnya (semua wire pakai `wc()` untuk kondisional warna aktif/redup).
+- Warna dot Q = `qOutCol` (hijau `#4ade80`, sama dengan warna wire output Q).
+- Warna dot Q' = `qBarOutCol` (pink `#f472b6`, sama dengan warna wire output Q').
+- Radius `r=3.5` — sama persis dengan dot yang dihapus di `9b4bf0e` (dikonfirmasi dari diff commit itu).
+
+**File yang diubah:**
+- `src/components/CircuitDiagram_SRLatch.jsx` — HANYA menambah 2 elemen `<circle>` + 4 baris comment. Tidak ada wire path yang diubah, tidak ada variabel yang diubah, tidak ada struktur yang dirombak. Wire merge dari `0227af2` TETAP dipertahankan persis seperti adanya.
+- `memory.md` — ditambah entri Bagian 22 ini (log task).
+
+**File TIDAK disentuh:**
+- `src/components/CircuitCard_SRLatch.jsx` — TIDAK disentuh (fix `mode` variable dari session sebelumnya tetap utuh, tidak ada interaksi).
+- `src/pages/LogicGatesCircuit.jsx` — TIDAK disentuh.
+- Semua file Card 01-14 — TIDAK disentuh.
+- Semua file backend/auth (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) — TIDAK disentuh.
+
+**Verifikasi:**
+- Wire merge dari `0227af2` tetap utuh: wire output Q masih 1 path utuh dari `(nor1EX+6, nor1MY)` ke `(qOutX - outNodeR, nor1MY)`, TIDAK dipecah jadi 2 segmen.
+- Wire feedback Q (`wireQfb`) dan wire feedback Q' (`wireQbarfb`) TIDAK diubah — masih mulai dari `(fbRightQ, nor1MY)` dan `(fbRightQbar, nor2MY)` seperti sebelumnya.
+- Junction dot Q dirender SEBELUM wire feedback Q — supaya dot tampil di atas wire output (yang sudah dirender sebelumnya), tapi wire feedback (yang juga lewat titik `(fbRightQ, nor1MY)` sebagai titik awal) tampil di atas dot. Urutan render: wire output → dot → wire feedback. Hasil visual: dot terlihat di pangkal cabang feedback, persis di titik dimana wire output "bercabang".
+- Build check: TODO — akan dijalankan setelah edit ini selesai, sebelum commit.
+- Verifikasi visual langsung: TIDAK bisa dilakukan di environment ini (tidak ada browser headless). User perlu verify visual di production: junction dot harus terlihat sebagai titik kecil di pangkal cabang feedback, BUKAN di tengah wire atau di ujung yang salah.
+
+**[KEPUTUSAN OTONOM]** — pilihan warna dot: saya pakai warna wire OUTPUT (qOutCol/qBarOutCol), BUKAN warna wire feedback (qFbCol/qBarFbCol). Alasan: dot adalah penanda titik cabang dari sinyal OUTPUT — secara semantik, dot itu "milik" output wire yang bercabang. Kalau pakai warna feedback, bisa terlihat seperti dot milik feedback wire saja. Dengan pakai warna output, dot menyatu visual dengan wire output dan menandai "di titik ini, output bercabang". Kalau user review visual merasa warna feedback lebih cocok, tinggal bilang, saya ubah.

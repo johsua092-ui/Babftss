@@ -111,6 +111,13 @@ export default function CircuitDiagram_SRLatch({ s, r, q, qBar, mode, onToggleS,
         <W d={'M ' + (nor1EX + 6) + ',' + nor1MY + ' H ' + (qOutX - outNodeR)} val={q} col={qOutCol} rgb={qOutRgb} />
         <W d={'M ' + (nor2EX + 6) + ',' + nor2MY + ' H ' + (qBarOutX - outNodeR)} val={qBar} col={qBarOutCol} rgb={qBarOutRgb} />
 
+        {/* Junction dots — titik percabangan output → feedback.
+            Commit 9b4bf0e sempat menghapus ini; direstore utk kejelasan pedagogis
+            (tanpa dot, pemula bisa salah baca: mengira feedback wire hanya "melintas",
+            bukan bercabang dari sinyal Q/Q'). Wire merge dari 0227af2 TETAP dipERTAHANKAN. */}
+        <circle cx={fbRightQ} cy={nor1MY} r={3.5} fill={wc(q, qOutCol, qOutRgb)} style={{ transition: 'fill 0.3s' }} />
+        <circle cx={fbRightQbar} cy={nor2MY} r={3.5} fill={wc(qBar, qBarOutCol, qBarOutRgb)} style={{ transition: 'fill 0.3s' }} />
+
         <W d={wireQfb} val={q} col={qFbCol} rgb={qFbRgb} />
         <text x={fbLeftX - 8} y={306} textAnchor="end" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700" fill={q ? qFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
 
