@@ -2013,7 +2013,7 @@ R label dipindah ke ATAS AND2 gate (di y=and2Ty-5=235), menjauhi R horizontal wi
 ### 29.1 Komponen & file baru (3 file)
 
 1. **`src/hooks/useClockMode.js`** — Hook React reusable. State: `clk` (bool), `clockMode` ('manual'|'auto'), `autoActive` (bool), `toast` (obj|null). Actions: `toggleClk()`, `setClockMode(newMode)`. Konstanta: `AUTO_INTERVAL_MS=600`, `RATE_LIMIT_MS=5000`, `TOAST_DURATION_MS=3000`. Logika: lock mode saat autoActive + rate-limit 5 detik + toast dispatch.
-2. **`src/components/ClockModeSwitch.jsx`** — SVG group reusable. 2 slider side-by-side MANUAL (hijau) & AUTO (amber). Props: `x`, `y`, `mode`, `autoActive`, `onChange`. Indikator "RUN" merah pulse di kanan slider AUTO saat autoActive. Style reference: iOS-style toggle (track pill + knob putih), sesuai screenshot user.
+2. **`src/components/ClockModeSwitch.jsx`** — SVG group reusable. **SATU toggle pill segmented-control** (BUKAN dua slider terpisah — revisi setelah user feedback "1 aja cukup woi"). Pill 92×22 dibagi 2 segmen: kiri "MANUAL" (hijau `#4ade80`), kanan "AUTO" (amber `#facc15`). Segmen aktif di-fill warna modenya, segmen inactive gelap. Klik di area pill manapun → toggle `manual`↔`auto`. Props: `x`, `y`, `mode`, `autoActive`, `onChange`. Indikator "RUN" merah pulse di kanan pill saat autoActive.
 3. **`src/components/ClockToast.jsx`** — Komponen toast fixed top-center viewport. Props: `toast`. 2 type: 'block' (amber, ⚠, "matikan clock dahulu...") dan 'rate-limit' (merah, ⛔, "warning! pencegahan..."). Auto-dismiss 3 detik. Entry/exit animation (translateY + opacity).
 
 ### 29.2 File yang diubah (4 file)
@@ -2078,3 +2078,44 @@ Sesuai permintaan user ("sistem ini harus dicatat mutlak di semua files dan jeja
 - Menduplikasi logic clock mode di card manapun — semua harus lewat `useClockMode`.
 
 **Status task: SELESAI & TERVERIFIKASI (build pass). Akan di-commit & push sesuai instruksi user.**
+
+---
+
+## 30. REVISI CLOCK MODE SWITCH: 2 SLIDER → 1 PILL SEGMENTED (SELESAI)
+
+**Tanggal:** 2026-08-13
+**Sumber:** Feedback user lewat chat.
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "iya itu bagus namun ada kesalahpahaman besar disini, fiturnya mantap switchnya oke, namun kamu salah hanya ad 1 swtich button!! kok ada 2 sih? 1 aja cukup woi. segera kerjakan, atasi, commit, dan push"
+
+### 30.1 Masalah
+
+Implementasi Bagian 29 salah tafsir: dibuat **DUA slider side-by-side** (satu MANUAL, satu AUTO) padahal user meminta **SATU switch** yang toggle antara dua mode (seperti iOS toggle on/off, tapi labelnya MANUAL/AUTO).
+
+### 30.2 Fix
+
+`src/components/ClockModeSwitch.jsx` di-rewrite jadi **satu toggle pill segmented-control**:
+- Pill 92×22 px (sebelumnya 2 slider × 56px = 118px total).
+- Dua segmen berdampingan: kiri "MANUAL" (hijau), kanan "AUTO" (amber).
+- Segmen aktif di-fill warna modenya; segmen inactive gelap transparan.
+- Garis pemisah tipis di tengah.
+- Klik di area pill manapun → `onChange(modeLawannya)` → hook `useClockMode.setClockMode` yang validasi lock & rate-limit (logic tetap sama, tidak diubah).
+- Indikator "RUN" merah pulse tetap di kanan pill saat autoActive.
+
+Hook `useClockMode.js` dan komponen `ClockToast.jsx` **tidak diubah** — logic-nya benar, hanya UI switch yang salah.
+
+### 30.3 Dokumentasi yang di-update
+
+- `design.md` §29.3 — spec style di-rewrite jelas: "SATU toggle pill segmented", bukan 2 slider. Tabel state active/inactive disesuaikan. Catatan revisi ditambahkan supaya future developer tidak kembali ke desain 2-slider.
+- `design.md` §29.4, §29.7, §29.9 — istilah "slider AUTO" diganti "pill switch".
+- `memory.md` §29.1 — deskripsi `ClockModeSwitch.jsx` diperbaiki jadi "SATU toggle pill segmented-control".
+- `memory.md` §30 (section ini) — log revisi.
+
+### 30.4 Verifikasi
+
+- `npm run build`: ✓ sukses, 0 error.
+- Tidak ada perubahan props signature → CircuitDiagram16 & 17 tidak perlu diubah.
+- Behavior hook tidak diubah → aturan lock + rate-limit + toast tetap berlaku exact seperti sebelumnya.
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**

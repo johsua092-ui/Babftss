@@ -535,20 +535,29 @@ Switch ClockMode WAJIB dirender **tepat di bawah tombol CLK** di dalam SVG diagr
 
 ### 29.3 Style switch (referensi visual)
 
-Switch adalah **2 slider side-byside** (gaya iOS-style toggle), bukan 1 slider dengan 2 state. Setiap slider merepresentasikan 1 mode:
+Switch adalah **SATU buah toggle pill segmented-control** (gaya iOS-style toggle), BUKAN dua slider terpisah. Pill dibagi menjadi dua segmen yang selalu tampil berdampingan: segmen kiri berlabel "MANUAL", segmen kanan berlabel "AUTO".
 
-| Slider | State active | State inactive |
+| Segmen | State active | State inactive |
 |--------|--------------|----------------|
-| **MANUAL** | Track fill hijau `#4ade80`, knob putih di kanan, label "MANUAL" hitam di kiri | Track transparent + outline abu, knob putih di kiri, label "MANUAL" abu di kanan |
-| **AUTO** | Track fill amber `#facc15`, knob putih di kanan, label "AUTO" hitam di kiri | Track transparent + outline abu, knob putih di kiri, label "AUTO" abu di kanan |
+| **MANUAL** (kiri) | Half-fill hijau `#4ade80`, label "MANUAL" hitam bold | Half transparent (gelap), label "MANUAL" abu |
+| **AUTO** (kanan) | Half-fill amber `#facc15`, label "AUTO" hitam bold | Half transparent (gelap), label "AUTO" abu |
 
-Hanya satu slider yang aktif pada satu waktu (mutually exclusive). Klik slider → switch mode.
+**Hanya satu segmen yang aktif pada satu waktu** (mutually exclusive). Hanya segmen aktif yang di-fill dengan warna modenya; segmen lain tetap gelap/transparan. Klik di area switch manapun (kiri, kanan, atau tengah) → toggle ke mode lainnya.
+
+Geometri default:
+- Lebar pill: 92px, tinggi 22px, corner radius 11px (pill shape).
+- Setiap segmen = 46px lebar.
+- Label "CLOCK MODE" 7px Orbitron di atas pill.
+- Half-fill menggunakan clipPath mengikuti rounded corner pill supaya tidak overflow.
+- Garis pemisah tipis `rgba(15,23,42,0.35)` di tengah supaya batas dua segmen jelas.
 
 Warna:
 - MANUAL = hijau `#4ade80` (rgb `74,222,128`) — konsisten dengan warna sinyal data utama.
 - AUTO = amber `#facc15` (rgb `250,204,21`) — konsisten dengan warna CLK (sinyal kontrol).
 
-Saat AUTO sedang aktif memancarkan pulsasi (autoActive=true), tampilkan indikator **"RUN"** merah `#ef4444` dengan dot pulse di kanan slider AUTO supaya user tahu clock sedang berjalan.
+Saat AUTO sedang aktif memancarkan pulsasi (autoActive=true), tampilkan indikator **"RUN"** merah `#ef4444` dengan dot pulse di kanan pill switch supaya user tahu clock sedang berjalan.
+
+**PENTING ( revisi ):** Versi awal pernah salah membuat DUA slider terpisah (satu MANUAL, satu AUTO). Ini SALAH. User secara eksplisit meminta: cukup **SATU switch** yang toggle antara dua mode. Aturan ini berlaku ke semua card clock sekarang & masa depan — jangan pernah kembali ke desain 2-slider.
 
 ### 29.4 Behavior mode (ATURAN MUTLAK)
 
@@ -562,7 +571,7 @@ Saat AUTO sedang aktif memancarkan pulsasi (autoActive=true), tampilkan indikato
   - Interval default: 600ms per state (~0.83Hz). Bisa di-tune bila perlu.
 - User klik tombol CLK **lagi** → clock **STOP dan RESET ke 0**.
   - **PENTING:** STOP tidak melanjutkan pulsasi — clock kembali ke 0 (mati), bukan lanjut 1→0→1→0.
-- Indikator visual "RUN" merah pulse muncul di kanan slider AUTO saat pulsasi aktif.
+- Indikator visual "RUN" merah pulse muncul di kanan pill switch saat pulsasi aktif.
 
 ### 29.5 Aturan ketat: lock mode saat AUTO aktif (ATURAN MUTLAK)
 
@@ -600,7 +609,7 @@ Setelah upaya switch mode yang diblok (§29.5), sistem **memulai cooldown 5 deti
 Implementasi sistem ini terpusat di 3 file reusable — **TIDAK BOLEH** di-copy-paste ke setiap card. Semua card clock WAJIB pakai ketiganya:
 
 1. **`src/hooks/useClockMode.js`** — Hook React yang mengelola state `clk`, `clockMode`, `autoActive`, plus fungsi `toggleClk`, `setClockMode`, dan state `toast`. Logika lock + rate-limit + toast semua di sini.
-2. **`src/components/ClockModeSwitch.jsx`** — Komponen SVG group yang merender 2 slider MANUAL & AUTO. Props: `x`, `y`, `mode`, `autoActive`, `onChange`. Dirender di dalam SVG CircuitDiagram, bukan di luar.
+2. **`src/components/ClockModeSwitch.jsx`** — Komponen SVG group yang merender **SATU toggle pill segmented MANUAL/AUTO** (BUKAN dua slider terpisah). Props: `x`, `y`, `mode`, `autoActive`, `onChange`. Dirender di dalam SVG CircuitDiagram, bukan di luar. Klik di area switch manapun → `onChange` dipanggil dengan mode lawannya (`manual`↔`auto`).
 3. **`src/components/ClockToast.jsx`** — Komponen toast fixed top-center. Props: `toast` (dari useClockMode). Dirender di CircuitCard (di luar SVG), supaya muncul di atas semua elemen.
 
 **Pola pemakaian di CircuitCard:**
@@ -648,9 +657,11 @@ Saat membuat card baru dengan tombol CLK, jalankan checklist ini:
 - [ ] `clockMode`, `autoActive`, `onClockModeChange` dipassing ke CircuitDiagram.
 - [ ] `<ClockModeSwitch>` dirender di dalam SVG, di bawah node input CLK.
 - [ ] `<ClockToast toast={toast} />` dirender di CircuitCard (di luar SVG).
-- [ ] Verifikasi: klik MANUAL → klik CLK toggle 1/0 manual.
-- [ ] Verifikasi: klik AUTO → klik CLK 1x → pulsasi 1→0→1→0 muncul, indikator "RUN" merah pulse.
-- [ ] Verifikasi: saat autoActive, klik slider MANUAL → toast amber "matikan clock dahulu sebelum beralih mode clock".
-- [ ] Verifikasi: setelah diblok, klik slider apapun dalam 5 detik → toast merah "warning! pencegahan rate limit mohon tunggu 5 detik".
+- [ ] Verifikasi: hanya ada SATU switch pill di bawah CLK (BUKAN dua slider terpisah) — kiri "MANUAL", kanan "AUTO".
+- [ ] Verifikasi: klik switch (di segmen manapun) → toggle antara MANUAL dan AUTO. Segmen aktif ter-fill warna modenya.
+- [ ] Verifikasi: di mode MANUAL, klik CLK → toggle 1/0 manual.
+- [ ] Verifikasi: di mode AUTO, klik CLK 1x → pulsasi 1→0→1→0 muncul, indikator "RUN" merah pulse di kanan switch.
+- [ ] Verifikasi: saat autoActive, klik switch → toast amber "matikan clock dahulu sebelum beralih mode clock".
+- [ ] Verifikasi: setelah diblok, klik switch lagi dalam 5 detik → toast merah "warning! pencegahan rate limit mohon tunggu 5 detik".
 - [ ] Verifikasi: klik CLK lagi saat autoActive → clock STOP dan kembali ke 0 (bukan lanjut pulsasi).
 - [ ] `npm run build` sukses tanpa error.
