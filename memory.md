@@ -1839,3 +1839,157 @@ Sesuai konvensi `CircuitDiagram_SRLatch.jsx` (Card 15):
 **Status task: SELESAI & TERVERIFIKASI (build pass, overlap check pass). Belum di-commit — menunggu instruksi user apakah akan di-stage & push, atau dilihat dulu secara visual di dev server.**
 
 Perubahan ini TIDAK mengubah logic Card 16/17 (state `q`/`qBar` dihitung sama persis di `CircuitCard16.jsx`/`CircuitCard17.jsx` — hanya rendering SVG yang diganti dari ICBlockRef box menjadi 2 NOR gates inline). Verifikasi visual menunggu user di dev server / production.
+
+---
+
+## 27. FIX WIRE OVERLAP & LABEL COLLISION DI CARD 16 & 17 — SELESAI & TERVERIFIKASI
+
+**Tanggal:** 2026-08-13
+**Sumber:** Permintaan user lewat chat.
+
+> "ada kabel yang menimpa kabel jadinya ga nyaman keliatan di mata dan hanya terjadi di card 16 saja, kemudian teks gate disitu ada yang nabrak nabrak ke kabel jadi susah bacanya, tolong kamu atur. (terjadi pada card 16 dan card 17)"
+
+### Masalah yang ditemukan
+
+**1. Wire overlap (kabel menimpa kabel):**
+- S wire horizontal di y=248 (menuju NOR2 bottom input) dan R wire horizontal di y=245 (dari AND2 exit) — hanya 3px beda di Y, overlap di X range [290, 310]. Visually kelihatan seperti dua kabel sejajar yang menumpuk.
+- S vertical lane (x=290) dan R vertical lane (x=310) — hanya 20px beda, terlalu rapat di area tengah.
+- Total: 2 wire crossings + 1 near-overlap paralel di area crowded antara AND exit dan NOR input.
+
+**2. Label collision (teks gate nabrak kabel):**
+- NOT label di (149, 178) end-anchored — D branch_dn wire di y=175 lewat TENGAH text.
+- AND1 label di (204, 108) end-anchored — dijepit antara D wire (y=95) dan CLK wire (y=115), hanya 5px clearance.
+- AND2 label di (204, 248) end-anchored — dijepit antara D̄ wire (y=235) dan CLK wire (y=255), hanya 5px clearance.
+- NOR1/NOR2 labels di (340, 133/233) end-anchored — cramped di kiri gate, dekat dengan R/S wire horizontals.
+
+### Solusi: Swap NOR input assignments + move labels above gates
+
+**Swap NOR input (NOR komutatif — A NOR B = B NOR A, logika sama):**
+
+| | OLD (v1) | NEW (v2) |
+|---|---|---|
+| NOR1 top input | R | Q̄_feedback |
+| NOR1 bottom input | Q̄_feedback | R |
+| NOR2 top input | Q_feedback | S |
+| NOR2 bottom input | S | Q_feedback |
+
+Efek swap:
+- S wire sekarang masuk NOR2 **TOP** input (y=212) bukan bottom (y=248).
+- R wire sekarang masuk NOR1 **BOTTOM** input (y=148) bukan top (y=112).
+- Q_fb sekarang masuk NOR2 **BOTTOM** input (y=248).
+- Q̄_fb sekarang masuk NOR1 **TOP** input (y=112).
+
+S horizontal (y=212) dan R horizontal (y=148) sekarang **64px beda** — tidak ada lagi parallel overlap. S vertical (x=280) dan R vertical (x=305) **25px beda** — lebih lega. Hanya tersisa **1 crossing bersih** di koridor antara NOR1 (y=148) dan NOR2 (y=212) di titik (305, 212) — standard wire crossing, tidak ada junction dot.
+
+**Move labels above gates (middle-anchored, di atas gate body):**
+
+| Label | OLD position (end-anchored, kiri gate) | NEW position (middle-anchored, atas gate) |
+|---|---|---|
+| NOT | (149, 178) — nabrak D wire y=175 | (175, 155) — 20px di atas NOT body |
+| AND1 | (204, 108) — dijepit D/CLK wires | (225, 85) — 5px di atas AND1 body |
+| AND2 | (204, 248) — dijepit D̄/CLK wires | (225, 230) — 10px di atas AND2 body |
+| NOR1 | (340, 133) — cramped kiri gate | (377, 107) — 5px di atas NOR1 body |
+| NOR2 | (340, 233) — cramped kiri gate | (377, 207) — 5px di atas NOR2 body |
+
+### File diubah (2 file)
+
+- `src/components/CircuitDiagram16.jsx` — swap S/R/Qfb/Q̄fb wire routing + move 5 gate labels (NOT, AND1, AND2, NOR1, NOR2) + update semua komentar topology.
+- `src/components/CircuitDiagram17.jsx` — perubahan identik (struktur internal SR Latch sama, hanya input AND1/AND2 yang berbeda: S_gated/R_gated).
+
+### File dibuat (1 file)
+
+- `scripts/check_card16_17_wire_overlap_v2.py` (di `/home/z/my-project/scripts/`) — verification script yang check: (1) parallel wire overlap (min_gap=6px), (2) wire crossings (informational), (3) label-to-wire collision (text bbox vs wire segments).
+
+### Verifikasi
+
+- **Parallel wire overlap check:** ✓ 0 overlaps di Card 16, 0 overlaps di Card 17.
+- **Label-to-wire collision check:** ✓ 0 collisions di Card 16, 0 collisions di Card 17.
+- **Wire crossings:** 25 di Card 16, 24 di Card 17 — semua adalah: (a) same-wire corners (wire belok H↔V), (b) junction points (wire bercabang, ada junction dot), (c) standard feedback crossings (Qfb V × Q̄ output H, dst — inherent di cross-coupled SR latch topology), (d) 1 crossing S×R di koridor (305, 212) — acceptable. Tidak ada junction dot di crossing → tidak ada koneksi listrik.
+- **vite build:** ✓ sukses 8.01s, 2176 modules, 0 error. Bundle `LogicGatesCircuit-CF_FtYjh.js` 189.04 kB.
+
+### Catatan git
+
+- **Aturan 2 (verifikasi direktori):** `pwd` = `/home/z/my-project/Babftss`, `git remote -v` = `https://github.com/johsua092-ui/Babftss.git` ✓.
+- **Working tree:** 19 file modified lain (dari sesi sebelumnya) TETAP TIDAK disentuh. File task ini (`CircuitDiagram16.jsx`, `CircuitDiagram17.jsx`, `memory.md`) juga TIDAK di-`git add` / commit otomatis — menunggu instruksi eksplisit user.
+- **Tidak ada perubahan logic.** State `q`/`qBar` dihitung sama persis di `CircuitCard16.jsx`/`CircuitCard17.jsx` — hanya rendering SVG yang berubah (wire routing + label posisi). NOR komutatif: swap input posisi tidak mengubah output logika.
+
+### Status
+
+**Status task: SELESAI & TERVERIFIKASI (build pass, 0 parallel overlap, 0 label collision). Belum di-commit — menunggu instruksi user.**
+
+Verifikasi visual menunggu user di dev server / production. Yang perlu dicek user:
+- S wire (hijau) dari AND1 → turun di x=280 → masuk NOR2 **TOP** input (bukan bottom lagi).
+- R wire (hijau) dari AND2 → naik di x=305 → masuk NOR1 **BOTTOM** input (bukan top lagi).
+- Hanya 1 crossing S×R di area tengah (koridor antara NOR1 dan NOR2) — bersih, tidak menumpuk.
+- Q fb (oranye) masuk NOR2 bottom. Q̄ fb (ungu) masuk NOR1 top.
+- Label NOT/AND1/AND2/NOR1/NOR2 sekarang di **ATAS** gate body (bukan di kiri) — tidak nabrak input wires.
+
+---
+
+## 28. V3 FIX — D/CLK VERTICAL SPACING (CARD 16) + LABEL CLEARANCE (CARD 16 & 17)
+
+**Tanggal:** 2026-08-13
+**Sumber:** Permintaan user lewat chat.
+
+> "ada kabel yang menimpa kabel jadinya ga nyaman keliatan di mata dan hanya terjadi di card 16 saja, kemudian teks gate disitu ada yang nabrak nabrak ke kabel jadi susah bacanya, tolong kamu atur. (terjadi pada card 16 dan card 17) tolong kamu langsung kerjakan, commit, dan push"
+
+### Masalah tersisa setelah v2
+
+Walaupun v2 (section 27) sudah lulus verification script (0 parallel overlap, 0 label collision), secara visual masih ada 2 masalah yang dilaporkan user:
+
+**1. Card 16: D vertical (x=80) dan CLK vertical (x=90) hanya 10px beda.**
+Dari y=115 (CLK branch_up H) sampai y=175 (D branch_dn H), kedua verticals berjalan sejajar selama 60px dengan gap 10px — visually terlihat seperti dua kabel menumpuk. (Card 17 tidak ada masalah ini karena S/R/CLK junctions di x=80/100/110 — gap 20-30px.)
+
+**2. Card 16 & 17: S/R output labels dan Q/Q̄ feedback labels terlalu dekat dengan wire.**
+- S label di (and1ExitX+12, and1My-8) = (267, 97) — 8px di atas S wire (y=105). Text bbox bottom ~y=97, wire y=105 — gap math safe tapi visually masih menempel.
+- R label di (and2ExitX+12, and2My-8) = (267, 237) — 8px di atas R wire (y=245). Sama.
+- Q fb label di (..., fbBotY-6) = (375, 269) — 6px di atas Q fb wire (y=275). Terlalu dekat.
+- Q̄ fb label di (..., fbTopY-6) = (382, 84) — 6px di bawah Q̄ fb wire (y=90). Terlalu dekat.
+
+### Solusi v3
+
+**1. Card 16: D/CLK junction spacing 10px → 25px.**
+```diff
+- const dJunctionX = 80, clkJunctionX = 90;
++ const dJunctionX = 75, clkJunctionX = 100;
+```
+Sekarang D vertical (x=75) dan CLK vertical (x=100) berjalan sejajar dengan gap 25px — visually jelas terpisah. Tidak ada konflik dengan element lain (NOT input di x=155, AND input di x=210 — masih jauh).
+
+**2. S/R output labels: pindah ke sisi yang berlawanan dari wire.**
+```diff
+- // S label di (and1ExitX+12, and1My-8) — 8px atas wire y=105
++ // S label di (and1ExitX+8, and1By+13) — 13px bawah gate body, jauh dari wire y=105
+- // R label di (and2ExitX+12, and2My-8) — 8px atas wire y=245
++ // R label di (and2ExitX+8, and2Ty-5) — 5px atas gate body, jauh dari wire y=245
+```
+S label dipindah ke BAWAH AND1 gate (di y=and1By+13=133), menjauhi S horizontal wire di y=105.
+R label dipindah ke ATAS AND2 gate (di y=and2Ty-5=235), menjauhi R horizontal wire di y=245 (Card 16) / y=255 (Card 17).
+
+**3. Q/Q̄ feedback labels: tambah 8px clearance.**
+```diff
+- // Q fb label di (..., fbBotY-6) — 6px atas wire y=275
++ // Q fb label di (..., fbBotY-14) — 14px atas wire y=275
+- // Q̄ fb label di (..., fbTopY-6), overline di (..., fbTopY-17) — 6px bawah wire y=90
++ // Q̄ fb label di (..., fbTopY-14), overline di (..., fbTopY-25) — 14px bawah wire y=90
+```
+
+### File diubah (3 file)
+
+- `src/components/CircuitDiagram16.jsx` — D/CLK junction spacing + S/R/Q/Q̄ label posisi.
+- `src/components/CircuitDiagram17.jsx` — S/R/Q/Q̄ label posisi (no D/CLK change — gap sudah 20-30px).
+- `memory.md` — section ini.
+
+### Verifikasi
+
+- `scripts/check_card16_17_wire_overlap_v2.py` (di /home/z/my-project/scripts/, diluar repo) diupdate dengan coords v3:
+  - Card 16: ✓ 0 parallel overlap, ✓ 0 label collision.
+  - Card 17: ✓ 0 parallel overlap, ✓ 0 label collision.
+- `npm run build`: ✓ sukses 8.03s, 2176 modules, 0 error. Bundle `LogicGatesCircuit-CwbU2JJK.js` 189.06 kB.
+
+### Catatan
+
+- Tidak ada perubahan logic. State `q`/`qBar` dihitung sama persis.
+- Hanya 3 file di-commit (CircuitDiagram16.jsx, CircuitDiagram17.jsx, memory.md). File lain yang ter-modified di working tree (mode changes, etc.) TIDAK disentuh.
+- Verification script (`/home/z/my-project/scripts/check_card16_17_wire_overlap_v2.py`) berada di luar repo Babftss, jadi tidak masuk commit — tapi tetap diupdate untuk konsistensi.
+
+**Status task: SELESAI & TERVERIFIKASI. Akan di-commit & push sesuai instruksi user.**

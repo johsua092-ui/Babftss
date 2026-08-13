@@ -11,8 +11,10 @@ import { hexToRgbStr } from '../utils/colorHelper';
 //   R_gated = R AND CLK (AND2)
 //   S_gated, R_gated masuk 2 NOR gates cross-coupled (SR Latch inline, BUKAN
 //   ICBlockRef — sama seperti Card 16 versi baru):
-//     NOR1 (top): input = R_gated, Q̄_feedback -> output = Q
-//     NOR2 (bot): input = Q_feedback, S_gated -> output = Q̄
+//     NOR1 (top): input top = Q̄_feedback, input bottom = R_gated -> output = Q
+//     NOR2 (bot): input top = S_gated, input bottom = Q_feedback -> output = Q̄
+//     (NOR komutatif — swap input posisi untuk routing wire lebih bersih,
+//      menghindari wire overlap horizontal di area y≈245-255.)
 //   Q, Q̄ keluar ke output nodes.
 //
 // Mode (4-mode, BUKAN 2-mode Gated D Latch) — diturunkan dari S_gated, R_gated:
@@ -97,15 +99,16 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
     const nor1EX = norSX + 55; // 405
     const nor2EX = norSX + 55; // 405
 
-    // S_gated/R_gated routing lanes — S_gated dari AND1 (top) harus turun ke NOR2 (bot) bottom input.
-    //                               R_gated dari AND2 (bot) harus naik ke NOR1 (top) top input.
-    // X lanes berbeda supaya dua wire vertikal tidak overlap.
-    const sLaneX = 290;  // S_gated wire vertical lane
-    const rLaneX = 310;  // R_gated wire vertical lane
+    // S_gated/R_gated routing lanes — S_gated dari AND1 (top) masuk NOR2 TOP input (y=212).
+    //                               R_gated dari AND2 (bot) masuk NOR1 BOTTOM input (y=148).
+    // X lanes berbeda supaya dua wire vertikal tidak overlap. Hanya 1 crossing
+    //   bersih di koridor antara NOR1 (y=148) dan NOR2 (y=212) — acceptable.
+    const sLaneX = 280;  // S_gated wire vertical lane
+    const rLaneX = 305;  // R_gated wire vertical lane
 
     // Feedback wire lanes (pola CircuitDiagram_SRLatch — wrap-around outside NORs):
-    //   Q fb:  dari junction di Q-output wire -> turun -> kiri -> naik -> masuk NOR2 top input.
-    //   Q̄ fb: dari junction di Q̄-output wire -> naik -> kiri -> turun -> masuk NOR1 bot input.
+    //   Q fb:  dari junction di Q-output wire -> turun -> kiri -> naik -> masuk NOR2 BOTTOM input (swap).
+    //   Q̄ fb: dari junction di Q̄-output wire -> naik -> kiri -> turun -> masuk NOR1 TOP input (swap).
     // fbLeftX dipilih > rLaneX (310) supaya tidak overlap dengan R_gated wire vertical.
     const fbLeftX = 325;
     const fbTopY = 90;   // di atas NOR1 (yang mulai dari y=112)
@@ -206,15 +209,17 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
     // CLK branch down: junction → AND2 bot input (210, 265)
     const wireClk_dn = 'M ' + clkJunctionX + ',' + clkInY + ' V ' + and2BotY + ' H ' + andSx;
 
-    // S_gated wire: AND1 exit (top) → turun ke NOR2 bottom input.
-    // S_gated diproduksi di AND1 (my=105) tetapi masuk NOR2 (bottom) di y=248.
-    // Routing: H ke sLaneX, V turun ke nor2By, H ke norSX.
-    const wireSg = 'M ' + (and1ExitX + 6) + ',' + and1My + ' H ' + sLaneX + ' V ' + nor2By + ' H ' + norSX;
+    // S_gated wire: AND1 exit (top) → turun ke NOR2 TOP input (swap dari versi lama).
+    // S_gated diproduksi di AND1 (my=105), masuk NOR2 (top) di y=212 (nor2Ty).
+    // Routing: H ke sLaneX, V turun ke nor2Ty, H ke norSX.
+    // (Swap ini menghindari wire overlap horizontal di y≈245-255.)
+    const wireSg = 'M ' + (and1ExitX + 6) + ',' + and1My + ' H ' + sLaneX + ' V ' + nor2Ty + ' H ' + norSX;
 
-    // R_gated wire: AND2 exit (bottom) → naik ke NOR1 top input.
-    // R_gated diproduksi di AND2 (my=255) tetapi masuk NOR1 (top) di y=112.
-    // Routing: H ke rLaneX, V naik ke nor1Ty, H ke norSX.
-    const wireRg = 'M ' + (and2ExitX + 6) + ',' + and2My + ' H ' + rLaneX + ' V ' + nor1Ty + ' H ' + norSX;
+    // R_gated wire: AND2 exit (bottom) → naik ke NOR1 BOTTOM input (swap dari versi lama).
+    // R_gated diproduksi di AND2 (my=255), masuk NOR1 (bottom) di y=148 (nor1By).
+    // Routing: H ke rLaneX, V naik ke nor1By, H ke norSX.
+    // (Swap ini menghindari wire overlap horizontal di y≈245-255.)
+    const wireRg = 'M ' + (and2ExitX + 6) + ',' + and2My + ' H ' + rLaneX + ' V ' + nor1By + ' H ' + norSX;
 
     // Q wire: NOR1 output → Q output node (straight horizontal, same Y).
     const wireQ = 'M ' + (nor1EX + 6) + ',' + nor1My + ' H ' + (qOutX - outNodeR);
@@ -222,13 +227,13 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
     // Q̄ wire: NOR2 output → Q̄ output node (straight horizontal, same Y).
     const wireQbar = 'M ' + (nor2EX + 6) + ',' + nor2My + ' H ' + (qBarOutX - outNodeR);
 
-    // Q feedback wire: junction di Q-output wire (fbRightQ, nor1My) → wrap-around → NOR2 top input.
-    // Path: V turun ke fbBotY, H kiri ke fbLeftX, V naik ke nor2Ty, H kanan ke norSX.
-    const wireQfb = 'M ' + fbRightQ + ',' + nor1My + ' V ' + fbBotY + ' H ' + fbLeftX + ' V ' + nor2Ty + ' H ' + norSX;
+    // Q feedback wire: junction di Q-output wire (fbRightQ, nor1My) → wrap-around → NOR2 BOTTOM input (swap).
+    // Path: V turun ke fbBotY, H kiri ke fbLeftX, V naik ke nor2By, H kanan ke norSX.
+    const wireQfb = 'M ' + fbRightQ + ',' + nor1My + ' V ' + fbBotY + ' H ' + fbLeftX + ' V ' + nor2By + ' H ' + norSX;
 
-    // Q̄ feedback wire: junction di Q̄-output wire (fbRightQbar, nor2My) → wrap-around → NOR1 bottom input.
-    // Path: V naik ke fbTopY, H kiri ke fbLeftX, V turun ke nor1By, H kanan ke norSX.
-    const wireQbarFb = 'M ' + fbRightQbar + ',' + nor2My + ' V ' + fbTopY + ' H ' + fbLeftX + ' V ' + nor1By + ' H ' + norSX;
+    // Q̄ feedback wire: junction di Q̄-output wire (fbRightQbar, nor2My) → wrap-around → NOR1 TOP input (swap).
+    // Path: V naik ke fbTopY, H kiri ke fbLeftX, V turun ke nor1Ty, H kanan ke norSX.
+    const wireQbarFb = 'M ' + fbRightQbar + ',' + nor2My + ' V ' + fbTopY + ' H ' + fbLeftX + ' V ' + nor1Ty + ' H ' + norSX;
 
     return <svg viewBox={'0 0 ' + svgW + ' ' + svgH} width="100%" style={{ overflow: 'visible', display: 'block' }}>
         {/* Mode badge */}
@@ -258,35 +263,37 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
         {/* AND1 gate (S_gated = S AND CLK) */}
         <AndGate sx={andSx} ty={and1Ty} by={and1By} my={and1My} ex={and1ExitX}
             glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
-        <text x={andSx - 6} y={and1My + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
+        <text x={andSx + 15} y={and1Ty - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
             fill={sGated ? sCol : '#475569'} style={{ transition: 'fill 0.3s' }}>AND1</text>
-        {/* S_gated label di output AND1 — pakai label singkat "S" (pola Card 16) */}
-        <text x={and1ExitX + 12} y={and1My - 8} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600"
+        {/* S_gated label — dipindah ke BAWAH output AND1 (y = and1By + 13) supaya tidak
+            menempel di S_gated horizontal wire di y = and1My (=105). */}
+        <text x={and1ExitX + 8} y={and1By + 13} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600"
             fill={sGated ? sCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>S</text>
 
         {/* AND2 gate (R_gated = R AND CLK) */}
         <AndGate sx={andSx} ty={and2Ty} by={and2By} my={and2My} ex={and2ExitX}
             glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
-        <text x={andSx - 6} y={and2My + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
+        <text x={andSx + 15} y={and2Ty - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
             fill={rGated ? sCol : '#475569'} style={{ transition: 'fill 0.3s' }}>AND2</text>
-        {/* R_gated label di output AND2 — pakai label singkat "R" (pola Card 16) */}
-        <text x={and2ExitX + 12} y={and2My - 8} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600"
+        {/* R_gated label — dipindah ke ATAS output AND2 (y = and2Ty - 5) supaya tidak
+            menempel di R_gated horizontal wire di y = and2My (=255). */}
+        <text x={and2ExitX + 8} y={and2Ty - 5} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600"
             fill={rGated ? sCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>R</text>
 
         {/* S_gated, R_gated wires (green, masuk NOR gates) */}
         <W d={wireSg} val={sGated} col={sCol} rgb={sRgb} />
         <W d={wireRg} val={rGated} col={sCol} rgb={sRgb} />
 
-        {/* NOR1 gate (top) — output Q. Input: R_gated (top), Q̄_feedback (bottom). */}
+        {/* NOR1 gate (top) — output Q. Input: Q̄_feedback (top), R_gated (bottom). */}
         <NorGate sx={norSX} ty={nor1Ty} by={nor1By} my={nor1My} ex={nor1EX}
             glow={nor1Glow} fill={nor1Fill} stroke={nor1Stroke} />
-        <text x={norSX - 10} y={nor1My + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
+        <text x={norSX + 27} y={nor1Ty - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
             fill={q ? norCol : '#475569'} style={{ transition: 'fill 0.3s' }}>NOR1</text>
 
-        {/* NOR2 gate (bottom) — output Q̄. Input: Q_feedback (top), S_gated (bottom). */}
+        {/* NOR2 gate (bottom) — output Q̄. Input: S_gated (top), Q_feedback (bottom). */}
         <NorGate sx={norSX} ty={nor2Ty} by={nor2By} my={nor2My} ex={nor2EX}
             glow={nor2Glow} fill={nor2Fill} stroke={nor2Stroke} />
-        <text x={norSX - 10} y={nor2My + 3} textAnchor="end" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
+        <text x={norSX + 27} y={nor2Ty - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
             fill={qBar ? norCol : '#475569'} style={{ transition: 'fill 0.3s' }}>NOR2</text>
 
         {/* Q, Q̄ output wires (dari NOR output pins ke output nodes) */}
@@ -296,18 +303,21 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
         {/* Q feedback wire (oranye) + junction dot di Q output wire */}
         <W d={wireQfb} val={q} col={qFbCol} rgb={qFbRgb} />
         <circle cx={fbRightQ} cy={nor1My} r={3.5} fill={wc(q, qOutCol, qOutRgb)} style={{ transition: 'fill 0.3s' }} />
-        {/* Q feedback label — di segmen horizontal bawah (y=fbBotY), tengah segmen */}
-        <text x={(fbRightQ + fbLeftX) / 2} y={fbBotY - 6} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700"
+        {/* Q feedback label — dipindah 8px lebih jauh dari wire (y=fbBotY-14, dari -6)
+            supaya teks tidak menempel di Q fb horizontal wire di y=fbBotY. */}
+        <text x={(fbRightQ + fbLeftX) / 2} y={fbBotY - 14} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700"
             fill={q ? qFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
 
         {/* Q̄ feedback wire (ungu) + junction dot di Q̄ output wire */}
         <W d={wireQbarFb} val={qBar} col={qBarFbCol} rgb={qBarFbRgb} />
         <circle cx={fbRightQbar} cy={nor2My} r={3.5} fill={wc(qBar, qBarOutCol, qBarOutRgb)} style={{ transition: 'fill 0.3s' }} />
-        {/* Q̄ feedback label (overline manual) — di segmen horizontal atas (y=fbTopY), tengah segmen */}
+        {/* Q̄ feedback label (overline manual) — dipindah 8px lebih jauh dari wire
+            (y=fbTopY-14, dari -6) supaya teks & overline tidak menempel di Q̄ fb
+            horizontal wire di y=fbTopY. */}
         <g>
-            <text x={(fbRightQbar + fbLeftX) / 2} y={fbTopY - 6} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700"
+            <text x={(fbRightQbar + fbLeftX) / 2} y={fbTopY - 14} textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700"
                 fill={qBar ? qBarFbCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>Q</text>
-            <line x1={(fbRightQbar + fbLeftX) / 2 - 7} y1={fbTopY - 17} x2={(fbRightQbar + fbLeftX) / 2 + 7} y2={fbTopY - 17}
+            <line x1={(fbRightQbar + fbLeftX) / 2 - 7} y1={fbTopY - 25} x2={(fbRightQbar + fbLeftX) / 2 + 7} y2={fbTopY - 25}
                 stroke={qBar ? qBarFbCol : '#94a3b8'} strokeWidth="1.5" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
         </g>
 
