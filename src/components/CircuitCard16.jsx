@@ -5,18 +5,23 @@ import HeartButton from './HeartButton';
 import { useClockMode } from '../hooks/useClockMode';
 import ClockToast from './ClockToast';
 
-// Card 16 — SR Flip-Flop
-// SR Latch (Card 15) yang "digerbang" CLK — mirip Gated D Latch (Card 17), TAPI
-// gating-nya langsung dari 2 input asli S, R (BUKAN diturunkan dari D seperti
-// Card 17). Tidak ada NOT gate sama sekali — sehingga TIDAK ada proteksi
-// anti-INVALID: kondisi S=1,R=1,CLK=1 TETAP menghasilkan INVALID (berbeda dari
-// Gated D Latch yang oleh desain mustahil INVALID).
+// Card 16 — SR Flip-Flop (NAND-based, 4 NAND gates)
+// Topologi (sesuai gambar referensi user, 13 Aug 2026):
+//   Stage 1 (steering): NAND3 = NOT(S·CLK) = S̄_gated;  NAND4 = NOT(R·CLK) = R̄_gated
+//   Stage 2 (cross-coupled NAND latch, active-low inputs):
+//     NAND1 (output Q):  inputs (S̄_gated, Q̄_fb)
+//     NAND2 (output Q̄): inputs (Q_fb, R̄_gated)
+// Mirip Gated D Latch (Card 17) — TAPI gating-nya langsung dari 2 input asli S, R
+// (BUKAN diturunkan dari D seperti Card 17). Tidak ada NOT gate → TIDAK ada proteksi
+// anti-INVALID: kondisi S=1,R=1,CLK=1 TETAP menghasilkan INVALID.
 //
-// Mode (4-mode, reuse pola SR Latch — BUKAN pola 2-mode Gated D Latch):
-//   S_gated=1, R_gated=0 -> SET
-//   S_gated=0, R_gated=1 -> RESET
-//   S_gated=0, R_gated=0 -> HOLD  (mencakup CLK=0 kondisi apapun, DAN CLK=1 dgn S=0,R=0)
-//   S_gated=1, R_gated=1 -> INVALID (hanya mungkin saat CLK=1 DAN S=1 DAN R=1 bersamaan)
+// Mode (4-mode, reuse pola SR Latch):
+//   sGated=1, rGated=0 -> SET     (Q=1, Q̄=0)
+//   sGated=0, rGated=1 -> RESET   (Q=0, Q̄=1)
+//   sGated=0, rGated=0 -> HOLD    (mencakup CLK=0 kondisi apapun, DAN CLK=1 dgn S=0,R=0)
+//   sGated=1, rGated=1 -> INVALID (Q=1, Q̄=1 — NAND latch active-low; BEDA dari NOR latch
+//                                  yang memberikan Q=0, Q̄=0. Hanya mungkin saat CLK=1 DAN
+//                                  S=1 DAN R=1 bersamaan.)
 //
 // Clock mode (Bagian 29 memory.md / design.md): CLK punya 2 mode — MANUAL &
 // AUTO. Dikelola oleh hook useClockMode. Switch UI dirender di dalam SVG
@@ -51,10 +56,10 @@ export default function CircuitCard16() {
     // Turunan sinyal internal (S_gated, R_gated hasil gating)
     const sGated = inputS && inputClk;
     const rGated = inputR && inputClk;
-    // qBar komplement Q (s_gated && r_gated mustahil terjadi di Gated D Latch,
-    // TAPI BISA terjadi di sini saat S=1,R=1,CLK=1 → INVALID. Saat INVALID,
-    // Q=0 dan Q̄=0, BUKAN komplement. Pola SR Latch diterapkan persis.)
-    const qBar = (sGated && rGated) ? false : !q;
+    // qBar komplement Q. Saat INVALID (S=1,R=1,CLK=1) pada NAND latch active-low,
+    // Q=1 dan Q̄=1 (BEDA dengan NOR latch yang memberikan Q=0, Q̄=0 — karena
+    // NAND3/NAND4 output = 0 saat sGated=rGated=1, sehingga NAND1=NAND2=NOT(0·x)=1).
+    const qBar = (sGated && rGated) ? true : !q;
 
     // Mode diturunkan dari S_gated, R_gated (BUKAN dari S/R/CLK mentah, BUKAN dari Q).
     // Dengan begini CLK=0 otomatis jatuh ke HOLD tanpa logika tambahan,
@@ -64,10 +69,11 @@ export default function CircuitCard16() {
                : (!sGated && rGated) ? 'RESET'
                : 'HOLD';
 
-    // useEffect: update Q berdasarkan S_gated/R_gated (reuse pola CircuitCard_SRLatch).
-    // HOLD: S_gated=R_gated=0 — do nothing, keep previous Q.
+    // useEffect: update Q berdasarkan sGated/rGated.
+    // INVALID (NAND latch): setQ(true) — karena NAND1 dengan NAND3 out=0 → Q=NOT(0·Q̄)=1.
+    // HOLD: sGated=rGated=0 — do nothing, keep previous Q.
     useEffect(() => {
-        if (sGated && rGated) { setQ(false); return; } // INVALID
+        if (sGated && rGated) { setQ(true);  return; } // INVALID (Q=1, Q̄=1 pada NAND latch)
         if (sGated && !rGated) { setQ(true);  return; } // SET
         if (!sGated && rGated) { setQ(false); return; } // RESET
         // HOLD: do nothing
@@ -81,11 +87,13 @@ export default function CircuitCard16() {
 
     // 4-mode table (Format normal — BUKAN Format 2 ringkas; bukan mux/demux).
     // Kondisi ditulis dalam S/R/CLK mentah supaya jelas untuk user (bukan S_gated/R_gated).
+    // INVALID pada NAND latch active-low menghasilkan Q=1, Q̄=1 (keduanya HIGH) —
+    // BEDA dari NOR latch yang menghasilkan Q=0, Q̄=0 (keduanya LOW).
     const modes = [
         { name: 'SET',     cond: 'S=1, R=0, CLK=1', qVal: 1,    qBarVal: 0,    desc: 'Output "diset" ke 1' },
         { name: 'RESET',   cond: 'S=0, R=1, CLK=1', qVal: 0,    qBarVal: 1,    desc: 'Output "direset" ke 0' },
         { name: 'HOLD',    cond: 'S=0, R=0  (atau CLK=0)', qVal: null, qBarVal: null, desc: 'Q, Q\u0304 = TETAP (nilai sebelumnya)' },
-        { name: 'INVALID', cond: 'S=1, R=1, CLK=1', qVal: 0,    qBarVal: 0,    desc: 'Kondisi terlarang, keduanya 0' },
+        { name: 'INVALID', cond: 'S=1, R=1, CLK=1', qVal: 1,    qBarVal: 1,    desc: 'Kondisi terlarang, keduanya 1 (NAND latch active-low)' },
     ];
 
     return <div ref={cardRef} style={{
@@ -139,7 +147,7 @@ export default function CircuitCard16() {
 
         {/* Description */}
         <p style={{ margin: 0, fontSize: 12, color: '#64748b', fontFamily: 'Inter,sans-serif', lineHeight: 1.6 }}>
-            <b>SR Flip-Flop</b> adalah <b>SR Latch (Card 15) yang "digerbang" CLK</b> — dua gerbang AND sebagai pintu gating menyaring sinyal S dan R lewat sinyal <b style={{ color: '#facc15' }}>CLK</b>. Saat CLK=0, rangkaian <b>HOLD</b> (S_gated=R_gated=0 otomatis, Q tetap apa adanya walau S/R diubah-ubah). Saat CLK=1, rangkaian berperilaku persis seperti SR Latch murni. <b style={{ color: '#ef4444' }}>Bedanya dengan Gated D Latch (Card 17):</b> di sini <b>TIDAK ada gerbang NOT</b> yang mencegah S=R=1, sehingga kondisi <b>INVALID TETAP BISA TERJADI</b> kalau user sengaja toggle S=1, R=1, CLK=1 bersamaan — ini justru poin edukasi penting: gating CLK tidak otomatis "menjinakkan" SR Latch, hanya D Latch (yang merangkum S dan R dari 1 input D) yang benar-benar anti-INVALID.
+            <b>SR Flip-Flop</b> adalah SR Latch yang "digerbang" CLK menggunakan <b>4 gerbang NAND</b> — dua NAND (NAND3, NAND4) sebagai pintu <i>steering</i> yang menyaring S dan R lewat sinyal <b style={{ color: '#facc15' }}>CLK</b>, dan dua NAND (NAND1, NAND2) sebagai latch <i>cross-coupled</i> yang menyimpan state. Saat CLK=0, output steering NAND mengeluarkan 1 (active-low inactive), membuat latch <b>HOLD</b> (Q tetap walau S/R diubah). Saat CLK=1, latch merespons S dan R seperti SR Latch murni. <b style={{ color: '#ef4444' }}>Bedanya dengan Gated D Latch (Card 17):</b> di sini <b>TIDAK ada proteksi anti-INVALID</b>, sehingga kondisi <b>INVALID TETAP BISA TERJADI</b> kalau user toggle S=1, R=1, CLK=1 bersamaan — pada NAND latch active-low, INVALID menghasilkan <b>Q=1 dan Q̄=1</b> (keduanya HIGH, berbeda dari NOR latch yang menghasilkan keduanya LOW). Ini poin edukasi penting: gating CLK tidak otomatis "menjinakkan" SR Latch; hanya D Latch (yang merangkum S dan R dari 1 input D) yang benar-benar anti-INVALID.
         </p>
 
         {/* 4-Mode Table (reuse struktur CircuitCard_SRLatch.jsx) */}
