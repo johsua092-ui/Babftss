@@ -300,6 +300,30 @@ async function recordVisitor(key, identity, isGuest) {
   };
 
   await fs.setDoc(ref, payload, { merge: true });
+
+  // Simpan riwayat kunjungan/login ke subkoleksi `history` (untuk timeline).
+  // Hanya untuk user login (punya uid), dan di-throttle agar tidak spam:
+  // catat bila > 30 detik sejak kunjungan terakhir.
+  try {
+    const lastVisit = (prev && prev.lastLoginAt) || 0;
+    if (!isGuest && now - lastVisit > 30000) {
+      const historyRef = fs.doc(fs.collection(db, USERS_COLLECTION, key, "history"), now.toString());
+      await fs.setDoc(historyRef, {
+        timestamp: now,
+        region: geo.region || null,
+        countryCode: geo.countryCode || null,
+        city: addressFields.city || null,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        ipAddress: geo.ip || null,
+        device: device.device,
+        os: device.os,
+        browser: device.browser,
+        deviceType: device.deviceType,
+        deviceId: deviceId || null,
+      });
+    }
+  } catch (_) {}
 }
 
 // Track user yang sudah login (punya uid).
