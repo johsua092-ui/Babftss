@@ -10,108 +10,120 @@ const gates = [
     { name: "XNOR", type: "xnor", color: "#2dd4bf" },
 ];
 
+// MiniGateIcon — di-rewrite 100% match referensi neon tube.
+// Geometri:
+//   - canvas 32px tinggi, body 22px tinggi (69% row) — sesuai referensi ~63-70%
+//   - body TALLER than WIDE (H/W ≈ 1.1) — sesuai referensi 50H×45W
+//   - stroke 3px (tebal neon tube)
+//   - triple glow (3px + 7px + 13px) — strong bloom neon
+//   - input wires di sudut body (top-left & bottom-left corners)
+//   - output wire di tengah kanan body
+//   - panjang wire simetris L/R = wireLen
 function MiniGateIcon({ type, color }) {
-    // Geometry: balance input wire (kiri) = output wire (kanan) = wireLen.
-    // Setiap gate punya canvas width sendiri supaya kabel kiri & kanan seimbang.
-    // Sebelumnya cx=8 (input 8px) vs output 22-33px → tidak seimbang (user complaint).
     const s = color, sw = 3;
-    const h = 32, cy = 16, sz = 11;
-    // Glow ganda: bloom besar + core terang untuk efek neon tube seperti referensi.
-    const glow = `drop-shadow(0 0 4px ${color}) drop-shadow(0 0 8px ${color})`;
-    const inner = sz - 2;       // 9 (NOT triangle width)
-    const bubbleR = 4;
-    const bubbleGap = 4;        // gap body→bubble center
-    const wireLen = 12;         // target panjang kabel di tiap sisi
-    const xorExtraCurve = 12;   // XOR/XNOR extra curve lebar 12px di kiri body
+    const h = 32, cy = 16, sz = 11;        // body half-height = 11 → body 22 tall
+    const bw = 9;                            // AND/NAND flat part width → body 20 wide (H/W=1.1)
+    const triW = 10;                         // NOT triangle width
+    const bubbleR = 3.5;                     // inversion bubble radius
+    const bubbleGap = 3;                     // gap body→bubble center
+    const wireLen = 14;                      // wire length each side (simetris)
+    const tipX = sz * 1.8;                   // OR/NOR/XOR/XNOR tip distance from cx
+    const xorExtra = 7;                      // XOR/XNOR extra back curve offset
+    const glow = `drop-shadow(0 0 3px ${color}) drop-shadow(0 0 7px ${color}) drop-shadow(0 0 13px ${color})`;
+    const svgStyle = { display: "block", flexShrink: 0, filter: glow };
+
     switch (type) {
         case "not": {
-            // body width = inner + bubbleGap + bubbleR = 18.5
-            const cx = wireLen;                                       // 12
-            const w = Math.ceil(wireLen * 2 + inner + bubbleGap + bubbleR); // 43
-            const bubbleCx = cx + inner + bubbleGap;
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+            // body = triangle (10w) + bubble (3.5r) → total 20w (sama dengan AND)
+            const cx = wireLen;
+            const triTip = cx + triW;
+            const bubbleCx = triTip + bubbleGap;
+            const w = wireLen + triW + bubbleGap + bubbleR * 2 + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <polygon points={`${cx},${cy-sz} ${cx},${cy+sz} ${cx+inner},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <polygon points={`${cx},${cy - sz} ${cx},${cy + sz} ${triTip},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
                 <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "and": {
-            // body width = sz*2 = 26 (arc from cx to cx+sz*2)
-            const cx = wireLen;                              // 12
-            const w = wireLen * 2 + sz * 2;                  // 50
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
-                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy-sz} L ${cx+sz},${cy-sz} A ${sz},${sz} 0 0,1 ${cx+sz},${cy+sz} L ${cx},${cy+sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <line x1={cx+sz*2} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+            // body = D-shape: flat back (9w) + semicircle (11r) = 20w total, 22h
+            const cx = wireLen;
+            const bodyRight = cx + bw + sz;
+            const w = bodyRight + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
+                <line x1={0} y1={cy - sz} x2={cx} y2={cy - sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + sz} x2={cx} y2={cy + sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <line x1={bodyRight} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "nand": {
-            // arc rightmost = cx + 2*sz - 2 = cx+24; bubble center = arcRight + 4 = cx+28; bubble right edge = cx+31.5
-            const cx = wireLen;                                                   // 12
-            const w = Math.ceil(wireLen * 2 + (2*sz - 2) + bubbleGap + bubbleR);  // 56
-            const arcRight = cx + 2*sz - 2;
+            // body = D-shape + bubble
+            const cx = wireLen;
+            const arcRight = cx + bw + sz;
             const bubbleCx = arcRight + bubbleGap;
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
-                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy-sz} L ${cx+sz-2},${cy-sz} A ${sz},${sz} 0 0,1 ${cx+sz-2},${cy+sz} L ${cx},${cy+sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+            const w = bubbleCx + bubbleR + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
+                <line x1={0} y1={cy - sz} x2={cx} y2={cy - sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + sz} x2={cx} y2={cy + sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
                 <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "or": {
-            // bezier tip at cx + sz*1.8 = cx+23.4
-            const cx = wireLen;                                   // 12
-            const w = Math.ceil(wireLen * 2 + sz * 1.8);          // 48
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
-                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <line x1={cx+sz*1.8} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+            // body = shield: concave back + convex pointed front. tip at cx+sz*1.8
+            const cx = wireLen;
+            const tip = cx + tipX;
+            const w = tip + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
+                <line x1={0} y1={cy - sz} x2={cx} y2={cy - sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + sz} x2={cx} y2={cy + sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <line x1={tip} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "nor": {
-            // bezier tip at cx + sz*1.5 = cx+19.5; bubble center = tip+5 = cx+24.5; bubble right edge = cx+28
-            const cx = wireLen;                                                // 12
-            const w = Math.ceil(wireLen * 2 + sz*1.5 + 5 + bubbleR);           // 52
-            const tip = cx + sz*1.5;
-            const bubbleCx = tip + 5;
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
-                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${tip},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+            // body = shield + bubble
+            const cx = wireLen;
+            const tip = cx + tipX;
+            const bubbleCx = tip + bubbleGap;
+            const w = bubbleCx + bubbleR + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
+                <line x1={0} y1={cy - sz} x2={cx} y2={cy - sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + sz} x2={cx} y2={cy + sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
                 <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "xor": {
-            // Extra curve 12px di kiri body. Input wire ends at extra curve start (cx-12).
-            // cx = wireLen + xorExtraCurve = 24. Body bezier tip at cx + sz*1.8 = 47.4.
-            const cx = wireLen + xorExtraCurve;                              // 24
-            const w = Math.ceil(wireLen + cx + sz * 1.8);                    // 60
-            const curveStart = cx - xorExtraCurve;                          // 12 (input wire endpoint)
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
-                <line x1={0} y1={cy-sz} x2={curveStart} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy+sz} x2={curveStart} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx-12},${cy-sz-1} Q ${cx+sz*0.3},${cy} ${cx-12},${cy+sz+1}`} fill="none" stroke={s} strokeWidth={sw} />
-                <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <line x1={cx+sz*1.8} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+            // body = shield + extra back curve (7px left of cx)
+            const cx = wireLen + xorExtra;
+            const tip = cx + tipX;
+            const curveStart = cx - xorExtra;
+            const w = tip + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
+                <line x1={0} y1={cy - sz} x2={curveStart} y2={cy - sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + sz} x2={curveStart} y2={cy + sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${curveStart},${cy - sz - 1} Q ${cx + sz * 0.4},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <line x1={tip} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "xnor": {
-            // Extra curve 12px di kiri body. Bubble at tip+5, right edge tip+5+3.5.
-            const cx = wireLen + xorExtraCurve;                              // 24
-            const tip = cx + sz*1.5;                                        // 43.5
-            const bubbleCx = tip + 5;                                       // 48.5
-            const w = Math.ceil(wireLen + (bubbleCx + bubbleR));            // 64 (12 + 52)
-            const curveStart = cx - xorExtraCurve;                          // 12
-            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
-                <line x1={0} y1={cy-sz} x2={curveStart} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy+sz} x2={curveStart} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx-12},${cy-sz-1} Q ${cx+sz*0.2},${cy} ${cx-12},${cy+sz+1}`} fill="none" stroke={s} strokeWidth={sw} />
-                <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${tip},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+            // body = shield + extra back curve + bubble
+            const cx = wireLen + xorExtra;
+            const tip = cx + tipX;
+            const curveStart = cx - xorExtra;
+            const bubbleCx = tip + bubbleGap;
+            const w = bubbleCx + bubbleR + wireLen;
+            return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
+                <line x1={0} y1={cy - sz} x2={curveStart} y2={cy - sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + sz} x2={curveStart} y2={cy + sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${curveStart},${cy - sz - 1} Q ${cx + sz * 0.4},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
                 <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
