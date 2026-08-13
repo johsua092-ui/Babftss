@@ -39,7 +39,8 @@ function MiniGateIcon({ type, color }) {
     switch (type) {
         case "not": {
             // NOT triangle: 14W × 26H (H/W=1.85) + bubble. Body di-center di maxW.
-            const naturalW = wireLen + triW + bubbleGap + bubbleR * 2 + wireLen;
+            // naturalW = inputWire + triangle + gap + bubbleR + outputWire (bubbleR bukan bubbleR*2 karena hanya bagian kanan bubble yang menambah lebar)
+            const naturalW = wireLen + triW + bubbleGap + bubbleR + wireLen;
             const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen;
             const triTip = cx + triW;
@@ -50,7 +51,7 @@ function MiniGateIcon({ type, color }) {
                     <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <polygon points={`${cx},${cy - sz} ${cx},${cy + sz} ${triTip},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                     <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
@@ -66,7 +67,7 @@ function MiniGateIcon({ type, color }) {
                     <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                    <line x1={bodyRight} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={bodyRight} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
@@ -84,7 +85,7 @@ function MiniGateIcon({ type, color }) {
                     <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                     <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
@@ -100,7 +101,7 @@ function MiniGateIcon({ type, color }) {
                     <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                    <line x1={tip} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={tip} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
@@ -118,7 +119,7 @@ function MiniGateIcon({ type, color }) {
                     <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                     <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
@@ -141,7 +142,7 @@ function MiniGateIcon({ type, color }) {
                     <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                     <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
                     <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                    <line x1={tip} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={tip} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
@@ -166,7 +167,7 @@ function MiniGateIcon({ type, color }) {
                     <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
                     <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                     <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 </g>
             </svg>;
         }
