@@ -1594,3 +1594,165 @@ Walaupun file sudah direstore, ada beberapa bagian di dalamnya yang masih bersta
 ### Status
 
 **Status restorasi: SELESAI.** File `ROADMAP_RANGKAIAN.txt` sudah ada di root repo, entri `memory.md` Bagian 24 sudah ditambah, commit + push biasa berhasil. Tegaskan kembali: keputusan soal JK-FF/T-FF/Rising Edge Detector/Gears/Linkages MASIH menunggu konfirmasi user — BUKAN untuk dieksekusi sendiri.
+
+---
+
+## 25. CARD 17: SR FLIP-FLOP (RANGKAIAN SEKUENSIAL KETIGA) — SELESAI & TERVERIFIKASI
+
+**Tanggal:** 13 Agustus 2026
+**Task:** Buat Card 17 "SR Flip-Flop" — rangkaian sekuensial ketiga di proyek, C3 di `ROADMAP_RANGKAIAN.txt` Bab C.
+**Prompt kerja:** `PROMPT_KERJA_Card17_SRFlipFlop.md` (di-upload user ke `/home/z/my-project/upload/`).
+
+### Cek STOP-POINT (sesuai RULES_AUTONOMI_QWEN.md Bagian 6, dipinta prompt kerja Bagian 0)
+
+1. **Item ADA di roadmap?** YA — "SR Flip-Flop" ada di `ROADMAP_RANGKAIAN.txt` Bab C sebagai C3. Tag `[ASUMSI]` (rekonstruksi), tapi sudah disetujui user untuk dieksekusi (bukan lagi "tunggu approval"). Sudah dicatat di sini supaya jejaknya jelas.
+2. **Masuk kategori STOP-POINT?** TIDAK. Rangkaian sekuensial tadinya STOP-POINT, TAPI pola tampilan sekuensial SUDAH established lewat Card 15 (SR Latch) dan Card 16 (Gated D Latch). SR Flip-Flop ini REUSE pola yang sudah ada (bukan desain baru) — TIDAK perlu proposal terpisah. **D Flip-Flop edge-triggered TETAP STOP-POINT terpisah — JANGAN dikerjakan di task ini.**
+
+Status: LANJUT eksekusi Card 17.
+
+### Konsep & Logika
+
+**SR Flip-Flop** = SR Latch (Card 15) yang "digerbang" CLK — mirip Gated D Latch (Card 16), TAPI gating-nya langsung dari 2 input asli S, R (BUKAN diturunkan dari 1 input D seperti Card 16). Tidak ada NOT gate sama sekali di rangkaian ini — sehingga TIDAK ada proteksi anti-INVALID: kondisi S=1,R=1,CLK=1 TETAP menghasilkan INVALID (berbeda dari Gated D Latch yang oleh desain mustahil INVALID).
+
+**Rumus gating:**
+```
+S_gated = S AND CLK  (AND1)
+R_gated = R AND CLK  (AND2)
+```
+
+S_gated, R_gated lalu masuk ke SR Latch (Card 15, direferensikan via ICBlockRef) → Q, Q̄ keluar.
+
+**Mode (4-mode, reuse pola SR Latch — BUKAN pola 2-mode Gated D Latch):** diturunkan dari S_gated dan R_gated (BUKAN dari S,R,CLK terpisah-pisah, dan BUKAN dari Q) — dengan begini CLK=0 otomatis jatuh ke HOLD tanpa logika tambahan, karena S_gated=R_gated=0 kapanpun CLK=0:
+- S_gated=1, R_gated=0 → SET
+- S_gated=0, R_gated=1 → RESET
+- S_gated=0, R_gated=0 → HOLD (mencakup CLK=0 kondisi apapun, DAN CLK=1 dgn S=0,R=0)
+- S_gated=1, R_gated=1 → INVALID (hanya mungkin saat CLK=1 DAN S=1 DAN R=1 bersamaan)
+
+### Implementasi React (`CircuitCard17.jsx`)
+
+```js
+const [inputS, setInputS] = useState(false);
+const [inputR, setInputR] = useState(false);
+const [inputClk, setInputClk] = useState(false);
+const [q, setQ] = useState(false); // "ingatan" — bukan dihitung ulang tiap render
+
+const sGated = inputS && inputClk;
+const rGated = inputR && inputClk;
+const qBar = (sGated && rGated) ? false : !q; // INVALID -> Q=Q̄=0
+
+// Mode diturunkan dari S_gated/R_gated (BUKAN dari input mentah, BUKAN dari Q).
+const mode = (sGated && rGated) ? 'INVALID'
+           : (sGated && !rGated) ? 'SET'
+           : (!sGated && rGated) ? 'RESET'
+           : 'HOLD';
+
+useEffect(() => {
+    if (sGated && rGated) { setQ(false); return; } // INVALID
+    if (sGated && !rGated) { setQ(true);  return; } // SET
+    if (!sGated && rGated) { setQ(false); return; } // RESET
+    // HOLD: do nothing
+}, [sGated, rGated]);
+```
+
+**PENTING:** logika dihitung ULANG manual di `CircuitCard17.jsx`, BUKAN memanggil komponen SR Latch yang sesungguhnya. ICBlockRef di diagram HANYA elemen visual (kotak IC + tombol "click me" navigasi ke Card 15). Konsisten dengan pola `CircuitCard16.jsx` (yang juga pakai ICBlockRef ke Card 15, tapi hitung logikanya sendiri).
+
+### Diagram (`CircuitDiagram17.jsx`)
+
+**Template:** adaptasi `CircuitDiagram16.jsx` (BUKAN dicontek mentah), dengan perubahan:
+- HAPUS gerbang NOT dan seluruh wire D̄ — tidak dibutuhkan di sini.
+- Input **S** (atas, y=130) — hijau `#4ade80`, SAMA PERSIS dengan warna S di `CircuitDiagram_SRLatch.jsx`.
+- Input **CLK** (tengah, y=180) — amber `#facc15`, SAMA dengan CLK di Card 16 (kontrol, Prinsip 4).
+- Input **R** (bawah, y=230) — cyan `#22d3ee`, SAMA dengan R di `CircuitDiagram_SRLatch.jsx`.
+- AND1: S (top, y=95) + CLK (bot, y=115) → S_gated, output hijau.
+- AND2: R (top, y=245) + CLK (bot, y=265) → R_gated, output hijau juga (Prinsip 6 — walau sumber R cyan).
+- Label output AND1/AND2 singkat "S"/"R" (pola Card 16, BUKAN "S_gated" penuh).
+- `ICBlockRef`: SAMA PERSIS panggilannya seperti di Card 16 (`targetNum="15"`, `label="SR Latch"`, `inputs={['S','R']}`, `outputs={['Q','Q\u0304']}`).
+- Output Q (hijau, y=130), Q̄ (pink `#f472b6`, y=230, overline manual) — SAMA PERSIS pola Card 15/16.
+- `svgW=580`, `svgH=320` (sedikit lebih pendek dari Card 16 karena tidak ada NOT gate).
+
+**Lane routing (anti-overlap, per design.md 3.0):**
+- S junction x=80, R junction x=100, CLK junction x=110 — semua X unik.
+- S wire: trunk (47→80, y=130) + branch (80, 130→95) + (95, 80→210).
+- R wire: trunk (47→100, y=230) + branch (100, 230→245) + (245, 100→210).
+- CLK wire: trunk (47→110, y=180) + branch up (110, 180→115) + (115, 110→210) + branch down (110, 180→265) + (265, 110→210).
+- S_gated wire: (261, 105→360) + (360, 105→161) + (161, 360→380).
+- R_gated wire: (261, 255→360) + (360, 179→255) + (179, 360→380).
+- Q/Q̄ wires: lane x=520, Y ranges tidak overlap (Q: 130-161, Q̄: 179-230).
+- Junction dot hanya di CLK junction (karena CLK bercabang 2 — S dan R cuma 1 branch each, no fan-out junction needed).
+
+### Verifikasi (semua checklist Bagian 4 prompt kerja LOLOS)
+
+1. **Logic check** — script Python `scripts/check_card17_srflipflop_overlap.py` (lokasi: `/home/z/my-project/scripts/`, BUKAN di repo — script verifikasi pribadi AI, tidak perlu commit). **16/16 kombinasi OK + 2 transisi OK (CLK drop di tengah S=1 → HOLD, INVALID recovery → HOLD). 0 fail.** ✓
+   - 8 kombinasi (S,R,CLK) × 2 (Q_prev=0, Q_prev=1) = 16 skenario, semua sesuai harapan.
+   - CLK=0 → HOLD apapun S/R (fungsi gating terverifikasi).
+   - S=1,R=1,CLK=1 → INVALID, Q=0, Q̄=0.
+   - Transisi: SET (Q_prev=0 → Q=1) lalu CLK drop → HOLD (Q tetap 1 walau S=1).
+2. **Wire overlap check** — script programatik (sama seperti Card 16). **0 overlap total** (15 horizontal segments + 8 vertical segments, semua di lane unik). ✓
+   - H segments per Y: maks 2 segment di y=130, 161, 179, 230 — semua di X range terpisah jauh (S_trunk x=[47,80] vs Q x=[520,535], dll).
+   - V segments per X: maks 2 segment di x=110, 360, 520 — semua di Y range tidak overlap (CLK_up y=[115,180] vs CLK_dn y=[180,265] — touch di endpoint y=180, BUKAN overlap; Sg y=[105,161] vs Rg y=[179,255] — gap jelas; Q y=[130,161] vs Q̄ y=[179,230] — gap jelas).
+3. **Color regulation check** — 6 prinsip `design.md` 3.5.2 dipatuhi penuh:
+   - **Prinsip 1 (Hak Hijau untuk Input Pertama):** S `#4ade80` hijau sepanjang jalur input→trunk→branch→AND1 input. S adalah input pertama di card ini. ✓
+   - **Prinsip 2 (Output NOT = Merah):** N/A — tidak ada NOT gate di card ini. ✓
+   - **Prinsip 3 (NOT→gerbang = hijau):** N/A — tidak ada NOT. ✓
+   - **Prinsip 4 (Sinyal kontrol unik):** CLK `#facc15` amber, R `#22d3ee` cyan — keduanya unik, berbeda dari hijau dan satu sama lain. ✓
+   - **Prinsip 5 (Konsistensi warna sepanjang jalur):** S hijau konsisten, R cyan konsisten, CLK amber konsisten dari input sampai ke gate input. Tidak ada perubahan warna di tengah jalur. ✓
+   - **Prinsip 6 (Output gerbang terakhir = hijau):** S_gated hijau, R_gated hijau, Q hijau. Pengecualian: Q̄=pink `#f472b6` (konvensi sekuensial Card 15, design.md 6.1). ✓
+4. **Build check** — `npm run build` SUKSES, 0 error. LogicGatesCircuit chunk 185.42 KB (naik ~12 KB dari 173.76 KB di Card 16 — wajar untuk card baru dengan diagram & 4-mode table). ✓
+5. **Registrasi ALL_CARDS** — Card 17 muncul sebagai `{ num: '17', name: 'SR Flip-Flop', tier: 'NORMAL', el: CircuitCard17 }` di line 40 `LogicGatesCircuit.jsx`. Akan muncul di pencarian (search "sr flip" atau "17") & filter tier NORMAL. ✓
+
+### Verifikasi Visual — TIDAK BISA DILAKUKAN di environment ini
+
+Sama seperti Card 15 dan Card 16 sebelumnya, verifikasi visual langsung di browser **TIDAK bisa dilakukan** di environment ini karena Firebase config (file backend yang TIDAK boleh disentuh AI frontend) tidak punya API key valid untuk local preview, sehingga React gagal render. User perlu verify visual di production.
+
+Yang perlu dicek user:
+- S, R, CLK input node bisa di-toggle (klik), nilai 0/1 update real-time.
+- Mode badge atas: SET (hijau) / RESET (cyan) / HOLD (amber) / INVALID (merah) sesuai kondisi S,R,CLK.
+- S wire (hijau) dari input → AND1 top input.
+- R wire (cyan) dari input → AND2 top input.
+- CLK wire (amber) dari input → bercabang 2 (junction dot) ke AND1 bot & AND2 bot.
+- AND1, AND2: badan hijau saat output aktif (S_gated, R_gated). Label "AND1"/"AND2" di kiri gate, "S"/"R" di kanan gate.
+- ICBlockRef: kotak hitam dengan label "SR Latch", "click me" aurora gradient text. Klik → navigasi ke Card 15 (dengan glow aurora green + clear filter).
+- Q, Q̄ output node: Q hijau, Q̄ pink (overline manual di label). Nilai 0/1 di dalam lingkaran.
+- Tabel mode di bawah: 4 baris (SET, RESET, HOLD, INVALID), highlight dinamis sesuai mode saat ini.
+- Deskripsi card: jelaskan perbedaan dengan Gated D Latch (TIDAK ada proteksi anti-INVALID di sini).
+
+### File yang dibuat/diubah
+
+**Dibuat (file baru):**
+- `src/components/CircuitDiagram17.jsx` (248 baris) — SVG diagram SR Flip-Flop
+- `src/components/CircuitCard17.jsx` (122 baris) — Card wrapper + state React + tabel 4-mode
+
+**Diubah:**
+- `src/pages/LogicGatesCircuit.jsx` — +2 baris (1 import + 1 entry ALL_CARDS)
+- `memory.md` — tambah Bagian 25 ini (log task)
+
+### File TIDAK disentuh (sesuai prompt kerja Bagian 5)
+
+- Card 01-16 (semua file `CircuitCard0X.jsx` / `CircuitDiagram0X.jsx` / `CircuitCard_SRLatch.jsx` / `CircuitDiagram_SRLatch.jsx` / `CircuitCard16.jsx` / `CircuitDiagram16.jsx` / `CircuitCard_FullAdder4bit.jsx` dll). Catatan: file `CircuitCard16.jsx`, `CircuitDiagram16.jsx`, `ICBlockRef.jsx`, `CardNavigationContext.jsx` ada di daftar 19 file modified (dari sesi sebelumnya, BUKAN dari task ini) — sesuai prompt kerja Bagian 6, 19 file itu TIDAK disentuh/reset/di-commit, hanya file task ini yang di-`git add` spesifik.
+- Semua file backend/auth (`AuthContext.jsx`, `firebase/config.js`, `LoginModal.jsx`, `useProgressSync.js`, folder `api/`, `lib/`).
+- `vite.config.js`, `vercel.json` — zona bersama, tidak disentuh.
+- `design.md`, `instruction.md` — tidak diubah.
+- TIDAK ada D Flip-Flop / JK/T Flip-Flop / Rising Edge Detector yang dikerjakan (semua STOP-POINT terpisah, menunggu prompt kerja baru).
+
+### Batasan tegas (dipatuhi)
+
+- **STOP setelah Card 17 selesai.** TIDAK melanjutkan ke D Flip-Flop edge-triggered, JK/T Flip-Flop, atau card lain apapun tanpa prompt kerja baru (aturan prompt kerja Bagian 5, menghindari insiden Card 08/09 yang dulu harus dihapus total karena AI melanjutkan tanpa berhenti).
+- TIDAK improvisasi elemen dekoratif tambahan di luar spesifikasi prompt kerja.
+- TIDAK ubah `design.md`/`instruction.md` secara permanen tanpa persetujuan eksplisit user.
+
+### Task berikutnya (TERPISAH, TUNGGU prompt kerja baru)
+
+**D Flip-Flop edge-triggered** (C4 di roadmap, status `[ASUMSI]`) — master-slave 2x Gated D Latch + deteksi rising edge. STATUS: STOP-POINT — butuh proposal cara tampilan konsep edge/delay dulu sebelum eksekusi (RULES_AUTONOMI_QWEN.md Bagian 6). JANGAN dikerjakan tanpa prompt kerja terpisah yang eksplisit menyetujui pendekatan tampilan.
+
+**JK Flip-Flop / T Flip-Flop / Rising Edge Detector** — masih `[ASUMSI]` di roadmap, perlu konfirmasi user apakah memang direncanakan dan urutannya di mana.
+
+### Catatan teknis git (sesuai `RULES_KESELAMATAN_GIT.md`)
+
+- **Aturan 2 (verifikasi direktori):** dikonfirmasi `pwd` = `/home/z/my-project/Babftss` (folder project asli), `git remote -v` mengarah ke `https://github.com/johsua092-ui/Babftss.git` (repo yang benar).
+- **Working tree sebelum commit:** 19 file modified lain (dari sesi sebelumnya) TIDAK disentuh sama sekali — sesuai prompt kerja Bagian 6. Hanya 4 file task ini (`CircuitDiagram17.jsx` + `CircuitCard17.jsx` + `LogicGatesCircuit.jsx` + `memory.md`) yang di-`git add` spesifik.
+- **Aturan 1 (no force push):** `git push` BIASA, BUKAN `--force`/`-f`/`--force-with-lease`. Fast-forward ke `origin/main`.
+- **Aturan 3 (verifikasi setelah push):** `git show --stat HEAD` dijalankan setelah commit untuk konfirmasi commit hanya berisi 4 file yang dimaksud.
+
+### Status
+
+**Status Card 17: SELESAI & TERVERIFIKASI PENUH (build pass, logic pass 16/16, wire overlap 0, color regulation 6/6, scope bersih). Verifikasi visual menunggu user di production.**
