@@ -18,37 +18,57 @@ function MiniGateIcon({ type, color }) {
     switch (type) {
         case "not":
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <polygon points={`${cx},${cy-sz} ${cx},${cy+sz} ${cx+inner},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={cx+inner+4} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
+                <line x1={cx+inner+4+3.5} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         case "and":
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <path d={`M ${cx},${cy-sz} L ${cx+sz},${cy-sz} A ${sz},${sz} 0 0,1 ${cx+sz},${cy+sz} L ${cx},${cy+sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <line x1={cx+sz*2} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         case "nand":
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <path d={`M ${cx},${cy-sz} L ${cx+sz-2},${cy-sz} A ${sz},${sz} 0 0,1 ${cx+sz-2},${cy+sz} L ${cx},${cy+sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={cx+sz*2+2} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
+                <line x1={cx+sz*2+2+3.5} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         case "or":
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <line x1={cx+sz*1.8} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         case "nor":
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={0} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${cx+sz*1.5},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={cx+sz*1.5+5} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
+                <line x1={cx+sz*1.5+5+3.5} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         case "xor":
             return <svg viewBox={`${cx-14} 0 ${w+14} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={cx-14} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={cx-14} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <path d={`M ${cx-12},${cy-sz-1} Q ${cx+sz*0.3},${cy} ${cx-12},${cy+sz+1}`} fill="none" stroke={s} strokeWidth={sw} />
                 <path d={`M ${cx},${cy-sz} Q ${cx+sz*1.2},${cy-sz} ${cx+sz*1.8},${cy} Q ${cx+sz*1.2},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                <line x1={cx+sz*1.8} y1={cy} x2={cx+w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         case "xnor":
             return <svg viewBox={`${cx-14} 0 ${w+14} ${h}`} width={w} height={h} style={{ display: "block", flexShrink: 0, filter: glow }}>
+                <line x1={cx-14} y1={cy-sz} x2={cx} y2={cy-sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={cx-14} y1={cy+sz} x2={cx} y2={cy+sz} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <path d={`M ${cx-12},${cy-sz-1} Q ${cx+sz*0.2},${cy} ${cx-12},${cy+sz+1}`} fill="none" stroke={s} strokeWidth={sw} />
                 <path d={`M ${cx},${cy-sz} Q ${cx+sz},${cy-sz} ${cx+sz*1.5},${cy} Q ${cx+sz},${cy+sz} ${cx},${cy+sz} Q ${cx+sz*0.5},${cy} ${cx},${cy-sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={cx+sz*1.5+5} cy={cy} r={3.5} fill="none" stroke={s} strokeWidth={sw} />
+                <line x1={cx+sz*1.5+5+3.5} y1={cy} x2={cx+w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         default:
             return null;
