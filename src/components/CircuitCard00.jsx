@@ -16,7 +16,7 @@ const gates = [
 //   - AND/NAND: wires sedikit inset dari sudut (cy ± 9, sudut body di cy ± 11)
 //   - OR/NOR/XOR/XNOR: wires di 25%/75% body height (cy ± sz/2)
 //   - Semua body TALLER than WIDE (H/W > 1.1)
-//   - Stroke 3px tebal, triple glow (3+7+13px) strong bloom
+//   - Stroke 3px tebal, flat solid color (NO glow / NO drop-shadow)
 function MiniGateIcon({ type, color }) {
     const s = color, sw = 3;
     const h = 36, cy = 18, sz = 13;          // body half-height = 13 → body 26 tall (taller)
@@ -29,8 +29,7 @@ function MiniGateIcon({ type, color }) {
     const xorExtra = 6;                        // XOR/XNOR extra back curve offset
     const andWireOff = sz - 2;                 // AND/NAND wire offset (inset 2px dari corner)
     const orWireOff = sz / 2;                  // OR/NOR/XOR/XNOR wire offset (25%/75%)
-    const glow = `drop-shadow(0 0 3px ${color}) drop-shadow(0 0 7px ${color}) drop-shadow(0 0 13px ${color})`;
-    const svgStyle = { display: "block", flexShrink: 0, filter: glow };
+    const svgStyle = { display: "block", flexShrink: 0 };
 
     switch (type) {
         case "not": {
@@ -219,7 +218,7 @@ export default function CircuitCard00() {
     }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 14, fontWeight: 700, color: "#ffffff", textShadow: "0 0 4px rgba(255,255,255,0.35), 0 0 8px rgba(255,255,255,0.15)" }}>01</span>
+                    <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 14, fontWeight: 700, color: "#ffffff" }}>01</span>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg, #94a3b8, #e2e8f0, #94a3b8)" }} />
                     <span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, background: "linear-gradient(135deg, #94a3b8, #e2e8f0)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Simbol Boolean</span>
                 </div>
