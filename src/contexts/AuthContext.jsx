@@ -8,6 +8,7 @@ import {
   logout as firebaseLogout,
 } from '../lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GithubAuthProvider } from 'firebase/auth';
+import { trackUser } from '../lib/tracker';
 
 const AuthContext = createContext(null);
 const githubProvider = new GithubAuthProvider();
@@ -20,6 +21,11 @@ export function AuthProvider({ children }) {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
+      // Catat user ke koleksi `users` (Firestore) untuk admin panel.
+      // Best-effort: tidak mengganggu UX, semua error diserap di tracker.
+      if (u && u.uid) {
+        trackUser(u);
+      }
     });
     return () => unsub();
   }, []);
