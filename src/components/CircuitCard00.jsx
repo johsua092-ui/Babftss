@@ -27,18 +27,20 @@ function MiniGateIcon({ type, color }) {
     const wireLen = 10;                        // wire length each side (short stubs)
     const tipX = sz * 1.7;                     // OR/NOR/XOR/XNOR tip distance from cx
     const xorExtra = 15;                       // XOR/XNOR extra back curve offset (gap 15px dari shield body — was 12 still too close)
-    const xorWireLen = 5;                      // XOR/XNOR wire length (lebih pendek dari wireLen=10 supaya total width match gerbang lain, compensate xorExtra)
     const andWireOff = 6;                      // AND/NAND wire offset (6px dari center, ~46% body half-height)
     const orWireOff = sz / 2;                  // OR/NOR/XOR/XNOR wire offset (25%/75%)
     const svgStyle = { display: "block", flexShrink: 0 };
 
+    // maxW = lebar XNOR (gate terpanjang). Semua gate pakai w=maxW supaya output wire kanan rata.
+    const maxW = wireLen + xorExtra + tipX + bubbleGap + bubbleR + wireLen;
+
     switch (type) {
         case "not": {
-            // NOT triangle: 14W × 26H (H/W=1.85) + bubble
+            // NOT triangle: 14W × 26H (H/W=1.85) + bubble. w=maxW supaya output wire rata dengan gate lain.
             const cx = wireLen;
             const triTip = cx + triW;
             const bubbleCx = triTip + bubbleGap;
-            const w = wireLen + triW + bubbleGap + bubbleR * 2 + wireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <polygon points={`${cx},${cy - sz} ${cx},${cy + sz} ${triTip},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
@@ -47,10 +49,10 @@ function MiniGateIcon({ type, color }) {
             </svg>;
         }
         case "and": {
-            // AND: D-shape, wires 6px dari center (~46% body half-height)
+            // AND: D-shape, wires 6px dari center (~46% body half-height). w=maxW supaya output wire rata.
             const cx = wireLen;
             const bodyRight = cx + bw + sz;
-            const w = bodyRight + wireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
@@ -59,11 +61,11 @@ function MiniGateIcon({ type, color }) {
             </svg>;
         }
         case "nand": {
-            // NAND: D-shape + bubble, wires 6px dari center (~46% body half-height)
+            // NAND: D-shape + bubble, wires 6px dari center (~46% body half-height). w=maxW supaya output wire rata.
             const cx = wireLen;
             const arcRight = cx + bw + sz;
             const bubbleCx = arcRight + bubbleGap;
-            const w = bubbleCx + bubbleR + wireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
@@ -73,10 +75,10 @@ function MiniGateIcon({ type, color }) {
             </svg>;
         }
         case "or": {
-            // OR: shield, wires di 25%/75% body height (cy ± sz/2)
+            // OR: shield, wires di 25%/75% body height (cy ± sz/2). w=maxW supaya output wire rata.
             const cx = wireLen;
             const tip = cx + tipX;
-            const w = tip + wireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
@@ -85,11 +87,11 @@ function MiniGateIcon({ type, color }) {
             </svg>;
         }
         case "nor": {
-            // NOR: shield + bubble, wires di 25%/75%
+            // NOR: shield + bubble, wires di 25%/75%. w=maxW supaya output wire rata.
             const cx = wireLen;
             const tip = cx + tipX;
             const bubbleCx = tip + bubbleGap;
-            const w = bubbleCx + bubbleR + wireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
@@ -101,14 +103,14 @@ function MiniGateIcon({ type, color }) {
         case "xor": {
             // XOR: shield + extra back curve, wires di 25%/75%
             // Wires extend sampai ke curve ')' (Bezier intersection: y linear di t, solve t di y=cy±orWireOff)
-            // xorWireLen pendek supaya total width match gerbang lain (xorExtra offset)
-            const cx = xorWireLen + xorExtra;
+            // w=maxW supaya output wire rata dengan gerbang lain
+            const cx = wireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
             const ctrlX = cx + sz * 0.4;
             const tWire = (sz + 2) / (4 * (sz + 1));   // t di y = cy ± orWireOff (= sz/2)
             const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
-            const w = tip + xorWireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
@@ -120,15 +122,15 @@ function MiniGateIcon({ type, color }) {
         case "xnor": {
             // XNOR: shield + extra back curve + bubble, wires di 25%/75%
             // Wires extend sampai ke curve ')' (Bezier intersection)
-            // xorWireLen pendek supaya total width match gerbang lain
-            const cx = xorWireLen + xorExtra;
+            // w=maxW (XNOR adalah gate terpanjang, jadi w = natural widthnya)
+            const cx = wireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
             const ctrlX = cx + sz * 0.4;
             const tWire = (sz + 2) / (4 * (sz + 1));
             const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
             const bubbleCx = tip + bubbleGap;
-            const w = bubbleCx + bubbleR + xorWireLen;
+            const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
