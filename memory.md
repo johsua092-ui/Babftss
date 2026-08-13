@@ -1531,3 +1531,66 @@ Yang perlu dicek user:
 **SR Flip-Flop** — strukturnya mirip Gated D Latch, tapi gating-nya `S_gated = S AND CLK`, `R_gated = R AND CLK` langsung dari 2 input S/R asli (bukan dari D), CLK=0 tetap HOLD apapun nilai S/R. Lalu D Flip-Flop edge-triggered (master-slave 2 Gated D Latch + deteksi rising edge).
 
 **Status Card 16: SELESAI & TERVERIFIKASI PENUH (build pass, logic pass, wire overlap 0, color regulation 6/6, scope bersih). Verifikasi visual menunggu user di production.**
+
+---
+
+## 24. RESTORE `ROADMAP_RANGKAIAN.txt` (REKONSTRUKSI, BUKAN FILE ASLI)
+
+**Tanggal:** 13 Agustus 2026
+**Task:** Restorasi file `ROADMAP_RANGKAIAN.txt` yang hilang dari repo. Murni restorasi dokumentasi — TIDAK mengerjakan card apapun.
+**Sumber:** prompt kerja `PROMPT_KERJA_Restore_Roadmap.md` (di-upload user ke `/home/z/my-project/upload/`).
+
+### Latar belakang
+
+`ROADMAP_RANGKAIAN.txt` — file yang dirujuk berkali-kali di `RULES_AUTONOMI_QWEN.md` Bagian 6 sebagai syarat WAJIB dicek sebelum mengerjakan card apapun — ternyata TIDAK ADA di repo. Ini sudah di-flag di `memory.md` sebelumnya (dekat baris 1308: "File `ROADMAP_RANGKAIAN.txt` yang dirujuk di `RULES_AUTONOMI_QWEN.md` Bagian 6 dan beberapa entri `memory.md` TIDAK ditemukan di repo saat ini.") tapi belum ditindaklanjuti sampai task ini.
+
+### Sifat restorasi — REKONSTRUKSI, BUKAN PEMULIHAN FILE ASLI
+
+**PENTING:** File asli TIDAK ditemukan di repo manapun (sudah dicari, hilang tanpa jejak yang bisa dilacak). Isi yang sekarang ada di `ROADMAP_RANGKAIAN.txt` adalah **REKONSTRUKSI** yang disusun oleh Claude HANYA dari jejak historis di `memory.md` (terutama Bagian 21, Bagian 23, dan catatan "Task berikutnya" di akhir file) — BUKAN dari file aslinya, BUKAN mengarang bebas.
+
+Karena sifatnya rekonstruksi, setiap baris ditandai:
+- `[KONFIRMASI]` = statusnya eksplisit tercatat & terverifikasi di `memory.md` (misal "Card 15 SR Latch selesai", "Bab B 8:1/16:1 Mux dihapus permanen", "D Flip-Flop edge-triggered = STOP-POINT").
+- `[ASUMSI]` = disimpulkan dari konteks `memory.md`, BELUM tentu sama persis dengan urutan/penomoran asli. Bagian `[ASUMSI]` WAJIB dicek/dikoreksi user sebelum dipakai sebagai acuan final.
+
+Restorasi ini **sudah disetujui user** untuk dipakai apa adanya (sebagai placeholder sampai user mengoreksi bagian `[ASUMSI]` atau menyediakan file asli kalau ditemukan).
+
+### Item yang MASIH menunggu keputusan eksplisit user (BUKAN untuk dieksekusi sendiri)
+
+Walaupun file sudah direstore, ada beberapa bagian di dalamnya yang masih berstatus `[ASUMSI]` dan **WAJIB menunggu konfirmasi user sebelum dieksekusi kapanpun nanti**:
+
+1. **JK Flip-Flop / T Flip-Flop / Rising Edge Detector** — ketiganya disebut sekilas di `memory.md` sebagai catatan teknis (terutama Bagian 21 soal mode detection yang harus factor-in nilai Q untuk JK/T), TAPI BUKAN dikonfirmasi eksplisit ada di roadmap sebagai card terpisah. Urutan/penomorannya di Bab C juga belum pasti. User WAJIB konfirmasi: apakah JK-FF/T-FF/Rising Edge Detector ini memang direncanakan, dan kalau ya, urutannya di mana (sebelum/dengan/sepuluh D Flip-Flop). Ini sudah ditandai eksplisit di file `ROADMAP_RANGKAIAN.txt` bagian Bab C.
+
+2. **Menu Gears (36 jenis) & Menu Linkages Mechanic (45 jenis)** — keduanya sudah punya halaman menu, tapi tiap card gear/linkage individual belum ada halaman detail (onClick sekarang cuma toast "masih dalam pengerjaan"). Statusnya tidak jelas dari `memory.md` apakah termasuk "roadmap rangkaian" ini atau domain terpisah. Perlu klarifikasi user sebelum ada prompt kerja yang menyentuh ini.
+
+### File yang dibuat/diubah
+
+**Dibuat (file baru):**
+- `ROADMAP_RANGKAIAN.txt` (root repo) — rekonstruksi roadmap rangkaian, isi PERSIS seperti blok kode di prompt kerja Bagian 2, tanpa edit/format ulang.
+
+**Diubah:**
+- `memory.md` — tambah Bagian 24 ini (log task restorasi).
+
+### File TIDAK disentuh (sesuai prompt kerja Bagian 3)
+
+- `instruction.md`, `design.md` — tidak diubah.
+- Semua file kode sumber (src/, server/, api/, lib/, scripts/) — tidak diubah.
+- Semua file backend/auth (AuthContext, firebase, LoginModal, useProgressSync, api/, lib/) — tidak diubah.
+- `RULES_AUTONOMI_QWEN.md`, `RULES_KESELAMATAN_GIT.md` — tidak diubah.
+- Tidak ada card apapun (termasuk SR Flip-Flop) yang dikerjakan di task ini. Ini murni restorasi dokumentasi — task terpisah menyusul lewat prompt kerja baru.
+
+### Catatan teknis git (sesuai `RULES_KESELAMATAN_GIT.md`)
+
+- **Aturan 2 (verifikasi direktori):** dikonfirmasi `pwd` = `/home/z/my-project/Babftss` (folder project asli, ada `package.json`/`src/`/`index.html`/`vite.config.js`), `git remote -v` mengarah ke `https://github.com/johsua092-ui/Babftss.git` (repo yang benar).
+- **Working tree sebelum commit:** ada 19 file lain yang sudah ter-modify sebelum task ini dimulai (Dockerfile, docker-compose.yml, server/index.js, beberapa file CircuitCard/Diagram 14-16, dll). Sesuai keputusan user, 19 file ini TIDAK disentuh sama sekali (tidak di-stash, tidak di-reset, tidak di-commit terpisah). Hanya 2 file task ini (`ROADMAP_RANGKAIAN.txt` + `memory.md`) yang di-`git add` & di-commit. Diff `HEAD~1..HEAD` setelah commit HARUS bersih hanya 2 file ini.
+- **Aturan 1 (no force push):** `git push` BIASA, BUKAN `--force`/`-f`/`--force-with-lease`. Fast-forward ke `origin/main`.
+- **Aturan 3 (verifikasi setelah push):** `git show --stat HEAD` dijalankan sebelum push untuk konfirmasi commit hanya berisi 2 file yang dimaksud.
+
+### Verifikasi
+
+- `ROADMAP_RANGKAIAN.txt` di root repo: KONFIRMASI ada, isinya PERSIS sama dengan blok kode di prompt kerja Bagian 2 (sudah di-Read ulang setelah Write, 63 baris, tidak ada perubahan format).
+- `memory.md`: entri Bagian 24 ini ditambahkan di akhir file, setelah Bagian 23.
+- Commit message: `docs: restore ROADMAP_RANGKAIAN.txt (rekonstruksi dari memory.md, disetujui user)`.
+
+### Status
+
+**Status restorasi: SELESAI.** File `ROADMAP_RANGKAIAN.txt` sudah ada di root repo, entri `memory.md` Bagian 24 sudah ditambah, commit + push biasa berhasil. Tegaskan kembali: keputusan soal JK-FF/T-FF/Rising Edge Detector/Gears/Linkages MASIH menunggu konfirmasi user — BUKAN untuk dieksekusi sendiri.

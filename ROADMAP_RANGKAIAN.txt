@@ -1,0 +1,62 @@
+# ROADMAP_RANGKAIAN.txt — REKONSTRUKSI
+# CATATAN: File asli tidak ditemukan di repo (hilang, penyebab tidak diketahui).
+# Isi di bawah ini disusun ulang oleh Claude HANYA dari jejak di memory.md —
+# BUKAN dari file aslinya. Tandanya:
+#   [KONFIRMASI]  = statusnya eksplisit tercatat & terverifikasi di memory.md
+#   [ASUMSI]      = disimpulkan dari konteks, BELUM tentu sama persis dengan
+#                   urutan/penomoran asli — WAJIB dicek/dikoreksi user
+#
+# JANGAN dipakai sebagai acuan final sebelum user konfirmasi/edit bagian [ASUMSI].
+
+## BAB A — GERBANG LOGIKA KOMBINASIONAL DASAR
+[KONFIRMASI] A1-A7 selesai (Card 01-08 tampilan: NOT-AND Combo, Buffer Negasi
+  Ganda, NAND manual, NOR manual, gerbang 3-input, gerbang 4-input, Half Adder)
+[KONFIRMASI] A8 "Full Adder (1-bit)" — selesai (Card 09)
+[KONFIRMASI] Full Adder 4-bit (sistem IC Block) — selesai (Card 10)
+
+## BAB B — MULTIPLEXER & DEMULTIPLEXER
+[KONFIRMASI] B1: 2:1 Mux — selesai (Card 11)
+[KONFIRMASI] B2: 4:1 Mux — selesai (Card 12)
+[KONFIRMASI] B3: 8:1 Mux, B4: 16:1 Mux — SEMPAT dibuat, lalu DIHAPUS PERMANEN
+  (keputusan pedagogis: dinilai terlalu rumit untuk pemula)
+[KONFIRMASI] B5: 2:1 Demux — selesai (Card 13)
+[KONFIRMASI] B6: 4:1 Demux — selesai (Card 14)
+[KONFIRMASI] B7: 8:1 Demux, B8: 16:1 Demux — SEMPAT dibuat, lalu DIHAPUS PERMANEN
+  (alasan sama seperti B3/B4)
+[KONFIRMASI] Status Bab B saat ini: TUNTAS dengan 4 card (B1, B2, B5, B6 saja)
+
+## BAB C — RANGKAIAN SEKUENSIAL
+[KONFIRMASI] C1: SR Latch — selesai (Card 15)
+[KONFIRMASI] C2: Gated D Latch — selesai (Card 16), dibangun di atas SR Latch
+  via ICBlockRef
+[ASUMSI] C3: SR Flip-Flop — BELUM dikerjakan, next yang direncanakan.
+  Arsitektur (dari memory.md Bagian 21 & catatan "Task berikutnya" akhir
+  memory.md): S_gated = S AND CLK, R_gated = R AND CLK (langsung dari S,R
+  asli, BUKAN diturunkan dari D seperti Gated D Latch), masuk ke SR Latch
+  (Card 15) via ICBlockRef. CLK=0 -> HOLD apapun nilai S/R. Mode badge dari
+  S/R/CLK, BUKAN dari Q (beda dengan JK/T Flip-Flop nanti).
+[ASUMSI] C4: D Flip-Flop edge-triggered — BELUM dikerjakan. Arsitektur:
+  master-slave 2x Gated D Latch + deteksi rising edge. Level-sensitive
+  Gated D Latch (C2) EKSPLISIT bukan ini — jangan tertukar.
+  STATUS: STOP-POINT — butuh proposal cara tampilan konsep edge/delay dulu
+  sebelum eksekusi (RULES_AUTONOMI_QWEN.md Bagian 6).
+[ASUMSI] Kemungkinan card Bab C lain di masa depan (disebut sekilas di
+  memory.md sebagai catatan teknis, BUKAN dikonfirmasi ada di roadmap):
+  JK Flip-Flop, T Flip-Flop — mode detection untuk keduanya WAJIB
+  factor-in nilai Q saat ini (beda dari SR/D yang dari input saja).
+  Rising Edge Detector juga pernah disebut sebagai kemungkinan card
+  terpisah — BUTUH riset/keputusan teknis dulu (belum ada keputusan).
+  ** User WAJIB konfirmasi: apakah JK-FF/T-FF/Rising Edge Detector ini
+  memang direncanakan, dan urutannya di mana. **
+
+## FITUR PENUTUP (DI LUAR BAB A/B/C)
+[KONFIRMASI] "Create Logic Gates Simulator" — dikerjakan PALING TERAKHIR,
+  setelah semua card Bab A/B/C selesai. Kemungkinan besar fitur builder/
+  simulator bebas (drag-drop gate). Detail spek BELUM ada.
+
+## DI LUAR SCOPE LOGIC GATES CIRCUIT (perlu klarifikasi user, statusnya
+## tidak jelas dari memory.md apakah termasuk "roadmap rangkaian" ini)
+- Menu Gears (36 jenis) — halaman sudah ada, tapi tiap card gear individual
+  belum ada halaman detail (onClick sekarang cuma toast "masih dalam
+  pengerjaan").
+- Menu Linkages Mechanic (45 jenis) — status sama seperti Gears.
