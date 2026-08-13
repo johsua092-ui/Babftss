@@ -2207,3 +2207,39 @@ return <div ref={cardRef} ...>...</div>;
 - `memory.md` Bagian 31 (section ini) — Log implementasi.
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## 32. GAP WAJAR CLOCK MODE SWITCH — TIDAK BERDEMPETAN DENGAN TOMBOL CLK
+
+**Tanggal:** 2026-08-13
+**Sumber:** Feedback user lewat chat.
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "oke mantap ini sangat sempurna saya suka! namun masalahnya fitur swtich mode ini terlalu berdempetan dengan tombol clock itu sendiri baik di card 16 maupun card 17 dan terasa sesak. saya minta kasih gap wajar!! dan ini berlaku untuk semua card yang punya clock!! catat itu catat!!!"
+
+### 32.1 Masalah
+
+Switch ClockMode sebelumnya di y=263, hanya ~3px visual gap dari rect bottom tombol CLK (yang berakhir di y=251). Label "CLOCK MODE" (di y=259) nyaris nabrak rect CLK → terasa berdempetan & sesak.
+
+### 32.2 Fix
+
+Switch dipindah dari y=263 → **y=285** (=`clkInY + 55`). Visual gap dari rect bottom CLK (y=251) ke label switch (y=276) = **25px** — wajar & tidak sesak.
+
+**Rumus wajib (ATURAN MUTLAK, berlaku ke semua card clock):**
+```
+switch_y = clkInY + 55
+```
+
+### 32.3 File diubah
+
+- `src/components/CircuitDiagram16.jsx` — `<ClockModeSwitch y={263}>` → `y={285}`. Comment diupdate jelasin rumus & alasan.
+- `src/components/CircuitDiagram17.jsx` — sama.
+- `design.md` §29.2 — spec posisi switch di-rewrite: rumus `switch_y = clkInY + 55`, gap wajar ~25px, minimum svgH = `switch_y + 35`. Catatan revisi eksplisit supaya future dev tidak kembali ke y=263.
+
+### 32.4 Verifikasi
+
+- `npm run build`: ✓ sukses 8.67s, 0 error.
+- Card 16 svgH=360 (switch bottom y=307) → 53px buffer. Card 17 svgH=340 (switch bottom y=307) → 33px buffer. Aman, tidak perlu ubah svgH.
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**

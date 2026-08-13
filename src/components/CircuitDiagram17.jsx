@@ -250,11 +250,13 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
         <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK"        onToggle={onToggleClk} color={clkCol} rgb={clkRgb} />
 
         {/* Clock Mode Switch (MANUAL/AUTO) — dirender DI BAWAH tombol CLK.
-            Pos: x=1 (align dgn CLK), y=263 (9px di bawah node CLK yang berakhir di y=251).
+            Pos: x=1 (align dgn CLK), y=285 (clkInY + 55 — gap wajar ~25px dari
+            rect bottom CLK di y=251 ke label switch, sesuai aturan design.md
+            Bagian 29.2: "GAP WAJAR — tidak berdempetan dengan tombol CLK").
             Lihat design.md Bagian 29 untuk spec lengkap (WAJIB untuk semua clock). */}
         <ClockModeSwitch
             x={1}
-            y={263}
+            y={285}
             mode={clockMode || 'manual'}
             autoActive={!!autoActive}
             onChange={onClockModeChange || (() => {})}

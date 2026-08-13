@@ -529,9 +529,10 @@ Switch ClockMode WAJIB dirender **tepat di bawah tombol CLK** di dalam SVG diagr
 
 **Posisi switch di SVG:**
 - X: aligned dengan tombol CLK (biasanya `x=1`, sama dengan `clkInX`).
-- Y: 9-12px di bawah node input CLK (yang berakhir di `clkInY + 21`). Contoh: jika `clkInY=230`, node berakhir di y=251, switch di y=263.
-- Tinggi switch: ~22px (slider) + 4px (label "CLOCK MODE" di atas) = total ~26px.
-- SVG height WAJIB diperbesar bila perlu supaya switch tidak terpotong (minimum svgH = `switch_y + 30`).
+- Y: **`clkInY + 55`** — memberi **GAP WAJAR ~25px** dari rect bottom CLK (yang berakhir di `clkInY + 21`) ke label "CLOCK MODE" switch. Contoh: jika `clkInY=230`, rect bottom CLK di y=251, switch di y=285.
+  - **ATURAN MUTLAK (revisi 2026-08-13):** JANGAN tempelkan switch ke tombol CLK. Versi awal pakai y=263 (gap hanya ~3px ke label) → terlalu berdempetan & sesak. User secara eksplisit minta "kasih gap wajar". Rumus wajib: **`switch_y = clkInY + 55`** untuk semua card clock sekarang & masa depan.
+  - Tinggi switch: ~22px (pill) + 4px (label "CLOCK MODE" di atas pill) + ~5px (ascender label) = total ~31px dari `switch_y - 9` ke `switch_y + 22`.
+- SVG height WAJIB diperbesar bila perlu supaya switch tidak terpotong (minimum svgH = `switch_y + 35`). Contoh: switch_y=285 → minimum svgH=320.
 
 ### 29.3 Style switch (referensi visual)
 
