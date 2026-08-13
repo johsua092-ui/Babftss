@@ -85,9 +85,9 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
     const rInX = 1,   rInY = 235;    // R — bawah (cyan)
 
     // Fan-out junctions — X lanes diberi jarak 30px supaya vertical wires
-    // S/CLK/R tidak terlihat menumpuk. S junction & R junction sebenarnya
-    // tidak fan-out (masing-masing hanya 1 branch), tapi junction dot tetap
-    // dipertahankan untuk konsistensi visual (pola Card 16 versi lama).
+    // S/CLK/R tidak terlihat menumpuk. Hanya CLK yang beneran fan-out
+    // (ke NAND3 bot + NAND4 top) sehingga CLK punya junction dot.
+    // S dan R masing-masing hanya 1 branch (garis tunggal) → TIDAK ada dot.
     const sJunctionX = 75;
     const clkJunctionX = 105;  // CLK beneran fan-out: ke NAND3 bot + NAND4 top
     const rJunctionX = 135;
@@ -268,11 +268,9 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
             onChange={onClockModeChange || (() => {})}
         />
 
-        {/* S wire (green) — trunk + branch ke NAND3 top input */}
+        {/* S wire (green) — trunk + branch ke NAND3 top input (garis tunggal, tanpa dot) */}
         <W d={wireStrunk}   val={s} col={sCol} rgb={sRgb} />
         <W d={wireS_branch} val={s} col={sCol} rgb={sRgb} />
-        {/* S junction dot (visual consistency — walau tidak fan-out) */}
-        <circle cx={sJunctionX} cy={sInY} r={3.5} fill={wc(s, sCol, sRgb)} style={{ transition: 'fill 0.3s' }} />
 
         {/* CLK fan-out wires (amber) — 2 branch ke NAND3 bot & NAND4 top */}
         <W d={wireClkTrunk} val={clk} col={clkCol} rgb={clkRgb} />
@@ -281,11 +279,9 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
         {/* CLK junction dot (karena CLK bercabang 2) */}
         <circle cx={clkJunctionX} cy={clkInY} r={3.5} fill={wc(clk, clkCol, clkRgb)} style={{ transition: 'fill 0.3s' }} />
 
-        {/* R wire (cyan) — trunk + branch ke NAND4 bot input */}
+        {/* R wire (cyan) — trunk + branch ke NAND4 bot input (garis tunggal, tanpa dot) */}
         <W d={wireRtrunk}   val={r} col={rCol} rgb={rRgb} />
         <W d={wireR_branch} val={r} col={rCol} rgb={rRgb} />
-        {/* R junction dot (visual consistency) */}
-        <circle cx={rJunctionX} cy={rInY} r={3.5} fill={wc(r, rCol, rRgb)} style={{ transition: 'fill 0.3s' }} />
 
         {/* NAND3 gate (top-left, steering) — output = NOT(S·CLK) */}
         <NandGate sx={nandSx} ty={nand3Ty} by={nand3By} my={nand3My} ex={nand3EX}
