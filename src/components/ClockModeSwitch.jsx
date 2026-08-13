@@ -23,10 +23,12 @@ const AUTO_COL = '#facc15';   // amber — konsisten dgn warna CLK (kontrol)
 const AUTO_RGB = '250,204,21';
 
 // Geometri pill — disesuaikan supaya muat dua label "MANUAL" dan "AUTO"
-// tanpa terpotong dan tetap compact (lebih sempit dari versi 2-slider lama).
-const SWITCH_W = 92;
-const SWITCH_H = 22;
-const SWITCH_RX = 11;
+// dengan font legible (revisi 2026-08-13 #3: perbesar dari 92×22 → 140×30
+// karena user feedback "kekecilan"). Label "CLOCK MODE" juga diperbesar
+// dari fontSize 7 → 11 supaya jelas terbaca.
+const SWITCH_W = 140;
+const SWITCH_H = 30;
+const SWITCH_RX = 15;
 const HALF_W = SWITCH_W / 2;
 
 /**
@@ -59,7 +61,6 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
             aria-checked={isAuto ? 'auto' : 'manual'}
             aria-label="Clock mode toggle: manual or auto"
         >
-            {/* Label kecil di atas switch */}
             {/* Label "CLOCK MODE" di atas switch.
                 ATURAN MUTLAK (revisi 2026-08-13): fill WAJIB putih bersih
                 `#ffffff` supaya jelas terlihat di background gelap. TIDAK boleh
@@ -69,16 +70,19 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
                 ATURAN MUTLAK (revisi 2026-08-13 #2): gap antara label dan pill
                 WAJIB ~10px. Sebelumnya `y - 4` (gap hanya ~3px, terlalu
                 kedekatan). Sekarang `y - 12` (gap ~9px dari baseline ke pill
-                top). Berlaku semua card clock. */}
+                top). Berlaku semua card clock.
+                ATURAN MUTLAK (revisi 2026-08-13 #3): perbesar font dari 7 → 11
+                karena user feedback "kekecilan". Gap juga dinaikkan dari
+                y-12 → y-14 untuk jaga jarak setelah font besar. */}
             <text
                 x={x + SWITCH_W / 2}
-                y={y - 12}
+                y={y - 14}
                 textAnchor="middle"
                 fontFamily="Orbitron,sans-serif"
-                fontSize="7"
+                fontSize="11"
                 fontWeight="700"
                 fill="#ffffff"
-                style={{ letterSpacing: '1px', pointerEvents: 'none' }}
+                style={{ letterSpacing: '1.5px', pointerEvents: 'none' }}
             >CLOCK MODE</text>
 
             {/* Clip path supaya half-fill mengikuti rounded corner pill */}
@@ -117,11 +121,11 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
             {/* Garis pemisah tipis di tengah supaya batas dua segmen jelas */}
             <line
                 x1={x + HALF_W}
-                y1={y + 3}
+                y1={y + 4}
                 x2={x + HALF_W}
-                y2={y + SWITCH_H - 3}
+                y2={y + SWITCH_H - 4}
                 stroke="rgba(15,23,42,0.35)"
-                strokeWidth={0.75}
+                strokeWidth={1}
                 style={{ pointerEvents: 'none' }}
             />
 
@@ -132,12 +136,12 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
                 textAnchor="middle"
                 dominantBaseline="central"
                 fontFamily="Orbitron,sans-serif"
-                fontSize="7"
+                fontSize="10"
                 fontWeight="700"
                 fill={isAuto ? 'rgba(226,232,240,0.65)' : '#0f172a'}
                 style={{
                     pointerEvents: 'none',
-                    letterSpacing: '0.5px',
+                    letterSpacing: '1px',
                     transition: 'fill 0.3s ease',
                 }}
             >MANUAL</text>
@@ -149,12 +153,12 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
                 textAnchor="middle"
                 dominantBaseline="central"
                 fontFamily="Orbitron,sans-serif"
-                fontSize="7"
+                fontSize="10"
                 fontWeight="700"
                 fill={isAuto ? '#0f172a' : 'rgba(226,232,240,0.65)'}
                 style={{
                     pointerEvents: 'none',
-                    letterSpacing: '0.5px',
+                    letterSpacing: '1px',
                     transition: 'fill 0.3s ease',
                 }}
             >AUTO</text>
@@ -164,21 +168,21 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
             {autoActive && (
                 <g>
                     <circle
-                        cx={x + SWITCH_W + 10}
+                        cx={x + SWITCH_W + 12}
                         cy={y + SWITCH_H / 2}
-                        r="4"
+                        r="5"
                         fill="#ef4444"
                         style={{
                             animation: 'clock-pulse 0.6s ease-in-out infinite alternate',
                         }}
                     />
                     <text
-                        x={x + SWITCH_W + 18}
+                        x={x + SWITCH_W + 22}
                         y={y + SWITCH_H / 2}
                         textAnchor="start"
                         dominantBaseline="central"
                         fontFamily="Orbitron,sans-serif"
-                        fontSize="7"
+                        fontSize="10"
                         fontWeight="700"
                         fill="#ef4444"
                         style={{ pointerEvents: 'none' }}
@@ -189,8 +193,8 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
             {/* Style block untuk animasi pulse — sekali per SVG cukup */}
             <style>{`
                 @keyframes clock-pulse {
-                    0%   { opacity: 0.4; r: 3; }
-                    100% { opacity: 1;   r: 5; }
+                    0%   { opacity: 0.4; r: 4; }
+                    100% { opacity: 1;   r: 6; }
                 }
             `}</style>
         </g>
