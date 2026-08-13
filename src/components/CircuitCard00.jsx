@@ -17,6 +17,7 @@ const gates = [
 //   - OR/NOR/XOR/XNOR: wires di 25%/75% body height (cy ± sz/2)
 //   - Semua body TALLER than WIDE (H/W > 1.1)
 //   - Stroke 3px tebal, flat solid color (NO glow / NO drop-shadow)
+//   - Semua gate body di-CENTER di canvas maxW supaya input & output wire seimbang
 function MiniGateIcon({ type, color }) {
     const s = color, sw = 3;
     const h = 36, cy = 18, sz = 13;          // body half-height = 13 → body 26 tall (taller)
@@ -26,84 +27,107 @@ function MiniGateIcon({ type, color }) {
     const bubbleGap = 3;                       // gap body→bubble center
     const wireLen = 10;                        // wire length each side (short stubs)
     const tipX = sz * 1.7;                     // OR/NOR/XOR/XNOR tip distance from cx
-    const xorExtra = 15;                       // XOR/XNOR extra back curve offset (gap 15px dari shield body — was 12 still too close)
+    const xorExtra = 15;                       // XOR/XNOR extra back curve offset (gap 15px dari shield body)
     const andWireOff = 6;                      // AND/NAND wire offset (6px dari center, ~46% body half-height)
     const orWireOff = sz / 2;                  // OR/NOR/XOR/XNOR wire offset (25%/75%)
     const svgStyle = { display: "block", flexShrink: 0 };
 
-    // maxW = lebar XNOR (gate terpanjang). Semua gate pakai w=maxW supaya output wire kanan rata.
+    // maxW = lebar XNOR (gate terpanjang). Semua gate pakai w=maxW.
+    // Gate body di-center: leftPad = (maxW - naturalW) / 2
     const maxW = wireLen + xorExtra + tipX + bubbleGap + bubbleR + wireLen;
 
     switch (type) {
         case "not": {
-            // NOT triangle: 14W × 26H (H/W=1.85) + bubble. w=maxW supaya output wire rata dengan gate lain.
+            // NOT triangle: 14W × 26H (H/W=1.85) + bubble. Body di-center di maxW.
+            const naturalW = wireLen + triW + bubbleGap + bubbleR * 2 + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen;
             const triTip = cx + triW;
             const bubbleCx = triTip + bubbleGap;
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <polygon points={`${cx},${cy - sz} ${cx},${cy + sz} ${triTip},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <polygon points={`${cx},${cy - sz} ${cx},${cy + sz} ${triTip},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         case "and": {
-            // AND: D-shape, wires 6px dari center (~46% body half-height). w=maxW supaya output wire rata.
+            // AND: D-shape, wires 6px dari center (~46% body half-height). Body di-center di maxW.
+            const naturalW = (wireLen + bw + sz) + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen;
             const bodyRight = cx + bw + sz;
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <line x1={bodyRight} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <line x1={bodyRight} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         case "nand": {
-            // NAND: D-shape + bubble, wires 6px dari center (~46% body half-height). w=maxW supaya output wire rata.
+            // NAND: D-shape + bubble, wires 6px dari center (~46% body half-height). Body di-center di maxW.
+            const naturalW = (wireLen + bw + sz + bubbleGap) + bubbleR + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen;
             const arcRight = cx + bw + sz;
             const bubbleCx = arcRight + bubbleGap;
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         case "or": {
-            // OR: shield, wires di 25%/75% body height (cy ± sz/2). w=maxW supaya output wire rata.
+            // OR: shield, wires di 25%/75% body height (cy ± sz/2). Body di-center di maxW.
+            const naturalW = (wireLen + tipX) + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen;
             const tip = cx + tipX;
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <line x1={tip} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <line x1={tip} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         case "nor": {
-            // NOR: shield + bubble, wires di 25%/75%. w=maxW supaya output wire rata.
+            // NOR: shield + bubble, wires di 25%/75%. Body di-center di maxW.
+            const naturalW = (wireLen + tipX + bubbleGap) + bubbleR + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen;
             const tip = cx + tipX;
             const bubbleCx = tip + bubbleGap;
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         case "xor": {
             // XOR: shield + extra back curve, wires di 25%/75%
             // Wires extend sampai ke curve ')' (Bezier intersection: y linear di t, solve t di y=cy±orWireOff)
-            // w=maxW supaya output wire rata dengan gerbang lain
+            // Body di-center di maxW.
+            const naturalW = (wireLen + xorExtra + tipX) + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
@@ -112,17 +136,21 @@ function MiniGateIcon({ type, color }) {
             const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
-                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <line x1={tip} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+                    <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <line x1={tip} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         case "xnor": {
             // XNOR: shield + extra back curve + bubble, wires di 25%/75%
             // Wires extend sampai ke curve ')' (Bezier intersection)
-            // w=maxW (XNOR adalah gate terpanjang, jadi w = natural widthnya)
+            // Body di-center di maxW (XNOR adalah gate terpanjang, leftPad=0)
+            const naturalW = (wireLen + xorExtra + tipX + bubbleGap) + bubbleR + wireLen;
+            const leftPad = (maxW - naturalW) / 2;
             const cx = wireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
@@ -132,12 +160,14 @@ function MiniGateIcon({ type, color }) {
             const bubbleCx = tip + bubbleGap;
             const w = maxW;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
-                <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
-                <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
-                <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <g transform={`translate(${leftPad},0)`}>
+                    <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                    <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+                    <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+                    <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+                    <line x1={bubbleCx + bubbleR} y1={cy} x2={w - leftPad} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                </g>
             </svg>;
         }
         default:
