@@ -27,6 +27,7 @@ function MiniGateIcon({ type, color }) {
     const wireLen = 10;                        // wire length each side (short stubs)
     const tipX = sz * 1.7;                     // OR/NOR/XOR/XNOR tip distance from cx
     const xorExtra = 15;                       // XOR/XNOR extra back curve offset (gap 15px dari shield body — was 12 still too close)
+    const xorWireLen = 5;                      // XOR/XNOR wire length (lebih pendek dari wireLen=10 supaya total width match gerbang lain, compensate xorExtra)
     const andWireOff = 6;                      // AND/NAND wire offset (6px dari center, ~46% body half-height)
     const orWireOff = sz / 2;                  // OR/NOR/XOR/XNOR wire offset (25%/75%)
     const svgStyle = { display: "block", flexShrink: 0 };
@@ -100,13 +101,14 @@ function MiniGateIcon({ type, color }) {
         case "xor": {
             // XOR: shield + extra back curve, wires di 25%/75%
             // Wires extend sampai ke curve ')' (Bezier intersection: y linear di t, solve t di y=cy±orWireOff)
-            const cx = wireLen + xorExtra;
+            // xorWireLen pendek supaya total width match gerbang lain (xorExtra offset)
+            const cx = xorWireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
             const ctrlX = cx + sz * 0.4;
             const tWire = (sz + 2) / (4 * (sz + 1));   // t di y = cy ± orWireOff (= sz/2)
             const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
-            const w = tip + wireLen;
+            const w = tip + xorWireLen;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
@@ -118,14 +120,15 @@ function MiniGateIcon({ type, color }) {
         case "xnor": {
             // XNOR: shield + extra back curve + bubble, wires di 25%/75%
             // Wires extend sampai ke curve ')' (Bezier intersection)
-            const cx = wireLen + xorExtra;
+            // xorWireLen pendek supaya total width match gerbang lain
+            const cx = xorWireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
             const ctrlX = cx + sz * 0.4;
             const tWire = (sz + 2) / (4 * (sz + 1));
             const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
             const bubbleCx = tip + bubbleGap;
-            const w = bubbleCx + bubbleR + wireLen;
+            const w = bubbleCx + bubbleR + xorWireLen;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
                 <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
                 <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
