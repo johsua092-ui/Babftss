@@ -799,3 +799,64 @@ export default function CircuitCardXX() {
 - **DILARANG** lupa bungkus page dengan `<ClockCardProvider>` → registry return no-op, fitur card-to-card reset tidak berfungsi.
 - **DILARANG** menduplikasi logic registry di card manapun — semua harus lewat `useClockMode`.
 - **DILARANG** memodifikasi `reset()` untuk skip `onReset` — pristine state WAJIB reset state lokal juga.
+
+---
+
+## 35. VOCABULARY MODE RANGKAIAN SEKUENSIAL — WAJIB SET / RESET / HOLD / INVALID
+
+**Aturan mutlak (ditetapkan 2026-08-13):** Semua rangkaian sekuensial clocked (D Latch, SR Flip-Flop, D Flip-Flop, JK, T, Counter, Register, dst) WAJIB menggunakan vocabulary mode yang SAMA:
+
+| Mode | Arti | Warna badge |
+|------|------|-------------|
+| **SET** | Output Q "diset" ke 1 | hijau `#4ade80` |
+| **RESET** | Output Q "direset" ke 0 | cyan `#22d3ee` |
+| **HOLD** | Q, Q̄ = TETAP (nilai sebelumnya) | amber `#facc15` |
+| **INVALID** | Kondisi terlarang / tidak mungkin | merah `#ef4444` |
+
+### 35.1 Larangan vocabulary
+
+- **DILARANG** menggunakan mode-name lain seperti "TRANSPARENT" (yang sebelumnya dipakai di Card 16 Gated D Latch). User secara eksplisit menolak: "pada tabel kebenaran seharusnya tidak ada yang namanya mode 'transparent' harusnya hanya ada mode set, reset, hold, invalid (sesuai konteks rangkaian apakah itu)".
+- **DILARANG** membuat mode-name custom per rangkaian (mis. "TOGGLE" untuk T Flip-Flop, "COUNT" untuk Counter) — semua WAJIB dipetakan ke SET/RESET/HOLD/INVALID sesuai konteks. Jika ada behavior unik, jelaskan di kolom keterangan tabel, bukan dengan mode-name baru.
+
+### 35.2 "Sesuai konteks rangkaian" — penyesuaian per card
+
+Setiap card menampilkan 4 baris di tabel mode (SET/RESET/HOLD/INVALID), TAPI:
+- Hanya mode yang **secara fisik mungkin terjadi** di rangkaian tersebut yang bisa jadi mode aktif (highlight di tabel).
+- Mode yang **tidak mungkin** tetap ditampilkan di tabel (untuk konsistensi vocabulary & edukasi), dengan kondisi ditandai "(tidak mungkin)" dan keterangan menjelaskan alasannya.
+
+**Contoh Card 16 (Gated D Latch):**
+- SET (D=1, CLK=1) — mungkin, Q=1
+- RESET (D=0, CLK=1) — mungkin, Q=0
+- HOLD (CLK=0) — mungkin, Q tetap
+- INVALID — **TIDAK MUNGKIN** di D Latch (S & R di-generate dari D tunggal, mustahil aktif bersamaan). Tabel menampilkan baris INVALID dengan cond "(tidak mungkin)" & keterangan "TIDAK MUNGKIN di D Latch — S & R di-generate dari D tunggal, mustahil aktif bersamaan". Poin edukasi penting: D Latch "dijinakkan" dari SR Latch sehingga mustahil S=R=1.
+
+**Contoh Card 17 (SR Flip-Flop):**
+- SET (S=1, R=0, CLK=1) — mungkin, Q=1
+- RESET (S=0, R=1, CLK=1) — mungkin, Q=0
+- HOLD (S=0, R=0 atau CLK=0) — mungkin, Q tetap
+- INVALID (S=1, R=1, CLK=1) — **MUNGKIN** terjadi (SR Flip-Flop tidak punya proteksi anti-INVALID seperti D Latch). Q=0, Q̄=0.
+
+### 35.3 Implementasi mode calculation
+
+Mode WAJIB diturunkan dari S_gated/R_gated (atau pasangan input gated yang relevan), BUKAN dari output Q. Pola universal:
+
+```js
+const mode = (sGated && rGated) ? 'INVALID'  // kondisi terlarang (jika mungkin)
+           : (sGated && !rGated) ? 'SET'      // s aktif, r tidak
+           : (!sGated && rGated) ? 'RESET'    // r aktif, s tidak
+           : 'HOLD';                           // keduanya tidak aktif (termasuk CLK=0)
+```
+
+### 35.4 Verifikasi checklist (WAJIB untuk card clock baru)
+
+- [ ] Vocabulary mode: SET / RESET / HOLD / INVALID (BUKAN TRANSPARENT atau custom).
+- [ ] Warna badge konsisten: SET=hijau, RESET=cyan, HOLD=amber, INVALID=merah.
+- [ ] Tabel mode menampilkan 4 baris (meskipun ada yang tidak mungkin terjadi).
+- [ ] Mode yang tidak mungkin ditandai "(tidak mungkin)" di kolom kondisi + keterangan jelas.
+- [ ] Mode calculation diturunkan dari input gated (S_gated/R_gated atau ekuivalen), BUKAN dari output Q.
+- [ ] Description text menggunakan vocabulary SET/RESET/HOLD/INVALID, BUKAN TRANSPARENT atau istilah lain.
+
+### 35.5 Larangan tambahan
+
+- **DILARANG** menampilkan tabel 2-mode (seperti versi awal Card 16 dengan hanya TRANSPARENT/HOLD). Tabel WAJIB 4-mode untuk konsistensi vocabulary & edukasi.
+- **DILARANG** menghilangkan baris INVALID dari tabel meskipun tidak mungkin terjadi — keberadaannya adalah poin edukasi penting (perbandingan dengan rangkaian yang bisa INVALID).

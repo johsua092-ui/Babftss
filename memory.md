@@ -2291,3 +2291,83 @@ svgH Card 16=360, Card 17=340 — masih ada banyak ruang di atas label (label as
 - `memory.md` §34 (section ini) — log revisi.
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## 35. VOCABULARY MODE RANGKAIAN SEKUENSIAL — WAJIB SET/RESET/HOLD/INVALID (HAPUS TRANSPARENT)
+
+**Tanggal:** 2026-08-13
+**Sumber:** Feedback user lewat chat (dengan screenshot tabel kebenaran Card 16).
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "kamu tahu ini? pada tabel kebenaran seharusnya tidak ada yang namanya mode 'transparent' harusnya hanya ada mode set, reset, hold, invalid (sesuai konteks rangkaian apakah itu) tolong kamu perbaiki sistem ini (saat ini terjadi di card 16 dan 17)"
+
+### 35.1 Masalah
+
+Card 16 (Gated D Latch) sebelumnya pakai vocabulary 2-mode: TRANSPARENT (CLK=1) / HOLD (CLK=0). User menolak: vocabulary WAJIB SET/RESET/HOLD/INVALID (sama seperti SR Latch Card 15 & SR Flip-Flop Card 17), sesuai konteks rangkaian.
+
+Card 17 sudah benar (SET/RESET/HOLD/INVALID) — tidak perlu diubah.
+
+### 35.2 Fix Card 16
+
+Vocabulary diubah dari 2-mode (TRANSPARENT/HOLD) → 4-mode (SET/RESET/HOLD/INVALID):
+
+| Mode | Kondisi (D Latch) | Q | Q̄ | Mungkin? |
+|------|-------------------|---|----|----------|
+| SET | D=1, CLK=1 | 1 | 0 | ✅ Ya |
+| RESET | D=0, CLK=1 | 0 | 1 | ✅ Ya |
+| HOLD | CLK=0 | * | * | ✅ Ya |
+| INVALID | (tidak mungkin) | — | — | ❌ TIDAK MUNGKIN di D Latch |
+
+Poin edukasi: INVALID tidak mungkin terjadi di D Latch karena S & R di-generate dari D tunggal (S=D·CLK, R=D̄·CLK) → mustahil aktif bersamaan. Ini yang membedakan D Latch dari SR Latch murni (yang BISA INVALID saat S=R=1). Baris INVALID tetap ditampilkan di tabel untuk tujuan edukasi vocabulary & perbandingan.
+
+**Mode calculation diubah:**
+- Sebelumnya: `mode = inputClk ? 'TRANSPARENT' : 'HOLD'` (dari CLK mentah).
+- Sekarang: `mode = (sGated && rGated) ? 'INVALID' : (sGated && !rGated) ? 'SET' : (!sGated && rGated) ? 'RESET' : 'HOLD'` (dari S_gated/R_gated — pola universal SR Latch).
+
+**useEffect Q update diubah:**
+- Sebelumnya: `if (!inputClk) return; setQ(inputD)` (transparent/HOLD logic).
+- Sekarang: pola SR Latch (SET → Q=1, RESET → Q=0, INVALID → Q=0, HOLD → do nothing).
+
+**Description text diubah:**
+- Hapus istilah TRANSPARENT.
+- Jelaskan SET (D=1, CLK=1), RESET (D=0, CLK=1), HOLD (CLK=0), dan INVALID (mustahil — poin edukasi).
+
+**Status bar badge & tabel:**
+- Warna: SET=hijau, RESET=cyan, HOLD=amber, INVALID=merah (sama seperti Card 17).
+- Tabel jadi 4 baris (sebelumnya 2 baris).
+
+### 35.3 File diubah
+
+- `src/components/CircuitCard16.jsx`:
+  - Header comment: hapus TRANSPARENT/HOLD, jelaskan SET/RESET/HOLD/INVALID.
+  - Variable: `s`/`r` → `sGated`/`rGated` (konsisten dgn Card 17).
+  - `mode` calculation: pakai pola SR Latch universal.
+  - `useEffect`: pakai pola SR Latch (SET/RESET/INVALID/HOLD).
+  - `modes` array: 4 baris (SET/RESET/HOLD/INVALID), INVALID cond "(tidak mungkin)".
+  - Status bar badge: 4-warna (SET/RESET/HOLD/INVALID).
+  - Tabel rendering: 4-warna modeCol, qDisp/qbDisp logic sama seperti Card 17.
+  - Description: hapus TRANSPARENT, pakai SET/RESET/HOLD/INVALID.
+  - Footnote tabel: tambah penjelasan INVALID tidak mungkin di D Latch.
+- `src/components/CircuitDiagram16.jsx`:
+  - Header comment: hapus TRANSPARENT, jelaskan SET/RESET/HOLD/INVALID.
+  - `modeColors`: tambah SET (hijau), RESET (cyan), INVALID (merah). Default fallback HOLD (amber).
+- `design.md` §35 — spec vocabulary mode universal (SET/RESET/HOLD/INVALID), larangan TRANSPARENT & mode-name custom, contoh Card 16 & 17, checklist implementasi.
+- `memory.md` §35 (section ini) — log revisi.
+
+### 35.4 Aturan universal (dicatat di design.md §35)
+
+- Vocabulary mode WAJIB: SET / RESET / HOLD / INVALID. TIDAK boleh TRANSPARENT atau mode-name custom.
+- Warna badge WAJIB konsisten: SET=hijau `#4ade80`, RESET=cyan `#22d3ee`, HOLD=amber `#facc15`, INVALID=merah `#ef4444`.
+- Tabel WAJIB 4 baris (meskipun ada mode yang tidak mungkin terjadi).
+- Mode yang tidak mungkin ditandai "(tidak mungkin)" + keterangan jelas (poin edukasi).
+- Mode calculation diturunkan dari input gated (S_gated/R_gated), BUKAN dari output Q, BUKAN dari CLK mentah.
+- Berlaku ke SEMUA rangkaian sekuensial clocked: D Latch, SR Flip-Flop, D Flip-Flop, JK, T, Counter, Register, dst.
+
+### 35.5 Verifikasi
+
+- `npm run build`: ✓ sukses 8.79s, 0 error.
+- Card 16 sekarang konsisten dengan Card 17 (vocabulary & warna sama).
+- Card 17 tidak diubah (sudah benar dari awal).
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**

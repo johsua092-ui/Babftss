@@ -3,7 +3,9 @@ import { hexToRgbStr } from '../utils/colorHelper';
 import ClockModeSwitch from './ClockModeSwitch';
 
 // Card 16 — Gated D Latch
-// Level-sensitive (BUKAN edge-triggered). CLK=1 -> TRANSPARENT (Q ikut D), CLK=0 -> HOLD.
+// Level-sensitive (BUKAN edge-triggered). CLK=1 -> SET (D=1) atau RESET (D=0);
+// CLK=0 -> HOLD. INVALID mustahil terjadi (D Latch "dijinakkan" dari SR Latch).
+// Vocabulary mode WAJIB SET/RESET/HOLD/INVALID (ATURAN MUTLAK Bagian 35 design.md).
 // Struktur: D -> fan-out (ke AND1, ke NOT) | CLK -> fan-out (ke AND1, AND2)
 //           NOT -> D̄ -> AND2 | AND1=S=D AND CLK | AND2=R=D̄ AND CLK
 //           S, R masuk 2 NOR gates cross-coupled (SR Latch inline, BUKAN ICBlockRef):
@@ -181,9 +183,12 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
     </Fragment>;
 
     // ── Mode badge ──
+    // Vocabulary WAJIB SET/RESET/HOLD/INVALID (ATURAN MUTLAK Bagian 35 design.md).
     const modeColors = {
-        TRANSPARENT: { bg: 'rgba(74,222,128,0.18)', border: 'rgba(74,222,128,0.5)', text: '#4ade80' },
-        HOLD:        { bg: 'rgba(250,204,21,0.18)', border: 'rgba(250,204,21,0.5)', text: '#facc15' },
+        SET:     { bg: 'rgba(74,222,128,0.18)',  border: 'rgba(74,222,128,0.5)',  text: '#4ade80' }, // hijau
+        RESET:   { bg: 'rgba(34,211,238,0.18)',  border: 'rgba(34,211,238,0.5)',  text: '#22d3ee' }, // cyan
+        HOLD:    { bg: 'rgba(250,204,21,0.18)',  border: 'rgba(250,204,21,0.5)',  text: '#facc15' }, // amber
+        INVALID: { bg: 'rgba(239,68,68,0.18)',   border: 'rgba(239,68,68,0.5)',   text: '#ef4444' }, // merah
     };
     const mc = modeColors[mode] || modeColors.HOLD;
 
