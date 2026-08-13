@@ -27,7 +27,7 @@ function MiniGateIcon({ type, color }) {
     const wireLen = 10;                        // wire length each side (short stubs)
     const tipX = sz * 1.7;                     // OR/NOR/XOR/XNOR tip distance from cx
     const xorExtra = 6;                        // XOR/XNOR extra back curve offset
-    const andWireOff = sz - 2;                 // AND/NAND wire offset (inset 2px dari corner)
+    const andWireOff = sz - 5;                 // AND/NAND wire offset (inset 5px dari corner, ~60% body half-height dari center — sesuai referensi)
     const orWireOff = sz / 2;                  // OR/NOR/XOR/XNOR wire offset (25%/75%)
     const svgStyle = { display: "block", flexShrink: 0 };
 
@@ -46,7 +46,7 @@ function MiniGateIcon({ type, color }) {
             </svg>;
         }
         case "and": {
-            // AND: D-shape (9+11=20W × 22H, H/W=1.1), wires inset 2px dari corner
+            // AND: D-shape, wires inset 5px dari corner (60% body half-height dari center)
             const cx = wireLen;
             const bodyRight = cx + bw + sz;
             const w = bodyRight + wireLen;
@@ -58,7 +58,7 @@ function MiniGateIcon({ type, color }) {
             </svg>;
         }
         case "nand": {
-            // NAND: D-shape + bubble, wires inset 2px dari corner
+            // NAND: D-shape + bubble, wires inset 5px dari corner (60% body half-height dari center)
             const cx = wireLen;
             const arcRight = cx + bw + sz;
             const bubbleCx = arcRight + bubbleGap;
