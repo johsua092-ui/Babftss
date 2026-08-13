@@ -1,10 +1,8 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
-// ── Gate Data Model (from src/data/gateData.js) ──
+// ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
-  { id: 1, type: 'wire',  name: 'Basic Wire', dualInput: false, label: 'WIRE', color: '#60a5fa',
-    description: 'Sinyal mengalir langsung melewati kabel.' },
   { id: 2, type: 'not',   name: 'NOT Gate',   dualInput: false, label: 'NOT',  color: '#f87171',
     description: 'Pembalik sinyal (Inverter).' },
   { id: 3, type: 'and',   name: 'AND Gate',   dualInput: true,  label: 'AND',  color: '#4ade80',
@@ -21,13 +19,19 @@ const GATE_DATA = [
     description: 'Kebalikan XOR. Output = 1 HANYA jika A dan B SAMA.' },
 ];
 
+// Pseudo-defs untuk INPUT (Switch) & OUTPUT (LED) — gak masuk GATE_DATA (gak ditampilin sebagai gate),
+// tapi dipakai oleh createComponent, draw loop, dan paletteDrag supaya gak crash.
+const IO_DEFS = {
+  INPUT:  { color: '#f59e0b', label: 'IN',  name: 'Switch', width: 60, height: 50, inputCount: 0, outputCount: 1 },
+  OUTPUT: { color: '#ef4444', label: 'OUT', name: 'LED',    width: 60, height: 50, inputCount: 1, outputCount: 0 },
+};
+
 const GATE_MAP = Object.fromEntries(GATE_DATA.map(g => [g.type, g]));
 
 // ── Logic Engine ──
 function computeGate(type, inputs) {
   const [a, b] = inputs;
   switch (type) {
-    case 'wire':  return a;
     case 'not':   return !a;
     case 'and':   return a && b;
     case 'nand':  return !(a && b);
@@ -244,18 +248,6 @@ function MiniGateIcon({ type, color, scale = 1 }) {
   }
 }
 
-// ── WireIcon (palette icon untuk WIRE — simple horizontal line) ──
-function WireIcon({ color, scale = 1 }) {
-  const s = color, sw = 3;
-  const h = 36, cy = 18;
-  const w = 50; // wire panjang tetap (no body)
-  return <svg viewBox={`0 0 ${w} ${h}`} width={w * scale} height={h * scale} style={{ display: 'block', flexShrink: 0 }}>
-    <line x1={0} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-    <circle cx={0} cy={cy} r={2.5} fill={s} />
-    <circle cx={w} cy={cy} r={2.5} fill={s} />
-  </svg>;
-}
-
 // ── Canvas Simulator ──
 export default function LogicGatesSimulator({ setPage }) {
   const canvasRef = useRef(null);
@@ -269,19 +261,24 @@ export default function LogicGatesSimulator({ setPage }) {
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId }; }, [components, wires, nextId, selectedId]);
 
   const createComponent = useCallback((type, x, y) => {
-    const def = GATE_MAP[type];
-    const w = type === 'wire' ? 100 : (type === 'not' ? 80 : 90);
-    const h = type === 'wire' ? 40 : 56;
+    // Tentukan ukuran box & jumlah input/output berdasarkan type
+    let w = 90, h = 56, inputCount = 2, outputCount = 1;
+    if (type === 'not') {
+      w = 80; inputCount = 1;
+    } else if (type === 'INPUT' || type === 'OUTPUT') {
+      const io = IO_DEFS[type];
+      w = io.width; h = io.height; inputCount = io.inputCount; outputCount = io.outputCount;
+    }
     return {
       id: stateRef.current.nextId,
       type,
       x, y,
       width: w,
       height: h,
-      inputs: Array(def.dualInput ? 2 : (type === 'wire' || type === 'not' ? 1 : 2)).fill(false),
-      outputs: Array(1).fill(false),
-      inputWires: Array(def.dualInput ? 2 : (type === 'wire' || type === 'not' ? 1 : 2)).fill(null),
-      outputWires: [[]],
+      inputs: Array(inputCount).fill(false),
+      outputs: Array(outputCount).fill(false),
+      inputWires: Array(inputCount).fill(null),
+      outputWires: Array(outputCount).fill([]),
     };
   }, []);
 
@@ -294,6 +291,20 @@ export default function LogicGatesSimulator({ setPage }) {
       iters++;
       for (const comp of compsCopy) {
         if (comp.type === 'INPUT') continue;
+        if (comp.type === 'OUTPUT') {
+          // OUTPUT adalah sink (LED) — baca nilai dari wire input, tidak ada output untuk di-compute
+          for (let i = 0; i < comp.inputs.length; i++) {
+            const wireId = comp.inputWires[i];
+            if (wireId !== null && wireId !== undefined) {
+              const wire = wrs.find(w => w.id === wireId);
+              if (wire) {
+                const src = compsCopy.find(c => c.id === wire.from);
+                if (src) comp.inputs[i] = src.outputs[wire.fromIdx];
+              }
+            }
+          }
+          continue;
+        }
         for (let i = 0; i < comp.inputs.length; i++) {
           const wireId = comp.inputWires[i];
           if (wireId !== null) {
@@ -432,9 +443,10 @@ export default function LogicGatesSimulator({ setPage }) {
 
       // Components
       for (const comp of comps) {
-        const def = GATE_MAP[comp.type];
+        const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
         const isSel = selId === comp.id;
-        const isOn = comp.outputs[0];
+        // OUTPUT gak punya outputs[] (array kosong) — pakai inputs[0] sebagai indikator nyala
+        const isOn = comp.type === 'OUTPUT' ? !!comp.inputs[0] : comp.outputs[0];
 
         // Glow
         if (isSel) {
@@ -454,38 +466,72 @@ export default function LogicGatesSimulator({ setPage }) {
         roundRect(ctx, comp.x, comp.y, comp.width, comp.height, 8);
         ctx.stroke();
 
-        // Header bar
-        ctx.fillStyle = def.color + '18';
-        roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, 16, [7, 7, 0, 0]);
-        ctx.fill();
+        // ── Gate body (NOT/AND/NAND/OR/NOR/XOR/XNOR) ──
+        if (comp.type !== 'INPUT' && comp.type !== 'OUTPUT') {
+          // Header bar
+          ctx.fillStyle = def.color + '18';
+          roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, 14, [7, 7, 0, 0]);
+          ctx.fill();
 
-        // Label
-        ctx.fillStyle = def.color;
-        ctx.font = 'bold 10px "Orbitron", monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(def.label, comp.x + comp.width / 2, comp.y + 9);
+          // Label
+          ctx.fillStyle = def.color;
+          ctx.font = 'bold 9px "Orbitron", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(def.label, comp.x + comp.width / 2, comp.y + 8);
 
-        // Gate SVG miniature
-        if (comp.type !== 'INPUT') {
+          // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx) — di-scale & di-center di box
           ctx.save();
-          ctx.translate(comp.x + comp.width / 2 - 45, comp.y + 18);
-          // Draw simplified gate shape
-          drawGateShape(ctx, comp.type, def.color, comp.outputs[0]);
+          const gateW = 64, gateH = 30;
+          ctx.translate(comp.x + (comp.width - gateW) / 2, comp.y + 18);
+          drawGateShape(ctx, comp.type, def.color, isOn, comp.inputs);
           ctx.restore();
         }
 
-        // Switch / LED for INPUT/OUTPUT
+        // ── Switch (INPUT) ──
         if (comp.type === 'INPUT') {
           const swX = comp.x + comp.width / 2;
-          const swY = comp.y + 30;
+          const swY = comp.y + comp.height / 2 - 4;
           ctx.fillStyle = comp.outputs[0] ? '#4ade80' : '#475569';
-          roundRect(ctx, swX - 14, swY - 7, 28, 14, 7);
+          roundRect(ctx, swX - 18, swY - 8, 36, 16, 8);
           ctx.fill();
           ctx.beginPath();
-          ctx.arc(comp.outputs[0] ? swX + 7 : swX - 7, swY, 5, 0, Math.PI * 2);
+          ctx.arc(comp.outputs[0] ? swX + 10 : swX - 10, swY, 6, 0, Math.PI * 2);
           ctx.fillStyle = '#fff';
           ctx.fill();
+          ctx.fillStyle = comp.outputs[0] ? '#4ade80' : '#64748b';
+          ctx.font = 'bold 8px "Orbitron", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(comp.outputs[0] ? 'ON' : 'OFF', swX, swY + 22);
+        }
+
+        // ── LED (OUTPUT) ──
+        if (comp.type === 'OUTPUT') {
+          const ledX = comp.x + comp.width / 2;
+          const ledY = comp.y + comp.height / 2 - 4;
+          const lit = !!comp.inputs[0];
+          if (lit) {
+            ctx.shadowColor = '#ef4444';
+            ctx.shadowBlur = 18;
+          }
+          ctx.beginPath();
+          ctx.arc(ledX, ledY, 11, 0, Math.PI * 2);
+          ctx.fillStyle = lit ? '#ef4444' : '#1e293b';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = lit ? '#fca5a5' : '#475569';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          if (lit) {
+            ctx.beginPath();
+            ctx.arc(ledX - 3, ledY - 3, 3, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fill();
+          }
+          ctx.fillStyle = lit ? '#fca5a5' : '#64748b';
+          ctx.font = 'bold 8px "Orbitron", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(lit ? 'ON' : 'OFF', ledX, ledY + 22);
         }
 
         // Input nodes
@@ -526,85 +572,145 @@ export default function LogicGatesSimulator({ setPage }) {
       animId = requestAnimationFrame(draw);
     };
 
-    function drawGateShape(ctx, type, color, active) {
-      const C = 35, N = 10, q = 46, L = 28, I = q - N, P = 5;
-      ctx.strokeStyle = active ? color : '#475569';
-      ctx.lineWidth = 2;
+    // drawGateShape — model di-match dengan GateDiagram.jsx (menu "7 Basic Logic Gates")
+    // Coordinate system lokal: origin di kiri-atas area gate, gate di-center vertikal di L.
+    // Input wires berwarna sesuai nilai input (color jika true, #475569 jika false).
+    // Gate body berwarna sesuai output (color jika true/active, #475569 jika false).
+    // Output wire berwarna sesuai output (color jika active, #475569 jika false).
+    function drawGateShape(ctx, type, color, active, inputs) {
+      const C = 5, N = 5, q = 25, L = 15, I = q - N, P = 3;
+      const wireLen = 6;
+      const wireColor = (v) => v ? color : '#475569';
+      const bodyStroke = active ? color : '#475569';
+      const a = inputs?.[0] ?? false;
+      const b = inputs?.[1] ?? false;
+
+      ctx.lineWidth = 1.6;
       ctx.lineJoin = 'round';
-      switch (type) {
-        case 'not':
-          ctx.beginPath();
-          ctx.moveTo(C, N); ctx.lineTo(C+40, L); ctx.lineTo(C, q); ctx.closePath();
-          ctx.stroke();
-          ctx.beginPath(); ctx.arc(C+40+P, L, P, 0, Math.PI*2); ctx.stroke();
-          break;
-        case 'and':
-          ctx.beginPath();
-          ctx.moveTo(C, N); ctx.lineTo(C+20, N);
-          ctx.arc(C+20, L, I/2, -Math.PI/2, Math.PI/2);
-          ctx.lineTo(C, q); ctx.closePath();
-          ctx.stroke();
-          break;
-        case 'nand':
-          ctx.beginPath();
-          ctx.moveTo(C, N); ctx.lineTo(C+16, N);
-          ctx.arc(C+16, L, I/2, -Math.PI/2, Math.PI/2);
-          ctx.lineTo(C, q); ctx.closePath();
-          ctx.stroke();
-          ctx.beginPath(); ctx.arc(C+16+I/2+P, L, P, 0, Math.PI*2); ctx.stroke();
-          break;
-        case 'or':
-          ctx.beginPath();
-          ctx.moveTo(C, N);
-          ctx.bezierCurveTo(C+16, N, C+50-12, L-12, C+50, L);
-          ctx.bezierCurveTo(C+50-12, L+12, C+16, q, C, q);
-          ctx.bezierCurveTo(C+10, L+7, C+10, L-7, C, N);
-          ctx.closePath();
-          ctx.stroke();
-          break;
-        case 'nor':
-          ctx.beginPath();
-          ctx.moveTo(C, N);
-          ctx.bezierCurveTo(C+16, N, C+46-12, L-12, C+46, L);
-          ctx.bezierCurveTo(C+46-12, L+12, C+16, q, C, q);
-          ctx.bezierCurveTo(C+10, L+7, C+10, L-7, C, N);
-          ctx.closePath();
-          ctx.stroke();
-          ctx.beginPath(); ctx.arc(C+46+P, L, P, 0, Math.PI*2); ctx.stroke();
-          break;
-        case 'xor':
-          ctx.beginPath();
-          ctx.moveTo(C, N);
-          ctx.bezierCurveTo(C+16, N, C+50-12, L-12, C+50, L);
-          ctx.bezierCurveTo(C+50-12, L+12, C+16, q, C, q);
-          ctx.bezierCurveTo(C+10, L+7, C+10, L-7, C, N);
-          ctx.closePath();
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(C-6, N);
-          ctx.bezierCurveTo(C, L-6, C, L+6, C-6, q);
-          ctx.stroke();
-          break;
-        case 'xnor':
-          ctx.beginPath();
-          ctx.moveTo(C, N);
-          ctx.bezierCurveTo(C+16, N, C+46-12, L-12, C+46, L);
-          ctx.bezierCurveTo(C+46-12, L+12, C+16, q, C, q);
-          ctx.bezierCurveTo(C+10, L+7, C+10, L-7, C, N);
-          ctx.closePath();
-          ctx.stroke();
-          ctx.beginPath(); ctx.arc(C+46+P, L, P, 0, Math.PI*2); ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(C-6, N);
-          ctx.bezierCurveTo(C, L-6, C, L+6, C-6, q);
-          ctx.stroke();
-          break;
-        case 'wire':
-          ctx.beginPath();
-          ctx.moveTo(C-10, L); ctx.lineTo(C+50, L);
-          ctx.stroke();
-          break;
+      ctx.lineCap = 'round';
+
+      // Input wires (diwarnai sesuai nilai input)
+      if (type === 'not') {
+        ctx.beginPath();
+        ctx.strokeStyle = wireColor(a);
+        ctx.moveTo(0, L); ctx.lineTo(C, L);
+        ctx.stroke();
+      } else {
+        // AND/NAND/OR/NOR/XOR/XNOR: 2 input wires
+        ctx.beginPath();
+        ctx.strokeStyle = wireColor(a);
+        ctx.moveTo(0, N + 3); ctx.lineTo(C, N + 3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.strokeStyle = wireColor(b);
+        ctx.moveTo(0, q - 3); ctx.lineTo(C, q - 3);
+        ctx.stroke();
       }
+
+      ctx.strokeStyle = bodyStroke;
+      let outX = C;  // posisi x awal output wire
+      switch (type) {
+        case 'not': {
+          outX = C + 24;
+          ctx.beginPath();
+          ctx.moveTo(C, N); ctx.lineTo(outX, L); ctx.lineTo(C, q); ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath(); ctx.arc(outX + P, L, P, 0, Math.PI*2); ctx.stroke();
+          outX = outX + P * 2;
+          break;
+        }
+        case 'and': {
+          const arcR = I / 2;
+          const arcCx = C + 12;
+          outX = arcCx + arcR;
+          ctx.beginPath();
+          ctx.moveTo(C, N); ctx.lineTo(arcCx, N);
+          ctx.arc(arcCx, L, arcR, -Math.PI/2, Math.PI/2);
+          ctx.lineTo(C, q); ctx.closePath();
+          ctx.stroke();
+          break;
+        }
+        case 'nand': {
+          const arcR = I / 2;
+          const arcCx = C + 10;
+          outX = arcCx + arcR;
+          ctx.beginPath();
+          ctx.moveTo(C, N); ctx.lineTo(arcCx, N);
+          ctx.arc(arcCx, L, arcR, -Math.PI/2, Math.PI/2);
+          ctx.lineTo(C, q); ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath(); ctx.arc(outX + P, L, P, 0, Math.PI*2); ctx.stroke();
+          outX = outX + P * 2;
+          break;
+        }
+        case 'or': {
+          outX = C + 34;
+          ctx.beginPath();
+          ctx.moveTo(C, N);
+          ctx.bezierCurveTo(C+10, N, outX-9, L-8, outX, L);
+          ctx.bezierCurveTo(outX-9, L+8, C+10, q, C, q);
+          ctx.bezierCurveTo(C+7, L+4, C+7, L-4, C, N);
+          ctx.closePath();
+          ctx.stroke();
+          break;
+        }
+        case 'nor': {
+          outX = C + 31;
+          ctx.beginPath();
+          ctx.moveTo(C, N);
+          ctx.bezierCurveTo(C+10, N, outX-9, L-8, outX, L);
+          ctx.bezierCurveTo(outX-9, L+8, C+10, q, C, q);
+          ctx.bezierCurveTo(C+7, L+4, C+7, L-4, C, N);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath(); ctx.arc(outX + P, L, P, 0, Math.PI*2); ctx.stroke();
+          outX = outX + P * 2;
+          break;
+        }
+        case 'xor': {
+          outX = C + 34;
+          // Back curve
+          ctx.beginPath();
+          ctx.moveTo(C - 4, N);
+          ctx.bezierCurveTo(C + 1, L - 4, C + 1, L + 4, C - 4, q);
+          ctx.stroke();
+          // Main body
+          ctx.beginPath();
+          ctx.moveTo(C, N);
+          ctx.bezierCurveTo(C+10, N, outX-9, L-8, outX, L);
+          ctx.bezierCurveTo(outX-9, L+8, C+10, q, C, q);
+          ctx.bezierCurveTo(C+7, L+4, C+7, L-4, C, N);
+          ctx.closePath();
+          ctx.stroke();
+          break;
+        }
+        case 'xnor': {
+          outX = C + 31;
+          // Back curve
+          ctx.beginPath();
+          ctx.moveTo(C - 4, N);
+          ctx.bezierCurveTo(C + 1, L - 4, C + 1, L + 4, C - 4, q);
+          ctx.stroke();
+          // Main body
+          ctx.beginPath();
+          ctx.moveTo(C, N);
+          ctx.bezierCurveTo(C+10, N, outX-9, L-8, outX, L);
+          ctx.bezierCurveTo(outX-9, L+8, C+10, q, C, q);
+          ctx.bezierCurveTo(C+7, L+4, C+7, L-4, C, N);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath(); ctx.arc(outX + P, L, P, 0, Math.PI*2); ctx.stroke();
+          outX = outX + P * 2;
+          break;
+        }
+      }
+
+      // Output wire (diwarnai sesuai output)
+      ctx.beginPath();
+      ctx.strokeStyle = wireColor(active);
+      ctx.moveTo(outX, L);
+      ctx.lineTo(outX + wireLen, L);
+      ctx.stroke();
     }
 
     function roundRect(ctx, x, y, w, h, r) {
@@ -861,30 +967,54 @@ export default function LogicGatesSimulator({ setPage }) {
   }, []);
 
   // ── Palette drag ──
+  // Bug lama: comp dibuat saat drag > 10px dari start — padahal start ada di palette (sebelah kiri canvas),
+  // jadi posisi mouse masih di palette → mx negatif → comp dibuat di luar canvas (gak kelihatan).
+  // Fix: comp dibuat saat MOUSEUP, HANYA kalau mouse berada di area canvas.
+  // Selama drag, cursor jadi grabbing supaya user tahu lagi ngedrag.
   const [paletteDrag, setPaletteDrag] = useState(null);
   const onPaletteMouseDown = (type) => (e) => {
-    setPaletteDrag({ type, startX: e.clientX, startY: e.clientY });
+    e.preventDefault();
+    setPaletteDrag({ type, startX: e.clientX, startY: e.clientY, dragging: false });
   };
   useEffect(() => {
     if (!paletteDrag) return;
     const onMove = (e) => {
       const dx = e.clientX - paletteDrag.startX;
       const dy = e.clientY - paletteDrag.startY;
-      if (Math.hypot(dx, dy) > 10) {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const comp = createComponent(paletteDrag.type, mx - 40, my - 25);
-        setComponents(prev => [...prev, comp]);
-        setNextId(prev => prev + 1);
-        setSelectedId(comp.id);
-        setPaletteDrag(null);
-        setStatus(GATE_MAP[paletteDrag.type].name + ' added');
+      if (!paletteDrag.dragging && Math.hypot(dx, dy) > 4) {
+        setPaletteDrag({ ...paletteDrag, dragging: true });
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
       }
     };
-    const onUp = () => setPaletteDrag(null);
+    const onUp = (e) => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (paletteDrag.dragging) {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          // Cek apakah mouse di-drop di dalam area canvas
+          if (mx >= 0 && mx <= rect.width && my >= 0 && my <= rect.height) {
+            // Center comp di posisi drop
+            const io = IO_DEFS[paletteDrag.type];
+            const compW = io ? io.width : (paletteDrag.type === 'not' ? 80 : 90);
+            const compH = io ? io.height : 56;
+            const comp = createComponent(paletteDrag.type, mx - compW / 2, my - compH / 2);
+            setComponents(prev => [...prev, comp]);
+            setNextId(prev => prev + 1);
+            setSelectedId(comp.id);
+            const label = (GATE_MAP[paletteDrag.type] || IO_DEFS[paletteDrag.type])?.name || paletteDrag.type;
+            setStatus(label + ' added');
+          } else {
+            setStatus('Drop inside canvas to place component');
+          }
+        }
+      }
+      setPaletteDrag(null);
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
@@ -903,15 +1033,18 @@ export default function LogicGatesSimulator({ setPage }) {
     setWires([]);
     let id = 1;
     const mk = (type, x, y) => {
-      const def = GATE_MAP[type];
-      const w = type === 'wire' ? 100 : (type === 'not' ? 80 : 90);
-      const h = type === 'wire' ? 40 : 56;
+      let w = 90, h = 56, inputCount = 2, outputCount = 1;
+      if (type === 'not') { w = 80; inputCount = 1; }
+      else if (type === 'INPUT' || type === 'OUTPUT') {
+        const io = IO_DEFS[type];
+        w = io.width; h = io.height; inputCount = io.inputCount; outputCount = io.outputCount;
+      }
       const comp = {
         id: id++, type, x, y, width: w, height: h,
-        inputs: Array(def.dualInput ? 2 : (type === 'wire' || type === 'not' ? 1 : 2)).fill(false),
-        outputs: Array(1).fill(false),
-        inputWires: Array(def.dualInput ? 2 : (type === 'wire' || type === 'not' ? 1 : 2)).fill(null),
-        outputWires: [[]],
+        inputs: Array(inputCount).fill(false),
+        outputs: Array(outputCount).fill(false),
+        inputWires: Array(inputCount).fill(null),
+        outputWires: Array(outputCount).fill([]),
       };
       return comp;
     };
@@ -1108,7 +1241,7 @@ export default function LogicGatesSimulator({ setPage }) {
       <div style={bodyStyle}>
         <div style={paletteStyle}>
           <div style={paletteTitleStyle}>Components</div>
-          {GATE_DATA.filter(g => g.type !== 'INPUT' && g.type !== 'OUTPUT').map(g => (
+          {GATE_DATA.map(g => (
             <div
               key={g.type}
               style={itemStyle}
@@ -1117,9 +1250,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
               <div style={iconBoxStyle(g.color)}>
-                {g.type === 'wire'
-                  ? <WireIcon color={g.color} scale={0.5} />
-                  : <MiniGateIcon type={g.type} color={g.color} scale={0.55} />}
+                <MiniGateIcon type={g.type} color={g.color} scale={0.55} />
               </div>
               <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{g.name}</span>
             </div>
