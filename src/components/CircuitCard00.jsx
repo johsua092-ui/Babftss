@@ -15,9 +15,9 @@ function MiniGateIcon({ type, color }) {
     // Setiap gate punya canvas width sendiri supaya kabel kiri & kanan seimbang.
     // Sebelumnya cx=8 (input 8px) vs output 22-33px → tidak seimbang (user complaint).
     const s = color, sw = 2;
-    const h = 32, cy = 16, sz = 5;
+    const h = 32, cy = 16, sz = 11;
     const glow = `drop-shadow(0 0 3px ${color})`;
-    const inner = sz - 2;       // 3 (NOT triangle width)
+    const inner = sz - 2;       // 9 (NOT triangle width)
     const bubbleR = 3.5;
     const bubbleGap = 4;        // gap body→bubble center
     const wireLen = 12;         // target panjang kabel di tiap sisi
