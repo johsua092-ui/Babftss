@@ -665,3 +665,134 @@ Saat membuat card baru dengan tombol CLK, jalankan checklist ini:
 - [ ] Verifikasi: setelah diblok, klik switch lagi dalam 5 detik → toast merah "warning! pencegahan rate limit mohon tunggu 5 detik".
 - [ ] Verifikasi: klik CLK lagi saat autoActive → clock STOP dan kembali ke 0 (bukan lanjut pulsasi).
 - [ ] `npm run build` sukses tanpa error.
+
+---
+
+## 30. BUG 1 FIX — LOCK MODE SWITCH KAPANPUN clk=1 (TIDAK HANYA autoActive)
+
+**Bug kritis (ditemukan & diperbaiki 2026-08-13):** Sebelumnya, lock switch mode hanya cek `autoActiveRef.current`. Akibatnya, **manual mode + clk=1 masih bisa switch ke auto** — user tinggal toggle clock ON di manual mode, lalu klik switch AUTO → mode berubah tanpa perlu matikan clock dulu. Ini melanggar aturan ketat §29.5.
+
+**Spec fix (ATURAN MUTLAK):**
+
+Lock switch mode WAJIB cek **`clk || autoActive`** — bukan hanya `autoActive`. Artinya:
+
+| State | clk | autoActive | Switch mode diizinkan? |
+|-------|-----|------------|------------------------|
+| Manual mode, clock OFF | 0 | false | ✅ Ya |
+| Manual mode, clock ON | 1 | false | ❌ TIDAK — block + toast + rate-limit |
+| Auto mode, belum running | 0 | false | ✅ Ya |
+| Auto mode, sedang running | 0/1 (pulse) | true | ❌ TIDAK — block + toast + rate-limit |
+
+Pesan toast & rate-limit tetap sama (spec §29.5 & §29.6):
+- Toast: **"matikan clock dahulu sebelum beralih mode clock"** (amber, ⚠).
+- Rate-limit 5 detik: **"warning! pencegahan rate limit mohon tunggu 5 detik"** (merah, ⛔).
+
+**Implementasi:** `src/hooks/useClockMode.js` — function `setClockMode`:
+```js
+// LOCK: block switch jika clock AKTIF (clk=1).
+// Sebelumnya hanya cek `autoActive`, sehingga manual mode + clk=1
+// masih bisa switch — itu BUG KRITIS (Bagian 30).
+if (clkRef.current || autoActiveRef.current) {
+    showToast('matikan clock dahulu sebelum beralih mode clock', 'block');
+    rateLimitedUntilRef.current = now + RATE_LIMIT_MS;
+    return;
+}
+```
+
+`clkRef` adalah mirror ref dari `clk` state (di-sync via `useEffect`), supaya lock check stabil dan tidak trigger re-render.
+
+---
+
+## 31. SISTEM FORCE-RESET CARD CLOCK — HANYA SATU CARD CLOCK AKTIF PADA SATU WAKTU
+
+**Bug kritis (ditemukan & diperbaiki 2026-08-13):** Sebelumnya, auto clock di satu card tetap berjalan di background saat user pindah ke card lain. Karena `setInterval` terus memanggil `setClk` tiap 600ms, card yang sudah di-scroll-past tetap re-render → **potensi lag di seluruh sistem** kalau user mengaktifkan auto di banyak card.
+
+Selain itu, spec user eksplisit:
+> "ketika user sedang mengaktifkan clock mode auto misalnya di card 16 clocknya memancarkan 1 0 1 0 1 0, kemudian user scroll ke card selanjutnya lalu ketika user menekan 'mode/ atau mengaktifkan di clock lain' maka harusnya card 16 ini harus dipaksa mode clear dimana clocknya susunannya semuanya di rangkaian card tersebut kembali steril dan clear sama seolah olah user belum menyentuh card tersebut sama sekali, dan sistem ini wajib diterapkan di seluruh kartu yang memiliki clock baik sekarang ataupun dimasa depan"
+
+### 31.1 Aturan mutlak (BERLAKU KE SEMUA CARD CLOCK)
+
+1. **Hanya SATU card clock boleh aktif pada satu waktu.** "Aktif" = `clk=1` atau `autoActive=true`.
+2. Saat card B clock-nya menjadi aktif DAN card A (berbeda cardId) sebelumnya aktif → **card A di-force-reset ke pristine state** (seolah user belum menyentuh card tersebut sama sekali).
+3. Saat card dengan auto running scroll-out dari viewport → **card tersebut di-force-reset** (mencegah background pulsasi → lag).
+4. Pristine state = `clk=0`, `clockMode='manual'`, `autoActive=false`, semua input lokal (D, S, R, Q) = 0/false, toast & rate-limit di-clear.
+5. Sistem ini WAJIB diterapkan ke semua card clock, sekarang (Card 16, 17) maupun masa depan (D Flip-Flop, JK, T, Counter, Register, dst).
+
+### 31.2 Komponen & file (3 file)
+
+1. **`src/context/ClockCardRegistry.jsx`** — React Context global. Menyimpan `activeCardRef = { cardId, resetFn } | null`. Ekspos `registerActive(cardId, resetFn)` & `unregister(cardId)`. `registerActive` otomatis panggil `resetFn` card sebelumnya (berbeda cardId) sebelum overwrite.
+2. **`src/hooks/useClockMode.js`** — Hook menerima opsi `{ cardId, onReset }`. Saat clock aktif → `registerActive(cardId, reset)`. Saat clock inactive → `unregister(cardId)`. Hook juga set up `IntersectionObserver` pada `cardRef` (DOM node container card) untuk trigger `reset()` saat card scroll-out & auto running. Fungsi `reset()` = stop auto + clear semua state clock + call `onReset` (untuk reset state lokal card seperti input, Q).
+3. **`src/pages/LogicGatesCircuit.jsx`** — Wrap `<CircuitList>` dengan `<ClockCardProvider>` di dalam `<CardNavigationProvider>`.
+
+### 31.3 Pola pemakaian di CircuitCard (WAJIB)
+
+```jsx
+import { useState, useCallback } from 'react';
+import { useClockMode } from '../hooks/useClockMode';
+
+export default function CircuitCardXX() {
+    const [inputD, setInputD] = useState(false);
+    const [q, setQ] = useState(false);
+
+    // onReset: reset semua state lokal card ke 0
+    const handleReset = useCallback(() => {
+        setInputD(false);
+        setQ(false);
+    }, []);
+
+    // cardId WAJIB unik per card. onReset opsional tapi sangat disarankan.
+    const {
+        clk: inputClk, clockMode, autoActive,
+        toggleClk, setClockMode, toast,
+        cardRef,   // attach ke container div card
+    } = useClockMode({ cardId: 'card-XX', onReset: handleReset });
+
+    // ...
+    return <div ref={cardRef} style={{...}}>
+        {/* ... */}
+    </div>;
+}
+```
+
+### 31.4 Detail mekanisme
+
+**Registry (card-to-card reset):**
+- Card A clk=1 → `registerActive('card-A', resetA)` → `activeCardRef = {cardId:'card-A', resetFn:resetA}`.
+- Card A clk=0 → `unregister('card-A')` → `activeCardRef = null`.
+- Card B clk=1 → `registerActive('card-B', resetB)` → registry lihat prev='card-A' (tapi sudah di-unregister, jadi `activeCardRef` saat ini null) → tidak ada reset call → `activeCardRef = {cardId:'card-B', resetFn:resetB}`.
+- Card B clk=1 saat Card A masih aktif (clk=1) → `registerActive('card-B', resetB)` → registry lihat prev='card-A' (beda cardId) → **panggil `resetA()`** → Card A pristine.
+
+**IntersectionObserver (scroll-out reset):**
+- Observer attach ke `cardRef.current` (container div card).
+- Threshold = 0 (callback fires saat card enter/exit viewport).
+- Saat `isIntersecting=false` (card fully out of view) DAN `autoActiveRef.current=true` → panggil `reset()`.
+- Manual clk=1 + scroll-out → **TIDAK trigger reset** (tidak ada lag, preserve state user).
+- Auto running + scroll-out → **trigger reset** (stop lag, pristine state).
+
+**`reset()` function:**
+- Clear `setInterval` auto.
+- Set `autoActive=false`, `clk=false`, `clockMode='manual'`.
+- Clear `rateLimitedUntilRef` (= 0) supaya user bisa langsung interact lagi.
+- Clear toast timeout & `setToast(null)`.
+- Call `onReset()` untuk reset state lokal card (input, Q).
+
+### 31.5 Checklist implementasi card clock baru (WAJIB)
+
+- [ ] `useClockMode({ cardId: 'card-XX', onReset: handleReset })` dipanggil di CircuitCard.
+- [ ] `handleReset` dibungkus `useCallback` dengan empty deps (stable identity).
+- [ ] `handleReset` reset SEMUA state lokal card ke nilai awal (input, Q, dll).
+- [ ] `cardRef` di-attach ke container div utama card (`<div ref={cardRef} ...>`).
+- [ ] Card berada di dalam `<ClockCardProvider>` (di level page `LogicGatesCircuit`).
+- [ ] Verifikasi: Card A auto running → klik clock Card B → Card A pristine (clk=0, mode=manual, input=0, Q=0).
+- [ ] Verifikasi: Card A auto running → scroll ke card lain (card A fully out of view) → Card A pristine.
+- [ ] Verifikasi: Card A manual clk=1 → scroll ke card lain → Card A state dipreserve (TIDAK reset — tidak ada lag issue).
+- [ ] Verifikasi: Card A auto running → klik clock Card A sendiri (toggleClk) → STOP & clk=0, TAPI clockMode tetap 'auto' (stopAuto TIDAK reset clockMode). User bisa re-start.
+- [ ] `npm run build` sukses tanpa error.
+
+### 31.6 Larangan
+
+- **DILARANG** membuat card clock tanpa `cardId` di `useClockMode` → registry & IntersectionObserver tidak akan berfungsi.
+- **DILARANG** lupa attach `cardRef` ke container div → IntersectionObserver tidak punya node untuk observe.
+- **DILARANG** lupa bungkus page dengan `<ClockCardProvider>` → registry return no-op, fitur card-to-card reset tidak berfungsi.
+- **DILARANG** menduplikasi logic registry di card manapun — semua harus lewat `useClockMode`.
+- **DILARANG** memodifikasi `reset()` untuk skip `onReset` — pristine state WAJIB reset state lokal juga.

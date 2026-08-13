@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import CircuitDiagram16 from './CircuitDiagram16';
 import { hexToRgbStr } from '../utils/colorHelper';
 import HeartButton from './HeartButton';
@@ -15,10 +15,28 @@ import ClockToast from './ClockToast';
 // CircuitDiagram16, di bawah tombol CLK. Toast notifikasi dirender di sini.
 export default function CircuitCard16() {
     const [inputD, setInputD] = useState(false);
-    // CLK sekarang dikelola oleh useClockMode (manual/auto + rate-limit + toast)
-    const { clk: inputClk, clockMode, autoActive, toggleClk, setClockMode, toast } = useClockMode();
-    // Q = "ingatan" — BUKAN dihitung ulang tiap render
     const [q, setQ] = useState(false);
+
+    // onReset: reset semua state lokal card ke 0 (dipanggil saat card lain
+    // clock-nya aktif, atau saat card scroll-out dari viewport saat auto running).
+    // Spec Bagian 31 memory.md / design.md: "kembali steril dan clear seolah
+    // user belum menyentuh card tersebut sama sekali".
+    const handleReset = useCallback(() => {
+        setInputD(false);
+        setQ(false);
+    }, []);
+
+    // CLK dikelola oleh useClockMode. cardId wajib untuk fitur registry &
+    // IntersectionObserver (force-reset saat card lain clock-nya aktif / scroll-out).
+    const {
+        clk: inputClk,
+        clockMode,
+        autoActive,
+        toggleClk,
+        setClockMode,
+        toast,
+        cardRef,
+    } = useClockMode({ cardId: 'card-16', onReset: handleReset });
 
     // Turunan sinyal internal (S, R hasil gating)
     const s = inputD && inputClk;
@@ -46,7 +64,7 @@ export default function CircuitCard16() {
         { name: 'HOLD',        cond: 'CLK=0', qVal: null, qBarVal: null, desc: 'Q, Q\u0304 = TETAP (nilai terakhir sebelum CLK turun)' },
     ];
 
-    return <div style={{
+    return <div ref={cardRef} style={{
         backgroundColor: '#0e1420',
         border: isActive ? `rgba(${themeRgb},0.4)` : '#1e293b',
         borderRadius: 16, padding: '18px 14px',

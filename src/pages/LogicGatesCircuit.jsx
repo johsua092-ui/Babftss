@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { FavoritesProvider } from '../context/FavoritesContext';
 import { CardNavigationProvider, useCardNavigation } from '../context/CardNavigationContext';
+import { ClockCardProvider } from '../context/ClockCardRegistry';
 import CircuitCard01 from '../components/CircuitCard01';
 import CircuitCard02 from '../components/CircuitCard02';
 import CircuitCard03 from '../components/CircuitCard03';
@@ -251,7 +252,9 @@ function CircuitList({ setPage }) {
 export default function LogicGatesCircuit({ setPage }) {
     return (
         <CardNavigationProvider>
-            <CircuitList setPage={setPage} />
+            <ClockCardProvider>
+                <CircuitList setPage={setPage} />
+            </ClockCardProvider>
         </CardNavigationProvider>
     );
 }

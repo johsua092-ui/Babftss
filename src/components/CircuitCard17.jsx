@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import CircuitDiagram17 from './CircuitDiagram17';
 import { hexToRgbStr } from '../utils/colorHelper';
 import HeartButton from './HeartButton';
@@ -24,10 +24,29 @@ import ClockToast from './ClockToast';
 export default function CircuitCard17() {
     const [inputS, setInputS] = useState(false);
     const [inputR, setInputR] = useState(false);
-    // CLK sekarang dikelola oleh useClockMode (manual/auto + rate-limit + toast)
-    const { clk: inputClk, clockMode, autoActive, toggleClk, setClockMode, toast } = useClockMode();
-    // Q = "ingatan" — BUKAN dihitung ulang tiap render (pola CircuitCard_SRLatch)
     const [q, setQ] = useState(false);
+
+    // onReset: reset semua state lokal card ke 0 (dipanggil saat card lain
+    // clock-nya aktif, atau saat card scroll-out dari viewport saat auto running).
+    // Spec Bagian 31 memory.md / design.md: "kembali steril dan clear seolah
+    // user belum menyentuh card tersebut sama sekali".
+    const handleReset = useCallback(() => {
+        setInputS(false);
+        setInputR(false);
+        setQ(false);
+    }, []);
+
+    // CLK dikelola oleh useClockMode. cardId wajib untuk fitur registry &
+    // IntersectionObserver (force-reset saat card lain clock-nya aktif / scroll-out).
+    const {
+        clk: inputClk,
+        clockMode,
+        autoActive,
+        toggleClk,
+        setClockMode,
+        toast,
+        cardRef,
+    } = useClockMode({ cardId: 'card-17', onReset: handleReset });
 
     // Turunan sinyal internal (S_gated, R_gated hasil gating)
     const sGated = inputS && inputClk;
@@ -69,7 +88,7 @@ export default function CircuitCard17() {
         { name: 'INVALID', cond: 'S=1, R=1, CLK=1', qVal: 0,    qBarVal: 0,    desc: 'Kondisi terlarang, keduanya 0' },
     ];
 
-    return <div style={{
+    return <div ref={cardRef} style={{
         backgroundColor: '#0e1420',
         border: isActive ? `rgba(${themeRgb},0.4)` : '#1e293b',
         borderRadius: 16, padding: '18px 14px',

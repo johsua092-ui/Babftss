@@ -2119,3 +2119,91 @@ Hook `useClockMode.js` dan komponen `ClockToast.jsx` **tidak diubah** — logic-
 - Behavior hook tidak diubah → aturan lock + rate-limit + toast tetap berlaku exact seperti sebelumnya.
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## 31. BUG FIX KRITIS — LOCK MANUAL CLK=1 + SISTEM FORCE-RESET CARD CLOCK
+
+**Tanggal:** 2026-08-13
+**Sumber:** Feedback user lewat chat — 2 bug kritis ditemukan.
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "terdapat sebuah bug penting dimana ketika user ada di mode manual lalu user menyalakan 'clock' lalu entah gimana disitu user bisa langsung beralih ke mode clock!! tindakan ini sangat dilarang dan merupakan suatu bug kritis dan wajib segera di fix!
+>
+> kemudian saya menemukan potensi bug yang akan membuat ngelag satu sistem jika tidak dicegah, jadi saya kasih contoh skenario: ketika user sedang mengaktifkan clock mode auto misalnya di card 16 clocknya memancarkan 1 0 1 0 1 0, kemudian user scroll ke card selanjutnya lalu ketika user menekan 'mode/ atau mengaktifkan di clock lain' maka harusnya card 16 ini harus dipaksa mode clear dimana clocknya susunannya semuanya di rangkaian card tersebut kembali steril dan clear sama seolah olah user belum menyentuh card tersebut sama sekali, dan sistem ini wajib diterapkan di seluruh kartu yang memiliki clock baik sekarang ataupun dimasa depan"
+
+### 31.1 Bug 1 — Lock mode switch kapanpun clk=1
+
+**Masalah:** Sebelumnya, `setClockMode` hanya cek `autoActiveRef.current` untuk lock. Akibatnya, **manual mode + clk=1 masih bisa switch ke auto** — user toggle clock ON di manual, lalu klik switch AUTO → mode berubah tanpa perlu matikan clock dulu.
+
+**Fix:** Tambah `clkRef` (mirror `clk` state). Lock check diubah jadi `if (clkRef.current || autoActiveRef.current)` — block kapanpun clk=1, baik manual maupun auto. Pesan toast & rate-limit tetap sama.
+
+**File diubah:** `src/hooks/useClockMode.js` — `setClockMode` function. Tambah `clkRef` + sync useEffect.
+
+### 31.2 Bug 2 — Sistem force-reset card clock (registry + IntersectionObserver)
+
+**Masalah:** Auto clock di card yang sudah di-scroll-past tetap berjalan di background (`setInterval` terus `setClk` tiap 600ms) → re-render card off-screen → potensi lag di seluruh sistem kalau user mengaktifkan auto di banyak card.
+
+**Fix — 2 mekanisme:**
+
+**A. Card-to-card reset via global registry:**
+- Context baru: `src/context/ClockCardRegistry.jsx` dengan `ClockCardProvider` + `useClockCardRegistry()`.
+- Registry simpan `activeCardRef = { cardId, resetFn } | null`.
+- Saat card clock jadi aktif (clk=1 atau autoActive), hook `useClockMode` panggil `registerActive(cardId, reset)`.
+- `registerActive` otomatis panggil `resetFn` card sebelumnya (beda cardId) sebelum overwrite → card sebelumnya pristine.
+- Saat card clock jadi inactive (clk=0), hook panggil `unregister(cardId)` supaya tidak di-reset percuma.
+
+**B. Scroll-out reset via IntersectionObserver:**
+- Hook `useClockMode` set up `IntersectionObserver` pada `cardRef` (DOM container card).
+- Threshold = 0 (callback fires saat card enter/exit viewport).
+- Saat `isIntersecting=false` DAN `autoActiveRef.current=true` → panggil `reset()`.
+- Manual clk=1 + scroll-out → TIDAK trigger (tidak ada lag, preserve state user).
+- Auto running + scroll-out → trigger reset (stop lag, pristine state).
+
+**`reset()` function di useClockMode:**
+- Clear `setInterval` auto.
+- Set `autoActive=false`, `clk=false`, `clockMode='manual'`.
+- Clear `rateLimitedUntilRef` (= 0) supaya user bisa langsung interact lagi.
+- Clear toast timeout & `setToast(null)`.
+- Call `onReset()` callback (dari card component) untuk reset state lokal (input, Q).
+
+### 31.3 File baru & diubah
+
+**Baru:**
+- `src/context/ClockCardRegistry.jsx` — Context global registry.
+
+**Diubah:**
+- `src/hooks/useClockMode.js` — Tambah opsi `{ cardId, onReset }`, `clkRef`, `cardRef`, `reset()`, registry integration, IntersectionObserver. Lock cek `clk || autoActive` (Bug 1 fix).
+- `src/pages/LogicGatesCircuit.jsx` — Wrap `<CircuitList>` dengan `<ClockCardProvider>` di dalam `<CardNavigationProvider>`.
+- `src/components/CircuitCard16.jsx` — `useClockMode({ cardId: 'card-16', onReset: handleReset })`. `handleReset` reset `inputD` & `q` ke false. Attach `cardRef` ke container div.
+- `src/components/CircuitCard17.jsx` — Sama, `cardId: 'card-17'`, `handleReset` reset `inputS`, `inputR`, & `q`.
+
+### 31.4 Pola pemakaian (WAJIB untuk semua card clock)
+
+```jsx
+const handleReset = useCallback(() => {
+    setInputD(false);
+    setQ(false);
+}, []);
+const { clk, clockMode, autoActive, toggleClk, setClockMode, toast, cardRef } =
+    useClockMode({ cardId: 'card-XX', onReset: handleReset });
+return <div ref={cardRef} ...>...</div>;
+```
+
+### 31.5 Verifikasi
+
+- `npm run build`: ✓ sukses 8.33s, 2180 modules, 0 error. Bundle `LogicGatesCircuit-IEqLgkEc.js` 196.05 kB (sebelumnya 194.60 kB — naik 1.45 kB karena registry context + reset logic).
+- Behavior hook tidak mengubah aturan toast/rate-limit yang sudah ada — hanya lock yang diperluas (Bug 1) + fitur reset baru (Bug 2).
+- Verifikasi visual menunggu user di dev server / production:
+  - Manual mode + clk=1 → klik switch AUTO → toast amber (BUG 1 FIXED).
+  - Card 16 auto running → klik clock Card 17 → Card 16 pristine (clk=0, mode=manual, D=0, Q=0).
+  - Card 16 auto running → scroll ke Card 17 (Card 16 fully out of view) → Card 16 pristine.
+  - Card 16 manual clk=1 → scroll ke Card 17 → Card 16 state dipreserve (TIDAK reset).
+
+### 31.6 Dokumentasi terkait
+
+- `design.md` Bagian 30 — Spec Bug 1 fix (lock check `clk || autoActive`).
+- `design.md` Bagian 31 — Spec Bug 2 fix (registry + IntersectionObserver + pola pemakaian + checklist + larangan).
+- `memory.md` Bagian 31 (section ini) — Log implementasi.
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**
