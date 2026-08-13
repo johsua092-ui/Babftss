@@ -2447,3 +2447,54 @@ User minta swap nomor card:
 - Cross-reference di description SR Flip-Flop sudah update ke "Gated D Latch (Card 17)".
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## Bagian 37 — Card 16 sebagai TEMPLATE + Hapus Card 17 Sepenuhnya (13 Aug 2026)
+
+### Task ID: 37
+**Agent:** main
+**Task:** (1) Catat sistem sempurna di Card 16 sebagai TEMPLATE contoh untuk rangkaian sekuensial clocked berikutnya. (2) Hapus Card 17 (Gated D Latch) sepenuhnya tanpa jejak dan tanpa menyenggol yang lain.
+
+### Work Log:
+
+**Task 1 — Dokumentasi TEMPLATE Card 16:**
+- Tambah komentar block `TEMPLATE — RANGKAIAN SEKUENSIAL CLOCKED (4-NAND TOPOLOGY)` di header `CircuitCard16.jsx` (line 8-15) dan `CircuitDiagram16.jsx` (line 5-12).
+- Update comment di `useClockMode.js` line 32-35: tambahkan referensi "Card 16 adalah TEMPLATE referensi — lihat design.md Bagian 36."
+- Update comment helper di `CircuitDiagram16.jsx` line 51: "(pola CircuitDiagram_SRLatch — Card 16 TEMPLATE)".
+- Tambah Section 36 ke `design.md`: "TEMPLATE — Card 16 (SR Flip-Flop, 4-NAND Topology) sebagai Referensi Rangkaian Sekuensial Clocked" — mencakup:
+  - 36.1 Mengapa Card 16 jadi TEMPLATE (7 sistem: topologi 4-NAND, clock mode, registry, IntersectionObserver, vocabulary 4-mode, ClockModeSwitch, color palette).
+  - 36.2 File referensi TEMPLATE (tabel 6 file).
+  - 36.3 Checklist copy-paste untuk card baru (A. State & Hook, B. SVG Diagram, C. Registrasi).
+  - 36.4 Vocabulary & behavior WAJIB (referensi Bagian 35).
+  - 36.5 Catatan penting: Card 17 dihapus, bukan referensi; jika D Latch dibuat ulang WAJIB ikuti pola Card 16.
+
+**Task 2 — Hapus Card 17 sepenuhnya:**
+- Hapus file `src/components/CircuitCard17.jsx` (167 baris).
+- Hapus file `src/components/CircuitDiagram17.jsx` (359 baris).
+- Edit `src/pages/LogicGatesCircuit.jsx`:
+  - Hapus import line 22: `import CircuitCard17 from '../components/CircuitCard17';`
+  - Hapus entri ALL_CARDS line 41: `{ num: '17', name: 'Gated D Latch', tier: 'NORMAL', el: CircuitCard17 },`
+- Edit `src/hooks/useClockMode.js`:
+  - Line 32: "dipakai oleh Card 16, Card 17, dan card manapun" → "dipakai oleh Card 16 dan card manapun".
+  - Line 38: "Contoh: 'card-16', 'card-17'." → "Contoh: 'card-16'."
+- Edit `src/components/CircuitCard16.jsx`:
+  - Bersihkan semua referensi "Card 17" di komentar header (line 14-15) dan komentar themeColor (line 82-83).
+  - Bersihkan description paragraph: "Bedanya dengan Gated D Latch (Card 17):" → "Bedanya dengan Gated D Latch:" (hapus tag "(Card 17)").
+- Edit `src/components/CircuitDiagram16.jsx`:
+  - Line 51: "pola CircuitDiagram_SRLatch / Card 17" → "pola CircuitDiagram_SRLatch — Card 16 TEMPLATE".
+- Edit `map.md` line 38-40: "CircuitCard00.jsx s/d CircuitCard17.jsx" → "s/d CircuitCard16.jsx"; "CircuitDiagram00.jsx s/d CircuitDiagram17.jsx" → "s/d CircuitDiagram16.jsx".
+
+**Verifikasi "tanpa jejak":**
+- Grep `CircuitCard17|CircuitDiagram17|card-17` di `src/` → hanya sisa di `memory.md` (historical log, BUKAN jejak di kode — historical log TIDAK boleh dihapus karena merupakan catatan kerja permanen).
+- Tidak ada import dangling, tidak ada entri ALL_CARDS dangling, tidak ada cardId 'card-17' dangling.
+- Build sukses tanpa error.
+
+### Stage Summary:
+- Card 16 (SR Flip-Flop, 4-NAND) sekarang resmi menjadi **TEMPLATE referensi tunggal** untuk rangkaian sekuensial clocked. Dokumentasi lengkap di `design.md` Section 36.
+- Card 17 (Gated D Latch) **dihapus sepenuhnya** dari kode sumber — tanpa jejak di kode aktif, tanpa menyenggol file lain (hanya comment/description Card 16 yang disesuaikan untuk tidak referensi card yang sudah tidak ada).
+- File modified: `CircuitCard16.jsx`, `CircuitDiagram16.jsx`, `useClockMode.js`, `LogicGatesCircuit.jsx`, `map.md`, `design.md`, `memory.md`.
+- File deleted: `CircuitCard17.jsx`, `CircuitDiagram17.jsx`.
+- Status: SELESAI. Build OK, commit & push sesuai instruksi user.
+
+**Catatan untuk masa depan:** Jika D Latch akan dibuat ulang, WAJIB ikuti pola Card 16 (TEMPLATE — design.md Section 36), BUKAN versi lama Card 17 yang sudah dihapus.

@@ -860,3 +860,80 @@ const mode = (sGated && rGated) ? 'INVALID'  // kondisi terlarang (jika mungkin)
 
 - **DILARANG** menampilkan tabel 2-mode (seperti versi awal Card 16 dengan hanya TRANSPARENT/HOLD). Tabel WAJIB 4-mode untuk konsistensi vocabulary & edukasi.
 - **DILARANG** menghilangkan baris INVALID dari tabel meskipun tidak mungkin terjadi — keberadaannya adalah poin edukasi penting (perbandingan dengan rangkaian yang bisa INVALID).
+
+---
+
+## 36. TEMPLATE — Card 16 (SR Flip-Flop, 4-NAND Topology) sebagai Referensi Rangkaian Sekuensial Clocked
+
+> **ATURAN MUTLAK:** Card 16 (SR Flip-Flop, 4 NAND gates) adalah **TEMPLATE referensi** untuk SEMUA rangkaian sekuensial clocked di masa depan yang butuh sistem yang sama. Saat membuat card baru (JK Flip-Flop, D Flip-Flop, T Flip-Flop, register, counter, dll), **WAJIB** mencontoh pola Card 16.
+
+### 36.1 Mengapa Card 16 jadi TEMPLATE
+
+Card 16 sudah mencakup **SEMUA sistem** yang dibutuhkan rangkaian sekuensial clocked, dalam bentuk yang sudah teruji sempurna:
+
+1. **Topologi 4-NAND** (steering + cross-coupled latch) — sesuai gambar referensi user (13 Aug 2026).
+2. **Clock mode system** (MANUAL/AUTO) via `useClockMode` hook — Bagian 29–31.
+3. **ClockCardRegistry** (hanya 1 card clock aktif pada satu waktu) — Bagian 31.
+4. **IntersectionObserver** (reset saat scroll-out) — Bagian 31.
+5. **Vocabulary 4-mode** SET/RESET/HOLD/INVALID — Bagian 35.
+6. **ClockModeSwitch** (pill segmented-control, putih bersih, gap wajar dari tombol CLK) — Bagian 29.
+7. **Color palette konsisten** (NAND=oranye, S=hijau, R=cyan, CLK=amber, Q=hijau, Q̄=pink, feedback=oranye/ungu).
+
+### 36.2 File referensi TEMPLATE
+
+| File | Peran |
+|------|-------|
+| `src/components/CircuitCard16.jsx` | Wrapper card: state React, `useClockMode` hook, mode table, description, status bar. |
+| `src/components/CircuitDiagram16.jsx` | SVG diagram: 4 NAND gates, input nodes, output nodes, feedback wires, ClockModeSwitch. |
+| `src/hooks/useClockMode.js` | Hook generic untuk CLK manual/auto + registry + IntersectionObserver. |
+| `src/context/ClockCardRegistry.jsx` | Global registry context (1 card clock aktif pada satu waktu). |
+| `src/components/ClockModeSwitch.jsx` | UI pill segmented-control MANUAL/AUTO. |
+| `src/components/ClockToast.jsx` | Toast notifikasi (rate-limit, mode lock, dll). |
+
+### 36.3 Checklist copy-paste untuk card baru
+
+Saat membuat rangkaian sekuensial clocked baru, ikuti langkah-langkah berikut (copy dari Card 16):
+
+**A. State & Hook (di CircuitCardXX.jsx):**
+- [ ] `useState` untuk input utama (S/R atau D atau J/K, dll) + `useState` untuk `q`.
+- [ ] `handleReset` callback: reset semua state lokal ke 0 (dipanggil saat card lain clock-nya aktif / scroll-out).
+- [ ] `useClockMode({ cardId: 'card-XX', onReset: handleReset })` — destructur `clk, clockMode, autoActive, toggleClk, setClockMode, toast, cardRef`.
+- [ ] Derived sinyal gated (e.g. `sGated = inputS && inputClk`, `rGated = inputR && inputClk`).
+- [ ] `qBar` dengan handling INVALID khusus per topologi (NAND latch active-low → Q=1, Q̄=1; NOR latch → Q=0, Q̄=0).
+- [ ] `mode` derived dari sGated/rGated (BUKAN dari Q) — vocabulary SET/RESET/HOLD/INVALID.
+- [ ] `useEffect` update Q berdasarkan sGated/rGated.
+- [ ] 4-mode table dengan kondisi ditulis dalam input mentah (S/R/CLK, BUKAN sGated/rGated).
+- [ ] `cardRef` dipasang di root `<div ref={cardRef}>`.
+- [ ] `<ClockToast toast={toast} />` dirender di dalam card.
+
+**B. SVG Diagram (di CircuitDiagramXX.jsx):**
+- [ ] Input nodes: urutan top-to-bottom sesuai gambar referensi. CLK WAJIB punya label "CLK" warna amber.
+- [ ] `<ClockModeSwitch x={1} y={clkInY + 105} mode={clockMode} autoActive={autoActive} onChange={onClockModeChange} />` — dirender DI BAWAH tombol CLK, gap wajar (~25-55px).
+- [ ] `svgH` cukup untuk muat switch (min 340).
+- [ ] Gate components: gunakan `NandGate` / `NorGate` / `AndGate` / `NotGate` reusable (copy dari Card 16).
+- [ ] Glow/fill/stroke gate body mengikuti output gate (bukan input).
+- [ ] Feedback wires: pola wrap-around (turun/naik → kiri → naik/turun → masuk gate input), warna distinct (oranye #fb923c untuk Q fb, ungu #a78bfa untuk Q̄ fb).
+- [ ] Junction dots di setiap percabangan wire.
+- [ ] Output nodes Q (hijau) + Q̄ (pink, overline manual).
+- [ ] Mode badge di top-center SVG.
+
+**C. Registrasi (di LogicGatesCircuit.jsx):**
+- [ ] Import `CircuitCardXX from '../components/CircuitCardXX'`.
+- [ ] Tambah entri ke `ALL_CARDS`: `{ num: 'XX', name: 'Nama Rangkaian', tier: 'NORMAL', el: CircuitCardXX }`.
+- [ ] Pastikan `<ClockCardProvider>` sudah wrap halaman (sudah ada, Bagian 31).
+
+### 36.4 Vocabulary & behavior WAJIB (ATURAN MUTLAK Bagian 35)
+
+- [ ] Vocabulary mode: SET / RESET / HOLD / INVALID (BUKAN TRANSPARENT atau custom).
+- [ ] Warna badge: SET=hijau `#4ade80`, RESET=cyan `#22d3ee`, HOLD=amber `#facc15`, INVALID=merah `#ef4444`.
+- [ ] Tabel mode menampilkan 4 baris (meskipun ada yang tidak mungkin terjadi).
+- [ ] Mode yang tidak mungkin ditandai "(tidak mungkin)" di kolom kondisi.
+- [ ] Mode calculation diturunkan dari input gated (sGated/rGated atau ekuivalen), BUKAN dari output Q.
+- [ ] INVALID behavior disesuaikan topologi latch:
+  - **NAND latch active-low** (Card 16): Q=1, Q̄=1 (keduanya HIGH).
+  - **NOR latch** (Card 15): Q=0, Q̄=0 (keduanya LOW).
+
+### 36.5 Catatan penting
+
+- Card 17 (Gated D Latch) **DIHAPUS SEPENUHNYA** pada 13 Aug 2026 karena salah total — bukan referensi. Jangan gunakan Card 17 sebagai contoh. Gunakan **Card 16** sebagai satu-satunya TEMPLATE.
+- Jika di masa depan D Latch akan dibuat ulang, **WAJIB** mengikuti pola Card 16 (4-NAND atau topologi yang sesuai dengan gambar referensi valid), bukan mengikuti versi lama Card 17 yang sudah dihapus.

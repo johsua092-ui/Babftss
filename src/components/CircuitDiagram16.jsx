@@ -2,6 +2,14 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 import ClockModeSwitch from './ClockModeSwitch';
 
+// ════════════════════════════════════════════════════════════════════════════
+// TEMPLATE — RANGKAIAN SEKUENSIAL CLOCKED (4-NAND TOPOLOGY) — SVG DIAGRAM
+// ════════════════════════════════════════════════════════════════════════════
+// Card 16 (SR Flip-Flop) diagram adalah TEMPLATE referensi untuk SEMUA rangkaian
+// sekuensial clocked di masa depan. Copy pola layout ini untuk card baru.
+// Lihat design.md Bagian 36 untuk spec lengkap (TEMPLATE — Card 16).
+// ════════════════════════════════════════════════════════════════════════════
+//
 // Card 16 — SR Flip-Flop (NAND-based, 4 NAND gates)
 // Topologi (sesuai gambar referensi user, 13 Aug 2026):
 //   Stage 1 (steering NANDs — kiri, gating CLK):
@@ -48,7 +56,7 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
     const qOutCol = '#4ade80', qOutRgb = hexToRgbStr(qOutCol);
     const qBarOutCol = '#f472b6', qBarOutRgb = hexToRgbStr(qBarOutCol);
 
-    // ── Helper functions (pola CircuitDiagram_SRLatch / Card 17) ──
+    // ── Helper functions (pola CircuitDiagram_SRLatch — Card 16 TEMPLATE) ──
     const wc = (val, col, rgb) => val ? col : 'rgba(' + rgb + ',0.25)';
     const mkGlow = (val, rgb) => val
         ? 'drop-shadow(0 0 4px rgba(' + rgb + ',0.9)) drop-shadow(0 0 10px rgba(' + rgb + ',0.5))'

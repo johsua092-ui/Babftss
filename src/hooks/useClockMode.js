@@ -29,13 +29,14 @@ import { useClockCardRegistry } from '../context/ClockCardRegistry';
 //      scroll-out dari viewport DAN auto mode sedang berjalan (mencegah
 //      background pulsasi → ngelag).
 //
-// Hook ini bersifat GENERIC — dipakai oleh Card 16, Card 17, dan card manapun
+// Hook ini bersifat GENERIC — dipakai oleh Card 16 dan card manapun
 // di masa depan yang memiliki tombol CLK. Lihat design.md Bagian 29–31 untuk
 // spec lengkap (aturan ini WAJIB untuk semua clock, sekarang & mendatang).
+// Card 16 adalah TEMPLATE referensi — lihat design.md Bagian 36.
 //
 // Opsi:
 //   cardId  — string unik untuk card ini (wajib untuk fitur registry &
-//             IntersectionObserver). Contoh: 'card-16', 'card-17'.
+//             IntersectionObserver). Contoh: 'card-16'.
 //   onReset — callback opsional yang dipanggil saat `reset()` trigger,
 //             supaya card bisa reset state lokal (input, Q, dll) ke 0.
 // ─────────────────────────────────────────────────────────────────────────────
