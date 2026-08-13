@@ -245,6 +245,7 @@ export default function CircuitCard00() {
                     <div key={g.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 10px", borderRadius: 10, backgroundColor: "rgba(15,23,42,0.5)" }}>
                         <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: g.color }} />
                         <span style={{ fontFamily: "Orbitron,sans-serif", fontSize: 11, fontWeight: 700, color: g.color, width: 44, flexShrink: 0, letterSpacing: "0.5px" }}>{g.name}</span>
+                        <MiniGateIcon type={g.type} color={g.color} />
                         <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
                             <NotationSVG gate={g.name} color={g.color} />
                         </div>
