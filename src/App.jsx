@@ -15,6 +15,7 @@ const CircuitGenerator = lazy(() => import('./pages/CircuitGenerator'));
 const GearsPage = lazy(() => import('./pages/GearsPage'));
 const LinkagesPage = lazy(() => import('./pages/LinkagesPage'));
 const AIHelperPanel = lazy(() => import('./components/AIHelperPanel'));
+const LogicGatesSimulator = lazy(() => import('./pages/LogicGatesSimulator'));
 
 const pageFallback = (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px 0', color: '#475569', fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
@@ -181,7 +182,7 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
                         ><div style={{ backgroundColor: "rgba(99,102,241,0.18)", padding: 10, borderRadius: 10, flexShrink: 0 }}><LinkageIcon icon="fourbar" color="#818cf8" size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#818cf8" }}>Linkages Mechanic</span></button>
-                        <button onClick={() => toast.info("Fitur ini masih dalam pengerjaan")}
+                        <button onClick={() => toast.info("Fittur ini masih dalam pengerjaan")}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: "rgba(14,20,32,0.6)", border: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 14, color: "#475569", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.9)"}
                             onMouseLeave={c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.6)"}
@@ -208,9 +209,9 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
                         ><div style={{ backgroundColor: "rgba(6,182,212,0.18)", padding: 12, borderRadius: 12, color: "#06b6d4", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Circuit Generator</span></button>
-                        <button onClick={() => toast.info("Logic Gates Simulator masih dalam pengerjaan")}
+                        <button onClick={() => setPage("logic-gates-simulator")}
                             className="animate-gold-pulse"
-                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(251,191,36,0.5)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s" }}
+                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(251,191,36,0.5)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s", backgroundColor: panel }}
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
                         ><div style={{ backgroundColor: "rgba(251,191,36,0.18)", padding: 12, borderRadius: 12, color: "#fbbf24", flexShrink: 0 }}><FlaskConical size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#fbbf24" }}>Create Logic Gates Simulator</span></button>
@@ -236,6 +237,9 @@ export default function App() {
             </motion.div>}
             {page === "linkages" && <motion.div key="linkages" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ padding: "32px 20px 48px", display: "flex", justifyContent: "center" }}>
                 <Suspense fallback={pageFallback}><LinkagesPage setPage={setPage} /></Suspense>
+            </motion.div>}
+            {page === "logic-gates-simulator" && <motion.div key="logic-gates-simulator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+                <Suspense fallback={pageFallback}><LogicGatesSimulator /></Suspense>
             </motion.div>}
         </AnimatePresence>
         </main>
