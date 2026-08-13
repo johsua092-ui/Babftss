@@ -333,3 +333,19 @@ export async function trackGuest() {
   }
 }
 
+// Heartbeat ringkas — dipanggil periodik (mis. tiap 60s) untuk mencatat
+// aktivitas kunjungan, dipakai admin panel untuk deteksi lonjakan traffic.
+let _hbStarted = false;
+export function startHeartbeat(intervalMs = 60000) {
+  if (_hbStarted || typeof window === "undefined") return;
+  _hbStarted = true;
+  const tick = async () => {
+    try {
+      const { logEvent } = await import("./analytics");
+      await logEvent("heartbeat", { route: window.location?.pathname || "/" });
+    } catch (_) {}
+  };
+  tick();
+  setInterval(tick, intervalMs);
+}
+

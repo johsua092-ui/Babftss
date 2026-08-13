@@ -7,6 +7,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
+import { logEvent } from "./analytics";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -25,24 +26,33 @@ googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export const loginWithGoogle = async () => {
   try {
-    return await signInWithPopup(auth, googleProvider);
+    const result = await signInWithPopup(auth, googleProvider);
+    logEvent("login_success", { method: "google", email: result.user?.email || null });
+    return result;
   } catch (err) {
+    logEvent("login_failed", { method: "google", error: err && err.code ? err.code : String(err && err.message) });
     throw translateError(err);
   }
 };
 
 export const loginWithEmail = async (email, password) => {
   try {
-    return await signInWithEmailAndPassword(auth, email, password);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    logEvent("login_success", { method: "email", email: email || null });
+    return result;
   } catch (err) {
+    logEvent("login_failed", { method: "email", email: email || null, error: err && err.code ? err.code : String(err && err.message) });
     throw translateError(err);
   }
 };
 
 export const registerWithEmail = async (email, password) => {
   try {
-    return await createUserWithEmailAndPassword(auth, email, password);
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    logEvent("login_success", { method: "register", email: email || null });
+    return result;
   } catch (err) {
+    logEvent("login_failed", { method: "register", email: email || null, error: err && err.code ? err.code : String(err && err.message) });
     throw translateError(err);
   }
 };
