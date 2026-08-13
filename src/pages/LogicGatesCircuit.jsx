@@ -37,8 +37,8 @@ const ALL_CARDS = [
     { num: '13', name: '2:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard14 },
     { num: '14', name: '4:1 Demultiplexer (Demux)', tier: 'NORMAL', el: CircuitCard15 },
     { num: '15', name: 'SR Latch', tier: 'NORMAL', el: CircuitCard_SRLatch },
-    { num: '16', name: 'Gated D Latch', tier: 'NORMAL', el: CircuitCard16 },
-    { num: '17', name: 'SR Flip-Flop', tier: 'NORMAL', el: CircuitCard17 },
+    { num: '16', name: 'SR Flip-Flop', tier: 'NORMAL', el: CircuitCard16 },
+    { num: '17', name: 'Gated D Latch', tier: 'NORMAL', el: CircuitCard17 },
 ];
 
 const TIERS = [

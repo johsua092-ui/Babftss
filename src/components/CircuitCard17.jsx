@@ -5,25 +5,22 @@ import HeartButton from './HeartButton';
 import { useClockMode } from '../hooks/useClockMode';
 import ClockToast from './ClockToast';
 
-// Card 17 — SR Flip-Flop
-// SR Latch (Card 15) yang "digerbang" CLK — mirip Gated D Latch (Card 16), TAPI
-// gating-nya langsung dari 2 input asli S, R (BUKAN diturunkan dari D seperti
-// Card 16). Tidak ada NOT gate sama sekali — sehingga TIDAK ada proteksi
-// anti-INVALID: kondisi S=1,R=1,CLK=1 TETAP menghasilkan INVALID (berbeda dari
-// Gated D Latch yang oleh desain mustahil INVALID).
-//
-// Mode (4-mode, reuse pola SR Latch — BUKAN pola 2-mode Gated D Latch):
-//   S_gated=1, R_gated=0 -> SET
-//   S_gated=0, R_gated=1 -> RESET
-//   S_gated=0, R_gated=0 -> HOLD  (mencakup CLK=0 kondisi apapun, DAN CLK=1 dgn S=0,R=0)
-//   S_gated=1, R_gated=1 -> INVALID (hanya mungkin saat CLK=1 DAN S=1 DAN R=1 bersamaan)
+// Card 17 — Gated D Latch
+// SR Latch yang "dijinakkan" lewat gating S=D AND CLK, R=D̄ AND CLK.
+// Mode (4-mode vocabulary — ATURAN MUTLAK Bagian 35 design.md, SAMA untuk semua
+// rangkaian sekuensial clocked: SET / RESET / HOLD / INVALID):
+//   D=1, CLK=1 -> SET    (S_gated=1, R_gated=0 -> Q=1)
+//   D=0, CLK=1 -> RESET  (S_gated=0, R_gated=1 -> Q=0)
+//   CLK=0       -> HOLD  (S_gated=R_gated=0 -> Q tetap)
+//   INVALID     -> TIDAK MUNGKIN di D Latch (S & R di-generate dari D tunggal,
+//                  mustahil aktif bersamaan — poin edukasi penting).
+// Level-sensitive, BUKAN edge-triggered (D Flip-Flop edge-triggered = task terpisah).
 //
 // Clock mode (Bagian 29 memory.md / design.md): CLK punya 2 mode — MANUAL &
 // AUTO. Dikelola oleh hook useClockMode. Switch UI dirender di dalam SVG
 // CircuitDiagram17, di bawah tombol CLK. Toast notifikasi dirender di sini.
 export default function CircuitCard17() {
-    const [inputS, setInputS] = useState(false);
-    const [inputR, setInputR] = useState(false);
+    const [inputD, setInputD] = useState(false);
     const [q, setQ] = useState(false);
 
     // onReset: reset semua state lokal card ke 0 (dipanggil saat card lain
@@ -31,8 +28,7 @@ export default function CircuitCard17() {
     // Spec Bagian 31 memory.md / design.md: "kembali steril dan clear seolah
     // user belum menyentuh card tersebut sama sekali".
     const handleReset = useCallback(() => {
-        setInputS(false);
-        setInputR(false);
+        setInputD(false);
         setQ(false);
     }, []);
 
@@ -48,44 +44,45 @@ export default function CircuitCard17() {
         cardRef,
     } = useClockMode({ cardId: 'card-17', onReset: handleReset });
 
-    // Turunan sinyal internal (S_gated, R_gated hasil gating)
-    const sGated = inputS && inputClk;
-    const rGated = inputR && inputClk;
-    // qBar komplement Q (s_gated && r_gated mustahil terjadi di Gated D Latch,
-    // TAPI BISA terjadi di sini saat S=1,R=1,CLK=1 → INVALID. Saat INVALID,
-    // Q=0 dan Q̄=0, BUKAN komplement. Pola SR Latch diterapkan persis.)
+    // Turunan sinyal internal (S_gated, R_gated hasil gating D AND CLK)
+    const sGated = inputD && inputClk;   // S = D AND CLK
+    const rGated = !inputD && inputClk;  // R = D̄ AND CLK
+    // qBar komplement Q (s_gated && r_gated mustahil terjadi di D Latch, tapi
+    // ikuti pola SR Latch utk konsistensi vocabulary)
     const qBar = (sGated && rGated) ? false : !q;
 
-    // Mode diturunkan dari S_gated, R_gated (BUKAN dari S/R/CLK mentah, BUKAN dari Q).
-    // Dengan begini CLK=0 otomatis jatuh ke HOLD tanpa logika tambahan,
-    // karena S_gated=R_gated=0 kapanpun CLK=0.
-    const mode = (sGated && rGated) ? 'INVALID'
-               : (sGated && !rGated) ? 'SET'
-               : (!sGated && rGated) ? 'RESET'
-               : 'HOLD';
+    // Mode diturunkan dari S_gated, R_gated (BUKAN dari D/CLK mentah, BUKAN dari Q).
+    // Konsisten dengan filosofi Bagian 21 memory.md (mode = derived dari INPUT combination).
+    // Vocabulary SET/RESET/HOLD/INVALID — ATURAN MUTLAK Bagian 35 design.md.
+    const mode = (sGated && rGated) ? 'INVALID'  // mustahil di D Latch, tapi handle defensive
+               : (sGated && !rGated) ? 'SET'      // D=1, CLK=1
+               : (!sGated && rGated) ? 'RESET'    // D=0, CLK=1
+               : 'HOLD';                           // CLK=0 (atau impossible case)
 
-    // useEffect: update Q berdasarkan S_gated/R_gated (reuse pola CircuitCard_SRLatch).
-    // HOLD: S_gated=R_gated=0 — do nothing, keep previous Q.
+    // Level-sensitive: CLK=1 → Q ikuti D real-time (SET jika D=1, RESET jika D=0);
+// CLK=0 → HOLD (jangan ubah Q). Reuse pola SR Latch effect untuk konsistensi.
     useEffect(() => {
-        if (sGated && rGated) { setQ(false); return; } // INVALID
+        if (sGated && rGated) { setQ(false); return; } // INVALID (mustahil di D Latch)
         if (sGated && !rGated) { setQ(true);  return; } // SET
         if (!sGated && rGated) { setQ(false); return; } // RESET
         // HOLD: do nothing
     }, [sGated, rGated]);
 
-    // Tema warna: amber (kontrol CLK) — samakan dengan Card 16 karena sama-sama
-    // rangkaian "gated" yang dikendalikan CLK. (Pola Card 16 yang pakai themeColor CLK.)
-    const themeColor = '#facc15';
+    const themeColor = '#facc15'; // amber — samakan dengan tema CLK sebagai "kontrol"
     const themeRgb = hexToRgbStr(themeColor);
-    const isActive = inputClk; // aktif kalau CLK=1 (rangkaian dalam keadaan TRANSPARENT/gated-open)
+    const isActive = inputClk; // aktif kalau CLK=1 (SET atau RESET — bukan HOLD)
 
     // 4-mode table (Format normal — BUKAN Format 2 ringkas; bukan mux/demux).
-    // Kondisi ditulis dalam S/R/CLK mentah supaya jelas untuk user (bukan S_gated/R_gated).
+    // Vocabulary WAJIB SET/RESET/HOLD/INVALID (ATURAN MUTLAK Bagian 35 design.md).
+    // Kondisi ditulis dalam D/CLK mentah supaya jelas untuk user.
+    // INVALID di D Latch TIDAK MUNGKIN terjadi (poin edukasi: D Latch "dijinakkan"
+    // dari SR Latch sehingga mustahil S=R=1) — tetap ditampilkan di tabel untuk
+    // tujuan edukasi, tapi cond ditandai "(tidak mungkin)".
     const modes = [
-        { name: 'SET',     cond: 'S=1, R=0, CLK=1', qVal: 1,    qBarVal: 0,    desc: 'Output "diset" ke 1' },
-        { name: 'RESET',   cond: 'S=0, R=1, CLK=1', qVal: 0,    qBarVal: 1,    desc: 'Output "direset" ke 0' },
-        { name: 'HOLD',    cond: 'S=0, R=0  (atau CLK=0)', qVal: null, qBarVal: null, desc: 'Q, Q\u0304 = TETAP (nilai sebelumnya)' },
-        { name: 'INVALID', cond: 'S=1, R=1, CLK=1', qVal: 0,    qBarVal: 0,    desc: 'Kondisi terlarang, keduanya 0' },
+        { name: 'SET',     cond: 'D=1, CLK=1', qVal: 1,    qBarVal: 0,    desc: 'Output "diset" ke 1' },
+        { name: 'RESET',   cond: 'D=0, CLK=1', qVal: 0,    qBarVal: 1,    desc: 'Output "direset" ke 0' },
+        { name: 'HOLD',    cond: 'CLK=0',      qVal: null, qBarVal: null, desc: 'Q, Q\u0304 = TETAP (nilai sebelumnya)' },
+        { name: 'INVALID', cond: '(tidak mungkin)', qVal: null, qBarVal: null, desc: 'TIDAK MUNGKIN di D Latch — S & R di-generate dari D tunggal, mustahil aktif bersamaan' },
     ];
 
     return <div ref={cardRef} style={{
@@ -100,16 +97,15 @@ export default function CircuitCard17() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 14, fontWeight: 700, color: '#ffffff', textShadow: '0 0 4px rgba(255,255,255,0.35), 0 0 8px rgba(255,255,255,0.15)' }}>17</span>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: isActive ? themeColor : '#334155', boxShadow: isActive ? `0 0 8px ${themeColor}` : 'none', transition: 'all 0.3s' }} />
-                <span style={{ fontFamily: 'Orbitron,sans-serif', fontWeight: 800, fontSize: 13, color: isActive ? themeColor : '#e2e8f0' }}>SR Flip-Flop</span>
+                <span style={{ fontFamily: 'Orbitron,sans-serif', fontWeight: 800, fontSize: 13, color: isActive ? themeColor : '#e2e8f0' }}>Gated D Latch</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center' }}><HeartButton /><span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, padding: '5px 12px', borderRadius: 6, backgroundColor: 'rgba(250,204,21,0.12)', border: '1px solid rgba(250,204,21,0.35)', color: '#facc15' }}>NORMAL</span></div>
         </div>
 
         {/* Diagram */}
         <CircuitDiagram17
-            s={inputS} r={inputR} clk={inputClk} q={q} qBar={qBar} mode={mode}
-            onToggleS={() => setInputS(v => !v)}
-            onToggleR={() => setInputR(v => !v)}
+            d={inputD} clk={inputClk} q={q} qBar={qBar} mode={mode}
+            onToggleD={() => setInputD(v => !v)}
             onToggleClk={toggleClk}
             clockMode={clockMode}
             autoActive={autoActive}
@@ -122,9 +118,7 @@ export default function CircuitCard17() {
 
         {/* Status bar */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '10px 0 8px', fontFamily: 'Orbitron,sans-serif', fontSize: 10, color: '#475569', flexWrap: 'wrap' }}>
-            <span style={{ color: inputS ? '#4ade80' : '#475569' }}>S={inputS ? 1 : 0}</span>
-            <span>,</span>
-            <span style={{ color: inputR ? '#22d3ee' : '#475569' }}>R={inputR ? 1 : 0}</span>
+            <span style={{ color: inputD ? '#4ade80' : '#475569' }}>D={inputD ? 1 : 0}</span>
             <span>,</span>
             <span style={{ color: inputClk ? '#facc15' : '#475569' }}>CLK={inputClk ? 1 : 0}</span>
             <span style={{ color: '#334155' }}>{'\u2192'}</span>
@@ -139,10 +133,10 @@ export default function CircuitCard17() {
 
         {/* Description */}
         <p style={{ margin: 0, fontSize: 12, color: '#64748b', fontFamily: 'Inter,sans-serif', lineHeight: 1.6 }}>
-            <b>SR Flip-Flop</b> adalah <b>SR Latch (Card 15) yang "digerbang" CLK</b> — dua gerbang AND sebagai pintu gating menyaring sinyal S dan R lewat sinyal <b style={{ color: '#facc15' }}>CLK</b>. Saat CLK=0, rangkaian <b>HOLD</b> (S_gated=R_gated=0 otomatis, Q tetap apa adanya walau S/R diubah-ubah). Saat CLK=1, rangkaian berperilaku persis seperti SR Latch murni. <b style={{ color: '#ef4444' }}>Bedanya dengan Gated D Latch (Card 16):</b> di sini <b>TIDAK ada gerbang NOT</b> yang mencegah S=R=1, sehingga kondisi <b>INVALID TETAP BISA TERJADI</b> kalau user sengaja toggle S=1, R=1, CLK=1 bersamaan — ini justru poin edukasi penting: gating CLK tidak otomatis "menjinakkan" SR Latch, hanya D Latch (yang merangkum S dan R dari 1 input D) yang benar-benar anti-INVALID.
+            <b>Gated D Latch</b> adalah <b>SR Latch yang "dijinakkan"</b> — dua gerbang AND sebagai pintu gating memastikan S dan R tidak pernah aktif bersamaan, sehingga kondisi <b style={{ color: '#ef4444' }}>INVALID mustahil terjadi</b> (poin edukasi penting: D Latch secara desain mencegah INVALID yang ada di SR Latch murni). Sinyal <b style={{ color: '#facc15' }}>CLK</b> berperan sebagai "saklar": saat CLK=1 dan D=1 rangkaian <b style={{ color: '#4ade80' }}>SET</b> (Q=1), saat CLK=1 dan D=0 rangkaian <b style={{ color: '#22d3ee' }}>RESET</b> (Q=0), saat CLK=0 rangkaian <b style={{ color: '#facc15' }}>HOLD</b> (Q mengunci ingatan terakhir, walau D diubah-ubah). Ini adalah fondasi menuju <b>D Flip-Flop edge-triggered</b> (yang akan datang, task terpisah) — bedanya, Gated D Latch ini bersifat <i>level-sensitive</i>, bukan <i>edge-triggered</i>.
         </p>
 
-        {/* 4-Mode Table (reuse struktur CircuitCard_SRLatch.jsx) */}
+        {/* 4-Mode Table */}
         <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 10 }}>
             <div style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 10, fontWeight: 700, color: '#475569', marginBottom: 6, letterSpacing: '0.5px' }}>TABEL MODE</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'Orbitron,sans-serif' }}>
@@ -155,9 +149,9 @@ export default function CircuitCard17() {
                 </tr></thead>
                 <tbody>{modes.map(function(row) {
                     var isHl = (row.name === mode);
+                    var modeCol = row.name === 'SET' ? '#4ade80' : row.name === 'RESET' ? '#22d3ee' : row.name === 'HOLD' ? '#facc15' : '#ef4444';
                     var qDisp = row.qVal === null ? (q ? 1 : 0) : row.qVal;
                     var qbDisp = row.qBarVal === null ? (qBar ? 1 : 0) : row.qBarVal;
-                    var modeCol = row.name === 'SET' ? '#4ade80' : row.name === 'RESET' ? '#22d3ee' : row.name === 'HOLD' ? '#facc15' : '#ef4444';
                     return <tr key={row.name} style={{ background: isHl ? `rgba(${themeRgb},0.18)` : 'transparent', transition: 'background 0.2s' }}>
                         <td style={{ padding: '4px 6px', color: isHl ? modeCol : '#94a3b8', fontWeight: isHl ? 700 : 600, fontSize: 9 }}>{row.name}</td>
                         <td style={{ padding: '4px 6px', textAlign: 'center', color: isHl ? '#e2e8f0' : '#64748b', fontSize: 9 }}>{row.cond}</td>
@@ -167,7 +161,7 @@ export default function CircuitCard17() {
                     </tr>;
                 })}</tbody>
             </table>
-            <div style={{ marginTop: 4, fontSize: 8, color: '#475569', fontFamily: 'Inter,sans-serif' }}>* Nilai tergantung state sebelumnya (ingatan)</div>
+            <div style={{ marginTop: 4, fontSize: 8, color: '#475569', fontFamily: 'Inter,sans-serif' }}>* Nilai tergantung state sebelumnya (ingatan). INVALID tidak mungkin terjadi di D Latch (ditampilkan untuk tujuan edukasi vocabulary).</div>
         </div>
     </div>;
 }

@@ -2,32 +2,42 @@ import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
 import ClockModeSwitch from './ClockModeSwitch';
 
-// Card 16 — Gated D Latch
-// Level-sensitive (BUKAN edge-triggered). CLK=1 -> SET (D=1) atau RESET (D=0);
-// CLK=0 -> HOLD. INVALID mustahil terjadi (D Latch "dijinakkan" dari SR Latch).
-// Vocabulary mode WAJIB SET/RESET/HOLD/INVALID (ATURAN MUTLAK Bagian 35 design.md).
-// Struktur: D -> fan-out (ke AND1, ke NOT) | CLK -> fan-out (ke AND1, AND2)
-//           NOT -> D̄ -> AND2 | AND1=S=D AND CLK | AND2=R=D̄ AND CLK
-//           S, R masuk 2 NOR gates cross-coupled (SR Latch inline, BUKAN ICBlockRef):
-//             NOR1 (top): input top = Q̄_feedback, input bottom = R -> output = Q
-//             NOR2 (bot): input top = S, input bottom = Q_feedback -> output = Q̄
-//           (NOR komutatif: A NOR B = B NOR A. Swap input posisi = logika sama,
-//            tapi routing wire lebih bersih — S ke NOR2 top, R ke NOR1 bottom
-//            menghindari wire overlap horizontal di area y≈245-248.)
-//           Q, Q̄ keluar ke output nodes.
+// Card 16 — SR Flip-Flop
+// SR Latch (Card 15) yang digerbang CLK — mirip Gated D Latch (Card 17), TAPI
+// gating-nya langsung dari 2 input asli S, R (BUKAN diturunkan dari D seperti
+// Card 17). Tidak ada NOT gate sama sekali di sini.
 //
-// Catatan desain (Bagian 25 memory.md): sesuai permintaan user, kotak ICBlockRef
-// diganti dengan 2 NOR gates yang digambar langsung — karena "isinya sangat simpel
-// hanya 2 gerbang logika saja". Konsisten dengan CircuitDiagram_SRLatch (Card 15).
-export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onToggleClk, clockMode, autoActive, onClockModeChange }) {
-    // ── Color palette (per design.md 3.5.2) ──
-    // D = hijau (Prinsip 1) — sinyal data utama, sepanjang jalur.
-    const dCol = '#4ade80', dRgb = hexToRgbStr(dCol);
-    // CLK = amber/kuning — sinyal kontrol (Prinsip 4: warna unik, bukan hijau/merah/pink).
+// Logika:
+//   S_gated = S AND CLK (AND1)
+//   R_gated = R AND CLK (AND2)
+//   S_gated, R_gated masuk 2 NOR gates cross-coupled (SR Latch inline, BUKAN
+//   ICBlockRef — sama seperti Card 17 versi baru):
+//     NOR1 (top): input top = Q̄_feedback, input bottom = R_gated -> output = Q
+//     NOR2 (bot): input top = S_gated, input bottom = Q_feedback -> output = Q̄
+//     (NOR komutatif — swap input posisi untuk routing wire lebih bersih,
+//      menghindari wire overlap horizontal di area y≈245-255.)
+//   Q, Q̄ keluar ke output nodes.
+//
+// Mode (4-mode, BUKAN 2-mode Gated D Latch) — diturunkan dari S_gated, R_gated:
+//   S_gated=1, R_gated=0 -> SET
+//   S_gated=0, R_gated=1 -> RESET
+//   S_gated=0, R_gated=0 -> HOLD  (mencakup CLK=0 kondisi apapun, DAN CLK=1 dgn S=0,R=0)
+//   S_gated=1, R_gated=1 -> INVALID (hanya mungkin saat CLK=1 DAN S=1 DAN R=1 bersamaan)
+//
+// Catatan desain (Bagian 25 memory.md): kotak ICBlockRef diganti dengan 2 NOR
+// gates yang digambar langsung — permintaan user: "isinya sangat simpel hanya 2
+// gerbang logika saja". Konsisten dengan CircuitDiagram_SRLatch (Card 15).
+export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, onToggleR, onToggleClk, clockMode, autoActive, onClockModeChange }) {
+    // ── Color palette (per design.md 3.5.2 + konvensi sekuensial Card 15/16) ──
+    // S = hijau (Prinsip 1) — sinyal data utama (input pertama), sepanjang jalur.
+    // Konsisten dengan S di CircuitDiagram_SRLatch.jsx.
+    const sCol = '#4ade80', sRgb = hexToRgbStr(sCol);
+    // R = cyan — sinyal kontrol (Prinsip 4: warna unik, bukan hijau).
+    // Konsisten dengan R di CircuitDiagram_SRLatch.jsx.
+    const rCol = '#22d3ee', rRgb = hexToRgbStr(rCol);
+    // CLK = amber/kuning — sinyal kontrol tambahan (Prinsip 4: warna unik,
+    // bukan hijau/cyan). Konsisten dengan CLK di Card 17.
     const clkCol = '#facc15', clkRgb = hexToRgbStr(clkCol);
-    // NOT output (D̄) = merah (Prinsip 2) di badan NOT + trunk keluar;
-    //   berubah hijau (Prinsip 3) saat masuk AND2 input.
-    const notCol = '#f87171', notRgb = hexToRgbStr(notCol);
     // NOR gate body = pink (design.md 1.5 — NOR pink #f472b6).
     // Glow/fill NOR1 mengikuti Q; NOR2 mengikuti Q̄. (Pola CircuitDiagram_SRLatch.)
     const norCol = '#f472b6', norRgb = hexToRgbStr(norCol);
@@ -36,12 +46,14 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
     //   Q̄ feedback = ungu   (#a78bfa) — distinct dari output wires.
     const qFbCol = '#fb923c', qFbRgb = hexToRgbStr(qFbCol);
     const qBarFbCol = '#a78bfa', qBarFbRgb = hexToRgbStr(qBarFbCol);
-    // Output S, R dari AND1/AND2 = hijau (Prinsip 6: output gerbang = hijau).
+    // Output S_gated, R_gated dari AND1/AND2 = hijau (Prinsip 6: output gerbang = hijau).
+    // Walau sumber R cyan, output AND2 tetap hijau — sama seperti Card 17 AND2
+    // yang outputnya hijau walau sumbernya D̄ merah.
     // Output Q = hijau (sesuai Card 15). Q̄ = pink (sesuai Card 15).
     const qOutCol = '#4ade80', qOutRgb = hexToRgbStr(qOutCol);
     const qBarOutCol = '#f472b6', qBarOutRgb = hexToRgbStr(qBarOutCol);
 
-    // ── Helper functions (pola CircuitDiagram_SRLatch) ──
+    // ── Helper functions (pola CircuitDiagram_SRLatch / Card 17) ──
     const wc = (val, col, rgb) => val ? col : 'rgba(' + rgb + ',0.25)';
     const mkGlow = (val, rgb) => val
         ? 'drop-shadow(0 0 4px rgba(' + rgb + ',0.9)) drop-shadow(0 0 10px rgba(' + rgb + ',0.5))'
@@ -53,35 +65,37 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 15;
 
-    const svgW = 580, svgH = 360;
+    // svgH diperbesar dari 320 → 340 untuk memberi ruang bagi ClockModeSwitch
+    // di bawah tombol CLK (y=263..285).
+    const svgW = 580, svgH = 340;
 
-    // Input nodes
-    const dInX = 1, dInY = 130;       // D — atas
-    const clkInX = 1, clkInY = 230;   // CLK — bawah
+    // Input nodes — S atas, R tengah, CLK BAWAH (reorder dari versi lama S/CLK/R
+    // ke S/R/CLK supaya ClockModeSwitch bisa dirender tepat di bawah tombol CLK,
+    // sesuai aturan design.md Bagian 29: "switch WAJIB di bawah tombol clock").
+    const sInX = 1,   sInY = 130;    // S — atas (hijau)
+    const rInX = 1,   rInY = 180;    // R — tengah (cyan)
+    const clkInX = 1, clkInY = 230;  // CLK — bawah (amber)
 
-    // Fan-out junctions — X lanes diberi jarak 25px (dari 10px) supaya D vertical
-    // dan CLK vertical terlihat jelas terpisah (sebelumnya hanya 10px → terlihat
-    // seperti kabel menumpuk antara y=115 dan y=175).
-    const dJunctionX = 75, clkJunctionX = 100;
+    // Fan-out junctions — X lanes diberi jarak 30px (dari 20/10px) supaya
+    // vertical wires S/R/CLK tidak terlihat menumpuk. Pola yang sama dengan
+    // fix v3 Card 17 (D/CLK junction spacing 25px).
+    const sJunctionX = 75;
+    const rJunctionX = 105;
+    const clkJunctionX = 135;
 
-    // NOT gate (di tengah, menerima D turun dari junction)
-    const notInX = 155, notMy = 175;
-    const notTipX = 195, notBubbleX = 199, notExitX = 203;
-    const notTy = notMy - 15, notBy = notMy + 15;
-
-    // AND gates (mirip Card 15 NOR layout: AND1 atas, AND2 bawah)
+    // AND gates (mirror Card 17: AND1 atas, AND2 bawah)
     const andSx = 210, andW = 45; // 30 rect + 15 radius
     const and1My = 105, and1Ty = and1My - 15, and1By = and1My + 15;
     const and1ExitX = andSx + andW; // 255
-    const and1TopY = and1My - 10, and1BotY = and1My + 10;
+    const and1TopY = and1My - 10, and1BotY = and1My + 10; // 95, 115
 
-    const and2My = 245, and2Ty = and2My - 15, and2By = and2My + 15;
+    const and2My = 255, and2Ty = and2My - 15, and2By = and2My + 15;
     const and2ExitX = andSx + andW;
-    const and2TopY = and2My - 10, and2BotY = and2My + 10;
+    const and2TopY = and2My - 10, and2BotY = and2My + 10; // 245, 265
 
     // ── NOR gates (cross-coupled SR Latch inline — ganti ICBlockRef) ──
-    // NOR1 (top): output = Q. Input top = R, input bottom = Q̄_feedback.
-    // NOR2 (bot): output = Q̄. Input top = Q_feedback, input bottom = S.
+    // NOR1 (top): output = Q. Input top = R_gated, input bottom = Q̄_feedback.
+    // NOR2 (bot): output = Q̄. Input top = Q_feedback, input bottom = S_gated.
     // Dimensi NOR sama persis dengan CircuitDiagram_SRLatch: width 55, height 36 (my±18).
     const norSX = 350;
     const nor1My = 130, nor1Ty = nor1My - 18, nor1By = nor1My + 18;
@@ -89,17 +103,17 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
     const nor1EX = norSX + 55; // 405
     const nor2EX = norSX + 55; // 405
 
-    // S/R routing lanes — S dari AND1 (top) masuk NOR2 TOP input (y=212).
-    //                   R dari AND2 (bot) masuk NOR1 BOTTOM input (y=148).
+    // S_gated/R_gated routing lanes — S_gated dari AND1 (top) masuk NOR2 TOP input (y=212).
+    //                               R_gated dari AND2 (bot) masuk NOR1 BOTTOM input (y=148).
     // X lanes berbeda supaya dua wire vertikal tidak overlap. Hanya 1 crossing
     //   bersih di koridor antara NOR1 (y=148) dan NOR2 (y=212) — acceptable.
-    const sLaneX = 280;  // S wire vertical lane
-    const rLaneX = 305;  // R wire vertical lane
+    const sLaneX = 280;  // S_gated wire vertical lane
+    const rLaneX = 305;  // R_gated wire vertical lane
 
     // Feedback wire lanes (pola CircuitDiagram_SRLatch — wrap-around outside NORs):
-    //   Q fb:  dari junction di Q-output wire -> turun -> kiri -> naik -> masuk NOR2 top input.
-    //   Q̄ fb: dari junction di Q̄-output wire -> naik -> kiri -> turun -> masuk NOR1 bot input.
-    // fbLeftX dipilih > rLaneX (310) supaya tidak overlap dengan R wire vertical.
+    //   Q fb:  dari junction di Q-output wire -> turun -> kiri -> naik -> masuk NOR2 BOTTOM input (swap).
+    //   Q̄ fb: dari junction di Q̄-output wire -> naik -> kiri -> turun -> masuk NOR1 TOP input (swap).
+    // fbLeftX dipilih > rLaneX (310) supaya tidak overlap dengan R_gated wire vertical.
     const fbLeftX = 325;
     const fbTopY = 90;   // di atas NOR1 (yang mulai dari y=112)
     const fbBotY = 275;  // di bawah NOR2 (yang berakhir di y=248)
@@ -108,20 +122,17 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
     const fbRightQ = 425;    // Q fb junction
     const fbRightQbar = 440; // Q̄ fb junction
 
-    // Q/Q̄ output nodes — posisi sama seperti versi ICBlockRef (konsisten dengan Card 15).
+    // Q/Q̄ output nodes — posisi sama seperti versi ICBlockRef (konsisten dengan Card 15/16).
     const qOutX = 550, qOutY = 130;
     const qBarOutX = 550, qBarOutY = 230;
 
     // Derived sinyal internal (untuk glow gate)
-    const s = d && clk;        // S = D AND CLK
-    const r = !d && clk;       // R = (NOT D) AND CLK = D̄ AND CLK
-    const dBar = !d;           // D̄ (output NOT)
+    const sGated = s && clk;   // S_gated = S AND CLK
+    const rGated = r && clk;   // R_gated = R AND CLK
 
-    // AND gate glow/fill/stroke (mengikuti nilai output S/R)
-    const and1Glow = mkGlow(s, dRgb), and1Fill = mkFill(s, dRgb), and1Stroke = mkStroke(s, dCol);
-    const and2Glow = mkGlow(r, dRgb), and2Fill = mkFill(r, dRgb), and2Stroke = mkStroke(r, dCol);
-    // NOT gate glow/fill/stroke (mengikuti nilai D̄ output NOT)
-    const notGlow = mkGlow(dBar, notRgb), notFill = mkFill(dBar, notRgb), notStroke = mkStroke(dBar, notCol);
+    // AND gate glow/fill/stroke (mengikuti nilai output S_gated/R_gated)
+    const and1Glow = mkGlow(sGated, sRgb), and1Fill = mkFill(sGated, sRgb), and1Stroke = mkStroke(sGated, sCol);
+    const and2Glow = mkGlow(rGated, sRgb), and2Fill = mkFill(rGated, sRgb), and2Stroke = mkStroke(rGated, sCol);
     // NOR gate glow/fill/stroke (pola CircuitDiagram_SRLatch — pink, ikuti output masing-masing)
     const nor1Glow = mkGlow(q, norRgb),    nor1Fill = mkFill(q, norRgb),    nor1Stroke = mkStroke(q, norCol);
     const nor2Glow = mkGlow(qBar, norRgb), nor2Fill = mkFill(qBar, norRgb), nor2Stroke = mkStroke(qBar, norCol);
@@ -168,13 +179,6 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
            ' L ' + sx + ',' + by + ' Z'}
         fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: 'all 0.3s' }} />;
 
-    // NOT gate (segitiga + bubble)
-    const NotGate = ({ sx, ty, by, my, tipX, bubbleX, glow, fill, stroke }) => <Fragment>
-        <path d={'M ' + sx + ',' + ty + ' L ' + tipX + ',' + my + ' L ' + sx + ',' + by + ' Z'}
-            fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: 'all 0.3s' }} />
-        <circle cx={bubbleX} cy={my} r="4" fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: 'all 0.3s' }} />
-    </Fragment>;
-
     // NOR gate (OR-shape curved + bubble di output) — pola CircuitDiagram_SRLatch
     const NorGate = ({ sx, ty, by, my, ex, glow, fill, stroke }) => <Fragment>
         <path d={'M ' + sx + ',' + ty + ' C ' + (sx + 14) + ',' + ty + ' ' + (ex - 18) + ',' + (my - 6) + ' ' + (ex - 6) + ',' + my + ' C ' + (ex - 18) + ',' + (my + 6) + ' ' + (sx + 14) + ',' + by + ' ' + sx + ',' + by + ' C ' + (sx + 10) + ',' + (my + 5) + ' ' + (sx + 10) + ',' + (my - 5) + ' ' + sx + ',' + ty + ' Z'}
@@ -182,46 +186,44 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
         <circle cx={ex} cy={my} r="6" fill={fill} stroke={stroke} strokeWidth="2" style={{ filter: glow, transition: 'all 0.3s' }} />
     </Fragment>;
 
-    // ── Mode badge ──
-    // Vocabulary WAJIB SET/RESET/HOLD/INVALID (ATURAN MUTLAK Bagian 35 design.md).
+    // ── Mode badge (4-mode, reuse pola CircuitCard_SRLatch) ──
     const modeColors = {
-        SET:     { bg: 'rgba(74,222,128,0.18)',  border: 'rgba(74,222,128,0.5)',  text: '#4ade80' }, // hijau
-        RESET:   { bg: 'rgba(34,211,238,0.18)',  border: 'rgba(34,211,238,0.5)',  text: '#22d3ee' }, // cyan
-        HOLD:    { bg: 'rgba(250,204,21,0.18)',  border: 'rgba(250,204,21,0.5)',  text: '#facc15' }, // amber
-        INVALID: { bg: 'rgba(239,68,68,0.18)',   border: 'rgba(239,68,68,0.5)',   text: '#ef4444' }, // merah
+        SET:     { bg: 'rgba(74,222,128,0.18)',  border: 'rgba(74,222,128,0.5)',  text: '#4ade80' },
+        RESET:   { bg: 'rgba(34,211,238,0.18)',  border: 'rgba(34,211,238,0.5)',  text: '#22d3ee' },
+        HOLD:    { bg: 'rgba(250,204,21,0.18)',  border: 'rgba(250,204,21,0.5)',  text: '#facc15' },
+        INVALID: { bg: 'rgba(239,68,68,0.18)',   border: 'rgba(239,68,68,0.5)',   text: '#ef4444' },
     };
     const mc = modeColors[mode] || modeColors.HOLD;
 
     // ── Wire paths ──
-    // D main trunk: input → junction
-    const wireDtrunk = 'M ' + (dInX + inputNodeW) + ',' + dInY + ' H ' + dJunctionX;
-    // D branch up: ke AND1 top input (210, 95)
-    const wireD_up = 'M ' + dJunctionX + ',' + dInY + ' V ' + and1TopY + ' H ' + andSx;
-    // D branch down: ke NOT input (155, 175)
-    const wireD_dn = 'M ' + dJunctionX + ',' + dInY + ' V ' + notMy + ' H ' + notInX;
+    // S main trunk: input → junction
+    const wireStrunk = 'M ' + (sInX + inputNodeW) + ',' + sInY + ' H ' + sJunctionX;
+    // S branch: junction → AND1 top input (210, 95). S junction y=130 naik ke y=95 lalu H ke 210.
+    const wireS_branch = 'M ' + sJunctionX + ',' + sInY + ' V ' + and1TopY + ' H ' + andSx;
 
-    // CLK main trunk
+    // R main trunk: input → junction
+    const wireRtrunk = 'M ' + (rInX + inputNodeW) + ',' + rInY + ' H ' + rJunctionX;
+    // R branch: junction → AND2 top input (210, 245). R junction y=230 turun ke y=245 lalu H ke 210.
+    const wireR_branch = 'M ' + rJunctionX + ',' + rInY + ' V ' + and2TopY + ' H ' + andSx;
+
+    // CLK main trunk: input → junction
     const wireClkTrunk = 'M ' + (clkInX + inputNodeW) + ',' + clkInY + ' H ' + clkJunctionX;
-    // CLK branch up: ke AND1 bottom input (210, 115)
+    // CLK branch up: junction → AND1 bot input (210, 115)
     const wireClk_up = 'M ' + clkJunctionX + ',' + clkInY + ' V ' + and1BotY + ' H ' + andSx;
-    // CLK branch down: ke AND2 bottom input (210, 255)
+    // CLK branch down: junction → AND2 bot input (210, 265)
     const wireClk_dn = 'M ' + clkJunctionX + ',' + clkInY + ' V ' + and2BotY + ' H ' + andSx;
 
-    // D̄ wire: red segment (NOT exit → trunk) + green segment (trunk → AND2 top input)
-    const wireDbar_red = 'M ' + notExitX + ',' + notMy + ' V 215'; // red trunk pendek
-    const wireDbar_grn = 'M ' + notExitX + ',215 V ' + and2TopY + ' H ' + andSx; // green branch masuk AND2
-
-    // S wire: AND1 exit (top) → turun ke NOR2 TOP input (swap dari versi lama).
-    // S diproduksi di AND1 (my=105), masuk NOR2 (top) di y=212 (nor2Ty).
+    // S_gated wire: AND1 exit (top) → turun ke NOR2 TOP input (swap dari versi lama).
+    // S_gated diproduksi di AND1 (my=105), masuk NOR2 (top) di y=212 (nor2Ty).
     // Routing: H ke sLaneX, V turun ke nor2Ty, H ke norSX.
-    // (Swap ini menghindari wire overlap horizontal di y≈245-248.)
-    const wireS = 'M ' + (and1ExitX + 6) + ',' + and1My + ' H ' + sLaneX + ' V ' + nor2Ty + ' H ' + norSX;
+    // (Swap ini menghindari wire overlap horizontal di y≈245-255.)
+    const wireSg = 'M ' + (and1ExitX + 6) + ',' + and1My + ' H ' + sLaneX + ' V ' + nor2Ty + ' H ' + norSX;
 
-    // R wire: AND2 exit (bottom) → naik ke NOR1 BOTTOM input (swap dari versi lama).
-    // R diproduksi di AND2 (my=245), masuk NOR1 (bottom) di y=148 (nor1By).
+    // R_gated wire: AND2 exit (bottom) → naik ke NOR1 BOTTOM input (swap dari versi lama).
+    // R_gated diproduksi di AND2 (my=255), masuk NOR1 (bottom) di y=148 (nor1By).
     // Routing: H ke rLaneX, V naik ke nor1By, H ke norSX.
-    // (Swap ini menghindari wire overlap horizontal di y≈245-248.)
-    const wireR = 'M ' + (and2ExitX + 6) + ',' + and2My + ' H ' + rLaneX + ' V ' + nor1By + ' H ' + norSX;
+    // (Swap ini menghindari wire overlap horizontal di y≈245-255.)
+    const wireRg = 'M ' + (and2ExitX + 6) + ',' + and2My + ' H ' + rLaneX + ' V ' + nor1By + ' H ' + norSX;
 
     // Q wire: NOR1 output → Q output node (straight horizontal, same Y).
     const wireQ = 'M ' + (nor1EX + 6) + ',' + nor1My + ' H ' + (qOutX - outNodeR);
@@ -242,9 +244,10 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
         <rect x={svgW / 2 - 55} y={4} width={110} height={22} rx={6} fill={mc.bg} stroke={mc.border} strokeWidth="1.5" />
         <text x={svgW / 2} y={19} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="700" fill={mc.text}>{'MODE: ' + mode}</text>
 
-        {/* Input nodes */}
-        <InputNode ix={dInX} iy={dInY} val={d} label="D (DATA)" onToggle={onToggleD} color={dCol} rgb={dRgb} />
-        <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK" onToggle={onToggleClk} color={clkCol} rgb={clkRgb} />
+        {/* Input nodes — urutan S, R, CLK (CLK di bawah, sesuai reorder v4) */}
+        <InputNode ix={sInX}   iy={sInY}   val={s}   label="S (SET)"    onToggle={onToggleS}   color={sCol}   rgb={sRgb} />
+        <InputNode ix={rInX}   iy={rInY}   val={r}   label="R (RESET)"  onToggle={onToggleR}   color={rCol}   rgb={rRgb} />
+        <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK"        onToggle={onToggleClk} color={clkCol} rgb={clkRgb} />
 
         {/* Clock Mode Switch (MANUAL/AUTO) — dirender DI BAWAH tombol CLK.
             Pos: x=1 (align dgn CLK), y=285 (clkInY + 55 — gap wajar ~25px dari
@@ -259,69 +262,52 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
             onChange={onClockModeChange || (() => {})}
         />
 
-        {/* D fan-out wires (green) */}
-        <W d={wireDtrunk} val={d} col={dCol} rgb={dRgb} />
-        <W d={wireD_up}  val={d} col={dCol} rgb={dRgb} />
-        <W d={wireD_dn}  val={d} col={dCol} rgb={dRgb} />
-        {/* D junction dot */}
-        <circle cx={dJunctionX} cy={dInY} r={3.5} fill={wc(d, dCol, dRgb)} style={{ transition: 'fill 0.3s' }} />
+        {/* S fan-out wires (green) — hanya 1 branch ke AND1 top (no fan-out, tapi junction dot tetap untuk konsistensi visual) */}
+        <W d={wireStrunk}    val={s} col={sCol} rgb={sRgb} />
+        <W d={wireS_branch}  val={s} col={sCol} rgb={sRgb} />
 
-        {/* CLK fan-out wires (amber) */}
+        {/* R fan-out wires (cyan) */}
+        <W d={wireRtrunk}    val={r} col={rCol} rgb={rRgb} />
+        <W d={wireR_branch}  val={r} col={rCol} rgb={rRgb} />
+
+        {/* CLK fan-out wires (amber) — 2 branch ke AND1 bot & AND2 bot */}
         <W d={wireClkTrunk} val={clk} col={clkCol} rgb={clkRgb} />
         <W d={wireClk_up}   val={clk} col={clkCol} rgb={clkRgb} />
         <W d={wireClk_dn}   val={clk} col={clkCol} rgb={clkRgb} />
-        {/* CLK junction dot */}
+        {/* CLK junction dot (karena CLK bercabang 2) */}
         <circle cx={clkJunctionX} cy={clkInY} r={3.5} fill={wc(clk, clkCol, clkRgb)} style={{ transition: 'fill 0.3s' }} />
 
-        {/* NOT gate */}
-        <NotGate sx={notInX} ty={notTy} by={notBy} my={notMy} tipX={notTipX} bubbleX={notBubbleX}
-            glow={notGlow} fill={notFill} stroke={notStroke} />
-        <text x={notInX + 20} y={notTy - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
-            fill={dBar ? notCol : '#475569'} style={{ transition: 'fill 0.3s' }}>NOT</text>
-
-        {/* D̄ label (overline manual: D + <line> di atas) — di sebelah trunk merah NOT */}
-        <g>
-            <text x={notExitX + 12} y={200} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="700"
-                fill={dBar ? notCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>D</text>
-            <line x1={notExitX + 12} y1={189} x2={notExitX + 20} y2={189}
-                stroke={dBar ? notCol : '#94a3b8'} strokeWidth="1.5" strokeLinecap="round" style={{ transition: 'stroke 0.3s' }} />
-        </g>
-
-        {/* D̄ wire (red segment dari NOT, hijau segment ke AND2) */}
-        <W d={wireDbar_red} val={dBar} col={notCol} rgb={notRgb} />
-        <W d={wireDbar_grn} val={dBar} col={dCol}   rgb={dRgb} />
-
-        {/* AND1 gate (S = D AND CLK) */}
+        {/* AND1 gate (S_gated = S AND CLK) */}
         <AndGate sx={andSx} ty={and1Ty} by={and1By} my={and1My} ex={and1ExitX}
             glow={and1Glow} fill={and1Fill} stroke={and1Stroke} />
         <text x={andSx + 15} y={and1Ty - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
-            fill={s ? dCol : '#475569'} style={{ transition: 'fill 0.3s' }}>AND1</text>
-        {/* S label — dipindah ke BAWAH output AND1 (y = and1By + 13) supaya tidak
-            menempel di S horizontal wire di y = and1My (=105). */}
+            fill={sGated ? sCol : '#475569'} style={{ transition: 'fill 0.3s' }}>AND1</text>
+        {/* S_gated label — dipindah ke BAWAH output AND1 (y = and1By + 13) supaya tidak
+            menempel di S_gated horizontal wire di y = and1My (=105). */}
         <text x={and1ExitX + 8} y={and1By + 13} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600"
-            fill={s ? dCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>S</text>
+            fill={sGated ? sCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>S</text>
 
-        {/* AND2 gate (R = D̄ AND CLK) */}
+        {/* AND2 gate (R_gated = R AND CLK) */}
         <AndGate sx={andSx} ty={and2Ty} by={and2By} my={and2My} ex={and2ExitX}
             glow={and2Glow} fill={and2Fill} stroke={and2Stroke} />
         <text x={andSx + 15} y={and2Ty - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
-            fill={r ? dCol : '#475569'} style={{ transition: 'fill 0.3s' }}>AND2</text>
-        {/* R label — dipindah ke ATAS output AND2 (y = and2Ty - 5) supaya tidak
-            menempel di R horizontal wire di y = and2My (=245). */}
+            fill={rGated ? sCol : '#475569'} style={{ transition: 'fill 0.3s' }}>AND2</text>
+        {/* R_gated label — dipindah ke ATAS output AND2 (y = and2Ty - 5) supaya tidak
+            menempel di R_gated horizontal wire di y = and2My (=255). */}
         <text x={and2ExitX + 8} y={and2Ty - 5} textAnchor="start" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="600"
-            fill={r ? dCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>R</text>
+            fill={rGated ? sCol : '#94a3b8'} style={{ transition: 'fill 0.3s' }}>R</text>
 
-        {/* S, R wires (green, masuk NOR gates) */}
-        <W d={wireS} val={s} col={dCol} rgb={dRgb} />
-        <W d={wireR} val={r} col={dCol} rgb={dRgb} />
+        {/* S_gated, R_gated wires (green, masuk NOR gates) */}
+        <W d={wireSg} val={sGated} col={sCol} rgb={sRgb} />
+        <W d={wireRg} val={rGated} col={sCol} rgb={sRgb} />
 
-        {/* NOR1 gate (top) — output Q. Input: Q̄_feedback (top), R (bottom). */}
+        {/* NOR1 gate (top) — output Q. Input: Q̄_feedback (top), R_gated (bottom). */}
         <NorGate sx={norSX} ty={nor1Ty} by={nor1By} my={nor1My} ex={nor1EX}
             glow={nor1Glow} fill={nor1Fill} stroke={nor1Stroke} />
         <text x={norSX + 27} y={nor1Ty - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"
             fill={q ? norCol : '#475569'} style={{ transition: 'fill 0.3s' }}>NOR1</text>
 
-        {/* NOR2 gate (bottom) — output Q̄. Input: S (top), Q_feedback (bottom). */}
+        {/* NOR2 gate (bottom) — output Q̄. Input: S_gated (top), Q_feedback (bottom). */}
         <NorGate sx={norSX} ty={nor2Ty} by={nor2By} my={nor2My} ex={nor2EX}
             glow={nor2Glow} fill={nor2Fill} stroke={nor2Stroke} />
         <text x={norSX + 27} y={nor2Ty - 5} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fontWeight="700"

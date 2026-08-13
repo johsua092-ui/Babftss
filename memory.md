@@ -2371,3 +2371,79 @@ Poin edukasi: INVALID tidak mungkin terjadi di D Latch karena S & R di-generate 
 - Card 17 tidak diubah (sudah benar dari awal).
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## 36. SWAP CARD 16 ↔ 17 — SR Flip-Flop jadi Card 16, Gated D Latch jadi Card 17
+
+**Tanggal:** 2026-08-13
+**Sumber:** Permintaan user lewat chat.
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "bisakah kamu switch, gated d latch jadi card 17 lalu sr flip flop jadi card 16"
+
+### 36.1 Perubahan
+
+User minta swap nomor card:
+- **SR Flip-Flop** → Card 16 (sebelumnya Card 17)
+- **Gated D Latch** → Card 17 (sebelumnya Card 16)
+
+### 36.2 Strategi implementasi
+
+**Full file content swap** (bukan cuma array swap) supaya file names match card numbers:
+- `CircuitCard16.jsx` ← old `CircuitCard17.jsx` content (SR Flip-Flop), renumbered 17→16
+- `CircuitCard17.jsx` ← old `CircuitCard16.jsx` content (Gated D Latch), renumbered 16→17
+- `CircuitDiagram16.jsx` ← old `CircuitDiagram17.jsx` content (SR Flip-Flop diagram), renumbered 17→16
+- `CircuitDiagram17.jsx` ← old `CircuitDiagram16.jsx` content (Gated D Latch diagram), renumbered 16→17
+
+### 36.3 String replacements yang dilakukan
+
+**SR Flip-Flop content → CircuitCard16.jsx / CircuitDiagram16.jsx (17→16):**
+- `import CircuitDiagram17` → `import CircuitDiagram16`
+- `<CircuitDiagram17` → `<CircuitDiagram16`
+- `function CircuitCard17(` / `function CircuitDiagram17(` → `...16(`
+- `// Card 17 — SR Flip-Flop` → `// Card 16 — SR Flip-Flop`
+- `cardId: 'card-17'` → `cardId: 'card-16'`
+- Header badge `>17<` → `>16<`
+- Cross-references `Gated D Latch (Card 16)` → `Gated D Latch (Card 17)` (karena Gated D Latch sekarang Card 17)
+- `mirip Gated D Latch (Card 16)` → `mirip Gated D Latch (Card 17)`
+- `sama seperti Card 16` → `sama seperti Card 17`
+- `Konsisten dengan CLK di Card 16` → `Konsisten dengan CLK di Card 17`
+- `Pola Card 16` → `Pola Card 17`
+- `fix v3 Card 16` → `fix v3 Card 17`
+- `mirror Card 16` → `mirror Card 17`
+
+**Gated D Latch content → CircuitCard17.jsx / CircuitDiagram17.jsx (16→17):**
+- `import CircuitDiagram16` → `import CircuitDiagram17`
+- `<CircuitDiagram16` → `<CircuitDiagram17`
+- `function CircuitCard16(` / `function CircuitDiagram16(` → `...17(`
+- `// Card 16 — Gated D Latch` → `// Card 17 — Gated D Latch`
+- `cardId: 'card-16'` → `cardId: 'card-17'`
+- Header badge `>16<` → `>17<`
+
+### 36.4 LogicGatesCircuit.jsx ALL_CARDS update
+
+```
+{ num: '16', name: 'SR Flip-Flop',  tier: 'NORMAL', el: CircuitCard16 },
+{ num: '17', name: 'Gated D Latch', tier: 'NORMAL', el: CircuitCard17 },
+```
+
+(`el` fields tetap CircuitCard16/CircuitCard17 — komponen yang sekarang berisi content yang sesuai.)
+
+### 36.5 Verifikasi
+
+- `npm run build`: ✓ sukses 8.46s, 0 error.
+- CircuitCard16.jsx header: `// Card 16 — SR Flip-Flop` ✓
+- CircuitCard17.jsx header: `// Card 17 — Gated D Latch` ✓
+- Badge: Card16=`>16<`, Card17=`>17<` ✓
+- cardId: Card16=`'card-16'`, Card17=`'card-17'` ✓
+- Cross-reference: SR Flip-Flop description bilang "Bedanya dengan Gated D Latch (Card 17)" ✓
+- Diagram imports match: CircuitCard16 imports CircuitDiagram16, CircuitCard17 imports CircuitDiagram17 ✓
+
+### 36.6 Catatan untuk future development
+
+- Script swap disimpan di `/home/z/my-project/scripts/swap_card16_17.py` (referensi pola replacement jika perlu swap card lain di masa depan).
+- Setelah swap, `CircuitCard_SRLatch.jsx` (Card 15 SR Latch) TIDAK berubah — masih jadi Card 15.
+- Cross-reference di description SR Flip-Flop sudah update ke "Gated D Latch (Card 17)".
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**
