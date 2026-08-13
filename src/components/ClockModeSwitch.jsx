@@ -65,10 +65,14 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
                 `#ffffff` supaya jelas terlihat di background gelap. TIDAK boleh
                 abu (`#64748b`) seperti versi awal, dan TIDAK boleh ada glow neon
                 / drop-shadow (cukup putih solid). Berlaku ke semua card clock
-                sekarang & masa depan. Lihat design.md Bagian 29.3. */}
+                sekarang & masa depan. Lihat design.md Bagian 29.3.
+                ATURAN MUTLAK (revisi 2026-08-13 #2): gap antara label dan pill
+                WAJIB ~10px. Sebelumnya `y - 4` (gap hanya ~3px, terlalu
+                kedekatan). Sekarang `y - 12` (gap ~9px dari baseline ke pill
+                top). Berlaku semua card clock. */}
             <text
                 x={x + SWITCH_W / 2}
-                y={y - 4}
+                y={y - 12}
                 textAnchor="middle"
                 fontFamily="Orbitron,sans-serif"
                 fontSize="7"

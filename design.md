@@ -550,6 +550,7 @@ Geometri default:
 - Setiap segmen = 46px lebar.
 - Label "CLOCK MODE" 7px Orbitron di atas pill.
   - **ATURAN MUTLAK (revisi 2026-08-13):** fill WAJIB **putih bersih `#ffffff`** supaya jelas terlihat di background gelap. TIDAK boleh abu (`#64748b` versi awal — terlalu redup). TIDAK boleh ada glow neon / drop-shadow (cukup putih solid, tanpa efek). Berlaku ke semua card clock sekarang & masa depan.
+  - **ATURAN MUTLAK (revisi 2026-08-13 #2):** gap antara label "CLOCK MODE" dan pill switch WAJIB **~10px** (dari baseline text ke top edge pill). Implementasi: label baseline di `y - 12` (pill top di `y`). Sebelumnya `y - 4` (gap ~3px, terlalu kedekatan). Berlaku semua card clock.
 - Half-fill menggunakan clipPath mengikuti rounded corner pill supaya tidak overflow.
 - Garis pemisah tipis `rgba(15,23,42,0.35)` di tengah supaya batas dua segmen jelas.
 

@@ -2266,3 +2266,28 @@ Label "CLOCK MODE" di `ClockModeSwitch.jsx`:
 - `memory.md` §33 (section ini) — log revisi.
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## 34. GAP ANTARA LABEL "CLOCK MODE" & PILL SWITCH — NAIKIN DIKIT
+
+**Tanggal:** 2026-08-13
+**Sumber:** Feedback user lewat chat.
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "oke selanjutnya antara teks 'clock mode' dengan switch button dibawahnta itu kasih gap dong, nah atau gini aja, teks 'clock mode' itu naikin dikit jadi biar ada gap disana soalnya dia ini kedeketan"
+
+### 34.1 Fix
+
+Label "CLOCK MODE" di `ClockModeSwitch.jsx` dinaikin:
+- Baseline: `y - 4` → **`y - 12`** (naik 8px).
+- Gap dari baseline text ke top edge pill: ~3px → **~9-10px** (wajar, tidak kedekatan).
+
+svgH Card 16=360, Card 17=340 — masih ada banyak ruang di atas label (label ascender ~y-19 dari switch_y=285 → ~266), aman tidak terpotong.
+
+### 34.2 Pencatatan
+
+- `design.md` §29.3 — aturan eksplisit: gap label↔pill WAJIB ~10px, baseline di `y - 12`.
+- `memory.md` §34 (section ini) — log revisi.
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**
