@@ -7,7 +7,7 @@ import { useFavoritesContext } from '../context/FavoritesContext';
 const API_BASE = '/api/favorites';
 
 export default function HeartButton({ itemId: propItemId, itemType: propItemType, size = 20, onToggle }) {
-    const { user, getIdToken } = useAuth();
+    const { user, loading: authLoading, getIdToken } = useAuth();
     const ctx = useFavoritesContext();
     const [liked, setLiked] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -25,6 +25,7 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
         async function checkLiked() {
             try {
                 const token = await getIdToken();
+                if (!token) return;
                 const res = await fetch(`${API_BASE}?type=${itemType}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -44,6 +45,15 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
 
     // ── Toggle handler ──────────────────────────────────
     const handleToggle = useCallback(async () => {
+        // Auth masih loading — jangan kasih "login dulu", tunggu sebentar
+        if (authLoading) {
+            toast('Nunggu sesi login...', {
+                duration: 1500,
+                position: 'top-center',
+                style: { background: '#1e293b', border: '1px solid #334155', color: '#94a3b8' },
+            });
+            return;
+        }
         // Guest check — user must be logged in
         if (!user) {
             toast.error('Login dulu ya buat simpen favorit!', {
@@ -65,6 +75,15 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
 
         try {
             const token = await getIdToken();
+            if (!token) {
+                // user ada tapi token gagal di-generate — refresh state, jangan salah label
+                toast.error('Sesi kamu expired. Coba login ulang.', {
+                    duration: 4000,
+                    position: 'top-center',
+                    style: { background: '#1e293b', border: '1px solid #f87171', color: '#fca5a5' },
+                });
+                return;
+            }
             const newLiked = !liked;
             const method = newLiked ? 'POST' : 'DELETE';
 
@@ -123,7 +142,7 @@ export default function HeartButton({ itemId: propItemId, itemType: propItemType
         } finally {
             setLoading(false);
         }
-    }, [user, liked, itemId, itemType, getIdToken, onToggle]);
+    }, [user, authLoading, liked, itemId, itemType, getIdToken, onToggle]);
 
     const c = liked ? '#ff6eb4' : '#ff6eb4';
     const glow = liked

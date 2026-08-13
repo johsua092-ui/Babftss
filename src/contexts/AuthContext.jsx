@@ -55,7 +55,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const getIdToken = useCallback(async () => {
-    return user ? user.getIdToken() : null;
+    // getIdToken(true) memaksa refresh token — mencegah token expired/stale
+    // sehingga API (favorites/progress) tidak menolak user yang sudah login.
+    return user ? user.getIdToken(true) : null;
   }, [user]);
 
   return (
