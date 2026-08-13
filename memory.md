@@ -1756,3 +1756,86 @@ Yang perlu dicek user:
 ### Status
 
 **Status Card 17: SELESAI & TERVERIFIKASI PENUH (build pass, logic pass 16/16, wire overlap 0, color regulation 6/6, scope bersih). Verifikasi visual menunggu user di production.**
+
+---
+
+## 26. INLINE NOR GATES DI CARD 16 & 17 (GANTI ICBlockRef) — SELESAI & TERVERIFIKASI
+
+**Tanggal:** 2026-08-13
+**Sumber:** Permintaan langsung user lewat chat (file: `pasted_image_1786591059730.png` + pesan teks).
+
+> "untuk yang card 16 dan card 17 sebaiknya tidak usah pakai kotak seperti itu, padahal isinya sangat simpel hanya 2 gerbang logika saja, jadi langsung saja ciptakan gerbang logika disana, kamu bisa?"
+
+### Latar belakang
+
+Card 16 (Gated D Latch) dan Card 17 (SR Flip-Flop) sebelumnya mereferensikan SR Latch Card 15 via komponen `ICBlockRef` — kotak hitam dengan label "SR Latch" + "click me" aurora gradient. User menilai kotak ini berlebihan karena SR Latch sebenarnya hanya **2 gerbang NOR cross-coupled** — sangat simpel. Permintaan: hapus kotak, gambar 2 NOR gates langsung di diagram.
+
+### Perubahan
+
+**File diubah (2 file):**
+- `src/components/CircuitDiagram16.jsx` — hapus `import ICBlockRef`, hapus `<ICBlockRef targetNum="15" .../>`, ganti dengan 2 `<NorGate>` cross-coupled + 2 feedback wires (Q fb oranye, Q̄ fb ungu) + junction dots di Q/Q̄ output wires. Tambah `NorGate` component (copy dari `CircuitDiagram_SRLatch.jsx`). Layout: NOR1 (my=130) output Q, NOR2 (my=230) output Q̄ — sama seperti Card 15.
+- `src/components/CircuitDiagram17.jsx` — perubahan identik (struktur internal SR Latch sama, hanya input AND1/AND2 yang berbeda: S_gated = S AND CLK, R_gated = R AND CLK).
+
+**File dibuat (1 file):**
+- `scripts/check_nor_inline_overlap.py` — script verifikasi geometri wire-overlap & label-clearance untuk layout NOR inline baru (Card 16 & 17 sekaligus).
+
+**File TIDAK diubah:**
+- `ICBlockRef.jsx` — tetap dipakai di card lain (Card 10 → Card 09 Full Adder, Card 14 → Card 10). TIDAK dihapus dari codebase, hanya tidak dipakai di Card 16/17.
+- `CircuitCard16.jsx` / `CircuitCard17.jsx` — wrapper card TIDAK diubah (logic-nya sama, hanya visual diagram yang berubah).
+- `CircuitDiagram_SRLatch.jsx` (Card 15) — TIDAK diubah, jadi referensi pattern NOR gate.
+
+### Topologi cross-coupled NOR (diterapkan di Card 16 & 17)
+
+```
+         ┌── R (atau R_gated) ──┐    ┌── Q ──┐
+         │                      ▼    │       │
+         │        ┌────────┐    │    │       ▼
+         │   ────▶│  NOR1  │────┴────┘    ┌──┴──┐
+         │        └────────┘              │  Q  │ output node
+         │              ▲                 └─────┘
+         │              │  Q̄ feedback (oranye? salah — ungu)
+         │              │  Catatan: Q̄ fb = ungu (#a78bfa)
+         │              │
+         │        ┌────────┐
+         │   ────▶│  NOR2  │────┐    ┌──Q̄──┐
+         │        └────────┘    │    │     ▼
+         │                      ▼    │     output node
+         └── S (atau S_gated) ──┘    │
+                                      │
+            Q feedback (oranye #fb923c) ──┘
+```
+
+Sesuai konvensi `CircuitDiagram_SRLatch.jsx` (Card 15):
+- NOR1 (top): input top = R, input bottom = Q̄_feedback, output = Q.
+- NOR2 (bot): input top = Q_feedback, input bottom = S, output = Q̄.
+- Warna NOR body: pink (#f472b6, sesuai design.md 1.5). NOR1 glow ikuti Q; NOR2 glow ikuti Q̄.
+- Warna Q feedback: oranye (#fb923c). Warna Q̄ feedback: ungu (#a78bfa). Distinct dari output wires (Q hijau, Q̄ pink).
+
+### Routing layout (identik Card 16 & 17)
+
+- NOR1 di (norSX=350, my=130), NOR2 di (350, 230). Dimensi NOR sama persis dengan Card 15 (width=55, height=36).
+- S wire (dari AND1 top, my=105) harus turun ke NOR2 bottom input (y=248). Routing: H ke `sLaneX=290`, V turun, H ke `norSX=350`.
+- R wire (dari AND2 bot, my=245 atau 255) harus naik ke NOR1 top input (y=112). Routing: H ke `rLaneX=310`, V naik, H ke `norSX=350`.
+  - X lanes berbeda (290 vs 310) supaya S dan R vertikal tidak overlap.
+- Q feedback: dari junction di Q-output wire (`fbRightQ=425`) → V turun ke `fbBotY=275` → H kiri ke `fbLeftX=325` → V naik ke NOR2 top input (`nor2Ty=212`) → H kanan ke `norSX`.
+- Q̄ feedback: dari junction di Q̄-output wire (`fbRightQbar=440`) → V naik ke `fbTopY=90` → H kiri ke `fbLeftX=325` → V turun ke NOR1 bottom input (`nor1By=148`) → H kanan ke `norSX`.
+- Q/Q̄ output wire: NOR output → langsung H ke output node (sama Y, no routing lane needed karena NOR1 my=130=qOutY dan NOR2 my=230=qBarOutY).
+- 2 wire crossings acceptable: (425, 130)→(425, 275) vertikal Q fb menyilang Q̄ output wire horizontal y=230; (440, 230)→(440, 90) vertikal Q̄ fb menyilang Q output wire horizontal y=130. Tidak ada junction dot di titik silang → tidak ada koneksi listrik (warna berbeda oranye/ungu vs hijau/pink untuk clarity visual).
+
+### Verifikasi
+
+- **esbuild transform:** Card 16 ✓, Card 17 ✓ (syntax OK).
+- **vite build:** ✓ sukses dalam 8.86s, 2176 modules transformed, tidak ada error. Bundle `LogicGatesCircuit-BUonRUwE.js` 189.02 kB.
+- **Wire overlap check (`scripts/check_nor_inline_overlap.py`):** ✓ 0 same-X overlap vertikal. 0 label-wire collision. 2 cross-X intersections teridentifikasi sebagai acceptable wire crossings (different colors, no junction dot).
+
+### Catatan git (sesuai RULES_KESELAMATAN_GIT.md)
+
+- **Aturan 2 (verifikasi direktori):** `pwd` = `/home/z/my-project/Babftss`, `git remote -v` = `https://github.com/johsua092-ui/Babftss.git` ✓.
+- **Working tree sebelum/sesudah task ini:** 19 file modified lain (dari sesi sebelumnya) TETAP TIDAK disentuh. File task ini (`CircuitDiagram16.jsx`, `CircuitDiagram17.jsx`, `scripts/check_nor_inline_overlap.py`, `memory.md`) juga TIDAK di-`git add` / commit otomatis — menunggu instruksi eksplisit user (pola sesi sebelumnya: partial-add 2 file setelah user konfirmasi).
+- **Tidak ada perubahan pada `design.md`/`instruction.md`.** Catatan retroaktif untuk ICBlockRef di memory.md Bagian 19 tetap valid (komponen masih dipakai di card lain).
+
+### Status
+
+**Status task: SELESAI & TERVERIFIKASI (build pass, overlap check pass). Belum di-commit — menunggu instruksi user apakah akan di-stage & push, atau dilihat dulu secara visual di dev server.**
+
+Perubahan ini TIDAK mengubah logic Card 16/17 (state `q`/`qBar` dihitung sama persis di `CircuitCard16.jsx`/`CircuitCard17.jsx` — hanya rendering SVG yang diganti dari ICBlockRef box menjadi 2 NOR gates inline). Verifikasi visual menunggu user di dev server / production.
