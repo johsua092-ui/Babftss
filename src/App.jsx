@@ -239,7 +239,7 @@ export default function App() {
                 <Suspense fallback={pageFallback}><LinkagesPage setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "logic-gates-simulator" && <motion.div key="logic-gates-simulator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
-                <Suspense fallback={pageFallback}><LogicGatesSimulator /></Suspense>
+                <Suspense fallback={pageFallback}><LogicGatesSimulator setPage={setPage} /></Suspense>
             </motion.div>}
         </AnimatePresence>
         </main>

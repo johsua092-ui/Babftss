@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { ArrowLeft } from 'lucide-react';
 
 // ── Gate Data Model (from src/data/gateData.js) ──
 const GATE_DATA = [
@@ -104,7 +105,7 @@ function GateSVG({ type, color, width = 90, height = 56 }) {
 }
 
 // ── Canvas Simulator ──
-export default function LogicGatesSimulator() {
+export default function LogicGatesSimulator({ setPage }) {
   const canvasRef = useRef(null);
   const [components, setComponents] = useState([]);
   const [wires, setWires] = useState([]);
@@ -930,6 +931,22 @@ export default function LogicGatesSimulator() {
     <div style={pageStyle}>
       <div style={headerStyle}>
         <div style={titleStyle}>
+          <button
+            onClick={() => setPage && setPage('logic-gates')}
+            title="Back to Logic Gates menu"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 8,
+              border: '1px solid #334155', backgroundColor: '#0f172a',
+              color: '#94a3b8', fontSize: 12,
+              fontFamily: '"Inter", sans-serif', fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
           <span style={{ color: '#4ade80', fontSize: 18 }}>◉</span>
           Logic Gates Simulator 2D
         </div>
