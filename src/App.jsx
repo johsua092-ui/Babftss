@@ -217,9 +217,9 @@ export default function App() {
                         ><div style={{ backgroundColor: "rgba(251,191,36,0.18)", padding: 12, borderRadius: 12, color: "#fbbf24", flexShrink: 0 }}><FlaskConical size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#fbbf24" }}>Create Logic Gates Simulator</span></button>
                     </div>
                     <button onClick={() => setPage("menu")}
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, backgroundColor: "transparent", border: "none", color: "#475569", cursor: "pointer", fontFamily: "Inter,sans-serif", fontWeight: 600, fontSize: 14, transition: "color 0.2s" }}
-                        onMouseEnter={c => c.currentTarget.style.color = "#e2e8f0"}
-                        onMouseLeave={c => c.currentTarget.style.color = "#475569"}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #334155", color: "#94a3b8", cursor: "pointer", fontFamily: "Inter,sans-serif", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}
+                        onMouseEnter={c => { c.currentTarget.style.color = "#e2e8f0"; c.currentTarget.style.borderColor = "#475569"; }}
+                        onMouseLeave={c => { c.currentTarget.style.color = "#94a3b8"; c.currentTarget.style.borderColor = "#334155"; }}
                     ><ArrowLeft size={18} /> Back</button>
                 </div>
             </motion.div>}
