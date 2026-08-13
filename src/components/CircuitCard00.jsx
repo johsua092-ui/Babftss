@@ -20,7 +20,7 @@ const gates = [
 function MiniGateIcon({ type, color }) {
     const s = color, sw = 3;
     const h = 36, cy = 18, sz = 13;          // body half-height = 13 → body 26 tall (taller)
-    const triW = 5;                            // NOT triangle width (sempit, H/W=5.2 — tall thin)
+    const triW = 14;                           // NOT triangle width (14W × 26H, H/W=1.85 — proper triangle proportions, was 5 too narrow)
     const bw = 5;                              // AND/NAND flat part width (narrow → taller proportion)
     const bubbleR = 3.5;                       // inversion bubble radius
     const bubbleGap = 3;                       // gap body→bubble center
@@ -33,7 +33,7 @@ function MiniGateIcon({ type, color }) {
 
     switch (type) {
         case "not": {
-            // NOT triangle: TALL thin (8W × 22H, H/W=2.75) + bubble
+            // NOT triangle: 14W × 26H (H/W=1.85) + bubble
             const cx = wireLen;
             const triTip = cx + triW;
             const bubbleCx = triTip + bubbleGap;
