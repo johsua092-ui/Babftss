@@ -130,7 +130,7 @@ Babftss-main/
 
 ## 29. FONDASI PENTING: SISTEM CLOCK MODE (MANUAL / AUTO)
 
-**Berlaku untuk SEMUA card yang punya tombol CLK — sekarang (Card 16 Gated D Latch, Card 17 SR Flip-Flop) dan masa depan (D Flip-Flop, JK, T, Counter, Register, Shift Register, Memory Unit, dll).**
+**Berlaku untuk SEMUA card yang punya tombol CLK — sekarang (Card 16 SR Flip-Flop, Card 17 T Flip-Flop) dan masa depan (D Flip-Flop, JK, Counter, Register, Shift Register, Memory Unit, dll).**
 
 Setiap tombol CLK WAJIB punya switch UI "MANUAL" / "AUTO" yang dirender **tepat di bawah tombol CLK** di dalam SVG diagram. Spec lengkap:
 
@@ -139,8 +139,8 @@ Setiap tombol CLK WAJIB punya switch UI "MANUAL" / "AUTO" yang dirender **tepat 
 - **`instruction.md` Bagian 29** — Aturan mutlak & DILARANG list untuk AI/future developer.
 
 **Status implementasi:**
-- ✅ Card 16 Gated D Latch — implemented.
-- ✅ Card 17 SR Flip-Flop — implemented (dengan reorder input S/R/CLK supaya CLK di bawah).
+- ✅ Card 16 SR Flip-Flop — implemented (4-NAND topology, TEMPLATE for clocked sequential — design.md §36).
+- ✅ Card 17 T Flip-Flop — implemented (2 AND + 2 NOR topology, true toggle, edge-triggered — design.md §37). Vocabulary exception §35: TOGGLE/HOLD (no SET/RESET/INVALID).
 - ⏳ Card clock masa depan — WAJIB pakai `useClockMode` hook + `ClockModeSwitch` + `ClockToast`, jalankan checklist `design.md` §29.9.
 
 **Inti aturan (untuk pengingat cepat):**

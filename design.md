@@ -937,3 +937,104 @@ Saat membuat rangkaian sekuensial clocked baru, ikuti langkah-langkah berikut (c
 
 - Card 17 (Gated D Latch) **DIHAPUS SEPENUHNYA** pada 13 Aug 2026 karena salah total — bukan referensi. Jangan gunakan Card 17 sebagai contoh. Gunakan **Card 16** sebagai satu-satunya TEMPLATE.
 - Jika di masa depan D Latch akan dibuat ulang, **WAJIB** mengikuti pola Card 16 (4-NAND atau topologi yang sesuai dengan gambar referensi valid), bukan mengikuti versi lama Card 17 yang sudah dihapus.
+
+---
+
+## Bagian 37 — Card 17: T Flip-Flop (2 AND + 2 NOR, Vocabulary Exception)
+
+### 37.1 Latar belakang & koreksi topologi
+
+Card 17 diisi ulang pada 13 Aug 2026 dengan T Flip-Flop. Topologi yang
+dipakai: **2 AND gate (steering) + 2 NOR gate (cross-coupled latch)** —
+BUKAN 4-NAND seperti Card 16.
+
+Penting: gambar referensi yang user kirim memiliki **feedback wires terbalik**
+(Top AND menerima Q̄ feedback, Bot AND menerima Q feedback). Konfigurasi itu
+**tidak toggle** — hanya HOLD. Implementasi Card 17 mengoreksi dengan menukar
+feedback AND gate:
+
+- **Top AND = T · CLK · Q** (Q feedback) → R signal untuk Top NOR
+  - Saat Q=1, T=1, CLK=1: R=1 → forces Q→0 (toggle 1→0)
+- **Bot AND = T · CLK · Q̄** (Q̄ feedback) → S signal untuk Bot NOR
+  - Saat Q=0, T=1, CLK=1: S=1 → forces Q→1 (toggle 0→1)
+
+Verifikasi toggle (T=1, CLK=1):
+- Q=0, Q̄=1: Top AND=0, Bot AND=1 → Bot NOR=NOR(1,0)=0 (Q̄→0), Top NOR=NOR(0,0)=1 (Q→1) ✓
+- Q=1, Q̄=0: Top AND=1, Bot AND=0 → Top NOR=NOR(1,0)=0 (Q→0), Bot NOR=NOR(0,0)=1 (Q̄→1) ✓
+
+### 37.2 Vocabulary exception (ATURAN MUTLAK §35)
+
+T Flip-Flop secara fundamental hanya punya 2 mode:
+- **TOGGLE** (T=1, CLK=1) — Q berbalik dari nilai sebelumnya
+- **HOLD** (T=0 atau CLK=0) — Q tetap
+
+Tidak ada SET/RESET/INVALID karena T FF tidak punya input terlarang. SET dan
+RESET hanya merupakan sub-kasus TOGGLE (SET = toggle dari Q=0; RESET = toggle
+dari Q=1). Card 17 tetap menampilkan 4-row mode table untuk konsistensi visual
+dengan Card 16, dengan baris SET/RESET ditandai "(tidak applicable)".
+
+Warna badge: TOGGLE=ungu `#a855f7`, HOLD=amber `#facc15`.
+
+### 37.3 Edge-triggered toggle (penting!)
+
+Berbeda dari Card 16 (level-sensitive SR FF yang langsung update Q saat
+sGated/rGated berubah), Card 17 T FF pakai **edge-triggered toggle**:
+
+```javascript
+const prevTGatedRef = useRef(false);
+useEffect(() => {
+    const prev = prevTGatedRef.current;
+    if (tGated && !prev) {
+        setQ(v => !v); // toggle HANYA saat rising edge (false→true)
+    }
+    prevTGatedRef.current = tGated;
+}, [tGated]);
+```
+
+Alasan: jika level-sensitive, saat user hold T=1 dan toggle CLK, Q akan toggle
+terus setiap render (race condition). Edge-triggered memastikan Q toggle
+tepat 1x per rising edge tGated — mensimulasikan edge-triggered T FF di IC
+7476/74107. Ref `prevTGatedRef` juga mencegah double-toggle saat React strict
+mode re-render di development.
+
+### 37.4 Topologi berbeda dari TEMPLATE Card 16 — kenapa?
+
+Card 16 (SR FF) pakai 4-NAND. Card 17 (T FF) pakai 2 AND + 2 NOR. Alasan:
+
+1. **T FF butuh feedback Q/Q̄ ke steering** — kalau pakai 4-NAND seperti
+   Card 16, feedback ke NAND steering akan konflik dengan cross-coupling
+   NAND latch (kedua steering NAND menerima T+CLK yang sama, menghasilkan
+   output identik — tidak ada toggle).
+2. **2 AND + 2 NOR adalah topologi textbook standar T FF** — AND steering
+   memungkinkan feedback Q/Q̄ bergabung dengan T·CLK untuk menghasilkan
+   S/R signal yang benar.
+3. **Card 16 tetap TEMPLATE untuk SR FF** — T FF butuh pola berbeda karena
+   sifat toggle-nya. Card 17 menjadi referensi sekunder untuk T FF family
+   (JK FF, level-triggered T FF, dll).
+
+### 37.5 Checklist copy-paste Card 17 (untuk T FF family)
+
+Untuk rangkaian T FF di masa depan (JK FF, level-triggered T FF, dll):
+
+**A. State & Hook (di CircuitCardXX.jsx):**
+- [ ] State: `inputT` (atau `inputJ`, `inputK`), `q`, plus `prevTGatedRef = useRef(false)` untuk edge detection.
+- [ ] `handleReset`: reset state + `prevTGatedRef.current = false`.
+- [ ] `useClockMode({ cardId: 'card-XX', onReset: handleReset })`.
+- [ ] Derived: `tGated = inputT && inputClk` (atau ekuivalen JK: `jGated`, `kGated`).
+- [ ] `qBar = !q` (T FF tidak punya INVALID — Q̄ selalu komplement Q).
+- [ ] `mode = tGated ? 'TOGGLE' : 'HOLD'` (atau untuk JK: SET/RESET/HOLD/TOGGLE).
+- [ ] `useEffect` dengan edge detection: toggle Q HANYA saat rising edge tGated.
+- [ ] 4-row mode table dengan SET/RESET ditandai "(tidak applicable)" + footnote.
+
+**B. SVG Diagram (di CircuitDiagramXX.jsx):**
+- [ ] 2 AND gate (3-input): Top AND = T·CLK·Q, Bot AND = T·CLK·Q̄.
+- [ ] 2 NOR gate (2-input): Top NOR (out Q), Bot NOR (out Q̄).
+- [ ] 4 feedback wires: 2 steering (Q→Top AND, Q̄→Bot AND) + 2 cross-coupling (Q→Bot NOR, Q̄→Top NOR).
+- [ ] AND gate body = oranye `#fb923c`, NOR gate body = pink `#f472b6`.
+- [ ] Feedback wire colors: Q fb = oranye `#fb923c`, Q̄ fb = ungu `#a78bfa`.
+- [ ] Routing feedback: main trunk + branch tap (lihat CircuitDiagram17.jsx untuk pattern).
+
+**C. Vocabulary & behavior:**
+- [ ] Vocabulary: TOGGLE / HOLD (exception §35 — T FF tidak fit SET/RESET/INVALID).
+- [ ] Edge-triggered toggle via prevTGatedRef (BUKAN level-sensitive).
+- [ ] Tabel 4-row: TOGGLE, HOLD, SET (tidak applicable), RESET (tidak applicable).

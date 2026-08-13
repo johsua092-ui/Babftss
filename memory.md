@@ -2558,3 +2558,81 @@ User minta swap nomor card:
 - Build sukses, commit & push sesuai instruksi user.
 
 **Catatan untuk masa depan:** Jika user ingin T Flip-Flop yang benar-benar toggle, perlu menambah feedback Q/Q̄ ke tahap steering (modifikasi topologi). Saat ini implementasi faithful ke gambar referensi user.
+
+---
+
+## Bagian 38 — REBUILD Card 17 T Flip-Flop (2 AND + 2 NOR, True Toggle)
+
+**Tanggal:** 13 Aug 2026 (sesi lanjutan)
+**Commit:** `45b28c3` — refactor(card-17): rebuild T Flip-Flop as 2 AND + 2 NOR topology (corrected feedback for true toggle)
+
+### Latar belakang
+
+User lihat Card 17 (versi 4-NAND dari commit `150108c`) dan bertanya "kok masih seperti itu?" — karena rangkaian 4-NAND yang dibabi-buta dari TEMPLATE Card 16 **tidak toggle** (hanya HOLD/INVALID). User kemudian bilang:
+
+> "waduh kayaknya rangkaian yang saya kirim sepertinya salah dengan rangkaian yang saya harapkan, saya maunya ketika clock diklik maka sistem aktif lalu ketika user pencet input 't' maka posis Q akan ganti ganti sesuai user pencet 'T'"
+
+User juga minta verifikasi apakah gambar rancangan sesuai harapan.
+
+### Hasil verifikasi gambar rancangan
+
+Setelah analisis VLM mendalam (2 pass), ditemukan: **gambar rancangan user memiliki feedback wires TERBALIK**. Konfigurasi di gambar:
+- Top AND = T · CLK · Q̄ (Q̄ feedback)
+- Bot AND = T · CLK · Q (Q feedback)
+
+Verifikasi trace statis: konfigurasi ini TIDAK toggle — saat Q=0, Top AND=1 (S untuk latch), tapi S=1 forces Q=1, lalu Q=1 triggers Bot AND=1 (R=1) forces Q=0... jadi sebenarnya latch akan HOLD (race condition / steadystate Q tetap).
+
+### Koreksi & implementasi
+
+Feedback AND DITUKAR supaya beneran toggle:
+- **Top AND = T · CLK · Q** (Q feedback) → R signal (forces Q→0 saat Q=1)
+- **Bot AND = T · CLK · Q̄** (Q̄ feedback) → S signal (forces Q→1 saat Q=0)
+
+Verifikasi toggle (T=1, CLK=1):
+- Q=0, Q̄=1: Bot AND=1 (S=1) → Q→1 ✓
+- Q=1, Q̄=0: Top AND=1 (R=1) → Q→0 ✓
+
+### Vocabulary exception §35
+
+T FF secara fundamental hanya punya 2 mode (TOGGLE/HOLD) — tidak ada SET/RESET/INVALID. Card 17 tetap pakai 4-row table untuk konsistensi visual, dengan SET/RESET ditandai "(tidak applicable)" + footnote edukasi.
+
+Warna badge baru: TOGGLE=ungu `#a855f7`.
+
+### Edge-triggered toggle (penting!)
+
+Berbeda dari Card 16 (level-sensitive), Card 17 pakai edge-triggered via `prevTGatedRef`:
+
+```javascript
+const prevTGatedRef = useRef(false);
+useEffect(() => {
+    const prev = prevTGatedRef.current;
+    if (tGated && !prev) {
+        setQ(v => !v); // toggle HANYA saat rising edge
+    }
+    prevTGatedRef.current = tGated;
+}, [tGated]);
+```
+
+Alasan: level-sensitive akan menyebabkan Q toggle terus setiap render saat tGated=1 (race condition). Edge-triggered memastikan 1 toggle per rising edge tGated.
+
+### Topologi berbeda dari TEMPLATE Card 16 — kenapa?
+
+Card 16 (SR FF) pakai 4-NAND. Card 17 (T FF) pakai 2 AND + 2 NOR. T FF butuh feedback Q/Q̄ ke steering — kalau pakai 4-NAND seperti Card 16, kedua steering NAND menerima T+CLK yang sama (output identik), tidak ada toggle. Card 17 menjadi referensi sekunder untuk T FF family (JK FF, dll).
+
+### Files changed
+
+- `src/components/CircuitCard17.jsx` — full rewrite (4-NAND → 2 AND + 2 NOR, 2-mode TOGGLE/HOLD vocabulary, edge-triggered toggle logic via prevTGatedRef)
+- `src/components/CircuitDiagram17.jsx` — full rewrite (4 NAND → 2 AND + 2 NOR, 4 feedback wires: 2 steering AND + 2 cross-coupling NOR, AND gate body oranye, NOR gate body pink)
+- `design.md` — tambah Bagian 37 (Card 17 T Flip-Flop spec, vocabulary exception, edge-triggered pattern, checklist T FF family)
+- `memory.md` — tambah Bagian 38 (this section)
+
+### Stage Summary
+
+- Card 17 T Flip-Flop REBUILT dengan topologi 2 AND + 2 NOR yang benar-benar toggle.
+- Feedback wires dikoreksi dari gambar user (Top AND pakai Q, Bot AND pakai Q̄ — bukan sebaliknya).
+- Vocabulary exception §35 didokumentasikan: T FF hanya TOGGLE/HOLD.
+- Edge-triggered toggle via prevTGatedRef mencegah race condition.
+- Card 17 jadi referensi sekunder untuk T FF family (JK FF, dll).
+- Build sukses, commit `45b28c3`, push ke GitHub.
+
+**Catatan untuk masa depan:** Jika user mau JK FF, salin pola Card 17 — pakai 2 AND + 2 NOR, dengan J dan K sebagai input terpisah (bukan di-AND-kan jadi T). Edge-triggered via prevJKGatedRef. Vocabulary: SET (J=1, K=0), RESET (J=0, K=1), TOGGLE (J=1, K=1), HOLD (J=0, K=0).
