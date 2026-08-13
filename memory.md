@@ -2498,3 +2498,63 @@ User minta swap nomor card:
 - Status: SELESAI. Build OK, commit & push sesuai instruksi user.
 
 **Catatan untuk masa depan:** Jika D Latch akan dibuat ulang, WAJIB ikuti pola Card 16 (TEMPLATE — design.md Section 36), BUKAN versi lama Card 17 yang sudah dihapus.
+
+---
+
+## Bagian 38 — Card 17 Baru: T Flip-Flop (4-NAND, mengikuti TEMPLATE Card 16) (13 Aug 2026)
+
+### Task ID: 38
+**Agent:** main
+**Task:** Buat Card 17 baru berjudul "T Flip-Flop" sesuai gambar referensi user (pasted_image_1786611144620.png).
+
+### Work Log:
+
+**Analisis gambar referensi (3x VLM call untuk verifikasi):**
+- Topologi: 4 NAND gates dalam 2x2 grid (sesuai gambar).
+- Stage 1 (steering NANDs — kiri): NAND3 inputs (T, CLK); NAND4 inputs (CLK, T). Karena T dan CLK masuk ke kedua steering NAND, outputnya identik = NOT(T·CLK) = NOT(tGated).
+- Stage 2 (cross-coupled NAND latch — kanan): NAND1 (output Q) inputs (Q̄ feedback, NAND3 out); NAND2 (output Q̄) inputs (Q feedback, NAND4 out).
+- Input order: T (atas), CLK (bawah) — sesuai gambar.
+- Cross-coupling: Q̄ feedback → NAND1 top input; Q feedback → NAND2 bottom input (pola CircuitDiagram_SRLatch, konsisten dengan Card 16).
+- Verifikasi: TIDAK ada feedback Q/Q̄ ke steering stage (VLM confirm 3x).
+
+**Implementasi mengikuti TEMPLATE Card 16 (design.md Section 36):**
+
+1. **Buat `src/components/CircuitDiagram17.jsx`** (baru, ~290 baris):
+   - Header banner TEMPLATE (referensi Card 16 / design.md Bagian 36).
+   - 4 NandGate components (NAND3/NAND4 steering + NAND1/NAND2 cross-coupled latch).
+   - Input nodes: T (atas, hijau #4ade80), CLK (bawah, amber #facc15).
+   - T fan-out: ke NAND3 top input (branch up) + NAND4 bottom input (branch down, routing H-V-H via x=145 untuk avoid crossing CLK trunk).
+   - CLK fan-out: ke NAND3 bottom input (branch up) + NAND4 top input (branch down).
+   - NAND3/NAND4 output wires ke NAND1/NAND2 (routing H-V-H via x=340).
+   - Feedback wires: Q fb (oranye) wrap-around ke NAND2 bottom input; Q̄ fb (ungu) wrap-around ke NAND1 top input.
+   - `<ClockModeSwitch x={1} y={285} .../>` di bawah tombol CLK (sesuai design.md Bagian 29).
+   - svgH=340 (cukup untuk switch).
+
+2. **Buat `src/components/CircuitCard17.jsx`** (baru, ~170 baris):
+   - Header banner TEMPLATE.
+   - State: `inputT`, `q`. `handleReset` reset keduanya ke 0.
+   - `useClockMode({ cardId: 'card-17', onReset: handleReset })`.
+   - Derived: `tGated = inputT && inputClk`.
+   - `qBar = tGated ? true : !q` (INVALID pada NAND latch active-low → Q=1, Q̄=1).
+   - `mode = tGated ? 'INVALID' : 'HOLD'` (SET/RESET tidak mungkin di topologi 4-NAND dasar).
+   - `useEffect`: `if (tGated) setQ(true);` (INVALID forces Q=1).
+   - 4-mode table: SET/RESET ditandai "(tidak mungkin)" dengan keterangan "butuh feedback Q/Q̄ ke steering"; HOLD = T=0 atau CLK=0; INVALID = T=1, CLK=1 (Q=1, Q̄=1).
+   - Description: jujur menjelaskan behavior — HOLD saat tGated=0, INVALID saat tGated=1; catatan edukasi bahwa toggle penuh memerlukan feedback Q/Q̄ ke steering (struktur dasar 4-NAND).
+   - Status bar, header, HeartButton, NORMAL badge — semua mengikuti pola Card 16.
+
+3. **Edit `src/pages/LogicGatesCircuit.jsx`:**
+   - Tambah import: `import CircuitCard17 from '../components/CircuitCard17';`
+   - Tambah entri ALL_CARDS: `{ num: '17', name: 'T Flip-Flop', tier: 'NORMAL', el: CircuitCard17 },`
+
+4. **Edit `map.md`:**
+   - Update file listing range kembali ke `CircuitCard17.jsx` / `CircuitDiagram17.jsx` (sebelumnya dihapus di Bagian 37, sekarang dibuat ulang dengan content T Flip-Flop).
+
+### Stage Summary:
+- Card 17 baru (T Flip-Flop) dibuat mengikuti TEMPLATE Card 16 — semua sistem (clock mode, registry, IntersectionObserver, vocabulary 4-mode, ClockModeSwitch, color palette) konsisten.
+- Topologi 4-NAND dasar sesuai gambar referensi user: T+CLK → steering NANDs, cross-coupled NAND latch.
+- Behavior jujur dijelaskan: tGated=0 → HOLD; tGated=1 → INVALID (Q=1, Q̄=1). Toggle penuh tidak dimungkinkan tanpa feedback Q/Q̄ ke steering — dicatat sebagai poin edukasi.
+- File created: `CircuitCard17.jsx`, `CircuitDiagram17.jsx`.
+- File modified: `LogicGatesCircuit.jsx`, `map.md`, `memory.md`.
+- Build sukses, commit & push sesuai instruksi user.
+
+**Catatan untuk masa depan:** Jika user ingin T Flip-Flop yang benar-benar toggle, perlu menambah feedback Q/Q̄ ke tahap steering (modifikasi topologi). Saat ini implementasi faithful ke gambar referensi user.

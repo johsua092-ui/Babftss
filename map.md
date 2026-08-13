@@ -35,9 +35,9 @@ Babftss-main/
 │   │   └── (welcome/menu/basic-logic-gates dst di App.jsx atau folder ini)
 │   ├── components/
 │   │   ├── GateCard.jsx / GateDiagram.jsx      # 7 Basic Logic Gates (baseline, jangan diubah)
-│   │   ├── CircuitCard00.jsx s/d CircuitCard16.jsx (dan varian nama lain seperti
+│   │   ├── CircuitCard00.jsx s/d CircuitCard17.jsx (dan varian nama lain seperti
 │   │   │   CircuitCard_FullAdder4bit.jsx, CircuitCard_SRLatch.jsx) — tiap card Circuit
-│   │   ├── CircuitDiagram00.jsx s/d CircuitDiagram16.jsx (+ varian) — diagram SVG tiap card
+│   │   ├── CircuitDiagram00.jsx s/d CircuitDiagram17.jsx (+ varian) — diagram SVG tiap card
 │   │   ├── ICBlockRef.jsx      # komponen reusable "IC Block" (klik → navigasi+glow ke card lain)
 │   │   ├── HeartButton.jsx     # fitur favorit, wajib ada di semua Circuit Card
 │   │   ├── LoginModal.jsx / LoginPage.jsx / UserPill.jsx   # TERLARANG disentuh
