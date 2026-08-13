@@ -99,29 +99,37 @@ function MiniGateIcon({ type, color }) {
         }
         case "xor": {
             // XOR: shield + extra back curve, wires di 25%/75%
+            // Wires extend sampai ke curve ')' (Bezier intersection: y linear di t, solve t di y=cy±orWireOff)
             const cx = wireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
+            const ctrlX = cx + sz * 0.4;
+            const tWire = (sz + 2) / (4 * (sz + 1));   // t di y = cy ± orWireOff (= sz/2)
+            const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
             const w = tip + wireLen;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - orWireOff} x2={curveStart} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + orWireOff} x2={curveStart} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${curveStart},${cy - sz - 1} Q ${cx + sz * 0.4},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+                <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
                 <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <line x1={tip} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
             </svg>;
         }
         case "xnor": {
             // XNOR: shield + extra back curve + bubble, wires di 25%/75%
+            // Wires extend sampai ke curve ')' (Bezier intersection)
             const cx = wireLen + xorExtra;
             const tip = cx + tipX;
             const curveStart = cx - xorExtra;
+            const ctrlX = cx + sz * 0.4;
+            const tWire = (sz + 2) / (4 * (sz + 1));
+            const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
             const bubbleCx = tip + bubbleGap;
             const w = bubbleCx + bubbleR + wireLen;
             return <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} style={svgStyle}>
-                <line x1={0} y1={cy - orWireOff} x2={curveStart} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <line x1={0} y1={cy + orWireOff} x2={curveStart} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
-                <path d={`M ${curveStart},${cy - sz - 1} Q ${cx + sz * 0.4},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+                <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+                <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
                 <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
                 <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
                 <line x1={bubbleCx + bubbleR} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
