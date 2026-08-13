@@ -2243,3 +2243,26 @@ switch_y = clkInY + 55
 - Card 16 svgH=360 (switch bottom y=307) → 53px buffer. Card 17 svgH=340 (switch bottom y=307) → 33px buffer. Aman, tidak perlu ubah svgH.
 
 **Status task: SELESAI. Commit & push sesuai instruksi user.**
+
+---
+
+## 33. LABEL "CLOCK MODE" → PUTIH BERSIH `#ffffff` (TANPA GLOW)
+
+**Tanggal:** 2026-08-13
+**Sumber:** Feedback user lewat chat.
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "tulisan 'clock mode' buat jadi putih bersinya menyala namun tanpa glow neon, intinya putih bersih biar bisa dilihat jelas dan berlaku buat semuanya yang bertuliskan 'clock mode' bisa?"
+
+### 33.1 Fix
+
+Label "CLOCK MODE" di `ClockModeSwitch.jsx`:
+- Fill: `#64748b` (abu redup) → **`#ffffff`** (putih bersih).
+- TIDAK ada glow neon / drop-shadow (cukup putih solid).
+
+### 33.2 Pencatatan
+
+- `design.md` §29.3 — aturan eksplisit: fill WAJIB putih `#ffffff`, tanpa glow, berlaku semua card clock.
+- `memory.md` §33 (section ini) — log revisi.
+
+**Status task: SELESAI. Commit & push sesuai instruksi user.**

@@ -60,6 +60,12 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
             aria-label="Clock mode toggle: manual or auto"
         >
             {/* Label kecil di atas switch */}
+            {/* Label "CLOCK MODE" di atas switch.
+                ATURAN MUTLAK (revisi 2026-08-13): fill WAJIB putih bersih
+                `#ffffff` supaya jelas terlihat di background gelap. TIDAK boleh
+                abu (`#64748b`) seperti versi awal, dan TIDAK boleh ada glow neon
+                / drop-shadow (cukup putih solid). Berlaku ke semua card clock
+                sekarang & masa depan. Lihat design.md Bagian 29.3. */}
             <text
                 x={x + SWITCH_W / 2}
                 y={y - 4}
@@ -67,7 +73,7 @@ export default function ClockModeSwitch({ x, y, mode, autoActive, onChange }) {
                 fontFamily="Orbitron,sans-serif"
                 fontSize="7"
                 fontWeight="700"
-                fill="#64748b"
+                fill="#ffffff"
                 style={{ letterSpacing: '1px', pointerEvents: 'none' }}
             >CLOCK MODE</text>
 
