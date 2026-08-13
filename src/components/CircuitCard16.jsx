@@ -2,14 +2,21 @@ import { useState, useEffect } from 'react';
 import CircuitDiagram16 from './CircuitDiagram16';
 import { hexToRgbStr } from '../utils/colorHelper';
 import HeartButton from './HeartButton';
+import { useClockMode } from '../hooks/useClockMode';
+import ClockToast from './ClockToast';
 
 // Card 16 — Gated D Latch
 // SR Latch yang "dijinakkan" lewat gating S=D AND CLK, R=D̄ AND CLK.
 // Mode: TRANSPARENT (CLK=1, Q ikut D) atau HOLD (CLK=0, Q tetap).
 // Level-sensitive, BUKAN edge-triggered (D Flip-Flop edge-triggered = task terpisah).
+//
+// Clock mode (Bagian 29 memory.md / design.md): CLK punya 2 mode — MANUAL &
+// AUTO. Dikelola oleh hook useClockMode. Switch UI dirender di dalam SVG
+// CircuitDiagram16, di bawah tombol CLK. Toast notifikasi dirender di sini.
 export default function CircuitCard16() {
     const [inputD, setInputD] = useState(false);
-    const [inputClk, setInputClk] = useState(false);
+    // CLK sekarang dikelola oleh useClockMode (manual/auto + rate-limit + toast)
+    const { clk: inputClk, clockMode, autoActive, toggleClk, setClockMode, toast } = useClockMode();
     // Q = "ingatan" — BUKAN dihitung ulang tiap render
     const [q, setQ] = useState(false);
 
@@ -60,8 +67,15 @@ export default function CircuitCard16() {
         <CircuitDiagram16
             d={inputD} clk={inputClk} q={q} qBar={qBar} mode={mode}
             onToggleD={() => setInputD(v => !v)}
-            onToggleClk={() => setInputClk(v => !v)}
+            onToggleClk={toggleClk}
+            clockMode={clockMode}
+            autoActive={autoActive}
+            onClockModeChange={setClockMode}
         />
+
+        {/* Toast notifikasi clock (top-center, fixed) — dirender di sini
+            supaya muncul di atas semua circuit card. */}
+        <ClockToast toast={toast} />
 
         {/* Status bar */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '10px 0 8px', fontFamily: 'Orbitron,sans-serif', fontSize: 10, color: '#475569', flexWrap: 'wrap' }}>
@@ -73,6 +87,9 @@ export default function CircuitCard16() {
             <span>,</span>
             <span style={{ color: qBar ? '#f472b6' : '#334155', fontWeight: 700 }}><span style={{ textDecoration: 'overline' }}>Q</span>={qBar ? 1 : 0}</span>
             <span style={{ marginLeft: 4, padding: '2px 8px', borderRadius: 4, backgroundColor: mode === 'TRANSPARENT' ? 'rgba(74,222,128,0.18)' : 'rgba(250,204,21,0.18)', color: mode === 'TRANSPARENT' ? '#4ade80' : '#facc15', fontWeight: 700, fontSize: 9 }}>{mode}</span>
+            <span style={{ marginLeft: 4, padding: '2px 8px', borderRadius: 4, backgroundColor: autoActive ? 'rgba(239,68,68,0.18)' : 'rgba(148,163,184,0.12)', color: autoActive ? '#ef4444' : '#94a3b8', fontWeight: 700, fontSize: 9, letterSpacing: 0.5 }}>
+                {clockMode === 'auto' ? (autoActive ? 'CLK: AUTO ⚡' : 'CLK: AUTO') : 'CLK: MANUAL'}
+            </span>
         </div>
 
         {/* Description */}

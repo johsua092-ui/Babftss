@@ -1993,3 +1993,88 @@ R label dipindah ke ATAS AND2 gate (di y=and2Ty-5=235), menjauhi R horizontal wi
 - Verification script (`/home/z/my-project/scripts/check_card16_17_wire_overlap_v2.py`) berada di luar repo Babftss, jadi tidak masuk commit — tapi tetap diupdate untuk konsistensi.
 
 **Status task: SELESAI & TERVERIFIKASI. Akan di-commit & push sesuai instruksi user.**
+
+---
+
+## 29. SISTEM CLOCK MODE (MANUAL / AUTO) — FONDASI PENTING, BERLAKU KE SEMUA CLOCK
+
+**Tanggal:** 2026-08-13
+**Sumber:** Permintaan user lewat chat (dengan screenshot referensi UI iOS-style slider).
+**Status:** IMPLEMENTED & TERVERIFIKASI (build pass).
+
+> "khusus tombol 'clock' dibawahnya tombol tersebut ada switch ui button seperti yang kamu lihat pada gambar tersebut namun tulisannya bukan on atau off ya! melainkan tulisannya 'manual' dan 'auto' jadi wajib ada itu dibawah tombol 'clock' (semua clock baik sekarang ataupun di masa depan, jadi tolong kamu catat ini di memory md, design md atau md yang lain) jika di mode manual maka berarti tombol harus di klik sendiri oleh user dan bersifat 1 jika button clock dinyalakan lalu 0 jika dimatikan, akan tetapi jika mode auto, maka user tekan 1 kali pada button clock, maka clock memancarkan 1 0 1 0 1 0 secara continue baru ketika user memencet button clock lagi maka akan kembali jadi 0, bukan 1 0 1 0 1 0 lagi. dan juga ada aturan ketat dimana bila clock di mode auto sedang aktif memancarkan 1 0 1 0 1 0 maka user tidak bisa beralih mode clocknya ini, bila user memaksa menekan beralih mode maka ada pesan diatas layar user bagian atas sendiri di bagian tengah yang messagenya bertuliskan 'matikan clock dahulu sebelum beralih mode clock' dan untuk menghindari user melakukan spam ada rate limit dimana aksi user akan digagalkan oleh sistem secara paksa dan ada message 'warning! pencegahan rate limit mohon tunggu 5 detik'"
+>
+> "(sekadar catatan kecil, jadi lokasi switch mode ini tepat dibawah tombol button clock ya, nah di card 16 ada ruang kosong dibawah button clocknya jadi gampang bikinnya, namun di card 17 tidak ada ruang kosong di bawah clock button jadi terpaksa harus menggeser button dibawah clocknya itu agar ada ruang. kemudian pastikan juga bahwa sistem ini harus dicatat mutlak di semua files dan jejaknya harus ada ini adalah fondasi yang penting!)"
+
+### Spec lengkap
+
+**Lihat `design.md` Bagian 29** untuk spec design lengkap & visual. Section ini berisi catatan implementasi.
+
+### 29.1 Komponen & file baru (3 file)
+
+1. **`src/hooks/useClockMode.js`** — Hook React reusable. State: `clk` (bool), `clockMode` ('manual'|'auto'), `autoActive` (bool), `toast` (obj|null). Actions: `toggleClk()`, `setClockMode(newMode)`. Konstanta: `AUTO_INTERVAL_MS=600`, `RATE_LIMIT_MS=5000`, `TOAST_DURATION_MS=3000`. Logika: lock mode saat autoActive + rate-limit 5 detik + toast dispatch.
+2. **`src/components/ClockModeSwitch.jsx`** — SVG group reusable. 2 slider side-by-side MANUAL (hijau) & AUTO (amber). Props: `x`, `y`, `mode`, `autoActive`, `onChange`. Indikator "RUN" merah pulse di kanan slider AUTO saat autoActive. Style reference: iOS-style toggle (track pill + knob putih), sesuai screenshot user.
+3. **`src/components/ClockToast.jsx`** — Komponen toast fixed top-center viewport. Props: `toast`. 2 type: 'block' (amber, ⚠, "matikan clock dahulu...") dan 'rate-limit' (merah, ⛔, "warning! pencegahan..."). Auto-dismiss 3 detik. Entry/exit animation (translateY + opacity).
+
+### 29.2 File yang diubah (4 file)
+
+1. **`src/components/CircuitCard16.jsx`** — Import `useClockMode` + `ClockToast`. Replace `const [inputClk, setInputClk] = useState(false)` dengan `const { clk: inputClk, ... } = useClockMode()`. Pass `clockMode`, `autoActive`, `onClockModeChange={setClockMode}` ke `CircuitDiagram16`. Render `<ClockToast toast={toast} />` setelah diagram. Tambah chip status "CLK: MANUAL/AUTO/AUTO ⚡" di status bar.
+2. **`src/components/CircuitCard17.jsx`** — Identik dengan Card 16.
+3. **`src/components/CircuitDiagram16.jsx`** — Import `ClockModeSwitch`. Signature tambah 3 props: `clockMode`, `autoActive`, `onClockModeChange`. Render `<ClockModeSwitch x={1} y={263} .../>` di dalam SVG, setelah InputNode CLK. Tidak perlu reorder (CLK sudah di bawah, ruang kosong sudah ada).
+4. **`src/components/CircuitDiagram17.jsx`** — Import `ClockModeSwitch`. Signature tambah 3 props. **REORDER input: S=130 (atas), R=180 (tengah), CLK=230 (bawah)** — dari versi lama S=130, CLK=180, R=230. svgH diperbesar 320→340 supaya switch (y=263..285) tidak terpotong. Junction X lanes juga di-restructure: S=75, R=105, CLK=135 (jarak 30px, sebelumnya 20/10px — pola yang sama dengan fix v3 Card 16). Render `<ClockModeSwitch x={1} y={263} .../>` di dalam SVG.
+
+### 29.3 Behavior
+
+**Manual mode:**
+- `toggleClk()` → `setClk(v => !v)` (toggle biasa).
+
+**Auto mode (belum active):**
+- `toggleClk()` → `startAuto()`: set `autoActive=true`, `setClk(true)` (mulai dari 1), start `setInterval` 600ms yang toggle clk.
+
+**Auto mode (sudah active):**
+- `toggleClk()` → `stopAuto()`: clear interval, set `autoActive=false`, `setClk(false)` (RESET ke 0, bukan lanjut pulsasi).
+
+**Switch mode (`setClockMode(newMode)`):**
+1. Cek rate-limit: jika `Date.now() < rateLimitedUntilRef.current` → toast 'rate-limit' + return.
+2. Cek autoActive lock: jika `autoActiveRef.current` true → toast 'block' + set `rateLimitedUntilRef = now + 5000` + return.
+3. OK → `setClockModeState(newMode)`.
+
+### 29.4 Verifikasi
+
+- `npm run build`: ✓ sukses 8.45s, 2179 modules, 0 error. Bundle `LogicGatesCircuit-BeKiP4OI.js` 194.50 kB (sebelumnya 189.06 kB — naik 5.44 kB karena 3 file baru + props tambahan).
+- Tidak ada perubahan logic Card 16/17 — state `q`/`qBar` dihitung sama persis. Hanya sumber `inputClk` yang berubah dari `useState` lokal ke `useClockMode` hook.
+- Verifikasi visual menunggu user di dev server / production:
+  - Switch muncul di bawah tombol CLK (Card 16: langsung; Card 17: setelah reorder S/R/CLK).
+  - Klik MANUAL → klik CLK toggle 1/0 manual.
+  - Klik AUTO → klik CLK 1x → pulsasi 1→0→1→0 (indikator "RUN" merah pulse).
+  - Saat autoActive, klik MANUAL → toast amber "matikan clock dahulu sebelum beralih mode clock".
+  - Setelah diblok, klik apapun dalam 5 detik → toast merah "warning! pencegahan rate limit mohon tunggu 5 detik".
+  - Klik CLK lagi saat autoActive → STOP, kembali ke 0.
+
+### 29.5 Pencatatan di file lain (jejak fondasi)
+
+Sesuai permintaan user ("sistem ini harus dicatat mutlak di semua files dan jejaknya harus ada"), spec ini juga dicatat di:
+
+- **`design.md` Bagian 29** — Spec design lengkap (posisi UI, style, behavior, aturan ketat, rate-limit, checklist implementasi card clock baru).
+- **`instruction.md`** — Aturan implementasi & reminder untuk AI/future developer.
+- **`map.md`** — Entry di peta konsep proyek sebagai "fondasi penting".
+- **`memory.md` Bagian 29** (section ini) — Catatan implementasi detail (file yang diubah, behavior, verifikasi).
+
+### 29.6 Catatan untuk future development
+
+**Card clock baru (D Flip-Flop, JK, T, Counter, Register, dst) WAJIB:**
+1. Pakai `useClockMode()` hook — JANGAN copy-paste logic.
+2. Render `<ClockModeSwitch>` di dalam SVG, tepat di bawah tombol CLK.
+3. Render `<ClockToast toast={toast} />` di CircuitCard.
+4. Tempatkan CLK di posisi input paling bawah (reorder input lain bila perlu).
+5. svgH cukup untuk switch (minimum `clkInY + 60`).
+6. Jalankan checklist di `design.md` §29.9.
+
+**DILARANG:**
+- Membuat card clock tanpa switch MANUAL/AUTO.
+- Menempatkan switch di posisi lain (samping/atas/luar SVG).
+- Mengubah pesan toast ("matikan clock dahulu..." dan "warning! pencegahan...") — harus persis sama.
+- Mengubah interval auto (600ms) atau rate-limit (5 detik) tanpa persetujuan user.
+- Menduplikasi logic clock mode di card manapun — semua harus lewat `useClockMode`.
+
+**Status task: SELESAI & TERVERIFIKASI (build pass). Akan di-commit & push sesuai instruksi user.**

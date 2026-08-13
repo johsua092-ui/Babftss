@@ -105,3 +105,38 @@ Aturan berikut lahir dari masalah nyata yang pernah terjadi di proyek ini — WA
 - JANGAN PERNAH taruh Supabase service role key atau Firebase Admin SDK credentials di kode frontend/client-side — hanya di environment variable server-side.
 - JANGAN PERNAH share/tempel API key, token, atau credential apapun secara terbuka di chat/dokumen manapun. Kalau pernah ter-expose tidak sengaja, WAJIB langsung di-revoke & generate ulang.
 - Setiap kali ada laporan pekerjaan yang melibatkan backend/auth/database, WAJIB verifikasi eksplisit: apakah ada file `.env.example`, apakah ada secret yang ter-hardcode di source code. Jangan asumsikan aman tanpa dicek.
+
+---
+
+## 29. ATURAN MUTLAK: SISTEM CLOCK MODE (MANUAL / AUTO) — BERLAKU KE SEMUA CLOCK
+
+**Ini adalah fondasi penting. Setiap card yang punya tombol CLK WAJIB menerapkan sistem Clock Mode MANUAL/AUTO. Tidak ada pengecualian, untuk card sekarang (16, 17) maupun masa depan (D Flip-Flop, JK, T, Counter, Register, Shift Register, Memory Unit, dll).**
+
+### Spec lengkap
+Lihat **`design.md` Bagian 29** untuk spec design & visual lengkap, dan **`memory.md` Bagian 29** untuk catatan implementasi.
+
+### Ringkasan aturan (WAJIB dipatuhi)
+
+1. **Switch UI MANUAL/AUTO WAJIB dirender tepat di bawah tombol CLK** di dalam SVG diagram. Bukan di samping, bukan di luar SVG.
+2. Jika di bawah tombol CLK ada input lain (mis. R), input lain itu **HARUS digeser** supaya CLK di posisi paling bawah, lalu switch di bawahnya.
+3. **Mode MANUAL:** klik CLK → toggle 1/0 manual.
+4. **Mode AUTO:** klik CLK 1x → pulsasi 1→0→1→0… secara continue (interval 600ms). Klik CLK lagi → STOP & reset ke 0 (bukan lanjut pulsasi).
+5. **Aturan ketat:** saat AUTO aktif (autoActive=true), user TIDAK boleh switch mode. Jika memaksa → toast amber top-center "matikan clock dahulu sebelum beralih mode clock" + mulai rate-limit 5 detik.
+6. **Rate-limit:** selama 5 detik setelah block, semua upaya switch mode ditolak paksa → toast merah top-center "warning! pencegahan rate limit mohon tunggu 5 detik".
+
+### Implementasi WAJIB pakai 3 file reusable (JANGAN duplikasi logic)
+
+- `src/hooks/useClockMode.js` — hook untuk state & logic.
+- `src/components/ClockModeSwitch.jsx` — SVG group switch.
+- `src/components/ClockToast.jsx` — toast notifikasi.
+
+### Checklist untuk card clock baru
+
+Lihat **`design.md` §29.9** untuk checklist lengkap (12 item, termasuk verifikasi visual).
+
+### DILARANG
+- Membuat card clock tanpa switch MANUAL/AUTO.
+- Menempatkan switch di posisi selain bawah tombol CLK.
+- Mengubah pesan toast (harus persis: "matikan clock dahulu sebelum beralih mode clock" dan "warning! pencegahan rate limit mohon tunggu 5 detik").
+- Mengubah interval auto (600ms) atau rate-limit (5 detik) tanpa persetujuan user eksplisit.
+- Menduplikasi logic clock mode di card manapun — semua harus lewat `useClockMode` hook.

@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
+import ClockModeSwitch from './ClockModeSwitch';
 
 // Card 16 — Gated D Latch
 // Level-sensitive (BUKAN edge-triggered). CLK=1 -> TRANSPARENT (Q ikut D), CLK=0 -> HOLD.
@@ -16,7 +17,7 @@ import { hexToRgbStr } from '../utils/colorHelper';
 // Catatan desain (Bagian 25 memory.md): sesuai permintaan user, kotak ICBlockRef
 // diganti dengan 2 NOR gates yang digambar langsung — karena "isinya sangat simpel
 // hanya 2 gerbang logika saja". Konsisten dengan CircuitDiagram_SRLatch (Card 15).
-export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onToggleClk }) {
+export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onToggleClk, clockMode, autoActive, onClockModeChange }) {
     // ── Color palette (per design.md 3.5.2) ──
     // D = hijau (Prinsip 1) — sinyal data utama, sepanjang jalur.
     const dCol = '#4ade80', dRgb = hexToRgbStr(dCol);
@@ -239,6 +240,17 @@ export default function CircuitDiagram16({ d, clk, q, qBar, mode, onToggleD, onT
         {/* Input nodes */}
         <InputNode ix={dInX} iy={dInY} val={d} label="D (DATA)" onToggle={onToggleD} color={dCol} rgb={dRgb} />
         <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK" onToggle={onToggleClk} color={clkCol} rgb={clkRgb} />
+
+        {/* Clock Mode Switch (MANUAL/AUTO) — dirender DI BAWAH tombol CLK.
+            Pos: x=1 (align dgn CLK), y=263 (9px di bawah node CLK yang berakhir di y=251).
+            Lihat design.md Bagian 29 untuk spec lengkap (WAJIB untuk semua clock). */}
+        <ClockModeSwitch
+            x={1}
+            y={263}
+            mode={clockMode || 'manual'}
+            autoActive={!!autoActive}
+            onChange={onClockModeChange || (() => {})}
+        />
 
         {/* D fan-out wires (green) */}
         <W d={wireDtrunk} val={d} col={dCol} rgb={dRgb} />

@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { hexToRgbStr } from '../utils/colorHelper';
+import ClockModeSwitch from './ClockModeSwitch';
 
 // Card 17 — SR Flip-Flop
 // SR Latch (Card 15) yang digerbang CLK — mirip Gated D Latch (Card 16), TAPI
@@ -26,7 +27,7 @@ import { hexToRgbStr } from '../utils/colorHelper';
 // Catatan desain (Bagian 25 memory.md): kotak ICBlockRef diganti dengan 2 NOR
 // gates yang digambar langsung — permintaan user: "isinya sangat simpel hanya 2
 // gerbang logika saja". Konsisten dengan CircuitDiagram_SRLatch (Card 15).
-export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, onToggleR, onToggleClk }) {
+export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, onToggleR, onToggleClk, clockMode, autoActive, onClockModeChange }) {
     // ── Color palette (per design.md 3.5.2 + konvensi sekuensial Card 15/16) ──
     // S = hijau (Prinsip 1) — sinyal data utama (input pertama), sepanjang jalur.
     // Konsisten dengan S di CircuitDiagram_SRLatch.jsx.
@@ -64,20 +65,23 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
     const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
     const nodeR = 8, outNodeR = 15;
 
-    // Tanpa NOT gate, layout sedikit lebih ringkas dari Card 16 (svgH=320 vs 360).
-    const svgW = 580, svgH = 320;
+    // svgH diperbesar dari 320 → 340 untuk memberi ruang bagi ClockModeSwitch
+    // di bawah tombol CLK (y=263..285).
+    const svgW = 580, svgH = 340;
 
-    // Input nodes — S atas, CLK tengah, R bawah (jarak 50px vertikal antar input)
+    // Input nodes — S atas, R tengah, CLK BAWAH (reorder dari versi lama S/CLK/R
+    // ke S/R/CLK supaya ClockModeSwitch bisa dirender tepat di bawah tombol CLK,
+    // sesuai aturan design.md Bagian 29: "switch WAJIB di bawah tombol clock").
     const sInX = 1,   sInY = 130;    // S — atas (hijau)
-    const clkInX = 1, clkInY = 180;  // CLK — tengah (amber)
-    const rInX = 1,   rInY = 230;    // R — bawah (cyan)
+    const rInX = 1,   rInY = 180;    // R — tengah (cyan)
+    const clkInX = 1, clkInY = 230;  // CLK — bawah (amber)
 
-    // Fan-out junctions — X lanes unik supaya tidak ada overlap searah:
-    // S di x=80, R di x=100, CLK di x=110 (di luar range S/R trunk →
-    // CLK branch up/down tidak menyilang S/R trunk secara perpendicular pun).
-    const sJunctionX = 80;
-    const rJunctionX = 100;
-    const clkJunctionX = 110;
+    // Fan-out junctions — X lanes diberi jarak 30px (dari 20/10px) supaya
+    // vertical wires S/R/CLK tidak terlihat menumpuk. Pola yang sama dengan
+    // fix v3 Card 16 (D/CLK junction spacing 25px).
+    const sJunctionX = 75;
+    const rJunctionX = 105;
+    const clkJunctionX = 135;
 
     // AND gates (mirror Card 16: AND1 atas, AND2 bawah)
     const andSx = 210, andW = 45; // 30 rect + 15 radius
@@ -240,10 +244,21 @@ export default function CircuitDiagram17({ s, r, clk, q, qBar, mode, onToggleS, 
         <rect x={svgW / 2 - 55} y={4} width={110} height={22} rx={6} fill={mc.bg} stroke={mc.border} strokeWidth="1.5" />
         <text x={svgW / 2} y={19} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="700" fill={mc.text}>{'MODE: ' + mode}</text>
 
-        {/* Input nodes */}
+        {/* Input nodes — urutan S, R, CLK (CLK di bawah, sesuai reorder v4) */}
         <InputNode ix={sInX}   iy={sInY}   val={s}   label="S (SET)"    onToggle={onToggleS}   color={sCol}   rgb={sRgb} />
-        <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK"        onToggle={onToggleClk} color={clkCol} rgb={clkRgb} />
         <InputNode ix={rInX}   iy={rInY}   val={r}   label="R (RESET)"  onToggle={onToggleR}   color={rCol}   rgb={rRgb} />
+        <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK"        onToggle={onToggleClk} color={clkCol} rgb={clkRgb} />
+
+        {/* Clock Mode Switch (MANUAL/AUTO) — dirender DI BAWAH tombol CLK.
+            Pos: x=1 (align dgn CLK), y=263 (9px di bawah node CLK yang berakhir di y=251).
+            Lihat design.md Bagian 29 untuk spec lengkap (WAJIB untuk semua clock). */}
+        <ClockModeSwitch
+            x={1}
+            y={263}
+            mode={clockMode || 'manual'}
+            autoActive={!!autoActive}
+            onChange={onClockModeChange || (() => {})}
+        />
 
         {/* S fan-out wires (green) — hanya 1 branch ke AND1 top (no fan-out, tapi junction dot tetap untuk konsistensi visual) */}
         <W d={wireStrunk}    val={s} col={sCol} rgb={sRgb} />

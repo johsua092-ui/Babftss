@@ -504,3 +504,153 @@ Angka di dalam lingkaran output node HARUS memenuhi kontras tinggi:
 - **Saat non-aktif (val=false, angka 0):** `fill="#94a3b8"` (abu terang) di atas lingkaran gelap — BUKAN abu gelap.
 - **Font:** Inter 12px weight 700 — BUKAN Orbitron (terlalu tipis untuk digit tunggal).
 - **DILARANG** menggunakan `#000` atau warna gelap sebagai fill teks di atas lingkaran glow — kontrasnya terlalu rendah.
+---
+
+## 29. SISTEM CLOCK MODE (MANUAL / AUTO) — ATURAN MUTLAK, BERLAKU KE SEMUA CLOCK (SEKARANG & MASA DEPAN)
+
+**Ini adalah fondasi penting. Aturan ini WAJIB diterapkan ke SEMUA tombol clock, baik yang ada sekarang (Card 16 Gated D Latch, Card 17 SR Flip-Flop) MAUPUN yang akan dibuat di masa depan (D Flip-Flop edge-triggered, JK Flip-Flop, T Flip-Flop, Counter, Register, Shift Register, dll). TIDAK ADA pengecualian.**
+
+### 29.1 Latar belakang & tujuan
+
+Tombol CLK pada rangkaian sekuensial punya 2 cara pengoperasian yang sama-sama valid:
+- **Manual** — user klik tombol CLK sendiri untuk toggle 1/0 (cocok untuk eksplorasi step-by-step, belajar transisi state).
+- **Auto** — user tekan 1x, clock otomatis memancarkan pulsasi 1→0→1→0… secara continue (cocok untuk simulasi clock real-time, melihat behavior rangkaian terhadap clock berjalan).
+
+Kedua mode ini WAJIB tersedia di setiap card yang punya tombol CLK. Tidak boleh ada card clock yang hanya manual atau hanya auto.
+
+### 29.2 Posisi UI switch (ATURAN MUTLAK)
+
+Switch ClockMode WAJIB dirender **tepat di bawah tombol CLK** di dalam SVG diagram. Bukan di samping, bukan di luar SVG, bukan di bawah card — **tepat di bawah tombol CLK**.
+
+**Konsekuensi layout:**
+- Jika di bawah tombol CLK ada ruang kosong (mis. Card 16) → switch langsung ditempatkan di situ.
+- Jika di bawah tombol CLK ada tombol input lain (mis. Card 17 awalnya S/CLK/R dengan R di bawah CLK) → **input lain HARUS digeser** supaya CLK berada di posisi paling bawah, lalu switch ditempatkan di bawahnya.
+- Urutan input yang disarankan: input data di atas, input kontrol di bawah, CLK paling bawah, switch di bawah CLK.
+
+**Posisi switch di SVG:**
+- X: aligned dengan tombol CLK (biasanya `x=1`, sama dengan `clkInX`).
+- Y: 9-12px di bawah node input CLK (yang berakhir di `clkInY + 21`). Contoh: jika `clkInY=230`, node berakhir di y=251, switch di y=263.
+- Tinggi switch: ~22px (slider) + 4px (label "CLOCK MODE" di atas) = total ~26px.
+- SVG height WAJIB diperbesar bila perlu supaya switch tidak terpotong (minimum svgH = `switch_y + 30`).
+
+### 29.3 Style switch (referensi visual)
+
+Switch adalah **2 slider side-byside** (gaya iOS-style toggle), bukan 1 slider dengan 2 state. Setiap slider merepresentasikan 1 mode:
+
+| Slider | State active | State inactive |
+|--------|--------------|----------------|
+| **MANUAL** | Track fill hijau `#4ade80`, knob putih di kanan, label "MANUAL" hitam di kiri | Track transparent + outline abu, knob putih di kiri, label "MANUAL" abu di kanan |
+| **AUTO** | Track fill amber `#facc15`, knob putih di kanan, label "AUTO" hitam di kiri | Track transparent + outline abu, knob putih di kiri, label "AUTO" abu di kanan |
+
+Hanya satu slider yang aktif pada satu waktu (mutually exclusive). Klik slider → switch mode.
+
+Warna:
+- MANUAL = hijau `#4ade80` (rgb `74,222,128`) — konsisten dengan warna sinyal data utama.
+- AUTO = amber `#facc15` (rgb `250,204,21`) — konsisten dengan warna CLK (sinyal kontrol).
+
+Saat AUTO sedang aktif memancarkan pulsasi (autoActive=true), tampilkan indikator **"RUN"** merah `#ef4444` dengan dot pulse di kanan slider AUTO supaya user tahu clock sedang berjalan.
+
+### 29.4 Behavior mode (ATURAN MUTLAK)
+
+**Mode MANUAL:**
+- User klik tombol CLK → toggle 1/0 (sama seperti toggle biasa).
+- Tidak ada perubahan perilaku dari versi sebelum sistem ini ditambahkan.
+
+**Mode AUTO:**
+- User klik tombol CLK **1x** → clock MULAI memancarkan 1→0→1→0… secara continue.
+  - Pulsa dimulai dari **1** (bukan 0).
+  - Interval default: 600ms per state (~0.83Hz). Bisa di-tune bila perlu.
+- User klik tombol CLK **lagi** → clock **STOP dan RESET ke 0**.
+  - **PENTING:** STOP tidak melanjutkan pulsasi — clock kembali ke 0 (mati), bukan lanjut 1→0→1→0.
+- Indikator visual "RUN" merah pulse muncul di kanan slider AUTO saat pulsasi aktif.
+
+### 29.5 Aturan ketat: lock mode saat AUTO aktif (ATURAN MUTLAK)
+
+**Saat clock di mode AUTO sedang aktif memancarkan 1→0→1→0…, user TIDAK BOLEH beralih mode clock (ke MANUAL atau sebaliknya).**
+
+Jika user memaksa menekan switch untuk beralih mode:
+1. Sistem **MEMBLOK** upaya switch mode — mode tidak berubah.
+2. Sistem menampilkan **toast notifikasi** di posisi **top-center viewport** (paling atas, tengah horizontal) dengan pesan eksak:
+   > **"matikan clock dahulu sebelum beralih mode clock"**
+3. Toast berwarna **amber** `#facc15` (warning), dengan icon ⚠.
+4. Toast auto-dismiss setelah 3 detik.
+5. Setelah block ini, sistem **mulai rate-limit 5 detik** (lihat §29.6).
+
+### 29.6 Rate-limit anti-spam (ATURAN MUTLAK)
+
+Setelah upaya switch mode yang diblok (§29.5), sistem **memulai cooldown 5 detik**. Selama cooldown ini aktif:
+
+- Setiap upaya switch mode (ke mode apapun, termasuk ke mode yang sama dengan mode aktif sebelum block) akan **DIGAGALKAN OLEH SISTEM SECARA PAKSA**.
+- Sistem menampilkan toast notifikasi di top-center viewport dengan pesan eksak:
+  > **"warning! pencegahan rate limit mohon tunggu 5 detik"**
+- Toast berwarna **merah** `#ef4444` (error), dengan icon ⛔.
+- Toast auto-dismiss setelah 3 detik.
+- Setelah 5 detik berlalu, rate-limit berakhir dan user boleh mencoba switch mode lagi (tapi tetap harus mematikan clock auto dulu kalau masih autoActive).
+
+**Tujuan rate-limit:** mencegah user yang frustasi melakukan spam klik switch setelah diblok, yang bisa menyebabkan race condition atau visual glitch.
+
+### 29.6.1 Detail implementasi rate-limit
+
+- Rate-limit menggunakan timestamp `rateLimitedUntilRef = Date.now() + 5000`.
+- Cek rate-limit **SEBELUM** cek autoActive lock — supaya semua upaya switch (bahkan ke mode yang sama) selama cooldown langsung ditolak.
+- Rate-limit TIDAK reset saat user melakukan aksi lain (toggle CLK, toggle input data) — hanya elapsed time yang mengakhiri rate-limit.
+
+### 29.7 Komponen & hook reusable (WAJIB dipakai semua card clock)
+
+Implementasi sistem ini terpusat di 3 file reusable — **TIDAK BOLEH** di-copy-paste ke setiap card. Semua card clock WAJIB pakai ketiganya:
+
+1. **`src/hooks/useClockMode.js`** — Hook React yang mengelola state `clk`, `clockMode`, `autoActive`, plus fungsi `toggleClk`, `setClockMode`, dan state `toast`. Logika lock + rate-limit + toast semua di sini.
+2. **`src/components/ClockModeSwitch.jsx`** — Komponen SVG group yang merender 2 slider MANUAL & AUTO. Props: `x`, `y`, `mode`, `autoActive`, `onChange`. Dirender di dalam SVG CircuitDiagram, bukan di luar.
+3. **`src/components/ClockToast.jsx`** — Komponen toast fixed top-center. Props: `toast` (dari useClockMode). Dirender di CircuitCard (di luar SVG), supaya muncul di atas semua elemen.
+
+**Pola pemakaian di CircuitCard:**
+```jsx
+const { clk, clockMode, autoActive, toggleClk, setClockMode, toast } = useClockMode();
+// ... gunakan clk sebagai inputClk ...
+<CircuitDiagramXX ... clk={clk} onToggleClk={toggleClk}
+    clockMode={clockMode} autoActive={autoActive} onClockModeChange={setClockMode} />
+<ClockToast toast={toast} />
+```
+
+**Pola pemakaian di CircuitDiagram:**
+```jsx
+export default function CircuitDiagramXX({ ..., clk, onToggleClk, clockMode, autoActive, onClockModeChange }) {
+    // ... layout constants, pastikan CLK di posisi paling bawah, svgH cukup untuk switch ...
+    return <svg viewBox={...}>
+        {/* input nodes, CLK paling bawah */}
+        <InputNode ix={clkInX} iy={clkInY} val={clk} label="CLK" onToggle={onToggleClk} ... />
+        {/* Switch di bawah CLK */}
+        <ClockModeSwitch x={1} y={clkInY + 33} mode={clockMode || 'manual'}
+            autoActive={!!autoActive} onChange={onClockModeChange || (() => {})} />
+        {/* ... wires, gates, outputs ... */}
+    </svg>;
+}
+```
+
+### 29.8 Card yang sudah menerapkan (status implementasi)
+
+| Card | CLK posisi | Switch posisi | Status |
+|------|-----------|---------------|--------|
+| 16 Gated D Latch | bawah (y=230) | y=263 (ruang kosong, langsung ditempatkan) | ✅ Implemented |
+| 17 SR Flip-Flop | bawah (y=230, setelah reorder dari S/CLK/R ke S/R/CLK) | y=263 (svgH diperbesar 320→340) | ✅ Implemented |
+
+**Card masa depan yang WAJIB menerapkan:** D Flip-Flop (edge-triggered), JK Flip-Flop, T Flip-Flop, Counter (async/sync), Register, Shift Register, Memory Unit, dan rangkaian apapun yang punya tombol CLK.
+
+### 29.9 Checklist implementasi untuk card clock baru
+
+Saat membuat card baru dengan tombol CLK, jalankan checklist ini:
+
+- [ ] CLK ditempatkan di posisi input paling bawah (bukan tengah/atas).
+- [ ] svgH cukup untuk switch di bawah CLK (minimum `clkInY + 60`).
+- [ ] `useClockMode()` dipanggil di CircuitCard, destructured `{ clk, clockMode, autoActive, toggleClk, setClockMode, toast }`.
+- [ ] `clk` dipassing ke CircuitDiagram sebagai `clk` prop (BUKAN `inputClk` state lokal).
+- [ ] `toggleClk` dipassing ke CircuitDiagram sebagai `onToggleClk`.
+- [ ] `clockMode`, `autoActive`, `onClockModeChange` dipassing ke CircuitDiagram.
+- [ ] `<ClockModeSwitch>` dirender di dalam SVG, di bawah node input CLK.
+- [ ] `<ClockToast toast={toast} />` dirender di CircuitCard (di luar SVG).
+- [ ] Verifikasi: klik MANUAL → klik CLK toggle 1/0 manual.
+- [ ] Verifikasi: klik AUTO → klik CLK 1x → pulsasi 1→0→1→0 muncul, indikator "RUN" merah pulse.
+- [ ] Verifikasi: saat autoActive, klik slider MANUAL → toast amber "matikan clock dahulu sebelum beralih mode clock".
+- [ ] Verifikasi: setelah diblok, klik slider apapun dalam 5 detik → toast merah "warning! pencegahan rate limit mohon tunggu 5 detik".
+- [ ] Verifikasi: klik CLK lagi saat autoActive → clock STOP dan kembali ke 0 (bukan lanjut pulsasi).
+- [ ] `npm run build` sukses tanpa error.

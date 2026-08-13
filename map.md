@@ -125,3 +125,26 @@ Babftss-main/
 6. 🔄 Card 15 SR Latch — selesai, 1 bug ditemukan & diperbaiki (badge mode).
 7. ⏳ Rencana besar berikutnya: keluarga Flip-Flop, Rising Edge Detector, Debouncer, ALU, Register, Encoder, Decoder (masing-masing bertahap 1-bit s/d 16-bit).
 8. ✅ Fitur pendukung: AI Helper widget, Favorites, sistem pencarian/filter card, Regulasi Warna Kabel, sistem navigasi "click me".
+
+---
+
+## 29. FONDASI PENTING: SISTEM CLOCK MODE (MANUAL / AUTO)
+
+**Berlaku untuk SEMUA card yang punya tombol CLK — sekarang (Card 16 Gated D Latch, Card 17 SR Flip-Flop) dan masa depan (D Flip-Flop, JK, T, Counter, Register, Shift Register, Memory Unit, dll).**
+
+Setiap tombol CLK WAJIB punya switch UI "MANUAL" / "AUTO" yang dirender **tepat di bawah tombol CLK** di dalam SVG diagram. Spec lengkap:
+
+- **`design.md` Bagian 29** — Spec design & visual (posisi, style slider, behavior, aturan ketat lock mode, rate-limit, checklist).
+- **`memory.md` Bagian 29** — Catatan implementasi (file baru, file yang diubah, verifikasi).
+- **`instruction.md` Bagian 29** — Aturan mutlak & DILARANG list untuk AI/future developer.
+
+**Status implementasi:**
+- ✅ Card 16 Gated D Latch — implemented.
+- ✅ Card 17 SR Flip-Flop — implemented (dengan reorder input S/R/CLK supaya CLK di bawah).
+- ⏳ Card clock masa depan — WAJIB pakai `useClockMode` hook + `ClockModeSwitch` + `ClockToast`, jalankan checklist `design.md` §29.9.
+
+**Inti aturan (untuk pengingat cepat):**
+- MANUAL: klik CLK → toggle 1/0.
+- AUTO: klik CLK 1x → pulsasi 1→0→1→0 (600ms/state). Klik lagi → STOP & reset ke 0.
+- Saat AUTO aktif, switch mode DIBLOK → toast amber "matikan clock dahulu sebelum beralih mode clock" + rate-limit 5 detik.
+- Selama rate-limit, semua upaya switch ditolak → toast merah "warning! pencegahan rate limit mohon tunggu 5 detik".

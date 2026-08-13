@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import CircuitDiagram17 from './CircuitDiagram17';
 import { hexToRgbStr } from '../utils/colorHelper';
 import HeartButton from './HeartButton';
+import { useClockMode } from '../hooks/useClockMode';
+import ClockToast from './ClockToast';
 
 // Card 17 — SR Flip-Flop
 // SR Latch (Card 15) yang "digerbang" CLK — mirip Gated D Latch (Card 16), TAPI
@@ -15,10 +17,15 @@ import HeartButton from './HeartButton';
 //   S_gated=0, R_gated=1 -> RESET
 //   S_gated=0, R_gated=0 -> HOLD  (mencakup CLK=0 kondisi apapun, DAN CLK=1 dgn S=0,R=0)
 //   S_gated=1, R_gated=1 -> INVALID (hanya mungkin saat CLK=1 DAN S=1 DAN R=1 bersamaan)
+//
+// Clock mode (Bagian 29 memory.md / design.md): CLK punya 2 mode — MANUAL &
+// AUTO. Dikelola oleh hook useClockMode. Switch UI dirender di dalam SVG
+// CircuitDiagram17, di bawah tombol CLK. Toast notifikasi dirender di sini.
 export default function CircuitCard17() {
     const [inputS, setInputS] = useState(false);
     const [inputR, setInputR] = useState(false);
-    const [inputClk, setInputClk] = useState(false);
+    // CLK sekarang dikelola oleh useClockMode (manual/auto + rate-limit + toast)
+    const { clk: inputClk, clockMode, autoActive, toggleClk, setClockMode, toast } = useClockMode();
     // Q = "ingatan" — BUKAN dihitung ulang tiap render (pola CircuitCard_SRLatch)
     const [q, setQ] = useState(false);
 
@@ -84,8 +91,15 @@ export default function CircuitCard17() {
             s={inputS} r={inputR} clk={inputClk} q={q} qBar={qBar} mode={mode}
             onToggleS={() => setInputS(v => !v)}
             onToggleR={() => setInputR(v => !v)}
-            onToggleClk={() => setInputClk(v => !v)}
+            onToggleClk={toggleClk}
+            clockMode={clockMode}
+            autoActive={autoActive}
+            onClockModeChange={setClockMode}
         />
+
+        {/* Toast notifikasi clock (top-center, fixed) — dirender di sini
+            supaya muncul di atas semua circuit card. */}
+        <ClockToast toast={toast} />
 
         {/* Status bar */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '10px 0 8px', fontFamily: 'Orbitron,sans-serif', fontSize: 10, color: '#475569', flexWrap: 'wrap' }}>
@@ -99,6 +113,9 @@ export default function CircuitCard17() {
             <span>,</span>
             <span style={{ color: qBar ? '#f472b6' : '#334155', fontWeight: 700 }}><span style={{ textDecoration: 'overline' }}>Q</span>={qBar ? 1 : 0}</span>
             <span style={{ marginLeft: 4, padding: '2px 8px', borderRadius: 4, backgroundColor: mode === 'SET' ? 'rgba(74,222,128,0.18)' : mode === 'RESET' ? 'rgba(34,211,238,0.18)' : mode === 'HOLD' ? 'rgba(250,204,21,0.18)' : 'rgba(239,68,68,0.18)', color: mode === 'SET' ? '#4ade80' : mode === 'RESET' ? '#22d3ee' : mode === 'HOLD' ? '#facc15' : '#ef4444', fontWeight: 700, fontSize: 9 }}>{mode}</span>
+            <span style={{ marginLeft: 4, padding: '2px 8px', borderRadius: 4, backgroundColor: autoActive ? 'rgba(239,68,68,0.18)' : 'rgba(148,163,184,0.12)', color: autoActive ? '#ef4444' : '#94a3b8', fontWeight: 700, fontSize: 9, letterSpacing: 0.5 }}>
+                {clockMode === 'auto' ? (autoActive ? 'CLK: AUTO ⚡' : 'CLK: AUTO') : 'CLK: MANUAL'}
+            </span>
         </div>
 
         {/* Description */}
