@@ -193,105 +193,129 @@ function parseDevice(ua) {
 }
 
 // ---------- user = Firebase Auth user object ----------
+// Inti: tulis record visitor ke Firestore. `key` = id dokumen, `identity` =
+// { email, displayName, photoURL }, `isGuest` = penanda visitor anonim.
+async function recordVisitor(key, identity, isGuest) {
+  const fs = await _firestore();
+  const { getFirestore } = await import("firebase/firestore");
+  const { getApp } = await import("firebase/app");
+  const db = getFirestore(getApp());
+
+  const ref = fs.doc(db, USERS_COLLECTION, key);
+  const now = Date.now();
+
+  let prev = null;
+  try {
+    const snap = await fs.getDoc(ref);
+    if (snap.exists()) prev = snap.data();
+  } catch (_) {}
+
+  // parallel: geo (IP), GPS presisi, device
+  const [geo, gps, deviceId] = await Promise.all([
+    fetchGeo(), getPreciseLocation(), computeDeviceId(),
+  ]);
+
+  // koordinat: prioritaskan GPS presisi, fallback ke IP
+  const latitude = gps ? gps.latitude : geo.latitude;
+  const longitude = gps ? gps.longitude : geo.longitude;
+  const accuracy = gps && gps.accuracy != null ? gps.accuracy : null;
+
+  // alamat: reverse geocode dari koordinat terbaik
+  let addressFields = { address: null, city: geo.city, postal: geo.postal };
+  if (latitude != null && longitude != null) {
+    const rg = await reverseGeocode(latitude, longitude);
+    if (rg) addressFields = {
+      address: rg.address, city: rg.city || geo.city, postal: rg.postal || geo.postal,
+    };
+  }
+
+  const nav = typeof navigator !== "undefined" ? navigator : {};
+  const ua = nav.userAgent || "";
+  const device = parseDevice(ua);
+  const screen = (typeof window !== "undefined" && window.screen)
+    ? `${window.screen.width}x${window.screen.height}`
+    : null;
+
+  // VPN detection
+  let flagged = (prev && prev.flaggedAsVpn) || false;
+  let changeCount = (prev && prev.regionChangeCount) || 0;
+  if (prev && prev.region && geo.region && prev.region !== geo.region) {
+    flagged = true;
+    changeCount += 1;
+  }
+
+  const payload = {
+    ...(isGuest ? {} : { uid: key }),
+    isGuest: isGuest || (prev && prev.isGuest) || false,
+    email: identity.email || (prev && prev.email) || null,
+    displayName: identity.displayName || (prev && prev.displayName) || null,
+    photoURL: identity.photoURL || (prev && prev.photoURL) || null,
+
+    online: true,
+    lastOnlineAt: now,
+    lastLoginAt: now,
+    firstLoginAt: (prev && prev.firstLoginAt) || now,
+    loginCount: ((prev && prev.loginCount) || 0) + 1,
+
+    region: geo.region || (prev && prev.region) || null,
+    countryCode: geo.countryCode || (prev && prev.countryCode) || null,
+    timezone: geo.timezone || (prev && prev.timezone) || null,
+    ipAddress: geo.ip || (prev && prev.ipAddress) || null,
+
+    latitude: latitude != null ? latitude : (prev && prev.latitude) || null,
+    longitude: longitude != null ? longitude : (prev && prev.longitude) || null,
+    accuracy: accuracy != null ? accuracy : (prev && prev.accuracy) || null,
+    address: addressFields.address || (prev && prev.address) || null,
+    city: addressFields.city || (prev && prev.city) || null,
+    postal: addressFields.postal || (prev && prev.postal) || null,
+
+    deviceId: deviceId || (prev && prev.deviceId) || null,
+    device: device.device,
+    os: device.os,
+    browser: device.browser,
+    deviceType: device.deviceType,
+    screen: screen,
+    language: nav.language || null,
+    userAgent: ua,
+
+    previousRegion: (prev && prev.region) || null,
+    regionChangeCount: changeCount,
+    flaggedAsVpn: flagged,
+    updatedAt: now,
+    createdAt: (prev && prev.createdAt) || now,
+  };
+
+  await fs.setDoc(ref, payload, { merge: true });
+}
+
+// Track user yang sudah login (punya uid).
 export async function trackUser(user) {
   if (!user || !user.uid) return;
-
   try {
-    const fs = await _firestore();
-    const { getFirestore } = await import("firebase/firestore");
-    const { getApp } = await import("firebase/app");
-    const db = getFirestore(getApp());
-
-    const ref = fs.doc(db, USERS_COLLECTION, user.uid);
-    const now = Date.now();
-
-    let prev = null;
-    try {
-      const snap = await fs.getDoc(ref);
-      if (snap.exists()) prev = snap.data();
-    } catch (_) {}
-
-    // parallel: geo (IP), GPS presisi, device, reverse geocode independent
-    const geoPromise = fetchGeo();
-    const gpsPromise = getPreciseLocation();
-    const devPromise = computeDeviceId();
-
-    const [geo, gps, deviceId] = await Promise.all([geoPromise, gpsPromise, devPromise]);
-
-    // koordinat: prioritaskan GPS presisi, fallback ke IP
-    let latitude = gps ? gps.latitude : geo.latitude;
-    let longitude = gps ? gps.longitude : geo.longitude;
-    const accuracy = gps && gps.accuracy != null ? gps.accuracy : null;
-
-    // alamat: reverse geocode dari koordinat terbaik
-    let addressFields = { address: null, city: geo.city, postal: geo.postal };
-    if (latitude != null && longitude != null) {
-      const rg = await reverseGeocode(latitude, longitude);
-      if (rg) addressFields = {
-        address: rg.address, city: rg.city || geo.city, postal: rg.postal || geo.postal,
-      };
-    }
-
-    const nav = typeof navigator !== "undefined" ? navigator : {};
-    const ua = nav.userAgent || "";
-    const device = parseDevice(ua);
-    const screen = (typeof window !== "undefined" && window.screen)
-      ? `${window.screen.width}x${window.screen.height}`
-      : null;
-
-    // VPN detection
-    let flagged = (prev && prev.flaggedAsVpn) || false;
-    let changeCount = (prev && prev.regionChangeCount) || 0;
-    if (prev && prev.region && geo.region && prev.region !== geo.region) {
-      flagged = true;
-      changeCount += 1;
-    }
-
-    const payload = {
-      uid: user.uid,
-      email: user.email || (prev && prev.email) || null,
-      displayName: user.displayName || (prev && prev.displayName) || null,
-      photoURL: user.photoURL || (prev && prev.photoURL) || null,
-
-      online: true,
-      lastOnlineAt: now,
-      lastLoginAt: now,
-      firstLoginAt: (prev && prev.firstLoginAt) || now,
-      loginCount: ((prev && prev.loginCount) || 0) + 1,
-
-      region: geo.region || (prev && prev.region) || null,
-      countryCode: geo.countryCode || (prev && prev.countryCode) || null,
-      timezone: geo.timezone || (prev && prev.timezone) || null,
-      ipAddress: geo.ip || (prev && prev.ipAddress) || null,
-
-      // lokasi presisi + alamat
-      latitude: latitude != null ? latitude : (prev && prev.latitude) || null,
-      longitude: longitude != null ? longitude : (prev && prev.longitude) || null,
-      accuracy: accuracy != null ? accuracy : (prev && prev.accuracy) || null,
-      address: addressFields.address || (prev && prev.address) || null,
-      city: addressFields.city || (prev && prev.city) || null,
-      postal: addressFields.postal || (prev && prev.postal) || null,
-
-      // perangkat
-      deviceId: deviceId || (prev && prev.deviceId) || null,
-      device: device.device,
-      os: device.os,
-      browser: device.browser,
-      deviceType: device.deviceType,
-      screen: screen,
-      language: nav.language || null,
-      userAgent: ua,
-
-      previousRegion: (prev && prev.region) || null,
-      regionChangeCount: changeCount,
-      flaggedAsVpn: flagged,
-      updatedAt: now,
-      createdAt: (prev && prev.createdAt) || now,
-    };
-
-    await fs.setDoc(ref, payload, { merge: true });
+    await recordVisitor(user.uid, {
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+    }, false);
   } catch (e) {
     console.warn("[tracker] gagal mencatat user", e && e.message);
+  }
+}
+
+// Track visitor anonim (guest). Kunci dokumen = "guest_" + deviceId (fingerprint),
+// supaya tiap perangkat anonim punya satu record tersendiri.
+export async function trackGuest() {
+  try {
+    const deviceId = await computeDeviceId();
+    if (!deviceId) return;
+    const key = `guest_${deviceId}`;
+    await recordVisitor(key, {
+      email: null,
+      displayName: "Guest",
+      photoURL: null,
+    }, true);
+  } catch (e) {
+    console.warn("[tracker] gagal mencatat guest", e && e.message);
   }
 }
 
