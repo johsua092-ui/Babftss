@@ -22,7 +22,9 @@ const GATE_DATA = [
 // Pseudo-defs untuk INPUT (Switch) & OUTPUT (LED) — gak masuk GATE_DATA (gak ditampilin sebagai gate),
 // tapi dipakai oleh createComponent, draw loop, dan paletteDrag supaya gak crash.
 const IO_DEFS = {
-  INPUT:  { color: '#f59e0b', label: 'IN',  name: 'Switch', width: 60, height: 50, inputCount: 0, outputCount: 1 },
+  // INPUT (Switch) height ditambah dari 50 → 60 supaya muat drag handle bar di atas (12px).
+  // User minta: switch punya tombol drag sendiri biar bisa dipindah tanpa toggle.
+  INPUT:  { color: '#f59e0b', label: 'IN',  name: 'Switch', width: 60, height: 60, inputCount: 0, outputCount: 1 },
   OUTPUT: { color: '#ef4444', label: 'OUT', name: 'LED',    width: 60, height: 50, inputCount: 1, outputCount: 0 },
 };
 
@@ -261,7 +263,7 @@ function DragGhost({ type, x, y }) {
   if (!def) return null;
   const isIO = type === 'INPUT' || type === 'OUTPUT';
   const w = isIO ? 60 : (type === 'not' ? 80 : 90);
-  const h = isIO ? 50 : 56;
+  const h = isIO ? IO_DEFS[type].height : 56;  // INPUT=60 (ada drag handle), OUTPUT=50
   return (
     <div style={{
       position: 'fixed',
@@ -407,6 +409,11 @@ export default function LogicGatesSimulator({ setPage }) {
   const hitTest = useCallback((mx, my, comps) => {
     for (let i = comps.length - 1; i >= 0; i--) {
       const c = comps[i];
+      // Drag handle bar di atas INPUT (Switch) — cek SEBELUM body supaya handle menang
+      // atas body hit. Handle area: top 12px dari comp body.
+      if (c.type === 'INPUT' && mx >= c.x && mx <= c.x + c.width && my >= c.y && my <= c.y + 12) {
+        return { kind: 'drag-handle', comp: c };
+      }
       if (mx >= c.x && mx <= c.x + c.width && my >= c.y && my <= c.y + c.height) {
         return { kind: 'body', comp: c };
       }
@@ -542,18 +549,40 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.textBaseline = 'middle';
           ctx.fillText(def.label, comp.x + comp.width / 2, comp.y + 8);
 
-          // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx) — di-scale & di-center di box
+          // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx)
+          // CENTER sejati: pakai actual draw width per gate type (bukan 64 fixed).
+          // Sebelumnya gate kiri-aligned di area 64px → terlihat offset ke kiri.
           ctx.save();
-          const gateW = 64, gateH = 30;
-          ctx.translate(comp.x + (comp.width - gateW) / 2, comp.y + 18);
+          const gateDrawW = getGateDrawWidth(comp.type);
+          const gateH = 30;
+          ctx.translate(comp.x + (comp.width - gateDrawW) / 2, comp.y + 18);
           drawGateShape(ctx, comp.type, def.color, isOn, comp.inputs);
           ctx.restore();
         }
 
         // ── Switch (INPUT) ──
+        // Komponen Switch punya DRAG HANDLE di atas (12px) supaya bisa dipindah
+        // tanpa toggle. Klik handle = drag; klik body bawah = toggle ON/OFF.
         if (comp.type === 'INPUT') {
+          const handleH = 12;
+          // Drag handle bar (top, with grip dots)
+          ctx.fillStyle = '#334155';
+          roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, handleH, [7, 7, 0, 0]);
+          ctx.fill();
+          // Grip dots (⠿ pattern) — 6 dots in 2 rows
+          ctx.fillStyle = '#94a3b8';
+          const dotsX = comp.x + comp.width / 2;
+          const dotsY = comp.y + handleH / 2 + 1;
+          for (let dy = -2; dy <= 2; dy += 4) {
+            for (let dx = -5; dx <= 5; dx += 5) {
+              ctx.beginPath();
+              ctx.arc(dotsX + dx, dotsY + dy, 0.9, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          // Toggle body (shifted down to make room for handle bar)
           const swX = comp.x + comp.width / 2;
-          const swY = comp.y + comp.height / 2 - 4;
+          const swY = comp.y + handleH + (comp.height - handleH) / 2 - 2;
           ctx.fillStyle = comp.outputs[0] ? '#4ade80' : '#475569';
           roundRect(ctx, swX - 18, swY - 8, 36, 16, 8);
           ctx.fill();
@@ -633,6 +662,25 @@ export default function LogicGatesSimulator({ setPage }) {
 
       animId = requestAnimationFrame(draw);
     };
+
+    // getGateDrawWidth — actual draw width per gate type (leftmost = 0 input wire, rightmost = end of output wire)
+    // Dipakai supaya gate body CENTER sejati di comp box, bukan left-aligned di area 64 fixed.
+    // Konstanta HARUS match drawGateShape: C=5, P=3, wireLen=6, q=25, N=5 → I=q-N=20.
+    function getGateDrawWidth(type) {
+      const C = 5, P = 3, wireLen = 6;
+      const I = 20;        // q - N
+      const arcR = I / 2;  // 10
+      switch (type) {
+        case 'not':   return C + 24 + P * 2 + wireLen;             // 41
+        case 'and':   return (C + 12) + arcR + wireLen;            // 33
+        case 'nand':  return (C + 10) + arcR + P * 2 + wireLen;    // 37
+        case 'or':    return C + 34 + wireLen;                     // 45
+        case 'nor':   return C + 31 + P * 2 + wireLen;             // 48
+        case 'xor':   return C + 34 + wireLen;                     // 45
+        case 'xnor':  return C + 31 + P * 2 + wireLen;             // 48
+        default:      return 48;
+      }
+    }
 
     // drawGateShape — model di-match dengan GateDiagram.jsx (menu "7 Basic Logic Gates")
     // Coordinate system lokal: origin di kiri-atas area gate, gate di-center vertikal di L.
@@ -814,7 +862,15 @@ export default function LogicGatesSimulator({ setPage }) {
       const hit = hitTest(mx, my, stateRef.current.components);
 
       if (hit) {
-        if (hit.kind === 'output') {
+        if (hit.kind === 'drag-handle') {
+          // Switch (INPUT) drag handle — drag comp, JANGAN toggle.
+          // User minta: switch punya tombol drag sendiri di atas biar bisa ditarik
+          // khusus dia doang (tanpa mengganggu toggle behavior di body bawah).
+          setSelectedId(hit.comp.id);
+          stateRef.current.dragging = hit.comp;
+          stateRef.current.dragOffset = { x: mx - hit.comp.x, y: my - hit.comp.y };
+          setStatus('Dragging ' + (IO_DEFS[hit.comp.type]?.name || hit.comp.type));
+        } else if (hit.kind === 'output') {
           stateRef.current.wiring = { fromComp: hit.comp, fromIdx: hit.idx, mx, my };
           setStatus('Wiring... click an input node to connect');
         } else if (hit.kind === 'input') {
@@ -903,6 +959,9 @@ export default function LogicGatesSimulator({ setPage }) {
       if (hit && (hit.kind === 'input' || hit.kind === 'output')) {
         stateRef.current.hoverNode = { x: hit.x, y: hit.y };
         canvas.style.cursor = 'pointer';
+      } else if (hit && hit.kind === 'drag-handle') {
+        stateRef.current.hoverNode = null;
+        canvas.style.cursor = 'move';
       } else if (hit && hit.kind === 'body') {
         stateRef.current.hoverNode = null;
         canvas.style.cursor = hit.comp.type === 'INPUT' ? 'pointer' : 'move';
