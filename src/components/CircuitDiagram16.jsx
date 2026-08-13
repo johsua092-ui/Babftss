@@ -65,16 +65,24 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
     const mkStroke = (val, col) => val ? col : '#475569';
 
     // ── Layout constants ──
-    const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
-    const nodeR = 8, outNodeR = 15;
+    // Input node geometri — diperbesar 13 Aug 2026 (revisi #3) karena user
+    // feedback "kekecilan". Width 46→60, height 42→46, circle r=8→10.
+    // Y positions di-shift sedikit supaya gap antar button tetap ≥9px:
+    //   S: 130→125, CLK: 180 (sama), R: 230→235
+    // Half-height = 23, button extends ±23 dari center.
+    //   S: 102-148, CLK: 157-203 (gap 9), R: 212-258 (gap 9) ✓
+    // Width 60 supaya label "R (RESET)" muat tanpa overflow.
+    const inputNodeW = 60, inputNodeH = 46, inputNodeRx = 8;
+    const nodeR = 10, outNodeR = 15;
 
     const svgW = 580, svgH = 340;
 
     // Input nodes — urutan S, CLK, R (top-to-bottom) SESUAI gambar referensi.
     // (Berbeda dari versi lama AND+NOR yang pakai S, R, CLK.)
-    const sInX = 1,   sInY = 130;    // S — atas (hijau)
+    // Y positions di-shift supaya gap antar button ≥9px setelah height +4.
+    const sInX = 1,   sInY = 125;    // S — atas (hijau)
     const clkInX = 1, clkInY = 180;  // CLK — tengah (amber)
-    const rInX = 1,   rInY = 230;    // R — bawah (cyan)
+    const rInX = 1,   rInY = 235;    // R — bawah (cyan)
 
     // Fan-out junctions — X lanes diberi jarak 30px supaya vertical wires
     // S/CLK/R tidak terlihat menumpuk. S junction & R junction sebenarnya
@@ -141,16 +149,19 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
     const nand4Glow = mkGlow(nand4Out, nandRgb), nand4Fill = mkFill(nand4Out, nandRgb), nand4Stroke = mkStroke(nand4Out, nandCol);
 
     // ── Komponen reusable ──
+    // InputNode — rect + label + circle + value. Half-height 23, label di
+    // iy-11 (font 9), circle di iy (r=10), value di iy+18 (font 13).
+    // ix+30 = center X (inputNodeW/2 = 30).
     const InputNode = ({ ix, iy, val, label, onToggle, color, rgb }) => <g onClick={onToggle} style={{ cursor: 'pointer' }}>
-        <rect x={ix} y={iy - 21} width={inputNodeW} height={inputNodeH} rx={inputNodeRx}
+        <rect x={ix} y={iy - 23} width={inputNodeW} height={inputNodeH} rx={inputNodeRx}
             fill={val ? 'rgba(' + rgb + ',0.2)' : 'rgba(' + rgb + ',0.1)'}
             stroke={val ? color : 'rgba(' + rgb + ',0.3)'} strokeWidth="1.5" style={{ transition: 'all 0.25s' }} />
-        <text x={ix + 24} y={iy - 10} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="8" fill="#e2e8f0">{label}</text>
-        <circle cx={ix + 24} cy={iy} r={nodeR}
+        <text x={ix + 30} y={iy - 11} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="9" fontWeight="600" fill="#e2e8f0">{label}</text>
+        <circle cx={ix + 30} cy={iy} r={nodeR}
             fill={val ? color : 'rgba(' + rgb + ',0.15)'}
             stroke={val ? color : 'rgba(' + rgb + ',0.4)'} strokeWidth="1.5"
-            style={{ filter: val ? 'drop-shadow(0 0 5px rgba(' + rgb + ',0.8))' : 'none', transition: 'all 0.25s' }} />
-        <text x={ix + 24} y={iy + 17} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="11" fontWeight="bold"
+            style={{ filter: val ? 'drop-shadow(0 0 6px rgba(' + rgb + ',0.8))' : 'none', transition: 'all 0.25s' }} />
+        <text x={ix + 30} y={iy + 18} textAnchor="middle" fontFamily="Orbitron,sans-serif" fontSize="13" fontWeight="bold"
             fill={val ? color : 'rgba(' + rgb + ',0.5)'}>{val ? '1' : '0'}</text>
     </g>;
 
@@ -246,12 +257,12 @@ export default function CircuitDiagram16({ s, r, clk, q, qBar, mode, onToggleS, 
         <InputNode ix={rInX}   iy={rInY}   val={r}   label="R (RESET)"  onToggle={onToggleR}   color={rCol}   rgb={rRgb} />
 
         {/* Clock Mode Switch (MANUAL/AUTO) — dirender DI BAWAH tombol CLK.
-            Pos: x=1 (align dgn CLK), y=285 (clkInY + 105 — gap wajar dari rect
-            bottom CLK di y=201 ke label switch, sesuai aturan design.md Bagian 29.2).
+            Pos: x=1 (align dgn CLK), y=295 (gap wajar dari R button bottom
+            di y=258 ke label switch di y=281 — gap ~12px supaya tidak nabrak).
             Lihat design.md Bagian 29 untuk spec lengkap (WAJIB untuk semua clock). */}
         <ClockModeSwitch
             x={1}
-            y={285}
+            y={295}
             mode={clockMode || 'manual'}
             autoActive={!!autoActive}
             onChange={onClockModeChange || (() => {})}
