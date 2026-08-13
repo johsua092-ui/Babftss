@@ -104,6 +104,158 @@ function GateSVG({ type, color, width = 90, height = 56 }) {
   );
 }
 
+// ── MiniGateIcon (palette icon, model centered dari CircuitCard00.jsx commit d9e010d) ──
+// Semua gate body di-center di canvas maxW supaya input & output wire seimbang.
+// scale prop untuk adjust ukuran tampilan (viewBox tetap, width/height discale).
+function MiniGateIcon({ type, color, scale = 1 }) {
+  const s = color, sw = 3;
+  const h = 36, cy = 18, sz = 13;
+  const triW = 14;
+  const bw = 5;
+  const bubbleR = 3.5;
+  const bubbleGap = 3;
+  const wireLen = 10;
+  const tipX = sz * 1.7;
+  const xorExtra = 15;
+  const andWireOff = 6;
+  const orWireOff = sz / 2;
+  const svgStyle = { display: 'block', flexShrink: 0 };
+
+  const maxW = wireLen + xorExtra + tipX + bubbleGap + bubbleR + wireLen;
+
+  switch (type) {
+    case 'not': {
+      const naturalW = wireLen + triW + bubbleGap + bubbleR + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen;
+      const triTip = cx + triW;
+      const bubbleCx = triTip + bubbleGap;
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy} x2={cx} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <polygon points={`${cx},${cy - sz} ${cx},${cy + sz} ${triTip},${cy}`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+          <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    case 'and': {
+      const naturalW = (wireLen + bw + sz) + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen;
+      const bodyRight = cx + bw + sz;
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <line x1={bodyRight} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    case 'nand': {
+      const naturalW = (wireLen + bw + sz + bubbleGap) + bubbleR + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen;
+      const arcRight = cx + bw + sz;
+      const bubbleCx = arcRight + bubbleGap;
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy - andWireOff} x2={cx} y2={cy - andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <line x1={0} y1={cy + andWireOff} x2={cx} y2={cy + andWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <path d={`M ${cx},${cy - sz} L ${cx + bw},${cy - sz} A ${sz},${sz} 0 0,1 ${cx + bw},${cy + sz} L ${cx},${cy + sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+          <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    case 'or': {
+      const naturalW = (wireLen + tipX) + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen;
+      const tip = cx + tipX;
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <line x1={tip} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    case 'nor': {
+      const naturalW = (wireLen + tipX + bubbleGap) + bubbleR + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen;
+      const tip = cx + tipX;
+      const bubbleCx = tip + bubbleGap;
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy - orWireOff} x2={cx} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <line x1={0} y1={cy + orWireOff} x2={cx} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+          <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    case 'xor': {
+      const naturalW = (wireLen + xorExtra + tipX) + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen + xorExtra;
+      const tip = cx + tipX;
+      const curveStart = cx - xorExtra;
+      const ctrlX = cx + sz * 0.4;
+      const tWire = (sz + 2) / (4 * (sz + 1));
+      const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+          <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <line x1={tip} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    case 'xnor': {
+      const naturalW = (wireLen + xorExtra + tipX + bubbleGap) + bubbleR + wireLen;
+      const leftPad = (maxW - naturalW) / 2;
+      const cx = wireLen + xorExtra;
+      const tip = cx + tipX;
+      const curveStart = cx - xorExtra;
+      const ctrlX = cx + sz * 0.4;
+      const tWire = (sz + 2) / (4 * (sz + 1));
+      const xorWireEnd = curveStart + 2 * tWire * (1 - tWire) * (ctrlX - curveStart);
+      const bubbleCx = tip + bubbleGap;
+      return <svg viewBox={`0 0 ${maxW} ${h}`} width={maxW * scale} height={h * scale} style={svgStyle}>
+        <g transform={`translate(${leftPad},0)`}>
+          <line x1={0} y1={cy - orWireOff} x2={xorWireEnd} y2={cy - orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <line x1={0} y1={cy + orWireOff} x2={xorWireEnd} y2={cy + orWireOff} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+          <path d={`M ${curveStart},${cy - sz - 1} Q ${ctrlX},${cy} ${curveStart},${cy + sz + 1}`} fill="none" stroke={s} strokeWidth={sw} />
+          <path d={`M ${cx},${cy - sz} Q ${cx + sz * 1.2},${cy - sz} ${tip},${cy} Q ${cx + sz * 1.2},${cy + sz} ${cx},${cy + sz} Q ${cx + sz * 0.4},${cy} ${cx},${cy - sz} Z`} fill="none" stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+          <circle cx={bubbleCx} cy={cy} r={bubbleR} fill="none" stroke={s} strokeWidth={sw} />
+          <line x1={bubbleCx + bubbleR} y1={cy} x2={naturalW} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+        </g>
+      </svg>;
+    }
+    default:
+      return null;
+  }
+}
+
+// ── WireIcon (palette icon untuk WIRE — simple horizontal line) ──
+function WireIcon({ color, scale = 1 }) {
+  const s = color, sw = 3;
+  const h = 36, cy = 18;
+  const w = 50; // wire panjang tetap (no body)
+  return <svg viewBox={`0 0 ${w} ${h}`} width={w * scale} height={h * scale} style={{ display: 'block', flexShrink: 0 }}>
+    <line x1={0} y1={cy} x2={w} y2={cy} stroke={s} strokeWidth={sw} strokeLinecap="round" />
+    <circle cx={0} cy={cy} r={2.5} fill={s} />
+    <circle cx={w} cy={cy} r={2.5} fill={s} />
+  </svg>;
+}
+
 // ── Canvas Simulator ──
 export default function LogicGatesSimulator({ setPage }) {
   const canvasRef = useRef(null);
@@ -840,7 +992,7 @@ export default function LogicGatesSimulator({ setPage }) {
   };
 
   const paletteStyle = {
-    width: 170,
+    width: 210,
     backgroundColor: '#1e293b',
     borderRight: '1px solid #334155',
     padding: '14px 10px',
@@ -875,14 +1027,12 @@ export default function LogicGatesSimulator({ setPage }) {
   };
 
   const iconBoxStyle = (color) => ({
-    width: 26, height: 26,
+    width: 44, height: 28,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     borderRadius: 5,
-    backgroundColor: color + '20',
+    backgroundColor: color + '15',
     color: color,
-    fontSize: 11,
-    fontWeight: 700,
-    fontFamily: '"Orbitron", monospace',
+    flexShrink: 0,
   });
 
   const canvasWrapStyle = {
@@ -966,7 +1116,11 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseEnter={e => { e.currentTarget.style.borderColor = g.color; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
-              <div style={iconBoxStyle(g.color)}>{g.label}</div>
+              <div style={iconBoxStyle(g.color)}>
+                {g.type === 'wire'
+                  ? <WireIcon color={g.color} scale={0.5} />
+                  : <MiniGateIcon type={g.type} color={g.color} scale={0.55} />}
+              </div>
               <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{g.name}</span>
             </div>
           ))}
