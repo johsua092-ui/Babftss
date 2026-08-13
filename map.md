@@ -35,9 +35,9 @@ Babftss-main/
 │   │   └── (welcome/menu/basic-logic-gates dst di App.jsx atau folder ini)
 │   ├── components/
 │   │   ├── GateCard.jsx / GateDiagram.jsx      # 7 Basic Logic Gates (baseline, jangan diubah)
-│   │   ├── CircuitCard00.jsx s/d CircuitCard17.jsx (dan varian nama lain seperti
+│   │   ├── CircuitCard00.jsx s/d CircuitCard16.jsx (dan varian nama lain seperti
 │   │   │   CircuitCard_FullAdder4bit.jsx, CircuitCard_SRLatch.jsx) — tiap card Circuit
-│   │   ├── CircuitDiagram00.jsx s/d CircuitDiagram17.jsx (+ varian) — diagram SVG tiap card
+│   │   ├── CircuitDiagram00.jsx s/d CircuitDiagram16.jsx (+ varian) — diagram SVG tiap card
 │   │   ├── ICBlockRef.jsx      # komponen reusable "IC Block" (klik → navigasi+glow ke card lain)
 │   │   ├── HeartButton.jsx     # fitur favorit, wajib ada di semua Circuit Card
 │   │   ├── LoginModal.jsx / LoginPage.jsx / UserPill.jsx   # TERLARANG disentuh
@@ -130,7 +130,7 @@ Babftss-main/
 
 ## 29. FONDASI PENTING: SISTEM CLOCK MODE (MANUAL / AUTO)
 
-**Berlaku untuk SEMUA card yang punya tombol CLK — sekarang (Card 16 SR Flip-Flop, Card 17 T Flip-Flop) dan masa depan (D Flip-Flop, JK, Counter, Register, Shift Register, Memory Unit, dll).**
+**Berlaku untuk SEMUA card yang punya tombol CLK — sekarang (Card 16 SR Flip-Flop) dan masa depan (D Flip-Flop, JK, T, Counter, Register, Shift Register, Memory Unit, dll).**
 
 Setiap tombol CLK WAJIB punya switch UI "MANUAL" / "AUTO" yang dirender **tepat di bawah tombol CLK** di dalam SVG diagram. Spec lengkap:
 
@@ -140,7 +140,6 @@ Setiap tombol CLK WAJIB punya switch UI "MANUAL" / "AUTO" yang dirender **tepat 
 
 **Status implementasi:**
 - ✅ Card 16 SR Flip-Flop — implemented (4-NAND topology, TEMPLATE for clocked sequential — design.md §36).
-- ✅ Card 17 T Flip-Flop — implemented (2 AND + 2 NOR topology, true toggle, edge-triggered — design.md §37). Vocabulary exception §35: TOGGLE/HOLD (no SET/RESET/INVALID).
 - ⏳ Card clock masa depan — WAJIB pakai `useClockMode` hook + `ClockModeSwitch` + `ClockToast`, jalankan checklist `design.md` §29.9.
 
 **Inti aturan (untuk pengingat cepat):**

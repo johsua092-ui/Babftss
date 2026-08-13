@@ -2636,3 +2636,52 @@ Card 16 (SR FF) pakai 4-NAND. Card 17 (T FF) pakai 2 AND + 2 NOR. T FF butuh fee
 - Build sukses, commit `45b28c3`, push ke GitHub.
 
 **Catatan untuk masa depan:** Jika user mau JK FF, salin pola Card 17 — pakai 2 AND + 2 NOR, dengan J dan K sebagai input terpisah (bukan di-AND-kan jadi T). Edge-triggered via prevJKGatedRef. Vocabulary: SET (J=1, K=0), RESET (J=0, K=1), TOGGLE (J=1, K=1), HOLD (J=0, K=0).
+
+---
+
+## Bagian 39 — DELETE Card 17 Sepenuhnya Tanpa Jejak (13 Aug 2026, sesi lanjutan)
+
+**Tanggal:** 13 Aug 2026 (sesi lanjutan, setelah Bagian 38 rebuild)
+**Commit:** akan dibuat setelah task ini selesai.
+
+### Latar belakang
+
+Setelah Card 17 di-rebuild sebagai T Flip-Flop (2 AND + 2 NOR, commit `45b28c3`) dengan feedback wires dikoreksi dan edge-triggered toggle, user menyimpulkan:
+
+> "coba delete sepenuhnya card 17 tanpa jejak ternyata saya salah total disitu, tolong delete sepenuhnya card 17 tersebut"
+
+User menyatakan "saya salah total disitu" — kemungkinan merujuk pada gambar rancangan T Flip-Flop yang dia kirim (yang feedback-nya terbalik) atau keseluruhan ide T Flip-Flop di card 17. Apapun alasannya, instruksi jelas: DELETE TANPA JEJAK.
+
+### Aksi yang dilakukan
+
+1. **Hapus file:**
+   - `src/components/CircuitCard17.jsx` — dihapus
+   - `src/components/CircuitDiagram17.jsx` — dihapus
+
+2. **Edit `src/pages/LogicGatesCircuit.jsx`:**
+   - Hapus import: `import CircuitCard17 from '../components/CircuitCard17';`
+   - Hapus entry ALL_CARDS: `{ num: '17', name: 'T Flip-Flop', tier: 'NORMAL', el: CircuitCard17 },`
+
+3. **Verifikasi zero trace:**
+   - `rg "CircuitCard17|CircuitDiagram17|card-17|Card 17|'17'" src/` → ZERO matches
+   - Build sukses tanpa error (bundle `LogicGatesCircuit` turun dari 196.70 KB ke 182.32 KB)
+
+4. **Update `map.md`:**
+   - Range file listing kembali ke `CircuitCard16.jsx` / `CircuitDiagram16.jsx` (sebelumnya mention 17).
+   - Status implementasi: hapus baris Card 17, kembalikan ke "Card 16 SR Flip-Flop" saja.
+
+5. **Update `design.md`:**
+   - Section 37 (Card 17 T Flip-Flop spec) di-replace jadi note "[DELETED] Card 17 T Flip-Flop" singkat.
+   - Konten spec T Flip-Flop (topologi, vocabulary exception, edge-triggered pattern, checklist T FF family) dihapus sepenuhnya.
+
+### Stage Summary
+
+- Card 17 dihapus SEPENUHNYA TANPA JEJAK — file, import, registry entry, dokumentasi spec.
+- Slot Card 17 kembali kosong (sama seperti state setelah Bagian 37 sebelumnya).
+- Build sukses, bundle size turun.
+- Card 16 tetap sebagai satu-satunya TEMPLATE untuk clocked sequential circuits.
+
+**Catatan untuk masa depan:** Jika user ingin membuat Card 17 lagi (rangkaian apapun), WAJIB:
+1. Mulai dari TEMPLATE Card 16 (design.md §36)
+2. JANGAN gunakan apapun dari Card 17 yang sudah dihapus sebagai referensi
+3. Validasi gambar rancangan user dengan analisis menyeluruh sebelum implementasi (kasus T FF gambar feedback terbalik adalah pelajaran — jangan asal implementasi tanpa verifikasi logika)
