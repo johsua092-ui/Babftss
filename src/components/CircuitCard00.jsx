@@ -14,11 +14,12 @@ function MiniGateIcon({ type, color }) {
     // Geometry: balance input wire (kiri) = output wire (kanan) = wireLen.
     // Setiap gate punya canvas width sendiri supaya kabel kiri & kanan seimbang.
     // Sebelumnya cx=8 (input 8px) vs output 22-33px → tidak seimbang (user complaint).
-    const s = color, sw = 2;
+    const s = color, sw = 3;
     const h = 32, cy = 16, sz = 11;
-    const glow = `drop-shadow(0 0 3px ${color})`;
+    // Glow ganda: bloom besar + core terang untuk efek neon tube seperti referensi.
+    const glow = `drop-shadow(0 0 4px ${color}) drop-shadow(0 0 8px ${color})`;
     const inner = sz - 2;       // 9 (NOT triangle width)
-    const bubbleR = 3.5;
+    const bubbleR = 4;
     const bubbleGap = 4;        // gap body→bubble center
     const wireLen = 12;         // target panjang kabel di tiap sisi
     const xorExtraCurve = 12;   // XOR/XNOR extra curve lebar 12px di kiri body
