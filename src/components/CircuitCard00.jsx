@@ -26,7 +26,7 @@ function MiniGateIcon({ type, color }) {
     const bubbleGap = 3;                       // gap body→bubble center
     const wireLen = 10;                        // wire length each side (short stubs)
     const tipX = sz * 1.7;                     // OR/NOR/XOR/XNOR tip distance from cx
-    const xorExtra = 6;                        // XOR/XNOR extra back curve offset
+    const xorExtra = 9;                        // XOR/XNOR extra back curve offset (gap 9px dari shield body — was 6 too close)
     const andWireOff = 6;                      // AND/NAND wire offset (6px dari center, ~46% body half-height)
     const orWireOff = sz / 2;                  // OR/NOR/XOR/XNOR wire offset (25%/75%)
     const svgStyle = { display: "block", flexShrink: 0 };
