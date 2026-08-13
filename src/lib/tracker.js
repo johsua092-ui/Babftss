@@ -5,9 +5,9 @@
 // Data yang dicatat:
 //   - identitas: uid, email, displayName, photoURL
 //   - online:    online, lastOnlineAt, lastLoginAt, firstLoginAt, loginCount
-//   - lokasi:    region, countryCode, timezone, ipAddress, latitude, longitude,
-//                accuracy (akurasi GPS, meter), address (alamat dari reverse
-//                geocode), city, postal
+//   - lokasi:    region, countryCode, regionName, timezone, ipAddress, isp,
+//                latitude, longitude, address (alamat dari reverse geocode),
+//                city, postal
 //   - perangkat: deviceId (fingerprint hash), device (nama OS/browser), os,
 //                browser, deviceType (mobile/tablet/desktop), screen, language,
 //                userAgent
@@ -17,11 +17,9 @@
 // (src/lib/firebase.js) dan koleksi default `users`.
 // ============================================================================
 
-const GEO_URLS = ["https://ipwho.is/", "https://ipapi.co/json/"];
 const USERS_COLLECTION = import.meta.env.VITE_USERS_COLLECTION || "users";
 
 let _fsCache = null;
-let _lastGeo = null;
 
 async function _firestore() {
   if (_fsCache) return _fsCache;
@@ -29,62 +27,78 @@ async function _firestore() {
   return _fsCache;
 }
 
-// ---------- Lokasi via IP (fallback) ----------
-async function fetchGeo(retries = 2) {
-  for (let i = 0; i < retries; i++) {
-    for (const url of GEO_URLS) {
-      try {
-        const r = await fetch(url);
-        if (!r.ok) continue;
-        const j = await r.json();
-        if (j.country || j.country_code || j.ip) {
-          const geo = {
-            region: j.country || j.country_name || null,
-            countryCode: j.country_code || null,
-            timezone: j.timezone || null,
-            ip: j.ip || null,
-            latitude: typeof j.latitude === "number" ? j.latitude : null,
-            longitude: typeof j.longitude === "number" ? j.longitude : null,
-            city: j.city || null,
-            postal: j.postal || null,
-          };
-          _lastGeo = geo;
-          return geo;
-        }
-      } catch (_) { /* next */ }
+// ---------- Lokasi via IP (multi-provider, gratis tanpa key) ----------
+// Gabungkan beberapa sumber untuk resolusi seakurat mungkin (kota, kode pos,
+// region, ISP, koordinat). TANPA GPS → tidak memicu notifikasi izin lokasi.
+async function fetchGeo() {
+  // Sumber 1: ipapi.co/json — lengkap (city, region, postal, timezone, org/ISP)
+  try {
+    const j = await (await fetch("https://ipapi.co/json/")).json();
+    if (j && !j.error) {
+      return {
+        region: j.country_name || null,
+        countryCode: j.country_code || null,
+        timezone: j.timezone || null,
+        ip: j.ip || null,
+        latitude: typeof j.latitude === "number" ? j.latitude : null,
+        longitude: typeof j.longitude === "number" ? j.longitude : null,
+        city: j.city || null,
+        postal: j.postal || null,
+        regionName: j.region || null, // provinsi/negara bagian
+        org: j.org || null,           // ISP
+      };
     }
-    await new Promise((r) => setTimeout(r, 700));
-  }
-  return { region: null, countryCode: null, timezone: null, ip: null, latitude: null, longitude: null, city: null, postal: null };
+  } catch (_) {}
+
+  // Sumber 2: ipwho.is — fallback
+  try {
+    const j = await (await fetch("https://ipwho.is/")).json();
+    if (j && (j.country || j.country_code || j.ip) && !j.success === false) {
+      return {
+        region: j.country || j.country_name || null,
+        countryCode: j.country_code || null,
+        timezone: typeof j.timezone === "string" ? j.timezone : (j.timezone && j.timezone.id) || null,
+        ip: j.ip || null,
+        latitude: typeof j.latitude === "number" ? j.latitude : null,
+        longitude: typeof j.longitude === "number" ? j.longitude : null,
+        city: j.city || null,
+        postal: j.postal || null,
+        regionName: j.region || null,
+        org: null,
+      };
+    }
+  } catch (_) {}
+
+  // Sumber 3: ipapi.com (format csv, tanpa key terbatas) — best-effort
+  try {
+    const j = await (await fetch("https://ipapi.com/json/")).json();
+    if (j && (j.country_name || j.ip)) {
+      return {
+        region: j.country_name || null,
+        countryCode: j.country_code || null,
+        timezone: j.timezone ? j.timezone.id : null,
+        ip: j.ip || null,
+        latitude: typeof j.latitude === "number" ? j.latitude : null,
+        longitude: typeof j.longitude === "number" ? j.longitude : null,
+        city: j.city || null,
+        postal: j.postal || null,
+        regionName: j.region || j.region_name || null,
+        org: null,
+      };
+    }
+  } catch (_) {}
+
+  return {
+    region: null, countryCode: null, timezone: null, ip: null,
+    latitude: null, longitude: null, city: null, postal: null,
+    regionName: null, org: null,
+  };
 }
 
-// ---------- GPS presisi (izin user) ----------
-function getPreciseLocation(timeoutMs = 6000) {
-  return new Promise((resolve) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      resolve(null);
-      return;
-    }
-    const timer = setTimeout(() => resolve(null), timeoutMs);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        clearTimeout(timer);
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy || null, // meter
-        });
-      },
-      () => { clearTimeout(timer); resolve(null); },
-      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 300000 }
-    );
-  });
-}
-
-// ---------- Reverse geocode (alamat) ----------
+// ---------- Reverse geocode (alamat sedetail mungkin) ----------
 async function reverseGeocode(lat, lon) {
   try {
-    // bigdatacloud — gratis, tanpa API key
+    // bigdatacloud — gratis, tanpa API key. localityLanguage=id untuk nama lokal.
     const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`;
     const r = await fetch(url);
     if (!r.ok) return null;
@@ -210,17 +224,16 @@ async function recordVisitor(key, identity, isGuest) {
     if (snap.exists()) prev = snap.data();
   } catch (_) {}
 
-  // parallel: geo (IP), GPS presisi, device
-  const [geo, gps, deviceId] = await Promise.all([
-    fetchGeo(), getPreciseLocation(), computeDeviceId(),
+  // parallel: geo (IP) + device fingerprint. TANPA GPS (tidak memicu izin lokasi).
+  const [geo, deviceId] = await Promise.all([
+    fetchGeo(), computeDeviceId(),
   ]);
 
-  // koordinat: prioritaskan GPS presisi, fallback ke IP
-  const latitude = gps ? gps.latitude : geo.latitude;
-  const longitude = gps ? gps.longitude : geo.longitude;
-  const accuracy = gps && gps.accuracy != null ? gps.accuracy : null;
+  // koordinat dari IP (geolokasi dikerjakan server-side oleh provider IP)
+  const latitude = geo.latitude;
+  const longitude = geo.longitude;
 
-  // alamat: reverse geocode dari koordinat terbaik
+  // alamat: reverse geocode dari koordinat IP (seakurat mungkin, tanpa izin user)
   let addressFields = { address: null, city: geo.city, postal: geo.postal };
   if (latitude != null && longitude != null) {
     const rg = await reverseGeocode(latitude, longitude);
@@ -261,10 +274,11 @@ async function recordVisitor(key, identity, isGuest) {
     countryCode: geo.countryCode || (prev && prev.countryCode) || null,
     timezone: geo.timezone || (prev && prev.timezone) || null,
     ipAddress: geo.ip || (prev && prev.ipAddress) || null,
+    regionName: geo.regionName || (prev && prev.regionName) || null,
+    isp: geo.org || (prev && prev.isp) || null,
 
     latitude: latitude != null ? latitude : (prev && prev.latitude) || null,
     longitude: longitude != null ? longitude : (prev && prev.longitude) || null,
-    accuracy: accuracy != null ? accuracy : (prev && prev.accuracy) || null,
     address: addressFields.address || (prev && prev.address) || null,
     city: addressFields.city || (prev && prev.city) || null,
     postal: addressFields.postal || (prev && prev.postal) || null,
