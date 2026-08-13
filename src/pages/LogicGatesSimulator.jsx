@@ -123,7 +123,12 @@ function MiniGateIcon({ type, color, scale = 1 }) {
   const xorExtra = 15;
   const andWireOff = 6;
   const orWireOff = sz / 2;
-  const svgStyle = { display: 'block', flexShrink: 0 };
+  const svgStyle = { 
+    display: 'block', 
+    flexShrink: 0,
+    // Glow effect — match Basic Logic Gates reference (drop-shadow filter)
+    filter: `drop-shadow(0 0 2px ${color}) drop-shadow(0 0 4px ${color}80)`,
+  };
 
   const maxW = wireLen + xorExtra + tipX + bubbleGap + bubbleR + wireLen;
 
@@ -246,6 +251,63 @@ function MiniGateIcon({ type, color, scale = 1 }) {
     default:
       return null;
   }
+}
+
+// ── DragGhost — visual feedback saat drag component dari palette ke canvas ──
+// User bilang "gak ada visual dimana user sedang mendrag suatu komponen, harusnya ada visualnya".
+// Ghost ini render fixed-position di cursor, jadi user tahu lagi ngedrag apa.
+function DragGhost({ type, x, y }) {
+  const def = GATE_MAP[type] || IO_DEFS[type];
+  if (!def) return null;
+  const isIO = type === 'INPUT' || type === 'OUTPUT';
+  const w = isIO ? 60 : (type === 'not' ? 80 : 90);
+  const h = isIO ? 50 : 56;
+  return (
+    <div style={{
+      position: 'fixed',
+      left: x - w / 2,
+      top: y - h / 2,
+      width: w,
+      height: h,
+      pointerEvents: 'none',
+      zIndex: 9999,
+      opacity: 0.92,
+      backgroundColor: '#1e293b',
+      border: `2px solid ${def.color}`,
+      borderRadius: 8,
+      boxShadow: `0 4px 16px rgba(0,0,0,0.6), 0 0 14px ${def.color}80`,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      fontFamily: '"Orbitron", sans-serif',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        width: '100%', height: 14,
+        backgroundColor: def.color + '22',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: def.color, fontSize: 8, fontWeight: 700, letterSpacing: 0.5,
+        flexShrink: 0,
+      }}>
+        {def.label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '2px 0' }}>
+        {isIO ? (
+          <div style={{
+            width: 22, height: 22, borderRadius: '50%',
+            backgroundColor: type === 'INPUT' ? '#f59e0b' : '#ef4444',
+            boxShadow: `0 0 10px ${def.color}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontSize: 12, fontWeight: 700,
+          }}>
+            {type === 'INPUT' ? '⚡' : '●'}
+          </div>
+        ) : (
+          <MiniGateIcon type={type} color={def.color} scale={0.7} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Canvas Simulator ──
@@ -585,7 +647,7 @@ export default function LogicGatesSimulator({ setPage }) {
       const a = inputs?.[0] ?? false;
       const b = inputs?.[1] ?? false;
 
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 2.2;  // tebal stroke — match Basic Logic Gates reference (sebelumnya 1.6 terlalu tipis)
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
 
@@ -608,6 +670,11 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       ctx.strokeStyle = bodyStroke;
+      // Glow effect saat gate aktif — match Basic Logic Gates reference (drop-shadow filter)
+      if (active) {
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 6;
+      }
       let outX = C;  // posisi x awal output wire
       switch (type) {
         case 'not': {
@@ -704,6 +771,9 @@ export default function LogicGatesSimulator({ setPage }) {
           break;
         }
       }
+
+      // Reset glow sebelum output wire (wire gak pake glow, match GateDiagram.jsx)
+      ctx.shadowBlur = 0;
 
       // Output wire (diwarnai sesuai output)
       ctx.beginPath();
@@ -970,8 +1040,9 @@ export default function LogicGatesSimulator({ setPage }) {
   // Bug lama: comp dibuat saat drag > 10px dari start — padahal start ada di palette (sebelah kiri canvas),
   // jadi posisi mouse masih di palette → mx negatif → comp dibuat di luar canvas (gak kelihatan).
   // Fix: comp dibuat saat MOUSEUP, HANYA kalau mouse berada di area canvas.
-  // Selama drag, cursor jadi grabbing supaya user tahu lagi ngedrag.
+  // Selama drag, cursor jadi grabbing + ghost component follow cursor supaya user tahu lagi ngedrag apa.
   const [paletteDrag, setPaletteDrag] = useState(null);
+  const [dragGhost, setDragGhost] = useState(null);  // { type, x, y } — visual feedback selama drag
   const onPaletteMouseDown = (type) => (e) => {
     e.preventDefault();
     setPaletteDrag({ type, startX: e.clientX, startY: e.clientY, dragging: false });
@@ -986,10 +1057,15 @@ export default function LogicGatesSimulator({ setPage }) {
         document.body.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
       }
+      // Update ghost position supaya follow cursor — user bisa lihat lagi ngedrag apa
+      if (paletteDrag.dragging) {
+        setDragGhost({ type: paletteDrag.type, x: e.clientX, y: e.clientY });
+      }
     };
     const onUp = (e) => {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      setDragGhost(null);  // clear ghost
       if (paletteDrag.dragging) {
         const canvas = canvasRef.current;
         if (canvas) {
@@ -1281,6 +1357,7 @@ export default function LogicGatesSimulator({ setPage }) {
           <div style={statusStyle}>{status}</div>
         </div>
       </div>
+      {dragGhost && <DragGhost type={dragGhost.type} x={dragGhost.x} y={dragGhost.y} />}
     </div>
   );
 }
