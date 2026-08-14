@@ -179,67 +179,56 @@ function countVHVCollisions(p1, p2, midY, comps) {
 }
 
 // Smart orthogonal routing — pilih rute H-V-H atau V-H-V dengan collision paling sedikit.
-// Coba banyak kandidat midX/midY: L-shape (corner di endpoint) DULU, lalu offset kiri/kanan.
-// L-shape (H-V atau V-H pure, corner nyentuh endpoint) jauh lebih clean secara visual
-// daripada Z-shape (corner di tengah ruang kosong).
-// Kalau semua kandidat masih nabrak, pilih yang minimal collision (least bad).
-// Return { type: 'HVH'|'VHV', mid } untuk dipakai draw + pointOnPath.
+//
+// INSIGHT: Untuk wire output→input (kanan src → kiri dst), Z-shape (H-V-H dengan midX
+// di tengah gap antara src & dst) adalah routing TERBAIK secara visual:
+//   - H seg 1: exit output port HORIZONTAL ke kanan (gak nabrak src body, gak hidden)
+//   - V seg: di tengah empty space antara src & dst (gak nabrak body manapun)
+//   - H seg 2: enter input port HORIZONTAL dari kiri (gak nabrak dst body, gak hidden)
+//
+// L-shape (corner @ endpoint) JUSTRU BURUK karena V seg-nya di x=dst.x (left edge dst
+// body) → V seg masuk ke dst body y-range → HIDDEN behind dst body fill → wire kelihatan
+// "putus" di balik body.
+//
+// Algoritma:
+// 1. Coba midX = tengah gap antara src right edge & dst left edge (ideal Z-shape)
+// 2. Kalau nabrak, coba offset kiri/kanan dari midX ideal
+// 3. Kalau semua HVH nabrak, coba VHV dengan midY offset
+// 4. Sort by (collision count, |offset dari midX ideal|) — prefer rute paling clean
 function pickOrthogonalRoute(p1, p2, comps) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
 
-  // Naturalness = jarak corner ke endpoint terdekat. 0 = perfect L-shape (corner di
-  // x1 atau x2 / y1 atau y2). Makin kecil makin natural (corner nempel di endpoint).
-  function hvhNaturalness(midX) {
-    return Math.min(Math.abs(midX - x1), Math.abs(midX - x2));
-  }
-  function vhvNaturalness(midY) {
-    return Math.min(Math.abs(midY - y1), Math.abs(midY - y2));
-  }
+  // midX ideal = tengah gap antara src & dst (bukan tengah rata-rata endpoint).
+  // Kalau src & dst overlap horizontal (x1 > x2 atau sebaliknya), pakai rata-rata.
+  const srcRight = Math.max(x1, x2);
+  const dstLeft = Math.min(x1, x2);
+  const hvhMidXIdeal = srcRight + (dstLeft - srcRight) / 2;  // tengah gap
+  // Kalau gap negatif (overlap), fallback ke rata-rata
+  const hvhMidXDefault = (dstLeft === srcRight) ? (x1 + x2) / 2 : hvhMidXIdeal;
 
   const candidates = [];
-  // Kandidat HVH: L-shape (midX = x2 → corner @ dst, midX = x1 → corner @ src) DULU,
-  // baru midX default + offset (range lebar supaya bisa dodge comp jauh, termasuk
-  // kasus loop-back dimana output→input harus muter ke kiri/kanan jauh).
-  const hvhMidXDefault = (x1 + x2) / 2;
-  const hvhMidXs = [
-    x2, x1,                         // L-shape: corner di endpoint (paling natural)
-    hvhMidXDefault,                 // Z-shape: corner di tengah
-    hvhMidXDefault + 25, hvhMidXDefault - 25,
-    hvhMidXDefault + 50, hvhMidXDefault - 50,
-    hvhMidXDefault + 75, hvhMidXDefault - 75,
-    hvhMidXDefault + 100, hvhMidXDefault - 100,
-    hvhMidXDefault + 150, hvhMidXDefault - 150,
-    hvhMidXDefault + 200, hvhMidXDefault - 200,
-    hvhMidXDefault + 250, hvhMidXDefault - 250,
-    hvhMidXDefault + 300, hvhMidXDefault - 300,
-  ];
-  for (const midX of hvhMidXs) {
+  // Kandidat HVH: midX ideal DULU (Z-shape ideal), lalu offset kiri/kanan.
+  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 250, -250, 300, -300];
+  for (const off of hvhOffsets) {
+    const midX = hvhMidXDefault + off;
     const col = countHVHCollisions(p1, p2, midX, comps);
-    const nat = hvhNaturalness(midX);
-    candidates.push({ type: 'HVH', mid: midX, col, nat });
+    candidates.push({ type: 'HVH', mid: midX, col, off });
   }
-  // Kandidat VHV: sama, L-shape DULU.
-  const vhvMidYDefault = (y1 + y2) / 2;
-  const vhvMidYs = [
-    y2, y1,                         // L-shape: corner di endpoint
-    vhvMidYDefault,                 // Z-shape: corner di tengah
-    vhvMidYDefault + 25, vhvMidYDefault - 25,
-    vhvMidYDefault + 50, vhvMidYDefault - 50,
-    vhvMidYDefault + 75, vhvMidYDefault - 75,
-    vhvMidYDefault + 100, vhvMidYDefault - 100,
-    vhvMidYDefault + 150, vhvMidYDefault - 150,
-    vhvMidYDefault + 200, vhvMidYDefault - 200,
-  ];
-  for (const midY of vhvMidYs) {
+  // Kandidat VHV: midY ideal = tengah gap vertikal antara src & dst.
+  const srcBottom = Math.max(y1, y2);
+  const dstTop = Math.min(y1, y2);
+  const vhvMidYIdeal = srcBottom + (dstTop - srcBottom) / 2;
+  const vhvMidYDefault = (dstTop === srcBottom) ? (y1 + y2) / 2 : vhvMidYIdeal;
+  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200];
+  for (const off of vhvOffsets) {
+    const midY = vhvMidYDefault + off;
     const col = countVHVCollisions(p1, p2, midY, comps);
-    const nat = vhvNaturalness(midY);
-    candidates.push({ type: 'VHV', mid: midY, col, nat });
+    candidates.push({ type: 'VHV', mid: midY, col, off });
   }
-  // Sort by: collision count asc (bebas hambatan menang), lalu naturalness asc
-  // (L-shape / corner di endpoint menang vs Z-shape / corner di tengah).
+  // Sort by collision count asc, lalu by |offset| asc (midX ideal = offset 0 menang).
   candidates.sort((a, b) => {
     if (a.col !== b.col) return a.col - b.col;
-    return a.nat - b.nat;
+    return Math.abs(a.off) - Math.abs(b.off);
   });
   return candidates[0];
 }
