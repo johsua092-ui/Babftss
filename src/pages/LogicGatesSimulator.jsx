@@ -320,6 +320,7 @@ export default function LogicGatesSimulator({ setPage }) {
   const [nextId, setNextId] = useState(1);
   const [status, setStatus] = useState('Ready — drag from palette, click nodes to wire');
   const [selectedId, setSelectedId] = useState(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const stateRef = useRef({ components, wires, nextId, selectedId, wiring: null, dragging: null, dragOffset: {x:0,y:0}, hoverNode: null });
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId }; }, [components, wires, nextId, selectedId]);
@@ -1229,11 +1230,23 @@ export default function LogicGatesSimulator({ setPage }) {
   }, [paletteDrag, createComponent]);
 
   // ── Actions ──
+  // Buka dialog konfirmasi sebelum benar-benar clear — mencegah hapus tidak sengaja.
   const clearAll = () => {
+    setShowClearConfirm(true);
+  };
+
+  // Eksekusi penghapusan setelah user konfirmasi "Ya".
+  const performClear = () => {
     setComponents([]);
     setWires([]);
     setSelectedId(null);
     setStatus('Canvas cleared');
+    setShowClearConfirm(false);
+  };
+
+  const cancelClear = () => {
+    setShowClearConfirm(false);
+    setStatus('Clear dibatalkan');
   };
 
   const loadDemo = () => {
@@ -1311,6 +1324,9 @@ export default function LogicGatesSimulator({ setPage }) {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px 20px',
+    // Padding kanan ekstra supaya tombol Clear All & Load Demo gak ketutup
+    // userBar fixed (Sign In button ~120px / profile pill+reset+logout ~210px) di pojok kanan atas.
+    paddingRight: 240,
     backgroundColor: '#1e293b',
     borderBottom: '1px solid #334155',
     flexShrink: 0,
@@ -1395,6 +1411,20 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'all 0.15s',
   };
 
+  // Tombol Clear All: merah supaya kelihatan destructive — user minta eksplisit.
+  const clearBtnStyle = {
+    padding: '6px 14px',
+    borderRadius: 8,
+    border: '1px solid #dc2626',
+    backgroundColor: '#dc2626',
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: '"Inter", sans-serif',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  };
+
   const helpStyle = {
     position: 'absolute',
     bottom: 10, left: 10,
@@ -1442,8 +1472,22 @@ export default function LogicGatesSimulator({ setPage }) {
           Logic Gates Simulator 2D
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button style={btnStyle} onClick={clearAll}>Clear All</button>
-          <button style={btnStyle} onClick={loadDemo}>Load Demo</button>
+          <button
+            style={clearBtnStyle}
+            onClick={clearAll}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#b91c1c'; e.currentTarget.style.borderColor = '#b91c1c'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#dc2626'; e.currentTarget.style.borderColor = '#dc2626'; }}
+          >
+            Clear All
+          </button>
+          <button
+            style={btnStyle}
+            onClick={loadDemo}
+            onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
+          >
+            Load Demo
+          </button>
         </div>
       </div>
       <div style={bodyStyle}>
@@ -1490,6 +1534,83 @@ export default function LogicGatesSimulator({ setPage }) {
         </div>
       </div>
       {dragGhost && <DragGhost type={dragGhost.type} x={dragGhost.x} y={dragGhost.y} />}
+
+      {showClearConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(2px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            fontFamily: '"Inter", sans-serif',
+          }}
+          onClick={cancelClear}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: 14,
+              padding: '24px 28px',
+              maxWidth: 380,
+              width: 'calc(100% - 40px)',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+              color: '#e2e8f0',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%',
+                backgroundColor: 'rgba(220,38,38,0.15)',
+                border: '1px solid rgba(220,38,38,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#ef4444', fontSize: 20, fontWeight: 700, flexShrink: 0,
+              }}>!</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', fontFamily: '"Orbitron", sans-serif' }}>
+                Hapus Semua Komponen?
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.55, margin: '0 0 22px 0' }}>
+              Kamu yakin mau hapus semua gerbang, switch, LED, dan kabel dari canvas? Aksi ini gak bisa di-undo.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelClear}
+                style={{
+                  padding: '8px 18px', borderRadius: 8,
+                  border: '1px solid #334155', backgroundColor: '#0f172a',
+                  color: '#94a3b8', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  fontFamily: '"Inter", sans-serif',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
+              >
+                Tidak
+              </button>
+              <button
+                onClick={performClear}
+                style={{
+                  padding: '8px 18px', borderRadius: 8,
+                  border: '1px solid #dc2626', backgroundColor: '#dc2626',
+                  color: '#fff', fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  fontFamily: '"Inter", sans-serif',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#b91c1c'; e.currentTarget.style.borderColor = '#b91c1c'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#dc2626'; e.currentTarget.style.borderColor = '#dc2626'; }}
+              >
+                Ya, Hapus Semua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
