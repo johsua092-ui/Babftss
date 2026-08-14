@@ -2311,6 +2311,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
   // Inner palette — fixed 280px supaya children gak reflow pas outer width animasi.
   // Opacity fade biar gak kelihatan "flash" pas width lagi transisi.
+  // className 'palette-scroll' untuk custom scrollbar styling (dark & slim, blend sama sidebar).
   const paletteInnerStyle = {
     width: 280,
     height: '100%',
@@ -2323,6 +2324,8 @@ export default function LogicGatesSimulator({ setPage }) {
     opacity: paletteOpen ? 1 : 0,
     transition: 'opacity 0.15s ease',
     boxSizing: 'border-box',
+    scrollbarWidth: 'thin', // Firefox: scrollbar slim
+    scrollbarColor: '#475569 transparent', // Firefox: thumb dark, track transparent
   };
 
   const paletteTitleStyle = {
@@ -2426,6 +2429,21 @@ export default function LogicGatesSimulator({ setPage }) {
 
   return (
     <div style={pageStyle}>
+      {/* Custom scrollbar styling untuk palette — dark & slim biar gak kelihatan putih.
+          Inject inline karena React inline style gak support pseudo-element selectors.
+          `.palette-scroll` class di-apply ke div inner palette. */}
+      <style>{`
+        .palette-scroll::-webkit-scrollbar { width: 8px; }
+        .palette-scroll::-webkit-scrollbar-track { background: transparent; }
+        .palette-scroll::-webkit-scrollbar-thumb {
+          background-color: #475569;
+          border-radius: 4px;
+          border: 2px solid transparent;
+          background-clip: padding-box;
+        }
+        .palette-scroll::-webkit-scrollbar-thumb:hover { background-color: #64748b; }
+        .palette-scroll::-webkit-scrollbar-corner { background: transparent; }
+      `}</style>
       <div style={headerStyle}>
         <div style={titleStyle}>
           <button
@@ -2470,7 +2488,7 @@ export default function LogicGatesSimulator({ setPage }) {
         {/* Toggle palette — floating button, SELALU visible (baik palette open maupun closed).
             User minta: posisi di pojok palette sebelah "Components" text saat terbuka,
             dan pas ditutup cuma tombol ini yang tersisa (palette body hilang).
-            - Saat open: left = 280 - 40 = 240 (pojok kanan-atas palette, di sebelah "Components")
+            - Saat open: left = 280 - 56 = 224 (pojok kanan-atas palette, di sebelah "Components")
             - Saat closed: left = 8 (float di tepi kiri canvas)
             - top: 8 (sejajar dengan padding palette 14px, sedikit ke atas biar kelihatan nempel ke header)
             - z-index 20 supaya di atas palette content & canvas controls
@@ -2481,10 +2499,10 @@ export default function LogicGatesSimulator({ setPage }) {
           style={{
             position: 'absolute',
             top: 8,
-            left: paletteOpen ? 240 : 8,
+            left: paletteOpen ? 224 : 8,
             zIndex: 20,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 40, height: 40, borderRadius: 8,
+            width: 56, height: 56, borderRadius: 10,
             border: `1px solid ${paletteOpen ? '#475569' : '#4ade80'}`,
             backgroundColor: paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.15)',
             color: paletteOpen ? '#94a3b8' : '#4ade80',
@@ -2503,10 +2521,10 @@ export default function LogicGatesSimulator({ setPage }) {
             e.currentTarget.style.backgroundColor = paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.15)';
           }}
         >
-          {paletteOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          {paletteOpen ? <PanelLeftClose size={26} /> : <PanelLeftOpen size={26} />}
         </button>
         <div style={paletteStyle}>
-          <div style={paletteInnerStyle}>
+          <div style={paletteInnerStyle} className="palette-scroll">
             <div style={paletteTitleStyle}>Components</div>
             {GATE_DATA.map(g => (
               <div
