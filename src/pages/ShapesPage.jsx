@@ -4,8 +4,6 @@ const TOOLS = [
     {
         id: 'shapes-calculator',
         name: 'Shapes Calculator',
-        indo: 'Kalkulator Bentuk',
-        desc: 'Hitung luas, keliling, dan volume bentuk geometris: segitiga, persegi, kubus, bola, dan lainnya.',
         icon: Calculator,
         color: '#2dd4bf',
         bg: 'rgba(45,212,191,0.18)',
@@ -15,8 +13,6 @@ const TOOLS = [
     {
         id: 'block-simulator-3d',
         name: '3D Block Simulator',
-        indo: 'Simulator Blok 3D',
-        desc: 'Susun dan rotasi blok 3D secara interaktif untuk memahami struktur spasial.',
         icon: Box,
         color: '#f472b6',
         bg: 'rgba(244,114,182,0.18)',
@@ -42,17 +38,6 @@ export default function ShapesPage({ setPage }) {
                     margin: 0,
                 }}>SHAPES</h1>
 
-                <p style={{
-                    fontFamily: 'Inter,sans-serif',
-                    fontSize: 14,
-                    color: '#94a3b8',
-                    lineHeight: 1.6,
-                    margin: 0,
-                    maxWidth: 420,
-                }}>
-                    Pilih alat untuk eksplorasi bentuk geometris.
-                </p>
-
                 <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {TOOLS.map((t, i) => {
                         const Icon = t.icon;
@@ -62,52 +47,39 @@ export default function ShapesPage({ setPage }) {
                                 onClick={() => setPage(t.id)}
                                 style={{
                                     width: '100%',
-                                    padding: '18px 20px',
+                                    padding: '16px 20px',
                                     borderRadius: 14,
                                     cursor: 'pointer',
                                     backgroundColor: panel,
                                     border: `1px solid ${t.border}`,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: 16,
+                                    gap: 14,
                                     color: '#fff',
                                     boxShadow: `0 0 18px ${t.glow}`,
                                     transition: 'all 0.2s',
                                 }}
-                                onMouseEnter={c => (c.currentTarget.style.transform = 'translateY(-2px)')}
-                                onMouseLeave={c => (c.currentTarget.style.transform = 'translateY(0)')}
+                                onMouseEnter={c => (c.currentTarget.style.transform = 'scale(1.02)')}
+                                onMouseLeave={c => (c.currentTarget.style.transform = 'scale(1)')}
                             >
                                 <div style={{
                                     backgroundColor: t.bg,
-                                    padding: 12,
-                                    borderRadius: 12,
+                                    padding: 10,
+                                    borderRadius: 10,
                                     color: t.color,
                                     flexShrink: 0,
                                 }}>
-                                    <Icon size={28} />
+                                    <Icon size={22} />
                                 </div>
-                                <div style={{ textAlign: 'left', flex: 1 }}>
-                                    <div style={{
-                                        fontFamily: 'Orbitron,sans-serif',
-                                        fontWeight: 700,
-                                        fontSize: 14,
-                                        color: t.color,
-                                        marginBottom: 4,
-                                    }}>
-                                        {t.name}
-                                        <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 500, fontSize: 11, color: '#64748b', marginLeft: 8 }}>
-                                            {t.indo}
-                                        </span>
-                                    </div>
-                                    <div style={{
-                                        fontFamily: 'Inter,sans-serif',
-                                        fontSize: 12,
-                                        color: '#94a3b8',
-                                        lineHeight: 1.5,
-                                    }}>
-                                        {t.desc}
-                                    </div>
-                                </div>
+                                <span style={{
+                                    fontFamily: 'Orbitron,sans-serif',
+                                    fontWeight: 700,
+                                    fontSize: 14,
+                                    textAlign: 'left',
+                                    color: t.color,
+                                }}>
+                                    {t.name}
+                                </span>
                             </button>
                         );
                     })}
