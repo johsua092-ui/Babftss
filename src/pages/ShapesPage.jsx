@@ -1,32 +1,27 @@
-import { ArrowLeft, Triangle, Box, Circle } from 'lucide-react';
+import { ArrowLeft, Calculator, Box } from 'lucide-react';
 
-const SHAPES = [
+const TOOLS = [
     {
-        name: 'Triangle',
-        indo: 'Segitiga',
-        desc: 'Bentuk 2D dengan 3 sisi. Jenis: sama sisi, sama kaki, siku-siku, dan sembarang.',
-        icon: Triangle,
+        id: 'shapes-calculator',
+        name: 'Shapes Calculator',
+        indo: 'Kalkulator Bentuk',
+        desc: 'Hitung luas, keliling, dan volume bentuk geometris: segitiga, persegi, kubus, bola, dan lainnya.',
+        icon: Calculator,
         color: '#2dd4bf',
         bg: 'rgba(45,212,191,0.18)',
         glow: 'rgba(45,212,191,0.25)',
+        border: 'rgba(45,212,191,0.38)',
     },
     {
-        name: 'Cube',
-        indo: 'Kubus',
-        desc: 'Bentuk 3D dengan 6 sisi persegi yang sama. Memiliki 8 titik sudut dan 12 rusuk.',
+        id: 'block-simulator-3d',
+        name: '3D Block Simulator',
+        indo: 'Simulator Blok 3D',
+        desc: 'Susun dan rotasi blok 3D secara interaktif untuk memahami struktur spasial.',
         icon: Box,
         color: '#f472b6',
         bg: 'rgba(244,114,182,0.18)',
         glow: 'rgba(244,114,182,0.22)',
-    },
-    {
-        name: 'Ball',
-        indo: 'Bola (Sphere)',
-        desc: 'Bentuk 3D berupa bola. Setiap titik di permukaan memiliki jarak sama ke pusat.',
-        icon: Circle,
-        color: '#fbbf24',
-        bg: 'rgba(251,191,36,0.18)',
-        glow: 'rgba(251,191,36,0.22)',
+        border: 'rgba(244,114,182,0.38)',
     },
 ];
 
@@ -55,38 +50,38 @@ export default function ShapesPage({ setPage }) {
                     margin: 0,
                     maxWidth: 420,
                 }}>
-                    Pelajari bentuk geometris dasar: segitiga, kubus, dan bola. Sentuh kartu untuk eksplorasi lebih lanjut.
+                    Pilih alat untuk eksplorasi bentuk geometris.
                 </p>
 
                 <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {SHAPES.map((s, i) => {
-                        const Icon = s.icon;
+                    {TOOLS.map((t, i) => {
+                        const Icon = t.icon;
                         return (
                             <button
                                 key={i}
-                                onClick={() => { /* placeholder for future detail view */ }}
+                                onClick={() => setPage(t.id)}
                                 style={{
                                     width: '100%',
                                     padding: '18px 20px',
                                     borderRadius: 14,
                                     cursor: 'pointer',
                                     backgroundColor: panel,
-                                    border: `1px solid ${s.bg}`,
+                                    border: `1px solid ${t.border}`,
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 16,
                                     color: '#fff',
-                                    boxShadow: `0 0 18px ${s.glow}`,
+                                    boxShadow: `0 0 18px ${t.glow}`,
                                     transition: 'all 0.2s',
                                 }}
                                 onMouseEnter={c => (c.currentTarget.style.transform = 'translateY(-2px)')}
                                 onMouseLeave={c => (c.currentTarget.style.transform = 'translateY(0)')}
                             >
                                 <div style={{
-                                    backgroundColor: s.bg,
+                                    backgroundColor: t.bg,
                                     padding: 12,
                                     borderRadius: 12,
-                                    color: s.color,
+                                    color: t.color,
                                     flexShrink: 0,
                                 }}>
                                     <Icon size={28} />
@@ -96,12 +91,12 @@ export default function ShapesPage({ setPage }) {
                                         fontFamily: 'Orbitron,sans-serif',
                                         fontWeight: 700,
                                         fontSize: 14,
-                                        color: s.color,
+                                        color: t.color,
                                         marginBottom: 4,
                                     }}>
-                                        {s.name}
+                                        {t.name}
                                         <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 500, fontSize: 11, color: '#64748b', marginLeft: 8 }}>
-                                            {s.indo}
+                                            {t.indo}
                                         </span>
                                     </div>
                                     <div style={{
@@ -110,7 +105,7 @@ export default function ShapesPage({ setPage }) {
                                         color: '#94a3b8',
                                         lineHeight: 1.5,
                                     }}>
-                                        {s.desc}
+                                        {t.desc}
                                     </div>
                                 </div>
                             </button>

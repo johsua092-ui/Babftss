@@ -11,6 +11,8 @@ import { useAuth } from './contexts/AuthContext';
 import { useProgressSync } from './hooks/useProgressSync';
 
 const ShapesPage = lazy(() => import('./pages/ShapesPage'));
+const ShapesCalculator = lazy(() => import('./pages/ShapesCalculator'));
+const BlockSimulator3D = lazy(() => import('./pages/BlockSimulator3D'));
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
 const CircuitGenerator = lazy(() => import('./pages/CircuitGenerator'));
@@ -163,6 +165,12 @@ export default function App() {
             </motion.div>}
             {page === "shapes" && <motion.div key="shapes" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <Suspense fallback={pageFallback}><ShapesPage setPage={setPage} /></Suspense>
+            </motion.div>}
+            {page === "shapes-calculator" && <motion.div key="shapes-calculator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <Suspense fallback={pageFallback}><ShapesCalculator setPage={setPage} /></Suspense>
+            </motion.div>}
+            {page === "block-simulator-3d" && <motion.div key="block-simulator-3d" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <Suspense fallback={pageFallback}><BlockSimulator3D setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "menu" && <motion.div key="menu" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <div style={{ width: "100%", maxWidth: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: 28, textAlign: "center" }}>
