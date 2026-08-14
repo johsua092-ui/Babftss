@@ -550,12 +550,17 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.fillText(def.label, comp.x + comp.width / 2, comp.y + 8);
 
           // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx)
-          // CENTER sejati: pakai actual draw width per gate type (bukan 64 fixed).
-          // Sebelumnya gate kiri-aligned di area 64px → terlihat offset ke kiri.
+          // CENTER sejati + SCALE UP 1.5x supaya gate body gak kelihatan kecil di box.
+          // Sebelumnya gate body ~25-30px di box 90x42 → terlalu kecil. User minta lebih gede.
+          // Scale 1.5x → gate body ~37-45px, masih muat di box (max 48*1.5=72 < 90).
           ctx.save();
-          const gateDrawW = getGateDrawWidth(comp.type);
-          const gateH = 30;
-          ctx.translate(comp.x + (comp.width - gateDrawW) / 2, comp.y + 18);
+          const GATE_SCALE = 1.5;
+          const gateDrawW = getGateDrawWidth(comp.type) * GATE_SCALE;
+          // Vertical centering: body area = comp.y+14 to comp.y+56 (42px tall).
+          // Gate local y spans 0..25, scaled = 0..37.5, center at 18.75.
+          // Target center = comp.y + 35 (mid of 14..56). So translate y = 35 - 18.75*1 ≈ comp.y + 16.
+          ctx.translate(comp.x + (comp.width - gateDrawW) / 2, comp.y + 16);
+          ctx.scale(GATE_SCALE, GATE_SCALE);
           drawGateShape(ctx, comp.type, def.color, isOn, comp.inputs);
           ctx.restore();
         }
@@ -1138,7 +1143,15 @@ export default function LogicGatesSimulator({ setPage }) {
             const compW = io ? io.width : (paletteDrag.type === 'not' ? 80 : 90);
             const compH = io ? io.height : 56;
             const comp = createComponent(paletteDrag.type, mx - compW / 2, my - compH / 2);
-            setComponents(prev => [...prev, comp]);
+            // FIX: jalankan simulate() supaya gates yang output-nya = NOT(0) = 1
+            // (yaitu NOT, NAND, NOR, XNOR) LANGSUNG NYALA saat di-drop, sesuai
+            // sifat mutlak "not" yang membalik 0 → 1. Sebelumnya simulate() gak
+            // dipanggil → outputs tetap [false] → gate body kelihatan grey padahal
+            // logically sudah aktif.
+            const newComps = [...stateRef.current.components, comp];
+            const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
+            setComponents(simComps);
+            setWires(simWrs);
             setNextId(prev => prev + 1);
             setSelectedId(comp.id);
             const label = (GATE_MAP[paletteDrag.type] || IO_DEFS[paletteDrag.type])?.name || paletteDrag.type;
