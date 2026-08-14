@@ -8,14 +8,7 @@
 // Best-effort: semua error diserap, tidak pernah mengganggu UX website.
 // ============================================================================
 
-const ANALYTICS_COLLECTION = import.meta.env.VITE_ANALYTICS_COLLECTION || "analytics";
-
-let _fs = null;
-async function _firestore() {
-  if (_fs) return _fs;
-  _fs = await import("firebase/firestore");
-  return _fs;
-}
+import { ingest } from "./ingest";
 
 function anonId() {
   try {
@@ -66,30 +59,23 @@ export async function logEvent(kind, detail = {}) {
     const now = Date.now();
     const key = kind + "|" + (detail.message || detail.error || detail.method || "").toString().slice(0, 60);
     const last = _lastEvent[key] || 0;
-    if (now - last < 10000) return; // jangan spam event identik
+    if (now - last < 10000) return;
     _lastEvent[key] = now;
 
-    const fs = await _firestore();
-    const { getFirestore } = await import("firebase/firestore");
-    const { getApp } = await import("firebase/app");
-    const db = getFirestore(getApp());
-
     const devId = await deviceId();
-    const id = `${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const eventId = `${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
     const payload = {
-      kind, // error | login_success | login_failed | heartbeat | request
+      kind,
       ...detail,
-      ip: null, // diisi server-side tidak perlu; IP bisa digabung dari geo provider
       deviceId: devId,
       anonId: anonId(),
       timestamp: now,
-      // Untuk agregasi cepat oleh admin (tanpa query berat)
       minutes: Math.floor(now / 60000),
       hour: Math.floor(now / 3600000),
     };
 
-    await fs.setDoc(fs.doc(db, ANALYTICS_COLLECTION, id), payload);
+    await ingest("analytics", { eventId, timestamp: now, kind, deviceId: devId, data: payload });
   } catch (e) {
     console.warn("[analytics] gagal tulis event", e && e.message);
   }

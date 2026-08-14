@@ -1,6 +1,5 @@
 // ============================================================================
-// BABFT User Tracker — mencatat aktifitas user ke koleksi `users` (Firestore)
-// supaya terbaca oleh admin panel (admin-panel-babft.vercel.app).
+// BABFT User Tracker — kirim aktifitas user ke admin panel (via /api/ingest).
 //
 // Data yang dicatat:
 //   - identitas: uid, email, displayName, photoURL
@@ -13,13 +12,12 @@
 //                userAgent
 //   - VPN:       previousRegion, regionChangeCount, flaggedAsVpn
 //
-// TIDAK ada kredensial/hardcode — Firestore dibuat dari app yang sudah di-init
-// (src/lib/firebase.js) dan koleksi default `users`.
+// Tidak ada kredensial/hardcode; semua field dikirim ke backend untuk diproses.
 // ============================================================================
 
-const USERS_COLLECTION = import.meta.env.VITE_USERS_COLLECTION || "users";
+import { ingest } from "./ingest";
 
-// ===== SUPER OPTIMIZE: cache & throttle untuk hemat kuota Firestore =====
+// cache hasil geo/fingerprint per sesi agar tidak fetch berulang-ulang.
 // - geo di-cache per sesi (sessionStorage) agar tidak fetch 3 API tiap kunjungan
 // - tulis ulang dokumen user di-throttle (default 5 menit) agar tidak spam
 //   setDoc tiap pindah halaman / reload
@@ -38,14 +36,6 @@ function _safeLocalGet(key) {
 }
 function _safeLocalSet(key, val) {
   try { localStorage.setItem(key, val); } catch (_) {}
-}
-
-let _fsCache = null;
-
-async function _firestore() {
-  if (_fsCache) return _fsCache;
-  _fsCache = await import("firebase/firestore");
-  return _fsCache;
 }
 
 // ---------- Lokasi via IP (multi-provider, gratis tanpa key) ----------
@@ -251,33 +241,21 @@ function parseDevice(ua) {
 }
 
 // ---------- user = Firebase Auth user object ----------
-// Inti: tulis record visitor ke Firestore. `key` = id dokumen, `identity` =
-// { email, displayName, photoURL }, `isGuest` = penanda visitor anonim.
+// Kirim record visitor ke backend (panel -> Convex) via /api/ingest.
+// `key` = id dokumen, `identity` = { email, displayName, photoURL },
+// `isGuest` = penanda visitor anonim. Selalu tulis penuh (tanpa throttle
+// ketat) supaya user yang login pertama kali langsung lengkap ter-record.
 async function recordVisitor(key, identity, isGuest) {
-  const fs = await _firestore();
-  const { getFirestore } = await import("firebase/firestore");
-  const { getApp } = await import("firebase/app");
-  const db = getFirestore(getApp());
-
-  const ref = fs.doc(db, USERS_COLLECTION, key);
   const now = Date.now();
 
-  let prev = null;
-  try {
-    const snap = await fs.getDoc(ref);
-    if (snap.exists()) prev = snap.data();
-  } catch (_) {}
-
-  // parallel: geo (IP) + device fingerprint. TANPA GPS (tidak memicu izin lokasi).
+  // geo (IP) + device fingerprint — parallel, tanpa GPS (tidak meminta izin).
   const [geo, deviceId] = await Promise.all([
     fetchGeo(), computeDeviceId(),
   ]);
 
-  // koordinat dari IP (geolokasi dikerjakan server-side oleh provider IP)
   const latitude = geo.latitude;
   const longitude = geo.longitude;
 
-  // alamat: reverse geocode dari koordinat IP (seakurat mungkin, tanpa izin user)
   let addressFields = { address: null, city: geo.city, postal: geo.postal };
   if (latitude != null && longitude != null) {
     const rg = await reverseGeocode(latitude, longitude);
@@ -293,41 +271,29 @@ async function recordVisitor(key, identity, isGuest) {
     ? `${window.screen.width}x${window.screen.height}`
     : null;
 
-  // VPN detection
-  let flagged = (prev && prev.flaggedAsVpn) || false;
-  let changeCount = (prev && prev.regionChangeCount) || 0;
-  if (prev && prev.region && geo.region && prev.region !== geo.region) {
-    flagged = true;
-    changeCount += 1;
-  }
-
   const payload = {
-    ...(isGuest ? {} : { uid: key }),
-    isGuest: isGuest || (prev && prev.isGuest) || false,
-    email: identity.email || (prev && prev.email) || null,
-    displayName: identity.displayName || (prev && prev.displayName) || null,
-    photoURL: identity.photoURL || (prev && prev.photoURL) || null,
-
+    id: key,
+    isGuest: isGuest,
+    email: identity.email || null,
+    displayName: identity.displayName || null,
+    photoURL: identity.photoURL || null,
     online: true,
     lastOnlineAt: now,
     lastLoginAt: now,
-    firstLoginAt: (prev && prev.firstLoginAt) || now,
-    loginCount: ((prev && prev.loginCount) || 0) + 1,
-
-    region: geo.region || (prev && prev.region) || null,
-    countryCode: geo.countryCode || (prev && prev.countryCode) || null,
-    timezone: geo.timezone || (prev && prev.timezone) || null,
-    ipAddress: geo.ip || (prev && prev.ipAddress) || null,
-    regionName: geo.regionName || (prev && prev.regionName) || null,
-    isp: geo.org || (prev && prev.isp) || null,
-
-    latitude: latitude != null ? latitude : (prev && prev.latitude) || null,
-    longitude: longitude != null ? longitude : (prev && prev.longitude) || null,
-    address: addressFields.address || (prev && prev.address) || null,
-    city: addressFields.city || (prev && prev.city) || null,
-    postal: addressFields.postal || (prev && prev.postal) || null,
-
-    deviceId: deviceId || (prev && prev.deviceId) || null,
+    firstLoginAt: now,
+    loginCount: 1,
+    region: geo.region || null,
+    countryCode: geo.countryCode || null,
+    timezone: geo.timezone || null,
+    ipAddress: geo.ip || null,
+    regionName: geo.regionName || null,
+    isp: geo.org || null,
+    latitude: latitude != null ? latitude : null,
+    longitude: longitude != null ? longitude : null,
+    address: addressFields.address || null,
+    city: addressFields.city || null,
+    postal: addressFields.postal || null,
+    deviceId: deviceId || null,
     device: device.device,
     os: device.os,
     browser: device.browser,
@@ -335,43 +301,21 @@ async function recordVisitor(key, identity, isGuest) {
     screen: screen,
     language: nav.language || null,
     userAgent: ua,
-
-    previousRegion: (prev && prev.region) || null,
-    regionChangeCount: changeCount,
-    flaggedAsVpn: flagged,
+    previousRegion: null,
+    regionChangeCount: 0,
+    flaggedAsVpn: false,
+    createdAt: now,
     updatedAt: now,
-    createdAt: (prev && prev.createdAt) || now,
   };
 
-  // ===== SUPER OPTIMIZE: throttle tulis dokumen utama =====
-  // Hanya tulis ulang penuh bila: belum pernah tulis sesi ini, ATAU sudah > 5
-  // menit, ATAU region berubah (deteksi VPN penting — jangan dilewat). Ini
-  // memangkas drastis quota tulis Firestore saat user gonta-ganti halaman.
-  const writeKey = "__w_" + key;
-  const lastFullWrite = parseInt(_safeLocalGet(writeKey) || "0", 10);
-  const regionChanged = prev && prev.region && geo.region && prev.region !== geo.region;
-  const shouldFullWrite =
-    !lastFullWrite ||
-    now - lastFullWrite > WRITE_THROTTLE_MS ||
-    regionChanged;
+  await ingest("user", { key, user: payload });
 
-  if (shouldFullWrite) {
-    await fs.setDoc(ref, payload, { merge: true });
-    try { _safeLocalSet(writeKey, String(now)); } catch (_) {}
-  } else {
-    // cukup perbarui status online + timestamp (tulis ringan, merge field)
-    try {
-      await fs.setDoc(ref, { online: true, lastOnlineAt: now }, { merge: true });
-    } catch (_) {}
-  }
-
-  // Simpan riwayat kunjungan (timeline) — throttle 5 menit per user, login saja.
-  try {
-    const lastHistKey = "__lh_" + key;
-    const lastHist = parseInt(_safeLocalGet(lastHistKey) || "0", 10);
-    if (!isGuest && now - lastHist > WRITE_THROTTLE_MS) {
-      const historyRef = fs.doc(fs.collection(db, USERS_COLLECTION, key, "history"), now.toString());
-      await fs.setDoc(historyRef, {
+  // riwayat kunjungan (timeline) — hanya untuk user login (bukan guest).
+  if (!isGuest) {
+    await ingest("history", {
+      uid: key,
+      timestamp: now,
+      data: {
         timestamp: now,
         region: geo.region || null,
         countryCode: geo.countryCode || null,
@@ -384,10 +328,9 @@ async function recordVisitor(key, identity, isGuest) {
         browser: device.browser,
         deviceType: device.deviceType,
         deviceId: deviceId || null,
-      });
-      _safeLocalSet(lastHistKey, String(now));
-    }
-  } catch (_) {}
+      },
+    });
+  }
 }
 
 // Track user yang sudah login (punya uid).
@@ -421,22 +364,27 @@ export async function trackGuest() {
   }
 }
 
-// Heartbeat — SUPER OPTIMIZE: interval 5 menit (hemat tulis Firestore), dan
-// SKIP saat tab tidak terlihat (document.hidden) supaya tab background tidak
-// spam menulis event. Dipakai admin panel untuk deteksi lonjakan traffic.
+// Heartbeat: jaga status online user tetap segar (kirim setiap interval).
 let _hbStarted = false;
-export function startHeartbeat(intervalMs = 5 * 60000) {
+let _lastUserId = null;
+
+export function updateHeartbeatId(user) {
+  if (user && user.uid) _lastUserId = user.uid;
+}
+
+export function startHeartbeat(intervalMs = 60000) {
   if (_hbStarted || typeof window === "undefined") return;
   _hbStarted = true;
   const tick = async () => {
     try {
-      if (document && document.visibilityState === "hidden") return; // skip background tab
-      const { logEvent } = await import("./analytics");
-      await logEvent("heartbeat", { route: window.location?.pathname || "/" });
+      if (document && document.visibilityState === "hidden") return;
+      const deviceId = await computeDeviceId();
+      const id = _lastUserId || (deviceId ? `guest_${deviceId}` : null);
+      if (!id) return;
+      await ingest("health", { id, deviceId, timestamp: Date.now() });
     } catch (_) {}
   };
   const interval = setInterval(tick, intervalMs);
-  // bersihkan saat halaman ditutup (opsional)
   try {
     window.addEventListener("beforeunload", () => clearInterval(interval));
   } catch (_) {}

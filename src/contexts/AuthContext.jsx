@@ -8,7 +8,7 @@ import {
   logout as firebaseLogout,
 } from '../lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GithubAuthProvider } from 'firebase/auth';
-import { trackUser, trackGuest } from '../lib/tracker';
+import { trackUser, trackGuest, updateHeartbeatId } from '../lib/tracker';
 
 const AuthContext = createContext(null);
 const githubProvider = new GithubAuthProvider();
@@ -21,9 +21,11 @@ export function AuthProvider({ children }) {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
-      // Catat user yang sudah login ke koleksi `users`.
       if (u && u.uid) {
+        updateHeartbeatId(u);
         trackUser(u);
+      } else {
+        updateHeartbeatId(null);
       }
     });
     return () => unsub();
