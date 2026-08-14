@@ -43,16 +43,38 @@ async function deviceId() {
   return _cachedDeviceId;
 }
 
+// SUPER OPTIMIZE: throttle event agar tidak spam tulis Firestore.
+// - error yang sama (pesan identik) ditahan 60 detik
+// - event umum di-throttle 10 detik per jenis
+const _lastEvent = {};
+
+// SUPER OPTIMIZE: throttle error identik (kind+message sama) supaya tidak
+// spam koleksi `analytics`. Error berulang dari loop render bisa banjir tulis.
+const _errThrottle = new Map();
+const ERR_THROTTLE_MS = 5 * 60000; // max tiap 5 menit untuk error identik
+
 // Tulis satu event ke koleksi `analytics`. `kind` = tipe event.
 export async function logEvent(kind, detail = {}) {
+  if (kind === "error") {
+    const sig = (detail.message || "") + "|" + (detail.type || "");
+    const last = _errThrottle.get(sig) || 0;
+    const now = Date.now();
+    if (now - last < ERR_THROTTLE_MS) return;
+    _errThrottle.set(sig, now);
+  }
   try {
+    const now = Date.now();
+    const key = kind + "|" + (detail.message || detail.error || detail.method || "").toString().slice(0, 60);
+    const last = _lastEvent[key] || 0;
+    if (now - last < 10000) return; // jangan spam event identik
+    _lastEvent[key] = now;
+
     const fs = await _firestore();
     const { getFirestore } = await import("firebase/firestore");
     const { getApp } = await import("firebase/app");
     const db = getFirestore(getApp());
 
     const devId = await deviceId();
-    const now = Date.now();
     const id = `${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
     const payload = {

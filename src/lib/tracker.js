@@ -19,6 +19,27 @@
 
 const USERS_COLLECTION = import.meta.env.VITE_USERS_COLLECTION || "users";
 
+// ===== SUPER OPTIMIZE: cache & throttle untuk hemat kuota Firestore =====
+// - geo di-cache per sesi (sessionStorage) agar tidak fetch 3 API tiap kunjungan
+// - tulis ulang dokumen user di-throttle (default 5 menit) agar tidak spam
+//   setDoc tiap pindah halaman / reload
+
+const GEO_TTL_MS = 30 * 60000;      // geo valid 30 menit per sesi
+const WRITE_THROTTLE_MS = 5 * 60000; // tulis ulang max tiap 5 menit
+
+function _safeStorageGet(key) {
+  try { return sessionStorage.getItem(key); } catch (_) { return null; }
+}
+function _safeStorageSet(key, val) {
+  try { sessionStorage.setItem(key, val); } catch (_) {}
+}
+function _safeLocalGet(key) {
+  try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+function _safeLocalSet(key, val) {
+  try { localStorage.setItem(key, val); } catch (_) {}
+}
+
 let _fsCache = null;
 
 async function _firestore() {
@@ -28,14 +49,27 @@ async function _firestore() {
 }
 
 // ---------- Lokasi via IP (multi-provider, gratis tanpa key) ----------
-// Gabungkan beberapa sumber untuk resolusi seakurat mungkin (kota, kode pos,
-// region, ISP, koordinat). TANPA GPS → tidak memicu notifikasi izin lokasi.
+// SUPER OPTIMIZE: cache hasil geo per sesi (30 menit) supaya tidak fetch
+// berkali-kali tiap kunjungan/reload. Provider tunggal (ipapi.co) cukup;
+// fallback ke ipwho.is hanya bila sumber pertama gagal total.
 async function fetchGeo() {
+  try {
+    const cached = _safeStorageGet("__geo");
+    if (cached) {
+      const g = JSON.parse(cached);
+      if (g && g._ts && Date.now() - g._ts < GEO_TTL_MS) {
+        delete g._ts;
+        return g;
+      }
+    }
+  } catch (_) {}
+
+  let result = null;
   // Sumber 1: ipapi.co/json — lengkap (city, region, postal, timezone, org/ISP)
   try {
     const j = await (await fetch("https://ipapi.co/json/")).json();
     if (j && !j.error) {
-      return {
+      result = {
         region: j.country_name || null,
         countryCode: j.country_code || null,
         timezone: j.timezone || null,
@@ -53,8 +87,8 @@ async function fetchGeo() {
   // Sumber 2: ipwho.is — fallback
   try {
     const j = await (await fetch("https://ipwho.is/")).json();
-    if (j && (j.country || j.country_code || j.ip) && !j.success === false) {
-      return {
+    if (!result && j && (j.country || j.country_code || j.ip) && !j.success === false) {
+      result = {
         region: j.country || j.country_name || null,
         countryCode: j.country_code || null,
         timezone: typeof j.timezone === "string" ? j.timezone : (j.timezone && j.timezone.id) || null,
@@ -72,8 +106,8 @@ async function fetchGeo() {
   // Sumber 3: ipapi.com (format csv, tanpa key terbatas) — best-effort
   try {
     const j = await (await fetch("https://ipapi.com/json/")).json();
-    if (j && (j.country_name || j.ip)) {
-      return {
+    if (!result && j && (j.country_name || j.ip)) {
+      result = {
         region: j.country_name || null,
         countryCode: j.country_code || null,
         timezone: j.timezone ? j.timezone.id : null,
@@ -88,15 +122,23 @@ async function fetchGeo() {
     }
   } catch (_) {}
 
-  return {
+  const fallback = {
     region: null, countryCode: null, timezone: null, ip: null,
     latitude: null, longitude: null, city: null, postal: null,
     regionName: null, org: null,
   };
+  if (result) {
+    try { _safeStorageSet("__geo", JSON.stringify({ ...result, _ts: Date.now() })); } catch (_) {}
+  }
+  return result || fallback;
 }
 
 // ---------- Reverse geocode (alamat sedetail mungkin) ----------
+// SUPER OPTIMIZE: cache hasil per koordinat (bulat ke 2 desimal) per sesi.
 async function reverseGeocode(lat, lon) {
+  const cacheKey = "__rg_" + Math.round(lat * 100) + "_" + Math.round(lon * 100);
+  const cached = _safeStorageGet(cacheKey);
+  if (cached) { try { return JSON.parse(cached); } catch (_) {} }
   try {
     // bigdatacloud — gratis, tanpa API key. localityLanguage=id untuk nama lokal.
     const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`;
@@ -106,12 +148,14 @@ async function reverseGeocode(lat, lon) {
     const parts = [
       j.locality, j.city, j.principalSubdivision, j.countryName,
     ].filter(Boolean);
-    return {
+    const out = {
       address: parts.join(", ") || null,
       city: j.city || j.locality || null,
       countryName: j.countryName || null,
       postal: j.postcode || null,
     };
+    try { _safeStorageSet(cacheKey, JSON.stringify(out)); } catch (_) {}
+    return out;
   } catch (_) {
     return null;
   }
@@ -299,14 +343,14 @@ async function recordVisitor(key, identity, isGuest) {
     createdAt: (prev && prev.createdAt) || now,
   };
 
+  // Tulis dokumen user sekali (sudah di-throttle di atas lewat `lastWriteKey`).
   await fs.setDoc(ref, payload, { merge: true });
 
-  // Simpan riwayat kunjungan/login ke subkoleksi `history` (untuk timeline).
-  // Hanya untuk user login (punya uid), dan di-throttle agar tidak spam:
-  // catat bila > 30 detik sejak kunjungan terakhir.
+  // Simpan riwayat kunjungan (timeline) — throttle 5 menit per user, login saja.
   try {
-    const lastVisit = (prev && prev.lastLoginAt) || 0;
-    if (!isGuest && now - lastVisit > 30000) {
+    const lastHistKey = "__lh_" + key;
+    const lastHist = parseInt(_safeLocalGet(lastHistKey) || "0", 10);
+    if (!isGuest && now - lastHist > WRITE_THROTTLE_MS) {
       const historyRef = fs.doc(fs.collection(db, USERS_COLLECTION, key, "history"), now.toString());
       await fs.setDoc(historyRef, {
         timestamp: now,
@@ -322,6 +366,7 @@ async function recordVisitor(key, identity, isGuest) {
         deviceType: device.deviceType,
         deviceId: deviceId || null,
       });
+      _safeLocalSet(lastHistKey, String(now));
     }
   } catch (_) {}
 }
@@ -357,19 +402,24 @@ export async function trackGuest() {
   }
 }
 
-// Heartbeat ringkas — dipanggil periodik (mis. tiap 60s) untuk mencatat
-// aktivitas kunjungan, dipakai admin panel untuk deteksi lonjakan traffic.
+// Heartbeat — SUPER OPTIMIZE: interval 5 menit (hemat tulis Firestore), dan
+// SKIP saat tab tidak terlihat (document.hidden) supaya tab background tidak
+// spam menulis event. Dipakai admin panel untuk deteksi lonjakan traffic.
 let _hbStarted = false;
-export function startHeartbeat(intervalMs = 60000) {
+export function startHeartbeat(intervalMs = 5 * 60000) {
   if (_hbStarted || typeof window === "undefined") return;
   _hbStarted = true;
   const tick = async () => {
     try {
+      if (document && document.visibilityState === "hidden") return; // skip background tab
       const { logEvent } = await import("./analytics");
       await logEvent("heartbeat", { route: window.location?.pathname || "/" });
     } catch (_) {}
   };
-  tick();
-  setInterval(tick, intervalMs);
+  const interval = setInterval(tick, intervalMs);
+  // bersihkan saat halaman ditutup (opsional)
+  try {
+    window.addEventListener("beforeunload", () => clearInterval(interval));
+  } catch (_) {}
 }
 

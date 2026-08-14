@@ -9,7 +9,7 @@ import { startHeartbeat } from './lib/tracker'
 // Aktifkan pelacakan error global (JS error + unhandled rejection) ke Firestore.
 initErrorTracking()
 // Heartbeat periodik untuk deteksi lonjakan traffic di admin panel.
-startHeartbeat(60000)
+startHeartbeat()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <AuthProvider>
