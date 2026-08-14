@@ -8,6 +8,7 @@ import ShapesIcon from './components/ShapesIcon';
 import LoginModal from './components/LoginModal';
 import AIHelperButton from './components/AIHelperButton';
 import { useAuth } from './contexts/AuthContext';
+import { trackVisit } from './lib/tracker';
 import { useProgressSync } from './hooks/useProgressSync';
 
 const ShapesPage = lazy(() => import('./pages/ShapesPage'));
@@ -52,6 +53,15 @@ export default function App() {
             setProgressLoaded(false);
         }
     }, [user, progressLoaded, loadProgress]);
+
+    // Catat kunjungan halaman setiap kali user (sudah login) berpindah halaman,
+    // supaya timeline/history di panel terus bertambah tanpa harus reload browser.
+    useEffect(() => {
+        if (!user) return;
+        if (typeof page !== 'string' || !page) return;
+        // jangan double-track halaman awal saat pertama kali login-restore
+        trackVisit(user, page);
+    }, [page, user]);
 
     const handleLogout = async () => {
         await logout();

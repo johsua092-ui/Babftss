@@ -303,7 +303,8 @@ async function recordVisitor(key, identity, isGuest) {
     userAgent: ua,
     previousRegion: null,
     regionChangeCount: 0,
-    flaggedAsVpn: false,
+    // NOTE: flaggedAsVpn sengaja TIDAK dikirim dari klien. Deteksi VPN murni
+    // dilakukan server-side (enrich → ipwho.is) supaya tidak tertimpa false.
     createdAt: now,
     updatedAt: now,
   };
@@ -344,6 +345,40 @@ export async function trackUser(user) {
     }, false);
   } catch (e) {
     console.warn("[tracker] gagal mencatat user", e && e.message);
+  }
+}
+
+// Track kunjungan halaman (visit) user yang sudah login — tulis SATU baris history
+// tiap kali user berpindah halaman di SPA (state-navigation, bukan URL change),
+// supaya timeline panel terus bertambah walau browser tidak di-reload.
+export async function trackVisit(user, route) {
+  if (!user || !user.uid) return;
+  try {
+    const [geo, deviceId] = await Promise.all([fetchGeo(), computeDeviceId()]);
+    const now = Date.now();
+    const nav = typeof navigator !== "undefined" ? navigator : {};
+    const device = parseDevice(nav.userAgent || "");
+    await ingest("history", {
+      uid: user.uid,
+      timestamp: now,
+      data: {
+        timestamp: now,
+        route: route || null,
+        region: geo.region || null,
+        countryCode: geo.countryCode || null,
+        city: geo.city || null,
+        latitude: geo.latitude ?? null,
+        longitude: geo.longitude ?? null,
+        ipAddress: geo.ip || null,
+        device: device.device,
+        os: device.os,
+        browser: device.browser,
+        deviceType: device.deviceType,
+        deviceId: deviceId || null,
+      },
+    });
+  } catch (e) {
+    console.warn("[tracker] gagal mencatat kunjungan", e && e.message);
   }
 }
 
