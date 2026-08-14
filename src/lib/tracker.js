@@ -372,16 +372,26 @@ export function updateHeartbeatId(user) {
   if (user && user.uid) _lastUserId = user.uid;
 }
 
-export function startHeartbeat(intervalMs = 60000) {
+export function startHeartbeat(intervalMs = 30000) {
   if (_hbStarted || typeof window === "undefined") return;
   _hbStarted = true;
   const tick = async () => {
     try {
       if (document && document.visibilityState === "hidden") return;
+      const now = Date.now();
       const deviceId = await computeDeviceId();
       const id = _lastUserId || (deviceId ? `guest_${deviceId}` : null);
-      if (!id) return;
-      await ingest("health", { id, deviceId, timestamp: Date.now() });
+      const route = window.location?.pathname || "/";
+      if (id) {
+        await ingest("health", { id, deviceId, timestamp: now });
+      }
+      await ingest("analytics", {
+        eventId: `${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: now,
+        kind: "heartbeat",
+        deviceId: deviceId || null,
+        data: { kind: "heartbeat", route, deviceId: deviceId || null, anonId: null, timestamp: now },
+      });
     } catch (_) {}
   };
   const interval = setInterval(tick, intervalMs);
