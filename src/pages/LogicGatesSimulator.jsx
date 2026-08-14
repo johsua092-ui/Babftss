@@ -2389,9 +2389,13 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'all 0.15s',
   };
 
+  // Help text — geser ke kanan saat palette tertutup biar gak ketabrak toggle button
+  // (toggle berada di left:8 top:8 saat closed, help text default left:10 top:10 → overlap).
+  // Saat open, toggle ada di left:174 (pojok kanan palette) jadi help text aman di left:10.
   const helpStyle = {
     position: 'absolute',
-    top: 10, left: 10,
+    top: 10,
+    left: paletteOpen ? 10 : 48,
     fontSize: 11,
     color: '#64748b',
     backgroundColor: 'rgba(15,23,42,0.85)',
@@ -2400,8 +2404,9 @@ export default function LogicGatesSimulator({ setPage }) {
     pointerEvents: 'none',
     backdropFilter: 'blur(4px)',
     lineHeight: 1.5,
-    maxWidth: 380,
+    maxWidth: paletteOpen ? 380 : 340,
     zIndex: 5,
+    transition: 'left 0.22s ease, max-width 0.22s ease',
   };
 
   const statusStyle = {
