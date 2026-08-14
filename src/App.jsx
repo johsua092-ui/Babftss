@@ -1,14 +1,16 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { Cpu, Network, FlaskConical, CircuitBoard, Lock, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
+import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
 import GearIcon from './components/GearIcon';
 import LinkageIcon from './components/LinkageIcon';
+import ShapesIcon from './components/ShapesIcon';
 import LoginModal from './components/LoginModal';
 import AIHelperButton from './components/AIHelperButton';
 import { useAuth } from './contexts/AuthContext';
 import { useProgressSync } from './hooks/useProgressSync';
 
+const ShapesPage = lazy(() => import('./pages/ShapesPage'));
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
 const CircuitGenerator = lazy(() => import('./pages/CircuitGenerator'));
@@ -159,6 +161,9 @@ export default function App() {
                     >START LEARNING</button>
                 </div>
             </motion.div>}
+            {page === "shapes" && <motion.div key="shapes" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <Suspense fallback={pageFallback}><ShapesPage setPage={setPage} /></Suspense>
+            </motion.div>}
             {page === "menu" && <motion.div key="menu" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <div style={{ width: "100%", maxWidth: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: 28, textAlign: "center" }}>
                     <h1 style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 900, fontSize: "clamp(2rem,8vw,3rem)", background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em", margin: 0 }}>Babft Learning</h1>
@@ -167,6 +172,11 @@ export default function App() {
                         <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
                     </picture>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
+                        <button onClick={() => setPage("shapes")}
+                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(45,212,191,0.38)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(45,212,191,0.22)", transition: "all 0.2s" }}
+                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
+                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
+                        ><div style={{ backgroundColor: "rgba(45,212,191,0.18)", padding: 10, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><ShapesIcon size={22} color="#2dd4bf" /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#2dd4bf" }}>Shapes</span></button>
                         <button onClick={() => setPage("logic-gates")}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(59,130,246,0.35)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(59,130,246,0.25)", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
@@ -182,11 +192,6 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
                         ><div style={{ backgroundColor: "rgba(99,102,241,0.18)", padding: 10, borderRadius: 10, flexShrink: 0 }}><LinkageIcon icon="fourbar" color="#818cf8" size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#818cf8" }}>Linkages Mechanic</span></button>
-                        <button onClick={() => toast.info("Fittur ini masih dalam pengerjaan")}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: "rgba(14,20,32,0.6)", border: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 14, color: "#475569", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.9)"}
-                            onMouseLeave={c => c.currentTarget.style.backgroundColor = "rgba(14,20,32,0.6)"}
-                        ><div style={{ backgroundColor: "#0f172a", padding: 10, borderRadius: 10, color: "#334155", flexShrink: 0 }}><Lock size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left" }}>Coming Soon</span></button>
                     </div>
                 </div>
             </motion.div>}
