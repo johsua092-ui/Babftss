@@ -116,24 +116,32 @@ function getCompBox(c) {
   return { x: c.x, y: c.y, w: def.width || 90, h: def.height || 56 };
 }
 
-// Shrunked box (interior) untuk collision check — port di edge body TIDAK dianggap
-// collision (supaya wire bisa connect ke port src/dst di edge), tapi interior body
-// (di dalam shrunked box) dianggap collision (wire gak boleh lewat tengah body).
-// Margin 8px: cukup buat port (radius 5) lepas dari shrunked box.
-const COLLISION_MARGIN = 8;
-function getCompInnerBox(c) {
+// STRICT collision: pakai FULL bounding box + GAP_MARGIN di tiap sisi.
+// User request: kabel gak boleh menempel/nabrak kotak komponen, harus ada gap minimal.
+// Gap 12px = cukup buat visual clearance (wire 3px + 9px whitespace).
+// Ini KEBALIKAN dari versi lama (COLLISION_MARGIN=8 yang SHRINK box → wire bisa
+// lewat 8px dari tepi body tanpa dianggap nabrak).
+const GAP_MARGIN = 12;
+function getCompBlockedBox(c) {
   const b = getCompBox(c);
-  return { x: b.x + COLLISION_MARGIN, y: b.y + COLLISION_MARGIN, w: b.w - 2*COLLISION_MARGIN, h: b.h - 2*COLLISION_MARGIN };
+  return {
+    x: b.x - GAP_MARGIN,
+    y: b.y - GAP_MARGIN,
+    w: b.w + 2 * GAP_MARGIN,
+    h: b.h + 2 * GAP_MARGIN,
+  };
 }
 
 // Hitung jumlah intersection antara segmen-segmen orthogonal path (H-V-H @ midX) dengan
-// interior body komponen (shrunked box). Return count intersection (0 = bebas hambatan).
-// SEMUA komponen di-check (termasuk src & dst) — port di edge tidak kena karena pakai shrunked box.
-function countHVHCollisions(p1, p2, midX, comps) {
+// blocked box komponen (full body + GAP_MARGIN). Return count intersection (0 = bebas hambatan).
+// src & dst di-exempt: port endpoint ada di edge src/dst, jadi segmen H1/H2 pasti
+// dekat box src/dst. Tanpa exempt, wire selalu dianggap nabrak src/dst sendiri.
+function countHVHCollisions(p1, p2, midX, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
   let count = 0;
   for (const c of comps) {
-    const b = getCompInnerBox(c);
+    if (c.id === srcId || c.id === dstId) continue;
+    const b = getCompBlockedBox(c);
     // Segmen 1: horizontal y=y1, dari x1 ke midX.
     if (y1 >= b.y && y1 <= b.y + b.h) {
       const segMin = Math.min(x1, midX), segMax = Math.max(x1, midX);
@@ -154,11 +162,12 @@ function countHVHCollisions(p1, p2, midX, comps) {
 }
 
 // Sama, tapi untuk V-H-V pattern (vertical first) dengan midY custom.
-function countVHVCollisions(p1, p2, midY, comps) {
+function countVHVCollisions(p1, p2, midY, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
   let count = 0;
   for (const c of comps) {
-    const b = getCompInnerBox(c);
+    if (c.id === srcId || c.id === dstId) continue;
+    const b = getCompBlockedBox(c);
     // Segmen 1: vertical x=x1, dari y1 ke midY.
     if (x1 >= b.x && x1 <= b.x + b.w) {
       const segMin = Math.min(y1, midY), segMax = Math.max(y1, midY);
@@ -181,21 +190,18 @@ function countVHVCollisions(p1, p2, midY, comps) {
 // Smart orthogonal routing — pilih rute H-V-H atau V-H-V dengan collision paling sedikit.
 //
 // INSIGHT: Untuk wire output→input (kanan src → kiri dst), Z-shape (H-V-H dengan midX
-// di tengah gap antara src & dst) adalah routing TERBAIK secara visual:
-//   - H seg 1: exit output port HORIZONTAL ke kanan (gak nabrak src body, gak hidden)
-//   - V seg: di tengah empty space antara src & dst (gak nabrak body manapun)
-//   - H seg 2: enter input port HORIZONTAL dari kiri (gak nabrak dst body, gak hidden)
+// di tengah gap antara src & dst) adalah routing TERBAIK secara visual.
 //
-// L-shape (corner @ endpoint) JUSTRU BURUK karena V seg-nya di x=dst.x (left edge dst
-// body) → V seg masuk ke dst body y-range → HIDDEN behind dst body fill → wire kelihatan
-// "putus" di balik body.
+// STRICT mode (user request): kabel gak boleh menempel/nabrak kotak komponen apapun.
+// Blocked box = full body + GAP_MARGIN (12px) di tiap sisi. Algo bakal cari rute yang
+// sepenuhnya bebas hambatan (0 collision), dengan prioritas:
+//   1. Rute "hug box edge" — midX/midY pas di luar GAP_MARGIN komponen penghalang
+//   2. Rute offset kiri/kanan dari midX ideal (Z-shape di tengah gap)
+//   3. Rute alternatif jauh (offset ±500px) kalau semua rute dekat masih nabrak
 //
-// Algoritma:
-// 1. Coba midX = tengah gap antara src right edge & dst left edge (ideal Z-shape)
-// 2. Kalau nabrak, coba offset kiri/kanan dari midX ideal
-// 3. Kalau semua HVH nabrak, coba VHV dengan midY offset
-// 4. Sort by (collision count, |offset dari midX ideal|) — prefer rute paling clean
-function pickOrthogonalRoute(p1, p2, comps) {
+// Re-route otomatis: routing dihitung ulang setiap render frame dari posisi comp terkini.
+// Jadi saat komponen digeser ke arah wire, wire langsung re-route di frame berikutnya.
+function pickOrthogonalRoute(p1, p2, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
 
   // midX ideal = tengah gap antara src & dst (bukan tengah rata-rata endpoint).
@@ -206,24 +212,43 @@ function pickOrthogonalRoute(p1, p2, comps) {
   // Kalau gap negatif (overlap), fallback ke rata-rata
   const hvhMidXDefault = (dstLeft === srcRight) ? (x1 + x2) / 2 : hvhMidXIdeal;
 
+  // Kumpulin kandidat midX: (a) hug box edge tiap comp, (b) offset dari midX ideal.
+  const hvhMidXs = new Set();
+  // (a) Hug box edge: midX pas di luar GAP_MARGIN tiap komponen (kiri & kanan).
+  //     Ini explicitly route di sekitar comp penghalang.
+  for (const c of comps) {
+    if (c.id === srcId || c.id === dstId) continue;
+    const box = getCompBox(c);
+    hvhMidXs.add(box.x - GAP_MARGIN - 2);             // just left of comp
+    hvhMidXs.add(box.x + box.w + GAP_MARGIN + 2);     // just right of comp
+  }
+  // (b) Offset dari midX ideal (Z-shape di tengah gap, lalu eksplorasi kiri/kanan).
+  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 250, -250, 300, -300, 400, -400, 500, -500];
+  for (const off of hvhOffsets) hvhMidXs.add(hvhMidXDefault + off);
+
   const candidates = [];
-  // Kandidat HVH: midX ideal DULU (Z-shape ideal), lalu offset kiri/kanan.
-  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 250, -250, 300, -300];
-  for (const off of hvhOffsets) {
-    const midX = hvhMidXDefault + off;
-    const col = countHVHCollisions(p1, p2, midX, comps);
-    candidates.push({ type: 'HVH', mid: midX, col, off });
+  for (const midX of hvhMidXs) {
+    const col = countHVHCollisions(p1, p2, midX, comps, srcId, dstId);
+    candidates.push({ type: 'HVH', mid: midX, col, off: midX - hvhMidXDefault });
   }
   // Kandidat VHV: midY ideal = tengah gap vertikal antara src & dst.
   const srcBottom = Math.max(y1, y2);
   const dstTop = Math.min(y1, y2);
   const vhvMidYIdeal = srcBottom + (dstTop - srcBottom) / 2;
   const vhvMidYDefault = (dstTop === srcBottom) ? (y1 + y2) / 2 : vhvMidYIdeal;
-  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200];
-  for (const off of vhvOffsets) {
-    const midY = vhvMidYDefault + off;
-    const col = countVHVCollisions(p1, p2, midY, comps);
-    candidates.push({ type: 'VHV', mid: midY, col, off });
+  const vhvMidYs = new Set();
+  for (const c of comps) {
+    if (c.id === srcId || c.id === dstId) continue;
+    const box = getCompBox(c);
+    vhvMidYs.add(box.y - GAP_MARGIN - 2);             // just above comp
+    vhvMidYs.add(box.y + box.h + GAP_MARGIN + 2);     // just below comp
+  }
+  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 300, -300, 400, -400, 500, -500];
+  for (const off of vhvOffsets) vhvMidYs.add(vhvMidYDefault + off);
+
+  for (const midY of vhvMidYs) {
+    const col = countVHVCollisions(p1, p2, midY, comps, srcId, dstId);
+    candidates.push({ type: 'VHV', mid: midY, col, off: midY - vhvMidYDefault });
   }
   // Sort by collision count asc, lalu by |offset| asc (midX ideal = offset 0 menang).
   candidates.sort((a, b) => {
@@ -869,9 +894,10 @@ export default function LogicGatesSimulator({ setPage }) {
         if (!src || !dst) continue;
         const p1 = getNodePos(src, false, wire.fromIdx);
         const p2 = getNodePos(dst, true, wire.toIdx);
-        // Smart routing: pilih rute HVH atau VHV yang paling sedikit nabrak interior body komponen.
-        // Semua comp di-check (termasuk src & dst) — port di edge tidak kena collision karena pakai shrunked box.
-        const route = pickOrthogonalRoute(p1, p2, comps);
+        // Smart routing: STRICT — kabel gak boleh menempel/nabrak kotak komponen apapun.
+        // Blocked box = full body + GAP_MARGIN (12px). src & dst di-exempt (port endpoint
+        // ada di edge mereka). Routing dihitung setiap frame → auto re-route saat comp digeser.
+        const route = pickOrthogonalRoute(p1, p2, comps, wire.from, wire.to);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         drawSmartOrthogonalPath(ctx, p1, p2, route, 8);
@@ -903,7 +929,8 @@ export default function LogicGatesSimulator({ setPage }) {
         const p1 = getNodePos(wiring.fromComp, false, wiring.fromIdx);
         const p2 = { x: wiring.mx, y: wiring.my };
         // Wiring preview juga pakai smart routing biar user preview rute actual yang akan dipilih.
-        const route = pickOrthogonalRoute(p1, p2, comps);
+        // srcId = wiring.fromComp.id, dstId = null (mouse pos gak punya comp).
+        const route = pickOrthogonalRoute(p1, p2, comps, wiring.fromComp.id, null);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         drawSmartOrthogonalPath(ctx, p1, p2, route, 8);
