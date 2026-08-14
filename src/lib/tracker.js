@@ -343,8 +343,27 @@ async function recordVisitor(key, identity, isGuest) {
     createdAt: (prev && prev.createdAt) || now,
   };
 
-  // Tulis dokumen user sekali (sudah di-throttle di atas lewat `lastWriteKey`).
-  await fs.setDoc(ref, payload, { merge: true });
+  // ===== SUPER OPTIMIZE: throttle tulis dokumen utama =====
+  // Hanya tulis ulang penuh bila: belum pernah tulis sesi ini, ATAU sudah > 5
+  // menit, ATAU region berubah (deteksi VPN penting — jangan dilewat). Ini
+  // memangkas drastis quota tulis Firestore saat user gonta-ganti halaman.
+  const writeKey = "__w_" + key;
+  const lastFullWrite = parseInt(_safeLocalGet(writeKey) || "0", 10);
+  const regionChanged = prev && prev.region && geo.region && prev.region !== geo.region;
+  const shouldFullWrite =
+    !lastFullWrite ||
+    now - lastFullWrite > WRITE_THROTTLE_MS ||
+    regionChanged;
+
+  if (shouldFullWrite) {
+    await fs.setDoc(ref, payload, { merge: true });
+    try { _safeLocalSet(writeKey, String(now)); } catch (_) {}
+  } else {
+    // cukup perbarui status online + timestamp (tulis ringan, merge field)
+    try {
+      await fs.setDoc(ref, { online: true, lastOnlineAt: now }, { merge: true });
+    } catch (_) {}
+  }
 
   // Simpan riwayat kunjungan (timeline) — throttle 5 menit per user, login saja.
   try {
