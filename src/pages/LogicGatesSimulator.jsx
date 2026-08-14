@@ -179,34 +179,67 @@ function countVHVCollisions(p1, p2, midY, comps) {
 }
 
 // Smart orthogonal routing — pilih rute H-V-H atau V-H-V dengan collision paling sedikit.
-// Coba banyak kandidat midX/midY (default + offset kiri/kanan/atas/bawah), pilih rute
-// bebas hambatan. Kalau semua kandidat masih nabrak, pilih yang minimal collision (least bad).
+// Coba banyak kandidat midX/midY: L-shape (corner di endpoint) DULU, lalu offset kiri/kanan.
+// L-shape (H-V atau V-H pure, corner nyentuh endpoint) jauh lebih clean secara visual
+// daripada Z-shape (corner di tengah ruang kosong).
+// Kalau semua kandidat masih nabrak, pilih yang minimal collision (least bad).
 // Return { type: 'HVH'|'VHV', mid } untuk dipakai draw + pointOnPath.
 function pickOrthogonalRoute(p1, p2, comps) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
 
+  // Naturalness = jarak corner ke endpoint terdekat. 0 = perfect L-shape (corner di
+  // x1 atau x2 / y1 atau y2). Makin kecil makin natural (corner nempel di endpoint).
+  function hvhNaturalness(midX) {
+    return Math.min(Math.abs(midX - x1), Math.abs(midX - x2));
+  }
+  function vhvNaturalness(midY) {
+    return Math.min(Math.abs(midY - y1), Math.abs(midY - y2));
+  }
+
   const candidates = [];
-  // Kandidat HVH: midX default + offset (range sangat lebar supaya bisa dodge comp jauh,
-  // termasuk kasus loop-back dimana output→input harus muter ke kiri/kanan jauh).
+  // Kandidat HVH: L-shape (midX = x2 → corner @ dst, midX = x1 → corner @ src) DULU,
+  // baru midX default + offset (range lebar supaya bisa dodge comp jauh, termasuk
+  // kasus loop-back dimana output→input harus muter ke kiri/kanan jauh).
   const hvhMidXDefault = (x1 + x2) / 2;
-  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 250, -250, 300, -300];
-  for (const off of hvhOffsets) {
-    const midX = hvhMidXDefault + off;
+  const hvhMidXs = [
+    x2, x1,                         // L-shape: corner di endpoint (paling natural)
+    hvhMidXDefault,                 // Z-shape: corner di tengah
+    hvhMidXDefault + 25, hvhMidXDefault - 25,
+    hvhMidXDefault + 50, hvhMidXDefault - 50,
+    hvhMidXDefault + 75, hvhMidXDefault - 75,
+    hvhMidXDefault + 100, hvhMidXDefault - 100,
+    hvhMidXDefault + 150, hvhMidXDefault - 150,
+    hvhMidXDefault + 200, hvhMidXDefault - 200,
+    hvhMidXDefault + 250, hvhMidXDefault - 250,
+    hvhMidXDefault + 300, hvhMidXDefault - 300,
+  ];
+  for (const midX of hvhMidXs) {
     const col = countHVHCollisions(p1, p2, midX, comps);
-    candidates.push({ type: 'HVH', mid: midX, col, off });
+    const nat = hvhNaturalness(midX);
+    candidates.push({ type: 'HVH', mid: midX, col, nat });
   }
-  // Kandidat VHV: midY default + offset.
+  // Kandidat VHV: sama, L-shape DULU.
   const vhvMidYDefault = (y1 + y2) / 2;
-  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200];
-  for (const off of vhvOffsets) {
-    const midY = vhvMidYDefault + off;
+  const vhvMidYs = [
+    y2, y1,                         // L-shape: corner di endpoint
+    vhvMidYDefault,                 // Z-shape: corner di tengah
+    vhvMidYDefault + 25, vhvMidYDefault - 25,
+    vhvMidYDefault + 50, vhvMidYDefault - 50,
+    vhvMidYDefault + 75, vhvMidYDefault - 75,
+    vhvMidYDefault + 100, vhvMidYDefault - 100,
+    vhvMidYDefault + 150, vhvMidYDefault - 150,
+    vhvMidYDefault + 200, vhvMidYDefault - 200,
+  ];
+  for (const midY of vhvMidYs) {
     const col = countVHVCollisions(p1, p2, midY, comps);
-    candidates.push({ type: 'VHV', mid: midY, col, off });
+    const nat = vhvNaturalness(midY);
+    candidates.push({ type: 'VHV', mid: midY, col, nat });
   }
-  // Sort by collision count asc, lalu by offset asc (lebih natural).
+  // Sort by: collision count asc (bebas hambatan menang), lalu naturalness asc
+  // (L-shape / corner di endpoint menang vs Z-shape / corner di tengah).
   candidates.sort((a, b) => {
     if (a.col !== b.col) return a.col - b.col;
-    return Math.abs(a.off) - Math.abs(b.off);
+    return a.nat - b.nat;
   });
   return candidates[0];
 }
