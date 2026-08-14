@@ -636,9 +636,17 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         drawOrthogonalPath(ctx, p1, p2, 8);
-        ctx.strokeStyle = wire.value ? '#4ade80' : '#475569';
-        ctx.lineWidth = wire.value ? 3 : 1.5;
-        ctx.globalAlpha = wire.value ? 1 : 0.5;
+        // Wire ON = hijau terang (pulse). Wire OFF = hijau tua tebal, supaya tetap
+        // kelihatan di background blueprint biru gelap (gak nyatu seperti warna abu slate lama).
+        if (wire.value) {
+          ctx.strokeStyle = '#4ade80';
+          ctx.lineWidth = 3;
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.strokeStyle = '#2d6a4f';
+          ctx.lineWidth = 2.5;
+          ctx.globalAlpha = 1;
+        }
         ctx.stroke();
         ctx.globalAlpha = 1;
         if (wire.value) {
@@ -863,13 +871,21 @@ export default function LogicGatesSimulator({ setPage }) {
 
         if (comps.length >= 3) {
           // Bounding box semua komponen.
+          // Penting: GATE_MAP entries gak punya field width/height (cuma IO_DEFS yang punya),
+          // jadi fallback ke default gate box 90x56 untuk gate types biasa.
+          const compBox = (c) => {
+            const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+            const w = def.width || 90;
+            const h = def.height || 56;
+            return { w, h };
+          };
           let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
           for (const c of comps) {
-            const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+            const { w, h } = compBox(c);
             minX = Math.min(minX, c.x);
             minY = Math.min(minY, c.y);
-            maxX = Math.max(maxX, c.x + def.width);
-            maxY = Math.max(maxY, c.y + def.height);
+            maxX = Math.max(maxX, c.x + w);
+            maxY = Math.max(maxY, c.y + h);
           }
           // Padding 15% supaya content gak nempel pinggiran minimap.
           const pad = 0.15;
@@ -895,17 +911,16 @@ export default function LogicGatesSimulator({ setPage }) {
           mctx.fillStyle = 'rgba(9, 22, 40, 0.92)';
           mctx.fillRect(0, 0, mini.width, mini.height);
 
-          // Wires (subtle gray).
-          mctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
-          mctx.lineWidth = 0.6;
+          // Wires (subtle gray, sesuai value: ON = green, OFF = dark green).
+          mctx.lineWidth = 0.8;
           for (const wire of wrs) {
             const src = comps.find(c => c.id === wire.from);
             const dst = comps.find(c => c.id === wire.to);
             if (!src || !dst) continue;
-            const sDef = GATE_MAP[src.type] || IO_DEFS[src.type];
-            const dDef = GATE_MAP[dst.type] || IO_DEFS[dst.type];
-            const p1 = toMini(src.x + sDef.width / 2, src.y + sDef.height / 2);
-            const p2 = toMini(dst.x + dDef.width / 2, dst.y + dDef.height / 2);
+            const sB = compBox(src), dB = compBox(dst);
+            const p1 = toMini(src.x + sB.w / 2, src.y + sB.h / 2);
+            const p2 = toMini(dst.x + dB.w / 2, dst.y + dB.h / 2);
+            mctx.strokeStyle = wire.value ? 'rgba(74, 222, 128, 0.7)' : 'rgba(45, 106, 79, 0.6)';
             mctx.beginPath();
             mctx.moveTo(p1.x, p1.y);
             mctx.lineTo(p2.x, p2.y);
@@ -915,7 +930,8 @@ export default function LogicGatesSimulator({ setPage }) {
           // Components (dots warna gate).
           for (const c of comps) {
             const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-            const p = toMini(c.x + def.width / 2, c.y + def.height / 2);
+            const { w, h } = compBox(c);
+            const p = toMini(c.x + w / 2, c.y + h / 2);
             mctx.fillStyle = def.color;
             mctx.beginPath();
             mctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
