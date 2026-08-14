@@ -324,6 +324,8 @@ export default function LogicGatesSimulator({ setPage }) {
   // Viewport: pan & zoom state. view = { x, y, scale } di stateRef (mutable, dipakai draw loop &
   // hitTest via screenToWorld). zoomPct di React state cuma buat UI label.
   const [zoomPct, setZoomPct] = useState(100);
+  // Cursor world coords — null saat mouse di luar canvas. Dipakai buat coordinate display.
+  const [cursorWorld, setCursorWorld] = useState(null);
   const spaceDownRef = useRef(false);
 
   const stateRef = useRef({
@@ -517,27 +519,55 @@ export default function LogicGatesSimulator({ setPage }) {
 
     const draw = () => {
       const { components: comps, wires: wrs, wiring, hoverNode, selectedId: selId, view } = stateRef.current;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Blueprint background: deep blue paper + white grid lines (ala gambar teknik).
+      // Bikin canvas gak kosong & kasih sense of scale pas pan/zoom.
+      const bgGrad = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, 0,
+        canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.7
+      );
+      bgGrad.addColorStop(0, '#0f2847');
+      bgGrad.addColorStop(1, '#091628');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Grid — adaptive spacing supaya tetap kelihatan rapi di zoom level apapun.
-      // Saat zoom > 1.5x, spacing di-screen jadi gede → naikkan density (spacing 10).
-      // Saat zoom < 0.5x, spacing di-screen jadi kegedeanan → turunkan (spacing 40).
-      // Antara 0.5x – 1.5x, default 20 world units.
-      let worldGrid = 20;
-      if (view.scale > 1.5) worldGrid = 10;
-      else if (view.scale < 0.5) worldGrid = 40;
-      const screenGrid = worldGrid * view.scale;
-      // Offset grid supaya tetap align dengan world coords pas di-pan.
-      const offX = ((view.x % screenGrid) + screenGrid) % screenGrid;
-      const offY = ((view.y % screenGrid) + screenGrid) % screenGrid;
-      ctx.fillStyle = '#1e293b';
-      ctx.globalAlpha = 0.25;
-      for (let x = offX; x < canvas.width; x += screenGrid) {
-        for (let y = offY; y < canvas.height; y += screenGrid) {
-          ctx.fillRect(x, y, 1, 1);
+      // Grid lines (blueprint style: minor 20u + major 100u).
+      // Minor: subtle white lines setiap 20 world units.
+      // Major: brighter white lines setiap 100 world units — reference scale.
+      // Adaptive: skip minor kalau zoom terlalu kecil (terlalu padat di screen).
+      const MINOR = 20;
+      const MAJOR = 100;
+      const screenMinor = MINOR * view.scale;
+      const screenMajor = MAJOR * view.scale;
+
+      if (screenMinor >= 6) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const offMinX = ((view.x % screenMinor) + screenMinor) % screenMinor;
+        const offMinY = ((view.y % screenMinor) + screenMinor) % screenMinor;
+        for (let x = offMinX; x < canvas.width; x += screenMinor) {
+          ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
         }
+        for (let y = offMinY; y < canvas.height; y += screenMinor) {
+          ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+        }
+        ctx.stroke();
       }
-      ctx.globalAlpha = 1;
+
+      if (screenMajor >= 20) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const offMajX = ((view.x % screenMajor) + screenMajor) % screenMajor;
+        const offMajY = ((view.y % screenMajor) + screenMajor) % screenMajor;
+        for (let x = offMajX; x < canvas.width; x += screenMajor) {
+          ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+        }
+        for (let y = offMajY; y < canvas.height; y += screenMajor) {
+          ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+        }
+        ctx.stroke();
+      }
 
       // Apply viewport transform: SEMUA world-space drawing (wires, components, hover)
       // di-translate & di-scale sesuai view.
@@ -1105,6 +1135,14 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── Normal mode: convert ke world coords ──
       const { x: mx, y: my } = screenToWorld(sx, sy);
 
+      // Update coordinate display (world coords di bawah cursor).
+      // Throttle: hanya setState kalau coords berubah signifikan (>1px) supaya
+      // gak trigger re-render berlebihan tiap pixel mouse bergerak.
+      setCursorWorld(prev => {
+        if (prev && Math.abs(prev.x - mx) < 1 && Math.abs(prev.y - my) < 1) return prev;
+        return { x: Math.round(mx), y: Math.round(my) };
+      });
+
       if (stateRef.current.wiring) {
         stateRef.current.wiring.mx = mx;
         stateRef.current.wiring.my = my;
@@ -1260,12 +1298,13 @@ export default function LogicGatesSimulator({ setPage }) {
       }
     };
 
-    // Mouseleave canvas = cancel pan biar gak stuck grabbing.
+    // Mouseleave canvas = cancel pan biar gak stuck grabbing + clear coord display.
     const onMouseLeave = () => {
       if (stateRef.current.panning) {
         stateRef.current.panning = null;
         canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
       }
+      setCursorWorld(null);
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -1573,7 +1612,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
   const helpStyle = {
     position: 'absolute',
-    bottom: 10, left: 10,
+    top: 10, left: 10,
     fontSize: 11,
     color: '#64748b',
     backgroundColor: 'rgba(15,23,42,0.85)',
@@ -1583,6 +1622,7 @@ export default function LogicGatesSimulator({ setPage }) {
     backdropFilter: 'blur(4px)',
     lineHeight: 1.5,
     maxWidth: 380,
+    zIndex: 5,
   };
 
   const statusStyle = {
@@ -1683,24 +1723,25 @@ export default function LogicGatesSimulator({ setPage }) {
             <span style={{ color: '#94a3b8' }}>Wheel = zoom • Middle-drag or Space+drag = pan</span>
           </div>
           <div style={statusStyle}>{status}</div>
-          {/* Zoom controls — floating di pojok kanan bawah canvas (Figma/Miro style). */}
+          {/* Zoom + coordinate controls — floating di pojok kiri bawah canvas (Figma/Miro style).
+              Bottom-right dilarang karena AIHelperButton (global, fixed bottom:24 right:24) akan nutupin. */}
           <div style={{
             position: 'absolute',
-            bottom: 10, right: 10,
-            display: 'flex', alignItems: 'center', gap: 2,
+            bottom: 10, left: 10,
+            display: 'flex', alignItems: 'center', gap: 0,
             backgroundColor: 'rgba(15,23,42,0.9)',
             border: '1px solid #334155',
             borderRadius: 8,
             padding: 4,
             backdropFilter: 'blur(4px)',
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            fontFamily: '"Inter", sans-serif',
           }}>
             <button
               onClick={() => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
                 const rect = canvas.getBoundingClientRect();
-                // Zoom out terhadap center canvas.
                 const cx = rect.width / 2, cy = rect.height / 2;
                 zoomAt(cx, cy, 0.8);
               }}
@@ -1717,7 +1758,7 @@ export default function LogicGatesSimulator({ setPage }) {
             </button>
             <span style={{
               minWidth: 44, textAlign: 'center',
-              fontSize: 11, color: '#cbd5e1', fontFamily: '"Inter", sans-serif', fontWeight: 600,
+              fontSize: 11, color: '#cbd5e1', fontWeight: 600,
               userSelect: 'none', cursor: 'default',
             }}>
               {zoomPct}%
@@ -1748,13 +1789,35 @@ export default function LogicGatesSimulator({ setPage }) {
                 width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: 'none', backgroundColor: 'transparent', color: '#94a3b8',
                 cursor: 'pointer', borderRadius: 5, transition: 'all 0.15s',
-                marginLeft: 2, borderLeft: '1px solid #334155',
+                borderLeft: '1px solid #334155',
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'transparent'; }}
             >
               <Maximize2 size={12} />
             </button>
+            {/* Coordinate readout — world X,Y di bawah cursor. Empty saat mouse di luar canvas. */}
+            <div style={{
+              borderLeft: '1px solid #334155',
+              paddingLeft: 10, paddingRight: 8,
+              marginLeft: 4,
+              minWidth: 96,
+              fontSize: 11, color: '#64748b', fontWeight: 500,
+              fontVariantNumeric: 'tabular-nums',
+              display: 'flex', alignItems: 'center', gap: 6,
+              userSelect: 'none',
+            }}>
+              {cursorWorld ? (
+                <>
+                  <span style={{ color: '#94a3b8' }}>X</span>
+                  <span style={{ color: '#cbd5e1', minWidth: 28, textAlign: 'right' }}>{cursorWorld.x}</span>
+                  <span style={{ color: '#94a3b8' }}>Y</span>
+                  <span style={{ color: '#cbd5e1', minWidth: 28, textAlign: 'right' }}>{cursorWorld.y}</span>
+                </>
+              ) : (
+                <span style={{ color: '#475569' }}>X — Y —</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
