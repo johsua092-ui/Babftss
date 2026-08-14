@@ -394,15 +394,35 @@ export default function LogicGatesSimulator({ setPage }) {
   }, []);
 
   const getNodePos = useCallback((comp, isInput, idx) => {
-    const def = GATE_MAP[comp.type];
-    const inputs = comp.inputs.length;
-    const outputs = comp.outputs.length;
+    // Port y untuk INPUT/OUTPUT (Switch/LED): default spacing berdasarkan jumlah port.
+    // Port y untuk logic gate (NOT/AND/.../XNOR): DISESUAIKAN supaya LURUS dengan
+    // gate internal wire y. Konstanta match drawGateShape + render call site:
+    //   drawGateShape: L=15, N=5, q=25 (lokal)
+    //   render call: translate y = comp.y+20, GATE_SCALE = 1.2
+    //   → NOT input & gate output wire y global = comp.y + 20 + 15*1.2 = comp.y + 38
+    //   → dual input atas y global = comp.y + 20 + (N+3)*1.2 = comp.y + 29.6
+    //   → dual input bawah y global = comp.y + 20 + (q-3)*1.2 = comp.y + 46.4
+    // Sebelumnya port pakai spacing comp.height/(n+1) → y gak lurus dengan gate wire
+    // → kabel gak nyambung. User minta port digeser biar lurus.
+    if (comp.type === 'INPUT' || comp.type === 'OUTPUT') {
+      if (isInput) {
+        const spacing = comp.height / (comp.inputs.length + 1);
+        return { x: comp.x, y: comp.y + spacing * (idx + 1) };
+      } else {
+        const spacing = comp.height / (comp.outputs.length + 1);
+        return { x: comp.x + comp.width, y: comp.y + spacing * (idx + 1) };
+      }
+    }
+    // Logic gate (not/and/nand/or/nor/xor/xnor)
     if (isInput) {
-      const spacing = comp.height / (inputs + 1);
-      return { x: comp.x, y: comp.y + spacing * (idx + 1) };
+      if (comp.type === 'not') {
+        return { x: comp.x, y: comp.y + 38 };  // match L=15 scaled
+      }
+      // Dual input
+      return { x: comp.x, y: comp.y + (idx === 0 ? 29.6 : 46.4) };
     } else {
-      const spacing = comp.height / (outputs + 1);
-      return { x: comp.x + comp.width, y: comp.y + spacing * (idx + 1) };
+      // Output (selalu 1, di tengah-tengah body, y = L=15 scaled)
+      return { x: comp.x + comp.width, y: comp.y + 38 };
     }
   }, []);
 
@@ -556,13 +576,43 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.save();
           const GATE_SCALE = 1.2;
           const gateDrawW = getGateDrawWidth(comp.type) * GATE_SCALE;
+          const gateTranslateX = (comp.width - gateDrawW) / 2;
           // Vertical centering: body area = comp.y+14 to comp.y+56 (42px tall).
           // Gate local y spans 0..25, scaled = 0..30, center at 15.
           // Target center = comp.y + 35 (mid of 14..56). Translate y = 35 - 15 = 20.
-          ctx.translate(comp.x + (comp.width - gateDrawW) / 2, comp.y + 20);
+          ctx.translate(comp.x + gateTranslateX, comp.y + 20);
           ctx.scale(GATE_SCALE, GATE_SCALE);
           drawGateShape(ctx, comp.type, def.color, isOn, comp.inputs);
           ctx.restore();
+
+          // ── Global input/output wires: PORT → gate internal wire start/end ──
+          // User complaint: kabel input/output kependekan, gak nyentuh port.
+          // Root cause: gate internal wires (di drawGateShape lokal) cuma dari
+          // x=0 ke x=C=5, jadi global x = comp.x+gateTranslateX ke comp.x+gateTranslateX+6.
+          // Port ada di comp.x & comp.x+comp.width → gap gede antara port & wire.
+          // Fix: tambah global wires dari port ke gate internal wire start (kiri)
+          // dan dari gate internal wire end (kanan) ke port output. Karena port y
+          // udah di-align sama gate internal wire y (lihat getNodePos), wires ini
+          // garis horizontal lurus.
+          const wireColor = (v) => v ? def.color : '#475569';
+          ctx.lineWidth = 2.2 * GATE_SCALE;
+          ctx.lineCap = 'round';
+          // Input wires: port (comp.x, port_y) → gate internal wire start (comp.x+gateTranslateX, port_y)
+          for (let i = 0; i < comp.inputs.length; i++) {
+            const portPos = getNodePos(comp, true, i);
+            ctx.beginPath();
+            ctx.strokeStyle = wireColor(comp.inputs[i]);
+            ctx.moveTo(portPos.x, portPos.y);
+            ctx.lineTo(comp.x + gateTranslateX, portPos.y);
+            ctx.stroke();
+          }
+          // Output wire: gate internal wire end (comp.x+gateTranslateX+gateDrawW, out_y) → port (comp.x+comp.width, out_y)
+          const outPortPos = getNodePos(comp, false, 0);
+          ctx.beginPath();
+          ctx.strokeStyle = wireColor(comp.outputs[0]);
+          ctx.moveTo(comp.x + gateTranslateX + gateDrawW, outPortPos.y);
+          ctx.lineTo(outPortPos.x, outPortPos.y);
+          ctx.stroke();
         }
 
         // ── Switch (INPUT) ──
