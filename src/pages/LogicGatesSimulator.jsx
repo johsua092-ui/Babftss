@@ -550,16 +550,16 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.fillText(def.label, comp.x + comp.width / 2, comp.y + 8);
 
           // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx)
-          // CENTER sejati + SCALE UP 1.5x supaya gate body gak kelihatan kecil di box.
-          // Sebelumnya gate body ~25-30px di box 90x42 → terlalu kecil. User minta lebih gede.
-          // Scale 1.5x → gate body ~37-45px, masih muat di box (max 48*1.5=72 < 90).
+          // CENTER sejati + SCALE UP supaya gate body gak kelihatan kecil di box.
+          // Iterasi: 1.5x kegedean → overflow border (XNOR 48*1.5=72, plus back curve
+          // extend ke kiri). 1.2x muat dengan margin aman (XNOR 48*1.2=57.6 < 90).
           ctx.save();
-          const GATE_SCALE = 1.5;
+          const GATE_SCALE = 1.2;
           const gateDrawW = getGateDrawWidth(comp.type) * GATE_SCALE;
           // Vertical centering: body area = comp.y+14 to comp.y+56 (42px tall).
-          // Gate local y spans 0..25, scaled = 0..37.5, center at 18.75.
-          // Target center = comp.y + 35 (mid of 14..56). So translate y = 35 - 18.75*1 ≈ comp.y + 16.
-          ctx.translate(comp.x + (comp.width - gateDrawW) / 2, comp.y + 16);
+          // Gate local y spans 0..25, scaled = 0..30, center at 15.
+          // Target center = comp.y + 35 (mid of 14..56). Translate y = 35 - 15 = 20.
+          ctx.translate(comp.x + (comp.width - gateDrawW) / 2, comp.y + 20);
           ctx.scale(GATE_SCALE, GATE_SCALE);
           drawGateShape(ctx, comp.type, def.color, isOn, comp.inputs);
           ctx.restore();
