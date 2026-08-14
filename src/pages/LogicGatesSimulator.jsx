@@ -134,54 +134,90 @@ function getCompBlockedBox(c) {
 
 // Hitung jumlah intersection antara segmen-segmen orthogonal path (H-V-H @ midX) dengan
 // blocked box komponen (full body + GAP_MARGIN). Return count intersection (0 = bebas hambatan).
-// src & dst di-exempt: port endpoint ada di edge src/dst, jadi segmen H1/H2 pasti
-// dekat box src/dst. Tanpa exempt, wire selalu dianggap nabrak src/dst sendiri.
+//
+// Exempt strategy (PER-SEGMENT, bukan full exempt):
+// - H1 (y=p1.y, exit src output port): exempt src FULL (H1 memang exit src dari port).
+// - V  (x=midX, segmen tengah): exempt src HANYA jika midX di luar x-range src.
+//   Exempt dst HANYA jika midX di luar x-range dst.
+//   Kalau midX di x-range src/dst, V akan menabrak body mereka secara visual → collision dihitung.
+// - H2 (y=p2.y, enter dst input port): exempt dst FULL.
+//
+// Bug lama (full exempt src+dst): kalau src & dst vertikal-aligned (x range sama),
+// midX ideal jatuh di x-range src dan dst. V segmen menembus body src & dst secara visual,
+// tapi dianggap aman karena exempt. Wire kelihatan 'menempel' body comp.
 function countHVHCollisions(p1, p2, midX, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
   let count = 0;
   for (const c of comps) {
-    if (c.id === srcId || c.id === dstId) continue;
     const b = getCompBlockedBox(c);
-    // Segmen 1: horizontal y=y1, dari x1 ke midX.
-    if (y1 >= b.y && y1 <= b.y + b.h) {
-      const segMin = Math.min(x1, midX), segMax = Math.max(x1, midX);
-      if (segMax > b.x && segMin < b.x + b.w) count++;
+    const isSrc = c.id === srcId;
+    const isDst = c.id === dstId;
+    // Untuk V: cek apakah midX di x-range src/dst. Kalau iya, V akan menabrak body mereka.
+    const cBox = (isSrc || isDst) ? getCompBox(c) : null;
+    const midXInCBox = cBox && midX >= cBox.x && midX <= cBox.x + cBox.w;
+    const exemptSrcForV = isSrc && !midXInCBox;
+    const exemptDstForV = isDst && !midXInCBox;
+    // Segmen 1: H1 — exempt src FULL.
+    if (!isSrc) {
+      if (y1 >= b.y && y1 <= b.y + b.h) {
+        const segMin = Math.min(x1, midX), segMax = Math.max(x1, midX);
+        if (segMax > b.x && segMin < b.x + b.w) count++;
+      }
     }
-    // Segmen 2: vertical x=midX, dari y1 ke y2.
-    if (midX >= b.x && midX <= b.x + b.w) {
-      const segMin = Math.min(y1, y2), segMax = Math.max(y1, y2);
-      if (segMax > b.y && segMin < b.y + b.h) count++;
+    // Segmen 2: V — exempt src/dst hanya jika midX di luar x-range mereka.
+    if (!exemptSrcForV && !exemptDstForV) {
+      if (midX >= b.x && midX <= b.x + b.w) {
+        const segMin = Math.min(y1, y2), segMax = Math.max(y1, y2);
+        if (segMax > b.y && segMin < b.y + b.h) count++;
+      }
     }
-    // Segmen 3: horizontal y=y2, dari midX ke x2.
-    if (y2 >= b.y && y2 <= b.y + b.h) {
-      const segMin = Math.min(midX, x2), segMax = Math.max(midX, x2);
-      if (segMax > b.x && segMin < b.x + b.w) count++;
+    // Segmen 3: H2 — exempt dst FULL.
+    if (!isDst) {
+      if (y2 >= b.y && y2 <= b.y + b.h) {
+        const segMin = Math.min(midX, x2), segMax = Math.max(midX, x2);
+        if (segMax > b.x && segMin < b.x + b.w) count++;
+      }
     }
   }
   return count;
 }
 
 // Sama, tapi untuk V-H-V pattern (vertical first) dengan midY custom.
+// Exempt strategy:
+// - V1 (x=p1.x, exit src output port): exempt src FULL.
+// - H  (y=midY, segmen tengah): exempt src/dst hanya jika midY di luar y-range mereka.
+// - V2 (x=p2.x, enter dst input port): exempt dst FULL.
 function countVHVCollisions(p1, p2, midY, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
   let count = 0;
   for (const c of comps) {
-    if (c.id === srcId || c.id === dstId) continue;
     const b = getCompBlockedBox(c);
-    // Segmen 1: vertical x=x1, dari y1 ke midY.
-    if (x1 >= b.x && x1 <= b.x + b.w) {
-      const segMin = Math.min(y1, midY), segMax = Math.max(y1, midY);
-      if (segMax > b.y && segMin < b.y + b.h) count++;
+    const isSrc = c.id === srcId;
+    const isDst = c.id === dstId;
+    const cBox = (isSrc || isDst) ? getCompBox(c) : null;
+    const midYInCBox = cBox && midY >= cBox.y && midY <= cBox.y + cBox.h;
+    const exemptSrcForH = isSrc && !midYInCBox;
+    const exemptDstForH = isDst && !midYInCBox;
+    // Segmen 1: V1 — exempt src FULL.
+    if (!isSrc) {
+      if (x1 >= b.x && x1 <= b.x + b.w) {
+        const segMin = Math.min(y1, midY), segMax = Math.max(y1, midY);
+        if (segMax > b.y && segMin < b.y + b.h) count++;
+      }
     }
-    // Segmen 2: horizontal y=midY, dari x1 ke x2.
-    if (midY >= b.y && midY <= b.y + b.h) {
-      const segMin = Math.min(x1, x2), segMax = Math.max(x1, x2);
-      if (segMax > b.x && segMin < b.x + b.w) count++;
+    // Segmen 2: H — exempt src/dst hanya jika midY di luar y-range mereka.
+    if (!exemptSrcForH && !exemptDstForH) {
+      if (midY >= b.y && midY <= b.y + b.h) {
+        const segMin = Math.min(x1, x2), segMax = Math.max(x1, x2);
+        if (segMax > b.x && segMin < b.x + b.w) count++;
+      }
     }
-    // Segmen 3: vertical x=x2, dari midY ke y2.
-    if (x2 >= b.x && x2 <= b.x + b.w) {
-      const segMin = Math.min(midY, y2), segMax = Math.max(midY, y2);
-      if (segMax > b.y && segMin < b.y + b.h) count++;
+    // Segmen 3: V2 — exempt dst FULL.
+    if (!isDst) {
+      if (x2 >= b.x && x2 <= b.x + b.w) {
+        const segMin = Math.min(midY, y2), segMax = Math.max(midY, y2);
+        if (segMax > b.y && segMin < b.y + b.h) count++;
+      }
     }
   }
   return count;
