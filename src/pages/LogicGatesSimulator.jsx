@@ -2296,11 +2296,12 @@ export default function LogicGatesSimulator({ setPage }) {
     position: 'relative', // supaya toggle button palette bisa position:absolute relatif ke body
   };
 
-  // Palette sidebar — width animate 210 ↔ 0 supaya user bisa collapse & free up canvas space.
-  // Outer container animate width; inner pakai fixed width 210 biar content gak squish selama animasi.
+  // Palette sidebar — width animate 240 ↔ 0 supaya user bisa collapse & free up canvas space.
+  // Outer container animate width; inner pakai fixed width 240 biar content gak squish selama animasi.
   // Overflow hidden di outer supaya inner content kepotong rapi pas collapse.
+  // Width dibesarin dari 210 → 240 biar item lebih lega & enak di-klik/pencet.
   const paletteStyle = {
-    width: paletteOpen ? 210 : 0,
+    width: paletteOpen ? 240 : 0,
     backgroundColor: '#1e293b',
     borderRight: paletteOpen ? '1px solid #334155' : '1px solid transparent',
     overflow: 'hidden',
@@ -2308,17 +2309,17 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'width 0.22s ease, border-color 0.22s ease',
   };
 
-  // Inner palette — fixed 210px supaya children gak reflow pas outer width animasi.
+  // Inner palette — fixed 240px supaya children gak reflow pas outer width animasi.
   // Opacity fade biar gak kelihatan "flash" pas width lagi transisi.
   const paletteInnerStyle = {
-    width: 210,
+    width: 240,
     height: '100%',
     backgroundColor: '#1e293b',
-    padding: '14px 10px',
+    padding: '14px 12px',
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 8,
     opacity: paletteOpen ? 1 : 0,
     transition: 'opacity 0.15s ease',
     boxSizing: 'border-box',
@@ -2334,11 +2335,13 @@ export default function LogicGatesSimulator({ setPage }) {
     fontFamily: '"Orbitron", sans-serif',
   };
 
+  // Item style — padding & gap dibesarin biar touch target lebih gede & enak dipencet.
+  // padding 8px 10px → 11px 12px, gap 8 → 10.
   const itemStyle = {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '8px 10px',
+    gap: 10,
+    padding: '11px 12px',
     borderRadius: 8,
     border: '1px solid #334155',
     backgroundColor: '#0f172a',
@@ -2347,8 +2350,9 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'all 0.15s',
   };
 
+  // Icon box — width 44 → 50, height 28 → 34 biar icon gate lebih keliatan & item lebih tinggi.
   const iconBoxStyle = (color) => ({
-    width: 44, height: 28,
+    width: 50, height: 34,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     borderRadius: 5,
     backgroundColor: color + '15',
@@ -2466,7 +2470,7 @@ export default function LogicGatesSimulator({ setPage }) {
         {/* Toggle palette — floating button, SELALU visible (baik palette open maupun closed).
             User minta: posisi di pojok palette sebelah "Components" text saat terbuka,
             dan pas ditutup cuma tombol ini yang tersisa (palette body hilang).
-            - Saat open: left = 210 - 36 (pojok kanan-atas palette, di sebelah "Components")
+            - Saat open: left = 240 - 36 = 204 (pojok kanan-atas palette, di sebelah "Components")
             - Saat closed: left = 8 (float di tepi kiri canvas)
             - top: 8 (sejajar dengan padding palette 14px, sedikit ke atas biar kelihatan nempel ke header)
             - z-index 20 supaya di atas palette content & canvas controls
@@ -2477,7 +2481,7 @@ export default function LogicGatesSimulator({ setPage }) {
           style={{
             position: 'absolute',
             top: 8,
-            left: paletteOpen ? 174 : 8,
+            left: paletteOpen ? 204 : 8,
             zIndex: 20,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 32, height: 32, borderRadius: 8,
