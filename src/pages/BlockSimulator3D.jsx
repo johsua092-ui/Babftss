@@ -48,7 +48,11 @@ export default function BlockSimulator3D({ setPage }) {
   const stateRef = useRef({
     blocks: [],
     selected: null,
-    cam: { yaw: -0.75, pitch: 0.55, dist: 22, target: new Vec3(0, 0, 0) },
+    // pitch MUST be negative for a "looking DOWN at grid" view.
+    // Positive pitch tilts the world's +Z axis downward on screen,
+    // which makes the grid floor project BELOW center and the scene
+    // look upside-down / reversed compared to standard 3D editors.
+    cam: { yaw: -0.75, pitch: -0.55, dist: 22, target: new Vec3(0, 0, 0) },
     isOrbiting: false,
     isTransforming: false,
     dragStart: null,
