@@ -2312,11 +2312,13 @@ export default function LogicGatesSimulator({ setPage }) {
   // Inner palette — fixed 280px supaya children gak reflow pas outer width animasi.
   // Opacity fade biar gak kelihatan "flash" pas width lagi transisi.
   // className 'palette-scroll' untuk custom scrollbar styling (dark & slim, blend sama sidebar).
+  // padding-top 60 (bukan 16) — kasih ruang buat toggle button (44px) di pojok kanan-atas,
+  // jadi content (title + items) mulai di bawah toggle, gak ada overlap.
   const paletteInnerStyle = {
     width: 280,
     height: '100%',
     backgroundColor: '#1e293b',
-    padding: '16px 14px',
+    padding: '60px 14px 16px 14px',
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
@@ -2488,7 +2490,7 @@ export default function LogicGatesSimulator({ setPage }) {
         {/* Toggle palette — floating button, SELALU visible (baik palette open maupun closed).
             User minta: posisi di pojok palette sebelah "Components" text saat terbuka,
             dan pas ditutup cuma tombol ini yang tersisa (palette body hilang).
-            - Saat open: left = 280 - 56 = 224 (pojok kanan-atas palette, di sebelah "Components")
+            - Saat open: left = 280 - 44 - 10 = 226 (pojok kanan-atas palette, 10px margin dari kanan)
             - Saat closed: left = 8 (float di tepi kiri canvas)
             - top: 8 (sejajar dengan padding palette 14px, sedikit ke atas biar kelihatan nempel ke header)
             - z-index 20 supaya di atas palette content & canvas controls
@@ -2499,10 +2501,10 @@ export default function LogicGatesSimulator({ setPage }) {
           style={{
             position: 'absolute',
             top: 8,
-            left: paletteOpen ? 224 : 8,
+            left: paletteOpen ? 226 : 8,
             zIndex: 20,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 56, height: 56, borderRadius: 10,
+            width: 44, height: 44, borderRadius: 10,
             border: `1px solid ${paletteOpen ? '#475569' : '#4ade80'}`,
             backgroundColor: paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.15)',
             color: paletteOpen ? '#94a3b8' : '#4ade80',
@@ -2521,7 +2523,7 @@ export default function LogicGatesSimulator({ setPage }) {
             e.currentTarget.style.backgroundColor = paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.15)';
           }}
         >
-          {paletteOpen ? <PanelLeftClose size={26} /> : <PanelLeftOpen size={26} />}
+          {paletteOpen ? <PanelLeftClose size={22} /> : <PanelLeftOpen size={22} />}
         </button>
         <div style={paletteStyle}>
           <div style={paletteInnerStyle} className="palette-scroll">
