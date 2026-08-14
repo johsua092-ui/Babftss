@@ -2330,13 +2330,18 @@ export default function LogicGatesSimulator({ setPage }) {
     scrollbarColor: '#475569 transparent', // Firefox: thumb dark, track transparent
   };
 
+  // Palette title — "7 Basic Logic Gates". Putih kinclong (#ffffff) bukan glow.
+  // Center align biar estetik & seimbang dengan toggle button di pojok kanan-atas.
+  // uppercase dipertahankan biar vibe header tetap ada ( Orbitron font + letter-spacing ).
   const paletteTitleStyle = {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
-    color: '#64748b',
+    color: '#ffffff',
     textTransform: 'uppercase',
     letterSpacing: '0.8px',
+    textAlign: 'center',
     marginBottom: 6,
+    marginTop: 0,
     fontFamily: '"Orbitron", sans-serif',
   };
 
@@ -2527,7 +2532,7 @@ export default function LogicGatesSimulator({ setPage }) {
         </button>
         <div style={paletteStyle}>
           <div style={paletteInnerStyle} className="palette-scroll">
-            <div style={paletteTitleStyle}>Components</div>
+            <div style={paletteTitleStyle}>7 Basic Logic Gates</div>
             {GATE_DATA.map(g => (
               <div
                 key={g.type}
