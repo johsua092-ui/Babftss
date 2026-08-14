@@ -1005,23 +1005,19 @@ export default function LogicGatesSimulator({ setPage }) {
         // ── Switch (INPUT) ──
         // Komponen Switch punya DRAG HANDLE di atas (12px) supaya bisa dipindah
         // tanpa toggle. Klik handle = drag; klik body bawah = toggle ON/OFF.
+        // User request: switch & LED harus punya nomor urut (Switch 1, Switch 2, ...).
         if (comp.type === 'INPUT') {
           const handleH = 12;
-          // Drag handle bar (top, with grip dots)
+          // Drag handle bar (top, with label "Switch N")
           ctx.fillStyle = '#334155';
           roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, handleH, [7, 7, 0, 0]);
           ctx.fill();
-          // Grip dots (⠿ pattern) — 6 dots in 2 rows
-          ctx.fillStyle = '#94a3b8';
-          const dotsX = comp.x + comp.width / 2;
-          const dotsY = comp.y + handleH / 2 + 1;
-          for (let dy = -2; dy <= 2; dy += 4) {
-            for (let dx = -5; dx <= 5; dx += 5) {
-              ctx.beginPath();
-              ctx.arc(dotsX + dx, dotsY + dy, 0.9, 0, Math.PI * 2);
-              ctx.fill();
-            }
-          }
+          // Label "Switch N" di handle bar (ganti grip dots — lebih informatif).
+          ctx.fillStyle = '#fbbf24';
+          ctx.font = 'bold 7px "Orbitron", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Switch ' + (comp.typeNum || 1), comp.x + comp.width / 2, comp.y + handleH / 2 + 1);
           // Toggle body (shifted down to make room for handle bar)
           const swX = comp.x + comp.width / 2;
           const swY = comp.y + handleH + (comp.height - handleH) / 2 - 2;
@@ -1039,7 +1035,14 @@ export default function LogicGatesSimulator({ setPage }) {
         }
 
         // ── LED (OUTPUT) ──
+        // User request: LED juga harus punya nomor urut (LED 1, LED 2, ...).
         if (comp.type === 'OUTPUT') {
+          // Label "LED N" di atas body (sebelum gambar circle).
+          ctx.fillStyle = '#f87171';
+          ctx.font = 'bold 8px "Orbitron", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('LED ' + (comp.typeNum || 1), comp.x + comp.width / 2, comp.y + 8);
           const ledX = comp.x + comp.width / 2;
           const ledY = comp.y + comp.height / 2 - 4;
           const lit = !!comp.inputs[0];
