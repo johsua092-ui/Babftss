@@ -186,9 +186,10 @@ function pickOrthogonalRoute(p1, p2, comps) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
 
   const candidates = [];
-  // Kandidat HVH: midX default + offset (range lebar supaya bisa dodge comp jauh).
+  // Kandidat HVH: midX default + offset (range sangat lebar supaya bisa dodge comp jauh,
+  // termasuk kasus loop-back dimana output→input harus muter ke kiri/kanan jauh).
   const hvhMidXDefault = (x1 + x2) / 2;
-  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200];
+  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 250, -250, 300, -300];
   for (const off of hvhOffsets) {
     const midX = hvhMidXDefault + off;
     const col = countHVHCollisions(p1, p2, midX, comps);
@@ -196,7 +197,7 @@ function pickOrthogonalRoute(p1, p2, comps) {
   }
   // Kandidat VHV: midY default + offset.
   const vhvMidYDefault = (y1 + y2) / 2;
-  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150];
+  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200];
   for (const off of vhvOffsets) {
     const midY = vhvMidYDefault + off;
     const col = countVHVCollisions(p1, p2, midY, comps);
@@ -561,6 +562,10 @@ export default function LogicGatesSimulator({ setPage }) {
   const [components, setComponents] = useState([]);
   const [wires, setWires] = useState([]);
   const [nextId, setNextId] = useState(1);
+  // Counter per-type untuk numbering (AND 1, AND 2, OR 1, OR 2, NOT 1, INPUT 1, OUTPUT 1, dll).
+  // Persistent: kalau AND 2 di-delete, AND berikutnya yang dibuat jadi AND 3 (bukan reuse AND 2).
+  // Alasan: gak bikin bingung — kalau nomor reuse, user bisa kira "AND 2 yang lama" padahal gak.
+  const [typeCounters, setTypeCounters] = useState({});
   const [status, setStatus] = useState('Ready — drag from palette, click nodes to wire');
   const [selectedId, setSelectedId] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -572,13 +577,13 @@ export default function LogicGatesSimulator({ setPage }) {
   const spaceDownRef = useRef(false);
 
   const stateRef = useRef({
-    components, wires, nextId, selectedId,
+    components, wires, nextId, selectedId, typeCounters,
     wiring: null, dragging: null, dragOffset: { x: 0, y: 0 }, hoverNode: null,
     view: { x: 0, y: 0, scale: 1 },       // ← viewport pan/zoom (mutable, dibaca tiap frame)
     panning: null,                         // ← { startMouseX, startMouseY, startViewX, startViewY } saat pan aktif
     minimap: null,                          // ← { minX, minY, s, offX, offY } transform world→minimap (diupdate tiap frame)
   });
-  useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId }; }, [components, wires, nextId, selectedId]);
+  useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId, typeCounters }; }, [components, wires, nextId, selectedId, typeCounters]);
 
   // Screen (canvas pixel) → World (component coords). Dipakai SEMUA mouse handler.
   const screenToWorld = useCallback((sx, sy) => {
@@ -610,7 +615,7 @@ export default function LogicGatesSimulator({ setPage }) {
     setZoomPct(100);
   }, []);
 
-  const createComponent = useCallback((type, x, y) => {
+  const createComponent = useCallback((type, x, y, typeNum) => {
     // Tentukan ukuran box & jumlah input/output berdasarkan type
     let w = 90, h = 56, inputCount = 2, outputCount = 1;
     if (type === 'not') {
@@ -622,6 +627,7 @@ export default function LogicGatesSimulator({ setPage }) {
     return {
       id: stateRef.current.nextId,
       type,
+      typeNum,  // ← nomor urut per-type (AND 1, AND 2, OR 1, dll) untuk label display
       x, y,
       width: w,
       height: h,
@@ -918,12 +924,15 @@ export default function LogicGatesSimulator({ setPage }) {
           roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, 14, [7, 7, 0, 0]);
           ctx.fill();
 
-          // Label
+          // Label — dengan numbering per-type (AND 1, AND 2, OR 1, INPUT 1, OUTPUT 1, dll).
+          // typeNum fallback ke 1 kalau comp lama (sebelum fitur ini) gak punya field.
+          const labelNum = comp.typeNum || 1;
+          const labelText = def.label + ' ' + labelNum;
           ctx.fillStyle = def.color;
           ctx.font = 'bold 9px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(def.label, comp.x + comp.width / 2, comp.y + 8);
+          ctx.fillText(labelText, comp.x + comp.width / 2, comp.y + 8);
 
           // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx)
           // CENTER sejati + SCALE UP supaya gate body gak kelihatan kecil di box.
@@ -1823,7 +1832,9 @@ export default function LogicGatesSimulator({ setPage }) {
             const io = IO_DEFS[paletteDrag.type];
             const compW = io ? io.width : (paletteDrag.type === 'not' ? 80 : 90);
             const compH = io ? io.height : 56;
-            const comp = createComponent(paletteDrag.type, mx - compW / 2, my - compH / 2);
+            // Numbering per-type: ambil counter typeCounters[type] + 1 (default 1 kalau belum ada).
+            const newTypeNum = (stateRef.current.typeCounters?.[paletteDrag.type] || 0) + 1;
+            const comp = createComponent(paletteDrag.type, mx - compW / 2, my - compH / 2, newTypeNum);
             // FIX: jalankan simulate() supaya gates yang output-nya = NOT(0) = 1
             // (yaitu NOT, NAND, NOR, XNOR) LANGSUNG NYALA saat di-drop, sesuai
             // sifat mutlak "not" yang membalik 0 → 1. Sebelumnya simulate() gak
@@ -1834,9 +1845,10 @@ export default function LogicGatesSimulator({ setPage }) {
             setComponents(simComps);
             setWires(simWrs);
             setNextId(prev => prev + 1);
+            setTypeCounters(prev => ({ ...prev, [paletteDrag.type]: newTypeNum }));
             setSelectedId(comp.id);
             const label = (GATE_MAP[paletteDrag.type] || IO_DEFS[paletteDrag.type])?.name || paletteDrag.type;
-            setStatus(label + ' added');
+            setStatus(label + ' ' + newTypeNum + ' added');
           } else {
             setStatus('Drop inside canvas to place component');
           }
@@ -1860,6 +1872,7 @@ export default function LogicGatesSimulator({ setPage }) {
     setComponents([]);
     setWires([]);
     setSelectedId(null);
+    setTypeCounters({});  // ← reset numbering per-type
     setStatus('Canvas cleared');
     setShowClearConfirm(false);
   };
@@ -1873,6 +1886,9 @@ export default function LogicGatesSimulator({ setPage }) {
     setComponents([]);
     setWires([]);
     let id = 1;
+    // Counter per-type untuk numbering (Half-Adder: 2 INPUT, 1 XOR, 1 AND, 2 OUTPUT).
+    const counters = {};
+    const nextNum = (type) => { counters[type] = (counters[type] || 0) + 1; return counters[type]; };
     const mk = (type, x, y) => {
       let w = 90, h = 56, inputCount = 2, outputCount = 1;
       if (type === 'not') { w = 80; inputCount = 1; }
@@ -1881,7 +1897,7 @@ export default function LogicGatesSimulator({ setPage }) {
         w = io.width; h = io.height; inputCount = io.inputCount; outputCount = io.outputCount;
       }
       const comp = {
-        id: id++, type, x, y, width: w, height: h,
+        id: id++, type, typeNum: nextNum(type), x, y, width: w, height: h,
         inputs: Array(inputCount).fill(false),
         outputs: Array(outputCount).fill(false),
         inputWires: Array(inputCount).fill(null),
@@ -1924,6 +1940,7 @@ export default function LogicGatesSimulator({ setPage }) {
     setNextId(id);
     setComponents(comps);
     setWires(wrs);
+    setTypeCounters(counters);
     setStatus('Half-Adder demo loaded — toggle switches!');
   };
 
