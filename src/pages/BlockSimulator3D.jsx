@@ -48,7 +48,7 @@ export default function BlockSimulator3D({ setPage }) {
   const stateRef = useRef({
     blocks: [],
     selected: null,
-    cam: { yaw: -0.75, pitch: 0.55, dist: 20, target: new Vec3(0, 0, 0) },
+    cam: { yaw: -0.75, pitch: 0.55, dist: 22, target: new Vec3(0, 0, 0) },
     isOrbiting: false,
     isTransforming: false,
     dragStart: null,
@@ -74,8 +74,10 @@ export default function BlockSimulator3D({ setPage }) {
     let v = p.sub(s.cam.target);
     v = rotY(v, s.cam.yaw);
     v = rotX(v, s.cam.pitch);
-    const fov = 900;
-    const scale = fov / (fov / 3 + v.z + s.cam.dist);
+    // Standard perspective projection: closer points = bigger.
+    // focalLength tunes overall scale; clamp denominator to avoid div-by-zero.
+    const focalLength = 700;
+    const scale = focalLength / Math.max(0.5, v.z + s.cam.dist);
     return {
       x: s.cx / s.dpr + v.x * scale,
       y: s.cy / s.dpr - v.y * scale,
@@ -201,6 +203,11 @@ export default function BlockSimulator3D({ setPage }) {
       stateRef.current.H = canvas.height = rect.height * dpr;
       canvas.style.width = rect.width + 'px';
       canvas.style.height = rect.height + 'px';
+      // Scale the 2D context so we can draw in CSS pixels directly.
+      // Without this, drawings land in buffer-pixel space and appear
+      // shrunk by `dpr` on retina displays.
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       stateRef.current.cx = stateRef.current.W / 2;
       stateRef.current.cy = stateRef.current.H / 2;
       render();
@@ -389,7 +396,7 @@ export default function BlockSimulator3D({ setPage }) {
     const onWheel = (e) => {
       e.preventDefault();
       const s = stateRef.current;
-      s.cam.dist = Math.max(6, Math.min(55, s.cam.dist + e.deltaY * 0.018));
+      s.cam.dist = Math.max(5, Math.min(60, s.cam.dist + e.deltaY * 0.012));
       render();
     };
 
