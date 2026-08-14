@@ -377,9 +377,9 @@ export function startHeartbeat(intervalMs = 30000) {
   _hbStarted = true;
   const tick = async () => {
     try {
-      if (document && document.visibilityState === "hidden") return;
       const now = Date.now();
-      const deviceId = await computeDeviceId();
+      let deviceId = null;
+      try { deviceId = await computeDeviceId(); } catch (_) {}
       const id = _lastUserId || (deviceId ? `guest_${deviceId}` : null);
       const route = window.location?.pathname || "/";
       if (id) {
