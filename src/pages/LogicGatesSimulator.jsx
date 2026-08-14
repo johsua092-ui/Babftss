@@ -30,6 +30,112 @@ const IO_DEFS = {
 
 const GATE_MAP = Object.fromEntries(GATE_DATA.map(g => [g.type, g]));
 
+// Jarak titik (px,py) ke segmen garis (x1,y1)→(x2,y2).
+// Dipakai buat hit-test wire click (user klik mana pun di sepanjang wire).
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+// ── Wire color system ──
+// User request:
+// - Wire ke-1 (first connection): HIJAU tetap, gak boleh diubah (hijau tua OFF, hijau terang ON).
+// - Wire ke-2,3,...: warna RANDOM yang unik per-wire. Generate ulang setiap kali user bikin
+//   koneksi baru (bukan saat load existing wire). Persisten selama wire tersebut ada.
+// - Saat wire dihapus dan user bikin koneksi baru, warna di-generate ulang.
+// - User bisa klik wire mana pun → buka RGB palette → set warna manual (override random).
+//
+// Implementasi:
+// - wire.color = null → wire pertama, pakai hijau default.
+// - wire.color = {h,s,l} → wire ke-2+, random color (HSL supaya gampang derive ON/OFF).
+// - wire.userColor = '#hex' → user override via color picker.
+//
+// Color rendering:
+// - OFF (value=false): warna asli dengan L rendah (redup/dim), supaya tetap kelihatan.
+// - ON  (value=true):  warna asli dengan L tinggi (terang/benderang).
+//
+// Random generator: HSL dengan H random [0,360), S random [55,85]% (cukup saturated biar
+// kelihatan jelas, gak terlalu pucat), L ditentukan saat render (OFF=30%, ON=65%).
+// Hindari hijau (H 80..160) supaya gak confliict dengan wire ke-1 yang hijau default.
+
+// Generate HSL warna acak untuk wire ke-2,3,...
+// existingHues: array of hue yang sudah dipakai, supaya gak duplikat mirip.
+function generateWireColor(existingHues = []) {
+  let h, s, attempts = 0;
+  do {
+    h = Math.floor(Math.random() * 360);
+    s = 55 + Math.floor(Math.random() * 31);  // 55..85
+    attempts++;
+    // Cek apakah hue ini terlalu dekat (±10°) dengan hue existing.
+    const tooClose = existingHues.some(eh => {
+      const diff = Math.abs(h - eh);
+      return Math.min(diff, 360 - diff) < 10;
+    });
+    // Hindari range hijau (80..160) supaya gak conflict dengan wire ke-1 (hijau default).
+    const isGreen = h >= 80 && h <= 160;
+    if (!tooClose && !isGreen) break;
+    // Kalau udah 80 attempts masih gak nemu (existing terlalu padat), accept apa adanya.
+    if (attempts >= 80) break;
+  } while (true);
+  return { h, s };  // L ditentukan saat render berdasarkan value ON/OFF
+}
+
+// Convert HSL to hex string.
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to255 = x => Math.round(255 * x);
+  return '#' + [to255(f(0)), to255(f(8)), to255(f(4))].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+// Convert hex to {h,s,l} (untuk slider RGB → preview ON/OFF).
+function hexToHsl(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) * 60; break;
+      case g: h = ((b - r) / d + 2) * 60; break;
+      case b: h = ((r - g) / d + 4) * 60; break;
+    }
+  }
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+// Dapatkan warna render untuk wire berdasarkan state value (ON/OFF).
+// - Wire ke-1 (color=null, userColor=null): hijau default. OFF #2d6a4f, ON #4ade80.
+// - Wire ke-2+ (color={h,s}, userColor=null): HSL. OFF l=30%, ON l=65%.
+// - User override (userColor='#hex'): parse hex → HSL, OFF l=30%, ON l=65%.
+function getWireColors(wire) {
+  if (wire.userColor) {
+    const { h, s } = hexToHsl(wire.userColor);
+    return {
+      off: hslToHex(h, s, 30),
+      on:  hslToHex(h, s, 65),
+    };
+  }
+  if (wire.color) {
+    return {
+      off: hslToHex(wire.color.h, wire.color.s, 30),
+      on:  hslToHex(wire.color.h, wire.color.s, 65),
+    };
+  }
+  // Wire ke-1: hijau default (gak boleh diubah).
+  return { off: '#2d6a4f', on: '#4ade80' };
+}
+
 // ── Orthogonal wire routing (L-shape dengan rounded corners) ──
 // Lebih clean untuk digital schematics dibanding bezier curve, gampang dibaca
 // pas wire numpuk. Pattern: H1 (p1.x → midX) → V (p1.y → p2.y) → H2 (midX → p2.x).
@@ -701,6 +807,9 @@ export default function LogicGatesSimulator({ setPage }) {
   const [zoomPct, setZoomPct] = useState(100);
   // Cursor world coords — null saat mouse di luar canvas. Dipakai buat coordinate display.
   const [cursorWorld, setCursorWorld] = useState(null);
+  // Color picker untuk wire: null = tutup, { wireId, x, y, hex } = buka di posisi (x,y).
+  // x,y = screen coords (di mana panel muncul). hex = warna saat ini di picker.
+  const [colorPicker, setColorPicker] = useState(null);
   const spaceDownRef = useRef(false);
 
   const stateRef = useRef({
@@ -883,6 +992,43 @@ export default function LogicGatesSimulator({ setPage }) {
     return null;
   }, [getNodePos]);
 
+  // Hit test wire: cek apakah titik (mx,my) dekat dengan segmen wire.
+  // Wire path = orthogonal (HVH atau VHV). Cek jarak titik ke segmen-segmen wire.
+  // Threshold: 8px (sama dengan port hit radius).
+  const hitTestWire = useCallback((mx, my, wrs, comps) => {
+    for (let i = wrs.length - 1; i >= 0; i--) {
+      const wire = wrs[i];
+      const src = comps.find(c => c.id === wire.from);
+      const dst = comps.find(c => c.id === wire.to);
+      if (!src || !dst) continue;
+      const p1 = getNodePos(src, false, wire.fromIdx);
+      const p2 = getNodePos(dst, true, wire.toIdx);
+      const route = pickOrthogonalRoute(p1, p2, comps, wire.from, wire.to);
+      // Bangun list of segments berdasarkan route type.
+      let segments;
+      if (route.type === 'HVH') {
+        const midX = route.mid;
+        segments = [
+          { x1: p1.x, y1: p1.y, x2: midX, y2: p1.y },
+          { x1: midX, y1: p1.y, x2: midX, y2: p2.y },
+          { x1: midX, y1: p2.y, x2: p2.x, y2: p2.y },
+        ];
+      } else {
+        const midY = route.mid;
+        segments = [
+          { x1: p1.x, y1: p1.y, x2: p1.x, y2: midY },
+          { x1: p1.x, y1: midY, x2: p2.x, y2: midY },
+          { x1: p2.x, y1: midY, x2: p2.x, y2: p2.y },
+        ];
+      }
+      for (const seg of segments) {
+        const d = distToSegment(mx, my, seg.x1, seg.y1, seg.x2, seg.y2);
+        if (d < 8) return { kind: 'wire', wire, p1, p2 };
+      }
+    }
+    return null;
+  }, [getNodePos]);
+
   const wouldCreateCycle = useCallback((fromId, toId, comps, wrs) => {
     const visited = new Set();
     const queue = [toId];
@@ -981,14 +1127,17 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         drawSmartOrthogonalPath(ctx, p1, p2, route, 8);
-        // Wire ON = hijau terang (pulse). Wire OFF = hijau tua tebal, supaya tetap
-        // kelihatan di background blueprint biru gelap (gak nyatu seperti warna abu slate lama).
+        // Wire color system:
+        // - Wire ke-1 (color=null, userColor=null): hijau default (gak boleh diubah).
+        // - Wire ke-2+ (color={h,s}): random HSL color. OFF=redup (L=30%), ON=terang (L=65%).
+        // - userColor override: parse hex → HSL, OFF=redup, ON=terang.
+        const wc = getWireColors(wire);
         if (wire.value) {
-          ctx.strokeStyle = '#4ade80';
+          ctx.strokeStyle = wc.on;
           ctx.lineWidth = 3;
           ctx.globalAlpha = 1;
         } else {
-          ctx.strokeStyle = '#2d6a4f';
+          ctx.strokeStyle = wc.off;
           ctx.lineWidth = 2.5;
           ctx.globalAlpha = 1;
         }
@@ -1275,7 +1424,8 @@ export default function LogicGatesSimulator({ setPage }) {
             const sB = compBox(src), dB = compBox(dst);
             const p1 = toMini(src.x + sB.w / 2, src.y + sB.h / 2);
             const p2 = toMini(dst.x + dB.w / 2, dst.y + dB.h / 2);
-            mctx.strokeStyle = wire.value ? 'rgba(74, 222, 128, 0.7)' : 'rgba(45, 106, 79, 0.6)';
+            const wc = getWireColors(wire);
+            mctx.strokeStyle = wire.value ? wc.on : wc.off;
             mctx.beginPath();
             mctx.moveTo(p1.x, p1.y);
             mctx.lineTo(p2.x, p2.y);
@@ -1585,6 +1735,16 @@ export default function LogicGatesSimulator({ setPage }) {
             }
 
             if (!wouldCreateCycle(fromComp.id, dst.id, comps, wrs)) {
+              // Wire color system: wire ke-1 (wrs.length === 0 setelah remove existing) → hijau
+              // default (color=null). Wire ke-2,3,... → random HSL color, di-generate fresh
+              // setiap kali user bikin koneksi baru. Hindari duplikat hue dengan wire existing.
+              const isFirstWire = wrs.length === 0;
+              const wireColor = isFirstWire ? null : (() => {
+                const existingHues = wrs
+                  .filter(w => w.color)
+                  .map(w => w.color.h);
+                return generateWireColor(existingHues);
+              })();
               const newWire = {
                 id: stateRef.current.nextId,
                 from: fromComp.id,
@@ -1592,6 +1752,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 to: dst.id,
                 toIdx: hit.idx,
                 value: false,
+                color: wireColor,        // null = hijau default (wire ke-1), {h,s} = random (wire ke-2+)
+                userColor: null,          // '#hex' kalau user set manual via color picker
               };
               wrs.push(newWire);
               dst.inputWires[hit.idx] = newWire.id;
@@ -1625,8 +1787,20 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
       } else {
+        // Gak kena komponen/port — cek apakah kena wire. Kalau iya, buka color picker.
+        const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+        if (wireHit) {
+          // Klik wire → buka RGB color picker di posisi click.
+          // Wire ke-1 (color=null) tetap bisa di-recolor via userColor (override hijau default).
+          const w = wireHit.wire;
+          const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+          setColorPicker({ wireId: w.id, x: sx, y: sy, hex: currentHex });
+          setStatus('Wire clicked — pick a color');
+          return;
+        }
         setSelectedId(null);
         stateRef.current.wiring = null;
+        setColorPicker(null);  // klik empty space → tutup picker kalau kebuka
         setStatus('Ready');
       }
     };
@@ -1846,7 +2020,7 @@ export default function LogicGatesSimulator({ setPage }) {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [hitTest, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
+  }, [hitTest, hitTestWire, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
 
   // ── Resize canvas ──
   useEffect(() => {
@@ -2047,12 +2221,13 @@ export default function LogicGatesSimulator({ setPage }) {
     inA.outputs[0] = false;
     inB.outputs[0] = false;
 
-    const w1 = { id: id++, from: inA.id, fromIdx: 0, to: xorGate.id, toIdx: 0, value: false };
-    const w2 = { id: id++, from: inB.id, fromIdx: 0, to: xorGate.id, toIdx: 1, value: false };
-    const w3 = { id: id++, from: inA.id, fromIdx: 0, to: andGate.id, toIdx: 0, value: false };
-    const w4 = { id: id++, from: inB.id, fromIdx: 0, to: andGate.id, toIdx: 1, value: false };
-    const w5 = { id: id++, from: xorGate.id, fromIdx: 0, to: sumOut.id, toIdx: 0, value: false };
-    const w6 = { id: id++, from: andGate.id, fromIdx: 0, to: carryOut.id, toIdx: 0, value: false };
+    // Demo wires: w1 = wire ke-1 (hijau default, color=null). w2..w6 = random colors.
+    const w1 = { id: id++, from: inA.id, fromIdx: 0, to: xorGate.id, toIdx: 0, value: false, color: null, userColor: null };
+    const w2 = { id: id++, from: inB.id, fromIdx: 0, to: xorGate.id, toIdx: 1, value: false, color: generateWireColor([]), userColor: null };
+    const w3 = { id: id++, from: inA.id, fromIdx: 0, to: andGate.id,  toIdx: 0, value: false, color: generateWireColor([w2.color.h]), userColor: null };
+    const w4 = { id: id++, from: inB.id, fromIdx: 0, to: andGate.id,  toIdx: 1, value: false, color: generateWireColor([w2.color.h, w3.color.h]), userColor: null };
+    const w5 = { id: id++, from: xorGate.id, fromIdx: 0, to: sumOut.id,    toIdx: 0, value: false, color: generateWireColor([w2.color.h, w3.color.h, w4.color.h]), userColor: null };
+    const w6 = { id: id++, from: andGate.id,  fromIdx: 0, to: carryOut.id, toIdx: 0, value: false, color: generateWireColor([w2.color.h, w3.color.h, w4.color.h, w5.color.h]), userColor: null };
 
     xorGate.inputWires[0] = w1.id;
     xorGate.inputWires[1] = w2.id;
@@ -2504,6 +2679,141 @@ export default function LogicGatesSimulator({ setPage }) {
                 Ya, Hapus Semua
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Wire Color Picker ──
+          Muncul saat user klik wire mana pun. Full RGB palette (input type=color)
+          + preview ON/OFF + tombol reset ke random + tombol close.
+          Posisi: dekat click point, tapi clamp supaya gak off-screen. */}
+      {colorPicker && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(colorPicker.x, (canvasRef.current?.clientWidth || 800) - 280),
+            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 200),
+            background: 'rgba(15, 23, 42, 0.98)',
+            border: '1px solid #475569',
+            borderRadius: 10,
+            padding: 14,
+            width: 260,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+            zIndex: 1000,
+            fontFamily: '"Inter", sans-serif',
+          }}
+          onMouseDown={e => e.stopPropagation()}  // jangan trigger canvas mousedown
+        >
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>
+            Wire Color
+          </div>
+
+          {/* Color input — native browser RGB picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <input
+              type="color"
+              value={colorPicker.hex}
+              onChange={e => {
+                const hex = e.target.value;
+                setColorPicker(cp => cp ? { ...cp, hex } : cp);
+                // Apply ke wire langsung (live preview).
+                setWires(prevWires => prevWires.map(w =>
+                  w.id === colorPicker.wireId ? { ...w, userColor: hex } : w
+                ));
+              }}
+              style={{
+                width: 48, height: 36, border: '1px solid #475569',
+                borderRadius: 6, cursor: 'pointer', padding: 0,
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Hex</div>
+              <input
+                type="text"
+                value={colorPicker.hex.toUpperCase()}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                    setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
+                    setWires(prevWires => prevWires.map(w =>
+                      w.id === colorPicker.wireId ? { ...w, userColor: v.toLowerCase() } : w
+                    ));
+                  }
+                }}
+                style={{
+                  width: '100%', padding: '4px 8px', fontSize: 12,
+                  background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Preview ON/OFF */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div
+                style={{
+                  height: 28, borderRadius: 6, marginBottom: 4,
+                  background: (() => {
+                    const { h, s } = hexToHsl(colorPicker.hex);
+                    return hslToHex(h, s, 30);
+                  })(),
+                  border: '2px solid #334155',
+                }}
+              />
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>OFF (redup)</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div
+                style={{
+                  height: 28, borderRadius: 6, marginBottom: 4,
+                  background: (() => {
+                    const { h, s } = hexToHsl(colorPicker.hex);
+                    return hslToHex(h, s, 65);
+                  })(),
+                  border: '2px solid #334155',
+                }}
+              />
+              <div style={{ fontSize: 10, color: '#94a3b8' }}>ON (terang)</div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => {
+                // Reset ke random color (regenerate).
+                setWires(prevWires => {
+                  const otherHues = prevWires
+                    .filter(w => w.id !== colorPicker.wireId && w.color)
+                    .map(w => w.color.h);
+                  const newColor = generateWireColor(otherHues);
+                  return prevWires.map(w =>
+                    w.id === colorPicker.wireId ? { ...w, color: newColor, userColor: null } : w
+                  );
+                });
+                setColorPicker(null);
+                setStatus('Wire color randomized');
+              }}
+              style={{
+                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                background: '#334155', border: '1px solid #475569',
+                borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
+              }}
+            >
+              Random
+            </button>
+            <button
+              onClick={() => setColorPicker(null)}
+              style={{
+                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                background: '#1e293b', border: '1px solid #475569',
+                borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
