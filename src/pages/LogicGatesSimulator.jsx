@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -810,6 +810,9 @@ export default function LogicGatesSimulator({ setPage }) {
   // Color picker untuk wire: null = tutup, { wireId, x, y, hex } = buka di posisi (x,y).
   // x,y = screen coords (di mana panel muncul). hex = warna saat ini di picker.
   const [colorPicker, setColorPicker] = useState(null);
+  // Sidebar palette toggle — user minta: bisa tutup panel komponen biar leluasa berkreasi di canvas,
+  // buka lagi kalau mau add komponen. Default true (terbuka) supaya user pertama kali lihat palette.
+  const [paletteOpen, setPaletteOpen] = useState(true);
   const spaceDownRef = useRef(false);
 
   const stateRef = useRef({
@@ -2292,16 +2295,32 @@ export default function LogicGatesSimulator({ setPage }) {
     overflow: 'hidden',
   };
 
+  // Palette sidebar — width animate 210 ↔ 0 supaya user bisa collapse & free up canvas space.
+  // Outer container animate width; inner pakai fixed width 210 biar content gak squish selama animasi.
+  // Overflow hidden di outer supaya inner content kepotong rapi pas collapse.
   const paletteStyle = {
-    width: 210,
+    width: paletteOpen ? 210 : 0,
     backgroundColor: '#1e293b',
-    borderRight: '1px solid #334155',
+    borderRight: paletteOpen ? '1px solid #334155' : '1px solid transparent',
+    overflow: 'hidden',
+    flexShrink: 0,
+    transition: 'width 0.22s ease, border-color 0.22s ease',
+  };
+
+  // Inner palette — fixed 210px supaya children gak reflow pas outer width animasi.
+  // Opacity fade biar gak kelihatan "flash" pas width lagi transisi.
+  const paletteInnerStyle = {
+    width: 210,
+    height: '100%',
+    backgroundColor: '#1e293b',
     padding: '14px 10px',
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
-    flexShrink: 0,
+    opacity: paletteOpen ? 1 : 0,
+    transition: 'opacity 0.15s ease',
+    boxSizing: 'border-box',
   };
 
   const paletteTitleStyle = {
@@ -2415,6 +2434,34 @@ export default function LogicGatesSimulator({ setPage }) {
           >
             <ArrowLeft size={14} /> Back
           </button>
+          {/* Toggle sidebar palette — user minta: bisa tutup panel komponen biar canvas lega,
+              buka lagi kalau mau add komponen. Icon swap: PanelLeftOpen (saat tertutup) /
+              PanelLeftClose (saat terbuka). Warna hijau saat tertutup biar kelihatan "ada yang
+              bisa dibuka" — hint visual. */}
+          <button
+            onClick={() => setPaletteOpen(o => !o)}
+            title={paletteOpen ? 'Tutup panel komponen' : 'Buka panel komponen'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 8,
+              border: `1px solid ${paletteOpen ? '#334155' : '#4ade80'}`,
+              backgroundColor: paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.12)',
+              color: paletteOpen ? '#94a3b8' : '#4ade80',
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#e2e8f0';
+              e.currentTarget.style.borderColor = '#4ade80';
+              e.currentTarget.style.backgroundColor = paletteOpen ? '#1e293b' : 'rgba(74, 222, 128, 0.2)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = paletteOpen ? '#94a3b8' : '#4ade80';
+              e.currentTarget.style.borderColor = paletteOpen ? '#334155' : '#4ade80';
+              e.currentTarget.style.backgroundColor = paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.12)';
+            }}
+          >
+            {paletteOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+          </button>
           <span style={{ color: '#4ade80', fontSize: 18 }}>◉</span>
           Logic Gates Simulator 2D
         </div>
@@ -2439,39 +2486,41 @@ export default function LogicGatesSimulator({ setPage }) {
       </div>
       <div style={bodyStyle}>
         <div style={paletteStyle}>
-          <div style={paletteTitleStyle}>Components</div>
-          {GATE_DATA.map(g => (
+          <div style={paletteInnerStyle}>
+            <div style={paletteTitleStyle}>Components</div>
+            {GATE_DATA.map(g => (
+              <div
+                key={g.type}
+                style={itemStyle}
+                onMouseDown={onPaletteMouseDown(g.type)}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = g.color; e.currentTarget.style.backgroundColor = '#1e293b'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
+              >
+                <div style={iconBoxStyle(g.color)}>
+                  <MiniGateIcon type={g.type} color={g.color} scale={0.55} />
+                </div>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{g.name}</span>
+              </div>
+            ))}
+            <div style={{ ...paletteTitleStyle, marginTop: 10 }}>I/O</div>
             <div
-              key={g.type}
               style={itemStyle}
-              onMouseDown={onPaletteMouseDown(g.type)}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = g.color; e.currentTarget.style.backgroundColor = '#1e293b'; }}
+              onMouseDown={onPaletteMouseDown('INPUT')}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
-              <div style={iconBoxStyle(g.color)}>
-                <MiniGateIcon type={g.type} color={g.color} scale={0.55} />
-              </div>
-              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{g.name}</span>
+              <div style={iconBoxStyle('#f59e0b')}>⚡</div>
+              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Switch</span>
             </div>
-          ))}
-          <div style={{ ...paletteTitleStyle, marginTop: 10 }}>I/O</div>
-          <div
-            style={itemStyle}
-            onMouseDown={onPaletteMouseDown('INPUT')}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
-          >
-            <div style={iconBoxStyle('#f59e0b')}>⚡</div>
-            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>Switch</span>
-          </div>
-          <div
-            style={itemStyle}
-            onMouseDown={onPaletteMouseDown('OUTPUT')}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
-          >
-            <div style={iconBoxStyle('#ef4444')}>●</div>
-            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>LED</span>
+            <div
+              style={itemStyle}
+              onMouseDown={onPaletteMouseDown('OUTPUT')}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
+            >
+              <div style={iconBoxStyle('#ef4444')}>●</div>
+              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>LED</span>
+            </div>
           </div>
         </div>
         <div style={canvasWrapStyle}>
