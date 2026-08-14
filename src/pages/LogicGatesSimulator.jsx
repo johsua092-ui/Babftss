@@ -60,6 +60,171 @@ function drawOrthogonalPath(ctx, p1, p2, r = 8) {
   ctx.lineTo(p2.x, p2.y);
 }
 
+// Varian drawOrthogonalPath dengan midX custom (untuk smart routing yang menghindar).
+function drawOrthogonalPathAt(ctx, p1, p2, midX, r = 8) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
+    ctx.lineTo(p2.x, p2.y);
+    return;
+  }
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  const seg1 = Math.abs(midX - p1.x);
+  const seg3 = Math.abs(p2.x - midX);
+  const rad = Math.max(0, Math.min(r, seg1 / 2, seg3 / 2, Math.abs(dy) / 2));
+  if (rad < 2) {
+    ctx.lineTo(midX, p1.y);
+    ctx.lineTo(midX, p2.y);
+    ctx.lineTo(p2.x, p2.y);
+    return;
+  }
+  ctx.lineTo(midX - rad * sx, p1.y);
+  ctx.quadraticCurveTo(midX, p1.y, midX, p1.y + rad * sy);
+  ctx.lineTo(midX, p2.y - rad * sy);
+  ctx.quadraticCurveTo(midX, p2.y, midX + rad * sx, p2.y);
+  ctx.lineTo(p2.x, p2.y);
+}
+
+// V-H-V pattern (vertical first): V1 (p1.y → midY) → H (p1.x → p2.x) → V2 (midY → p2.y).
+function drawOrthogonalPathVHV(ctx, p1, p2, midY, r = 8) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
+    ctx.lineTo(p2.x, p2.y);
+    return;
+  }
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  const seg1 = Math.abs(midY - p1.y);
+  const seg3 = Math.abs(p2.y - midY);
+  const rad = Math.max(0, Math.min(r, seg1 / 2, seg3 / 2, Math.abs(dx) / 2));
+  if (rad < 2) {
+    ctx.lineTo(p1.x, midY);
+    ctx.lineTo(p2.x, midY);
+    ctx.lineTo(p2.x, p2.y);
+    return;
+  }
+  ctx.lineTo(p1.x, midY - rad * sy);
+  ctx.quadraticCurveTo(p1.x, midY, p1.x + rad * sx, midY);
+  ctx.lineTo(p2.x - rad * sx, midY);
+  ctx.quadraticCurveTo(p2.x, midY, p2.x, midY + rad * sy);
+  ctx.lineTo(p2.x, p2.y);
+}
+
+// Bounding box komponen (fallback width/height kalau def gak punya field).
+function getCompBox(c) {
+  const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+  return { x: c.x, y: c.y, w: def.width || 90, h: def.height || 56 };
+}
+
+// Hitung jumlah intersection antara segmen-segmen orthogonal path (H-V-H @ midX) dengan
+// bounding box komponen lain. Return count intersection (0 = bebas hambatan).
+function countHVHCollisions(p1, p2, midX, comps, excludeIds) {
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  let count = 0;
+  for (const c of comps) {
+    if (excludeIds.has(c.id)) continue;
+    const b = getCompBox(c);
+    // Segmen 1: horizontal y=y1, dari x1 ke midX.
+    if (y1 >= b.y && y1 <= b.y + b.h) {
+      const segMin = Math.min(x1, midX), segMax = Math.max(x1, midX);
+      if (segMax > b.x && segMin < b.x + b.w) count++;
+    }
+    // Segmen 2: vertical x=midX, dari y1 ke y2.
+    if (midX >= b.x && midX <= b.x + b.w) {
+      const segMin = Math.min(y1, y2), segMax = Math.max(y1, y2);
+      if (segMax > b.y && segMin < b.y + b.h) count++;
+    }
+    // Segmen 3: horizontal y=y2, dari midX ke x2.
+    if (y2 >= b.y && y2 <= b.y + b.h) {
+      const segMin = Math.min(midX, x2), segMax = Math.max(midX, x2);
+      if (segMax > b.x && segMin < b.x + b.w) count++;
+    }
+  }
+  return count;
+}
+
+// Sama, tapi untuk V-H-V pattern (vertical first) dengan midY custom.
+function countVHVCollisions(p1, p2, midY, comps, excludeIds) {
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  let count = 0;
+  for (const c of comps) {
+    if (excludeIds.has(c.id)) continue;
+    const b = getCompBox(c);
+    // Segmen 1: vertical x=x1, dari y1 ke midY.
+    if (x1 >= b.x && x1 <= b.x + b.w) {
+      const segMin = Math.min(y1, midY), segMax = Math.max(y1, midY);
+      if (segMax > b.y && segMin < b.y + b.h) count++;
+    }
+    // Segmen 2: horizontal y=midY, dari x1 ke x2.
+    if (midY >= b.y && midY <= b.y + b.h) {
+      const segMin = Math.min(x1, x2), segMax = Math.max(x1, x2);
+      if (segMax > b.x && segMin < b.x + b.w) count++;
+    }
+    // Segmen 3: vertical x=x2, dari midY ke y2.
+    if (x2 >= b.x && x2 <= b.x + b.w) {
+      const segMin = Math.min(midY, y2), segMax = Math.max(midY, y2);
+      if (segMax > b.y && segMin < b.y + b.h) count++;
+    }
+  }
+  return count;
+}
+
+// Smart orthogonal routing — pilih rute H-V-H atau V-H-V dengan collision paling sedikit.
+// Coba beberapa kandidat midX/midY (default + offset kiri/kanan), pilih rute bebas hambatan.
+// Kalau semua kandidat masih nabrak, pilih yang minimal collision (least bad).
+// Return { type: 'HVH'|'VHV', mid } untuk dipakai draw + pointOnPath.
+function pickOrthogonalRoute(p1, p2, comps, excludeIds) {
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  // Kalau dx kecil, H-V-H gak masuk akal → V-H-V lebih natural.
+  // Kalau dy kecil, V-H-V gak masuk akal → H-V-H lebih natural.
+  const dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+
+  const candidates = [];
+  // Kandidat HVH: midX default + offset.
+  const hvhMidXDefault = (x1 + x2) / 2;
+  const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100];
+  for (const off of hvhOffsets) {
+    const midX = hvhMidXDefault + off;
+    // Skip kalau midX di luar range [min(x1,x2), max(x1,x2)] terlalu jauh (route jadi aneh).
+    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+    if (midX < minX - 80 || midX > maxX + 80) continue;
+    const col = countHVHCollisions(p1, p2, midX, comps, excludeIds);
+    candidates.push({ type: 'HVH', mid: midX, col });
+  }
+  // Kandidat VHV: midY default + offset.
+  const vhvMidYDefault = (y1 + y2) / 2;
+  const vhvOffsets = [0, 25, -25, 50, -50, 75, -75];
+  for (const off of vhvOffsets) {
+    const midY = vhvMidYDefault + off;
+    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+    if (midY < minY - 80 || midY > maxY + 80) continue;
+    const col = countVHVCollisions(p1, p2, midY, comps, excludeIds);
+    candidates.push({ type: 'VHV', mid: midY, col });
+  }
+  // Kalau gak ada kandidat (kasus edge), fallback default.
+  if (candidates.length === 0) {
+    return { type: 'HVH', mid: hvhMidXDefault };
+  }
+  // Sort by collision count asc, lalu by jarak offset dari default asc (lebih natural).
+  candidates.sort((a, b) => {
+    if (a.col !== b.col) return a.col - b.col;
+    // Prefer yang paling deket sama default (mid yang dipilih paling natural).
+    const aOff = a.type === 'HVH' ? Math.abs(a.mid - hvhMidXDefault) : Math.abs(a.mid - vhvMidYDefault);
+    const bOff = b.type === 'HVH' ? Math.abs(b.mid - hvhMidXDefault) : Math.abs(b.mid - vhvMidYDefault);
+    return aOff - bOff;
+  });
+  return candidates[0];
+}
+
+// Draw path berdasarkan route hasil pickOrthogonalRoute.
+function drawSmartOrthogonalPath(ctx, p1, p2, route, r = 8) {
+  if (route.type === 'VHV') {
+    drawOrthogonalPathVHV(ctx, p1, p2, route.mid, r);
+  } else {
+    drawOrthogonalPathAt(ctx, p1, p2, route.mid, r);
+  }
+}
+
 // Titik di sepanjang path orthogonal pada parameter t (0..1).
 // Dipakai buat animasi pulse dot (titik putih yang jalan di wire ON).
 // Path = H1 (|dx|/2) → V (|dy|) → H2 (|dx|/2), total = |dx| + |dy|.
@@ -77,6 +242,40 @@ function pointOnOrthogonal(p1, p2, t) {
   if (target < L2) return { x: midX, y: p1.y + sy * target };
   target -= L2;
   return { x: midX + sx * target, y: p2.y };
+}
+
+// Versi parametrize untuk smart route (HVH dengan midX custom atau VHV dengan midY custom).
+// Dipakai buat pulse dot animation biar posisinya sesuai rute yang dipilih.
+function pointOnSmartOrthogonal(p1, p2, route, t) {
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  const sx = Math.sign(x2 - x1), sy = Math.sign(y2 - y1);
+  if (route.type === 'HVH') {
+    const midX = route.mid;
+    const L1 = Math.abs(midX - x1);
+    const L2 = Math.abs(y2 - y1);
+    const L3 = Math.abs(x2 - midX);
+    const total = L1 + L2 + L3;
+    if (total < 1) return { x: x1, y: y1 };
+    let target = t * total;
+    if (target < L1) return { x: x1 + sx * target, y: y1 };
+    target -= L1;
+    if (target < L2) return { x: midX, y: y1 + sy * target };
+    target -= L2;
+    return { x: midX + sx * target, y: y2 };
+  } else {
+    const midY = route.mid;
+    const L1 = Math.abs(midY - y1);
+    const L2 = Math.abs(x2 - x1);
+    const L3 = Math.abs(y2 - midY);
+    const total = L1 + L2 + L3;
+    if (total < 1) return { x: x1, y: y1 };
+    let target = t * total;
+    if (target < L1) return { x: x1, y: y1 + sy * target };
+    target -= L1;
+    if (target < L2) return { x: x1 + sx * target, y: midY };
+    target -= L2;
+    return { x: x2, y: midY + sy * target };
+  }
 }
 
 // ── Logic Engine ──
@@ -449,7 +648,9 @@ export default function LogicGatesSimulator({ setPage }) {
       for (const comp of compsCopy) {
         if (comp.type === 'INPUT') continue;
         if (comp.type === 'OUTPUT') {
-          // OUTPUT adalah sink (LED) — baca nilai dari wire input, tidak ada output untuk di-compute
+          // OUTPUT adalah sink (LED) — baca nilai dari wire input, tidak ada output untuk di-compute.
+          // ATURAN ABSOLUT: kalau inputWires[i] null/undefined (wire dihapus) → inputs[i] HARUS false.
+          // Gak boleh pakai value lama (anti "ghost current" — LED nyala sendiri tanpa sumber).
           for (let i = 0; i < comp.inputs.length; i++) {
             const wireId = comp.inputWires[i];
             if (wireId !== null && wireId !== undefined) {
@@ -457,19 +658,31 @@ export default function LogicGatesSimulator({ setPage }) {
               if (wire) {
                 const src = compsCopy.find(c => c.id === wire.from);
                 if (src) comp.inputs[i] = src.outputs[wire.fromIdx];
+                else comp.inputs[i] = false;
+              } else {
+                comp.inputs[i] = false;
               }
+            } else {
+              comp.inputs[i] = false;
             }
           }
           continue;
         }
+        // Logic gates (NOT/AND/OR/dll).
+        // ATURAN ABSOLUT: input tanpa wire = false. Gak ada sumber = gak ada arus.
         for (let i = 0; i < comp.inputs.length; i++) {
           const wireId = comp.inputWires[i];
-          if (wireId !== null) {
+          if (wireId !== null && wireId !== undefined) {
             const wire = wrs.find(w => w.id === wireId);
             if (wire) {
               const src = compsCopy.find(c => c.id === wire.from);
               if (src) comp.inputs[i] = src.outputs[wire.fromIdx];
+              else comp.inputs[i] = false;
+            } else {
+              comp.inputs[i] = false;
             }
+          } else {
+            comp.inputs[i] = false;
           }
         }
         const newVal = computeGate(comp.type, comp.inputs);
@@ -479,6 +692,7 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
     }
+    // Wire value = output dari source comp. Kalau source udah gak ada (comp dihapus), value = false.
     const newWires = wrs.map(w => {
       const src = compsCopy.find(c => c.id === w.from);
       return { ...w, value: src ? src.outputs[w.fromIdx] : false };
@@ -633,9 +847,13 @@ export default function LogicGatesSimulator({ setPage }) {
         if (!src || !dst) continue;
         const p1 = getNodePos(src, false, wire.fromIdx);
         const p2 = getNodePos(dst, true, wire.toIdx);
+        // Smart routing: pilih rute HVH atau VHV yang paling sedikit nabrak komponen lain.
+        // Exclude src & dst sendiri supaya wire bisa keluar dari edge mereka tanpa dianggap collision.
+        const excludeIds = new Set([src.id, dst.id]);
+        const route = pickOrthogonalRoute(p1, p2, comps, excludeIds);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
-        drawOrthogonalPath(ctx, p1, p2, 8);
+        drawSmartOrthogonalPath(ctx, p1, p2, route, 8);
         // Wire ON = hijau terang (pulse). Wire OFF = hijau tua tebal, supaya tetap
         // kelihatan di background blueprint biru gelap (gak nyatu seperti warna abu slate lama).
         if (wire.value) {
@@ -651,7 +869,7 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.globalAlpha = 1;
         if (wire.value) {
           const t = (Date.now() % 1200) / 1200;
-          const { x: px, y: py } = pointOnOrthogonal(p1, p2, t);
+          const { x: px, y: py } = pointOnSmartOrthogonal(p1, p2, route, t);
           ctx.beginPath();
           ctx.arc(px, py, 3, 0, Math.PI * 2);
           ctx.fillStyle = '#fff';
@@ -1380,8 +1598,13 @@ export default function LogicGatesSimulator({ setPage }) {
         });
         comps = comps.filter(c => c.id !== comp.id);
         if (selectedId === comp.id) setSelectedId(null);
-        setComponents(comps);
-        setWires(wrs);
+        // ATURAN ABSOLUT: setelah hapus komponen, SEMUA downstream harus di-re-evaluate.
+        // Wire-wire yang connect ke comp tsb sudah di-filter di atas, jadi comp downstream
+        // sekarang punya inputWires[i] = null → simulate() akan set inputs[i] = false →
+        // output mereka recompute jadi false (anti "ghost current" — LED nyala sendiri).
+        const { comps: reComps, wrs: reWrs } = simulate(comps, wrs);
+        setComponents(reComps);
+        setWires(reWrs);
         setStatus('Component removed');
       } else if (hit && (hit.kind === 'input' || hit.kind === 'output')) {
         const comp = hit.comp;
@@ -1408,8 +1631,10 @@ export default function LogicGatesSimulator({ setPage }) {
           const c = comps.find(x => x.id === comp.id);
           if (c) c.inputWires[idx] = null;
         }
-        setWires(wrs);
-        setComponents(comps);
+        // ATURAN ABSOLUT: setelah hapus wire, downstream harus re-evaluate (input jadi false).
+        const { comps: reComps, wrs: reWrs } = simulate(comps, wrs);
+        setWires(reWrs);
+        setComponents(reComps);
         setStatus('Wire removed');
       }
     };
