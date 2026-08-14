@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -321,9 +321,48 @@ export default function LogicGatesSimulator({ setPage }) {
   const [status, setStatus] = useState('Ready — drag from palette, click nodes to wire');
   const [selectedId, setSelectedId] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // Viewport: pan & zoom state. view = { x, y, scale } di stateRef (mutable, dipakai draw loop &
+  // hitTest via screenToWorld). zoomPct di React state cuma buat UI label.
+  const [zoomPct, setZoomPct] = useState(100);
+  const spaceDownRef = useRef(false);
 
-  const stateRef = useRef({ components, wires, nextId, selectedId, wiring: null, dragging: null, dragOffset: {x:0,y:0}, hoverNode: null });
+  const stateRef = useRef({
+    components, wires, nextId, selectedId,
+    wiring: null, dragging: null, dragOffset: { x: 0, y: 0 }, hoverNode: null,
+    view: { x: 0, y: 0, scale: 1 },       // ← viewport pan/zoom (mutable, dibaca tiap frame)
+    panning: null,                         // ← { startMouseX, startMouseY, startViewX, startViewY } saat pan aktif
+  });
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId }; }, [components, wires, nextId, selectedId]);
+
+  // Screen (canvas pixel) → World (component coords). Dipakai SEMUA mouse handler.
+  const screenToWorld = useCallback((sx, sy) => {
+    const v = stateRef.current.view;
+    return { x: (sx - v.x) / v.scale, y: (sy - v.y) / v.scale };
+  }, []);
+
+  // Clamp zoom supaya gak terlalu extreme (0.2x – 3x).
+  const clampScale = (s) => Math.max(0.2, Math.min(3, s));
+
+  // Zoom terhadap titik layar tertentu (biasanya cursor). World point di bawah cursor
+  // tetap di bawah cursor sesudah zoom.
+  const zoomAt = useCallback((sx, sy, factor) => {
+    const v = stateRef.current.view;
+    const newScale = clampScale(v.scale * factor);
+    if (newScale === v.scale) return;
+    const worldX = (sx - v.x) / v.scale;
+    const worldY = (sy - v.y) / v.scale;
+    v.x = sx - worldX * newScale;
+    v.y = sy - worldY * newScale;
+    v.scale = newScale;
+    setZoomPct(Math.round(newScale * 100));
+  }, []);
+
+  // Reset viewport ke origin + scale 1 (fit default).
+  const resetView = useCallback(() => {
+    const v = stateRef.current.view;
+    v.x = 0; v.y = 0; v.scale = 1;
+    setZoomPct(100);
+  }, []);
 
   const createComponent = useCallback((type, x, y) => {
     // Tentukan ukuran box & jumlah input/output berdasarkan type
@@ -477,18 +516,34 @@ export default function LogicGatesSimulator({ setPage }) {
     let animId;
 
     const draw = () => {
-      const { components: comps, wires: wrs, wiring, hoverNode, selectedId: selId } = stateRef.current;
+      const { components: comps, wires: wrs, wiring, hoverNode, selectedId: selId, view } = stateRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Grid
+      // Grid — adaptive spacing supaya tetap kelihatan rapi di zoom level apapun.
+      // Saat zoom > 1.5x, spacing di-screen jadi gede → naikkan density (spacing 10).
+      // Saat zoom < 0.5x, spacing di-screen jadi kegedeanan → turunkan (spacing 40).
+      // Antara 0.5x – 1.5x, default 20 world units.
+      let worldGrid = 20;
+      if (view.scale > 1.5) worldGrid = 10;
+      else if (view.scale < 0.5) worldGrid = 40;
+      const screenGrid = worldGrid * view.scale;
+      // Offset grid supaya tetap align dengan world coords pas di-pan.
+      const offX = ((view.x % screenGrid) + screenGrid) % screenGrid;
+      const offY = ((view.y % screenGrid) + screenGrid) % screenGrid;
       ctx.fillStyle = '#1e293b';
-      for (let x = 0; x < canvas.width; x += 20) {
-        for (let y = 0; y < canvas.height; y += 20) {
-          ctx.globalAlpha = 0.25;
+      ctx.globalAlpha = 0.25;
+      for (let x = offX; x < canvas.width; x += screenGrid) {
+        for (let y = offY; y < canvas.height; y += screenGrid) {
           ctx.fillRect(x, y, 1, 1);
-          ctx.globalAlpha = 1;
         }
       }
+      ctx.globalAlpha = 1;
+
+      // Apply viewport transform: SEMUA world-space drawing (wires, components, hover)
+      // di-translate & di-scale sesuai view.
+      ctx.save();
+      ctx.translate(view.x, view.y);
+      ctx.scale(view.scale, view.scale);
 
       // Wires
       for (const wire of wrs) {
@@ -716,6 +771,9 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.stroke();
       }
 
+      // Selesai world-space drawing — restore ke screen space.
+      ctx.restore();
+
       animId = requestAnimationFrame(draw);
     };
 
@@ -917,14 +975,39 @@ export default function LogicGatesSimulator({ setPage }) {
   }, [getNodePos]);
 
   // ── Mouse Events ──
+  // Setelah pan/zoom diperkenalkan, SEMUA mx,my dari mouse event WAJIB di-convert
+  // ke world coords lewat screenToWorld() sebelum dipakai hitTest/drag/wiring,
+  // karena comp.x/comp.y dan getNodePos semuanya di world space.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const isPanningTrigger = (e) => {
+      // Pan aktif jika: middle mouse button (button=1) ATAU left mouse + space held.
+      if (e.button === 1) return true;
+      if (e.button === 0 && spaceDownRef.current) return true;
+      return false;
+    };
+
     const onMouseDown = (e) => {
       const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+
+      // ── Pan mode ──
+      if (isPanningTrigger(e)) {
+        e.preventDefault();
+        const v = stateRef.current.view;
+        stateRef.current.panning = {
+          startSX: sx, startSY: sy,
+          startVX: v.x, startVY: v.y,
+        };
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+
+      // ── Normal mode: convert screen → world, lalu hitTest ──
+      const { x: mx, y: my } = screenToWorld(sx, sy);
       const hit = hitTest(mx, my, stateRef.current.components);
 
       if (hit) {
@@ -1007,8 +1090,20 @@ export default function LogicGatesSimulator({ setPage }) {
 
     const onMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+
+      // ── Pan aktif: update view langsung (draw loop baca stateRef tiap frame) ──
+      if (stateRef.current.panning) {
+        const p = stateRef.current.panning;
+        const v = stateRef.current.view;
+        v.x = p.startVX + (sx - p.startSX);
+        v.y = p.startVY + (sy - p.startSY);
+        return;
+      }
+
+      // ── Normal mode: convert ke world coords ──
+      const { x: mx, y: my } = screenToWorld(sx, sy);
 
       if (stateRef.current.wiring) {
         stateRef.current.wiring.mx = mx;
@@ -1033,19 +1128,39 @@ export default function LogicGatesSimulator({ setPage }) {
         canvas.style.cursor = hit.comp.type === 'INPUT' ? 'pointer' : 'move';
       } else {
         stateRef.current.hoverNode = null;
-        canvas.style.cursor = stateRef.current.wiring ? 'crosshair' : 'default';
+        canvas.style.cursor = spaceDownRef.current ? 'grab' : (stateRef.current.wiring ? 'crosshair' : 'default');
       }
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (e) => {
+      // Stop panning (button 1 release atau button 0 release saat panning aktif).
+      if (stateRef.current.panning) {
+        stateRef.current.panning = null;
+        canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
+        return;
+      }
       stateRef.current.dragging = null;
+    };
+
+    // Wheel = zoom terhadap cursor. passive:false supaya bisa preventDefault
+    // (browser default scroll page kalau gak di-prevent).
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      // deltaY positif = scroll down = zoom out. Faktor di-tune supaya 1 notch wheel
+      // = ~10% zoom (factor 0.9 / 1.1), tidak terlalu jumpy.
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      zoomAt(sx, sy, factor);
     };
 
     const onContextMenu = (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const { x: mx, y: my } = screenToWorld(sx, sy);
       const hit = hitTest(mx, my, stateRef.current.components);
 
       if (hit && hit.kind === 'body') {
@@ -1104,6 +1219,13 @@ export default function LogicGatesSimulator({ setPage }) {
     };
 
     const onKeyDown = (e) => {
+      // Space held = pan mode siap (cursor jadi grab). Ignore kalau lagi ngetik
+      // di input field (simulator gak punya input field, tapi jaga-jaga).
+      if (e.code === 'Space' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        spaceDownRef.current = true;
+        if (!stateRef.current.panning) canvas.style.cursor = 'grab';
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null) {
         const comp = stateRef.current.components.find(c => c.id === selectedId);
         if (!comp) return;
@@ -1131,20 +1253,41 @@ export default function LogicGatesSimulator({ setPage }) {
       }
     };
 
+    const onKeyUp = (e) => {
+      if (e.code === 'Space') {
+        spaceDownRef.current = false;
+        if (!stateRef.current.panning) canvas.style.cursor = 'default';
+      }
+    };
+
+    // Mouseleave canvas = cancel pan biar gak stuck grabbing.
+    const onMouseLeave = () => {
+      if (stateRef.current.panning) {
+        stateRef.current.panning = null;
+        canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
+      }
+    };
+
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mouseleave', onMouseLeave);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('mouseleave', onMouseLeave);
+      canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
     };
-  }, [hitTest, simulate, wouldCreateCycle, selectedId, getNodePos]);
+  }, [hitTest, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
 
   // ── Resize canvas ──
   useEffect(() => {
@@ -1195,10 +1338,13 @@ export default function LogicGatesSimulator({ setPage }) {
         const canvas = canvasRef.current;
         if (canvas) {
           const rect = canvas.getBoundingClientRect();
-          const mx = e.clientX - rect.left;
-          const my = e.clientY - rect.top;
-          // Cek apakah mouse di-drop di dalam area canvas
-          if (mx >= 0 && mx <= rect.width && my >= 0 && my <= rect.height) {
+          const sx = e.clientX - rect.left;
+          const sy = e.clientY - rect.top;
+          // Cek apakah mouse di-drop di dalam area canvas (screen space check tetap pakai sx,sy)
+          if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
+            // Convert ke world coords sebelum createComponent — supaya posisi comp
+            // benar walau viewport sudah di-pan/zoom.
+            const { x: mx, y: my } = screenToWorld(sx, sy);
             // Center comp di posisi drop
             const io = IO_DEFS[paletteDrag.type];
             const compW = io ? io.width : (paletteDrag.type === 'not' ? 80 : 90);
@@ -1227,7 +1373,7 @@ export default function LogicGatesSimulator({ setPage }) {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [paletteDrag, createComponent]);
+  }, [paletteDrag, createComponent, screenToWorld]);
 
   // ── Actions ──
   // Buka dialog konfirmasi sebelum benar-benar clear — mencegah hapus tidak sengaja.
@@ -1435,6 +1581,8 @@ export default function LogicGatesSimulator({ setPage }) {
     borderRadius: 6,
     pointerEvents: 'none',
     backdropFilter: 'blur(4px)',
+    lineHeight: 1.5,
+    maxWidth: 380,
   };
 
   const statusStyle = {
@@ -1529,8 +1677,85 @@ export default function LogicGatesSimulator({ setPage }) {
         </div>
         <div style={canvasWrapStyle}>
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }} />
-          <div style={helpStyle}>Drag from palette • Click output → input to wire • Click switch to toggle • Right-click to remove • Del to delete</div>
+          <div style={helpStyle}>
+            Drag from palette • Click output → input to wire • Click switch to toggle • Right-click to remove • Del to delete
+            <br />
+            <span style={{ color: '#94a3b8' }}>Wheel = zoom • Middle-drag or Space+drag = pan</span>
+          </div>
           <div style={statusStyle}>{status}</div>
+          {/* Zoom controls — floating di pojok kanan bawah canvas (Figma/Miro style). */}
+          <div style={{
+            position: 'absolute',
+            bottom: 10, right: 10,
+            display: 'flex', alignItems: 'center', gap: 2,
+            backgroundColor: 'rgba(15,23,42,0.9)',
+            border: '1px solid #334155',
+            borderRadius: 8,
+            padding: 4,
+            backdropFilter: 'blur(4px)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}>
+            <button
+              onClick={() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                // Zoom out terhadap center canvas.
+                const cx = rect.width / 2, cy = rect.height / 2;
+                zoomAt(cx, cy, 0.8);
+              }}
+              title="Zoom Out"
+              style={{
+                width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', backgroundColor: 'transparent', color: '#94a3b8',
+                cursor: 'pointer', borderRadius: 5, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+            >
+              <ZoomOut size={14} />
+            </button>
+            <span style={{
+              minWidth: 44, textAlign: 'center',
+              fontSize: 11, color: '#cbd5e1', fontFamily: '"Inter", sans-serif', fontWeight: 600,
+              userSelect: 'none', cursor: 'default',
+            }}>
+              {zoomPct}%
+            </span>
+            <button
+              onClick={() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const cx = rect.width / 2, cy = rect.height / 2;
+                zoomAt(cx, cy, 1.25);
+              }}
+              title="Zoom In"
+              style={{
+                width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', backgroundColor: 'transparent', color: '#94a3b8',
+                cursor: 'pointer', borderRadius: 5, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+            >
+              <ZoomIn size={14} />
+            </button>
+            <button
+              onClick={resetView}
+              title="Reset View (100%)"
+              style={{
+                width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', backgroundColor: 'transparent', color: '#94a3b8',
+                cursor: 'pointer', borderRadius: 5, transition: 'all 0.15s',
+                marginLeft: 2, borderLeft: '1px solid #334155',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+            >
+              <Maximize2 size={12} />
+            </button>
+          </div>
         </div>
       </div>
       {dragGhost && <DragGhost type={dragGhost.type} x={dragGhost.x} y={dragGhost.y} />}
