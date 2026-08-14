@@ -30,6 +30,55 @@ const IO_DEFS = {
 
 const GATE_MAP = Object.fromEntries(GATE_DATA.map(g => [g.type, g]));
 
+// ── Orthogonal wire routing (L-shape dengan rounded corners) ──
+// Lebih clean untuk digital schematics dibanding bezier curve, gampang dibaca
+// pas wire numpuk. Pattern: H1 (p1.x → midX) → V (p1.y → p2.y) → H2 (midX → p2.x).
+// Corner radius dibatasi supaya gak overlap segment pendek.
+function drawOrthogonalPath(ctx, p1, p2, r = 8) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  // Kalo aligned (horizontal/vertical murni), garis lurus aja.
+  if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
+    ctx.lineTo(p2.x, p2.y);
+    return;
+  }
+  const midX = (p1.x + p2.x) / 2;
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  // Clamp radius ke setengah segmen pendek biar corner gak balik arah.
+  const rad = Math.max(0, Math.min(r, Math.abs(dx) / 2, Math.abs(dy) / 2));
+  if (rad < 2) {
+    // Segmen terlalu pendek untuk rounded corner → sharp L.
+    ctx.lineTo(midX, p1.y);
+    ctx.lineTo(midX, p2.y);
+    ctx.lineTo(p2.x, p2.y);
+    return;
+  }
+  ctx.lineTo(midX - rad * sx, p1.y);
+  ctx.quadraticCurveTo(midX, p1.y, midX, p1.y + rad * sy);
+  ctx.lineTo(midX, p2.y - rad * sy);
+  ctx.quadraticCurveTo(midX, p2.y, midX + rad * sx, p2.y);
+  ctx.lineTo(p2.x, p2.y);
+}
+
+// Titik di sepanjang path orthogonal pada parameter t (0..1).
+// Dipakai buat animasi pulse dot (titik putih yang jalan di wire ON).
+// Path = H1 (|dx|/2) → V (|dy|) → H2 (|dx|/2), total = |dx| + |dy|.
+function pointOnOrthogonal(p1, p2, t) {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  if (Math.abs(dx) < 1) return { x: p1.x, y: p1.y + dy * t };
+  if (Math.abs(dy) < 1) return { x: p1.x + dx * t, y: p1.y };
+  const midX = (p1.x + p2.x) / 2;
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  const L1 = Math.abs(dx) / 2, L2 = Math.abs(dy), L3 = Math.abs(dx) / 2;
+  const total = L1 + L2 + L3;
+  let target = t * total;
+  if (target < L1) return { x: p1.x + sx * target, y: p1.y };
+  target -= L1;
+  if (target < L2) return { x: midX, y: p1.y + sy * target };
+  target -= L2;
+  return { x: midX + sx * target, y: p2.y };
+}
+
 // ── Logic Engine ──
 function computeGate(type, inputs) {
   const [a, b] = inputs;
@@ -315,6 +364,7 @@ function DragGhost({ type, x, y }) {
 // ── Canvas Simulator ──
 export default function LogicGatesSimulator({ setPage }) {
   const canvasRef = useRef(null);
+  const minimapRef = useRef(null);
   const [components, setComponents] = useState([]);
   const [wires, setWires] = useState([]);
   const [nextId, setNextId] = useState(1);
@@ -333,6 +383,7 @@ export default function LogicGatesSimulator({ setPage }) {
     wiring: null, dragging: null, dragOffset: { x: 0, y: 0 }, hoverNode: null,
     view: { x: 0, y: 0, scale: 1 },       // ← viewport pan/zoom (mutable, dibaca tiap frame)
     panning: null,                         // ← { startMouseX, startMouseY, startViewX, startViewY } saat pan aktif
+    minimap: null,                          // ← { minX, minY, s, offX, offY } transform world→minimap (diupdate tiap frame)
   });
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId }; }, [components, wires, nextId, selectedId]);
 
@@ -584,8 +635,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const p2 = getNodePos(dst, true, wire.toIdx);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
-        const midX = (p1.x + p2.x) / 2;
-        ctx.bezierCurveTo(midX, p1.y, midX, p2.y, p2.x, p2.y);
+        drawOrthogonalPath(ctx, p1, p2, 8);
         ctx.strokeStyle = wire.value ? '#4ade80' : '#475569';
         ctx.lineWidth = wire.value ? 3 : 1.5;
         ctx.globalAlpha = wire.value ? 1 : 0.5;
@@ -593,8 +643,7 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.globalAlpha = 1;
         if (wire.value) {
           const t = (Date.now() % 1200) / 1200;
-          const px = (1-t)*(1-t)*(1-t)*p1.x + 3*(1-t)*(1-t)*t*midX + 3*(1-t)*t*t*midX + t*t*t*p2.x;
-          const py = (1-t)*(1-t)*(1-t)*p1.y + 3*(1-t)*(1-t)*t*p1.y + 3*(1-t)*t*t*p2.y + t*t*t*p2.y;
+          const { x: px, y: py } = pointOnOrthogonal(p1, p2, t);
           ctx.beginPath();
           ctx.arc(px, py, 3, 0, Math.PI * 2);
           ctx.fillStyle = '#fff';
@@ -607,8 +656,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const p1 = getNodePos(wiring.fromComp, false, wiring.fromIdx);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
-        const midX = (p1.x + wiring.mx) / 2;
-        ctx.bezierCurveTo(midX, p1.y, midX, wiring.my, wiring.mx, wiring.my);
+        drawOrthogonalPath(ctx, p1, { x: wiring.mx, y: wiring.my }, 8);
         ctx.strokeStyle = '#60a5fa';
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
@@ -803,6 +851,100 @@ export default function LogicGatesSimulator({ setPage }) {
 
       // Selesai world-space drawing — restore ke screen space.
       ctx.restore();
+
+      // ── Minimap render ──
+      // Render overview semua komponen + viewport rect di canvas kecil pojok kanan atas.
+      // Click/drag minimap → pan view ke world point itu (handler di useEffect terpisah).
+      // Auto-hide konten kalau komponen < 3 (gak butuh navigasi).
+      const mini = minimapRef.current;
+      if (mini) {
+        const mctx = mini.getContext('2d');
+        mctx.clearRect(0, 0, mini.width, mini.height);
+
+        if (comps.length >= 3) {
+          // Bounding box semua komponen.
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const c of comps) {
+            const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+            minX = Math.min(minX, c.x);
+            minY = Math.min(minY, c.y);
+            maxX = Math.max(maxX, c.x + def.width);
+            maxY = Math.max(maxY, c.y + def.height);
+          }
+          // Padding 15% supaya content gak nempel pinggiran minimap.
+          const pad = 0.15;
+          const bw = maxX - minX, bh = maxY - minY;
+          minX -= bw * pad; minY -= bh * pad;
+          maxX += bw * pad; maxY += bh * pad;
+          const fullW = maxX - minX, fullH = maxY - minY;
+
+          // Fit ke minimap canvas (preserve aspect ratio).
+          const s = Math.min(mini.width / fullW, mini.height / fullH);
+          const offX = (mini.width - fullW * s) / 2;
+          const offY = (mini.height - fullH * s) / 2;
+
+          const toMini = (wx, wy) => ({
+            x: offX + (wx - minX) * s,
+            y: offY + (wy - minY) * s,
+          });
+
+          // Simpan transform untuk click/drag handler (miniToView).
+          stateRef.current.minimap = { minX, minY, s, offX, offY };
+
+          // Background.
+          mctx.fillStyle = 'rgba(9, 22, 40, 0.92)';
+          mctx.fillRect(0, 0, mini.width, mini.height);
+
+          // Wires (subtle gray).
+          mctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
+          mctx.lineWidth = 0.6;
+          for (const wire of wrs) {
+            const src = comps.find(c => c.id === wire.from);
+            const dst = comps.find(c => c.id === wire.to);
+            if (!src || !dst) continue;
+            const sDef = GATE_MAP[src.type] || IO_DEFS[src.type];
+            const dDef = GATE_MAP[dst.type] || IO_DEFS[dst.type];
+            const p1 = toMini(src.x + sDef.width / 2, src.y + sDef.height / 2);
+            const p2 = toMini(dst.x + dDef.width / 2, dst.y + dDef.height / 2);
+            mctx.beginPath();
+            mctx.moveTo(p1.x, p1.y);
+            mctx.lineTo(p2.x, p2.y);
+            mctx.stroke();
+          }
+
+          // Components (dots warna gate).
+          for (const c of comps) {
+            const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+            const p = toMini(c.x + def.width / 2, c.y + def.height / 2);
+            mctx.fillStyle = def.color;
+            mctx.beginPath();
+            mctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+            mctx.fill();
+          }
+
+          // Viewport rectangle — area canvas yang sedang keliatan, di world coords.
+          const v = stateRef.current.view;
+          const wTL = { x: -v.x / v.scale, y: -v.y / v.scale };
+          const wBR = { x: (canvas.width - v.x) / v.scale, y: (canvas.height - v.y) / v.scale };
+          const m1 = toMini(wTL.x, wTL.y);
+          const m2 = toMini(wBR.x, wBR.y);
+          mctx.fillStyle = 'rgba(96, 165, 250, 0.12)';
+          mctx.fillRect(m1.x, m1.y, m2.x - m1.x, m2.y - m1.y);
+          mctx.strokeStyle = '#60a5fa';
+          mctx.lineWidth = 1.2;
+          mctx.strokeRect(m1.x, m1.y, m2.x - m1.x, m2.y - m1.y);
+        } else {
+          // Komponen < 3 — minimap gak berguna, tampilin hint aja.
+          stateRef.current.minimap = null;
+          mctx.fillStyle = 'rgba(9, 22, 40, 0.92)';
+          mctx.fillRect(0, 0, mini.width, mini.height);
+          mctx.fillStyle = '#475569';
+          mctx.font = '10px "Inter", sans-serif';
+          mctx.textAlign = 'center';
+          mctx.textBaseline = 'middle';
+          mctx.fillText('Add 3+ components', mini.width / 2, mini.height / 2);
+        }
+      }
 
       animId = requestAnimationFrame(draw);
     };
@@ -1336,11 +1478,67 @@ export default function LogicGatesSimulator({ setPage }) {
     const resize = () => {
       canvas.width = wrap.clientWidth;
       canvas.height = wrap.clientHeight;
+      // Minimap canvas: fixed 160x110 (ukuran display == ukuran internal, gak perlu DPR).
+      const mini = minimapRef.current;
+      if (mini) {
+        mini.width = 160;
+        mini.height = 110;
+      }
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     return () => ro.disconnect();
+  }, []);
+
+  // ── Minimap interaction (click/drag → pan view) ──
+  // Click minimap di world point X → view di-pan supaya X di center canvas.
+  // Drag = pan terus selama mouse down.
+  useEffect(() => {
+    const mini = minimapRef.current;
+    if (!mini) return;
+    let dragging = false;
+
+    const miniToView = (e) => {
+      const t = stateRef.current.minimap;
+      if (!t) return null;
+      const rect = mini.getBoundingClientRect();
+      // CSS size mungkin beda sama internal size; normalize.
+      const mx = (e.clientX - rect.left) * (mini.width / rect.width);
+      const my = (e.clientY - rect.top) * (mini.height / rect.height);
+      return {
+        x: t.minX + (mx - t.offX) / t.s,
+        y: t.minY + (my - t.offY) / t.s,
+      };
+    };
+
+    const panTo = (wp) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !wp) return;
+      const v = stateRef.current.view;
+      v.x = canvas.width / 2 - wp.x * v.scale;
+      v.y = canvas.height / 2 - wp.y * v.scale;
+    };
+
+    const onDown = (e) => {
+      dragging = true;
+      panTo(miniToView(e));
+      e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      panTo(miniToView(e));
+    };
+    const onUp = () => { dragging = false; };
+
+    mini.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      mini.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
   }, []);
 
   // ── Palette drag ──
@@ -1717,6 +1915,30 @@ export default function LogicGatesSimulator({ setPage }) {
         </div>
         <div style={canvasWrapStyle}>
           <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }} />
+          {/* Minimap — overview semua komponen + viewport rect. Pojok kanan atas (gak konflik
+              dengan help text top-left, zoom controls bottom-left, AIHelperButton bottom-right). */}
+          <div style={{
+            position: 'absolute',
+            top: 10, right: 10,
+            width: 160, height: 110,
+            backgroundColor: 'rgba(9, 22, 40, 0.6)',
+            border: '1px solid #334155',
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(4px)',
+            cursor: 'pointer',
+            zIndex: 5,
+          }}
+            title="Click atau drag untuk pan view ke lokasi tersebut"
+          >
+            <canvas
+              ref={minimapRef}
+              width={160}
+              height={110}
+              style={{ display: 'block', width: '100%', height: '100%' }}
+            />
+          </div>
           <div style={helpStyle}>
             Drag from palette • Click output → input to wire • Click switch to toggle • Right-click to remove • Del to delete
             <br />
