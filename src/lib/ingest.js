@@ -1,10 +1,4 @@
-// Ingest — kirim tracking (user / online / history / analytics) ke admin panel
-// endpoint /api/ingest (server-side) yang meneruskan ke Convex. Frontend TIDAK
-// menyentuh Convex / Firestore langsung; hanya POST ke endpoint ini dengan
-// shared secret (VITE_INGEST_SECRET) + origin yang di-whitelist di panel.
-
 const INGEST_URL = import.meta.env.VITE_INGEST_URL || "https://admin-panel-babft.vercel.app/api/ingest";
-const INGEST_SECRET = import.meta.env.VITE_INGEST_SECRET || "";
 
 export async function ingest(type, payload) {
   try {
@@ -12,7 +6,6 @@ export async function ingest(type, payload) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-ingest-key": INGEST_SECRET,
       },
       body: JSON.stringify({ type, ...payload }),
     });
