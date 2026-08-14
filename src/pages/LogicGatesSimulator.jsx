@@ -135,16 +135,22 @@ function getCompBlockedBox(c) {
 // Hitung jumlah intersection antara segmen-segmen orthogonal path (H-V-H @ midX) dengan
 // blocked box komponen (full body + GAP_MARGIN). Return count intersection (0 = bebas hambatan).
 //
-// Exempt strategy (PER-SEGMENT, bukan full exempt):
-// - H1 (y=p1.y, exit src output port): exempt src FULL (H1 memang exit src dari port).
-// - V  (x=midX, segmen tengah): exempt src HANYA jika midX di luar x-range src.
-//   Exempt dst HANYA jika midX di luar x-range dst.
-//   Kalau midX di x-range src/dst, V akan menabrak body mereka secara visual → collision dihitung.
-// - H2 (y=p2.y, enter dst input port): exempt dst FULL.
+// Exempt strategy (PER-SEGMENT + per-sisi port, SANGAT KETAT):
+// - H1 (y=p1.y, x=p1.x..midX) — exit src output port:
+//   Output port biasanya di kanan body (p1.x = src.x + src.width).
+//   H1 exit port ke KANAN (menjauhi body src) berarti midX > p1.x.
+//   Kalau midX < p1.x (ke kiri, ke arah body src), H1 menembus body src → collision check trigger.
+//   Exempt src hanya jika midX di sisi luar body src dari port.
+// - V  (x=midX, y=p1.y..p2.y) — segmen tengah:
+//   Exempt src/dst hanya jika midX di luar x-range mereka.
+// - H2 (y=p2.y, x=midX..p2.x) — enter dst input port:
+//   Input port biasanya di kiri body (p2.x = dst.x).
+//   H2 enter port dari KIRI (dari luar body dst) berarti midX < p2.x.
+//   Kalau midX > p2.x (ke kanan, ke arah body dst), H2 menembus body dst → collision check trigger.
+//   Exempt dst hanya jika midX di sisi luar body dst dari port.
 //
-// Bug lama (full exempt src+dst): kalau src & dst vertikal-aligned (x range sama),
-// midX ideal jatuh di x-range src dan dst. V segmen menembus body src & dst secara visual,
-// tapi dianggap aman karena exempt. Wire kelihatan 'menempel' body comp.
+// Bug lama (full exempt src+dst): wire bisa exit port ke arah body sendiri tanpa terdeteksi.
+// Fix ini memaksa wire exit port ke arah yang benar (menjauhi body), tidak menembus body sendiri.
 function countHVHCollisions(p1, p2, midX, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
   let count = 0;
@@ -152,13 +158,29 @@ function countHVHCollisions(p1, p2, midX, comps, srcId, dstId) {
     const b = getCompBlockedBox(c);
     const isSrc = c.id === srcId;
     const isDst = c.id === dstId;
-    // Untuk V: cek apakah midX di x-range src/dst. Kalau iya, V akan menabrak body mereka.
     const cBox = (isSrc || isDst) ? getCompBox(c) : null;
+    // Untuk V: exempt src/dst hanya jika midX di luar x-range mereka.
     const midXInCBox = cBox && midX >= cBox.x && midX <= cBox.x + cBox.w;
     const exemptSrcForV = isSrc && !midXInCBox;
     const exemptDstForV = isDst && !midXInCBox;
-    // Segmen 1: H1 — exempt src FULL.
-    if (!isSrc) {
+    // Untuk H1: exempt src hanya jika midX di sisi luar body src dari port output.
+    // Port output di kanan body (x1 = src.x + src.width) → exit ke kanan → midX > x1.
+    // Port output di kiri body (x1 = src.x) → exit ke kiri → midX < x1.
+    const exemptSrcForH1 = isSrc && cBox && (
+      Math.abs(x1 - (cBox.x + cBox.w)) < 0.5 ? midX >= x1 :  // port kanan body
+      Math.abs(x1 - cBox.x) < 0.5 ? midX <= x1 :              // port kiri body
+      true                                                     // port tengah/unknown: exempt (jarang terjadi)
+    );
+    // Untuk H2: exempt dst hanya jika midX di sisi luar body dst dari port input.
+    // Port input di kiri body (x2 = dst.x) → enter dari kiri → midX < x2.
+    // Port input di kanan body (x2 = dst.x + dst.width) → enter dari kanan → midX > x2.
+    const exemptDstForH2 = isDst && cBox && (
+      Math.abs(x2 - cBox.x) < 0.5 ? midX <= x2 :              // port kiri body
+      Math.abs(x2 - (cBox.x + cBox.w)) < 0.5 ? midX >= x2 :  // port kanan body
+      true                                                     // port tengah/unknown: exempt (jarang terjadi)
+    );
+    // Segmen 1: H1 — exempt src hanya jika exit port ke arah yang benar.
+    if (!exemptSrcForH1) {
       if (y1 >= b.y && y1 <= b.y + b.h) {
         const segMin = Math.min(x1, midX), segMax = Math.max(x1, midX);
         if (segMax > b.x && segMin < b.x + b.w) count++;
@@ -171,8 +193,8 @@ function countHVHCollisions(p1, p2, midX, comps, srcId, dstId) {
         if (segMax > b.y && segMin < b.y + b.h) count++;
       }
     }
-    // Segmen 3: H2 — exempt dst FULL.
-    if (!isDst) {
+    // Segmen 3: H2 — exempt dst hanya jika enter port dari arah yang benar.
+    if (!exemptDstForH2) {
       if (y2 >= b.y && y2 <= b.y + b.h) {
         const segMin = Math.min(midX, x2), segMax = Math.max(midX, x2);
         if (segMax > b.x && segMin < b.x + b.w) count++;
@@ -183,10 +205,15 @@ function countHVHCollisions(p1, p2, midX, comps, srcId, dstId) {
 }
 
 // Sama, tapi untuk V-H-V pattern (vertical first) dengan midY custom.
-// Exempt strategy:
-// - V1 (x=p1.x, exit src output port): exempt src FULL.
-// - H  (y=midY, segmen tengah): exempt src/dst hanya jika midY di luar y-range mereka.
-// - V2 (x=p2.x, enter dst input port): exempt dst FULL.
+// Exempt strategy (PER-SEGMENT + per-sisi port, SANGAT KETAT):
+// - V1 (x=p1.x, y=p1.y..midY) — exit src output port:
+//   Output port di atas/bawah body. Exit port ke arah luar body → midY di sisi luar.
+//   Kalau midY di sisi dalam (ke arah body src), V1 menembus body src → collision check trigger.
+// - H  (y=midY, x=p1.x..p2.x) — segmen tengah:
+//   Exempt src/dst hanya jika midY di luar y-range mereka.
+// - V2 (x=p2.x, y=midY..p2.y) — enter dst input port:
+//   Input port di atas/bawah body. Enter port dari arah luar body → midY di sisi luar.
+//   Kalau midY di sisi dalam (ke arah body dst), V2 menembus body dst → collision check trigger.
 function countVHVCollisions(p1, p2, midY, comps, srcId, dstId) {
   const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
   let count = 0;
@@ -195,11 +222,28 @@ function countVHVCollisions(p1, p2, midY, comps, srcId, dstId) {
     const isSrc = c.id === srcId;
     const isDst = c.id === dstId;
     const cBox = (isSrc || isDst) ? getCompBox(c) : null;
+    // Untuk H: exempt src/dst hanya jika midY di luar y-range mereka.
     const midYInCBox = cBox && midY >= cBox.y && midY <= cBox.y + cBox.h;
     const exemptSrcForH = isSrc && !midYInCBox;
     const exemptDstForH = isDst && !midYInCBox;
-    // Segmen 1: V1 — exempt src FULL.
-    if (!isSrc) {
+    // Untuk V1: exempt src hanya jika midY di sisi luar body src dari port output.
+    // Port output di bawah body (y1 = src.y + src.height) → exit ke bawah → midY > y1.
+    // Port output di atas body (y1 = src.y) → exit ke atas → midY < y1.
+    const exemptSrcForV1 = isSrc && cBox && (
+      Math.abs(y1 - (cBox.y + cBox.h)) < 0.5 ? midY >= y1 :  // port bawah body
+      Math.abs(y1 - cBox.y) < 0.5 ? midY <= y1 :              // port atas body
+      true                                                     // port tengah/unknown: exempt (jarang terjadi)
+    );
+    // Untuk V2: exempt dst hanya jika midY di sisi luar body dst dari port input.
+    // Port input di atas body (y2 = dst.y) → enter dari atas → midY < y2.
+    // Port input di bawah body (y2 = dst.y + dst.height) → enter dari bawah → midY > y2.
+    const exemptDstForV2 = isDst && cBox && (
+      Math.abs(y2 - cBox.y) < 0.5 ? midY <= y2 :              // port atas body
+      Math.abs(y2 - (cBox.y + cBox.h)) < 0.5 ? midY >= y2 :  // port bawah body
+      true                                                     // port tengah/unknown: exempt (jarang terjadi)
+    );
+    // Segmen 1: V1 — exempt src hanya jika exit port ke arah yang benar.
+    if (!exemptSrcForV1) {
       if (x1 >= b.x && x1 <= b.x + b.w) {
         const segMin = Math.min(y1, midY), segMax = Math.max(y1, midY);
         if (segMax > b.y && segMin < b.y + b.h) count++;
@@ -212,8 +256,8 @@ function countVHVCollisions(p1, p2, midY, comps, srcId, dstId) {
         if (segMax > b.x && segMin < b.x + b.w) count++;
       }
     }
-    // Segmen 3: V2 — exempt dst FULL.
-    if (!isDst) {
+    // Segmen 3: V2 — exempt dst hanya jika enter port dari arah yang benar.
+    if (!exemptDstForV2) {
       if (x2 >= b.x && x2 <= b.x + b.w) {
         const segMin = Math.min(midY, y2), segMax = Math.max(midY, y2);
         if (segMax > b.y && segMin < b.y + b.h) count++;
