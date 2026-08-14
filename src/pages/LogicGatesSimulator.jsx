@@ -762,13 +762,19 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.stroke();
       } else {
         // AND/NAND/OR/NOR/XOR/XNOR: 2 input wires
+        // XOR/XNOR SPECIAL: input wires STOP AT back curve ')' (x = C-3 = 2), bukan
+        // lanjut sampai main body (x = C = 5). Sebelumnya wires nembus back curve
+        // → user complaint. Back curve (cubic, control x=C-1=4) at y=N+3 dan y=q-3
+        // ada di x ≈ 2.2, jadi wire end di x=2 = tepat menyentuh back curve.
+        const isXorType = type === 'xor' || type === 'xnor';
+        const inputWireEnd = isXorType ? (C - 3) : C;
         ctx.beginPath();
         ctx.strokeStyle = wireColor(a);
-        ctx.moveTo(0, N + 3); ctx.lineTo(C, N + 3);
+        ctx.moveTo(0, N + 3); ctx.lineTo(inputWireEnd, N + 3);
         ctx.stroke();
         ctx.beginPath();
         ctx.strokeStyle = wireColor(b);
-        ctx.moveTo(0, q - 3); ctx.lineTo(C, q - 3);
+        ctx.moveTo(0, q - 3); ctx.lineTo(inputWireEnd, q - 3);
         ctx.stroke();
       }
 
@@ -839,10 +845,14 @@ export default function LogicGatesSimulator({ setPage }) {
         }
         case 'xor': {
           outX = C + 34;
-          // Back curve
+          // Back curve — control points di-shift LEFT (C+1 → C-1) supaya ada GAP
+          // kecil antara ')' dan main body. Sebelumnya peak di x≈4.75 (touching
+          // main body left edge x=5, gap 0.25px). Sekarang peak di x≈3.25, gap
+          // 1.75px = visible. User minta "gap kecil antara ')' dengan yang di
+          // depannya".
           ctx.beginPath();
           ctx.moveTo(C - 4, N);
-          ctx.bezierCurveTo(C + 1, L - 4, C + 1, L + 4, C - 4, q);
+          ctx.bezierCurveTo(C - 1, L - 4, C - 1, L + 4, C - 4, q);
           ctx.stroke();
           // Main body
           ctx.beginPath();
@@ -856,10 +866,10 @@ export default function LogicGatesSimulator({ setPage }) {
         }
         case 'xnor': {
           outX = C + 31;
-          // Back curve
+          // Back curve — same as XOR: control points di-shift LEFT for gap
           ctx.beginPath();
           ctx.moveTo(C - 4, N);
-          ctx.bezierCurveTo(C + 1, L - 4, C + 1, L + 4, C - 4, q);
+          ctx.bezierCurveTo(C - 1, L - 4, C - 1, L + 4, C - 4, q);
           ctx.stroke();
           // Main body
           ctx.beginPath();
