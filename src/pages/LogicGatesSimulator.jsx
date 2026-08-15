@@ -2611,13 +2611,13 @@ export default function LogicGatesSimulator({ setPage }) {
               </div>
             ))}
             {/* Section divider — garis pemisah antara Gates dan I/O section.
-                User request: 'harusnya ada pembatas di bawah XNOR, lalu baru teks I/O'.
-                Pakai border-top tipis #334155 (sama dengan border item) + margin vertikal
-                supaya gak ketempel item di atas/bawah. Akan relevan saat komponen bertambah banyak. */}
+                User request: 'harusnya ada pembatas di bawah XNOR, lalu baru teks I/O' +
+                'kurang tebel garisnya' → border-top 1px → 2px + warna #475569 (lebih terang).
+                Pakai margin vertikal supaya gak ketempel item di atas/bawah. */}
             <div style={{
               height: 0,
-              borderTop: '1px solid #334155',
-              margin: '8px 4px 4px 4px',
+              borderTop: '2px solid #475569',
+              margin: '10px 4px 6px 4px',
               flexShrink: 0,
             }} />
             <div style={{ ...paletteTitleStyle, marginTop: 6, marginBottom: 4 }}>I/O</div>
