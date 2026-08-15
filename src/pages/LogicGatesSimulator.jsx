@@ -732,6 +732,59 @@ function MiniGateIcon({ type, color, scale = 1 }) {
   }
 }
 
+// ── MiniSwitchIcon (palette icon untuk Switch/INPUT) ──
+// Pure SVG vector, design match dengan toggle switch lever reference (gambar 2).
+// Flat design: dome base + lever tilted up-right (ON position) + knob di ujung.
+// User feedback: 'teman saya benci emoji ⚡, harus pure design yang lebih mantap'.
+// Style match MiniGateIcon: stroke-based, fill selective, no glow, vibrant color.
+function MiniSwitchIcon({ color = '#f59e0b', scale = 1 }) {
+  const s = color;
+  const sw = 2.4;
+  const svgStyle = { display: 'block', flexShrink: 0 };
+  // viewBox 36×36 — muat di iconBox 58×40 dengan margin 2-3px sekeliling
+  return (
+    <svg viewBox="0 0 36 36" width={36 * scale} height={36 * scale} style={svgStyle}>
+      {/* Dome base (semicircle, open top) — bottom half-round body switch */}
+      <path d="M 7,24 A 11,9 0 0,1 29,24" fill="none" stroke={s} strokeWidth={sw} strokeLinecap="round" />
+      {/* Base flat line — menutup bawah dome */}
+      <line x1="5" y1="24" x2="31" y2="24" stroke={s} strokeWidth={sw} strokeLinecap="round" />
+      {/* Pivot point — lingkaran kecil di tengah atas dome (sumbu lever) */}
+      <circle cx="18" cy="24" r="1.8" fill={s} />
+      {/* Lever arm — miring ke kanan-atas (ON position) */}
+      <line x1="18" y1="24" x2="27" y2="9" stroke={s} strokeWidth={sw + 1} strokeLinecap="round" />
+      {/* Lever knob — bulatan di ujung lever (handle pegangan) */}
+      <circle cx="27" cy="9" r="3.2" fill={s} stroke={s} strokeWidth={sw} />
+    </svg>
+  );
+}
+
+// ── MiniLEDIcon (palette icon untuk LED/OUTPUT) ──
+// Pure SVG vector, design match dengan LED reference (gambar 3).
+// Cylinder body + dome top + flange base + 2 pins (anode longer, cathode shorter).
+// User feedback: 'harus mirip gambar 3 wajib — LED dgn kaki'.
+// Style match MiniGateIcon: stroke-based, light tint fill body, no glow.
+function MiniLEDIcon({ color = '#ef4444', scale = 1 }) {
+  const s = color;
+  const sw = 2.2;
+  const svgStyle = { display: 'block', flexShrink: 0 };
+  // viewBox 36×36 — muat di iconBox 58×40
+  return (
+    <svg viewBox="0 0 36 36" width={36 * scale} height={36 * scale} style={svgStyle}>
+      {/* LED body — cylinder dengan dome top (epoxy housing 5mm standard) */}
+      <path d="M 12,22 L 12,14 Q 12,6 18,6 Q 24,6 24,14 L 24,22 Z"
+            fill={s + '30'} stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+      {/* Flange (base lip) — rectangle lebih lebar dari body, di bawah body */}
+      <rect x="10" y="20" width="16" height="2.5" fill={s} stroke={s} strokeWidth={sw} strokeLinejoin="round" />
+      {/* Left pin (anode — pin panjang, +) */}
+      <line x1="14" y1="23" x2="14" y2="32" stroke="#94a3b8" strokeWidth={sw} strokeLinecap="round" />
+      {/* Right pin (cathode — pin pendek, -) */}
+      <line x1="22" y1="23" x2="22" y2="29" stroke="#94a3b8" strokeWidth={sw} strokeLinecap="round" />
+      {/* Internal reflection highlight di dome (efek kaca) */}
+      <path d="M 15,11 Q 16,9 18,9" fill="none" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" opacity="0.7" />
+    </svg>
+  );
+}
+
 // ── DragGhost — visual feedback saat drag component dari palette ke canvas ──
 // User bilang "gak ada visual dimana user sedang mendrag suatu komponen, harusnya ada visualnya".
 // Ghost ini render fixed-position di cursor, jadi user tahu lagi ngedrag apa.
@@ -2633,7 +2686,9 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
-              <div style={iconBoxStyle('#f59e0b')}>⚡</div>
+              <div style={iconBoxStyle('#f59e0b')}>
+                <MiniSwitchIcon color="#f59e0b" scale={1} />
+              </div>
               <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>Switch</span>
             </div>
             <div
@@ -2642,7 +2697,9 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
-              <div style={iconBoxStyle('#ef4444')}>💡</div>
+              <div style={iconBoxStyle('#ef4444')}>
+                <MiniLEDIcon color="#ef4444" scale={1} />
+              </div>
               <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>LED</span>
             </div>
           </div>
