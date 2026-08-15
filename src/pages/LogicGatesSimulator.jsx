@@ -3523,7 +3523,7 @@ export default function LogicGatesSimulator({ setPage }) {
           }}>
             {/* Mode toggle — Build (drag/pan components) vs Connect Wire (zone-based wire connect).
                 User request (gambar 3): 'tambahin tombol baru bernama mode' di samping kiri.
-                Warna: hijau untuk Build (default mode), biru untuk Connect (wire mode).
+                Warna: hijau untuk Build (default mode), cyan (#22d3ee) untuk Connect (wire mode).
                 Klik untuk toggle. modeRef sync via useEffect supaya event handlers baca mode baru. */}
             <button
               onClick={() => setMode(m => m === 'build' ? 'connect' : 'build')}
@@ -3532,9 +3532,9 @@ export default function LogicGatesSimulator({ setPage }) {
                 display: 'flex', alignItems: 'center', gap: 8,
                 // Button dibikin gede biar enak pas pencet (mobile-friendly).
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#60a5fa'),
-                backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(96, 165, 250, 0.15)',
-                color: mode === 'build' ? '#4ade80' : '#60a5fa',
+                border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#22d3ee'),
+                backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(34, 211, 238, 0.15)',
+                color: mode === 'build' ? '#4ade80' : '#22d3ee',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3552,8 +3552,8 @@ export default function LogicGatesSimulator({ setPage }) {
             </button>
 
             {/* ── Paint Mode toggle ──
-                Biru (warna biru muda #60a5fa). OFF = dim (low opacity), text 'paint off'.
-                ON = bright (full opacity + glow), text 'paint on'.
+                Biru tua muda (#1e3a5f base). OFF = dim (low opacity), text 'paint off'.
+                ON = bright (#3b6fa0 border, #6ba3d6 text), text 'paint on'.
                 Saat ON: klik wire/komponen → buka color picker. Drag & wiring di-block.
                 Mutual exclusive dengan Delete: turn ON paint → delete OFF. */}
             <button
@@ -3567,9 +3567,9 @@ export default function LogicGatesSimulator({ setPage }) {
                 // TIDAK ADA boxShadow glow — user spec: 'saat dinyalakan dilarang ada efek glow!'.
                 // boxShadow flat '0 2px 8px rgba(0,0,0,0.4)' dipertahankan baik ON maupun OFF
                 // (cuma drop shadow biasa, BUKAN color glow).
-                border: '1px solid ' + (paintMode ? '#93c5fd' : 'rgba(96, 165, 250, 0.3)'),
-                backgroundColor: paintMode ? 'rgba(96, 165, 250, 0.35)' : 'rgba(96, 165, 250, 0.06)',
-                color: paintMode ? '#93c5fd' : 'rgba(96, 165, 250, 0.5)',
+                border: '1px solid ' + (paintMode ? '#3b6fa0' : 'rgba(30, 58, 95, 0.3)'),
+                backgroundColor: paintMode ? 'rgba(30, 58, 95, 0.55)' : 'rgba(30, 58, 95, 0.10)',
+                color: paintMode ? '#6ba3d6' : 'rgba(30, 58, 95, 0.55)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
