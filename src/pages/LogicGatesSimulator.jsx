@@ -902,18 +902,24 @@ export default function LogicGatesSimulator({ setPage }) {
   const deleteModeRef = useRef(false);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   useEffect(() => { deleteModeRef.current = deleteMode; }, [deleteMode]);
-  // Helper toggle: turn ON paint = turn OFF delete, dan sebaliknya (mutual exclusive).
+  // Helper toggle: turn ON paint = turn OFF delete & connect wire, dan sebaliknya (mutual exclusive).
   const togglePaint = () => {
     setPaintMode(prev => {
       const next = !prev;
-      if (next) setDeleteMode(false);
+      if (next) {
+        setDeleteMode(false);
+        setMode('build'); // paint ON → kembali ke build mode
+      }
       return next;
     });
   };
   const toggleDelete = () => {
     setDeleteMode(prev => {
       const next = !prev;
-      if (next) setPaintMode(false);
+      if (next) {
+        setPaintMode(false);
+        setMode('build'); // delete ON → kembali ke build mode
+      }
       return next;
     });
   };
@@ -3527,20 +3533,58 @@ export default function LogicGatesSimulator({ setPage }) {
             display: 'flex', flexDirection: 'column', gap: 6,
             transition: 'top 0.22s ease',
           }}>
-            {/* Mode toggle — Build (drag/pan components) vs Connect Wire (zone-based wire connect).
-                User request (gambar 3): 'tambahin tombol baru bernama mode' di samping kiri.
-                Warna: hijau untuk Build (default mode), cyan (#22d3ee) untuk Connect (wire mode).
-                Klik untuk toggle. modeRef sync via useEffect supaya event handlers baca mode baru. */}
+            {/* ── mode: build ──
+                Selalu ON secara default (default mode). TIDAK BISA DIKLIK.
+                Saat connect wire ON → build tampil OFF (dimmed).
+                Saat connect wire OFF → build tampil ON (aktif, hijau). */}
             <button
-              onClick={() => setMode(m => m === 'build' ? 'connect' : 'build')}
-              title={mode === 'build' ? 'Switch to Connect Wire mode' : 'Switch to Build mode'}
+              onClick={() => {
+                // Tidak bisa diklik — build selalu jadi default.
+                // Klik build saat mode lain aktif → kembali ke build mode.
+                if (mode !== 'build') setMode('build');
+              }}
+              title={mode === 'build' ? 'Build mode active (default)' : 'Return to Build mode'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                // Button dibikin gede biar enak pas pencet (mobile-friendly).
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#22d3ee'),
-                backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(34, 211, 238, 0.15)',
-                color: mode === 'build' ? '#4ade80' : '#22d3ee',
+                border: '1px solid ' + (mode === 'build' ? '#4ade80' : 'rgba(74, 222, 128, 0.3)'),
+                backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(74, 222, 128, 0.06)',
+                color: mode === 'build' ? '#4ade80' : 'rgba(74, 222, 128, 0.5)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: mode === 'build' ? 'default' : 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                userSelect: 'none',
+              }}
+            >
+              <MousePointer2 size={13} />
+              <span>mode: build</span>
+            </button>
+
+            {/* ── mode: connect wire ──
+                Toggle ON/OFF. Warna cyan (#22d3ee).
+                ON → mode jadi 'connect', build jadi OFF (dimmed).
+                OFF → mode kembali 'build', build jadi ON (hijau).
+                Mutual exclusive dengan paint & delete: turn ON connect → paint/delete OFF. */}
+            <button
+              onClick={() => {
+                if (mode === 'connect') {
+                  setMode('build');
+                } else {
+                  setMode('connect');
+                  // Turn off paint & delete (mutual exclusive)
+                  setPaintMode(false);
+                  setDeleteMode(false);
+                }
+              }}
+              title={mode === 'connect' ? 'Connect Wire mode ON — click zones to wire' : 'Turn on Connect Wire mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (mode === 'connect' ? '#22d3ee' : 'rgba(34, 211, 238, 0.3)'),
+                backgroundColor: mode === 'connect' ? 'rgba(34, 211, 238, 0.15)' : 'rgba(34, 211, 238, 0.06)',
+                color: mode === 'connect' ? '#22d3ee' : 'rgba(34, 211, 238, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3549,12 +3593,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 userSelect: 'none',
               }}
             >
-              {/* Icon logo (MousePointer2 / Cable) JANGAN diubah — user request:
-                  'logonya bagus itu logo iconnya jangan di sentuh'. Size 13 dipertahankan. */}
-              {mode === 'build' ? <MousePointer2 size={13} /> : <Cable size={13} />}
-              {/* Text label diubah: 'Build' → 'mode: build', 'Connect' → 'mode: connect wire'.
-                  User request eksplisit: 'teksnya saja diganti jadi "mode: build" "mode: connect wire"'. */}
-              <span>{mode === 'build' ? 'mode: build' : 'mode: connect wire'}</span>
+              <Cable size={13} />
+              <span>{mode === 'connect' ? 'connect wire on' : 'connect wire off'}</span>
             </button>
 
             {/* ── Paint Mode toggle ──
