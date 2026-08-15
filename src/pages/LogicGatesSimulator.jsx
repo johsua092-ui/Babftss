@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable } from 'lucide-react';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -877,6 +877,13 @@ export default function LogicGatesSimulator({ setPage }) {
   );
   // Mobile menu toggle — collapse tombol Clear All & Load Demo ke dropdown menu di mobile.
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Mode toggle: 'build' (drag/pan components) vs 'connect' (zone-based wire connection).
+  // modeRef supaya canvas event handlers (registered sekali di useEffect) bisa baca mode
+  // terbaru tanpa harus re-register tiap render. User request: tombol Mode di samping kiri,
+  // zone-based touch untuk wire (kanan=output, kiri atas=input1, kiri bawah=input2).
+  const [mode, setMode] = useState('build');
+  const modeRef = useRef('build');
+  useEffect(() => { modeRef.current = mode; }, [mode]);
   // Touch state ref — track multi-touch buat pinch-zoom & pan di mobile.
   // User feedback: 'gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja di mobile'.
   const touchStateRef = useRef({ pointers: new Map(), pinchStart: null, panStart: null });
@@ -1061,6 +1068,82 @@ export default function LogicGatesSimulator({ setPage }) {
     }
     return null;
   }, [getNodePos]);
+
+  // Zone-based hit test untuk Connect Wire mode.
+  // User request: area sentuh komponen dibagi jadi zone per port:
+  //   - 2 inputs + 1 output (AND/OR/NAND/NOR/XOR/XNOR): 3 zone
+  //       right half = output, left-top = input1, left-bottom = input2
+  //   - 1 input + 1 output (NOT): 2 zone — left = input, right = output
+  //   - 1 input only (LED): 1 zone (whole = input)
+  //   - 1 output only (Switch): 1 zone (whole = output)
+  // Dipakai di onMouseDown & onTouchStart saat modeRef.current === 'connect'.
+  const hitTestZone = useCallback((mx, my, comp) => {
+    const numIn = comp.inputs.length;
+    const numOut = comp.outputs.length;
+    const isRight = mx > comp.x + comp.width / 2;
+    if (numIn === 2 && numOut === 1) {
+      if (isRight) return { kind: 'output', idx: 0 };
+      const isTop = my < comp.y + comp.height / 2;
+      return { kind: 'input', idx: isTop ? 0 : 1 };
+    }
+    if (numIn === 1 && numOut === 1) {
+      return isRight ? { kind: 'output', idx: 0 } : { kind: 'input', idx: 0 };
+    }
+    if (numIn === 1 && numOut === 0) return { kind: 'input', idx: 0 };
+    if (numIn === 0 && numOut === 1) return { kind: 'output', idx: 0 };
+    return null;
+  }, []);
+
+  // Helper: complete a wire from (fromComp, fromIdx) to (dstComp, dstIdx).
+  // Shared antara Build mode (port hit) dan Connect mode (zone hit) supaya logic
+  // wire-removal, cycle-detection, color-generation, dan simulate konsisten.
+  // Mutates comps/wrs arrays in-place, lalu setState.
+  const completeWire = useCallback((fromComp, fromIdx, dst, dstIdx) => {
+    const comps = [...stateRef.current.components];
+    const wrs = [...stateRef.current.wires];
+    const dstComp = comps.find(c => c.id === dst.id);
+    if (!dstComp) return;
+    // Remove existing wire on this input (1 input = 1 source rule).
+    const existing = wrs.find(w => w.to === dstComp.id && w.toIdx === dstIdx);
+    if (existing) {
+      const idx = wrs.findIndex(w => w.id === existing.id);
+      if (idx !== -1) {
+        const src2 = comps.find(c => c.id === existing.from);
+        if (src2) src2.outputWires[existing.fromIdx] = src2.outputWires[existing.fromIdx].filter(id => id !== existing.id);
+        dstComp.inputWires[dstIdx] = null;
+        wrs.splice(idx, 1);
+      }
+    }
+    if (wouldCreateCycle(fromComp.id, dstComp.id, comps, wrs)) {
+      setStatus('Cycle detected — connection rejected');
+      stateRef.current.wiring = null;
+      return;
+    }
+    // Wire color: ke-1 = null (hijau default), ke-2+ = random HSL (hindari duplikat hue).
+    const isFirstWire = wrs.length === 0;
+    const wireColor = isFirstWire ? null : (() => {
+      const existingHues = wrs.filter(w => w.color).map(w => w.color.h);
+      return generateWireColor(existingHues);
+    })();
+    const newWire = {
+      id: stateRef.current.nextId,
+      from: fromComp.id, fromIdx,
+      to: dstComp.id, toIdx: dstIdx,
+      value: false,
+      color: wireColor,
+      userColor: null,
+    };
+    wrs.push(newWire);
+    dstComp.inputWires[dstIdx] = newWire.id;
+    const src = comps.find(c => c.id === fromComp.id);
+    if (src) src.outputWires[fromIdx].push(newWire.id);
+    setNextId(prev => prev + 1);
+    const { comps: newComps, wrs: newWrs } = simulate(comps, wrs);
+    setComponents(newComps);
+    setWires(newWrs);
+    setStatus('Wire connected');
+    stateRef.current.wiring = null;
+  }, [wouldCreateCycle, simulate]);
 
   // Hit test wire: cek apakah titik (mx,my) dekat dengan segmen wire.
   // Wire path = orthogonal (HVH atau VHV). Cek jarak titik ke segmen-segmen wire.
@@ -1781,6 +1864,28 @@ export default function LogicGatesSimulator({ setPage }) {
       const hit = hitTest(mx, my, stateRef.current.components);
 
       if (hit) {
+        // ── Connect Wire mode: zone-based port selection ──
+        // Saat mode connect, body/drag-handle/port hit semua di-interpret sebagai zone-based
+        // port selection. User sentuh area kanan = output, kiri atas = input1, kiri bawah = input2.
+        // Switch tetap bisa toggle TAPI hanya via body click di build mode — di connect mode,
+        // Switch zone = output (zone tunggal), jadi gak ada toggle. User harus switch ke build
+        // mode buat toggle Switch (atau klik kanan untuk remove, di build mode).
+        if (modeRef.current === 'connect') {
+          const zone = hitTestZone(mx, my, hit.comp);
+          if (!zone) return;
+          if (zone.kind === 'output') {
+            stateRef.current.wiring = { fromComp: hit.comp, fromIdx: zone.idx, mx, my };
+            setStatus('Wiring... click an input zone to connect');
+          } else if (zone.kind === 'input') {
+            if (stateRef.current.wiring) {
+              completeWire(stateRef.current.wiring.fromComp, stateRef.current.wiring.fromIdx, hit.comp, zone.idx);
+            } else {
+              setStatus('Tap an output zone first to start a wire');
+            }
+          }
+          return;
+        }
+        // ── Build mode: existing logic (drag, toggle Switch, port-to-port wire) ──
         if (hit.kind === 'drag-handle') {
           // Switch (INPUT) drag handle — drag comp, JANGAN toggle.
           // User minta: switch punya tombol drag sendiri di atas biar bisa ditarik
@@ -1794,58 +1899,7 @@ export default function LogicGatesSimulator({ setPage }) {
           setStatus('Wiring... click an input node to connect');
         } else if (hit.kind === 'input') {
           if (stateRef.current.wiring) {
-            const { fromComp, fromIdx } = stateRef.current.wiring;
-            const comps = [...stateRef.current.components];
-            const wrs = [...stateRef.current.wires];
-            const dst = comps.find(c => c.id === hit.comp.id);
-
-            // Remove existing wire on this input
-            const existing = wrs.find(w => w.to === dst.id && w.toIdx === hit.idx);
-            if (existing) {
-              const idx = wrs.findIndex(w => w.id === existing.id);
-              if (idx !== -1) {
-                const src2 = comps.find(c => c.id === existing.from);
-                if (src2) src2.outputWires[existing.fromIdx] = src2.outputWires[existing.fromIdx].filter(id => id !== existing.id);
-                dst.inputWires[existing.toIdx] = null;
-                wrs.splice(idx, 1);
-              }
-            }
-
-            if (!wouldCreateCycle(fromComp.id, dst.id, comps, wrs)) {
-              // Wire color system: wire ke-1 (wrs.length === 0 setelah remove existing) → hijau
-              // default (color=null). Wire ke-2,3,... → random HSL color, di-generate fresh
-              // setiap kali user bikin koneksi baru. Hindari duplikat hue dengan wire existing.
-              const isFirstWire = wrs.length === 0;
-              const wireColor = isFirstWire ? null : (() => {
-                const existingHues = wrs
-                  .filter(w => w.color)
-                  .map(w => w.color.h);
-                return generateWireColor(existingHues);
-              })();
-              const newWire = {
-                id: stateRef.current.nextId,
-                from: fromComp.id,
-                fromIdx,
-                to: dst.id,
-                toIdx: hit.idx,
-                value: false,
-                color: wireColor,        // null = hijau default (wire ke-1), {h,s} = random (wire ke-2+)
-                userColor: null,          // '#hex' kalau user set manual via color picker
-              };
-              wrs.push(newWire);
-              dst.inputWires[hit.idx] = newWire.id;
-              const src = comps.find(c => c.id === fromComp.id);
-              if (src) src.outputWires[fromIdx].push(newWire.id);
-              setNextId(prev => prev + 1);
-
-              const { comps: newComps, wrs: newWrs } = simulate(comps, wrs);
-              setComponents(newComps);
-              setWires(newWrs);
-              setStatus('Wire connected');
-            } else {
-              setStatus('Cycle detected — connection rejected');
-            }
-            stateRef.current.wiring = null;
+            completeWire(stateRef.current.wiring.fromComp, stateRef.current.wiring.fromIdx, hit.comp, hit.idx);
           }
         } else if (hit.kind === 'body') {
           if (hit.comp.type === 'INPUT') {
@@ -2130,6 +2184,25 @@ export default function LogicGatesSimulator({ setPage }) {
         const hit = hitTest(mx, my, stateRef.current.components);
 
         if (hit) {
+          // ── Connect Wire mode: zone-based port selection (same as onMouseDown) ──
+          // Di connect mode, touch component body = zone-based port selection.
+          // Switch toggle & component drag di-disable di connect mode.
+          if (modeRef.current === 'connect') {
+            const zone = hitTestZone(mx, my, hit.comp);
+            if (!zone) return;
+            if (zone.kind === 'output') {
+              stateRef.current.wiring = { fromComp: hit.comp, fromIdx: zone.idx, mx, my };
+              setStatus('Wiring... tap an input zone to connect');
+            } else if (zone.kind === 'input') {
+              if (stateRef.current.wiring) {
+                completeWire(stateRef.current.wiring.fromComp, stateRef.current.wiring.fromIdx, hit.comp, zone.idx);
+              } else {
+                setStatus('Tap an output zone first to start a wire');
+              }
+            }
+            return;
+          }
+          // ── Build mode: existing logic (drag, toggle Switch, port-to-port wire) ──
           if (hit.kind === 'drag-handle') {
             setSelectedId(hit.comp.id);
             stateRef.current.dragging = hit.comp;
@@ -2348,7 +2421,7 @@ export default function LogicGatesSimulator({ setPage }) {
       canvas.removeEventListener('touchend', onTouchEnd);
       canvas.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [hitTest, hitTestWire, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
+  }, [hitTest, hitTestWire, hitTestZone, completeWire, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
 
   // ── Resize canvas ──
   useEffect(() => {
@@ -2660,13 +2733,14 @@ export default function LogicGatesSimulator({ setPage }) {
   };
 
   // Palette sidebar — width: fit-content supaya sidebar nyesuaiin lebar item terpanjang.
-  // Animasi toggle pakai maxWidth (0 ↔ 380) supaya smooth (width: fit-content gak bisa animasi).
-  // User request: 'ukuran mengikuti teksnya, semuanya otomatis mengikuti & mensejajarkan'.
-  // max-content sidebar + grid 1fr items = semua item seragam sepanjang item terpanjang.
-  // maxWidth dinaikin 320 → 380 supaya title "7 Basic Logic Gates" gak kepotong jadi "GAT".
+  // Animasi toggle pakai maxWidth (0 ↔ 240) supaya smooth (width: fit-content gak bisa animasi).
+  // User request (gambar 1): 'dikiecilin sampai mentok teks kiri, tidak membuat teksnya pecah
+  // turun kebawah, ukurannya wajib sama semua'. maxWidth diturun 380 → 240 + minWidth dihapus
+  // supaya max-content cuma ngukur item (bukan dipaksa 270). Padding & icon box dikecilin biar
+  // item content lebih compact (sebelumnya 14px padding + 58px icon box kegedean).
   const paletteStyle = {
     width: paletteOpen ? 'fit-content' : 0,
-    maxWidth: paletteOpen ? 380 : 0,
+    maxWidth: paletteOpen ? 240 : 0,
     backgroundColor: '#1e293b',
     borderRight: paletteOpen ? '1px solid #334155' : '1px solid transparent',
     overflow: 'hidden',
@@ -2679,21 +2753,20 @@ export default function LogicGatesSimulator({ setPage }) {
   // display: grid 1fr supaya semua item seragam (sama lebar = lebar item terpanjang).
   // User request: 'kalimat lurus maju ke samping, gak dipaksa ke bawah, ukuran ikut teks'.
   // Outer palette fixed width animasi gak bisa (max-content gak numeric), jadi pakai
-  // outer width: fit-content + maxWidth animate (0 ↔ 380) supaya toggle smooth.
-  // minWidth: 270 → judul "7 Basic Logic Gates" (Orbitron uppercase, ~150px) + toggle button
-  // (44px width + 8px right margin = 52px reserved) gak nabrak. Tanpa minWidth, max-content
-  // cuma ngukur item (gate name pendek2), title kepotong jadi "GAT".
+  // outer width: fit-content + maxWidth animate (0 ↔ 240) supaya toggle smooth.
+  // minWidth DIHAPUS — sebelumnya 270 dipaksa biar title muat, tapi bikin item content
+  // (gate name pendek2 ~170px) ada whitespace kosong di kanan. Sekarang max-content cuma
+  // ngukur item terpanjang; title dikecilin font-nya supaya muat dalam lebar item.
   // className 'palette-scroll' untuk custom scrollbar styling (dark & slim).
   const paletteInnerStyle = {
     width: 'max-content',
-    minWidth: 270,
     height: '100%',
     backgroundColor: '#1e293b',
-    padding: '8px 14px 16px 14px',
+    padding: '6px 8px 12px 8px',
     overflowY: 'auto',
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gap: 10,
+    gap: 8,
     opacity: paletteOpen ? 1 : 0,
     transition: 'opacity 0.15s ease',
     boxSizing: 'border-box',
@@ -2704,22 +2777,26 @@ export default function LogicGatesSimulator({ setPage }) {
   // Palette title — "7 Basic Logic Gates". Putih kinclong (#ffffff) bukan glow.
   // Center align biar estetik & seimbang dengan toggle button di pojok kanan-atas.
   // uppercase dipertahankan biar vibe header tetap ada ( Orbitron font + letter-spacing ).
+  // fontSize 11 → 9, letterSpacing 0.8 → 0.3 supaya title muat dalam lebar item (~170px)
+  // tanpa minWidth. Sebelumnya title ~150px + 44px toggle = 194px reserved, lebih lebar
+  // dari item content — title memaksa sidebar jadi 270px. Sekarang title compact ~100px.
   // marginBottom 0 — gap ke items diatur oleh header row wrapper.
   const paletteTitleStyle = {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: 700,
     color: '#ffffff',
     textTransform: 'uppercase',
-    letterSpacing: '0.8px',
+    letterSpacing: '0.3px',
     textAlign: 'center',
     marginBottom: 0,
     marginTop: 0,
     fontFamily: '"Orbitron", sans-serif',
+    whiteSpace: 'nowrap',
   };
 
   // Header row — sejajar dengan toggle button (44px tall). Title di-bottom-align
-  // (alignItems: 'flex-end') supaya turun & deket ke items, tapi paddingBottom 4 + marginBottom 10
-  // = total gap 14px (cukup deket, gak ketempel).
+  // (alignItems: 'flex-end') supaya turun & deket ke items, tapi paddingBottom 4 + marginBottom 8
+  // = total gap 12px (cukup deket, gak ketempel).
   // User request: 'kebawahin dikit biar dekat ke komponen, tapi jangan terlalu dekat'.
   // Sebelumnya alignItems: 'center' → title di tengah header (jauh dari items).
   const paletteHeaderStyle = {
@@ -2728,7 +2805,7 @@ export default function LogicGatesSimulator({ setPage }) {
     alignItems: 'flex-end',
     justifyContent: 'center',
     paddingBottom: 4,
-    marginBottom: 10,
+    marginBottom: 8,
     flexShrink: 0,
     boxSizing: 'border-box',
   };
@@ -2736,12 +2813,13 @@ export default function LogicGatesSimulator({ setPage }) {
   // Item style — width 100% supaya semua seragam (stretch ke lebar column grid).
   // Grid 1fr bikin semua item sama lebar = lebar item terpanjang (max-content).
   // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
+  // padding 14 → 8, gap 12 → 8 supaya item lebih compact (sebelumnya kegedean).
   const itemStyle = {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    padding: '14px 14px',
-    borderRadius: 10,
+    gap: 8,
+    padding: '8px 8px',
+    borderRadius: 8,
     border: '1px solid #334155',
     backgroundColor: '#0f172a',
     cursor: 'grab',
@@ -2751,11 +2829,14 @@ export default function LogicGatesSimulator({ setPage }) {
     boxSizing: 'border-box',
   };
 
-  // Icon box — width 50 → 58, height 34 → 40 biar icon gate lebih keliatan & item lebih tinggi.
+  // Icon box — width 58 → 40, height 40 → 30 supaya item lebih compact.
+  // User request (gambar 1): 'dikiecilin sampai mentok teks kiri'. Icon box kegedean
+  // bikin item lebar padahal teks nama gate pendek. Dikecilin ke 40x30 masih kelihatan
+  // jelas karena MiniGateIcon scale juga diturunin 0.7 → 0.5.
   const iconBoxStyle = (color) => ({
-    width: 58, height: 40,
+    width: 40, height: 30,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    borderRadius: 6,
+    borderRadius: 5,
     backgroundColor: color + '15',
     color: color,
     flexShrink: 0,
@@ -2794,25 +2875,12 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'all 0.15s',
   };
 
-  // Help text — geser ke kanan saat palette tertutup biar gak ketabrak toggle button
-  // (toggle berada di left:8 top:8 saat closed, help text default left:10 top:10 → overlap).
-  // Saat open, toggle ada di left:174 (pojok kanan palette) jadi help text aman di left:10.
-  const helpStyle = {
-    position: 'absolute',
-    top: 10,
-    left: paletteOpen ? 10 : 48,
-    fontSize: 11,
-    color: '#64748b',
-    backgroundColor: 'rgba(15,23,42,0.85)',
-    padding: '6px 12px',
-    borderRadius: 6,
-    pointerEvents: 'none',
-    backdropFilter: 'blur(4px)',
-    lineHeight: 1.5,
-    maxWidth: paletteOpen ? 480 : 340,
-    zIndex: 5,
-    transition: 'left 0.22s ease, max-width 0.22s ease',
-  };
+  // Help text DIHAPUS sepenuhnya — user request (gambar 2): 'tulisan drag from palette
+  // switch for toggle apalah itu hilangin aja sepenuhnya dari ini, nanti saya kasih
+  // pengantinya tapi hilangin aja sekaran tanpa jejak'. Konstanta helpStyle dipertahankan
+  // sebagai empty object supaya referensi `<div style={helpStyle}>` di JSX gak crash kalau
+  // lupa dihapus — tapi inline JSX juga dihapus di bawah, jadi ini cuma safety net.
+  const helpStyle = { display: 'none' };
 
   const statusStyle = {
     position: 'absolute',
@@ -3023,9 +3091,9 @@ export default function LogicGatesSimulator({ setPage }) {
                 onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
               >
                 <div style={iconBoxStyle(g.color)}>
-                  <MiniGateIcon type={g.type} color={g.color} scale={0.7} />
+                  <MiniGateIcon type={g.type} color={g.color} scale={0.5} />
                 </div>
-                <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>{g.name}</span>
+                <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>{g.name}</span>
               </div>
             ))}
             {/* Section divider — garis pemisah antara Gates dan I/O section.
@@ -3046,9 +3114,9 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
               <div style={iconBoxStyle('#f59e0b')}>
-                <MiniSwitchIcon color="#f59e0b" scale={1} />
+                <MiniSwitchIcon color="#f59e0b" scale={0.8} />
               </div>
-              <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>Switch</span>
+              <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>Switch</span>
             </div>
             <div
               style={itemStyle}
@@ -3058,9 +3126,9 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
               <div style={iconBoxStyle('#ef4444')}>
-                <MiniLEDIcon color="#ef4444" scale={1} />
+                <MiniLEDIcon color="#ef4444" scale={0.8} />
               </div>
-              <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>LED</span>
+              <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>LED</span>
             </div>
           </div>
         </div>
@@ -3090,11 +3158,36 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{ display: 'block', width: '100%', height: '100%' }}
             />
           </div>
-          <div style={helpStyle}>
-            Drag from palette • Click output → input to wire • Click switch to toggle • Right-click to remove • Del to delete
-            <br />
-            <span style={{ color: '#94a3b8' }}>Wheel = zoom • Middle-drag or Space+drag = pan</span>
-          </div>
+          {/* Mode toggle — Build (drag/pan components) vs Connect Wire (zone-based wire connect).
+              User request (gambar 3): 'tambahin tombol baru bernama mode' di samping kiri.
+              Posisi top-left canvas wrapper (paletteOpen ? top:8 : top:60 biar gak konflik
+              dengan palette-open toggle button yang muncul di top:8 left:8 saat palette closed).
+              Warna: hijau untuk Build (default mode), biru untuk Connect (wire mode).
+              Klik untuk toggle. modeRef sync via useEffect supaya event handlers baca mode baru. */}
+          <button
+            onClick={() => setMode(m => m === 'build' ? 'connect' : 'build')}
+            title={mode === 'build' ? 'Switch to Connect Wire mode' : 'Switch to Build mode'}
+            style={{
+              position: 'absolute',
+              top: paletteOpen ? 8 : 60,
+              left: 8,
+              zIndex: 20,
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 10px', borderRadius: 8,
+              border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#60a5fa'),
+              backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(96, 165, 250, 0.15)',
+              color: mode === 'build' ? '#4ade80' : '#60a5fa',
+              fontSize: 11, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+              backdropFilter: 'blur(4px)',
+              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, top 0.22s ease',
+              userSelect: 'none',
+            }}
+          >
+            {mode === 'build' ? <MousePointer2 size={13} /> : <Cable size={13} />}
+            <span>{mode === 'build' ? 'Build' : 'Connect'}</span>
+          </button>
           <div style={statusStyle}>{status}</div>
           {/* Zoom + coordinate controls — floating di pojok kiri bawah canvas (Figma/Miro style).
               Bottom-right dilarang karena AIHelperButton (global, fixed bottom:24 right:24) akan nutupin. */}
