@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X } from 'lucide-react';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -884,6 +884,39 @@ export default function LogicGatesSimulator({ setPage }) {
   const [mode, setMode] = useState('build');
   const modeRef = useRef('build');
   useEffect(() => { modeRef.current = mode; }, [mode]);
+
+  // ── Paint Mode & Delete Mode ──
+  // User request: dua tombol baru di bawah tombol "mode: build".
+  // PAINT MODE (biru): saat ON, klik wire/komponen → buka color picker buat ganti warna.
+  //   - Wire color picker = sistem yang sudah ada (RGB palette + preview ON/OFF + random).
+  //   - Component color picker = baru, override def.color pakai comp.userColor.
+  //   - Saat ON: dilarang drag komponen baru dari palette & dilarang geser komponen existing.
+  //   - Menggantikan behavior lama (klik wire selalu buka color picker) → sekarang butuh paint ON.
+  // DELETE MODE (merah, ikon X): saat ON, klik wire → wire hilang, klik komponen → komponen + wires-nya hilang.
+  //   - Saat ON: dilarang drag komponen baru & dilarang geser komponen existing.
+  // Mutual exclusive: turn ON salah satu → yang lain OFF. Keduanya boleh OFF sekaligus.
+  // Refs supaya canvas event handlers (registered sekali di useEffect) baca value terbaru.
+  const [paintMode, setPaintMode] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const paintModeRef = useRef(false);
+  const deleteModeRef = useRef(false);
+  useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
+  useEffect(() => { deleteModeRef.current = deleteMode; }, [deleteMode]);
+  // Helper toggle: turn ON paint = turn OFF delete, dan sebaliknya (mutual exclusive).
+  const togglePaint = () => {
+    setPaintMode(prev => {
+      const next = !prev;
+      if (next) setDeleteMode(false);
+      return next;
+    });
+  };
+  const toggleDelete = () => {
+    setDeleteMode(prev => {
+      const next = !prev;
+      if (next) setPaintMode(false);
+      return next;
+    });
+  };
   // Touch state ref — track multi-touch buat pinch-zoom & pan di mobile.
   // User feedback: 'gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja di mobile'.
   const touchStateRef = useRef({ pointers: new Map(), pinchStart: null, panStart: null });
@@ -1169,6 +1202,60 @@ export default function LogicGatesSimulator({ setPage }) {
     stateRef.current.wiring = null;
   }, [wouldCreateCycle, simulate]);
 
+  // ── Delete helpers (dipakai oleh Delete Mode & context menu) ──
+  // Delete a single wire + cleanup references on src/dst comps. Lalu simulate ulang
+  // supaya downstream components re-evaluate (anti "ghost current").
+  const deleteWire = useCallback((wireId) => {
+    let wrs = [...stateRef.current.wires];
+    let comps = [...stateRef.current.components];
+    const wire = wrs.find(w => w.id === wireId);
+    if (!wire) return;
+    wrs = wrs.filter(w => {
+      if (w.id === wireId) {
+        // Cleanup src outputWires
+        const src = comps.find(c => c.id === w.from);
+        if (src) src.outputWires[w.fromIdx] = src.outputWires[w.fromIdx].filter(id => id !== wireId);
+        // Cleanup dst inputWires
+        const dst = comps.find(c => c.id === w.to);
+        if (dst) dst.inputWires[w.toIdx] = null;
+        return false;
+      }
+      return true;
+    });
+    const { comps: reComps, wrs: reWrs } = simulate(comps, wrs);
+    setWires(reWrs);
+    setComponents(reComps);
+    setStatus('Wire deleted');
+  }, [simulate]);
+
+  // Delete a component + all wires connected to it. Cleanup references on neighbor comps.
+  const deleteComponent = useCallback((compId) => {
+    let wrs = [...stateRef.current.wires];
+    let comps = [...stateRef.current.components];
+    const comp = comps.find(c => c.id === compId);
+    if (!comp) return;
+    wrs = wrs.filter(w => {
+      if (w.from === compId || w.to === compId) {
+        if (w.to === compId) {
+          const src = comps.find(c => c.id === w.from);
+          if (src) src.outputWires[w.fromIdx] = src.outputWires[w.fromIdx].filter(id => id !== w.id);
+        }
+        if (w.from === compId) {
+          const dst = comps.find(c => c.id === w.to);
+          if (dst) dst.inputWires[w.toIdx] = null;
+        }
+        return false;
+      }
+      return true;
+    });
+    comps = comps.filter(c => c.id !== compId);
+    if (selectedId === compId) setSelectedId(null);
+    const { comps: reComps, wrs: reWrs } = simulate(comps, wrs);
+    setComponents(reComps);
+    setWires(reWrs);
+    setStatus('Component deleted');
+  }, [simulate, selectedId]);
+
   // Hit test wire: cek apakah titik (mx,my) dekat dengan segmen wire.
   // Wire path = orthogonal (HVH atau VHV). Cek jarak titik ke segmen-segmen wire.
   // Threshold: 8px (sama dengan port hit radius).
@@ -1331,13 +1418,15 @@ export default function LogicGatesSimulator({ setPage }) {
       // Components
       for (const comp of comps) {
         const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+        // comp.userColor = override warna komponen (paint mode). null = pakai def.color default.
+        const compColor = comp.userColor || def.color;
         const isSel = selId === comp.id;
         // OUTPUT gak punya outputs[] (array kosong) — pakai inputs[0] sebagai indikator nyala
         const isOn = comp.type === 'OUTPUT' ? !!comp.inputs[0] : comp.outputs[0];
 
         // Glow
         if (isSel) {
-          ctx.shadowColor = def.color;
+          ctx.shadowColor = compColor;
           ctx.shadowBlur = 14;
         }
 
@@ -1348,7 +1437,7 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.shadowBlur = 0;
 
         // Border
-        ctx.strokeStyle = isSel ? def.color : (isOn ? def.color : '#334155');
+        ctx.strokeStyle = isSel ? compColor : (isOn ? compColor : '#334155');
         ctx.lineWidth = isSel ? 2 : (isOn ? 1.5 : 1);
         roundRect(ctx, comp.x, comp.y, comp.width, comp.height, 8);
         ctx.stroke();
@@ -1356,7 +1445,7 @@ export default function LogicGatesSimulator({ setPage }) {
         // ── Gate body (NOT/AND/NAND/OR/NOR/XOR/XNOR) ──
         if (comp.type !== 'INPUT' && comp.type !== 'OUTPUT') {
           // Header bar
-          ctx.fillStyle = def.color + '18';
+          ctx.fillStyle = compColor + '18';
           roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, 14, [7, 7, 0, 0]);
           ctx.fill();
 
@@ -1364,7 +1453,7 @@ export default function LogicGatesSimulator({ setPage }) {
           // typeNum fallback ke 1 kalau comp lama (sebelum fitur ini) gak punya field.
           const labelNum = comp.typeNum || 1;
           const labelText = def.label + ' ' + labelNum;
-          ctx.fillStyle = def.color;
+          ctx.fillStyle = compColor;
           ctx.font = 'bold 9px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -1383,7 +1472,7 @@ export default function LogicGatesSimulator({ setPage }) {
           // Target center = comp.y + 35 (mid of 14..56). Translate y = 35 - 15 = 20.
           ctx.translate(comp.x + gateTranslateX, comp.y + 20);
           ctx.scale(GATE_SCALE, GATE_SCALE);
-          drawGateShape(ctx, comp.type, def.color, isOn, comp.inputs);
+          drawGateShape(ctx, comp.type, compColor, isOn, comp.inputs);
           ctx.restore();
 
           // ── Global input/output wires: PORT → gate internal wire start/end ──
@@ -1395,7 +1484,7 @@ export default function LogicGatesSimulator({ setPage }) {
           // dan dari gate internal wire end (kanan) ke port output. Karena port y
           // udah di-align sama gate internal wire y (lihat getNodePos), wires ini
           // garis horizontal lurus.
-          const wireColor = (v) => v ? def.color : '#475569';
+          const wireColor = (v) => v ? compColor : '#475569';
           ctx.lineWidth = 2.2 * GATE_SCALE;
           ctx.lineCap = 'round';
           // Input wires: port (comp.x, port_y) → gate internal wire start (comp.x+gateTranslateX, port_y)
@@ -1429,22 +1518,24 @@ export default function LogicGatesSimulator({ setPage }) {
           roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, handleH, [7, 7, 0, 0]);
           ctx.fill();
           // Label "Switch N" di handle bar (ganti grip dots — lebih informatif).
-          ctx.fillStyle = '#fbbf24';
+          // Warna label pakai compColor (override paint mode).
+          ctx.fillStyle = compColor;
           ctx.font = 'bold 9px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('Switch ' + (comp.typeNum || 1), comp.x + comp.width / 2, comp.y + handleH / 2 + 1);
           // Toggle body (shifted down to make room for handle bar)
+          // ON state pakai compColor (override paint mode).
           const swX = comp.x + comp.width / 2;
           const swY = comp.y + handleH + (comp.height - handleH) / 2 - 2;
-          ctx.fillStyle = comp.outputs[0] ? '#4ade80' : '#475569';
+          ctx.fillStyle = comp.outputs[0] ? compColor : '#475569';
           roundRect(ctx, swX - 18, swY - 8, 36, 16, 8);
           ctx.fill();
           ctx.beginPath();
           ctx.arc(comp.outputs[0] ? swX + 10 : swX - 10, swY, 6, 0, Math.PI * 2);
           ctx.fillStyle = '#fff';
           ctx.fill();
-          ctx.fillStyle = comp.outputs[0] ? '#4ade80' : '#64748b';
+          ctx.fillStyle = comp.outputs[0] ? compColor : '#64748b';
           ctx.font = 'bold 8px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.fillText(comp.outputs[0] ? 'ON' : 'OFF', swX, swY + 22);
@@ -1459,7 +1550,8 @@ export default function LogicGatesSimulator({ setPage }) {
         if (comp.type === 'OUTPUT') {
           // Label "LED N" di atas body (sebelum gambar circle).
           // User feedback: 'tulisan kekecilan susah dibaca' — font 8px→9px biar match Switch.
-          ctx.fillStyle = '#f87171';
+          // Warna label pakai compColor (override paint mode).
+          ctx.fillStyle = compColor;
           ctx.font = 'bold 9px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -1468,15 +1560,17 @@ export default function LogicGatesSimulator({ setPage }) {
           const ledY = comp.y + comp.height / 2 + 2;
           const lit = !!comp.inputs[0];
           if (lit) {
-            ctx.shadowColor = '#ef4444';
+            ctx.shadowColor = compColor;
             ctx.shadowBlur = 18;
           }
           ctx.beginPath();
           ctx.arc(ledX, ledY, 11, 0, Math.PI * 2);
-          ctx.fillStyle = lit ? '#ef4444' : '#1e293b';
+          ctx.fillStyle = lit ? compColor : '#1e293b';
           ctx.fill();
           ctx.shadowBlur = 0;
-          ctx.strokeStyle = lit ? '#fca5a5' : '#475569';
+          // Border saat lit: lighter version of compColor (pakai compColor + alpha overlay feel).
+          // Untuk simplicity, pakai compColor langsung saat lit.
+          ctx.strokeStyle = lit ? compColor : '#475569';
           ctx.lineWidth = 2;
           ctx.stroke();
           if (lit) {
@@ -1485,7 +1579,7 @@ export default function LogicGatesSimulator({ setPage }) {
             ctx.fillStyle = 'rgba(255,255,255,0.6)';
             ctx.fill();
           }
-          ctx.fillStyle = lit ? '#fca5a5' : '#64748b';
+          ctx.fillStyle = lit ? compColor : '#64748b';
           ctx.font = 'bold 8px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.fillText(lit ? 'ON' : 'OFF', ledX, ledY + 22);
@@ -1654,14 +1748,16 @@ export default function LogicGatesSimulator({ setPage }) {
             mctx.stroke();
           }
 
-          // Components (dots warna gate).
+          // Components (dots warna gate, dengan userColor override kalau ada).
+          // Dot dibikin lebih gede (2.2 → 4.0) supaya gampang diklik di mobile.
+          // Hit radius untuk click detection pakai 6px (lihat minimap interaction handler).
           for (const c of comps) {
             const def = GATE_MAP[c.type] || IO_DEFS[c.type];
             const { w, h } = compBox(c);
             const p = toMini(c.x + w / 2, c.y + h / 2);
-            mctx.fillStyle = def.color;
+            mctx.fillStyle = c.userColor || def.color;
             mctx.beginPath();
-            mctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+            mctx.arc(p.x, p.y, 4.0, 0, Math.PI * 2);
             mctx.fill();
           }
 
@@ -1925,6 +2021,57 @@ export default function LogicGatesSimulator({ setPage }) {
       const { x: mx, y: my } = screenToWorld(sx, sy);
       const hit = hitTest(mx, my, stateRef.current.components);
 
+      // ── DELETE MODE: klik wire/komponen = hapus. Drag & wiring di-block. ──
+      // User request: 'jika mode ini aktif maka player ketika mengklik kabel maka
+      // kabel hilang, jika komponen maka komponen hilang, serta player tidak dapat
+      // mendrag komponen baru dan player tidak dapat menggeser komponen yang sudah ada'.
+      if (deleteModeRef.current) {
+        if (hit) {
+          deleteComponent(hit.comp.id);
+          return;
+        }
+        const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+        if (wireHit) {
+          deleteWire(wireHit.wire.id);
+          return;
+        }
+        // Empty click → just clear selection, no drag.
+        setSelectedId(null);
+        setColorPicker(null);
+        return;
+      }
+
+      // ── PAINT MODE: klik wire/komponen = buka color picker. Drag & wiring di-block. ──
+      // User request: 'jika mode aktif maka player ketika mengklik kabel dapat merubah
+      // palet warna tersebut... player dapat mengubah warna komponen juga! (semua komponen
+      // tanpa terkecuali)... player tidak dapat mendrag komponen baru dan player tidak
+      // dapat menggeser komponen yang sudah ada di workspace'.
+      if (paintModeRef.current) {
+        if (hit) {
+          // Klik komponen → buka color picker untuk komponen (override def.color via userColor).
+          const comp = hit.comp;
+          const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+          const currentHex = comp.userColor || def.color;
+          setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex });
+          setStatus('Component clicked — pick a color');
+          return;
+        }
+        const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+        if (wireHit) {
+          // Klik wire → buka RGB color picker di posisi click.
+          // Wire ke-1 (color=null) tetap bisa di-recolor via userColor (override hijau default).
+          const w = wireHit.wire;
+          const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+          setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex });
+          setStatus('Wire clicked — pick a color');
+          return;
+        }
+        // Empty click → tutup picker kalau kebuka.
+        setColorPicker(null);
+        setSelectedId(null);
+        return;
+      }
+
       if (hit) {
         // ── Connect Wire mode: zone-based port selection ──
         // Saat mode connect, body/drag-handle/port hit semua di-interpret sebagai zone-based
@@ -1980,17 +2127,11 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
       } else {
-        // Gak kena komponen/port — cek apakah kena wire. Kalau iya, buka color picker.
-        const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
-        if (wireHit) {
-          // Klik wire → buka RGB color picker di posisi click.
-          // Wire ke-1 (color=null) tetap bisa di-recolor via userColor (override hijau default).
-          const w = wireHit.wire;
-          const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
-          setColorPicker({ wireId: w.id, x: sx, y: sy, hex: currentHex });
-          setStatus('Wire clicked — pick a color');
-          return;
-        }
+        // Gak kena komponen/port — cek wire hit HANYA untuk clear selection.
+        // User request: 'aturan menyentuh kabel untuk mengubah warna digantikan dengan
+        // harus menyalakan mode [paint] ini dulu baru fiturnya aktif!'.
+        // Jadi di build/connect mode (paint OFF), klik wire = nothing special (clear selection).
+        // Paint/Delete mode sudah di-handle di atas (return early).
         setSelectedId(null);
         stateRef.current.wiring = null;
         setColorPicker(null);  // klik empty space → tutup picker kalau kebuka
@@ -2257,6 +2398,47 @@ export default function LogicGatesSimulator({ setPage }) {
         const { x: mx, y: my } = screenToWorld(sx, sy);
         const hit = hitTest(mx, my, stateRef.current.components);
 
+        // ── DELETE MODE (mobile): tap wire/komponen = hapus. Drag, wiring, toggle di-block. ──
+        if (deleteModeRef.current) {
+          if (hit) {
+            deleteComponent(hit.comp.id);
+            return;
+          }
+          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+          if (wireHit) {
+            deleteWire(wireHit.wire.id);
+            return;
+          }
+          // Empty tap → just clear selection, no pan/drag.
+          setSelectedId(null);
+          setColorPicker(null);
+          return;
+        }
+
+        // ── PAINT MODE (mobile): tap wire/komponen = buka color picker. Drag, wiring, toggle di-block. ──
+        if (paintModeRef.current) {
+          if (hit) {
+            const comp = hit.comp;
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            const currentHex = comp.userColor || def.color;
+            setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex });
+            setStatus('Component tapped — pick a color');
+            return;
+          }
+          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+          if (wireHit) {
+            const w = wireHit.wire;
+            const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+            setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex });
+            setStatus('Wire tapped — pick a color');
+            return;
+          }
+          // Empty tap → tutup picker kalau kebuka, no pan/drag.
+          setColorPicker(null);
+          setSelectedId(null);
+          return;
+        }
+
         if (hit) {
           // ── Connect Wire mode: zone-based port selection (same as onMouseDown) ──
           // Di connect mode, touch component body = zone-based port selection.
@@ -2501,7 +2683,7 @@ export default function LogicGatesSimulator({ setPage }) {
       canvas.removeEventListener('touchend', onTouchEnd);
       canvas.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [hitTest, hitTestWire, hitTestZone, completeWire, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
+  }, [hitTest, hitTestWire, hitTestZone, completeWire, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt, deleteWire, deleteComponent]);
 
   // ── Resize canvas ──
   useEffect(() => {
@@ -2531,27 +2713,69 @@ export default function LogicGatesSimulator({ setPage }) {
     };
   }, []);
 
-  // ── Minimap interaction (click/drag → pan view) ──
-  // Click minimap di world point X → view di-pan supaya X di center canvas.
-  // Drag = pan terus selama mouse down.
+  // ── Minimap interaction (click dot → pan to component / click empty → pan to point) ──
+  // User request: 'titik titik berwarna di mini map dapat dipencet dan jika dipencet
+  // akan mengarah ke lokasi dimana komponen tersebut diletakkan, dan juga user mobile
+  // pastinya wajib merasakan fitur ini'.
+  // Behavior:
+  // - Click/drag di dalam hit radius dot komponen → pan view supaya komponen itu di center canvas.
+  // - Click/drag di area kosong → pan view ke world point itu (behavior lama).
+  // - Drag = pan terus selama mouse/finger down.
+  // Mobile: touchstart/touchmove/touchend didukung penuh (user request: 'user mobile wajib merasakan').
   useEffect(() => {
     const mini = minimapRef.current;
     if (!mini) return;
     let dragging = false;
 
-    const miniToView = (e) => {
+    // Convert clientX/Y → minimap internal coords (0..160, 0..110).
+    const clientToMini = (clientX, clientY) => {
+      const rect = mini.getBoundingClientRect();
+      const mx = (clientX - rect.left) * (mini.width / rect.width);
+      const my = (clientY - rect.top) * (mini.height / rect.height);
+      return { mx, my };
+    };
+
+    // Convert minimap internal coords → world coords.
+    const miniToWorld = (mx, my) => {
       const t = stateRef.current.minimap;
       if (!t) return null;
-      const rect = mini.getBoundingClientRect();
-      // CSS size mungkin beda sama internal size; normalize.
-      const mx = (e.clientX - rect.left) * (mini.width / rect.width);
-      const my = (e.clientY - rect.top) * (mini.height / rect.height);
       return {
         x: t.minX + (mx - t.offX) / t.s,
         y: t.minY + (my - t.offY) / t.s,
       };
     };
 
+    // Legacy helper: convert mouse event → world point (dipakai panTo).
+    const miniToView = (e) => {
+      const { mx, my } = clientToMini(e.clientX, e.clientY);
+      return miniToWorld(mx, my);
+    };
+
+    // Find component dot yang kena hit. Hit radius 7px (sedikit lebih gede dari visual radius 4px
+    // supaya gampang diklik di mobile). Return component object atau null.
+    const findDotHit = (mx, my) => {
+      const t = stateRef.current.minimap;
+      if (!t) return null;
+      const comps = stateRef.current.components;
+      let nearest = null;
+      let nearestDist = Infinity;
+      for (const c of comps) {
+        const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+        const w = def.width || 90;
+        const h = def.height || 56;
+        // Dot position di minimap internal coords.
+        const dotX = t.offX + (c.x + w / 2 - t.minX) * t.s;
+        const dotY = t.offY + (c.y + h / 2 - t.minY) * t.s;
+        const dist = Math.hypot(mx - dotX, my - dotY);
+        if (dist < 7 && dist < nearestDist) {
+          nearest = c;
+          nearestDist = dist;
+        }
+      }
+      return nearest;
+    };
+
+    // Pan view supaya world point wp ada di center canvas.
     const panTo = (wp) => {
       const canvas = canvasRef.current;
       if (!canvas || !wp) return;
@@ -2560,24 +2784,78 @@ export default function LogicGatesSimulator({ setPage }) {
       v.y = canvas.height / 2 - wp.y * v.scale;
     };
 
-    const onDown = (e) => {
+    // Pan view supaya component c ada di center canvas.
+    // Center comp = (c.x + w/2, c.y + h/2) di world coords.
+    const panToComponent = (c) => {
+      const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+      const w = def.width || 90;
+      const h = def.height || 56;
+      panTo({ x: c.x + w / 2, y: c.y + h / 2 });
+    };
+
+    // ── MOUSE handlers ──
+    const onMouseDown = (e) => {
       dragging = true;
-      panTo(miniToView(e));
+      const { mx, my } = clientToMini(e.clientX, e.clientY);
+      // Cek apakah kena dot komponen. Kalau iya, pan ke component center.
+      // Kalau gak, pan ke world point yang diklik (behavior lama).
+      const hit = findDotHit(mx, my);
+      if (hit) {
+        panToComponent(hit);
+      } else {
+        panTo(miniToWorld(mx, my));
+      }
       e.preventDefault();
     };
-    const onMove = (e) => {
+    const onMouseMove = (e) => {
       if (!dragging) return;
+      // Selama drag, pan ke posisi mouse (gak prioritaskan dot — drag = free pan).
       panTo(miniToView(e));
     };
-    const onUp = () => { dragging = false; };
+    const onMouseUp = () => { dragging = false; };
 
-    mini.addEventListener('mousedown', onDown);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    // ── TOUCH handlers (mobile support) ──
+    // Touch event punya struktur beda (e.touches, e.changedTouches).
+    // Touchstart: cek dot hit → pan ke component. Kalau gak, pan ke world point.
+    // Touchmove: free pan (ikuti jari).
+    // Touchend: clear dragging.
+    const onTouchStart = (e) => {
+      if (e.cancelable) e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      dragging = true;
+      const { mx, my } = clientToMini(t.clientX, t.clientY);
+      const hit = findDotHit(mx, my);
+      if (hit) {
+        panToComponent(hit);
+      } else {
+        panTo(miniToWorld(mx, my));
+      }
+    };
+    const onTouchMove = (e) => {
+      if (!dragging) return;
+      if (e.cancelable) e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      panTo(miniToView({ clientX: t.clientX, clientY: t.clientY }));
+    };
+    const onTouchEnd = () => { dragging = false; };
+
+    mini.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    mini.addEventListener('touchstart', onTouchStart, { passive: false });
+    mini.addEventListener('touchmove', onTouchMove, { passive: false });
+    mini.addEventListener('touchend', onTouchEnd, { passive: false });
+    mini.addEventListener('touchcancel', onTouchEnd, { passive: false });
     return () => {
-      mini.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      mini.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      mini.removeEventListener('touchstart', onTouchStart);
+      mini.removeEventListener('touchmove', onTouchMove);
+      mini.removeEventListener('touchend', onTouchEnd);
+      mini.removeEventListener('touchcancel', onTouchEnd);
     };
   }, []);
 
@@ -2590,6 +2868,17 @@ export default function LogicGatesSimulator({ setPage }) {
   const [dragGhost, setDragGhost] = useState(null);  // { type, x, y } — visual feedback selama drag
   const onPaletteMouseDown = (type) => (e) => {
     e.preventDefault();
+    // Paint Mode & Delete Mode: dilarang drag/drop komponen baru dari palette.
+    // User request: 'player tidak dapat mendrag komponen baru' (berlaku untuk kedua mode).
+    // Cek via refs (bukan state) supaya selalu baca value terbaru tanpa dependency ke re-render.
+    if (paintModeRef.current) {
+      setStatus('Turn off Paint mode to add components');
+      return;
+    }
+    if (deleteModeRef.current) {
+      setStatus('Turn off Delete mode to add components');
+      return;
+    }
     // Connect Wire mode: dilarang drag/drop komponen baru dari palette.
     // User request: 'ketika connect wire, maka user masih tetap bisa mendrag atau
     // mendrop komponen baru, harusnya ini dilarang'. Cek via modeRef (bukan state
@@ -2604,6 +2893,15 @@ export default function LogicGatesSimulator({ setPage }) {
   // Touch version untuk palette (mobile) — pakai touch identifier tracking.
   const onPaletteTouchStart = (type) => (e) => {
     e.preventDefault();
+    // Paint/Delete/Connect mode: block drag/drop di mobile juga (konsisten dengan desktop).
+    if (paintModeRef.current) {
+      setStatus('Turn off Paint mode to add components');
+      return;
+    }
+    if (deleteModeRef.current) {
+      setStatus('Turn off Delete mode to add components');
+      return;
+    }
     // Connect Wire mode: block drag/drop di mobile juga (konsisten dengan desktop).
     if (modeRef.current === 'connect') {
       setStatus('Switch to Build mode to add components');
@@ -3030,77 +3328,27 @@ export default function LogicGatesSimulator({ setPage }) {
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {isMobile ? 'Simulator 2D' : 'Logic Gates Simulator 2D'}
           </span>
-        </div>
-        {/* Mobile: collapse Clear All + Load Demo jadi menu dropdown (☰) biar header gak numpuk.
-            Desktop: tampil normal berdampingan. */}
-        {isMobile ? (
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          {/* ── Clear All button — moved here per user request ──
+              'tombol clear all geser ke kiri tepat di sebelah teks "logic simulator 2D"
+              dan hanya muncul bila tombol delete dalam kondisi on atau delete on,
+              jika delete off maka clear all hilang tidak ada dimanapun'.
+              Jadi: render HANYA saat deleteMode === true. Saat false, button gak ada di DOM. */}
+          {deleteMode && (
             <button
-              onClick={() => setMobileMenuOpen(o => !o)}
-              title="Menu"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 36, height: 36, borderRadius: 8,
-                border: '1px solid #334155', backgroundColor: '#0f172a',
-                color: '#cbd5e1', cursor: 'pointer',
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="18" x2="20" y2="18" />
-              </svg>
-            </button>
-            {mobileMenuOpen && (
-              <>
-                {/* Click-away overlay */}
-                <div
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={{ position: 'fixed', inset: 0, zIndex: 49 }}
-                />
-                <div style={{
-                  position: 'absolute',
-                  top: '100%', right: 0, marginTop: 4,
-                  backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)', padding: 4, zIndex: 50,
-                  minWidth: 140,
-                }}>
-                  <button
-                    style={{ ...btnStyle, width: '100%', textAlign: 'left', padding: '8px 12px', marginBottom: 2 }}
-                    onClick={() => { loadDemo(); setMobileMenuOpen(false); }}
-                  >
-                    Load Demo
-                  </button>
-                  <button
-                    style={{ ...clearBtnStyle, width: '100%', textAlign: 'left', padding: '8px 12px' }}
-                    onClick={() => { clearAll(); setMobileMenuOpen(false); }}
-                  >
-                    Clear All
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
-              style={clearBtnStyle}
+              style={{ ...clearBtnStyle, flexShrink: 0 }}
               onClick={clearAll}
+              title="Hapus semua komponen & kabel"
               onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#b91c1c'; e.currentTarget.style.borderColor = '#b91c1c'; }}
               onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#dc2626'; e.currentTarget.style.borderColor = '#dc2626'; }}
             >
               Clear All
             </button>
-            <button
-              style={btnStyle}
-              onClick={loadDemo}
-              onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
-            >
-              Load Demo
-            </button>
-          </div>
-        )}
+          )}
+        </div>
+        {/* Load Demo button dihapus total — user request: 'tombol load demo delete aja'.
+            Clear All sudah dipindah ke titleStyle div di atas (next to title text).
+            Mobile menu (☰) juga dihapus karena isinya cuma Load Demo + Clear All yang
+            sekarang sudah ditangani berbeda. Header kanan sekarang kosong. */}
       </div>
       <div style={bodyStyle}>
         {/* Toggle palette SAAT CLOSED — floating di tepi kiri canvas (left:8).
@@ -3246,7 +3494,7 @@ export default function LogicGatesSimulator({ setPage }) {
             cursor: 'pointer',
             zIndex: 5,
           }}
-            title="Click atau drag untuk pan view ke lokasi tersebut"
+            title="Click dot komponen untuk pan ke lokasinya, atau click area kosong untuk pan view"
           >
             <canvas
               ref={minimapRef}
@@ -3255,43 +3503,114 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{ display: 'block', width: '100%', height: '100%' }}
             />
           </div>
-          {/* Mode toggle — Build (drag/pan components) vs Connect Wire (zone-based wire connect).
-              User request (gambar 3): 'tambahin tombol baru bernama mode' di samping kiri.
-              Posisi top-left canvas wrapper (paletteOpen ? top:8 : top:60 biar gak konflik
-              dengan palette-open toggle button yang muncul di top:8 left:8 saat palette closed).
-              Warna: hijau untuk Build (default mode), biru untuk Connect (wire mode).
-              Klik untuk toggle. modeRef sync via useEffect supaya event handlers baca mode baru. */}
-          <button
-            onClick={() => setMode(m => m === 'build' ? 'connect' : 'build')}
-            title={mode === 'build' ? 'Switch to Connect Wire mode' : 'Switch to Build mode'}
-            style={{
-              position: 'absolute',
-              top: paletteOpen ? 8 : 60,
-              left: 8,
-              zIndex: 20,
-              display: 'flex', alignItems: 'center', gap: 8,
-              // Button dibikin gede biar enak pas pencet (mobile-friendly).
-              // User request: 'ukurannya di gedein biar enak pas pencetnya'.
-              // Padding 6×10 → 10×14, fontSize 11 → 13, borderRadius 8 → 10.
-              padding: '10px 14px', borderRadius: 10,
-              border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#60a5fa'),
-              backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(96, 165, 250, 0.15)',
-              color: mode === 'build' ? '#4ade80' : '#60a5fa',
-              fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(4px)',
-              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, top 0.22s ease',
-              userSelect: 'none',
-            }}
-          >
-            {/* Icon logo (MousePointer2 / Cable) JANGAN diubah — user request:
-                'logonya bagus itu logo iconnya jangan di sentuh'. Size 13 dipertahankan. */}
-            {mode === 'build' ? <MousePointer2 size={13} /> : <Cable size={13} />}
-            {/* Text label diubah: 'Build' → 'mode: build', 'Connect' → 'mode: connect wire'.
-                User request eksplisit: 'teksnya saja diganti jadi "mode: build" "mode: connect wire"'. */}
-            <span>{mode === 'build' ? 'mode: build' : 'mode: connect wire'}</span>
-          </button>
+          {/* ── Mode + Paint + Delete button stack ──
+              Tiga tombol di-stack vertikal di top-left canvas wrapper.
+              Wrapper div positioned absolute, top berubah tergantung paletteOpen
+              (palette closed → ada toggle button di top:8 left:8, jadi stack digeser ke top:60).
+              User request:
+              - 'tombol mode:build' (sudah ada) — toggle build/connect wire.
+              - Tepat di bawahnya: tombol 'paint' (biru). OFF = dim + 'paint off', ON = bright + 'paint on'.
+              - Tepat di bawah paint: tombol 'delete' (merah, ikon X). OFF = dim + 'delete off', ON = bright + 'delete on'.
+              - Paint & Delete saling mutual exclusive (turn ON satu → yang lain OFF).
+              - Saat salah satu ON: drag komponen baru & geser komponen existing di-block. */}
+          <div style={{
+            position: 'absolute',
+            top: paletteOpen ? 8 : 60,
+            left: 8,
+            zIndex: 20,
+            display: 'flex', flexDirection: 'column', gap: 6,
+            transition: 'top 0.22s ease',
+          }}>
+            {/* Mode toggle — Build (drag/pan components) vs Connect Wire (zone-based wire connect).
+                User request (gambar 3): 'tambahin tombol baru bernama mode' di samping kiri.
+                Warna: hijau untuk Build (default mode), biru untuk Connect (wire mode).
+                Klik untuk toggle. modeRef sync via useEffect supaya event handlers baca mode baru. */}
+            <button
+              onClick={() => setMode(m => m === 'build' ? 'connect' : 'build')}
+              title={mode === 'build' ? 'Switch to Connect Wire mode' : 'Switch to Build mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                // Button dibikin gede biar enak pas pencet (mobile-friendly).
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#60a5fa'),
+                backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(96, 165, 250, 0.15)',
+                color: mode === 'build' ? '#4ade80' : '#60a5fa',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                userSelect: 'none',
+              }}
+            >
+              {/* Icon logo (MousePointer2 / Cable) JANGAN diubah — user request:
+                  'logonya bagus itu logo iconnya jangan di sentuh'. Size 13 dipertahankan. */}
+              {mode === 'build' ? <MousePointer2 size={13} /> : <Cable size={13} />}
+              {/* Text label diubah: 'Build' → 'mode: build', 'Connect' → 'mode: connect wire'.
+                  User request eksplisit: 'teksnya saja diganti jadi "mode: build" "mode: connect wire"'. */}
+              <span>{mode === 'build' ? 'mode: build' : 'mode: connect wire'}</span>
+            </button>
+
+            {/* ── Paint Mode toggle ──
+                Biru (warna biru muda #60a5fa). OFF = dim (low opacity), text 'paint off'.
+                ON = bright (full opacity + glow), text 'paint on'.
+                Saat ON: klik wire/komponen → buka color picker. Drag & wiring di-block.
+                Mutual exclusive dengan Delete: turn ON paint → delete OFF. */}
+            <button
+              onClick={togglePaint}
+              title={paintMode ? 'Paint mode ON — click wire/component to recolor' : 'Turn on Paint mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                // OFF: border & bg dim (alpha 0.06), text biru redup (#60a5fa@0.5).
+                // ON: border & bg bright (alpha 0.25), text biru full + box glow.
+                border: '1px solid ' + (paintMode ? '#60a5fa' : 'rgba(96, 165, 250, 0.3)'),
+                backgroundColor: paintMode ? 'rgba(96, 165, 250, 0.25)' : 'rgba(96, 165, 250, 0.06)',
+                color: paintMode ? '#60a5fa' : 'rgba(96, 165, 250, 0.5)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: paintMode
+                  ? '0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(96, 165, 250, 0.5)'
+                  : '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+                userSelect: 'none',
+              }}
+            >
+              {/* Paint icon pakai Cable icon di-rotate? No — user spec doesn't require icon for paint.
+                  Cukup text label sesuai spec: 'paint off' / 'paint on'. */}
+              <span>{paintMode ? 'paint on' : 'paint off'}</span>
+            </button>
+
+            {/* ── Delete Mode toggle ──
+                Merah (#ef4444) dengan ikon X. OFF = dim, text 'delete off'.
+                ON = bright (full opacity + glow), text 'delete on'.
+                Saat ON: klik wire → wire hilang, klik komponen → komponen + wires-nya hilang.
+                Drag & wiring di-block. Mutual exclusive dengan Paint. */}
+            <button
+              onClick={toggleDelete}
+              title={deleteMode ? 'Delete mode ON — click wire/component to delete' : 'Turn on Delete mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (deleteMode ? '#ef4444' : 'rgba(239, 68, 68, 0.3)'),
+                backgroundColor: deleteMode ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.06)',
+                color: deleteMode ? '#ef4444' : 'rgba(239, 68, 68, 0.5)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: deleteMode
+                  ? '0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(239, 68, 68, 0.5)'
+                  : '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+                userSelect: 'none',
+              }}
+            >
+              {/* Ikon X merah — user request: 'dia memiliki logo X merah menandakan bahwa dia itu tombol delete'. */}
+              <X size={13} />
+              <span>{deleteMode ? 'delete on' : 'delete off'}</span>
+            </button>
+          </div>
           <div style={statusStyle}>{status}</div>
           {/* Zoom + coordinate controls — FIXED ke viewport (bukan absolute di canvasWrap).
               User request: 'papan informasi... wajib sejajar dengan tombol chat helper,
@@ -3477,10 +3796,12 @@ export default function LogicGatesSimulator({ setPage }) {
         </div>
       )}
 
-      {/* ── Wire Color Picker ──
-          Muncul saat user klik wire mana pun. Full RGB palette (input type=color)
-          + preview ON/OFF + tombol reset ke random + tombol close.
-          Posisi: dekat click point, tapi clamp supaya gak off-screen. */}
+      {/* ── Color Picker (Wire & Component) ──
+          Muncul saat user klik wire/komponen di Paint Mode.
+          - Wire target: full RGB palette + preview ON/OFF (redup/terang) + tombol Random + Close.
+          - Component target: full RGB palette + preview warna solid + tombol Reset (ke default) + Close.
+          Posisi: dekat click point, tapi clamp supaya gak off-screen.
+          State: colorPicker = { targetType: 'wire'|'comp', targetId, x, y, hex } */}
       {colorPicker && (
         <div
           style={{
@@ -3497,9 +3818,10 @@ export default function LogicGatesSimulator({ setPage }) {
             fontFamily: '"Inter", sans-serif',
           }}
           onMouseDown={e => e.stopPropagation()}  // jangan trigger canvas mousedown
+          onTouchStart={e => e.stopPropagation()}  // jangan trigger canvas touchstart (mobile)
         >
           <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>
-            Wire Color
+            {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
           </div>
 
           {/* Color input — native browser RGB picker */}
@@ -3510,10 +3832,16 @@ export default function LogicGatesSimulator({ setPage }) {
               onChange={e => {
                 const hex = e.target.value;
                 setColorPicker(cp => cp ? { ...cp, hex } : cp);
-                // Apply ke wire langsung (live preview).
-                setWires(prevWires => prevWires.map(w =>
-                  w.id === colorPicker.wireId ? { ...w, userColor: hex } : w
-                ));
+                // Apply ke target (wire atau comp) langsung (live preview).
+                if (colorPicker.targetType === 'comp') {
+                  setComponents(prevComps => prevComps.map(c =>
+                    c.id === colorPicker.targetId ? { ...c, userColor: hex } : c
+                  ));
+                } else {
+                  setWires(prevWires => prevWires.map(w =>
+                    w.id === colorPicker.targetId ? { ...w, userColor: hex } : w
+                  ));
+                }
               }}
               style={{
                 width: 48, height: 36, border: '1px solid #475569',
@@ -3529,9 +3857,15 @@ export default function LogicGatesSimulator({ setPage }) {
                   const v = e.target.value;
                   if (/^#[0-9a-fA-F]{6}$/.test(v)) {
                     setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
-                    setWires(prevWires => prevWires.map(w =>
-                      w.id === colorPicker.wireId ? { ...w, userColor: v.toLowerCase() } : w
-                    ));
+                    if (colorPicker.targetType === 'comp') {
+                      setComponents(prevComps => prevComps.map(c =>
+                        c.id === colorPicker.targetId ? { ...c, userColor: v.toLowerCase() } : c
+                      ));
+                    } else {
+                      setWires(prevWires => prevWires.map(w =>
+                        w.id === colorPicker.targetId ? { ...w, userColor: v.toLowerCase() } : w
+                      ));
+                    }
                   }
                 }}
                 style={{
@@ -3543,61 +3877,95 @@ export default function LogicGatesSimulator({ setPage }) {
             </div>
           </div>
 
-          {/* Preview ON/OFF */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <div style={{ flex: 1, textAlign: 'center' }}>
+          {/* Preview: wire = ON/OFF (redup/terang), comp = solid color saja */}
+          {colorPicker.targetType === 'wire' ? (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <div
+                  style={{
+                    height: 28, borderRadius: 6, marginBottom: 4,
+                    background: (() => {
+                      const { h, s } = hexToHsl(colorPicker.hex);
+                      return hslToHex(h, s, 30);
+                    })(),
+                    border: '2px solid #334155',
+                  }}
+                />
+                <div style={{ fontSize: 10, color: '#94a3b8' }}>OFF (redup)</div>
+              </div>
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <div
+                  style={{
+                    height: 28, borderRadius: 6, marginBottom: 4,
+                    background: (() => {
+                      const { h, s } = hexToHsl(colorPicker.hex);
+                      return hslToHex(h, s, 65);
+                    })(),
+                    border: '2px solid #334155',
+                  }}
+                />
+                <div style={{ fontSize: 10, color: '#94a3b8' }}>ON (terang)</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 12 }}>
               <div
                 style={{
-                  height: 28, borderRadius: 6, marginBottom: 4,
-                  background: (() => {
-                    const { h, s } = hexToHsl(colorPicker.hex);
-                    return hslToHex(h, s, 30);
-                  })(),
+                  height: 32, borderRadius: 6, marginBottom: 4,
+                  background: colorPicker.hex,
                   border: '2px solid #334155',
+                  boxShadow: `0 0 12px ${colorPicker.hex}80`,
                 }}
               />
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>OFF (redup)</div>
+              <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center' }}>Component color</div>
             </div>
-            <div style={{ flex: 1, textAlign: 'center' }}>
-              <div
-                style={{
-                  height: 28, borderRadius: 6, marginBottom: 4,
-                  background: (() => {
-                    const { h, s } = hexToHsl(colorPicker.hex);
-                    return hslToHex(h, s, 65);
-                  })(),
-                  border: '2px solid #334155',
-                }}
-              />
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>ON (terang)</div>
-            </div>
-          </div>
+          )}
 
-          {/* Action buttons */}
+          {/* Action buttons: wire = Random, comp = Reset (ke default) */}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => {
-                // Reset ke random color (regenerate).
-                setWires(prevWires => {
-                  const otherHues = prevWires
-                    .filter(w => w.id !== colorPicker.wireId && w.color)
-                    .map(w => w.color.h);
-                  const newColor = generateWireColor(otherHues);
-                  return prevWires.map(w =>
-                    w.id === colorPicker.wireId ? { ...w, color: newColor, userColor: null } : w
-                  );
-                });
-                setColorPicker(null);
-                setStatus('Wire color randomized');
-              }}
-              style={{
-                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
-                background: '#334155', border: '1px solid #475569',
-                borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
-              }}
-            >
-              Random
-            </button>
+            {colorPicker.targetType === 'wire' ? (
+              <button
+                onClick={() => {
+                  // Reset ke random color (regenerate).
+                  setWires(prevWires => {
+                    const otherHues = prevWires
+                      .filter(w => w.id !== colorPicker.targetId && w.color)
+                      .map(w => w.color.h);
+                    const newColor = generateWireColor(otherHues);
+                    return prevWires.map(w =>
+                      w.id === colorPicker.targetId ? { ...w, color: newColor, userColor: null } : w
+                    );
+                  });
+                  setColorPicker(null);
+                  setStatus('Wire color randomized');
+                }}
+                style={{
+                  flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                  background: '#334155', border: '1px solid #475569',
+                  borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
+                }}
+              >
+                Random
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  // Reset ke default color (clear userColor → pakai def.color).
+                  setComponents(prevComps => prevComps.map(c =>
+                    c.id === colorPicker.targetId ? { ...c, userColor: null } : c
+                  ));
+                  setColorPicker(null);
+                  setStatus('Component color reset to default');
+                }}
+                style={{
+                  flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                  background: '#334155', border: '1px solid #475569',
+                  borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
+                }}
+              >
+                Reset
+              </button>
+            )}
             <button
               onClick={() => setColorPicker(null)}
               style={{
