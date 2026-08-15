@@ -604,8 +604,9 @@ function MiniGateIcon({ type, color, scale = 1 }) {
   const svgStyle = { 
     display: 'block', 
     flexShrink: 0,
-    // Glow effect — match Basic Logic Gates reference (drop-shadow filter)
-    filter: `drop-shadow(0 0 2px ${color}) drop-shadow(0 0 4px ${color}80)`,
+    // NO glow — user request: warna cerah solid tanpa halo/drop-shadow.
+    // Warna tetap vibrant dari def.color (#f87171 red, #4ade80 green, etc),
+    // cuma gak ada efek cahaya di sekitar icon.
   };
 
   const maxW = wireLen + xorExtra + tipX + bubbleGap + bubbleR + wireLen;
