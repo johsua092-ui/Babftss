@@ -3581,8 +3581,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (paintMode ? '#ff0080' : 'rgba(255, 0, 128, 0.3)'),
-                backgroundColor: paintMode ? 'rgba(255, 0, 128, 0.20)' : 'rgba(255, 0, 128, 0.06)',
-                color: paintMode ? '#b3005c' : 'rgba(255, 0, 128, 0.5)',
+                backgroundColor: paintMode ? 'rgba(255, 0, 128, 0.10)' : 'rgba(255, 0, 128, 0.06)',
+                color: paintMode ? '#ff0080' : 'rgba(255, 0, 128, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3620,8 +3620,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (deleteMode ? '#ff1744' : 'rgba(255, 23, 68, 0.3)'),
-                backgroundColor: deleteMode ? 'rgba(255, 23, 68, 0.35)' : 'rgba(255, 23, 68, 0.06)',
-                color: deleteMode ? '#b8102a' : 'rgba(255, 23, 68, 0.5)',
+                backgroundColor: deleteMode ? 'rgba(255, 23, 68, 0.12)' : 'rgba(255, 23, 68, 0.06)',
+                color: deleteMode ? '#ff1744' : 'rgba(255, 23, 68, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3704,14 +3704,14 @@ export default function LogicGatesSimulator({ setPage }) {
               ),
               backgroundColor: (
                 mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
-                paintMode ? 'rgba(255, 0, 128, 0.20)' :
-                deleteMode ? 'rgba(255, 23, 68, 0.35)' :
+                paintMode ? 'rgba(255, 0, 128, 0.10)' :
+                deleteMode ? 'rgba(255, 23, 68, 0.12)' :
                 'rgba(74, 222, 128, 0.15)'
               ),
               color: (
                 mode === 'connect' ? '#22d3ee' :
-                paintMode ? '#b3005c' :
-                deleteMode ? '#b8102a' :
+                paintMode ? '#ff0080' :
+                deleteMode ? '#ff1744' :
                 '#4ade80'
               ),
               fontSize: 15, fontWeight: 800, fontFamily: '"Inter", sans-serif',
