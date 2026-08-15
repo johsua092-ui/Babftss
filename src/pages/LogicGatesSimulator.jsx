@@ -2312,13 +2312,13 @@ export default function LogicGatesSimulator({ setPage }) {
   // Inner palette — fixed 280px supaya children gak reflow pas outer width animasi.
   // Opacity fade biar gak kelihatan "flash" pas width lagi transisi.
   // className 'palette-scroll' untuk custom scrollbar styling (dark & slim, blend sama sidebar).
-  // padding-top 60 (bukan 16) — kasih ruang buat toggle button (44px) di pojok kanan-atas,
-  // jadi content (title + items) mulai di bawah toggle, gak ada overlap.
+  // padding-top 8 (kecil) — ada header row 44px di dalam yang sejajar sama toggle button,
+  // jadi title sejajar toggle & items langsung di bawahnya (gak ada ruang kosong).
   const paletteInnerStyle = {
     width: 280,
     height: '100%',
     backgroundColor: '#1e293b',
-    padding: '60px 14px 16px 14px',
+    padding: '8px 14px 16px 14px',
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
@@ -2333,6 +2333,7 @@ export default function LogicGatesSimulator({ setPage }) {
   // Palette title — "7 Basic Logic Gates". Putih kinclong (#ffffff) bukan glow.
   // Center align biar estetik & seimbang dengan toggle button di pojok kanan-atas.
   // uppercase dipertahankan biar vibe header tetap ada ( Orbitron font + letter-spacing ).
+  // marginBottom 0 — gap ke items diatur oleh header row wrapper.
   const paletteTitleStyle = {
     fontSize: 11,
     fontWeight: 700,
@@ -2340,9 +2341,21 @@ export default function LogicGatesSimulator({ setPage }) {
     textTransform: 'uppercase',
     letterSpacing: '0.8px',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 0,
     marginTop: 0,
     fontFamily: '"Orbitron", sans-serif',
+  };
+
+  // Header row — sejajar dengan toggle button (44px tall). Title centered di sini,
+  // toggle overlay di pojok kanan-atas (position:absolute). Items mulai tepat di bawah header.
+  // marginBottom 10 = small gap ke items pertama.
+  const paletteHeaderStyle = {
+    height: 44,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    flexShrink: 0,
   };
 
   // Item style — padding & gap dibesarin biar touch target lebih gede & enak dipencet.
@@ -2532,7 +2545,9 @@ export default function LogicGatesSimulator({ setPage }) {
         </button>
         <div style={paletteStyle}>
           <div style={paletteInnerStyle} className="palette-scroll">
-            <div style={paletteTitleStyle}>7 Basic Logic Gates</div>
+            <div style={paletteHeaderStyle}>
+              <div style={paletteTitleStyle}>7 Basic Logic Gates</div>
+            </div>
             {GATE_DATA.map(g => (
               <div
                 key={g.type}
