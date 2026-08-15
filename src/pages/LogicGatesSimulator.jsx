@@ -2422,6 +2422,38 @@ export default function LogicGatesSimulator({ setPage }) {
       }
       if (pointers.length === 0) {
         // Semua jari diangkat — finalize single-touch action.
+
+        // ── Connect mode: drop-to-connect ──
+        // Bug fix: sebelumnya wiring langsung di-clear di akhir onTouchEnd tanpa
+        // check zona lepas. User tekan zona output → drag ke komponen lain → lepas
+        // di zona input → harusnya nyambung, tapi gak pernah ke-trigger.
+        // Fix: baca posisi jari terakhir dari changedTouches[0], convert ke world
+        // coords, hit test. Kalau kena zona input komponen lain → completeWire.
+        if (modeRef.current === 'connect' && stateRef.current.wiring) {
+          const t = e.changedTouches[0];
+          if (t) {
+            const rect = canvas.getBoundingClientRect();
+            const sx = t.clientX - rect.left;
+            const sy = t.clientY - rect.top;
+            const { x: mx, y: my } = screenToWorld(sx, sy);
+            const hit = hitTest(mx, my, stateRef.current.components);
+            if (hit) {
+              const zone = hitTestZone(mx, my, hit.comp);
+              if (zone && zone.kind === 'input') {
+                completeWire(
+                  stateRef.current.wiring.fromComp,
+                  stateRef.current.wiring.fromIdx,
+                  hit.comp,
+                  zone.idx
+                );
+              } else if (zone && zone.kind === 'output' && hit.comp.id !== stateRef.current.wiring.fromComp.id) {
+                // User lepas di zona output komponen lain — gak valid (output→output).
+                setStatus('Drop on an INPUT zone to connect');
+              }
+            }
+          }
+        }
+
         // Toggle Switch body kalau ini tap (gak moved), bukan drag.
         if (touchStateRef.current.toggleCandidate && touchStateRef.current.touchStart) {
           const ts = touchStateRef.current.touchStart;
