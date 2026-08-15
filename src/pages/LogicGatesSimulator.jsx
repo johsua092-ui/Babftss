@@ -2297,25 +2297,29 @@ export default function LogicGatesSimulator({ setPage }) {
     position: 'relative', // supaya toggle button palette bisa position:absolute relatif ke body
   };
 
-  // Palette sidebar — fixed width 200px (cukup untuk item terpanjang 'XNOR Gate').
-  // Animasi toggle width 0 ↔ 200 supaya smooth transition.
-  // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
-  // 200px = padding 14×2 + icon 58 + gap 12 + text 'XNOR Gate' ~100px = ~196px → dibuletin 200.
+  // Palette sidebar — width: fit-content supaya sidebar nyesuaiin lebar item terpanjang.
+  // Animasi toggle pakai maxWidth (0 ↔ 320) supaya smooth (width: fit-content gak bisa animasi).
+  // User request: 'ukuran mengikuti teksnya, semuanya otomatis mengikuti & mensejajarkan'.
+  // max-content sidebar + grid 1fr items = semua item seragam sepanjang item terpanjang.
   const paletteStyle = {
-    width: paletteOpen ? 200 : 0,
+    width: paletteOpen ? 'fit-content' : 0,
+    maxWidth: paletteOpen ? 320 : 0,
     backgroundColor: '#1e293b',
     borderRight: paletteOpen ? '1px solid #334155' : '1px solid transparent',
     overflow: 'hidden',
     flexShrink: 0,
-    transition: 'width 0.22s ease, border-color 0.22s ease',
+    position: 'relative', // supaya toggle button (di dalam) bisa position:absolute right:8
+    transition: 'max-width 0.22s ease, border-color 0.22s ease',
   };
 
-  // Inner palette — fixed 200px (sama dengan outer) supaya gak ada gap.
-  // display: grid 1fr supaya semua item seragam (sama lebar = lebar column = 200px - padding).
-  // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
+  // Inner palette — width: max-content supaya sidebar nyesuaiin lebar item terpanjang.
+  // display: grid 1fr supaya semua item seragam (sama lebar = lebar item terpanjang).
+  // User request: 'kalimat lurus maju ke samping, gak dipaksa ke bawah, ukuran ikut teks'.
+  // Outer palette fixed width animasi gak bisa (max-content gak numeric), jadi pakai
+  // outer width: fit-content + maxWidth animate (0 ↔ 320) supaya toggle smooth.
   // className 'palette-scroll' untuk custom scrollbar styling (dark & slim).
   const paletteInnerStyle = {
-    width: 200,
+    width: 'max-content',
     height: '100%',
     backgroundColor: '#1e293b',
     padding: '8px 14px 16px 14px',
@@ -2508,45 +2512,77 @@ export default function LogicGatesSimulator({ setPage }) {
         </div>
       </div>
       <div style={bodyStyle}>
-        {/* Toggle palette — floating button, SELALU visible (baik palette open maupun closed).
-            User minta: posisi di pojok palette sebelah "Components" text saat terbuka,
-            dan pas ditutup cuma tombol ini yang tersisa (palette body hilang).
-            - Saat open: left = 200 - 44 - 10 = 146 (pojok kanan-atas palette, 10px margin dari kanan)
-            - Saat closed: left = 8 (float di tepi kiri canvas)
-            - top: 8 (sejajar dengan padding palette 14px, sedikit ke atas biar kelihatan nempel ke header)
-            - z-index 20 supaya di atas palette content & canvas controls
-            - Warna hijau saat closed biar kelihatan "ada panel bisa dibuka" */}
-        <button
-          onClick={() => setPaletteOpen(o => !o)}
-          title={paletteOpen ? 'Tutup panel komponen' : 'Buka panel komponen'}
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: paletteOpen ? 146 : 8,
-            zIndex: 20,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 44, height: 44, borderRadius: 10,
-            border: `1px solid ${paletteOpen ? '#475569' : '#4ade80'}`,
-            backgroundColor: paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.15)',
-            color: paletteOpen ? '#94a3b8' : '#4ade80',
-            cursor: 'pointer',
-            transition: 'left 0.22s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
-            boxShadow: paletteOpen ? 'none' : '0 2px 8px rgba(0,0,0,0.4)',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.color = '#e2e8f0';
-            e.currentTarget.style.borderColor = '#4ade80';
-            e.currentTarget.style.backgroundColor = paletteOpen ? '#1e293b' : 'rgba(74, 222, 128, 0.25)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.color = paletteOpen ? '#94a3b8' : '#4ade80';
-            e.currentTarget.style.borderColor = paletteOpen ? '#475569' : '#4ade80';
-            e.currentTarget.style.backgroundColor = paletteOpen ? '#0f172a' : 'rgba(74, 222, 128, 0.15)';
-          }}
-        >
-          {paletteOpen ? <PanelLeftClose size={22} /> : <PanelLeftOpen size={22} />}
-        </button>
+        {/* Toggle palette SAAT CLOSED — floating di tepi kiri canvas (left:8).
+            Saat palette closed, body palette width=0 & overflow hidden, jadi toggle
+            di dalam palette gak kelihatan. Karena itu render toggle terpisah di body
+            cuma saat paletteOpen=false. Warna hijau sebagai hint "ada panel bisa dibuka". */}
+        {!paletteOpen && (
+          <button
+            onClick={() => setPaletteOpen(true)}
+            title="Buka panel komponen"
+            style={{
+              position: 'absolute',
+              top: 8,
+              left: 8,
+              zIndex: 20,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 44, height: 44, borderRadius: 10,
+              border: '1px solid #4ade80',
+              backgroundColor: 'rgba(74, 222, 128, 0.15)',
+              color: '#4ade80',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#e2e8f0';
+              e.currentTarget.style.borderColor = '#4ade80';
+              e.currentTarget.style.backgroundColor = 'rgba(74, 222, 128, 0.25)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = '#4ade80';
+              e.currentTarget.style.borderColor = '#4ade80';
+              e.currentTarget.style.backgroundColor = 'rgba(74, 222, 128, 0.15)';
+            }}
+          >
+            <PanelLeftOpen size={22} />
+          </button>
+        )}
         <div style={paletteStyle}>
+          {/* Toggle palette SAAT OPEN — di dalam palette div, pojok kanan-atas (right:8 top:8).
+              position absolute relatif ke paletteStyle (position:relative).
+              Karena palette width: fit-content, toggle ikut mengecil/membesar bareng palette. */}
+          {paletteOpen && (
+            <button
+              onClick={() => setPaletteOpen(false)}
+              title="Tutup panel komponen"
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                zIndex: 20,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 44, height: 44, borderRadius: 10,
+                border: '1px solid #475569',
+                backgroundColor: '#0f172a',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.color = '#e2e8f0';
+                e.currentTarget.style.borderColor = '#4ade80';
+                e.currentTarget.style.backgroundColor = '#1e293b';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.color = '#94a3b8';
+                e.currentTarget.style.borderColor = '#475569';
+                e.currentTarget.style.backgroundColor = '#0f172a';
+              }}
+            >
+              <PanelLeftClose size={22} />
+            </button>
+          )}
           <div style={paletteInnerStyle} className="palette-scroll">
             <div style={paletteHeaderStyle}>
               <div style={paletteTitleStyle}>7 Basic Logic Gates</div>
@@ -2562,7 +2598,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <div style={iconBoxStyle(g.color)}>
                   <MiniGateIcon type={g.type} color={g.color} scale={0.7} />
                 </div>
-                <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>{g.name}</span>
+                <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>{g.name}</span>
               </div>
             ))}
             <div style={{ ...paletteTitleStyle, marginTop: 10 }}>I/O</div>
@@ -2573,7 +2609,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
               <div style={iconBoxStyle('#f59e0b')}>⚡</div>
-              <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>Switch</span>
+              <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>Switch</span>
             </div>
             <div
               style={itemStyle}
@@ -2582,7 +2618,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
               <div style={iconBoxStyle('#ef4444')}>●</div>
-              <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600 }}>LED</span>
+              <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>LED</span>
             </div>
           </div>
         </div>
