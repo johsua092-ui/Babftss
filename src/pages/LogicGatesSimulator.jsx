@@ -865,11 +865,9 @@ export default function LogicGatesSimulator({ setPage }) {
   // x,y = screen coords (di mana panel muncul). hex = warna saat ini di picker.
   const [colorPicker, setColorPicker] = useState(null);
   // Sidebar palette toggle — user minta: bisa tutup panel komponen biar leluasa berkreasi di canvas,
-  // buka lagi kalau mau add komponen. Default true (terbuka) supaya user pertama kali lihat palette.
-  // DI MOBILE: default false (tutup) supaya sidebar gak nutupin canvas yang udah sempit.
-  const [paletteOpen, setPaletteOpen] = useState(
-    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
-  );
+  // Default false (tutup) supaya saat pertama kali buka simulasi, semua menu/tool tertutup.
+  // User harus klik tombol buat membuka palette. Ini biar canvas bersih dan gak overwhelming.
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // Mobile detection — track viewport width buat responsive layout (header collapse, dll).
   // User feedback: 'di mobile layoutnya ngawur, tombol header numpuk'.
   const [isMobile, setIsMobile] = useState(
@@ -901,7 +899,7 @@ export default function LogicGatesSimulator({ setPage }) {
   const [cloneMode, setCloneMode] = useState(false);
   const [moveMode, setMoveMode] = useState(false);
   const [rotateMode, setRotateMode] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(true);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const paintModeRef = useRef(false);
   const deleteModeRef = useRef(false);
   const cloneModeRef = useRef(false);
