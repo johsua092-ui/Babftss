@@ -2177,18 +2177,23 @@ export default function LogicGatesSimulator({ setPage }) {
             else if (dir === 'left') dx = -(boxW + gap);
             else if (dir === 'right') dx = boxW + gap;
 
-            // Create duplicates with new IDs
+            // Create duplicates with new IDs & proper typeNum
             let nextIdVal = stateRef.current.nextId;
             const newComps = [...stateRef.current.components];
             const newWrs = [...stateRef.current.wires];
             const idMap = {}; // old id → new id
+            const newCounters = { ...stateRef.current.typeCounters };
 
             for (const c of selComps) {
               const newId = nextIdVal++;
               idMap[c.id] = newId;
+              // Assign new typeNum by incrementing per-type counter
+              const newTypeNum = (newCounters[c.type] || 0) + 1;
+              newCounters[c.type] = newTypeNum;
               const newComp = {
                 ...c,
                 id: newId,
+                typeNum: newTypeNum,
                 x: c.x + dx,
                 y: c.y + dy,
                 inputWires: c.inputWires.map(() => null),
@@ -2221,6 +2226,7 @@ export default function LogicGatesSimulator({ setPage }) {
             }
 
             setNextId(nextIdVal);
+            setTypeCounters(newCounters);
             const { comps: simComps, wrs: simWrs } = simulate(newComps, newWrs);
             setComponents(simComps);
             setWires(simWrs);
