@@ -3568,10 +3568,10 @@ export default function LogicGatesSimulator({ setPage }) {
             </button>
 
             {/* ── Paint Mode toggle ──
-                Violet/ungu (#a78bfa). OFF = dim (low opacity), text 'paint off'.
-                ON = bright (#a78bfa), text 'paint on'.
-                Warna beda jauh dari cyan, hijau, merah — gak nabrak teman-temannya.
-                Saat ON: mode indicator berganti jadi "mode: paint" + violet.
+                Hot pink/magenta (#ff0080). OFF = dim (low opacity), text 'paint off'.
+                ON = bright (#ff0080), text 'paint on'.
+                Warna cerah mencolok, beda jauh dari cyan, hijau, merah.
+                Saat ON: mode indicator berganti jadi "mode: paint" + hot pink.
                 Saat connect/delete ON → paint redup.
                 Mutual exclusive dengan connect & delete. */}
             <button
@@ -3580,9 +3580,9 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (paintMode ? '#a78bfa' : 'rgba(167, 139, 250, 0.3)'),
-                backgroundColor: paintMode ? 'rgba(167, 139, 250, 0.18)' : 'rgba(167, 139, 250, 0.06)',
-                color: paintMode ? '#a78bfa' : 'rgba(167, 139, 250, 0.5)',
+                border: '1px solid ' + (paintMode ? '#ff0080' : 'rgba(255, 0, 128, 0.3)'),
+                backgroundColor: paintMode ? 'rgba(255, 0, 128, 0.20)' : 'rgba(255, 0, 128, 0.06)',
+                color: paintMode ? '#ff0080' : 'rgba(255, 0, 128, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3595,7 +3595,7 @@ export default function LogicGatesSimulator({ setPage }) {
             >
               {/* Paint icon — Paintbrush (kuas cat) di kiri teks.
                   User request: 'sebelah kiri tulisan paint harusnya ada logo'.
-                  OFF: icon dim (inherit color rgba). ON: icon bright + drop-shadow glow violet.
+                  OFF: icon dim (inherit color rgba). ON: icon bright hot pink.
                   strokeWidth 2.2 (lebih bold dari default 2) biar keliatan jelas di size 16. */}
               <Paintbrush
                 size={16}
@@ -3608,9 +3608,9 @@ export default function LogicGatesSimulator({ setPage }) {
             </button>
 
             {/* ── Delete Mode toggle ──
-                Merah (#ef4444) dengan ikon X. OFF = dim, text 'delete off'.
-                ON = bright (full opacity), text 'delete on'.
-                Saat ON: mode indicator berganti jadi "mode: delete" + merah.
+                Merah darah murni (#ff1744) dengan ikon X. OFF = dim, text 'delete off'.
+                ON = bright (#ff1744), text 'delete on'. Warna cerah mencolok, bukan glow.
+                Saat ON: mode indicator berganti jadi "mode: delete" + merah darah.
                 Saat connect/paint ON → delete redup.
                 Mutual exclusive dengan connect & paint. */}
             <button
@@ -3619,9 +3619,9 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (deleteMode ? '#fca5a5' : 'rgba(239, 68, 68, 0.3)'),
-                backgroundColor: deleteMode ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.06)',
-                color: deleteMode ? '#fca5a5' : 'rgba(239, 68, 68, 0.5)',
+                border: '1px solid ' + (deleteMode ? '#ff1744' : 'rgba(255, 23, 68, 0.3)'),
+                backgroundColor: deleteMode ? 'rgba(255, 23, 68, 0.35)' : 'rgba(255, 23, 68, 0.06)',
+                color: deleteMode ? '#ff1744' : 'rgba(255, 23, 68, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3635,9 +3635,9 @@ export default function LogicGatesSimulator({ setPage }) {
               {/* Ikon X merah — user request: 'design logo X di delete itu kecil woi dan terlalu biasa aja, harusnya bagus gitu'.
                   Upgrade: custom SVG X bold (strokeWidth 3) di dalam lingkaran badge (radius 10).
                   Total size 20px (lebih besar dari sebelumnya 13px).
-                  Saat ON: drop-shadow glow merah ganda + subtle pulse animation.
-                  Saat OFF: dim saja, no glow.
-                  Circle badge opacity 0.5 + fill rgba 0.12 → kesan 'no entry' / prohibition sign yang iconic. */}
+                  Saat ON: bright vivid red, bukan glow.
+                  Saat OFF: dim saja.
+                  Circle badge → kesan 'no entry' / prohibition sign yang iconic. */}
               <svg
                 width="20"
                 height="20"
@@ -3652,7 +3652,7 @@ export default function LogicGatesSimulator({ setPage }) {
                   cx="12" cy="12" r="9.5"
                   stroke="currentColor"
                   strokeWidth="1.8"
-                  fill="rgba(239,68,68,0.12)"
+                  fill="rgba(255,23,68,0.12)"
                   opacity="0.7"
                 />
                 {/* X bold di tengah — strokeWidth 3 (lebih tebal dari default), strokeLinecap round */}
@@ -3676,8 +3676,8 @@ export default function LogicGatesSimulator({ setPage }) {
               Berganti teks & warna sesuai mode aktif:
               - build → "mode: build" + hijau (#4ade80)
               - connect → "mode: connect wire" + cyan (#22d3ee)
-              - paint → "mode: paint" + violet (#a78bfa)
-              - delete → "mode: delete" + merah (#fca5a5)
+              - paint → "mode: paint" + hot pink (#ff0080)
+              - delete → "mode: delete" + merah darah (#ff1744)
               Klik → kembali ke build mode (reset semua special mode). */}
           <button
             onClick={() => {
@@ -3698,20 +3698,20 @@ export default function LogicGatesSimulator({ setPage }) {
               padding: '14px 22px', borderRadius: 12,
               border: '2px solid ' + (
                 mode === 'connect' ? '#22d3ee' :
-                paintMode ? '#a78bfa' :
-                deleteMode ? '#fca5a5' :
+                paintMode ? '#ff0080' :
+                deleteMode ? '#ff1744' :
                 '#4ade80'
               ),
               backgroundColor: (
                 mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
-                paintMode ? 'rgba(167, 139, 250, 0.18)' :
-                deleteMode ? 'rgba(239, 68, 68, 0.22)' :
+                paintMode ? 'rgba(255, 0, 128, 0.20)' :
+                deleteMode ? 'rgba(255, 23, 68, 0.35)' :
                 'rgba(74, 222, 128, 0.15)'
               ),
               color: (
                 mode === 'connect' ? '#22d3ee' :
-                paintMode ? '#a78bfa' :
-                deleteMode ? '#fca5a5' :
+                paintMode ? '#ff0080' :
+                deleteMode ? '#ff1744' :
                 '#4ade80'
               ),
               fontSize: 15, fontWeight: 800, fontFamily: '"Inter", sans-serif',
@@ -3730,7 +3730,7 @@ export default function LogicGatesSimulator({ setPage }) {
              paintMode ? <Paintbrush size={16} strokeWidth={2.2} /> :
              deleteMode ? (
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                 <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.8" fill="rgba(239,68,68,0.12)" opacity="0.7" />
+                 <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.8" fill="rgba(255,23,68,0.12)" opacity="0.7" />
                  <path d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                </svg>
              ) : <MousePointer2 size={16} />}
