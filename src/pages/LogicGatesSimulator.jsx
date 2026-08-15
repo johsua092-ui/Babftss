@@ -2642,10 +2642,16 @@ export default function LogicGatesSimulator({ setPage }) {
           const isTap = !ts.moved && (Date.now() - ts.time < 400);
           if (isTap) {
             const comp = touchStateRef.current.toggleCandidate;
-            comp.outputs[0] = !comp.outputs[0];
-            const { comps: simComps } = simulate([...stateRef.current.components], stateRef.current.wires);
-            setComponents(simComps);
-            setStatus('Switch ' + (comp.typeNum || 1) + (comp.outputs[0] ? ' ON' : ' OFF'));
+            // Fix: gunakan immutable update (sama seperti onMouseDown) & update wires juga.
+            // Bug sebelumnya: mutate in-place + hanya setComponents tanpa setWires
+            // → wire.value gak ke-update → ghost current / animasi masih muncul saat OFF.
+            const comps = stateRef.current.components.map(c =>
+              c.id === comp.id ? { ...c, outputs: [!c.outputs[0]] } : c
+            );
+            const { comps: newComps, wrs: newWrs } = simulate(comps, stateRef.current.wires);
+            setComponents(newComps);
+            setWires(newWrs);
+            setStatus('Switch ' + (comp.typeNum || 1) + (newComps.find(c => c.id === comp.id).outputs[0] ? ' ON' : ' OFF'));
           }
         }
         // Clear single-touch state.
@@ -3869,15 +3875,36 @@ export default function LogicGatesSimulator({ setPage }) {
               value={colorPicker.hex}
               onChange={e => {
                 const hex = e.target.value;
+                const tgtType = colorPicker.targetType;
+                const tgtId = colorPicker.targetId;
                 setColorPicker(cp => cp ? { ...cp, hex } : cp);
                 // Apply ke target (wire atau comp) langsung (live preview).
-                if (colorPicker.targetType === 'comp') {
+                // Capture tgtType/tgtId di local var sebelum setColorPicker supaya gak stale.
+                if (tgtType === 'comp') {
                   setComponents(prevComps => prevComps.map(c =>
-                    c.id === colorPicker.targetId ? { ...c, userColor: hex } : c
+                    c.id === tgtId ? { ...c, userColor: hex } : c
                   ));
                 } else {
                   setWires(prevWires => prevWires.map(w =>
-                    w.id === colorPicker.targetId ? { ...w, userColor: hex } : w
+                    w.id === tgtId ? { ...w, userColor: hex } : w
+                  ));
+                }
+              }}
+              onInput={e => {
+                // Fallback untuk mobile browser yang gak fire onChange pada <input type="color">.
+                // onInput fires real-time di semua browser (termasuk mobile Safari/Chrome).
+                const hex = e.target.value;
+                if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+                const tgtType = colorPicker.targetType;
+                const tgtId = colorPicker.targetId;
+                setColorPicker(cp => cp ? { ...cp, hex } : cp);
+                if (tgtType === 'comp') {
+                  setComponents(prevComps => prevComps.map(c =>
+                    c.id === tgtId ? { ...c, userColor: hex } : c
+                  ));
+                } else {
+                  setWires(prevWires => prevWires.map(w =>
+                    w.id === tgtId ? { ...w, userColor: hex } : w
                   ));
                 }
               }}
@@ -3894,14 +3921,16 @@ export default function LogicGatesSimulator({ setPage }) {
                 onChange={e => {
                   const v = e.target.value;
                   if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                    const tgtType = colorPicker.targetType;
+                    const tgtId = colorPicker.targetId;
                     setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
-                    if (colorPicker.targetType === 'comp') {
+                    if (tgtType === 'comp') {
                       setComponents(prevComps => prevComps.map(c =>
-                        c.id === colorPicker.targetId ? { ...c, userColor: v.toLowerCase() } : c
+                        c.id === tgtId ? { ...c, userColor: v.toLowerCase() } : c
                       ));
                     } else {
                       setWires(prevWires => prevWires.map(w =>
-                        w.id === colorPicker.targetId ? { ...w, userColor: v.toLowerCase() } : w
+                        w.id === tgtId ? { ...w, userColor: v.toLowerCase() } : w
                       ));
                     }
                   }
