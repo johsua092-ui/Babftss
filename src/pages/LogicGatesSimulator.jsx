@@ -2341,6 +2341,15 @@ export default function LogicGatesSimulator({ setPage }) {
         // harus menyalakan mode [paint] ini dulu baru fiturnya aktif!'.
         // Jadi di build/connect mode (paint OFF), klik wire = nothing special (clear selection).
         // Paint/Delete mode sudah di-handle di atas (return early).
+        // ── Build mode: left-click drag on empty canvas = pan workspace ──
+        if (e.button === 0 && !cloneModeRef.current && !paintModeRef.current && !deleteModeRef.current && modeRef.current !== 'connect') {
+          const v = stateRef.current.view;
+          stateRef.current.panning = {
+            startSX: sx, startSY: sy,
+            startVX: v.x, startVY: v.y,
+          };
+          canvas.style.cursor = 'grabbing';
+        }
         setSelectedId(null);
         stateRef.current.wiring = null;
         setColorPicker(null);  // klik empty space → tutup picker kalau kebuka
