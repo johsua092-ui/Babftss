@@ -853,7 +853,9 @@ export default function LogicGatesSimulator({ setPage }) {
   // Persistent: kalau AND 2 di-delete, AND berikutnya yang dibuat jadi AND 3 (bukan reuse AND 2).
   // Alasan: gak bikin bingung — kalau nomor reuse, user bisa kira "AND 2 yang lama" padahal gak.
   const [typeCounters, setTypeCounters] = useState({});
-  const [status, setStatus] = useState('Ready — drag from palette, click nodes to wire');
+  // Status text DIHAPUS — user request: teks aneh ganggu, hilangin sepenuhnya.
+  // setStatus di-define sebagai no-op supaya panggilan lama gak error.
+  const setStatus = () => {};
   const [selectedId, setSelectedId] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   // Viewport: pan & zoom state. view = { x, y, scale } di stateRef (mutable, dipakai draw loop &
@@ -4073,17 +4075,6 @@ export default function LogicGatesSimulator({ setPage }) {
   // lupa dihapus — tapi inline JSX juga dihapus di bawah, jadi ini cuma safety net.
   const helpStyle = { display: 'none' };
 
-  const statusStyle = {
-    position: 'absolute',
-    top: 10, right: 10,
-    fontSize: 11,
-    color: '#64748b',
-    backgroundColor: 'rgba(15,23,42,0.85)',
-    padding: '4px 12px',
-    borderRadius: 6,
-    pointerEvents: 'none',
-  };
-
   return (
     <div style={pageStyle}>
       {/* Custom scrollbar styling untuk palette — dark & slim biar gak kelihatan putih.
@@ -4679,7 +4670,7 @@ export default function LogicGatesSimulator({ setPage }) {
              ) : <MousePointer2 size={16} />}
             <span>mode: {moveMode ? 'move area' : rotateMode ? 'rotate area' : cloneMode ? 'cloning area' : mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
           </button>
-          <div style={statusStyle}>{status}</div>
+          {/* Status text removed — user request: hilangin sepenuhnya */}
           {/* Zoom + coordinate controls — FIXED ke viewport (bukan absolute di canvasWrap).
               User request: 'papan informasi... wajib sejajar dengan tombol chat helper,
               karena misal saya scroll di area sidebar pada mobile dia gak ikut ilang'.
