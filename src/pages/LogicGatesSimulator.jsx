@@ -898,17 +898,29 @@ export default function LogicGatesSimulator({ setPage }) {
   // Refs supaya canvas event handlers (registered sekali di useEffect) baca value terbaru.
   const [paintMode, setPaintMode] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+  const [cloneMode, setCloneMode] = useState(false);
   const paintModeRef = useRef(false);
   const deleteModeRef = useRef(false);
+  const cloneModeRef = useRef(false);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   useEffect(() => { deleteModeRef.current = deleteMode; }, [deleteMode]);
-  // Helper toggle: turn ON paint = turn OFF delete & connect wire, dan sebaliknya (mutual exclusive).
+  useEffect(() => { cloneModeRef.current = cloneMode; }, [cloneMode]);
+  // Clear clone selection state when clone mode is turned off
+  useEffect(() => {
+    if (!cloneMode) {
+      setCloneBox(null);
+      setCloneSelectedIds([]);
+      setCloneAnchors(null);
+    }
+  }, [cloneMode]);
+  // Helper toggle: turn ON satu = turn OFF semua lain (mutual exclusive).
   const togglePaint = () => {
     setPaintMode(prev => {
       const next = !prev;
       if (next) {
         setDeleteMode(false);
-        setMode('build'); // paint ON → kembali ke build mode
+        setCloneMode(false);
+        setMode('build');
       }
       return next;
     });
@@ -918,11 +930,33 @@ export default function LogicGatesSimulator({ setPage }) {
       const next = !prev;
       if (next) {
         setPaintMode(false);
-        setMode('build'); // delete ON → kembali ke build mode
+        setCloneMode(false);
+        setMode('build');
       }
       return next;
     });
   };
+  const toggleClone = () => {
+    setCloneMode(prev => {
+      const next = !prev;
+      if (next) {
+        setPaintMode(false);
+        setDeleteMode(false);
+        setMode('build');
+      }
+      return next;
+    });
+  };
+  // ── Clone selection state ──
+  // Saat cloneMode ON & user drag canvas → muncul purple selection box.
+  // cloneBox = { sx, sy, ex, ey } (screen coords). null = gak ada active drag.
+  // cloneSelectedIds = array id komponen yang terkena box.
+  // cloneAnchors = 4 titik duplikasi (atas/bawah/kiri/kanan) setelah mouseUp.
+  const [cloneBox, setCloneBox] = useState(null);
+  const [cloneSelectedIds, setCloneSelectedIds] = useState([]);
+  const [cloneAnchors, setCloneAnchors] = useState(null);
+  const cloneBoxRef = useRef(null);
+  useEffect(() => { cloneBoxRef.current = cloneBox; }, [cloneBox]);
   // Touch state ref — track multi-touch buat pinch-zoom & pan di mobile.
   // User feedback: 'gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja di mobile'.
   const touchStateRef = useRef({ pointers: new Map(), pinchStart: null, panStart: null });
@@ -935,8 +969,10 @@ export default function LogicGatesSimulator({ setPage }) {
     view: { x: 0, y: 0, scale: 1 },       // ← viewport pan/zoom (mutable, dibaca tiap frame)
     panning: null,                         // ← { startMouseX, startMouseY, startViewX, startViewY } saat pan aktif
     minimap: null,                          // ← { minX, minY, s, offX, offY } transform world→minimap (diupdate tiap frame)
+    cloneBox: null, cloneAnchors: null, cloneSelectedIds: [],
   });
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId, typeCounters }; }, [components, wires, nextId, selectedId, typeCounters]);
+  useEffect(() => { stateRef.current = { ...stateRef.current, cloneBox, cloneAnchors, cloneSelectedIds }; }, [cloneBox, cloneAnchors, cloneSelectedIds]);
 
   // Screen (canvas pixel) → World (component coords). Dipakai SEMUA mouse handler.
   const screenToWorld = useCallback((sx, sy) => {
@@ -1791,6 +1827,64 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
+      // ── Clone selection box (purple) ──
+      const cb = stateRef.current.cloneBox;
+      if (cb) {
+        const x = Math.min(cb.sx, cb.ex);
+        const y = Math.min(cb.sy, cb.ey);
+        const w = Math.abs(cb.ex - cb.sx);
+        const h = Math.abs(cb.ey - cb.sy);
+        ctx.fillStyle = 'rgba(148, 0, 211, 0.15)';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#9400D3';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+      }
+
+      // ── Clone anchor points ──
+      const ca = stateRef.current.cloneAnchors;
+      if (ca) {
+        const dirs = ['top', 'bottom', 'left', 'right'];
+        const arrows = { top: '\u25B2', bottom: '\u25BC', left: '\u25C4', right: '\u25BA' };
+        for (const dir of dirs) {
+          const pt = ca[dir];
+          if (!pt) continue;
+          // Circle
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(148, 0, 211, 0.7)';
+          ctx.fill();
+          ctx.strokeStyle = '#9400D3';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          // Arrow text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '14px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(arrows[dir], pt.x, pt.y);
+        }
+      }
+
+      // ── Highlight selected components in clone box ──
+      const cSelIds = stateRef.current.cloneSelectedIds;
+      if (cSelIds && cSelIds.length > 0) {
+        for (const comp of comps) {
+          if (cSelIds.includes(comp.id)) {
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            const w = def?.w || 60;
+            const h = def?.h || 50;
+            const sx2 = comp.x * view.scale + view.x;
+            const sy2 = comp.y * view.scale + view.y;
+            ctx.strokeStyle = '#9400D3';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
+          }
+        }
+      }
+
       animId = requestAnimationFrame(draw);
     };
 
@@ -2047,6 +2141,107 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
+      // ── CLONE MODE: check anchor point clicks first ──
+      if (cloneModeRef.current && stateRef.current.cloneAnchors) {
+        const dirs = ['top', 'bottom', 'left', 'right'];
+        for (const dir of dirs) {
+          const pt = stateRef.current.cloneAnchors[dir];
+          if (!pt) continue;
+          const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
+          if (dist < 18) {
+            // Duplicate selected components in this direction
+            const selIds = stateRef.current.cloneSelectedIds;
+            const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
+            if (selComps.length === 0) return;
+
+            // Calculate bounding box of selected
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const c of selComps) {
+              const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+              const hw = (def?.w || 60) / 2;
+              const hh = (def?.h || 50) / 2;
+              minX = Math.min(minX, c.x - hw);
+              minY = Math.min(minY, c.y - hh);
+              maxX = Math.max(maxX, c.x + hw);
+              maxY = Math.max(maxY, c.y + hh);
+            }
+            const boxW = maxX - minX;
+            const boxH = maxY - minY;
+            const gap = 40;
+
+            let dx = 0, dy = 0;
+            if (dir === 'top') dy = -(boxH + gap);
+            else if (dir === 'bottom') dy = boxH + gap;
+            else if (dir === 'left') dx = -(boxW + gap);
+            else if (dir === 'right') dx = boxW + gap;
+
+            // Create duplicates with new IDs
+            let nextIdVal = stateRef.current.nextId;
+            const newComps = [...stateRef.current.components];
+            const newWrs = [...stateRef.current.wires];
+            const idMap = {}; // old id → new id
+
+            for (const c of selComps) {
+              const newId = nextIdVal++;
+              idMap[c.id] = newId;
+              const newComp = {
+                ...c,
+                id: newId,
+                x: c.x + dx,
+                y: c.y + dy,
+                inputWires: c.inputWires.map(() => null),
+                outputWires: c.outputWires.map(() => []),
+              };
+              newComps.push(newComp);
+            }
+
+            // Duplicate wires that connect within the selected set
+            for (const w of stateRef.current.wires) {
+              if (idMap[w.from] !== undefined && idMap[w.to] !== undefined) {
+                const newWId = nextIdVal++;
+                const newWire = {
+                  ...w,
+                  id: newWId,
+                  from: idMap[w.from],
+                  to: idMap[w.to],
+                };
+                newWrs.push(newWire);
+                // Update outputWires/inputWires references
+                const fromComp = newComps.find(c => c.id === idMap[w.from]);
+                const toComp = newComps.find(c => c.id === idMap[w.to]);
+                if (fromComp && fromComp.outputWires[w.fromIdx]) {
+                  fromComp.outputWires[w.fromIdx] = [...(fromComp.outputWires[w.fromIdx] || []), newWId];
+                }
+                if (toComp) {
+                  toComp.inputWires[w.toIdx] = newWId;
+                }
+              }
+            }
+
+            setNextId(nextIdVal);
+            const { comps: simComps, wrs: simWrs } = simulate(newComps, newWrs);
+            setComponents(simComps);
+            setWires(simWrs);
+            setStatus('Cloned ' + selComps.length + ' component(s) ' + dir);
+
+            // Clear selection
+            setCloneBox(null);
+            setCloneSelectedIds([]);
+            setCloneAnchors(null);
+            return;
+          }
+        }
+      }
+
+      // ── CLONE MODE: drag = create purple selection box ──
+      if (cloneModeRef.current) {
+        e.preventDefault();
+        setCloneBox({ sx, sy, ex: sx, ey: sy });
+        setCloneSelectedIds([]);
+        setCloneAnchors(null);
+        return;
+      }
+
       // ── PAINT MODE: klik wire/komponen = buka color picker. Drag & wiring di-block. ──
       // User request: 'jika mode aktif maka player ketika mengklik kabel dapat merubah
       // palet warna tersebut... player dapat mengubah warna komponen juga! (semua komponen
@@ -2159,6 +2354,26 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
+      // ── Clone box dragging: update box end point ──
+      if (cloneBoxRef.current) {
+        const box = cloneBoxRef.current;
+        setCloneBox({ ...box, ex: sx, ey: sy });
+        // Calculate which components are inside the box
+        const v = stateRef.current.view;
+        const wx1 = (Math.min(box.sx, sx) - v.x) / v.scale;
+        const wy1 = (Math.min(box.sy, sy) - v.y) / v.scale;
+        const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
+        const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
+        const inside = stateRef.current.components.filter(c => {
+          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+          const hw = (def?.w || 60) / 2;
+          const hh = (def?.h || 50) / 2;
+          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+        });
+        setCloneSelectedIds(inside.map(c => c.id));
+        return;
+      }
+
       // ── Normal mode: convert ke world coords ──
       const { x: mx, y: my } = screenToWorld(sx, sy);
 
@@ -2214,6 +2429,28 @@ export default function LogicGatesSimulator({ setPage }) {
       if (stateRef.current.panning) {
         stateRef.current.panning = null;
         canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
+        return;
+      }
+      // ── Clone box: finalize selection & show anchor points ──
+      if (cloneBoxRef.current) {
+        const box = cloneBoxRef.current;
+        if (Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) {
+          // Box is big enough → show 4 anchor points
+          const cx = (box.sx + box.ex) / 2;
+          const cy = (box.sy + box.ey) / 2;
+          const hw = Math.abs(box.ex - box.sx) / 2;
+          const hh = Math.abs(box.ey - box.sy) / 2;
+          setCloneAnchors({
+            top: { x: cx, y: cy - hh - 30 },
+            bottom: { x: cx, y: cy + hh + 30 },
+            left: { x: cx - hw - 30, y: cy },
+            right: { x: cx + hw + 30, y: cy },
+          });
+        } else {
+          setCloneBox(null);
+          setCloneSelectedIds([]);
+          setCloneAnchors(null);
+        }
         return;
       }
       stateRef.current.dragging = null;
@@ -2891,6 +3128,10 @@ export default function LogicGatesSimulator({ setPage }) {
       setStatus('Turn off Delete mode to add components');
       return;
     }
+    if (cloneModeRef.current) {
+      setStatus('Turn off Cloning Area mode to add components');
+      return;
+    }
     // Connect Wire mode: dilarang drag/drop komponen baru dari palette.
     // User request: 'ketika connect wire, maka user masih tetap bisa mendrag atau
     // mendrop komponen baru, harusnya ini dilarang'. Cek via modeRef (bukan state
@@ -2912,6 +3153,10 @@ export default function LogicGatesSimulator({ setPage }) {
     }
     if (deleteModeRef.current) {
       setStatus('Turn off Delete mode to add components');
+      return;
+    }
+    if (cloneModeRef.current) {
+      setStatus('Turn off Cloning Area mode to add components');
       return;
     }
     // Connect Wire mode: block drag/drop di mobile juga (konsisten dengan desktop).
@@ -3215,7 +3460,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
   // Helper: apakah ada mode khusus aktif (connect wire, paint, atau delete).
   // Saat true → sidebar palette redup & gak bisa diklik, tombol mode lain redup.
-  const anySpecialMode = mode === 'connect' || paintMode || deleteMode;
+  const anySpecialMode = mode === 'connect' || paintMode || deleteMode || cloneMode;
 
   // Item style — width 100% supaya semua seragam (stretch ke lebar column grid).
   // Grid 1fr bikin semua item sama lebar = lebar item terpanjang (max-content).
@@ -3531,10 +3776,41 @@ export default function LogicGatesSimulator({ setPage }) {
             display: 'flex', flexDirection: 'column', gap: 6,
             transition: 'top 0.22s ease',
           }}>
+            {/* ── Cloning Area toggle ──
+                Dark violet (#9400D3). OFF = dim, text 'cloning area off'.
+                ON = bright (#9400D3), text 'cloning area on'.
+                Saat ON: mode indicator berganti jadi "mode: cloning area" + dark violet.
+                Saat connect/paint/delete ON → cloning area redup.
+                Mutual exclusive dengan connect, paint & delete. */}
+            <button
+              onClick={toggleClone}
+              title={cloneMode ? 'Cloning Area mode ON — drag to select, click arrows to clone' : 'Turn on Cloning Area mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (cloneMode ? '#9400D3' : 'rgba(148, 0, 211, 0.3)'),
+                backgroundColor: cloneMode ? 'rgba(148, 0, 211, 0.10)' : 'rgba(148, 0, 211, 0.06)',
+                color: cloneMode ? '#9400D3' : 'rgba(148, 0, 211, 0.5)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                userSelect: 'none',
+                opacity: (mode === 'connect' || paintMode || deleteMode) ? 0.4 : 1,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <rect x="8" y="8" width="13" height="13" rx="2" />
+                <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+              </svg>
+              <span>{cloneMode ? 'cloning area on' : 'cloning area off'}</span>
+            </button>
+
             {/* ── mode: connect wire ──
                 Toggle ON/OFF. Warna cyan (#22d3ee).
                 ON → mode indicator berganti jadi "mode: connect wire" + cyan.
-                Saat paint/delete ON → connect wire redup (gak bisa diklik).
+                Saat paint/delete/clone ON → connect wire redup (gak bisa diklik).
                 Klik connect wire saat redup → matikan mode lain, nyalakan connect. */}
             <button
               onClick={() => {
@@ -3544,6 +3820,7 @@ export default function LogicGatesSimulator({ setPage }) {
                   setMode('connect');
                   setPaintMode(false);
                   setDeleteMode(false);
+                  setCloneMode(false);
                 }
               }}
               title={mode === 'connect' ? 'Connect Wire mode ON — click zones to wire' : 'Turn on Connect Wire mode'}
@@ -3559,8 +3836,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
-                // Saat mode lain aktif (paint/delete) → connect wire juga redup
-                opacity: (paintMode || deleteMode) ? 0.4 : 1,
+                // Saat mode lain aktif (paint/delete/clone) → connect wire juga redup
+                opacity: (paintMode || deleteMode || cloneMode) ? 0.4 : 1,
               }}
             >
               <Cable size={13} />
@@ -3589,8 +3866,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
-                // Saat mode lain aktif (connect/delete) → paint juga redup
-                opacity: (mode === 'connect' || deleteMode) ? 0.4 : 1,
+                // Saat mode lain aktif (connect/delete/clone) → paint juga redup
+                opacity: (mode === 'connect' || deleteMode || cloneMode) ? 0.4 : 1,
               }}
             >
               {/* Paint icon — Paintbrush (kuas cat) di kiri teks.
@@ -3628,8 +3905,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
-                // Saat mode lain aktif (connect/paint) → delete juga redup
-                opacity: (mode === 'connect' || paintMode) ? 0.4 : 1,
+                // Saat mode lain aktif (connect/paint/clone) → delete juga redup
+                opacity: (mode === 'connect' || paintMode || cloneMode) ? 0.4 : 1,
               }}
             >
               {/* Ikon X merah — user request: 'design logo X di delete itu kecil woi dan terlalu biasa aja, harusnya bagus gitu'.
@@ -3685,6 +3962,10 @@ export default function LogicGatesSimulator({ setPage }) {
                 setMode('build');
                 setPaintMode(false);
                 setDeleteMode(false);
+                setCloneMode(false);
+                setCloneBox(null);
+                setCloneSelectedIds([]);
+                setCloneAnchors(null);
               }
             }}
             title={anySpecialMode ? 'Return to Build mode' : 'Build mode active (default)'}
@@ -3697,18 +3978,21 @@ export default function LogicGatesSimulator({ setPage }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: '14px 22px', borderRadius: 12,
               border: '2px solid ' + (
+                cloneMode ? '#9400D3' :
                 mode === 'connect' ? '#22d3ee' :
                 paintMode ? '#ff0080' :
                 deleteMode ? '#ff1744' :
                 '#4ade80'
               ),
               backgroundColor: (
+                cloneMode ? 'rgba(148, 0, 211, 0.10)' :
                 mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
                 paintMode ? 'rgba(255, 0, 128, 0.10)' :
                 deleteMode ? 'rgba(255, 23, 68, 0.12)' :
                 'rgba(74, 222, 128, 0.15)'
               ),
               color: (
+                cloneMode ? '#9400D3' :
                 mode === 'connect' ? '#22d3ee' :
                 paintMode ? '#ff0080' :
                 deleteMode ? '#ff1744' :
@@ -3726,7 +4010,12 @@ export default function LogicGatesSimulator({ setPage }) {
             }}
           >
             {/* Ikon dinamis sesuai mode aktif */}
-            {mode === 'connect' ? <Cable size={16} /> :
+            {cloneMode ? (
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                 <rect x="8" y="8" width="13" height="13" rx="2" />
+                 <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+               </svg>
+             ) : mode === 'connect' ? <Cable size={16} /> :
              paintMode ? <Paintbrush size={16} strokeWidth={2.2} /> :
              deleteMode ? (
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
@@ -3734,7 +4023,7 @@ export default function LogicGatesSimulator({ setPage }) {
                  <path d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                </svg>
              ) : <MousePointer2 size={16} />}
-            <span>mode: {mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
+            <span>mode: {cloneMode ? 'cloning area' : mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
           </button>
           <div style={statusStyle}>{status}</div>
           {/* Zoom + coordinate controls — FIXED ke viewport (bukan absolute di canvasWrap).
