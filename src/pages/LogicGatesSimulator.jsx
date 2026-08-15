@@ -2355,16 +2355,20 @@ export default function LogicGatesSimulator({ setPage }) {
     fontFamily: '"Orbitron", sans-serif',
   };
 
-  // Header row — sejajar dengan toggle button (44px tall). Title centered di sini,
-  // toggle overlay di pojok kanan-atas (position:absolute). Items mulai tepat di bawah header.
-  // marginBottom 10 = small gap ke items pertama.
+  // Header row — sejajar dengan toggle button (44px tall). Title di-bottom-align
+  // (alignItems: 'flex-end') supaya turun & deket ke items, tapi paddingBottom 4 + marginBottom 10
+  // = total gap 14px (cukup deket, gak ketempel).
+  // User request: 'kebawahin dikit biar dekat ke komponen, tapi jangan terlalu dekat'.
+  // Sebelumnya alignItems: 'center' → title di tengah header (jauh dari items).
   const paletteHeaderStyle = {
     height: 44,
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'center',
+    paddingBottom: 4,
     marginBottom: 10,
     flexShrink: 0,
+    boxSizing: 'border-box',
   };
 
   // Item style — width 100% supaya semua seragam (stretch ke lebar column grid).
