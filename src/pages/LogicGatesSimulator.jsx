@@ -870,6 +870,17 @@ export default function LogicGatesSimulator({ setPage }) {
   const [paletteOpen, setPaletteOpen] = useState(
     typeof window !== 'undefined' ? window.innerWidth >= 768 : true
   );
+  // Ref untuk mengukur lebar palette secara real-time → offset button stack supaya gak nabrak.
+  const paletteRef = useRef(null);
+  const [paletteWidth, setPaletteWidth] = useState(0);
+  useEffect(() => {
+    if (paletteRef.current) {
+      const w = paletteRef.current.offsetWidth;
+      setPaletteWidth(w);
+    } else {
+      setPaletteWidth(0);
+    }
+  }, [paletteOpen]);
   // Mobile detection — track viewport width buat responsive layout (header collapse, dll).
   // User feedback: 'di mobile layoutnya ngawur, tombol header numpuk'.
   const [isMobile, setIsMobile] = useState(
@@ -3393,7 +3404,7 @@ export default function LogicGatesSimulator({ setPage }) {
             <PanelLeftOpen size={22} />
           </button>
         )}
-        <div style={paletteStyle}>
+        <div ref={paletteRef} style={paletteStyle}>
           {/* Toggle palette SAAT OPEN — di dalam palette div, pojok kanan-atas (right:8 top:8).
               position absolute relatif ke paletteStyle (position:relative).
               Karena palette width: fit-content, toggle ikut mengecil/membesar bareng palette. */}
@@ -3522,10 +3533,13 @@ export default function LogicGatesSimulator({ setPage }) {
           <div style={{
             position: 'absolute',
             top: paletteOpen ? 8 : 60,
-            left: 8,
+            // Offset ke kanan berdasarkan lebar palette supaya gak nabrak/overlap.
+            // Saat palette open: left = paletteWidth + 8 (8px margin dari edge palette).
+            // Saat palette closed: left = 52 (toggle button 44px + 8px gap).
+            left: paletteOpen ? paletteWidth + 8 : 52,
             zIndex: 20,
             display: 'flex', flexDirection: 'column', gap: 6,
-            transition: 'top 0.22s ease',
+            transition: 'top 0.22s ease, left 0.22s ease',
           }}>
             {/* Mode toggle — Build (drag/pan components) vs Connect Wire (zone-based wire connect).
                 User request (gambar 3): 'tambahin tombol baru bernama mode' di samping kiri.
