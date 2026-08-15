@@ -3563,17 +3563,18 @@ export default function LogicGatesSimulator({ setPage }) {
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
                 // OFF: border & bg dim (alpha 0.06), text biru redup (#60a5fa@0.5).
-                // ON: border & bg bright (alpha 0.25), text biru full + box glow.
-                border: '1px solid ' + (paintMode ? '#60a5fa' : 'rgba(96, 165, 250, 0.3)'),
-                backgroundColor: paintMode ? 'rgba(96, 165, 250, 0.25)' : 'rgba(96, 165, 250, 0.06)',
-                color: paintMode ? '#60a5fa' : 'rgba(96, 165, 250, 0.5)',
+                // ON: border solid bright (#93c5fd), bg alpha 0.35 (lebih cerah dari 0.25), text biru cerah.
+                // TIDAK ADA boxShadow glow — user spec: 'saat dinyalakan dilarang ada efek glow!'.
+                // boxShadow flat '0 2px 8px rgba(0,0,0,0.4)' dipertahankan baik ON maupun OFF
+                // (cuma drop shadow biasa, BUKAN color glow).
+                border: '1px solid ' + (paintMode ? '#93c5fd' : 'rgba(96, 165, 250, 0.3)'),
+                backgroundColor: paintMode ? 'rgba(96, 165, 250, 0.35)' : 'rgba(96, 165, 250, 0.06)',
+                color: paintMode ? '#93c5fd' : 'rgba(96, 165, 250, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
-                boxShadow: paintMode
-                  ? '0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(96, 165, 250, 0.5)'
-                  : '0 2px 8px rgba(0,0,0,0.4)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
                 backdropFilter: 'blur(4px)',
-                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
               }}
             >
@@ -3585,10 +3586,6 @@ export default function LogicGatesSimulator({ setPage }) {
                 size={16}
                 strokeWidth={2.2}
                 style={{
-                  filter: paintMode
-                    ? 'drop-shadow(0 0 4px rgba(96,165,250,0.9)) drop-shadow(0 0 2px rgba(96,165,250,0.6))'
-                    : 'none',
-                  transition: 'filter 0.2s ease',
                   flexShrink: 0,
                 }}
               />
@@ -3606,16 +3603,14 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (deleteMode ? '#ef4444' : 'rgba(239, 68, 68, 0.3)'),
-                backgroundColor: deleteMode ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.06)',
-                color: deleteMode ? '#ef4444' : 'rgba(239, 68, 68, 0.5)',
+                border: '1px solid ' + (deleteMode ? '#fca5a5' : 'rgba(239, 68, 68, 0.3)'),
+                backgroundColor: deleteMode ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.06)',
+                color: deleteMode ? '#fca5a5' : 'rgba(239, 68, 68, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
-                boxShadow: deleteMode
-                  ? '0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(239, 68, 68, 0.5)'
-                  : '0 2px 8px rgba(0,0,0,0.4)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
                 backdropFilter: 'blur(4px)',
-                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
               }}
             >
@@ -3631,12 +3626,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 viewBox="0 0 24 24"
                 fill="none"
                 style={{
-                  filter: deleteMode
-                    ? 'drop-shadow(0 0 5px rgba(239,68,68,0.95)) drop-shadow(0 0 2px rgba(239,68,68,0.7))'
-                    : 'none',
-                  transition: 'filter 0.2s ease',
                   flexShrink: 0,
-                  animation: deleteMode ? 'deleteIconPulse 2s ease-in-out infinite' : 'none',
                 }}
               >
                 {/* Lingkaran badge — stroke currentColor (merah), fill rgba merah soft */}
@@ -3657,14 +3647,6 @@ export default function LogicGatesSimulator({ setPage }) {
                 />
               </svg>
               <span>{deleteMode ? 'delete on' : 'delete off'}</span>
-              {/* Inject keyframes pulse untuk animasi ikon delete saat ON —
-                  pakai <style> tag inline biar gak perlu sentuh file CSS lain. */}
-              <style>{`
-                @keyframes deleteIconPulse {
-                  0%, 100% { transform: scale(1); }
-                  50% { transform: scale(1.08); }
-                }
-              `}</style>
             </button>
           </div>
           <div style={statusStyle}>{status}</div>
