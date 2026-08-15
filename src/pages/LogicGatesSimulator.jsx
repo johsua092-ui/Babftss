@@ -2297,12 +2297,12 @@ export default function LogicGatesSimulator({ setPage }) {
     position: 'relative', // supaya toggle button palette bisa position:absolute relatif ke body
   };
 
-  // Palette sidebar — width animate 280 ↔ 0 supaya user bisa collapse & free up canvas space.
-  // Outer container animate width; inner pakai fixed width 280 biar content gak squish selama animasi.
-  // Overflow hidden di outer supaya inner content kepotong rapi pas collapse.
-  // Width dibesarin ke 280 (sebelumnya 210 → 240 → 280) biar item bener-bener gede & enak dipencet.
+  // Palette sidebar — fixed width 200px (cukup untuk item terpanjang 'XNOR Gate').
+  // Animasi toggle width 0 ↔ 200 supaya smooth transition.
+  // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
+  // 200px = padding 14×2 + icon 58 + gap 12 + text 'XNOR Gate' ~100px = ~196px → dibuletin 200.
   const paletteStyle = {
-    width: paletteOpen ? 280 : 0,
+    width: paletteOpen ? 200 : 0,
     backgroundColor: '#1e293b',
     borderRight: paletteOpen ? '1px solid #334155' : '1px solid transparent',
     overflow: 'hidden',
@@ -2310,25 +2310,24 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'width 0.22s ease, border-color 0.22s ease',
   };
 
-  // Inner palette — fixed 280px supaya children gak reflow pas outer width animasi.
-  // Opacity fade biar gak kelihatan "flash" pas width lagi transisi.
-  // className 'palette-scroll' untuk custom scrollbar styling (dark & slim, blend sama sidebar).
-  // padding-top 8 (kecil) — ada header row 44px di dalam yang sejajar sama toggle button,
-  // jadi title sejajar toggle & items langsung di bawahnya (gak ada ruang kosong).
+  // Inner palette — fixed 200px (sama dengan outer) supaya gak ada gap.
+  // display: grid 1fr supaya semua item seragam (sama lebar = lebar column = 200px - padding).
+  // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
+  // className 'palette-scroll' untuk custom scrollbar styling (dark & slim).
   const paletteInnerStyle = {
-    width: 280,
+    width: 200,
     height: '100%',
     backgroundColor: '#1e293b',
     padding: '8px 14px 16px 14px',
     overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
+    display: 'grid',
+    gridTemplateColumns: '1fr',
     gap: 10,
     opacity: paletteOpen ? 1 : 0,
     transition: 'opacity 0.15s ease',
     boxSizing: 'border-box',
-    scrollbarWidth: 'thin', // Firefox: scrollbar slim
-    scrollbarColor: '#475569 transparent', // Firefox: thumb dark, track transparent
+    scrollbarWidth: 'thin',
+    scrollbarColor: '#475569 transparent',
   };
 
   // Palette title — "7 Basic Logic Gates". Putih kinclong (#ffffff) bukan glow.
@@ -2359,10 +2358,9 @@ export default function LogicGatesSimulator({ setPage }) {
     flexShrink: 0,
   };
 
-  // Item style — fit-content biar kotak cuma seukuran konten (icon + teks + padding),
-  // gak full-width sampai ke kanan. alignSelf flex-start supaya semua rata kiri.
-  // User request: 'panjangnya berlebihan ke kanan, harusnya secukupnya seukuran teksnya,
-  // semuanya rata gak ada yang panjang sendiri'.
+  // Item style — width 100% supaya semua seragam (stretch ke lebar column grid).
+  // Grid 1fr bikin semua item sama lebar = lebar item terpanjang (max-content).
+  // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
   const itemStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -2374,8 +2372,7 @@ export default function LogicGatesSimulator({ setPage }) {
     cursor: 'grab',
     userSelect: 'none',
     transition: 'all 0.15s',
-    width: 'fit-content',
-    alignSelf: 'flex-start',
+    width: '100%',
     boxSizing: 'border-box',
   };
 
@@ -2437,7 +2434,7 @@ export default function LogicGatesSimulator({ setPage }) {
     pointerEvents: 'none',
     backdropFilter: 'blur(4px)',
     lineHeight: 1.5,
-    maxWidth: paletteOpen ? 380 : 340,
+    maxWidth: paletteOpen ? 480 : 340,
     zIndex: 5,
     transition: 'left 0.22s ease, max-width 0.22s ease',
   };
@@ -2514,7 +2511,7 @@ export default function LogicGatesSimulator({ setPage }) {
         {/* Toggle palette — floating button, SELALU visible (baik palette open maupun closed).
             User minta: posisi di pojok palette sebelah "Components" text saat terbuka,
             dan pas ditutup cuma tombol ini yang tersisa (palette body hilang).
-            - Saat open: left = 280 - 44 - 10 = 226 (pojok kanan-atas palette, 10px margin dari kanan)
+            - Saat open: left = 200 - 44 - 10 = 146 (pojok kanan-atas palette, 10px margin dari kanan)
             - Saat closed: left = 8 (float di tepi kiri canvas)
             - top: 8 (sejajar dengan padding palette 14px, sedikit ke atas biar kelihatan nempel ke header)
             - z-index 20 supaya di atas palette content & canvas controls
@@ -2525,7 +2522,7 @@ export default function LogicGatesSimulator({ setPage }) {
           style={{
             position: 'absolute',
             top: 8,
-            left: paletteOpen ? 226 : 8,
+            left: paletteOpen ? 146 : 8,
             zIndex: 20,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 44, height: 44, borderRadius: 10,
