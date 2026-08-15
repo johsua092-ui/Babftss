@@ -3582,7 +3582,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (paintMode ? '#ff0080' : 'rgba(255, 0, 128, 0.3)'),
                 backgroundColor: paintMode ? 'rgba(255, 0, 128, 0.20)' : 'rgba(255, 0, 128, 0.06)',
-                color: paintMode ? '#e60073' : 'rgba(255, 0, 128, 0.5)',
+                color: paintMode ? '#b3005c' : 'rgba(255, 0, 128, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3621,7 +3621,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (deleteMode ? '#ff1744' : 'rgba(255, 23, 68, 0.3)'),
                 backgroundColor: deleteMode ? 'rgba(255, 23, 68, 0.35)' : 'rgba(255, 23, 68, 0.06)',
-                color: deleteMode ? '#e6143d' : 'rgba(255, 23, 68, 0.5)',
+                color: deleteMode ? '#b8102a' : 'rgba(255, 23, 68, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3710,8 +3710,8 @@ export default function LogicGatesSimulator({ setPage }) {
               ),
               color: (
                 mode === 'connect' ? '#22d3ee' :
-                paintMode ? '#e60073' :
-                deleteMode ? '#e6143d' :
+                paintMode ? '#b3005c' :
+                deleteMode ? '#b8102a' :
                 '#4ade80'
               ),
               fontSize: 15, fontWeight: 800, fontFamily: '"Inter", sans-serif',
