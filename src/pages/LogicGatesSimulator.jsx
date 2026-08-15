@@ -866,7 +866,20 @@ export default function LogicGatesSimulator({ setPage }) {
   const [colorPicker, setColorPicker] = useState(null);
   // Sidebar palette toggle — user minta: bisa tutup panel komponen biar leluasa berkreasi di canvas,
   // buka lagi kalau mau add komponen. Default true (terbuka) supaya user pertama kali lihat palette.
-  const [paletteOpen, setPaletteOpen] = useState(true);
+  // DI MOBILE: default false (tutup) supaya sidebar gak nutupin canvas yang udah sempit.
+  const [paletteOpen, setPaletteOpen] = useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  );
+  // Mobile detection — track viewport width buat responsive layout (header collapse, dll).
+  // User feedback: 'di mobile layoutnya ngawur, tombol header numpuk'.
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+  // Mobile menu toggle — collapse tombol Clear All & Load Demo ke dropdown menu di mobile.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Touch state ref — track multi-touch buat pinch-zoom & pan di mobile.
+  // User feedback: 'gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja di mobile'.
+  const touchStateRef = useRef({ pointers: new Map(), pinchStart: null, panStart: null });
   const spaceDownRef = useRef(false);
 
   const stateRef = useRef({
@@ -2074,6 +2087,253 @@ export default function LogicGatesSimulator({ setPage }) {
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
+    // ── TOUCH EVENT HANDLERS (mobile support) ──
+    // User feedback: 'di mobile gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja'.
+    // Browser mobile gak fire mousemove/mousedown — harus pakai touch events.
+    // Pointer Events (pointerdown/move/up) would be cleaner, tapi banyak browser mobile
+    // masih buggy dgn pointer cancel pas multi-touch. Pakai touch events klasik + manual
+    // tracking multi-touch buat pinch-zoom.
+    //
+    // Strategi:
+    // 1 jari (single touch) → emulate mouse: drag component / wire / pan (mirip space+drag)
+    // 2 jari (pinch)         → pinch-to-zoom + 2-finger pan
+    //
+    // touchStateRef.current.pointers = Map<touchId, {x, y}>  — track all active touches
+    // touchStateRef.current.pinchStart = { dist, midX, midY, viewX, viewY, scale } — snapshot pinch awal
+    // touchStateRef.current.panStart  = { startX, startY, viewX, viewY } — snapshot pan awal (2-finger)
+
+    const onTouchStart = (e) => {
+      // Cegah browser scroll/zoom gesture conflict (mobile Safari/Chrome default gestures).
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      // Register semua touch baru ke pointers map.
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        const sx = t.clientX - rect.left;
+        const sy = t.clientY - rect.top;
+        touchStateRef.current.pointers.set(t.identifier, { x: sx, y: sy });
+      }
+
+      const pointers = Array.from(touchStateRef.current.pointers.values());
+
+      if (pointers.length === 1) {
+        // ── SINGLE TOUCH: emulate mouse down ──
+        // Reuse logic onMouseDown: pan, hit test, drag component, wiring.
+        // Buat fake event object yang compatible sama onMouseDown signature.
+        const sx = pointers[0].x;
+        const sy = pointers[0].y;
+        // Track touch origin buat detect "tap" vs "drag" (Switch toggle perlu tap).
+        touchStateRef.current.touchStart = { sx, sy, moved: false, time: Date.now() };
+
+        // Hit test dulu — kalau kena node/drag-handle/body, emulate mouse behavior.
+        const { x: mx, y: my } = screenToWorld(sx, sy);
+        const hit = hitTest(mx, my, stateRef.current.components);
+
+        if (hit) {
+          if (hit.kind === 'drag-handle') {
+            setSelectedId(hit.comp.id);
+            stateRef.current.dragging = hit.comp;
+            stateRef.current.dragOffset = { x: mx - hit.comp.x, y: my - hit.comp.y };
+            setStatus('Dragging ' + (IO_DEFS[hit.comp.type]?.name || hit.comp.type));
+          } else if (hit.kind === 'output') {
+            stateRef.current.wiring = { fromComp: hit.comp, fromIdx: hit.idx, mx, my };
+            setStatus('Wiring... tap an input node to connect');
+          } else if (hit.kind === 'input') {
+            // Wiring completion handled in touchend (tap-to-connect pattern for mobile).
+            if (stateRef.current.wiring) {
+              const { fromComp, fromIdx } = stateRef.current.wiring;
+              const comps = [...stateRef.current.components];
+              const wrs = [...stateRef.current.wires];
+              const dst = comps.find(c => c.id === hit.comp.id);
+              const existing = wrs.find(w => w.to === dst.id && w.toIdx === hit.idx);
+              if (existing) {
+                const idx = wrs.findIndex(w => w.id === existing.id);
+                if (idx !== -1) {
+                  const src2 = comps.find(c => c.id === existing.from);
+                  if (src2) src2.outputWires[existing.fromIdx] = src2.outputWires[existing.fromIdx].filter(id => id !== existing.id);
+                  dst.inputWires[existing.toIdx] = null;
+                  wrs.splice(idx, 1);
+                }
+              }
+              if (!wouldCreateCycle(fromComp.id, dst.id, comps, wrs)) {
+                const wireColor = wrs.length === 0 ? null : `hsl(${Math.floor(Math.random() * 360)}, 75%, 60%)`;
+                const wire = {
+                  id: 'w' + stateRef.current.nextId,
+                  from: fromComp.id, fromIdx,
+                  to: dst.id, toIdx: hit.idx,
+                  color: wireColor,
+                };
+                wrs.push(wire);
+                fromComp.outputWires[fromIdx] = [...(fromComp.outputWires[fromIdx] || []), wire.id];
+                dst.inputWires[hit.idx] = wire.id;
+                const { comps: simComps, wrs: simWrs } = simulate(comps, wrs);
+                setComponents(simComps);
+                setWires(simWrs);
+                setNextId(p => p + 1);
+                setStatus('Connected');
+              } else {
+                setStatus('Cycle detected — connection blocked');
+              }
+              stateRef.current.wiring = null;
+            }
+          } else if (hit.kind === 'body') {
+            // Body: drag component (kecuali Switch — Switch body = tap to toggle).
+            if (hit.comp.type !== 'INPUT') {
+              setSelectedId(hit.comp.id);
+              stateRef.current.dragging = hit.comp;
+              stateRef.current.dragOffset = { x: mx - hit.comp.x, y: my - hit.comp.y };
+            } else {
+              // Switch body: mark untuk toggle on touchend (kalau gak drag).
+              touchStateRef.current.toggleCandidate = hit.comp;
+            }
+          }
+        } else {
+          // Empty area: start panning canvas (1-finger drag = pan).
+          const v = stateRef.current.view;
+          touchStateRef.current.panStart = { startSX: sx, startSY: sy, startVX: v.x, startVY: v.y };
+        }
+      } else if (pointers.length === 2) {
+        // ── TWO FINGERS: pinch-to-zoom + 2-finger pan ──
+        // Cancel any single-touch action (drag/wiring) — switch ke gesture mode.
+        stateRef.current.dragging = null;
+        stateRef.current.wiring = null;
+        touchStateRef.current.toggleCandidate = null;
+        const [p1, p2] = pointers;
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const v = stateRef.current.view;
+        touchStateRef.current.pinchStart = {
+          dist, midX, midY,
+          viewX: v.x, viewY: v.y, scale: v.scale,
+        };
+      }
+    };
+
+    const onTouchMove = (e) => {
+      if (e.cancelable) e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      // Update semua touch yang bergerak.
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        const sx = t.clientX - rect.left;
+        const sy = t.clientY - rect.top;
+        if (touchStateRef.current.pointers.has(t.identifier)) {
+          touchStateRef.current.pointers.set(t.identifier, { x: sx, y: sy });
+        }
+      }
+
+      const pointers = Array.from(touchStateRef.current.pointers.values());
+
+      if (pointers.length === 2 && touchStateRef.current.pinchStart) {
+        // ── PINCH ZOOM + 2-FINGER PAN ──
+        const [p1, p2] = pointers;
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const ps = touchStateRef.current.pinchStart;
+        // Scale ratio relative to pinch start.
+        const scaleFactor = dist / ps.dist;
+        const newScale = Math.max(0.2, Math.min(5, ps.scale * scaleFactor));
+        // Pan offset: gerak midpoint dari start midpoint.
+        const panDx = midX - ps.midX;
+        const panDy = midY - ps.midY;
+        // Compute new view: keep pinch midpoint stable di world space.
+        // World point at midpoint: worldMid = (ps.midX - viewX) / scale
+        const worldMidX = (ps.midX - ps.viewX) / ps.scale;
+        const worldMidY = (ps.midY - ps.viewY) / ps.scale;
+        // New view supaya worldMid tetap di (midX, midY) on screen:
+        const v = stateRef.current.view;
+        v.scale = newScale;
+        v.x = midX - worldMidX * newScale + panDx;
+        v.y = midY - worldMidY * newScale + panDy;
+        setZoomPct(Math.round(newScale * 100));
+      } else if (pointers.length === 1) {
+        // ── SINGLE TOUCH MOVE: drag/pan/wiring ──
+        const sx = pointers[0].x;
+        const sy = pointers[0].y;
+        // Track movement buat detect tap vs drag.
+        if (touchStateRef.current.touchStart) {
+          const ts = touchStateRef.current.touchStart;
+          if (Math.hypot(sx - ts.sx, sy - ts.sy) > 4) ts.moved = true;
+        }
+        const { x: mx, y: my } = screenToWorld(sx, sy);
+        // Update coordinate display (fix bug 'X --- Y ---' tampil terus di mobile).
+        setCursorWorld({ x: Math.round(mx), y: Math.round(my) });
+
+        // Panning (empty area drag, 1 finger).
+        if (touchStateRef.current.panStart) {
+          const p = touchStateRef.current.panStart;
+          const v = stateRef.current.view;
+          v.x = p.startVX + (sx - p.startSX);
+          v.y = p.startVY + (sy - p.startSY);
+        }
+        // Wiring follow finger.
+        if (stateRef.current.wiring) {
+          stateRef.current.wiring.mx = mx;
+          stateRef.current.wiring.my = my;
+        }
+        // Dragging component.
+        if (stateRef.current.dragging) {
+          const comp = stateRef.current.dragging;
+          comp.x = mx - stateRef.current.dragOffset.x;
+          comp.y = my - stateRef.current.dragOffset.y;
+          setComponents([...stateRef.current.components]);
+        }
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      // Hapus touch yang selesai dari pointers map.
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        touchStateRef.current.pointers.delete(t.identifier);
+      }
+      const pointers = Array.from(touchStateRef.current.pointers.values());
+
+      if (pointers.length < 2) {
+        // Pinch selesai (kurang dari 2 jari) — clear pinch state.
+        touchStateRef.current.pinchStart = null;
+      }
+      if (pointers.length === 0) {
+        // Semua jari diangkat — finalize single-touch action.
+        // Toggle Switch body kalau ini tap (gak moved), bukan drag.
+        if (touchStateRef.current.toggleCandidate && touchStateRef.current.touchStart) {
+          const ts = touchStateRef.current.touchStart;
+          const isTap = !ts.moved && (Date.now() - ts.time < 400);
+          if (isTap) {
+            const comp = touchStateRef.current.toggleCandidate;
+            comp.outputs[0] = !comp.outputs[0];
+            const { comps: simComps } = simulate([...stateRef.current.components], stateRef.current.wires);
+            setComponents(simComps);
+            setStatus('Switch ' + (comp.typeNum || 1) + (comp.outputs[0] ? ' ON' : ' OFF'));
+          }
+        }
+        // Clear single-touch state.
+        stateRef.current.dragging = null;
+        stateRef.current.wiring = null;
+        touchStateRef.current.panStart = null;
+        touchStateRef.current.touchStart = null;
+        touchStateRef.current.toggleCandidate = null;
+      } else if (pointers.length === 1) {
+        // Dari 2 jari → 1 jari: reset panStart ke posisi jari tersisa (start new single-touch pan).
+        const p = pointers[0];
+        const v = stateRef.current.view;
+        touchStateRef.current.panStart = { startSX: p.x, startSY: p.y, startVX: v.x, startVY: v.y };
+        stateRef.current.dragging = null;
+        stateRef.current.wiring = null;
+      }
+    };
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
@@ -2083,6 +2343,10 @@ export default function LogicGatesSimulator({ setPage }) {
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
     };
   }, [hitTest, hitTestWire, simulate, wouldCreateCycle, selectedId, getNodePos, screenToWorld, zoomAt]);
 
@@ -2100,11 +2364,18 @@ export default function LogicGatesSimulator({ setPage }) {
         mini.width = 160;
         mini.height = 110;
       }
+      // Update mobile flag (responsive header/layout switch).
+      setIsMobile(window.innerWidth < 768);
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
-    return () => ro.disconnect();
+    // Window resize listener (orientation change, keyboard popup di mobile, dll).
+    window.addEventListener('resize', resize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', resize);
+    };
   }, []);
 
   // ── Minimap interaction (click/drag → pan view) ──
@@ -2166,24 +2437,32 @@ export default function LogicGatesSimulator({ setPage }) {
   const [dragGhost, setDragGhost] = useState(null);  // { type, x, y } — visual feedback selama drag
   const onPaletteMouseDown = (type) => (e) => {
     e.preventDefault();
+    // Mouse event (desktop) — startX/Y pakai clientX/Y.
     setPaletteDrag({ type, startX: e.clientX, startY: e.clientY, dragging: false });
+  };
+  // Touch version untuk palette (mobile) — pakai touch identifier tracking.
+  const onPaletteTouchStart = (type) => (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    if (!t) return;
+    setPaletteDrag({ type, startX: t.clientX, startY: t.clientY, dragging: false });
   };
   useEffect(() => {
     if (!paletteDrag) return;
-    const onMove = (e) => {
-      const dx = e.clientX - paletteDrag.startX;
-      const dy = e.clientY - paletteDrag.startY;
+    const onMove = (clientX, clientY) => {
+      const dx = clientX - paletteDrag.startX;
+      const dy = clientY - paletteDrag.startY;
       if (!paletteDrag.dragging && Math.hypot(dx, dy) > 4) {
         setPaletteDrag({ ...paletteDrag, dragging: true });
         document.body.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
       }
-      // Update ghost position supaya follow cursor — user bisa lihat lagi ngedrag apa
+      // Update ghost position supaya follow cursor/finger — user bisa lihat lagi ngedrag apa
       if (paletteDrag.dragging) {
-        setDragGhost({ type: paletteDrag.type, x: e.clientX, y: e.clientY });
+        setDragGhost({ type: paletteDrag.type, x: clientX, y: clientY });
       }
     };
-    const onUp = (e) => {
+    const onUp = (clientX, clientY) => {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       setDragGhost(null);  // clear ghost
@@ -2191,8 +2470,8 @@ export default function LogicGatesSimulator({ setPage }) {
         const canvas = canvasRef.current;
         if (canvas) {
           const rect = canvas.getBoundingClientRect();
-          const sx = e.clientX - rect.left;
-          const sy = e.clientY - rect.top;
+          const sx = clientX - rect.left;
+          const sy = clientY - rect.top;
           // Cek apakah mouse di-drop di dalam area canvas (screen space check tetap pakai sx,sy)
           if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
             // Convert ke world coords sebelum createComponent — supaya posisi comp
@@ -2205,11 +2484,6 @@ export default function LogicGatesSimulator({ setPage }) {
             // Numbering per-type: ambil counter typeCounters[type] + 1 (default 1 kalau belum ada).
             const newTypeNum = (stateRef.current.typeCounters?.[paletteDrag.type] || 0) + 1;
             const comp = createComponent(paletteDrag.type, mx - compW / 2, my - compH / 2, newTypeNum);
-            // FIX: jalankan simulate() supaya gates yang output-nya = NOT(0) = 1
-            // (yaitu NOT, NAND, NOR, XNOR) LANGSUNG NYALA saat di-drop, sesuai
-            // sifat mutlak "not" yang membalik 0 → 1. Sebelumnya simulate() gak
-            // dipanggil → outputs tetap [false] → gate body kelihatan grey padahal
-            // logically sudah aktif.
             const newComps = [...stateRef.current.components, comp];
             const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
             setComponents(simComps);
@@ -2226,9 +2500,31 @@ export default function LogicGatesSimulator({ setPage }) {
       }
       setPaletteDrag(null);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    // Mouse listeners (desktop).
+    const onMouseMove = (e) => onMove(e.clientX, e.clientY);
+    const onMouseUp = (e) => onUp(e.clientX, e.clientY);
+    // Touch listeners (mobile).
+    const onTouchMove = (e) => {
+      if (e.cancelable) e.preventDefault();
+      const t = e.touches[0];
+      if (t) onMove(t.clientX, t.clientY);
+    };
+    const onTouchEnd = (e) => {
+      // touchend: pakai changedTouches (jari yang diangkat).
+      const t = e.changedTouches[0];
+      if (t) onUp(t.clientX, t.clientY);
+      else onUp(paletteDrag.startX, paletteDrag.startY);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd, { passive: false });
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
   }, [paletteDrag, createComponent, screenToWorld]);
 
   // ── Actions ──
@@ -2331,23 +2627,29 @@ export default function LogicGatesSimulator({ setPage }) {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '12px 20px',
+    padding: isMobile ? '8px 10px' : '12px 20px',
     // Padding kanan ekstra supaya tombol Clear All & Load Demo gak ketutup
     // userBar fixed (Sign In button ~120px / profile pill+reset+logout ~210px) di pojok kanan atas.
-    paddingRight: 240,
+    // DI MOBILE: paddingRight kecil (userBar juga collapse, gak fixed). Back button & title scales down.
+    paddingRight: isMobile ? 8 : 240,
     backgroundColor: '#1e293b',
     borderBottom: '1px solid #334155',
     flexShrink: 0,
+    flexWrap: isMobile ? 'wrap' : 'nowrap',
+    gap: isMobile ? 8 : 0,
   };
 
   const titleStyle = {
-    fontSize: 16,
+    fontSize: isMobile ? 13 : 16,
     fontWeight: 700,
     color: '#e2e8f0',
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    gap: isMobile ? 6 : 10,
     fontFamily: '"Orbitron", sans-serif',
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
   };
 
   const bodyStyle = {
@@ -2547,38 +2849,93 @@ export default function LogicGatesSimulator({ setPage }) {
             title="Back to Logic Gates menu"
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px', borderRadius: 8,
+              padding: isMobile ? '6px 8px' : '6px 12px', borderRadius: 8,
               border: '1px solid #334155', backgroundColor: '#0f172a',
               color: '#94a3b8', fontSize: 12,
               fontFamily: '"Inter", sans-serif', fontWeight: 600,
               cursor: 'pointer', transition: 'all 0.15s',
+              flexShrink: 0,
             }}
             onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
             onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
           >
-            <ArrowLeft size={14} /> Back
+            <ArrowLeft size={14} />{!isMobile && 'Back'}
           </button>
-          <span style={{ color: '#4ade80', fontSize: 18 }}>◉</span>
-          Logic Gates Simulator 2D
+          <span style={{ color: '#4ade80', fontSize: isMobile ? 14 : 18, flexShrink: 0 }}>◉</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {isMobile ? 'Simulator 2D' : 'Logic Gates Simulator 2D'}
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            style={clearBtnStyle}
-            onClick={clearAll}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#b91c1c'; e.currentTarget.style.borderColor = '#b91c1c'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#dc2626'; e.currentTarget.style.borderColor = '#dc2626'; }}
-          >
-            Clear All
-          </button>
-          <button
-            style={btnStyle}
-            onClick={loadDemo}
-            onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
-          >
-            Load Demo
-          </button>
-        </div>
+        {/* Mobile: collapse Clear All + Load Demo jadi menu dropdown (☰) biar header gak numpuk.
+            Desktop: tampil normal berdampingan. */}
+        {isMobile ? (
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <button
+              onClick={() => setMobileMenuOpen(o => !o)}
+              title="Menu"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 36, height: 36, borderRadius: 8,
+                border: '1px solid #334155', backgroundColor: '#0f172a',
+                color: '#cbd5e1', cursor: 'pointer',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
+            {mobileMenuOpen && (
+              <>
+                {/* Click-away overlay */}
+                <div
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: '100%', right: 0, marginTop: 4,
+                  backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.5)', padding: 4, zIndex: 50,
+                  minWidth: 140,
+                }}>
+                  <button
+                    style={{ ...btnStyle, width: '100%', textAlign: 'left', padding: '8px 12px', marginBottom: 2 }}
+                    onClick={() => { loadDemo(); setMobileMenuOpen(false); }}
+                  >
+                    Load Demo
+                  </button>
+                  <button
+                    style={{ ...clearBtnStyle, width: '100%', textAlign: 'left', padding: '8px 12px' }}
+                    onClick={() => { clearAll(); setMobileMenuOpen(false); }}
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              style={clearBtnStyle}
+              onClick={clearAll}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#b91c1c'; e.currentTarget.style.borderColor = '#b91c1c'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#dc2626'; e.currentTarget.style.borderColor = '#dc2626'; }}
+            >
+              Clear All
+            </button>
+            <button
+              style={btnStyle}
+              onClick={loadDemo}
+              onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = '#334155'; }}
+            >
+              Load Demo
+            </button>
+          </div>
+        )}
       </div>
       <div style={bodyStyle}>
         {/* Toggle palette SAAT CLOSED — floating di tepi kiri canvas (left:8).
@@ -2661,6 +3018,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 key={g.type}
                 style={itemStyle}
                 onMouseDown={onPaletteMouseDown(g.type)}
+                onTouchStart={onPaletteTouchStart(g.type)}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = g.color; e.currentTarget.style.backgroundColor = '#1e293b'; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
               >
@@ -2683,6 +3041,7 @@ export default function LogicGatesSimulator({ setPage }) {
             <div
               style={itemStyle}
               onMouseDown={onPaletteMouseDown('INPUT')}
+              onTouchStart={onPaletteTouchStart('INPUT')}
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
@@ -2694,6 +3053,7 @@ export default function LogicGatesSimulator({ setPage }) {
             <div
               style={itemStyle}
               onMouseDown={onPaletteMouseDown('OUTPUT')}
+              onTouchStart={onPaletteTouchStart('OUTPUT')}
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
@@ -2705,7 +3065,7 @@ export default function LogicGatesSimulator({ setPage }) {
           </div>
         </div>
         <div style={canvasWrapStyle}>
-          <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }} />
+          <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair', touchAction: 'none' }} />
           {/* Minimap — overview semua komponen + viewport rect. Pojok kanan atas (gak konflik
               dengan help text top-left, zoom controls bottom-left, AIHelperButton bottom-right). */}
           <div style={{
