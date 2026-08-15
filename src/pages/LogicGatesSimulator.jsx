@@ -1889,7 +1889,12 @@ export default function LogicGatesSimulator({ setPage }) {
           }
           return;
         }
-        // ── Build mode: existing logic (drag, toggle Switch, port-to-port wire) ──
+        // ── Build mode: drag & toggle only. Port-based wiring DILARANG di build mode.
+        // User request: 'ketika mode build maka user tidak bisa pencet port untuk
+        // menyambungkan kabel sangat tidak bisa! dan bisanya ketika mode connect
+        // wire saja'. Wiring hanya bisa di connect mode via zona sentuh.
+        // Port hit (kind 'output'/'input') di-build mode di-convert jadi body
+        // behavior: drag gate, atau toggle Switch. ──
         if (hit.kind === 'drag-handle') {
           // Switch (INPUT) drag handle — drag comp, JANGAN toggle.
           // User minta: switch punya tombol drag sendiri di atas biar bisa ditarik
@@ -1898,14 +1903,9 @@ export default function LogicGatesSimulator({ setPage }) {
           stateRef.current.dragging = hit.comp;
           stateRef.current.dragOffset = { x: mx - hit.comp.x, y: my - hit.comp.y };
           setStatus('Dragging ' + (IO_DEFS[hit.comp.type]?.name || hit.comp.type));
-        } else if (hit.kind === 'output') {
-          stateRef.current.wiring = { fromComp: hit.comp, fromIdx: hit.idx, mx, my };
-          setStatus('Wiring... click an input node to connect');
-        } else if (hit.kind === 'input') {
-          if (stateRef.current.wiring) {
-            completeWire(stateRef.current.wiring.fromComp, stateRef.current.wiring.fromIdx, hit.comp, hit.idx);
-          }
-        } else if (hit.kind === 'body') {
+        } else if (hit.kind === 'body' || hit.kind === 'output' || hit.kind === 'input') {
+          // Body ATAU port hit (output/input) — di-build mode, port bulat kecil
+          // gak boleh trigger wiring. Treat sebagai body: drag gate, toggle Switch.
           if (hit.comp.type === 'INPUT') {
             const comps = stateRef.current.components.map(c =>
               c.id === hit.comp.id ? { ...c, outputs: [!c.outputs[0]] } : c
@@ -2206,55 +2206,18 @@ export default function LogicGatesSimulator({ setPage }) {
             }
             return;
           }
-          // ── Build mode: existing logic (drag, toggle Switch, port-to-port wire) ──
+          // ── Build mode: drag & toggle only. Port-based wiring DILARANG di build mode
+          // (konsisten dengan onMouseDown). User request: 'ketika mode build maka user
+          // tidak bisa pencet port untuk menyambungkan kabel'. Port hit di-convert jadi
+          // body behavior: drag gate, atau toggle Switch (via touchend tap detection). ──
           if (hit.kind === 'drag-handle') {
             setSelectedId(hit.comp.id);
             stateRef.current.dragging = hit.comp;
             stateRef.current.dragOffset = { x: mx - hit.comp.x, y: my - hit.comp.y };
             setStatus('Dragging ' + (IO_DEFS[hit.comp.type]?.name || hit.comp.type));
-          } else if (hit.kind === 'output') {
-            stateRef.current.wiring = { fromComp: hit.comp, fromIdx: hit.idx, mx, my };
-            setStatus('Wiring... tap an input node to connect');
-          } else if (hit.kind === 'input') {
-            // Wiring completion handled in touchend (tap-to-connect pattern for mobile).
-            if (stateRef.current.wiring) {
-              const { fromComp, fromIdx } = stateRef.current.wiring;
-              const comps = [...stateRef.current.components];
-              const wrs = [...stateRef.current.wires];
-              const dst = comps.find(c => c.id === hit.comp.id);
-              const existing = wrs.find(w => w.to === dst.id && w.toIdx === hit.idx);
-              if (existing) {
-                const idx = wrs.findIndex(w => w.id === existing.id);
-                if (idx !== -1) {
-                  const src2 = comps.find(c => c.id === existing.from);
-                  if (src2) src2.outputWires[existing.fromIdx] = src2.outputWires[existing.fromIdx].filter(id => id !== existing.id);
-                  dst.inputWires[existing.toIdx] = null;
-                  wrs.splice(idx, 1);
-                }
-              }
-              if (!wouldCreateCycle(fromComp.id, dst.id, comps, wrs)) {
-                const wireColor = wrs.length === 0 ? null : `hsl(${Math.floor(Math.random() * 360)}, 75%, 60%)`;
-                const wire = {
-                  id: 'w' + stateRef.current.nextId,
-                  from: fromComp.id, fromIdx,
-                  to: dst.id, toIdx: hit.idx,
-                  color: wireColor,
-                };
-                wrs.push(wire);
-                fromComp.outputWires[fromIdx] = [...(fromComp.outputWires[fromIdx] || []), wire.id];
-                dst.inputWires[hit.idx] = wire.id;
-                const { comps: simComps, wrs: simWrs } = simulate(comps, wrs);
-                setComponents(simComps);
-                setWires(simWrs);
-                setNextId(p => p + 1);
-                setStatus('Connected');
-              } else {
-                setStatus('Cycle detected — connection blocked');
-              }
-              stateRef.current.wiring = null;
-            }
-          } else if (hit.kind === 'body') {
-            // Body: drag component (kecuali Switch — Switch body = tap to toggle).
+          } else if (hit.kind === 'body' || hit.kind === 'output' || hit.kind === 'input') {
+            // Body ATAU port hit — di-build mode, port bulat kecil gak boleh trigger
+            // wiring. Treat sebagai body: drag gate, atau mark Switch buat toggle.
             if (hit.comp.type !== 'INPUT') {
               setSelectedId(hit.comp.id);
               stateRef.current.dragging = hit.comp;
