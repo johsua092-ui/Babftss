@@ -2635,7 +2635,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.backgroundColor = '#1e293b'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = '#334155'; e.currentTarget.style.backgroundColor = '#0f172a'; }}
             >
-              <div style={iconBoxStyle('#ef4444')}>●</div>
+              <div style={iconBoxStyle('#ef4444')}>💡</div>
               <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>LED</span>
             </div>
           </div>
