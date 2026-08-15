@@ -2359,8 +2359,10 @@ export default function LogicGatesSimulator({ setPage }) {
     flexShrink: 0,
   };
 
-  // Item style — padding & gap dibesarin biar touch target lebih gede & enak dipencet.
-  // padding 11px 12px → 14px 14px, gap 10 → 12, border-radius 8 → 10.
+  // Item style — fit-content biar kotak cuma seukuran konten (icon + teks + padding),
+  // gak full-width sampai ke kanan. alignSelf flex-start supaya semua rata kiri.
+  // User request: 'panjangnya berlebihan ke kanan, harusnya secukupnya seukuran teksnya,
+  // semuanya rata gak ada yang panjang sendiri'.
   const itemStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -2372,6 +2374,9 @@ export default function LogicGatesSimulator({ setPage }) {
     cursor: 'grab',
     userSelect: 'none',
     transition: 'all 0.15s',
+    width: 'fit-content',
+    alignSelf: 'flex-start',
+    boxSizing: 'border-box',
   };
 
   // Icon box — width 50 → 58, height 34 → 40 biar icon gate lebih keliatan & item lebih tinggi.
