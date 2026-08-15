@@ -1263,18 +1263,20 @@ export default function LogicGatesSimulator({ setPage }) {
         }
 
         // ── Switch (INPUT) ──
-        // Komponen Switch punya DRAG HANDLE di atas (12px) supaya bisa dipindah
+        // Komponen Switch punya DRAG HANDLE di atas (14px) supaya bisa dipindah
         // tanpa toggle. Klik handle = drag; klik body bawah = toggle ON/OFF.
         // User request: switch & LED harus punya nomor urut (Switch 1, Switch 2, ...).
+        // User feedback: 'tulisan switch kekecilan susah dibaca, digedein dikit'.
+        // Fix: handleH 12→14, font 7px→9px (lebih readable tapi gak nimpa toggle).
         if (comp.type === 'INPUT') {
-          const handleH = 12;
+          const handleH = 14;
           // Drag handle bar (top, with label "Switch N")
           ctx.fillStyle = '#334155';
           roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, handleH, [7, 7, 0, 0]);
           ctx.fill();
           // Label "Switch N" di handle bar (ganti grip dots — lebih informatif).
           ctx.fillStyle = '#fbbf24';
-          ctx.font = 'bold 7px "Orbitron", monospace';
+          ctx.font = 'bold 9px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('Switch ' + (comp.typeNum || 1), comp.x + comp.width / 2, comp.y + handleH / 2 + 1);
@@ -1302,8 +1304,9 @@ export default function LogicGatesSimulator({ setPage }) {
         // y+32 (spans y+21..y+43) → gap 9px, aman gak nabrak.
         if (comp.type === 'OUTPUT') {
           // Label "LED N" di atas body (sebelum gambar circle).
+          // User feedback: 'tulisan kekecilan susah dibaca' — font 8px→9px biar match Switch.
           ctx.fillStyle = '#f87171';
-          ctx.font = 'bold 8px "Orbitron", monospace';
+          ctx.font = 'bold 9px "Orbitron", monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('LED ' + (comp.typeNum || 1), comp.x + comp.width / 2, comp.y + 8);
