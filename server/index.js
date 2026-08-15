@@ -21,6 +21,7 @@ import getProgressHandler from '../api/get-progress.js';
 import saveProgressHandler from '../api/save-progress.js';
 import resetProgressHandler from '../api/reset-progress.js';
 import profileHandler     from '../api/profile.js';
+import circuitsHandler     from '../api/circuits.js';
 
 // ── App setup ────────────────────────────────────────────────
 const app = express();
@@ -66,6 +67,9 @@ app.all('/api/reset-progress',(req, res) => resetProgressHandler(req, res));
 // User Profile
 app.all('/api/profile',       (req, res) => profileHandler(req, res));
 
+// Circuits (save/load/delete rangkaian)
+app.all('/api/circuits',      (req, res) => circuitsHandler(req, res));
+
 // ── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
@@ -86,7 +90,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[server] BABFT API running on port ${PORT}`);
   console.log(`[server] URL: http://0.0.0.0:${PORT}`);
   console.log(`[server] Health: http://0.0.0.0:${PORT}/health`);
-  console.log(`[server] Endpoints: favorites, my-favorites, ai-chat, leaderboard, progress, profile`);
+  console.log(`[server] Endpoints: favorites, my-favorites, ai-chat, leaderboard, progress, profile, circuits`);
 
   // ── Public tunnel ──────────────────────────────────────────
   (async () => {
