@@ -2514,12 +2514,25 @@ export default function LogicGatesSimulator({ setPage }) {
   const [dragGhost, setDragGhost] = useState(null);  // { type, x, y } — visual feedback selama drag
   const onPaletteMouseDown = (type) => (e) => {
     e.preventDefault();
+    // Connect Wire mode: dilarang drag/drop komponen baru dari palette.
+    // User request: 'ketika connect wire, maka user masih tetap bisa mendrag atau
+    // mendrop komponen baru, harusnya ini dilarang'. Cek via modeRef (bukan state
+    // mode) supaya selalu baca value terbaru tanpa dependency ke re-render.
+    if (modeRef.current === 'connect') {
+      setStatus('Switch to Build mode to add components');
+      return;
+    }
     // Mouse event (desktop) — startX/Y pakai clientX/Y.
     setPaletteDrag({ type, startX: e.clientX, startY: e.clientY, dragging: false });
   };
   // Touch version untuk palette (mobile) — pakai touch identifier tracking.
   const onPaletteTouchStart = (type) => (e) => {
     e.preventDefault();
+    // Connect Wire mode: block drag/drop di mobile juga (konsisten dengan desktop).
+    if (modeRef.current === 'connect') {
+      setStatus('Switch to Build mode to add components');
+      return;
+    }
     const t = e.touches[0];
     if (!t) return;
     setPaletteDrag({ type, startX: t.clientX, startY: t.clientY, dragging: false });
@@ -2831,6 +2844,10 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'all 0.15s',
     width: '100%',
     boxSizing: 'border-box',
+    // Connect Wire mode: palette items disabled (visual feedback aja — real block
+    // ada di onPaletteMouseDown/onPaletteTouchStart yang early-return). Opacity
+    // dikit + cursor not-allowed supaya user paham item lagi gak bisa dipake.
+    ...(mode === 'connect' ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
   };
 
   // Icon box — width 58 → 40, height 40 → 30 supaya item lebih compact.
@@ -3176,12 +3193,15 @@ export default function LogicGatesSimulator({ setPage }) {
               top: paletteOpen ? 8 : 60,
               left: 8,
               zIndex: 20,
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 10px', borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              // Button dibikin gede biar enak pas pencet (mobile-friendly).
+              // User request: 'ukurannya di gedein biar enak pas pencetnya'.
+              // Padding 6×10 → 10×14, fontSize 11 → 13, borderRadius 8 → 10.
+              padding: '10px 14px', borderRadius: 10,
               border: '1px solid ' + (mode === 'build' ? '#4ade80' : '#60a5fa'),
               backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(96, 165, 250, 0.15)',
               color: mode === 'build' ? '#4ade80' : '#60a5fa',
-              fontSize: 11, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+              fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
               cursor: 'pointer',
               boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
               backdropFilter: 'blur(4px)',
@@ -3189,8 +3209,12 @@ export default function LogicGatesSimulator({ setPage }) {
               userSelect: 'none',
             }}
           >
+            {/* Icon logo (MousePointer2 / Cable) JANGAN diubah — user request:
+                'logonya bagus itu logo iconnya jangan di sentuh'. Size 13 dipertahankan. */}
             {mode === 'build' ? <MousePointer2 size={13} /> : <Cable size={13} />}
-            <span>{mode === 'build' ? 'Build' : 'Connect'}</span>
+            {/* Text label diubah: 'Build' → 'mode: build', 'Connect' → 'mode: connect wire'.
+                User request eksplisit: 'teksnya saja diganti jadi "mode: build" "mode: connect wire"'. */}
+            <span>{mode === 'build' ? 'mode: build' : 'mode: connect wire'}</span>
           </button>
           <div style={statusStyle}>{status}</div>
           {/* Zoom + coordinate controls — floating di pojok kiri bawah canvas (Figma/Miro style).
