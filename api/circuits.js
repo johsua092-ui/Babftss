@@ -84,13 +84,16 @@ async function handleGet(req, res, user, db) {
     return res.status(200).json({ circuit: { id: doc.id, ...doc.data() } });
   }
 
+  // NOTE: tidak pakai .orderBy() karena butuh composite index di Firestore.
+  //       Urutkan di memori saja (jumlah rangkaian per user kecil).
   const snap = await db
     .collection(COLLECTION)
     .where('firebase_uid', '==', user.sub)
-    .orderBy('updated_at', 'desc')
     .get();
 
-  const circuits = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const circuits = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
   return res.status(200).json({ circuits, total: circuits.length });
 }
 
