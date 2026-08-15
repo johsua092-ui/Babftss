@@ -3213,6 +3213,10 @@ export default function LogicGatesSimulator({ setPage }) {
     boxSizing: 'border-box',
   };
 
+  // Helper: apakah ada mode khusus aktif (connect wire, paint, atau delete).
+  // Saat true → sidebar palette redup & gak bisa diklik, tombol mode lain redup.
+  const anySpecialMode = mode === 'connect' || paintMode || deleteMode;
+
   // Item style — width 100% supaya semua seragam (stretch ke lebar column grid).
   // Grid 1fr bikin semua item sama lebar = lebar item terpanjang (max-content).
   // User request: 'wajib sama ratakan, patokannya menu yang garisnya terpanjang'.
@@ -3230,10 +3234,9 @@ export default function LogicGatesSimulator({ setPage }) {
     transition: 'all 0.15s',
     width: '100%',
     boxSizing: 'border-box',
-    // Connect Wire mode: palette items disabled (visual feedback aja — real block
-    // ada di onPaletteMouseDown/onPaletteTouchStart yang early-return). Opacity
-    // dikit + cursor not-allowed supaya user paham item lagi gak bisa dipake.
-    ...(mode === 'connect' ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
+    // Any special mode active (connect/paint/delete): palette items disabled.
+    // Opacity dikit + cursor not-allowed supaya user paham item lagi gak bisa dipake.
+    ...(anySpecialMode ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
   };
 
   // Icon box — width 58 → 40, height 40 → 30 supaya item lebih compact.
@@ -3534,24 +3537,26 @@ export default function LogicGatesSimulator({ setPage }) {
             transition: 'top 0.22s ease',
           }}>
             {/* ── mode: build ──
-                Selalu ON secara default (default mode). TIDAK BISA DIKLIK.
-                Saat connect wire ON → build tampil OFF (dimmed).
-                Saat connect wire OFF → build tampil ON (aktif, hijau). */}
+                Selalu ON secara default (default mode).
+                Saat mode lain aktif (connect/paint/delete) → build tampil OFF (dimmed, redup).
+                Klik build saat dimmed → kembali ke build mode, semua mode lain OFF. */}
             <button
               onClick={() => {
-                // Tidak bisa diklik — build selalu jadi default.
-                // Klik build saat mode lain aktif → kembali ke build mode.
-                if (mode !== 'build') setMode('build');
+                if (anySpecialMode) {
+                  setMode('build');
+                  setPaintMode(false);
+                  setDeleteMode(false);
+                }
               }}
-              title={mode === 'build' ? 'Build mode active (default)' : 'Return to Build mode'}
+              title={anySpecialMode ? 'Return to Build mode' : 'Build mode active (default)'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (mode === 'build' ? '#4ade80' : 'rgba(74, 222, 128, 0.3)'),
-                backgroundColor: mode === 'build' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(74, 222, 128, 0.06)',
-                color: mode === 'build' ? '#4ade80' : 'rgba(74, 222, 128, 0.5)',
+                border: '1px solid ' + (anySpecialMode ? 'rgba(74, 222, 128, 0.3)' : '#4ade80'),
+                backgroundColor: anySpecialMode ? 'rgba(74, 222, 128, 0.06)' : 'rgba(74, 222, 128, 0.15)',
+                color: anySpecialMode ? 'rgba(74, 222, 128, 0.5)' : '#4ade80',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
-                cursor: mode === 'build' ? 'default' : 'pointer',
+                cursor: anySpecialMode ? 'pointer' : 'default',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
@@ -3564,16 +3569,15 @@ export default function LogicGatesSimulator({ setPage }) {
 
             {/* ── mode: connect wire ──
                 Toggle ON/OFF. Warna cyan (#22d3ee).
-                ON → mode jadi 'connect', build jadi OFF (dimmed).
-                OFF → mode kembali 'build', build jadi ON (hijau).
-                Mutual exclusive dengan paint & delete: turn ON connect → paint/delete OFF. */}
+                ON → build redup, paint/delete redup, sidebar redup.
+                Saat paint/delete ON → connect wire redup (gak bisa diklik).
+                Klik connect wire saat redup → matikan mode lain, nyalakan connect. */}
             <button
               onClick={() => {
                 if (mode === 'connect') {
                   setMode('build');
                 } else {
                   setMode('connect');
-                  // Turn off paint & delete (mutual exclusive)
                   setPaintMode(false);
                   setDeleteMode(false);
                 }
@@ -3591,6 +3595,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
+                // Saat mode lain aktif (paint/delete) → connect wire juga redup
+                opacity: (paintMode || deleteMode) ? 0.4 : 1,
               }}
             >
               <Cable size={13} />
@@ -3600,19 +3606,15 @@ export default function LogicGatesSimulator({ setPage }) {
             {/* ── Paint Mode toggle ──
                 Biru tua muda (#1e3a5f base). OFF = dim (low opacity), text 'paint off'.
                 ON = bright (#3b6fa0 border, #6ba3d6 text), text 'paint on'.
-                Saat ON: klik wire/komponen → buka color picker. Drag & wiring di-block.
-                Mutual exclusive dengan Delete: turn ON paint → delete OFF. */}
+                Saat ON: build redup, connect/delete redup, sidebar redup.
+                Saat connect/delete ON → paint redup.
+                Mutual exclusive dengan connect & delete. */}
             <button
               onClick={togglePaint}
               title={paintMode ? 'Paint mode ON — click wire/component to recolor' : 'Turn on Paint mode'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                // OFF: border & bg dim (alpha 0.06), text biru redup (#60a5fa@0.5).
-                // ON: border solid bright (#93c5fd), bg alpha 0.35 (lebih cerah dari 0.25), text biru cerah.
-                // TIDAK ADA boxShadow glow — user spec: 'saat dinyalakan dilarang ada efek glow!'.
-                // boxShadow flat '0 2px 8px rgba(0,0,0,0.4)' dipertahankan baik ON maupun OFF
-                // (cuma drop shadow biasa, BUKAN color glow).
                 border: '1px solid ' + (paintMode ? '#3b6fa0' : 'rgba(30, 58, 95, 0.3)'),
                 backgroundColor: paintMode ? 'rgba(30, 58, 95, 0.55)' : 'rgba(30, 58, 95, 0.10)',
                 color: paintMode ? '#6ba3d6' : 'rgba(30, 58, 95, 0.55)',
@@ -3622,6 +3624,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
+                // Saat mode lain aktif (connect/delete) → paint juga redup
+                opacity: (mode === 'connect' || deleteMode) ? 0.4 : 1,
               }}
             >
               {/* Paint icon — Paintbrush (kuas cat) di kiri teks.
@@ -3640,9 +3644,10 @@ export default function LogicGatesSimulator({ setPage }) {
 
             {/* ── Delete Mode toggle ──
                 Merah (#ef4444) dengan ikon X. OFF = dim, text 'delete off'.
-                ON = bright (full opacity + glow), text 'delete on'.
-                Saat ON: klik wire → wire hilang, klik komponen → komponen + wires-nya hilang.
-                Drag & wiring di-block. Mutual exclusive dengan Paint. */}
+                ON = bright (full opacity), text 'delete on'.
+                Saat ON: build redup, connect/paint redup, sidebar redup.
+                Saat connect/paint ON → delete redup.
+                Mutual exclusive dengan connect & paint. */}
             <button
               onClick={toggleDelete}
               title={deleteMode ? 'Delete mode ON — click wire/component to delete' : 'Turn on Delete mode'}
@@ -3658,6 +3663,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
+                // Saat mode lain aktif (connect/paint) → delete juga redup
+                opacity: (mode === 'connect' || paintMode) ? 0.4 : 1,
               }}
             >
               {/* Ikon X merah — user request: 'design logo X di delete itu kecil woi dan terlalu biasa aja, harusnya bagus gitu'.
