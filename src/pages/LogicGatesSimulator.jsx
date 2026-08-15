@@ -899,12 +899,18 @@ export default function LogicGatesSimulator({ setPage }) {
   const [paintMode, setPaintMode] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
   const [cloneMode, setCloneMode] = useState(false);
+  const [moveMode, setMoveMode] = useState(false);
+  const [rotateMode, setRotateMode] = useState(false);
   const paintModeRef = useRef(false);
   const deleteModeRef = useRef(false);
   const cloneModeRef = useRef(false);
+  const moveModeRef = useRef(false);
+  const rotateModeRef = useRef(false);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   useEffect(() => { deleteModeRef.current = deleteMode; }, [deleteMode]);
   useEffect(() => { cloneModeRef.current = cloneMode; }, [cloneMode]);
+  useEffect(() => { moveModeRef.current = moveMode; }, [moveMode]);
+  useEffect(() => { rotateModeRef.current = rotateMode; }, [rotateMode]);
   // Clear clone selection state when clone mode is turned off
   useEffect(() => {
     if (!cloneMode) {
@@ -913,6 +919,23 @@ export default function LogicGatesSimulator({ setPage }) {
       setCloneAnchors(null);
     }
   }, [cloneMode]);
+  // Clear move selection state when move mode is turned off
+  useEffect(() => {
+    if (!moveMode) {
+      setMoveBox(null);
+      setMoveSelectedIds([]);
+      setMoveAnchors(null);
+      setMoveActiveDir(null);
+    }
+  }, [moveMode]);
+  // Clear rotate selection state when rotate mode is turned off
+  useEffect(() => {
+    if (!rotateMode) {
+      setRotateBox(null);
+      setRotateSelectedIds([]);
+      setRotateAnchors(null);
+    }
+  }, [rotateMode]);
   // Helper toggle: turn ON satu = turn OFF semua lain (mutual exclusive).
   const togglePaint = () => {
     setPaintMode(prev => {
@@ -920,6 +943,8 @@ export default function LogicGatesSimulator({ setPage }) {
       if (next) {
         setDeleteMode(false);
         setCloneMode(false);
+        setMoveMode(false);
+        setRotateMode(false);
         setMode('build');
       }
       return next;
@@ -931,6 +956,8 @@ export default function LogicGatesSimulator({ setPage }) {
       if (next) {
         setPaintMode(false);
         setCloneMode(false);
+        setMoveMode(false);
+        setRotateMode(false);
         setMode('build');
       }
       return next;
@@ -942,6 +969,34 @@ export default function LogicGatesSimulator({ setPage }) {
       if (next) {
         setPaintMode(false);
         setDeleteMode(false);
+        setMoveMode(false);
+        setRotateMode(false);
+        setMode('build');
+      }
+      return next;
+    });
+  };
+  const toggleMove = () => {
+    setMoveMode(prev => {
+      const next = !prev;
+      if (next) {
+        setPaintMode(false);
+        setDeleteMode(false);
+        setCloneMode(false);
+        setRotateMode(false);
+        setMode('build');
+      }
+      return next;
+    });
+  };
+  const toggleRotate = () => {
+    setRotateMode(prev => {
+      const next = !prev;
+      if (next) {
+        setPaintMode(false);
+        setDeleteMode(false);
+        setCloneMode(false);
+        setMoveMode(false);
         setMode('build');
       }
       return next;
@@ -959,6 +1014,36 @@ export default function LogicGatesSimulator({ setPage }) {
   const cloneSelectedIdsRef = useRef([]);
   useEffect(() => { cloneBoxRef.current = cloneBox; }, [cloneBox]);
   useEffect(() => { cloneSelectedIdsRef.current = cloneSelectedIds; }, [cloneSelectedIds]);
+
+  // ── Move Area selection state ──
+  // Teal (#0ea5e9). Drag → selection box. Anchors = 4 panah menghadap keluar.
+  // Klik tahan anchor → 3 lain hilang → drag bebas → lepas → muncul lagi.
+  const [moveBox, setMoveBox] = useState(null);
+  const [moveSelectedIds, setMoveSelectedIds] = useState([]);
+  const [moveAnchors, setMoveAnchors] = useState(null);
+  const [moveActiveDir, setMoveActiveDir] = useState(null); // 'top'|'bottom'|'left'|'right' when dragging
+  const moveBoxRef = useRef(null);
+  const moveAnchorsRef = useRef(null);
+  const moveSelectedIdsRef = useRef([]);
+  const moveActiveDirRef = useRef(null);
+  useEffect(() => { moveBoxRef.current = moveBox; }, [moveBox]);
+  useEffect(() => { moveAnchorsRef.current = moveAnchors; }, [moveAnchors]);
+  useEffect(() => { moveSelectedIdsRef.current = moveSelectedIds; }, [moveSelectedIds]);
+  useEffect(() => { moveActiveDirRef.current = moveActiveDir; }, [moveActiveDir]);
+
+  // ── Rotate Area selection state ──
+  // Amber (#f59e0b). Drag → selection box. Anchors = 4 double-circle (lingkaran di dalam lingkaran).
+  // Klik anchor → rotate area by 45° in that direction.
+  const [rotateBox, setRotateBox] = useState(null);
+  const [rotateSelectedIds, setRotateSelectedIds] = useState([]);
+  const [rotateAnchors, setRotateAnchors] = useState(null);
+  const rotateBoxRef = useRef(null);
+  const rotateAnchorsRef = useRef(null);
+  const rotateSelectedIdsRef = useRef([]);
+  useEffect(() => { rotateBoxRef.current = rotateBox; }, [rotateBox]);
+  useEffect(() => { rotateAnchorsRef.current = rotateAnchors; }, [rotateAnchors]);
+  useEffect(() => { rotateSelectedIdsRef.current = rotateSelectedIds; }, [rotateSelectedIds]);
+
   // Touch state ref — track multi-touch buat pinch-zoom & pan di mobile.
   // User feedback: 'gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja di mobile'.
   const touchStateRef = useRef({ pointers: new Map(), pinchStart: null, panStart: null });
@@ -972,9 +1057,13 @@ export default function LogicGatesSimulator({ setPage }) {
     panning: null,                         // ← { startMouseX, startMouseY, startViewX, startViewY } saat pan aktif
     minimap: null,                          // ← { minX, minY, s, offX, offY } transform world→minimap (diupdate tiap frame)
     cloneBox: null, cloneAnchors: null, cloneSelectedIds: [],
+    moveBox: null, moveAnchors: null, moveSelectedIds: [], moveActiveDir: null,
+    rotateBox: null, rotateAnchors: null, rotateSelectedIds: [],
   });
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId, typeCounters }; }, [components, wires, nextId, selectedId, typeCounters]);
   useEffect(() => { stateRef.current = { ...stateRef.current, cloneBox, cloneAnchors, cloneSelectedIds }; }, [cloneBox, cloneAnchors, cloneSelectedIds]);
+  useEffect(() => { stateRef.current = { ...stateRef.current, moveBox, moveAnchors, moveSelectedIds, moveActiveDir }; }, [moveBox, moveAnchors, moveSelectedIds, moveActiveDir]);
+  useEffect(() => { stateRef.current = { ...stateRef.current, rotateBox, rotateAnchors, rotateSelectedIds }; }, [rotateBox, rotateAnchors, rotateSelectedIds]);
 
   // Screen (canvas pixel) → World (component coords). Dipakai SEMUA mouse handler.
   const screenToWorld = useCallback((sx, sy) => {
@@ -1887,6 +1976,145 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
+      // ── Move Area selection box (teal #0ea5e9) ──
+      const mBx = stateRef.current.moveBox;
+      if (mBx) {
+        const x = Math.min(mBx.sx, mBx.ex);
+        const y = Math.min(mBx.sy, mBx.ey);
+        const w = Math.abs(mBx.ex - mBx.sx);
+        const h = Math.abs(mBx.ey - mBx.sy);
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.12)';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+      }
+
+      // ── Move Area arrow anchors ──
+      const mAnch = stateRef.current.moveAnchors;
+      if (mAnch) {
+        const dirs = stateRef.current.moveActiveDir ? [stateRef.current.moveActiveDir] : ['top', 'bottom', 'left', 'right'];
+        for (const dir of dirs) {
+          const pt = mAnch[dir];
+          if (!pt) continue;
+          // Draw arrow shape (pointing outward)
+          ctx.save();
+          ctx.translate(pt.x, pt.y);
+          // Rotate context based on direction
+          let angle = 0;
+          if (dir === 'top') angle = -Math.PI / 2;
+          else if (dir === 'bottom') angle = Math.PI / 2;
+          else if (dir === 'left') angle = Math.PI;
+          else angle = 0; // right
+          ctx.rotate(angle);
+          // Arrow: triangle pointing right with a stem
+          ctx.beginPath();
+          ctx.moveTo(12, 0);   // tip
+          ctx.lineTo(0, -8);   // top of triangle
+          ctx.lineTo(0, 8);    // bottom of triangle
+          ctx.closePath();
+          ctx.fillStyle = '#0ea5e9';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // Stem
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-8, 0);
+          ctx.strokeStyle = '#0ea5e9';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // ── Highlight selected components in move box ──
+      const mSelIds = stateRef.current.moveSelectedIds;
+      if (mSelIds && mSelIds.length > 0) {
+        for (const comp of comps) {
+          if (mSelIds.includes(comp.id)) {
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            const w = def?.w || 60;
+            const h = def?.h || 50;
+            const sx2 = comp.x * view.scale + view.x;
+            const sy2 = comp.y * view.scale + view.y;
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
+          }
+        }
+      }
+
+      // ── Rotate Area selection box (amber #f59e0b) ──
+      const rBx = stateRef.current.rotateBox;
+      if (rBx) {
+        const x = Math.min(rBx.sx, rBx.ex);
+        const y = Math.min(rBx.sy, rBx.ey);
+        const w = Math.abs(rBx.ex - rBx.sx);
+        const h = Math.abs(rBx.ey - rBx.sy);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.12)';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+      }
+
+      // ── Rotate Area double-circle anchors ──
+      const rAnch = stateRef.current.rotateAnchors;
+      if (rAnch) {
+        const dirs = ['top', 'bottom', 'left', 'right'];
+        for (const dir of dirs) {
+          const pt = rAnch[dir];
+          if (!pt) continue;
+          // Outer circle
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.7)';
+          ctx.fill();
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          // Inner circle
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.4)';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // 45° label
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '8px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const label = (dir === 'top' || dir === 'left') ? '+45°' : '-45°';
+          // Don't draw label inside tiny circle, draw below anchor
+          ctx.fillText(label, pt.x, pt.y + 22);
+        }
+      }
+
+      // ── Highlight selected components in rotate box ──
+      const rSelIds = stateRef.current.rotateSelectedIds;
+      if (rSelIds && rSelIds.length > 0) {
+        for (const comp of comps) {
+          if (rSelIds.includes(comp.id)) {
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            const w = def?.w || 60;
+            const h = def?.h || 50;
+            const sx2 = comp.x * view.scale + view.x;
+            const sy2 = comp.y * view.scale + view.y;
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
+          }
+        }
+      }
+
       animId = requestAnimationFrame(draw);
     };
 
@@ -2250,6 +2478,84 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
+      // ── MOVE MODE: check arrow anchor clicks first ──
+      if (moveModeRef.current && stateRef.current.moveAnchors && !stateRef.current.moveActiveDir) {
+        const dirs = ['top', 'bottom', 'left', 'right'];
+        for (const dir of dirs) {
+          const pt = stateRef.current.moveAnchors[dir];
+          if (!pt) continue;
+          const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
+          if (dist < 20) {
+            // Start moving: hide other anchors, only show this one
+            setMoveActiveDir(dir);
+            // Store initial component positions for move delta calc
+            const selIds = stateRef.current.moveSelectedIds;
+            const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
+            stateRef.current.moveDragStart = { sx, sy, comps: selComps.map(c => ({ id: c.id, x: c.x, y: c.y })) };
+            return;
+          }
+        }
+      }
+
+      // ── MOVE MODE: drag = create teal selection box ──
+      if (moveModeRef.current) {
+        e.preventDefault();
+        setMoveBox({ sx, sy, ex: sx, ey: sy });
+        setMoveSelectedIds([]);
+        setMoveAnchors(null);
+        setMoveActiveDir(null);
+        return;
+      }
+
+      // ── ROTATE MODE: check double-circle anchor clicks ──
+      if (rotateModeRef.current && stateRef.current.rotateAnchors) {
+        const dirs = ['top', 'bottom', 'left', 'right'];
+        for (const dir of dirs) {
+          const pt = stateRef.current.rotateAnchors[dir];
+          if (!pt) continue;
+          const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
+          if (dist < 20) {
+            // Rotate selected components by 45° around center
+            // top = +45° (CW), bottom = -45° (CCW), left = +45°, right = -45°
+            const selIds = stateRef.current.rotateSelectedIds;
+            const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
+            if (selComps.length === 0) return;
+
+            // Calculate center of selected components
+            let cx = 0, cy = 0;
+            for (const c of selComps) { cx += c.x; cy += c.y; }
+            cx /= selComps.length;
+            cy /= selComps.length;
+
+            const angle = (dir === 'top' || dir === 'left') ? Math.PI / 4 : -Math.PI / 4;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+
+            const newComps = stateRef.current.components.map(c => {
+              if (!selIds.includes(c.id)) return c;
+              const dx = c.x - cx;
+              const dy = c.y - cy;
+              return { ...c, x: cx + dx * cosA - dy * sinA, y: cy + dx * sinA + dy * cosA };
+            });
+
+            const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
+            setComponents(simComps);
+            setWires(simWrs);
+            setStatus('Rotated ' + selComps.length + ' component(s) by 45° ' + (angle > 0 ? 'CW' : 'CCW'));
+            return;
+          }
+        }
+      }
+
+      // ── ROTATE MODE: drag = create amber selection box ──
+      if (rotateModeRef.current) {
+        e.preventDefault();
+        setRotateBox({ sx, sy, ex: sx, ey: sy });
+        setRotateSelectedIds([]);
+        setRotateAnchors(null);
+        return;
+      }
+
       // ── PAINT MODE: klik wire/komponen = buka color picker. Drag & wiring di-block. ──
       // User request: 'jika mode aktif maka player ketika mengklik kabel dapat merubah
       // palet warna tersebut... player dapat mengubah warna komponen juga! (semua komponen
@@ -2342,7 +2648,7 @@ export default function LogicGatesSimulator({ setPage }) {
         // Jadi di build/connect mode (paint OFF), klik wire = nothing special (clear selection).
         // Paint/Delete mode sudah di-handle di atas (return early).
         // ── Build mode: left-click drag on empty canvas = pan workspace ──
-        if (e.button === 0 && !cloneModeRef.current && !paintModeRef.current && !deleteModeRef.current && modeRef.current !== 'connect') {
+        if (e.button === 0 && !cloneModeRef.current && !paintModeRef.current && !deleteModeRef.current && !moveModeRef.current && !rotateModeRef.current && modeRef.current !== 'connect') {
           const v = stateRef.current.view;
           stateRef.current.panning = {
             startSX: sx, startSY: sy,
@@ -2388,6 +2694,66 @@ export default function LogicGatesSimulator({ setPage }) {
           return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
         });
         setCloneSelectedIds(inside.map(c => c.id));
+        return;
+      }
+
+      // ── Move Area: active drag (anchor selected) → move components ──
+      if (moveModeRef.current && stateRef.current.moveActiveDir && stateRef.current.moveDragStart) {
+        const mds = stateRef.current.moveDragStart;
+        const v = stateRef.current.view;
+        const dxWorld = (sx - mds.sx) / v.scale;
+        const dyWorld = (sy - mds.sy) / v.scale;
+        const newComps = stateRef.current.components.map(c => {
+          const orig = mds.comps.find(oc => oc.id === c.id);
+          if (!orig) return c;
+          return { ...c, x: orig.x + dxWorld, y: orig.y + dyWorld };
+        });
+        setComponents(newComps);
+        // Update move box position to follow
+        const mb = stateRef.current.moveBox;
+        if (mb) {
+          setMoveBox({ sx: mb.sx + (sx - mds.sx) - (stateRef.current._lastMoveSx ? sx - stateRef.current._lastMoveSx : 0), sy: mb.sy, ex: mb.ex + (sx - mds.sx) - (stateRef.current._lastMoveSx ? sx - stateRef.current._lastMoveSx : 0), ey: mb.ey });
+        }
+        stateRef.current._lastMoveSx = sx;
+        stateRef.current._lastMoveSy = sy;
+        return;
+      }
+
+      // ── Move box dragging: update box end point ──
+      if (moveBoxRef.current && !stateRef.current.moveAnchors) {
+        const box = moveBoxRef.current;
+        setMoveBox({ ...box, ex: sx, ey: sy });
+        const v = stateRef.current.view;
+        const wx1 = (Math.min(box.sx, sx) - v.x) / v.scale;
+        const wy1 = (Math.min(box.sy, sy) - v.y) / v.scale;
+        const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
+        const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
+        const inside = stateRef.current.components.filter(c => {
+          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+          const hw = (def?.w || 60) / 2;
+          const hh = (def?.h || 50) / 2;
+          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+        });
+        setMoveSelectedIds(inside.map(c => c.id));
+        return;
+      }
+
+      // ── Rotate box dragging: update box end point ──
+      if (rotateBoxRef.current && !stateRef.current.rotateAnchors) {
+        const box = rotateBoxRef.current;
+        setRotateBox({ ...box, ex: sx, ey: sy });
+        const v = stateRef.current.view;
+        const wx1 = (Math.min(box.sx, sx) - v.x) / v.scale;
+        const wy1 = (Math.min(box.sy, sy) - v.y) / v.scale;
+        const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
+        const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
+        const inside = stateRef.current.components.filter(c => {
+          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+          const hw = (def?.w || 60) / 2;
+          const hh = (def?.h || 50) / 2;
+          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+        });
+        setRotateSelectedIds(inside.map(c => c.id));
         return;
       }
 
@@ -2484,6 +2850,122 @@ export default function LogicGatesSimulator({ setPage }) {
           setCloneBox(null);
           setCloneSelectedIds([]);
           setCloneAnchors(null);
+        }
+        return;
+      }
+
+      // ── Move Area: release anchor drag → re-show all 4 anchors ──
+      if (moveModeRef.current && stateRef.current.moveActiveDir) {
+        setMoveActiveDir(null);
+        stateRef.current.moveDragStart = null;
+        stateRef.current._lastMoveSx = null;
+        stateRef.current._lastMoveSy = null;
+        // Recompute anchors based on current component positions
+        const mb = stateRef.current.moveBox;
+        if (mb) {
+          // Recalc box from current component positions
+          const selIds = stateRef.current.moveSelectedIds;
+          const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            const v = stateRef.current.view;
+            let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
+            for (const c of selComps) {
+              const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+              const hw = (def?.w || 60) / 2;
+              const hh = (def?.h || 50) / 2;
+              const csx = c.x * v.scale + v.x;
+              const csy = c.y * v.scale + v.y;
+              minSx = Math.min(minSx, csx - hw * v.scale);
+              minSy = Math.min(minSy, csy - hh * v.scale);
+              maxSx = Math.max(maxSx, csx + hw * v.scale);
+              maxSy = Math.max(maxSy, csy + hh * v.scale);
+            }
+            setMoveBox({ sx: minSx, sy: minSy, ex: maxSx, ey: maxSy });
+            const cx = (minSx + maxSx) / 2;
+            const cy = (minSy + maxSy) / 2;
+            const bw = (maxSx - minSx) / 2;
+            const bh = (maxSy - minSy) / 2;
+            setMoveAnchors({
+              top: { x: cx, y: cy - bh - 30 },
+              bottom: { x: cx, y: cy + bh + 30 },
+              left: { x: cx - bw - 30, y: cy },
+              right: { x: cx + bw + 30, y: cy },
+            });
+          }
+        }
+        const { comps: simComps, wrs: simWrs } = simulate(stateRef.current.components, stateRef.current.wires);
+        setComponents(simComps);
+        setWires(simWrs);
+        setStatus('Moved area');
+        return;
+      }
+
+      // ── Move box: finalize selection & show arrow anchors ──
+      if (moveBoxRef.current) {
+        const box = moveBoxRef.current;
+        const v = stateRef.current.view;
+        const wx1 = (Math.min(box.sx, box.ex) - v.x) / v.scale;
+        const wy1 = (Math.min(box.sy, box.ey) - v.y) / v.scale;
+        const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
+        const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
+        const insideIds = stateRef.current.components.filter(c => {
+          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+          const hw = (def?.w || 60) / 2;
+          const hh = (def?.h || 50) / 2;
+          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+        }).map(c => c.id);
+        setMoveSelectedIds(insideIds);
+        const hasComponents = insideIds.length > 0;
+        if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
+          const cx = (box.sx + box.ex) / 2;
+          const cy = (box.sy + box.ey) / 2;
+          const hw = Math.abs(box.ex - box.sx) / 2;
+          const hh = Math.abs(box.ey - box.sy) / 2;
+          setMoveAnchors({
+            top: { x: cx, y: cy - hh - 30 },
+            bottom: { x: cx, y: cy + hh + 30 },
+            left: { x: cx - hw - 30, y: cy },
+            right: { x: cx + hw + 30, y: cy },
+          });
+        } else {
+          setMoveBox(null);
+          setMoveSelectedIds([]);
+          setMoveAnchors(null);
+        }
+        return;
+      }
+
+      // ── Rotate box: finalize selection & show double-circle anchors ──
+      if (rotateBoxRef.current) {
+        const box = rotateBoxRef.current;
+        const v = stateRef.current.view;
+        const wx1 = (Math.min(box.sx, box.ex) - v.x) / v.scale;
+        const wy1 = (Math.min(box.sy, box.ey) - v.y) / v.scale;
+        const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
+        const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
+        const insideIds = stateRef.current.components.filter(c => {
+          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+          const hw = (def?.w || 60) / 2;
+          const hh = (def?.h || 50) / 2;
+          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+        }).map(c => c.id);
+        setRotateSelectedIds(insideIds);
+        const hasComponents = insideIds.length > 0;
+        if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
+          const cx = (box.sx + box.ex) / 2;
+          const cy = (box.sy + box.ey) / 2;
+          const hw = Math.abs(box.ex - box.sx) / 2;
+          const hh = Math.abs(box.ey - box.sy) / 2;
+          setRotateAnchors({
+            top: { x: cx, y: cy - hh - 30 },
+            bottom: { x: cx, y: cy + hh + 30 },
+            left: { x: cx - hw - 30, y: cy },
+            right: { x: cx + hw + 30, y: cy },
+          });
+        } else {
+          setRotateBox(null);
+          setRotateSelectedIds([]);
+          setRotateAnchors(null);
         }
         return;
       }
@@ -3166,6 +3648,14 @@ export default function LogicGatesSimulator({ setPage }) {
       setStatus('Turn off Cloning Area mode to add components');
       return;
     }
+    if (moveModeRef.current) {
+      setStatus('Turn off Move Area mode to add components');
+      return;
+    }
+    if (rotateModeRef.current) {
+      setStatus('Turn off Rotate Area mode to add components');
+      return;
+    }
     // Connect Wire mode: dilarang drag/drop komponen baru dari palette.
     // User request: 'ketika connect wire, maka user masih tetap bisa mendrag atau
     // mendrop komponen baru, harusnya ini dilarang'. Cek via modeRef (bukan state
@@ -3191,6 +3681,14 @@ export default function LogicGatesSimulator({ setPage }) {
     }
     if (cloneModeRef.current) {
       setStatus('Turn off Cloning Area mode to add components');
+      return;
+    }
+    if (moveModeRef.current) {
+      setStatus('Turn off Move Area mode to add components');
+      return;
+    }
+    if (rotateModeRef.current) {
+      setStatus('Turn off Rotate Area mode to add components');
       return;
     }
     // Connect Wire mode: block drag/drop di mobile juga (konsisten dengan desktop).
@@ -3494,7 +3992,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
   // Helper: apakah ada mode khusus aktif (connect wire, paint, atau delete).
   // Saat true → sidebar palette redup & gak bisa diklik, tombol mode lain redup.
-  const anySpecialMode = mode === 'connect' || paintMode || deleteMode || cloneMode;
+  const anySpecialMode = mode === 'connect' || paintMode || deleteMode || cloneMode || moveMode || rotateMode;
 
   // Item style — width 100% supaya semua seragam (stretch ke lebar column grid).
   // Grid 1fr bikin semua item sama lebar = lebar item terpanjang (max-content).
@@ -3810,12 +4308,69 @@ export default function LogicGatesSimulator({ setPage }) {
             display: 'flex', flexDirection: 'column', gap: 6,
             transition: 'top 0.22s ease',
           }}>
-            {/* ── Cloning Area toggle ──
+            {/* ── Move Area toggle (#1) ──
+                Teal (#0ea5e9). OFF = dim, text 'move area off'.
+                ON = bright (#0ea5e9), text 'move area on'.
+                Mutual exclusive dengan semua mode lain. */}
+            <button
+              onClick={toggleMove}
+              title={moveMode ? 'Move Area mode ON — drag to select, click arrows to move' : 'Turn on Move Area mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (moveMode ? '#0ea5e9' : 'rgba(14, 165, 233, 0.3)'),
+                backgroundColor: moveMode ? 'rgba(14, 165, 233, 0.10)' : 'rgba(14, 165, 233, 0.06)',
+                color: moveMode ? '#0ea5e9' : 'rgba(14, 165, 233, 0.5)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                userSelect: 'none',
+                opacity: (mode === 'connect' || paintMode || deleteMode || cloneMode || rotateMode) ? 0.4 : 1,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+              <span>{moveMode ? 'move area on' : 'move area off'}</span>
+            </button>
+
+            {/* ── Rotate Area toggle (#2) ──
+                Amber (#f59e0b). OFF = dim, text 'rotate area off'.
+                ON = bright (#f59e0b), text 'rotate area on'.
+                Mutual exclusive dengan semua mode lain. */}
+            <button
+              onClick={toggleRotate}
+              title={rotateMode ? 'Rotate Area mode ON — drag to select, click circles to rotate 45°' : 'Turn on Rotate Area mode'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (rotateMode ? '#f59e0b' : 'rgba(245, 158, 11, 0.3)'),
+                backgroundColor: rotateMode ? 'rgba(245, 158, 11, 0.10)' : 'rgba(245, 158, 11, 0.06)',
+                color: rotateMode ? '#f59e0b' : 'rgba(245, 158, 11, 0.5)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+                userSelect: 'none',
+                opacity: (mode === 'connect' || paintMode || deleteMode || cloneMode || moveMode) ? 0.4 : 1,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                <polyline points="21 3 21 9 15 9" />
+              </svg>
+              <span>{rotateMode ? 'rotate area on' : 'rotate area off'}</span>
+            </button>
+
+            {/* ── Cloning Area toggle (#3) ──
                 Dark violet (#9400D3). OFF = dim, text 'cloning area off'.
                 ON = bright (#9400D3), text 'cloning area on'.
                 Saat ON: mode indicator berganti jadi "mode: cloning area" + dark violet.
-                Saat connect/paint/delete ON → cloning area redup.
-                Mutual exclusive dengan connect, paint & delete. */}
+                Saat connect/paint/delete/move/rotate ON → cloning area redup.
+                Mutual exclusive dengan semua mode lain. */}
             <button
               onClick={toggleClone}
               title={cloneMode ? 'Cloning Area mode ON — drag to select, click arrows to clone' : 'Turn on Cloning Area mode'}
@@ -3831,7 +4386,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 backdropFilter: 'blur(4px)',
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
-                opacity: (mode === 'connect' || paintMode || deleteMode) ? 0.4 : 1,
+                opacity: (mode === 'connect' || paintMode || deleteMode || moveMode || rotateMode) ? 0.4 : 1,
               }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -3855,6 +4410,8 @@ export default function LogicGatesSimulator({ setPage }) {
                   setPaintMode(false);
                   setDeleteMode(false);
                   setCloneMode(false);
+                  setMoveMode(false);
+                  setRotateMode(false);
                 }
               }}
               title={mode === 'connect' ? 'Connect Wire mode ON — click zones to wire' : 'Turn on Connect Wire mode'}
@@ -3871,7 +4428,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
                 // Saat mode lain aktif (paint/delete/clone) → connect wire juga redup
-                opacity: (paintMode || deleteMode || cloneMode) ? 0.4 : 1,
+                opacity: (paintMode || deleteMode || cloneMode || moveMode || rotateMode) ? 0.4 : 1,
               }}
             >
               <Cable size={13} />
@@ -3901,7 +4458,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
                 // Saat mode lain aktif (connect/delete/clone) → paint juga redup
-                opacity: (mode === 'connect' || deleteMode || cloneMode) ? 0.4 : 1,
+                opacity: (mode === 'connect' || deleteMode || cloneMode || moveMode || rotateMode) ? 0.4 : 1,
               }}
             >
               {/* Paint icon — Paintbrush (kuas cat) di kiri teks.
@@ -3940,7 +4497,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
                 userSelect: 'none',
                 // Saat mode lain aktif (connect/paint/clone) → delete juga redup
-                opacity: (mode === 'connect' || paintMode || cloneMode) ? 0.4 : 1,
+                opacity: (mode === 'connect' || paintMode || cloneMode || moveMode || rotateMode) ? 0.4 : 1,
               }}
             >
               {/* Ikon X merah — user request: 'design logo X di delete itu kecil woi dan terlalu biasa aja, harusnya bagus gitu'.
@@ -3997,9 +4554,18 @@ export default function LogicGatesSimulator({ setPage }) {
                 setPaintMode(false);
                 setDeleteMode(false);
                 setCloneMode(false);
+                setMoveMode(false);
+                setRotateMode(false);
                 setCloneBox(null);
                 setCloneSelectedIds([]);
                 setCloneAnchors(null);
+                setMoveBox(null);
+                setMoveSelectedIds([]);
+                setMoveAnchors(null);
+                setMoveActiveDir(null);
+                setRotateBox(null);
+                setRotateSelectedIds([]);
+                setRotateAnchors(null);
               }
             }}
             title={anySpecialMode ? 'Return to Build mode' : 'Build mode active (default)'}
@@ -4012,6 +4578,8 @@ export default function LogicGatesSimulator({ setPage }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: '14px 22px', borderRadius: 12,
               border: '2px solid ' + (
+                moveMode ? '#0ea5e9' :
+                rotateMode ? '#f59e0b' :
                 cloneMode ? '#9400D3' :
                 mode === 'connect' ? '#22d3ee' :
                 paintMode ? '#ff0080' :
@@ -4019,6 +4587,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 '#4ade80'
               ),
               backgroundColor: (
+                moveMode ? 'rgba(14, 165, 233, 0.10)' :
+                rotateMode ? 'rgba(245, 158, 11, 0.10)' :
                 cloneMode ? 'rgba(148, 0, 211, 0.10)' :
                 mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
                 paintMode ? 'rgba(255, 0, 128, 0.10)' :
@@ -4026,6 +4596,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 'rgba(74, 222, 128, 0.15)'
               ),
               color: (
+                moveMode ? '#0ea5e9' :
+                rotateMode ? '#f59e0b' :
                 cloneMode ? '#9400D3' :
                 mode === 'connect' ? '#22d3ee' :
                 paintMode ? '#ff0080' :
@@ -4044,7 +4616,16 @@ export default function LogicGatesSimulator({ setPage }) {
             }}
           >
             {/* Ikon dinamis sesuai mode aktif */}
-            {cloneMode ? (
+            {moveMode ? (
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                 <path d="M5 12h14M12 5l7 7-7 7" />
+               </svg>
+             ) : rotateMode ? (
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                 <polyline points="21 3 21 9 15 9" />
+               </svg>
+             ) : cloneMode ? (
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                  <rect x="8" y="8" width="13" height="13" rx="2" />
                  <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
@@ -4057,7 +4638,7 @@ export default function LogicGatesSimulator({ setPage }) {
                  <path d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                </svg>
              ) : <MousePointer2 size={16} />}
-            <span>mode: {cloneMode ? 'cloning area' : mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
+            <span>mode: {moveMode ? 'move area' : rotateMode ? 'rotate area' : cloneMode ? 'cloning area' : mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
           </button>
           <div style={statusStyle}>{status}</div>
           {/* Zoom + coordinate controls — FIXED ke viewport (bukan absolute di canvasWrap).
