@@ -2298,12 +2298,13 @@ export default function LogicGatesSimulator({ setPage }) {
   };
 
   // Palette sidebar — width: fit-content supaya sidebar nyesuaiin lebar item terpanjang.
-  // Animasi toggle pakai maxWidth (0 ↔ 320) supaya smooth (width: fit-content gak bisa animasi).
+  // Animasi toggle pakai maxWidth (0 ↔ 380) supaya smooth (width: fit-content gak bisa animasi).
   // User request: 'ukuran mengikuti teksnya, semuanya otomatis mengikuti & mensejajarkan'.
   // max-content sidebar + grid 1fr items = semua item seragam sepanjang item terpanjang.
+  // maxWidth dinaikin 320 → 380 supaya title "7 Basic Logic Gates" gak kepotong jadi "GAT".
   const paletteStyle = {
     width: paletteOpen ? 'fit-content' : 0,
-    maxWidth: paletteOpen ? 320 : 0,
+    maxWidth: paletteOpen ? 380 : 0,
     backgroundColor: '#1e293b',
     borderRight: paletteOpen ? '1px solid #334155' : '1px solid transparent',
     overflow: 'hidden',
@@ -2316,10 +2317,14 @@ export default function LogicGatesSimulator({ setPage }) {
   // display: grid 1fr supaya semua item seragam (sama lebar = lebar item terpanjang).
   // User request: 'kalimat lurus maju ke samping, gak dipaksa ke bawah, ukuran ikut teks'.
   // Outer palette fixed width animasi gak bisa (max-content gak numeric), jadi pakai
-  // outer width: fit-content + maxWidth animate (0 ↔ 320) supaya toggle smooth.
+  // outer width: fit-content + maxWidth animate (0 ↔ 380) supaya toggle smooth.
+  // minWidth: 270 → judul "7 Basic Logic Gates" (Orbitron uppercase, ~150px) + toggle button
+  // (44px width + 8px right margin = 52px reserved) gak nabrak. Tanpa minWidth, max-content
+  // cuma ngukur item (gate name pendek2), title kepotong jadi "GAT".
   // className 'palette-scroll' untuk custom scrollbar styling (dark & slim).
   const paletteInnerStyle = {
     width: 'max-content',
+    minWidth: 270,
     height: '100%',
     backgroundColor: '#1e293b',
     padding: '8px 14px 16px 14px',
