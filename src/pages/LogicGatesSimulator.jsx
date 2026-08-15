@@ -866,10 +866,8 @@ export default function LogicGatesSimulator({ setPage }) {
   const [colorPicker, setColorPicker] = useState(null);
   // Sidebar palette toggle — user minta: bisa tutup panel komponen biar leluasa berkreasi di canvas,
   // Default true (terbuka) supaya user langsung bisa lihat & drag komponen dari palette.
-  // DI MOBILE: default false (tutup) supaya sidebar gak nutupin canvas yang udah sempit.
-  const [paletteOpen, setPaletteOpen] = useState(
-    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
-  );
+  // SELALU terbuka saat pertama kali, termasuk di mobile.
+  const [paletteOpen, setPaletteOpen] = useState(true);
   // Mobile detection — track viewport width buat responsive layout (header collapse, dll).
   // User feedback: 'di mobile layoutnya ngawur, tombol header numpuk'.
   const [isMobile, setIsMobile] = useState(
