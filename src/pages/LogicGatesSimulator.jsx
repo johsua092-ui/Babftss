@@ -956,7 +956,9 @@ export default function LogicGatesSimulator({ setPage }) {
   const [cloneSelectedIds, setCloneSelectedIds] = useState([]);
   const [cloneAnchors, setCloneAnchors] = useState(null);
   const cloneBoxRef = useRef(null);
+  const cloneSelectedIdsRef = useRef([]);
   useEffect(() => { cloneBoxRef.current = cloneBox; }, [cloneBox]);
+  useEffect(() => { cloneSelectedIdsRef.current = cloneSelectedIds; }, [cloneSelectedIds]);
   // Touch state ref — track multi-touch buat pinch-zoom & pan di mobile.
   // User feedback: 'gak bisa drag/drop, gak bisa zoom, gak bisa geser area kerja di mobile'.
   const touchStateRef = useRef({ pointers: new Map(), pinchStart: null, panStart: null });
@@ -2354,8 +2356,8 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── Clone box dragging: update box end point ──
-      if (cloneBoxRef.current) {
+      // ── Clone box dragging: update box end point (only while dragging, not after anchors shown) ──
+      if (cloneBoxRef.current && !stateRef.current.cloneAnchors) {
         const box = cloneBoxRef.current;
         setCloneBox({ ...box, ex: sx, ey: sy });
         // Calculate which components are inside the box
@@ -2434,8 +2436,24 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── Clone box: finalize selection & show anchor points ──
       if (cloneBoxRef.current) {
         const box = cloneBoxRef.current;
-        if (Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) {
-          // Box is big enough → show 4 anchor points
+        // Recompute which components are inside the box at this moment
+        // (stateRef.cloneSelectedIds may be stale due to async setState in mouseMove)
+        const v = stateRef.current.view;
+        const wx1 = (Math.min(box.sx, box.ex) - v.x) / v.scale;
+        const wy1 = (Math.min(box.sy, box.ey) - v.y) / v.scale;
+        const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
+        const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
+        const insideIds = stateRef.current.components.filter(c => {
+          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
+          const hw = (def?.w || 60) / 2;
+          const hh = (def?.h || 50) / 2;
+          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+        }).map(c => c.id);
+        setCloneSelectedIds(insideIds);
+
+        const hasComponents = insideIds.length > 0;
+        if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
+          // Box is big enough AND has components inside → keep box visible + show 4 anchor points
           const cx = (box.sx + box.ex) / 2;
           const cy = (box.sy + box.ey) / 2;
           const hw = Math.abs(box.ex - box.sx) / 2;
@@ -2447,6 +2465,7 @@ export default function LogicGatesSimulator({ setPage }) {
             right: { x: cx + hw + 30, y: cy },
           });
         } else {
+          // Box too small OR no components inside → dismiss everything
           setCloneBox(null);
           setCloneSelectedIds([]);
           setCloneAnchors(null);
