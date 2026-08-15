@@ -38,6 +38,12 @@ function _safeLocalSet(key, val) {
   try { localStorage.setItem(key, val); } catch (_) {}
 }
 
+// Key persist deviceId agar fingerprint perangkat TIDAK di-compute ulang tiap load,
+// sehingga user anonim (guest) yang sama selalu dikenali sebagai entri yang sama
+// ("sekali masuk, selamanya ditandain"). Persisten di localStorage — hanya hilang
+// bila user menghapus site data / ganti browser.
+const DEVICE_ID_KEY = "__babft_device_id";
+
 // ---------- Lokasi via IP (multi-provider, gratis tanpa key) ----------
 // SUPER OPTIMIZE: cache hasil geo per sesi (30 menit) supaya tidak fetch
 // berkali-kali tiap kunjungan/reload. Provider tunggal (ipapi.co) cukup;
@@ -153,6 +159,11 @@ async function reverseGeocode(lat, lon) {
 
 // ---------- Device fingerprint (hash sederhana) ----------
 async function computeDeviceId() {
+  // Cek hasil tersimpan dulu — biar fingerprint stabil antar kunjungan.
+  try {
+    const saved = _safeLocalGet(DEVICE_ID_KEY);
+    if (saved) return saved;
+  } catch (_) {}
   try {
     const w = typeof window !== "undefined" ? window : {};
     const nav = typeof navigator !== "undefined" ? navigator : {};
@@ -191,12 +202,16 @@ async function computeDeviceId() {
 
     const raw = parts.join("||");
     // SHA-256 via crypto.subtle (fallback ke fnv hash)
+    let id = null;
     if (crypto && crypto.subtle && crypto.subtle.digest) {
       const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
       const arr = Array.from(new Uint8Array(buf));
-      return arr.map((b) => b.toString(16).padStart(2, "0")).join("");
+      id = arr.map((b) => b.toString(16).padStart(2, "0")).join("");
+    } else {
+      id = fnvHash(raw);
     }
-    return fnvHash(raw);
+    if (id) { try { _safeLocalSet(DEVICE_ID_KEY, id); } catch (_) {} }
+    return id;
   } catch (_) {
     return null;
   }
