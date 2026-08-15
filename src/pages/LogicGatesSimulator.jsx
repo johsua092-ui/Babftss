@@ -2610,7 +2610,17 @@ export default function LogicGatesSimulator({ setPage }) {
                 <span style={{ fontSize: 13, color: '#cbd5e1', fontWeight: 600, whiteSpace: 'nowrap' }}>{g.name}</span>
               </div>
             ))}
-            <div style={{ ...paletteTitleStyle, marginTop: 10 }}>I/O</div>
+            {/* Section divider — garis pemisah antara Gates dan I/O section.
+                User request: 'harusnya ada pembatas di bawah XNOR, lalu baru teks I/O'.
+                Pakai border-top tipis #334155 (sama dengan border item) + margin vertikal
+                supaya gak ketempel item di atas/bawah. Akan relevan saat komponen bertambah banyak. */}
+            <div style={{
+              height: 0,
+              borderTop: '1px solid #334155',
+              margin: '8px 4px 4px 4px',
+              flexShrink: 0,
+            }} />
+            <div style={{ ...paletteTitleStyle, marginTop: 6, marginBottom: 4 }}>I/O</div>
             <div
               style={itemStyle}
               onMouseDown={onPaletteMouseDown('INPUT')}
