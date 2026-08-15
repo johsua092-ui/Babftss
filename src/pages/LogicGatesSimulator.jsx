@@ -3518,19 +3518,17 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{ display: 'block', width: '100%', height: '100%' }}
             />
           </div>
-          {/* ── Mode + Connect + Paint + Delete button stack ──
-              Empat tombol di-stack vertikal di top-left canvas wrapper.
+          {/* ── Connect + Paint + Delete button stack (top-left) ──
+              Tiga tombol di-stack vertikal di top-left canvas wrapper.
               Wrapper div positioned absolute, top berubah tergantung paletteOpen
               (palette closed → ada toggle button di top:8 left:8, jadi stack digeser ke top:60).
-              Order: connect wire → mode indicator (tengah, gede, dynamic) → paint → delete.
-              Mode indicator selalu tampil, gak pernah redup, berganti teks & warna sesuai mode aktif. */}
+              Mode indicator dipisah — posisi fixed tengah layar (di bawah stack ini). */}
           <div style={{
             position: 'absolute',
             top: paletteOpen ? 8 : 60,
             left: 8,
             zIndex: 20,
             display: 'flex', flexDirection: 'column', gap: 6,
-            alignItems: 'stretch',
             transition: 'top 0.22s ease',
           }}>
             {/* ── mode: connect wire ──
@@ -3569,71 +3567,11 @@ export default function LogicGatesSimulator({ setPage }) {
               <span>{mode === 'connect' ? 'connect wire on' : 'connect wire off'}</span>
             </button>
 
-            {/* ── Mode indicator (tengah, gede, dynamic) ──
-                Posisi tengah di stack. Ukuran lebih gede dari tombol lain.
-                GAK PERNAH redup — selalu terang & keliatan jelas.
-                Berganti teks & warna sesuai mode aktif:
-                - build → "mode: build" + hijau (#4ade80)
-                - connect → "mode: connect wire" + cyan (#22d3ee)
-                - paint → "mode: paint" + sky blue (#38bdf8)
-                - delete → "mode: delete" + merah (#fca5a5)
-                Klik → kembali ke build mode (reset semua special mode). */}
-            <button
-              onClick={() => {
-                if (anySpecialMode) {
-                  setMode('build');
-                  setPaintMode(false);
-                  setDeleteMode(false);
-                }
-              }}
-              title={anySpecialMode ? 'Return to Build mode' : 'Build mode active (default)'}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                padding: '14px 18px', borderRadius: 12,
-                border: '2px solid ' + (
-                  mode === 'connect' ? '#22d3ee' :
-                  paintMode ? '#38bdf8' :
-                  deleteMode ? '#fca5a5' :
-                  '#4ade80'
-                ),
-                backgroundColor: (
-                  mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
-                  paintMode ? 'rgba(56, 189, 248, 0.18)' :
-                  deleteMode ? 'rgba(239, 68, 68, 0.22)' :
-                  'rgba(74, 222, 128, 0.15)'
-                ),
-                color: (
-                  mode === 'connect' ? '#22d3ee' :
-                  paintMode ? '#38bdf8' :
-                  deleteMode ? '#fca5a5' :
-                  '#4ade80'
-                ),
-                fontSize: 15, fontWeight: 800, fontFamily: '"Inter", sans-serif',
-                cursor: anySpecialMode ? 'pointer' : 'default',
-                boxShadow: '0 3px 12px rgba(0,0,0,0.5)',
-                backdropFilter: 'blur(4px)',
-                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
-                userSelect: 'none',
-                letterSpacing: '0.3px',
-                // GAK PERNAH redup — selalu opacity 1
-              }}
-            >
-              {/* Ikon dinamis sesuai mode aktif */}
-              {mode === 'connect' ? <Cable size={16} /> :
-               paintMode ? <Paintbrush size={16} strokeWidth={2.2} /> :
-               deleteMode ? (
-                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                   <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.8" fill="rgba(239,68,68,0.12)" opacity="0.7" />
-                   <path d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                 </svg>
-               ) : <MousePointer2 size={16} />}
-              <span>mode: {mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
-            </button>
-
             {/* ── Paint Mode toggle ──
-                Biru langit cerah (sky blue #38bdf8). OFF = dim (low opacity), text 'paint off'.
-                ON = bright (#38bdf8), text 'paint on'.
-                Saat ON: mode indicator berganti jadi "mode: paint" + sky blue.
+                Violet/ungu (#a78bfa). OFF = dim (low opacity), text 'paint off'.
+                ON = bright (#a78bfa), text 'paint on'.
+                Warna beda jauh dari cyan, hijau, merah — gak nabrak teman-temannya.
+                Saat ON: mode indicator berganti jadi "mode: paint" + violet.
                 Saat connect/delete ON → paint redup.
                 Mutual exclusive dengan connect & delete. */}
             <button
@@ -3642,9 +3580,9 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (paintMode ? '#38bdf8' : 'rgba(56, 189, 248, 0.3)'),
-                backgroundColor: paintMode ? 'rgba(56, 189, 248, 0.18)' : 'rgba(56, 189, 248, 0.06)',
-                color: paintMode ? '#38bdf8' : 'rgba(56, 189, 248, 0.5)',
+                border: '1px solid ' + (paintMode ? '#a78bfa' : 'rgba(167, 139, 250, 0.3)'),
+                backgroundColor: paintMode ? 'rgba(167, 139, 250, 0.18)' : 'rgba(167, 139, 250, 0.06)',
+                color: paintMode ? '#a78bfa' : 'rgba(167, 139, 250, 0.5)',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -3657,7 +3595,7 @@ export default function LogicGatesSimulator({ setPage }) {
             >
               {/* Paint icon — Paintbrush (kuas cat) di kiri teks.
                   User request: 'sebelah kiri tulisan paint harusnya ada logo'.
-                  OFF: icon dim (inherit color rgba). ON: icon bright + drop-shadow glow biru.
+                  OFF: icon dim (inherit color rgba). ON: icon bright + drop-shadow glow violet.
                   strokeWidth 2.2 (lebih bold dari default 2) biar keliatan jelas di size 16. */}
               <Paintbrush
                 size={16}
@@ -3729,6 +3667,75 @@ export default function LogicGatesSimulator({ setPage }) {
               <span>{deleteMode ? 'delete on' : 'delete off'}</span>
             </button>
           </div>
+
+          {/* ── Mode indicator (FIXED tengah layar, gede, dynamic) ──
+              Posisi fixed di tengah-atas layar — left:50% + translateX(-50%).
+              Responsif: PC → tengah layar lebar, mobile → tengah layar sempit.
+              Ukuran lebih gede dari tombol lain.
+              GAK PERNAH redup — selalu terang & keliatan jelas.
+              Berganti teks & warna sesuai mode aktif:
+              - build → "mode: build" + hijau (#4ade80)
+              - connect → "mode: connect wire" + cyan (#22d3ee)
+              - paint → "mode: paint" + violet (#a78bfa)
+              - delete → "mode: delete" + merah (#fca5a5)
+              Klik → kembali ke build mode (reset semua special mode). */}
+          <button
+            onClick={() => {
+              if (anySpecialMode) {
+                setMode('build');
+                setPaintMode(false);
+                setDeleteMode(false);
+              }
+            }}
+            title={anySpecialMode ? 'Return to Build mode' : 'Build mode active (default)'}
+            style={{
+              position: 'fixed',
+              top: 12,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '14px 22px', borderRadius: 12,
+              border: '2px solid ' + (
+                mode === 'connect' ? '#22d3ee' :
+                paintMode ? '#a78bfa' :
+                deleteMode ? '#fca5a5' :
+                '#4ade80'
+              ),
+              backgroundColor: (
+                mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
+                paintMode ? 'rgba(167, 139, 250, 0.18)' :
+                deleteMode ? 'rgba(239, 68, 68, 0.22)' :
+                'rgba(74, 222, 128, 0.15)'
+              ),
+              color: (
+                mode === 'connect' ? '#22d3ee' :
+                paintMode ? '#a78bfa' :
+                deleteMode ? '#fca5a5' :
+                '#4ade80'
+              ),
+              fontSize: 15, fontWeight: 800, fontFamily: '"Inter", sans-serif',
+              cursor: anySpecialMode ? 'pointer' : 'default',
+              boxShadow: '0 3px 12px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(6px)',
+              transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
+              userSelect: 'none',
+              letterSpacing: '0.3px',
+              whiteSpace: 'nowrap',
+              // GAK PERNAH redup — selalu opacity 1
+            }}
+          >
+            {/* Ikon dinamis sesuai mode aktif */}
+            {mode === 'connect' ? <Cable size={16} /> :
+             paintMode ? <Paintbrush size={16} strokeWidth={2.2} /> :
+             deleteMode ? (
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                 <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.8" fill="rgba(239,68,68,0.12)" opacity="0.7" />
+                 <path d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+               </svg>
+             ) : <MousePointer2 size={16} />}
+            <span>mode: {mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
+          </button>
           <div style={statusStyle}>{status}</div>
           {/* Zoom + coordinate controls — FIXED ke viewport (bukan absolute di canvasWrap).
               User request: 'papan informasi... wajib sejajar dengan tombol chat helper,
