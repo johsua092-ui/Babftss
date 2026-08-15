@@ -865,9 +865,11 @@ export default function LogicGatesSimulator({ setPage }) {
   // x,y = screen coords (di mana panel muncul). hex = warna saat ini di picker.
   const [colorPicker, setColorPicker] = useState(null);
   // Sidebar palette toggle — user minta: bisa tutup panel komponen biar leluasa berkreasi di canvas,
-  // Default false (tutup) supaya saat pertama kali buka simulasi, semua menu/tool tertutup.
-  // User harus klik tombol buat membuka palette. Ini biar canvas bersih dan gak overwhelming.
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  // Default true (terbuka) supaya user langsung bisa lihat & drag komponen dari palette.
+  // DI MOBILE: default false (tutup) supaya sidebar gak nutupin canvas yang udah sempit.
+  const [paletteOpen, setPaletteOpen] = useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  );
   // Mobile detection — track viewport width buat responsive layout (header collapse, dll).
   // User feedback: 'di mobile layoutnya ngawur, tombol header numpuk'.
   const [isMobile, setIsMobile] = useState(
@@ -910,10 +912,9 @@ export default function LogicGatesSimulator({ setPage }) {
   useEffect(() => { cloneModeRef.current = cloneMode; }, [cloneMode]);
   useEffect(() => { moveModeRef.current = moveMode; }, [moveMode]);
   useEffect(() => { rotateModeRef.current = rotateMode; }, [rotateMode]);
-  // Safety net: pastikan palette & tools TERTUTUP saat pertama kali mount.
-  // Ini mengatasi React HMR yang bisa preserve state lama saat dev hot-reload.
+  // Safety net: pastikan tools TERTUTUP saat pertama kali mount.
+  // Palette dibiarkan terbuka (sesuai default) supaya user langsung bisa akses komponen.
   useEffect(() => {
-    setPaletteOpen(false);
     setToolsOpen(false);
   }, []);
   // Clear clone selection state when clone mode is turned off
