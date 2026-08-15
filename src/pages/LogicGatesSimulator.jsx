@@ -1094,6 +1094,29 @@ export default function LogicGatesSimulator({ setPage }) {
     return null;
   }, []);
 
+  // Cycle detection: BFS dari dst, kalau nyampe src = cycle. Dipakai sebelum
+  // create wire supaya gak bikin infinite loop pas simulate. Dipindah ke sini
+  // (sebelum completeWire) karena completeWire nge-reference dia di deps array —
+  // kalo dideklarasi setelahnya, ReferenceError TDZ bikin blank page.
+  const wouldCreateCycle = useCallback((fromId, toId, comps, wrs) => {
+    const visited = new Set();
+    const queue = [toId];
+    while (queue.length) {
+      const curr = queue.shift();
+      if (curr === fromId) return true;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      const comp = comps.find(c => c.id === curr);
+      if (comp) {
+        for (const wireId of comp.outputWires.flat()) {
+          const wire = wrs.find(w => w.id === wireId);
+          if (wire) queue.push(wire.to);
+        }
+      }
+    }
+    return false;
+  }, []);
+
   // Helper: complete a wire from (fromComp, fromIdx) to (dstComp, dstIdx).
   // Shared antara Build mode (port hit) dan Connect mode (zone hit) supaya logic
   // wire-removal, cycle-detection, color-generation, dan simulate konsisten.
@@ -1181,25 +1204,6 @@ export default function LogicGatesSimulator({ setPage }) {
     }
     return null;
   }, [getNodePos]);
-
-  const wouldCreateCycle = useCallback((fromId, toId, comps, wrs) => {
-    const visited = new Set();
-    const queue = [toId];
-    while (queue.length) {
-      const curr = queue.shift();
-      if (curr === fromId) return true;
-      if (visited.has(curr)) continue;
-      visited.add(curr);
-      const comp = comps.find(c => c.id === curr);
-      if (comp) {
-        for (const wireId of comp.outputWires.flat()) {
-          const wire = wrs.find(w => w.id === wireId);
-          if (wire) queue.push(wire.to);
-        }
-      }
-    }
-    return false;
-  }, []);
 
   // ── Drawing ──
   useEffect(() => {
