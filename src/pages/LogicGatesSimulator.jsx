@@ -3293,11 +3293,18 @@ export default function LogicGatesSimulator({ setPage }) {
             <span>{mode === 'build' ? 'mode: build' : 'mode: connect wire'}</span>
           </button>
           <div style={statusStyle}>{status}</div>
-          {/* Zoom + coordinate controls — floating di pojok kiri bawah canvas (Figma/Miro style).
-              Bottom-right dilarang karena AIHelperButton (global, fixed bottom:24 right:24) akan nutupin. */}
+          {/* Zoom + coordinate controls — FIXED ke viewport (bukan absolute di canvasWrap).
+              User request: 'papan informasi... wajib sejajar dengan tombol chat helper,
+              karena misal saya scroll di area sidebar pada mobile dia gak ikut ilang'.
+              Sebelumnya position:absolute bottom:10 left:10 di canvasWrap → di mobile kalau
+              palette sidebar scroll/overlay, bar ini ikut ilang ketutupan sidebar.
+              Fix: position:fixed bottom:24 left:24 (match AIHelperButton bottom:24 right:24)
+              supaya selalu fixed di viewport, gak peduli scroll sidebar / pan workspace / zoom.
+              zIndex 200 = same as AIHelperButton supaya selalu on top. */}
           <div style={{
-            position: 'absolute',
-            bottom: 10, left: 10,
+            position: 'fixed',
+            bottom: 24, left: 24,
+            zIndex: 200,
             display: 'flex', alignItems: 'center', gap: 0,
             backgroundColor: 'rgba(15,23,42,0.9)',
             border: '1px solid #334155',
