@@ -217,8 +217,14 @@ export default function BlockSimulator3D({ setPage }) {
       render();
     };
     handleResize();
+    const container = containerRef.current;
+    const ro = container ? new ResizeObserver(handleResize) : null;
+    if (container && ro) ro.observe(container);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
   }, [render]);
 
   /* ---------- Hit Test ---------- */
@@ -437,7 +443,6 @@ export default function BlockSimulator3D({ setPage }) {
 
   return (
     <div
-      ref={containerRef}
       style={{
         minHeight: '100dvh',
         backgroundColor: '#05080f',
@@ -527,7 +532,7 @@ export default function BlockSimulator3D({ setPage }) {
       </div>
 
       {/* Main Canvas Area */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <canvas
           ref={canvasRef}
           style={{

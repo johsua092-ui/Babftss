@@ -2685,3 +2685,53 @@ User menyatakan "saya salah total disitu" — kemungkinan merujuk pada gambar ra
 1. Mulai dari TEMPLATE Card 16 (design.md §36)
 2. JANGAN gunakan apapun dari Card 17 yang sudah dihapus sebagai referensi
 3. Validasi gambar rancangan user dengan analisis menyeluruh sebelum implementasi (kasus T FF gambar feedback terbalik adalah pelajaran — jangan asal implementasi tanpa verifikasi logika)
+
+---
+
+## Bagian 40 — Fix Layout Full-Screen BlockSimulator3D (15 Aug 2026)
+
+### Latar belakang masalah
+
+User melaporkan: saat buka menu Shapes → "3D Block Simulator", area render jauh lebih kecil dari layar desktop (canvas collapse kecil di tengah/pojok), dan banyak bug visual terkait resize. Investigation menemukan 3 akar masalah — semua di layout & resize handling, BUKAN di 3D engine logic.
+
+### File yang diubah (HANYA 2 file, sesuai scope prompt kerja)
+
+1. `src/App.jsx` — 1 baris route `block-simulator-3d`
+2. `src/pages/BlockSimulator3D.jsx` — bagian `containerRef` + resize `useEffect`
+
+### Perubahan
+
+**Perbaikan #1 — `src/App.jsx` (root cause "layar kecil"):**
+- Route `block-simulator-3d` sebelumnya pakai style `alignItems: "center", justifyContent: "center", padding: 24` — itu pola halaman kartu kecil (welcome/menu/shapes), BUKAN pola tool full-screen.
+- Akibatnya komponen `BlockSimulator3D` collapse ke ukuran konten internalnya, alih-alih memenuhi viewport.
+- Ganti ke `flexDirection: "column"` (tanpa centering, tanpa padding) — persis pola yang sudah dipakai `logic-gates-simulator`.
+
+**Perbaikan #2 — `BlockSimulator3D.jsx`: pindah `containerRef`:**
+- Sebelumnya `ref={containerRef}` dipasang di div ROOT paling luar (yang juga memuat Header). Resize handler ikut mengukur tinggi Header → ukuran canvas jadi salah/ter-clip.
+- Hapus `ref={containerRef}` dari div root, pasang ke div "Main Canvas Area" (parent langsung `<canvas>`).
+- Sekarang `containerRef` mengukur wadah asli canvas, tanpa ikut Header — pola sama dengan `LogicGatesSimulator.jsx`.
+
+**Perbaikan #3 — `BlockSimulator3D.jsx`: tambah `ResizeObserver`:**
+- Sebelumnya resize hanya dipicu `window.addEventListener('resize', ...)`. Kalau kontainer berubah ukuran tanpa window resize (misal karena perubahan layout flex / sidebar collapse), canvas tidak ikut menyesuaikan.
+- Tambah `ResizeObserver` yang observe `containerRef.current`, pertahankan `window.addEventListener('resize')` sebagai fallback. Cleanup `ro.disconnect()` + `removeEventListener` di return.
+- Persis pola yang sudah terbukti benar di `LogicGatesSimulator.jsx`.
+
+### Yang TIDAK diubah (sesuai scope)
+
+- 3D engine logic (`project`, `getBlockCorners`, render blocks, painter's algorithm, backface culling) — TIDAK disentuh, sudah benar.
+- Tool logic (Place/Move/Rotate/Scale/Paint/Clone/Delete) — TIDAK disentuh.
+- Mouse event handlers (mousedown/mousemove/mouseup/wheel) — TIDAK disentuh.
+- File backend/auth apapun — TIDAK disentuh (lihat `instruction.md` Bagian 5).
+- Circuit card / logic gates / gears / linkages / halaman lain — TIDAK disentuh.
+
+### Verifikasi
+
+- `git diff --stat` konfirmasi HANYA 2 file berubah: `src/App.jsx` (+1/-1 baris), `src/pages/BlockSimulator3D.jsx` (+8/-3 baris). File mode changes dari operasi sebelumnya sudah di-reset.
+- `npm run build` sukses 0 error.
+- Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri: buka menu Shapes → 3D Block Simulator, pastikan canvas memenuhi viewport, resize browser window, dan tool/orbit/zoom tetap berfungsi.
+
+### Catatan untuk task berikutnya (temuan opsional, BELUM dikerjakan — di luar scope task ini)
+
+`BlockSimulator3D.jsx` saat ini HANYA punya mouse event handlers (`mousedown/mousemove/mouseup/wheel`). TIDAK ADA touch event (`touchstart/touchmove/touchend/touchcancel`). Beda dengan `LogicGatesSimulator.jsx` yang sudah full touch support.
+
+Akibatnya: tool ini kemungkinan BESAR tidak bisa dipakai di HP/tablet — orbit kamera & place block tidak akan respon ke sentuhan. Ini perlu dipecahkan di task terpisah kalau user ingin support mobile. **Tidak dikerjakan otomatis di task ini** karena di luar scope (task ini fokus ke ukuran layar).
