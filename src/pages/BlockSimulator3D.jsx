@@ -123,8 +123,17 @@ export default function BlockSimulator3D({ setPage }) {
 
     ctx.clearRect(0, 0, s.W / s.dpr, s.H / s.dpr);
 
+    // Background gradient (biar ada kedalaman, gak void hitam total) — pakai warna yang
+    // sudah dipakai di file ini juga (panelBg & bg halaman), bukan warna baru.
+    const w = s.W / s.dpr, h = s.H / s.dpr;
+    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
+    bgGrad.addColorStop(0, '#0e1420');
+    bgGrad.addColorStop(1, '#05080f');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
     // Grid
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.10)';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
     ctx.lineWidth = 0.5;
     const N = GRID_SIZE;
     for (let i = -N; i <= N; i++) {
@@ -156,8 +165,8 @@ export default function BlockSimulator3D({ setPage }) {
         { idx: [3, 2, 1, 0], shade: 0.58 },
         { idx: [4, 5, 6, 7], shade: 0.82 },
         { idx: [0, 1, 5, 4], shade: 0.42 },
-        { idx: [3, 2, 6, 7], shade: 1.0 },
-        { idx: [0, 3, 7, 4], shade: 0.72 },
+        { idx: [7, 6, 2, 3], shade: 1.0 },
+        { idx: [4, 7, 3, 0], shade: 0.72 },
         { idx: [1, 2, 6, 5], shade: 0.88 }
       ];
       faces.forEach(f => { f.avgZ = f.idx.reduce((sum, i2) => sum + pc[i2].z, 0) / 4; });
@@ -167,7 +176,7 @@ export default function BlockSimulator3D({ setPage }) {
         const pts = f.idx.map(i2 => pc[i2]);
         const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y;
         const bx = pts[2].x - pts[1].x, by = pts[2].y - pts[1].y;
-        if (ax * by - ay * bx > 0) return; // backface cull
+        if (ax * by - ay * bx < 0) return; // backface cull
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
@@ -286,12 +295,44 @@ export default function BlockSimulator3D({ setPage }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const runPlace = (mx, my) => {
+      const s = stateRef.current;
+      const gp = getGridPos(mx, my);
+      if (!gp) return;
+      let y = 0.5;
+      const stack = s.blocks.filter(b =>
+        Math.abs(b.pos.x - gp.x) < 0.1 && Math.abs(b.pos.z - gp.z) < 0.1
+      );
+      if (stack.length > 0) {
+        stack.sort((a, b) => b.pos.y - a.pos.y);
+        y = stack[0].pos.y + (stack[0].size ? stack[0].size.y : 1);
+      }
+      const nb = {
+        pos: new Vec3(gp.x, y, gp.z),
+        size: new Vec3(1, 1, 1),
+        rot: new Vec3(0, 0, 0),
+        color: currentColor,
+        id: Date.now() + Math.random()
+      };
+      s.blocks.push(nb);
+      s.selected = nb;
+      setBlockCount(s.blocks.length);
+      updateUISelection(nb);
+      render();
+    };
+
+    const onContextMenu = (e) => {
+      // Cegah menu klik-kanan bawaan browser muncul — klik-kanan dipakai untuk orbit kamera.
+      e.preventDefault();
+    };
+
     const onMouseDown = (e) => {
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       const s = stateRef.current;
 
-      if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      // Klik-kanan = orbit kamera, SELALU, di tool apa pun. (gaya Roblox Studio)
+      if (e.button === 2) {
         s.isOrbiting = true;
         s.dragStart = { x: mx, y: my };
         s.camStart = { yaw: s.cam.yaw, pitch: s.cam.pitch };
@@ -299,34 +340,29 @@ export default function BlockSimulator3D({ setPage }) {
         return;
       }
 
+      if (e.button !== 0) return; // hanya klik-kiri yang lanjut ke logic tool di bawah
+
       if (tool === 'place') {
-        const gp = getGridPos(mx, my);
-        if (gp) {
-          let y = 0;
-          const stack = s.blocks.filter(b =>
-            Math.abs(b.pos.x - gp.x) < 0.1 && Math.abs(b.pos.z - gp.z) < 0.1
-          );
-          if (stack.length > 0) {
-            stack.sort((a, b) => b.pos.y - a.pos.y);
-            y = stack[0].pos.y + (stack[0].size ? stack[0].size.y : 1);
-          }
-          const nb = {
-            pos: new Vec3(gp.x, y, gp.z),
-            size: new Vec3(1, 1, 1),
-            rot: new Vec3(0, 0, 0),
-            color: currentColor,
-            id: Date.now() + Math.random()
-          };
-          s.blocks.push(nb);
-          s.selected = nb;
-          setBlockCount(s.blocks.length);
-          updateUISelection(nb);
-          render();
-        }
+        runPlace(mx, my);
         return;
       }
 
       const hit = hitTest(mx, my);
+      if (tool === 'move' || tool === 'rotate' || tool === 'scale') {
+        if (hit) {
+          s.selected = hit;
+          s.isTransforming = true;
+          s.transformStart = { x: mx, y: my };
+          s.blockStart = { pos: hit.pos.clone(), rot: hit.rot.clone(), size: hit.size.clone() };
+          updateUISelection(hit);
+        } else {
+          s.selected = null;
+          updateUISelection(null);
+        }
+        render();
+        return;
+      }
+
       if (hit) {
         s.selected = hit;
         if (tool === 'delete') {
@@ -347,21 +383,12 @@ export default function BlockSimulator3D({ setPage }) {
           updateUISelection(nb);
         } else if (tool === 'color') {
           hit.color = currentColor;
-        } else if (tool === 'move' || tool === 'rotate' || tool === 'scale') {
-          s.isTransforming = true;
-          s.transformStart = { x: mx, y: my };
-          s.blockStart = {
-            pos: hit.pos.clone(),
-            rot: hit.rot.clone(),
-            size: hit.size.clone()
-          };
         }
-        render();
       } else {
         s.selected = null;
         updateUISelection(null);
-        render();
       }
+      render();
     };
 
     const onMouseMove = (e) => {
@@ -410,12 +437,14 @@ export default function BlockSimulator3D({ setPage }) {
       render();
     };
 
+    canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
 
     return () => {
+      canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseup', onMouseUp);
@@ -676,7 +705,7 @@ export default function BlockSimulator3D({ setPage }) {
           }}>
             <strong style={{ color: '#e2e8f0' }}>Controls</strong><br/>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Hand size={12} /> <strong>Drag</strong> = Orbit camera
+              <Hand size={12} /> <strong>Right-Click Drag</strong> = Orbit camera
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <MousePointer2 size={12} /> <strong>Scroll</strong> = Zoom

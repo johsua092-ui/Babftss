@@ -2735,3 +2735,67 @@ User melaporkan: saat buka menu Shapes → "3D Block Simulator", area render jau
 `BlockSimulator3D.jsx` saat ini HANYA punya mouse event handlers (`mousedown/mousemove/mouseup/wheel`). TIDAK ADA touch event (`touchstart/touchmove/touchend/touchcancel`). Beda dengan `LogicGatesSimulator.jsx` yang sudah full touch support.
 
 Akibatnya: tool ini kemungkinan BESAR tidak bisa dipakai di HP/tablet — orbit kamera & place block tidak akan respon ke sentuhan. Ini perlu dipecahkan di task terpisah kalau user ingin support mobile. **Tidak dikerjakan otomatis di task ini** karena di luar scope (task ini fokus ke ukuran layar).
+
+---
+
+## Bagian 41 — Fix BlockSimulator3D: Kamera, Bentuk Block, Background (15 Aug 2026)
+
+### Latar belakang masalah
+
+Task V1 (layout full-screen + resize, Bagian 40) SUDAH selesai dan terverifikasi — tidak diulang. Task ini fokus ke 4 bug baru yang SUDAH diverifikasi lewat simulasi matematika terpisah (bukan dugaan). Semua perubahan HANYA di `src/pages/BlockSimulator3D.jsx` — tidak menyentuh `App.jsx` atau file lain.
+
+### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
+
+- `src/pages/BlockSimulator3D.jsx` — 4 fix (A, B, C, D)
+
+### Perubahan
+
+**FIX A — Kamera orbit pakai Right-Click Drag (gaya Roblox Studio):**
+- Skema lama: klik-tengah atau Shift+klik-kiri = orbit. Klik-kiri = tool (dengan ambiguitas klik-vs-drag).
+- Skema baru: klik-kanan + drag = orbit kamera, SELALU, di tool apa pun. Klik-kiri MURNI buat tool aktif (place/move/rotate/scale/color/clone/delete). Tidak ada logic klik-vs-drag sama sekali — kedua tombol mouse tidak akan pernah tabrakan. Lebih simpel, lebih standar (persis mental model Roblox Studio / Blender / Unity).
+- Implementasi: ganti seluruh isi `useEffect` blok `/* ---------- Mouse Events ---------- */`:
+  - Ekstrak `runPlace(mx, my)` helper (supaya bisa dipanggi dari klik-kiri tool 'place').
+  - Tambah `onContextMenu(e)` handler yang `e.preventDefault()` — cegah menu klik-kanan bawaan browser muncul.
+  - `onMouseDown`: `if (e.button === 2)` → orbit; `if (e.button !== 0) return` (hanya klik-kiri lanjut ke tool); tool 'move'/'rotate'/'scale' di-branch duluan (deselect saat klik kosong); tool 'delete'/'clone'/'color' di branch `if (hit)`.
+  - Daftar event listener ditambah `contextmenu` (+ cleanup-nya).
+  - Dependency array `[tool, currentColor, project, render]` TETAP SAMA (tidak diubah).
+- Help panel: teks `<Hand> Drag = Orbit camera` → `<Hand> Right-Click Drag = Orbit camera`.
+- Shift+drag dan middle-click TIDAK dipakai lagi — cukup klik-kanan.
+
+**FIX B — Bentuk block "aneh" (winding order 2 sisi kubus salah):**
+- Di dalam `render()`, array `faces` yang dipakai untuk gambar tiap sisi kubus: 2 dari 6 sisi (sisi atas `[3,2,6,7]` dan sisi kiri `[0,3,7,4]`) urutan titiknya TERBALIK dibanding 4 sisi lainnya. Ini bikin backface-culling salah pilih sisi yang digambar (kadang sisi atas & bawah kegambar bareng, kadang malah gak ada yang kegambar) — sumber bentuk "pecah/aneh" di layar.
+- Diverifikasi lewat simulasi cross-product 3D terpisah sebelum diterapkan.
+- Perubahan (HANYA 2 baris idx yang dibalik, baris lain persis sama):
+  - `{ idx: [3, 2, 6, 7], shade: 1.0 }` → `{ idx: [7, 6, 2, 3], shade: 1.0 }`
+  - `{ idx: [0, 3, 7, 4], shade: 0.72 }` → `{ idx: [4, 7, 3, 0], shade: 0.72 }`
+- Backface cull test: `if (ax * by - ay * bx > 0) return` → `if (ax * by - ay * bx < 0) return` (arah tanda dibalik supaya cocok dengan winding yang sudah dibetulkan). WAJIB jalan bersamaan dengan perubahan idx di atas — kalau cuma salah satu, tampilan malah tambah salah.
+
+**FIX C — Block "kebenam" separuh ke lantai:**
+- Saat block baru ditaruh di lantai (tidak ditumpuk), posisi Y-nya sebelumnya di-set ke `0`. Karena kubus digambar dari pusatnya (½ ke atas, ½ ke bawah), block jadi separuh terbenam di bawah grid.
+- Fix: `let y = 0;` → `let y = 0.5;` di logic pemasangan block baru (sekarang ada di dalam `runPlace` helper hasil FIX A). Alas block pas di Y=0 (nempel lantai), bukan pusat block di Y=0 (kebenam).
+
+**FIX D — Background "kuburan" gelap total:**
+- Canvas cuma di-`clearRect` (transparan penuh), jadi yang kelihatan cuma background halaman nyaris hitam pekat (`#05080f`) + grid line 10% opacity. Tidak ada kedalaman/kontras sama sekali.
+- Fix: tambah radial-gradient fill di awal `render()`, pakai warna yang SUDAH ada di file ini (`panelBg = '#0e1420'` di tengah, bg halaman `#05080f` di pinggir) — bukan warna baru. Radius gradient = `Math.max(w, h) * 0.7`.
+- Grid opacity dinaikin dari `0.10` ke `0.16` (supaya grid lebih terlihat di atas gradient).
+
+### Yang TIDAK diubah (sesuai scope)
+
+- `src/App.jsx` — TIDAK disentuh (sudah diperbaiki di Bagian 40).
+- 3D engine logic (`project`, `getBlockCorners`, painter's algorithm, hitTest, getGridPos, snap) — TIDAK disentuh.
+- File backend/auth apapun — TIDAK disentuh (lihat `instruction.md` Bagian 5).
+- Circuit card / logic gates / gears / linkages / halaman lain — TIDAK disentuh.
+
+### Verifikasi
+
+- `git diff --stat src/` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+68/-39 baris). Tidak ada file `src/` lain berubah.
+- `npm run build` sukses 0 error: `2186 modules transformed`, `built in 10.62s`. BlockSimulator3D chunk: 17.34 KB (gzip 6.07 KB).
+- Review diff manual: semua 4 fix cocok persis dengan spesifikasi prompt kerja (winding order, backface cull sign, y=0.5, gradient, help text, contextmenu listener, dependency array).
+- Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri sesuai checklist prompt kerja:
+  1. Klik biasa (tanpa drag) di area kosong dengan tool "Place" aktif → block muncul, ALAS-nya pas di garis grid (tidak kebenam, tidak melayang).
+  2. Klik-kanan + drag di mana pun (tool apa pun aktif) → kamera orbit, TIDAK ada block yang ke-tempatkan/ter-delete secara tidak sengaja, dan TIDAK muncul menu klik-kanan bawaan browser.
+  3. Klik-kiri di tool Move/Rotate/Scale, langsung di atas block → block ikut ter-transform seperti biasa.
+  4. Klik-kiri di area kosong saat tool Move/Rotate/Scale aktif → cukup deselect block (tidak orbit, tidak error).
+  5. Teks Help panel sudah bilang "Right-Click Drag = Orbit camera".
+  6. Block yang baru ditaruh terlihat sebagai kubus utuh dari berbagai sudut kamera (drag orbit ke berbagai arah), bukan bentuk pecah/L-shape.
+  7. Background canvas tidak lagi hitam pekat total — ada gradasi halus, grid lebih terlihat.
