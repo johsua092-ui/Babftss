@@ -25,7 +25,7 @@ const IO_DEFS = {
   // INPUT (Switch) height ditambah dari 50 → 60 supaya muat drag handle bar di atas (12px).
   // User minta: switch punya tombol drag sendiri biar bisa dipindah tanpa toggle.
   INPUT:  { color: '#f59e0b', label: 'IN',  name: 'Switch', width: 60, height: 60, inputCount: 0, outputCount: 1 },
-  OUTPUT: { color: '#ef4444', label: 'OUT', name: 'LED',    width: 60, height: 50, inputCount: 1, outputCount: 0 },
+  OUTPUT: { color: '#ef4444', label: 'OUT', name: 'LED',    width: 60, height: 60, inputCount: 1, outputCount: 0 },
 };
 
 const GATE_MAP = Object.fromEntries(GATE_DATA.map(g => [g.type, g]));
@@ -1296,6 +1296,10 @@ export default function LogicGatesSimulator({ setPage }) {
 
         // ── LED (OUTPUT) ──
         // User request: LED juga harus punya nomor urut (LED 1, LED 2, ...).
+        // User feedback: 'tulisan LED tidak dapat dibaca karena menabrak'.
+        // Fix: tinggiin body 50→60, geser lingkaran ke bawah (offset -4 → +2) supaya
+        // gap label-lingkaran cukup. Label di y+8 (spans y+4..y+12), lingkaran di
+        // y+32 (spans y+21..y+43) → gap 9px, aman gak nabrak.
         if (comp.type === 'OUTPUT') {
           // Label "LED N" di atas body (sebelum gambar circle).
           ctx.fillStyle = '#f87171';
@@ -1304,7 +1308,7 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.textBaseline = 'middle';
           ctx.fillText('LED ' + (comp.typeNum || 1), comp.x + comp.width / 2, comp.y + 8);
           const ledX = comp.x + comp.width / 2;
-          const ledY = comp.y + comp.height / 2 - 4;
+          const ledY = comp.y + comp.height / 2 + 2;
           const lit = !!comp.inputs[0];
           if (lit) {
             ctx.shadowColor = '#ef4444';
