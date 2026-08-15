@@ -901,6 +901,7 @@ export default function LogicGatesSimulator({ setPage }) {
   const [cloneMode, setCloneMode] = useState(false);
   const [moveMode, setMoveMode] = useState(false);
   const [rotateMode, setRotateMode] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(true);
   const paintModeRef = useRef(false);
   const deleteModeRef = useRef(false);
   const cloneModeRef = useRef(false);
@@ -4295,11 +4296,10 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{ display: 'block', width: '100%', height: '100%' }}
             />
           </div>
-          {/* ── Connect + Paint + Delete button stack (top-left) ──
-              Tiga tombol di-stack vertikal di top-left canvas wrapper.
-              Wrapper div positioned absolute, top berubah tergantung paletteOpen
-              (palette closed → ada toggle button di top:8 left:8, jadi stack digeser ke top:60).
-              Mode indicator dipisah — posisi fixed tengah layar (di bawah stack ini). */}
+          {/* ── Tools collapsible menu (top-left) ──
+              Tombol "Tools" warna kuning terang, gak pernah redup.
+              Klik → expand/collapse semua tool buttons di bawahnya.
+              Wrapper div positioned absolute, top berubah tergantung paletteOpen. */}
           <div style={{
             position: 'absolute',
             top: paletteOpen ? 8 : 60,
@@ -4308,7 +4308,42 @@ export default function LogicGatesSimulator({ setPage }) {
             display: 'flex', flexDirection: 'column', gap: 6,
             transition: 'top 0.22s ease',
           }}>
-            {/* ── Move Area toggle (#1) ──
+            {/* ── Tools header button (always bright yellow, never dims) ── */}
+            <button
+              onClick={() => setToolsOpen(prev => !prev)}
+              title={toolsOpen ? 'Collapse tools menu' : 'Expand tools menu'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid #facc15',
+                backgroundColor: 'rgba(250, 204, 21, 0.12)',
+                color: '#facc15',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                userSelect: 'none',
+                width: '100%',
+                // NEVER dims — always full opacity
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                </svg>
+                tools
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
+                flexShrink: 0,
+                transform: toolsOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {toolsOpen && <>
+            {/* ── Move! Area toggle (#1) ──
                 Teal (#0ea5e9). OFF = dim, text 'move area off'.
                 ON = bright (#0ea5e9), text 'move area on'.
                 Mutual exclusive dengan semua mode lain. */}
@@ -4534,6 +4569,7 @@ export default function LogicGatesSimulator({ setPage }) {
               </svg>
               <span>{deleteMode ? 'delete on' : 'delete off'}</span>
             </button>
+            </>}
           </div>
 
           {/* ── Mode indicator (FIXED tengah layar, gede, dynamic) ──
