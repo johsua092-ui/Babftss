@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush } from 'lucide-react';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -3577,8 +3577,21 @@ export default function LogicGatesSimulator({ setPage }) {
                 userSelect: 'none',
               }}
             >
-              {/* Paint icon pakai Cable icon di-rotate? No — user spec doesn't require icon for paint.
-                  Cukup text label sesuai spec: 'paint off' / 'paint on'. */}
+              {/* Paint icon — Paintbrush (kuas cat) di kiri teks.
+                  User request: 'sebelah kiri tulisan paint harusnya ada logo'.
+                  OFF: icon dim (inherit color rgba). ON: icon bright + drop-shadow glow biru.
+                  strokeWidth 2.2 (lebih bold dari default 2) biar keliatan jelas di size 16. */}
+              <Paintbrush
+                size={16}
+                strokeWidth={2.2}
+                style={{
+                  filter: paintMode
+                    ? 'drop-shadow(0 0 4px rgba(96,165,250,0.9)) drop-shadow(0 0 2px rgba(96,165,250,0.6))'
+                    : 'none',
+                  transition: 'filter 0.2s ease',
+                  flexShrink: 0,
+                }}
+              />
               <span>{paintMode ? 'paint on' : 'paint off'}</span>
             </button>
 
@@ -3606,9 +3619,52 @@ export default function LogicGatesSimulator({ setPage }) {
                 userSelect: 'none',
               }}
             >
-              {/* Ikon X merah — user request: 'dia memiliki logo X merah menandakan bahwa dia itu tombol delete'. */}
-              <X size={13} />
+              {/* Ikon X merah — user request: 'design logo X di delete itu kecil woi dan terlalu biasa aja, harusnya bagus gitu'.
+                  Upgrade: custom SVG X bold (strokeWidth 3) di dalam lingkaran badge (radius 10).
+                  Total size 20px (lebih besar dari sebelumnya 13px).
+                  Saat ON: drop-shadow glow merah ganda + subtle pulse animation.
+                  Saat OFF: dim saja, no glow.
+                  Circle badge opacity 0.5 + fill rgba 0.12 → kesan 'no entry' / prohibition sign yang iconic. */}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                style={{
+                  filter: deleteMode
+                    ? 'drop-shadow(0 0 5px rgba(239,68,68,0.95)) drop-shadow(0 0 2px rgba(239,68,68,0.7))'
+                    : 'none',
+                  transition: 'filter 0.2s ease',
+                  flexShrink: 0,
+                  animation: deleteMode ? 'deleteIconPulse 2s ease-in-out infinite' : 'none',
+                }}
+              >
+                {/* Lingkaran badge — stroke currentColor (merah), fill rgba merah soft */}
+                <circle
+                  cx="12" cy="12" r="9.5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  fill="rgba(239,68,68,0.12)"
+                  opacity="0.7"
+                />
+                {/* X bold di tengah — strokeWidth 3 (lebih tebal dari default), strokeLinecap round */}
+                <path
+                  d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
               <span>{deleteMode ? 'delete on' : 'delete off'}</span>
+              {/* Inject keyframes pulse untuk animasi ikon delete saat ON —
+                  pakai <style> tag inline biar gak perlu sentuh file CSS lain. */}
+              <style>{`
+                @keyframes deleteIconPulse {
+                  0%, 100% { transform: scale(1); }
+                  50% { transform: scale(1.08); }
+                }
+              `}</style>
             </button>
           </div>
           <div style={statusStyle}>{status}</div>
