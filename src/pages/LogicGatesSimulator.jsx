@@ -892,6 +892,7 @@ export default function LogicGatesSimulator({ setPage }) {
   const stateRef = useRef({
     components, wires, nextId, selectedId, typeCounters,
     wiring: null, dragging: null, dragOffset: { x: 0, y: 0 }, hoverNode: null,
+    hoverZone: null,  // ← { compId, kind, idx } — zona yang sedang di-hover di connect mode (visual feedback)
     view: { x: 0, y: 0, scale: 1 },       // ← viewport pan/zoom (mutable, dibaca tiap frame)
     panning: null,                         // ← { startMouseX, startMouseY, startViewX, startViewY } saat pan aktif
     minimap: null,                          // ← { minX, minY, s, offX, offY } transform world→minimap (diupdate tiap frame)
@@ -1213,7 +1214,7 @@ export default function LogicGatesSimulator({ setPage }) {
     let animId;
 
     const draw = () => {
-      const { components: comps, wires: wrs, wiring, hoverNode, selectedId: selId, view } = stateRef.current;
+      const { components: comps, wires: wrs, wiring, hoverNode, hoverZone, selectedId: selId, view } = stateRef.current;
       // Blueprint background: deep blue paper + white grid lines (ala gambar teknik).
       // Bikin canvas gak kosong & kasih sense of scale pas pan/zoom.
       const bgGrad = ctx.createRadialGradient(
@@ -1523,6 +1524,63 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.strokeStyle = '#60a5fa';
         ctx.lineWidth = 2;
         ctx.stroke();
+      }
+
+      // ── Connect Wire mode: zona sentuh overlay ──
+      // User request: 'connect wirenya harusnya ada area dimana user bisa pencet di
+      // area mana yang jadi port input atau output'. Tanpa visual indicator, zona
+      // invisible → user harus nebak area mana = port mana. Fix: gambar overlay zona
+      // di setiap komponen saat connect mode aktif.
+      //
+      // Zona division (match hitTestZone):
+      //   - 2 inputs + 1 output (AND/OR/NAND/NOR/XOR/XNOR):
+      //       right half  = OUTPUT (hijau)
+      //       left-top    = INPUT 1 (biru)
+      //       left-bottom = INPUT 2 (ungu)
+      //   - 1 input + 1 output (NOT): 2 zona — kiri=INPUT, kanan=OUTPUT
+      //   - 1 input only (LED): 1 zona (whole = INPUT)
+      //   - 1 output only (Switch): 1 zona (whole = OUTPUT)
+      //
+      // Warna: tipis (alpha 0.10) default, zona yang di-hover = solid (alpha 0.30 +
+      // border). Label OUT/IN1/IN2 di tengah zona supaya jelas.
+      if (modeRef.current === 'connect') {
+        for (const comp of comps) {
+          const numIn = comp.inputs.length;
+          const numOut = comp.outputs.length;
+          const zones = [];
+          if (numIn === 2 && numOut === 1) {
+            zones.push({ kind: 'output', idx: 0, x: comp.x + comp.width / 2, y: comp.y, w: comp.width / 2, h: comp.height, label: 'OUT', color: '#4ade80' });
+            zones.push({ kind: 'input',  idx: 0, x: comp.x, y: comp.y, w: comp.width / 2, h: comp.height / 2, label: 'IN 1', color: '#60a5fa' });
+            zones.push({ kind: 'input',  idx: 1, x: comp.x, y: comp.y + comp.height / 2, w: comp.width / 2, h: comp.height / 2, label: 'IN 2', color: '#a78bfa' });
+          } else if (numIn === 1 && numOut === 1) {
+            zones.push({ kind: 'output', idx: 0, x: comp.x + comp.width / 2, y: comp.y, w: comp.width / 2, h: comp.height, label: 'OUT', color: '#4ade80' });
+            zones.push({ kind: 'input',  idx: 0, x: comp.x, y: comp.y, w: comp.width / 2, h: comp.height, label: 'IN', color: '#60a5fa' });
+          } else if (numIn === 1 && numOut === 0) {
+            // LED: 1 zona input (whole)
+            zones.push({ kind: 'input',  idx: 0, x: comp.x, y: comp.y, w: comp.width, h: comp.height, label: 'IN', color: '#60a5fa' });
+          } else if (numIn === 0 && numOut === 1) {
+            // Switch: 1 zona output (whole)
+            zones.push({ kind: 'output', idx: 0, x: comp.x, y: comp.y, w: comp.width, h: comp.height, label: 'OUT', color: '#4ade80' });
+          }
+          for (const z of zones) {
+            const isHover = hoverZone && hoverZone.compId === comp.id && hoverZone.kind === z.kind && hoverZone.idx === z.idx;
+            ctx.fillStyle = z.color + (isHover ? '4D' : '1A');  // 0.30 hover, 0.10 default
+            ctx.fillRect(z.x, z.y, z.w, z.h);
+            if (isHover) {
+              ctx.strokeStyle = z.color;
+              ctx.lineWidth = 1.5;
+              ctx.strokeRect(z.x + 0.5, z.y + 0.5, z.w - 1, z.h - 1);
+            }
+            // Label zona (cuma kalau zona cukup gede supaya text muat).
+            if (z.w >= 30 && z.h >= 18) {
+              ctx.fillStyle = isHover ? '#fff' : z.color + 'CC';
+              ctx.font = 'bold 8px "Inter", sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(z.label, z.x + z.w / 2, z.y + z.h / 2);
+            }
+          }
+        }
       }
 
       // Selesai world-space drawing — restore ke screen space.
@@ -1977,6 +2035,18 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       const hit = hitTest(mx, my, stateRef.current.components);
+      // Connect mode: track zona yang di-hover buat visual feedback (overlay zona).
+      // Build mode: clear hoverZone (gak dipake).
+      if (modeRef.current === 'connect' && hit) {
+        const zone = hitTestZone(mx, my, hit.comp);
+        if (zone) {
+          stateRef.current.hoverZone = { compId: hit.comp.id, kind: zone.kind, idx: zone.idx };
+        } else {
+          stateRef.current.hoverZone = null;
+        }
+      } else {
+        stateRef.current.hoverZone = null;
+      }
       if (hit && (hit.kind === 'input' || hit.kind === 'output')) {
         stateRef.current.hoverNode = { x: hit.x, y: hit.y };
         canvas.style.cursor = 'pointer';
@@ -2304,6 +2374,17 @@ export default function LogicGatesSimulator({ setPage }) {
         const { x: mx, y: my } = screenToWorld(sx, sy);
         // Update coordinate display (fix bug 'X --- Y ---' tampil terus di mobile).
         setCursorWorld({ x: Math.round(mx), y: Math.round(my) });
+
+        // Connect mode: track zona yang di-hover buat visual feedback (mobile).
+        if (modeRef.current === 'connect') {
+          const hit = hitTest(mx, my, stateRef.current.components);
+          if (hit) {
+            const zone = hitTestZone(mx, my, hit.comp);
+            stateRef.current.hoverZone = zone ? { compId: hit.comp.id, kind: zone.kind, idx: zone.idx } : null;
+          } else {
+            stateRef.current.hoverZone = null;
+          }
+        }
 
         // Panning (empty area drag, 1 finger).
         if (touchStateRef.current.panStart) {
