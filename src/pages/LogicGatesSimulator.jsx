@@ -910,6 +910,12 @@ export default function LogicGatesSimulator({ setPage }) {
   useEffect(() => { cloneModeRef.current = cloneMode; }, [cloneMode]);
   useEffect(() => { moveModeRef.current = moveMode; }, [moveMode]);
   useEffect(() => { rotateModeRef.current = rotateMode; }, [rotateMode]);
+  // Safety net: pastikan palette & tools TERTUTUP saat pertama kali mount.
+  // Ini mengatasi React HMR yang bisa preserve state lama saat dev hot-reload.
+  useEffect(() => {
+    setPaletteOpen(false);
+    setToolsOpen(false);
+  }, []);
   // Clear clone selection state when clone mode is turned off
   useEffect(() => {
     if (!cloneMode) {
