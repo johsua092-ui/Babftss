@@ -177,7 +177,7 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
     useEffect(() => {
         async function loadModels() {
             try {
-                const res = await fetch(`${API_URL}/models`);
+                const res = await fetch(`${API_URL}?action=models`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.models?.length) setModels(data.models);

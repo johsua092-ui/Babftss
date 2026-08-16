@@ -8,8 +8,8 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method === "GET") {
-    const path = req.url?.split("?")[0] || "";
-    if (path.endsWith("/models")) {
+    const url = new URL(req.url, `https://${req.headers.host || "localhost"}`);
+    if (url.searchParams.get("action") === "models") {
       try {
         const models = await getAvailableModels();
         return res.status(200).json({ models });
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Gagal memuat daftar model" });
       }
     }
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(200).json({ status: "ok", endpoints: { chat: "POST /api/ai-chat", models: "GET /api/ai-chat?action=models" } });
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
