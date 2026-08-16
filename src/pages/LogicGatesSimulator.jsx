@@ -3311,8 +3311,8 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Clone box dragging: update box end point (only while dragging, not after anchors shown) ──
-      if (cloneBoxRef.current && !stateRef.current.cloneAnchors) {
-        const box = cloneBoxRef.current;
+      if (cloneModeRef.current && stateRef.current.cloneBox && !stateRef.current.cloneAnchors) {
+        const box = stateRef.current.cloneBox;
         setCloneBox({ ...box, ex: sx, ey: sy });
         // Calculate which components are inside the box
         const v = stateRef.current.view;
@@ -3350,8 +3350,8 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Move box dragging: update box end point ──
-      if (moveBoxRef.current && !stateRef.current.moveAnchors) {
-        const box = moveBoxRef.current;
+      if (moveModeRef.current && stateRef.current.moveBox && !stateRef.current.moveAnchors) {
+        const box = stateRef.current.moveBox;
         setMoveBox({ ...box, ex: sx, ey: sy });
         const v = stateRef.current.view;
         const wx1 = (Math.min(box.sx, sx) - v.x) / v.scale;
@@ -3366,8 +3366,8 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Rotate BOX dragging: update end point (AABB rectangle like move/clone) ──
-      if (rotateBoxRef.current && !stateRef.current.rotateAnchors) {
-        const box = rotateBoxRef.current;
+      if (rotateModeRef.current && stateRef.current.rotateBox && !stateRef.current.rotateAnchors) {
+        const box = stateRef.current.rotateBox;
         setRotateBox({ ...box, ex: sx, ey: sy });
         const v = stateRef.current.view;
         // AABB overlap check (sama seperti move/clone — kotak, bukan lingkaran)
@@ -3696,6 +3696,24 @@ export default function LogicGatesSimulator({ setPage }) {
         stateRef.current.panning = null;
         canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
       }
+      // Clear active selection box drags so they don't "stick to cursor"
+      // when mouse leaves canvas and mouseUp fires outside (not caught by canvas).
+      if (cloneBoxRef.current && !cloneAnchorsRef.current) {
+        setCloneBox(null);
+        setCloneSelectedIds([]);
+        setCloneAnchors(null);
+      }
+      if (moveBoxRef.current && !moveAnchorsRef.current) {
+        setMoveBox(null);
+        setMoveSelectedIds([]);
+        setMoveAnchors(null);
+        setMoveActiveDir(null);
+      }
+      if (rotateBoxRef.current && !rotateAnchorsRef.current) {
+        setRotateBox(null);
+        setRotateSelectedIds([]);
+        setRotateAnchors(null);
+      }
       setCursorWorld(null);
     };
 
@@ -3705,6 +3723,9 @@ export default function LogicGatesSimulator({ setPage }) {
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', onContextMenu);
+    // Catch mouseUp on window so selection boxes don't "stick to cursor"
+    // when mouse leaves canvas during drag.
+    window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
@@ -4325,6 +4346,7 @@ export default function LogicGatesSimulator({ setPage }) {
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       canvas.removeEventListener('touchstart', onTouchStart);
