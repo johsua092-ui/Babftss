@@ -2799,3 +2799,68 @@ Task V1 (layout full-screen + resize, Bagian 40) SUDAH selesai dan terverifikasi
   5. Teks Help panel sudah bilang "Right-Click Drag = Orbit camera".
   6. Block yang baru ditaruh terlihat sebagai kubus utuh dari berbagai sudut kamera (drag orbit ke berbagai arah), bukan bentuk pecah/L-shape.
   7. Background canvas tidak lagi hitam pekat total — ada gradasi halus, grid lebih terlihat.
+
+---
+
+## Bagian 42 — LogicGatesSimulator: Rotate Animation + Exact 90° Rotation + Anchor Outside MEC (16 Aug 2026)
+
+### Task ID: 42
+**Agent:** main
+**Task:** (1) Pindah rotate anchor dari dalam ke luar MEC circle. (2) Tambah smooth rotation animation saat klik anchor rotate. (3) Fix bug komponen keluar area selected setelah rotate — pakai exact 90° formulas, hilangkan clamp & snap yang menyebabkan drift.
+
+### Latar belakang
+
+User melaporkan beberapa issue:
+1. Anchor rotate enaknya di luar, bukan di dalam lingkaran MEC.
+2. Rotate harus punya animasi — gak langsung teleport.
+3. Bug kritis: komponen keluar dari area marching ants setelah rotate (kondisi terlarang).
+
+### Perubahan
+
+**FIX 1 — Anchor rotate di luar MEC circle (30px outward):**
+- `calcRotateAnchorsFromMEC()`: ganti `inwardOffset = 18` (ke dalam) → `outwardOffset = 30` (ke luar).
+- Sekarang anchor di: `cx, cy - drawR - 30` (top), `cx, cy + drawR + 30` (bottom), dll.
+- Konsisten dengan anchor move/clone yang juga 30px di luar bbox.
+
+**FIX 2 — Exact 90° rotation formulas (zero drift):**
+- Sebelumnya: pakai `Math.cos(angle)` / `Math.sin(angle)` + clamp + 0.5px snap.
+- Clamp & snap menyebabkan systematic drift → komponen keluar area over multiple rotations.
+- Sesudah: pakai exact integer-arithmetic formulas:
+  - CW 90° around (px,py): `newX = px - (y - py)`, `newY = py + (x - px)`
+  - CCW 90° around (px,py): `newX = px + (y - py)`, `newY = py - (x - px)`
+  - Proof: 4 consecutive rotations return to exact start position (no floating-point error).
+- Clamp DIHAPUS (tidak perlu — exact rotation preserves distances).
+- Snap DIHAPUS (tidak perlu — no floating-point drift).
+- Pivot tetap = MEC center (titik tengah lingkaran pembatas).
+
+**FIX 3 — Smooth rotation animation (250ms):**
+- Tambah state `rotAnim`: `{ startTime, duration, pivot, angleDelta, oldComps, newComps, selIds }`.
+- Saat anchor rotate diklik:
+  1. Hitung posisi baru pakai exact formulas.
+  2. Apply ke state (simulate wires).
+  3. Set `rotAnim` dengan old & new positions + pivot + angle direction.
+- Di draw loop:
+  1. Jika `rotAnim` aktif, hitung `t` (0→1) dengan ease-in-out cubic.
+  2. Interpolasi: rotate old center around pivot by `angleDelta * t`.
+  3. Override posisi & facing komponen yang ter-animasi (via `rotAnimOverrides` map).
+  4. Facing di-snap ke target saat `t >= 0.5`, else keep old.
+- Override diapply ke:
+  - Component draw loop (`comp.x`, `comp.y`, `comp.facing` → `drawComp`)
+  - Wire endpoint draw (`getNodePos` pakai override comp)
+  - Selection overlay (otomatis karena pakai comp yang di-override)
+- Animasi selesai → `setRotAnim(null)` di frame berikutnya.
+- Skip klik rotate baru jika animasi masih jalan (guard `rotAnimRef.current`).
+
+### Verifikasi
+
+- `npm run build`: ✓ sukses 9.16s, 0 error.
+- LogicGatesSimulator chunk: 92.56 KB (gzip 22.76 KB).
+
+### Stage Summary
+
+- Rotate anchor sekarang 30px di LUAR MEC circle (lebih gampang diklik, gak nabrak komponen).
+- Rotasi pakai exact 90° formulas — **zero drift** walaupun rotate berulang-ulang.
+- Clamp & snap dihapus — bukan solusi, jadi sumber masalah.
+- Smooth 250ms animation dengan ease-in-out cubic membuat rotate terasa natural.
+- Komponen TIDAK akan pernah keluar dari area marching ants setelah rotate (mathematically guaranteed).
+- Commit & push.

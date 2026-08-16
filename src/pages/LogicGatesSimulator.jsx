@@ -977,6 +977,12 @@ export default function LogicGatesSimulator({ setPage }) {
   const minimapRef = useRef(null);
   const [components, setComponents] = useState([]);
   const [wires, setWires] = useState([]);
+  // ── Rotation animation state ──
+  // Saat animasi rotasi aktif, komponen yang ter-select di-interpolasi
+  // dari posisi lama ke posisi baru. Durasi ~250ms.
+  const [rotAnim, setRotAnim] = useState(null); // { startTime, duration, pivot: {x,y}, oldComps: [{id,x,y,facing}], newComps: [{id,x,y,facing}] }
+  const rotAnimRef = useRef(null);
+  useEffect(() => { rotAnimRef.current = rotAnim; }, [rotAnim]);
   const [nextId, setNextId] = useState(1);
   // Counter per-type untuk numbering (AND 1, AND 2, OR 1, OR 2, NOT 1, INPUT 1, OUTPUT 1, dll).
   // Persistent: kalau AND 2 di-delete, AND berikutnya yang dibuat jadi AND 3 (bukan reuse AND 2).
@@ -1240,7 +1246,7 @@ export default function LogicGatesSimulator({ setPage }) {
   useEffect(() => { stateRef.current = { ...stateRef.current, components, wires, nextId, selectedId, typeCounters }; }, [components, wires, nextId, selectedId, typeCounters]);
   useEffect(() => { stateRef.current = { ...stateRef.current, cloneBox, cloneAnchors, cloneSelectedIds }; }, [cloneBox, cloneAnchors, cloneSelectedIds]);
   useEffect(() => { stateRef.current = { ...stateRef.current, moveBox, moveAnchors, moveSelectedIds, moveActiveDir }; }, [moveBox, moveAnchors, moveSelectedIds, moveActiveDir]);
-  useEffect(() => { stateRef.current = { ...stateRef.current, rotateBox, rotateAnchors, rotateSelectedIds }; }, [rotateBox, rotateAnchors, rotateSelectedIds]);
+  useEffect(() => { stateRef.current = { ...stateRef.current, rotateBox, rotateAnchors, rotateSelectedIds, rotAnim }; }, [rotateBox, rotateAnchors, rotateSelectedIds, rotAnim]);
 
   // Screen (canvas pixel) → World (component coords). Dipakai SEMUA mouse handler.
   const screenToWorld = useCallback((sx, sy) => {
@@ -1629,7 +1635,50 @@ export default function LogicGatesSimulator({ setPage }) {
 
     const draw = () => {
       dashOffset = (dashOffset + 0.4) % 20; // marching ants animation speed
-      const { components: comps, wires: wrs, wiring, hoverNode, hoverZone, selectedId: selId, view } = stateRef.current;
+      const { components: comps, wires: wrs, wiring, hoverNode, hoverZone, selectedId: selId, view, rotAnim: liveRotAnim } = stateRef.current;
+
+      // ── Rotation animation: compute position overrides ──
+      // Jika animasi rotasi aktif, interpolasi posisi komponen dari old→new
+      // pakai smooth easing. Override dipakai saat draw komponen & wires.
+      let rotAnimOverrides = null; // Map<compId, {x, y, facing}> or null
+      if (liveRotAnim) {
+        const now = performance.now();
+        let t = (now - liveRotAnim.startTime) / liveRotAnim.duration;
+        if (t >= 1) {
+          // Animasi selesai — clear state
+          t = 1;
+          setRotAnim(null); // akan di-clear di render berikutnya
+        } else {
+          // Smooth easing: ease-in-out cubic
+          t = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+        // Interpolasi tiap komponen: rotasi smooth dari old pos ke new pos around pivot
+        const pivot = liveRotAnim.pivot;
+        const angleNow = liveRotAnim.angleDelta * t; // partial rotation angle
+        const cosNow = Math.cos(angleNow);
+        const sinNow = Math.sin(angleNow);
+        rotAnimOverrides = {};
+        for (const oldC of liveRotAnim.oldComps) {
+          // Old center position
+          const comp = comps.find(c => c.id === oldC.id);
+          if (!comp) continue;
+          const oldCx = oldC.x + comp.width / 2;
+          const oldCy = oldC.y + comp.height / 2;
+          // Rotate old center around pivot by partial angle
+          const dx = oldCx - pivot.x;
+          const dy = oldCy - pivot.y;
+          const interpCx = pivot.x + dx * cosNow - dy * sinNow;
+          const interpCy = pivot.y + dx * sinNow + dy * cosNow;
+          // Interpolate facing: snap ke target facing saat t > 0.5, else keep old
+          const newC = liveRotAnim.newComps.find(nc => nc.id === oldC.id);
+          const interpFacing = t >= 0.5 ? (newC ? newC.facing : oldC.facing) : oldC.facing;
+          rotAnimOverrides[oldC.id] = {
+            x: interpCx - comp.width / 2,
+            y: interpCy - comp.height / 2,
+            facing: interpFacing,
+          };
+        }
+      }
       // Blueprint background: deep blue paper + white grid lines (ala gambar teknik).
       // Bikin canvas gak kosong & kasih sense of scale pas pan/zoom.
       const bgGrad = ctx.createRadialGradient(
@@ -1688,9 +1737,16 @@ export default function LogicGatesSimulator({ setPage }) {
 
       // Wires
       for (const wire of wrs) {
-        const src = comps.find(c => c.id === wire.from);
-        const dst = comps.find(c => c.id === wire.to);
+        let src = comps.find(c => c.id === wire.from);
+        let dst = comps.find(c => c.id === wire.to);
         if (!src || !dst) continue;
+        // Apply rotation animation override untuk wire endpoints
+        if (rotAnimOverrides) {
+          const srcOvr = rotAnimOverrides[src.id];
+          if (srcOvr) src = { ...src, x: srcOvr.x, y: srcOvr.y, facing: srcOvr.facing };
+          const dstOvr = rotAnimOverrides[dst.id];
+          if (dstOvr) dst = { ...dst, x: dstOvr.x, y: dstOvr.y, facing: dstOvr.facing };
+        }
         const p1 = getNodePos(src, false, wire.fromIdx);
         const p2 = getNodePos(dst, true, wire.toIdx);
         // Smart routing: STRICT — kabel gak boleh menempel/nabrak kotak komponen apapun.
@@ -1744,7 +1800,14 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // Components
-      for (const comp of comps) {
+      for (const origComp of comps) {
+        // ── Apply rotation animation override ──
+        // Jika animasi rotasi aktif, pakai posisi interpolasi instead of actual
+        const animOvr = rotAnimOverrides ? rotAnimOverrides[origComp.id] : null;
+        const comp = animOvr
+          ? { ...origComp, x: animOvr.x, y: animOvr.y, facing: animOvr.facing }
+          : origComp;
+
         const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
         // comp.userColor = override warna komponen (paint mode). null = pakai def.color default.
         const compColor = comp.userColor || def.color;
@@ -2839,80 +2902,81 @@ export default function LogicGatesSimulator({ setPage }) {
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 20) {
-            // Rotate selected components by 90° around MEC circle center
-            // top = +90° (CW), bottom = -90° (CCW), left = +90°, right = -90°
+            // ── Rotate selected components by exact 90° around MEC center ──
+            // top/left = CW (+90°), bottom/right = CCW (-90°)
             const selIds = stateRef.current.rotateSelectedIds;
             const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
             if (selComps.length === 0) return;
 
-            // Calculate rotation pivot from MEC center (bukan center of mass)
-            // MEC center = center lingkaran pembatas, jadi rotasi di sekitar ini
-            // mempertahankan komponen di dalam lingkaran
+            // Skip jika animasi masih jalan
+            if (rotAnimRef.current) return;
+
+            // Pivot = MEC center (world space) — titik tengah lingkaran pembatas
             const v = stateRef.current.view;
             const mecResult = calcRotateAnchorsFromMEC(selComps, v);
-            let cx, cy;
+            let pivotX, pivotY;
             if (mecResult && mecResult.mec) {
-              // MEC center di screen space → convert ke world space
-              cx = (mecResult.mec.x - v.x) / v.scale;
-              cy = (mecResult.mec.y - v.y) / v.scale;
+              pivotX = (mecResult.mec.x - v.x) / v.scale;
+              pivotY = (mecResult.mec.y - v.y) / v.scale;
             } else {
               // Fallback: center of mass
-              cx = 0; cy = 0;
+              pivotX = 0; pivotY = 0;
               for (const c of selComps) {
-                cx += c.x + c.width / 2;
-                cy += c.y + c.height / 2;
+                pivotX += c.x + c.width / 2;
+                pivotY += c.y + c.height / 2;
               }
-              cx /= selComps.length;
-              cy /= selComps.length;
+              pivotX /= selComps.length;
+              pivotY /= selComps.length;
             }
 
-            const angle = (dir === 'top' || dir === 'left') ? Math.PI / 2 : -Math.PI / 2; // 90° increments
-            const cosA = Math.cos(angle);
-            const sinA = Math.sin(angle);
-            const facingDelta = (dir === 'top' || dir === 'left') ? 1 : -1; // CW=+1, CCW=-1
+            const isCW = (dir === 'top' || dir === 'left');
+            const facingDelta = isCW ? 1 : -1;
 
-            // Compute MEC radius in world space for clamping
-            let mecWorldR = Infinity;
-            if (mecResult && mecResult.mec) {
-              mecWorldR = (mecResult.mec.r - 4) / v.scale; // -4 padding
-            }
-
-            let newComps = stateRef.current.components.map(c => {
+            // Exact 90° rotation formulas (no Math.cos/sin — zero floating-point drift):
+            // CW 90° around (px,py): newX = px - (y - py), newY = py + (x - px)
+            // CCW 90° around (px,py): newX = px + (y - py), newY = py - (x - px)
+            // Proof: 4 consecutive rotations return to exact start position.
+            const oldComps = [];
+            const newComps = stateRef.current.components.map(c => {
               if (!selIds.includes(c.id)) return c;
-              // Rotate component CENTER around the MEC center
               const compCx = c.x + c.width / 2;
               const compCy = c.y + c.height / 2;
-              const dx = compCx - cx;
-              const dy = compCy - cy;
-              let newCx = cx + dx * cosA - dy * sinA;
-              let newCy = cy + dx * sinA + dy * cosA;
-
-              // CLAMP: pastikan komponen center tetap di dalam MEC circle
-              if (mecWorldR < Infinity) {
-                const distFromCenter = Math.sqrt((newCx - cx) ** 2 + (newCy - cy) ** 2);
-                const halfDiag = Math.sqrt(c.width ** 2 + c.height ** 2) / 2;
-                const maxDist = mecWorldR - halfDiag;
-                if (maxDist > 0 && distFromCenter > maxDist) {
-                  const scale = maxDist / distFromCenter;
-                  newCx = cx + (newCx - cx) * scale;
-                  newCy = cy + (newCy - cy) * scale;
-                }
+              let newCx, newCy;
+              if (isCW) {
+                // CW 90°: x' = px - (y - py), y' = py + (x - px)
+                newCx = pivotX - (compCy - pivotY);
+                newCy = pivotY + (compCx - pivotX);
+              } else {
+                // CCW 90°: x' = px + (y - py), y' = py - (x - px)
+                newCx = pivotX + (compCy - pivotY);
+                newCy = pivotY - (compCx - pivotX);
               }
-
-              // Snap ke 0.5 pixel untuk mengurangi floating-point drift
-              newCx = Math.round(newCx * 2) / 2;
-              newCy = Math.round(newCy * 2) / 2;
-
-              // Update facing direction: CW rotation = facing + 1, CCW = facing - 1 (mod 4)
               const newFacing = ((c.facing || 0) + facingDelta + 4) % 4;
-
+              oldComps.push({ id: c.id, x: c.x, y: c.y, facing: c.facing || 0 });
               return { ...c, x: newCx - c.width / 2, y: newCy - c.height / 2, facing: newFacing };
             });
 
+            // Trigger smooth animation (250ms)
+            const animNewComps = [];
+            for (const c of newComps) {
+              if (selIds.includes(c.id)) {
+                animNewComps.push({ id: c.id, x: c.x, y: c.y, facing: c.facing });
+              }
+            }
+            setRotAnim({
+              startTime: performance.now(),
+              duration: 250,
+              pivot: { x: pivotX, y: pivotY },
+              angleDelta: isCW ? Math.PI / 2 : -Math.PI / 2, // for smooth visual interpolation
+              oldComps,
+              newComps: animNewComps,
+              selIds,
+            });
+
+            // Apply new positions + simulate
             const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
             setComponents(simComps);
             setWires(simWrs);
-            setStatus('Rotated ' + selComps.length + ' component(s) by 90° ' + (angle > 0 ? 'CW' : 'CCW'));
             return;
           }
         }
