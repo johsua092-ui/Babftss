@@ -1,4 +1,4 @@
-import { ArrowLeft, Calculator, Box } from 'lucide-react';
+import { ArrowLeft, Calculator, Box, User } from 'lucide-react';
 
 const TOOLS = [
     {
@@ -18,10 +18,11 @@ const TOOLS = [
         bg: 'rgba(244,114,182,0.18)',
         glow: 'rgba(244,114,182,0.22)',
         border: 'rgba(244,114,182,0.38)',
+        requiresAuth: true,
     },
 ];
 
-export default function ShapesPage({ setPage }) {
+export default function ShapesPage({ setPage, user, onGuestClick }) {
     const panel = '#0e1420';
 
     return (
@@ -41,32 +42,34 @@ export default function ShapesPage({ setPage }) {
                 <div style={{ width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {TOOLS.map((t, i) => {
                         const Icon = t.icon;
+                        const locked = t.requiresAuth && !user;
                         return (
                             <button
                                 key={i}
-                                onClick={() => setPage(t.id)}
+                                onClick={() => locked ? (onGuestClick && onGuestClick()) : setPage(t.id)}
                                 style={{
                                     width: '100%',
                                     padding: '16px 20px',
                                     borderRadius: 14,
                                     cursor: 'pointer',
                                     backgroundColor: panel,
-                                    border: `1px solid ${t.border}`,
+                                    border: locked ? '1px solid rgba(239,68,68,0.3)' : `1px solid ${t.border}`,
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 14,
                                     color: '#fff',
-                                    boxShadow: `0 0 18px ${t.glow}`,
+                                    boxShadow: locked ? 'none' : `0 0 18px ${t.glow}`,
                                     transition: 'all 0.2s',
+                                    opacity: locked ? 0.5 : 1,
                                 }}
                                 onMouseEnter={c => (c.currentTarget.style.transform = 'scale(1.02)')}
                                 onMouseLeave={c => (c.currentTarget.style.transform = 'scale(1)')}
                             >
                                 <div style={{
-                                    backgroundColor: t.bg,
+                                    backgroundColor: locked ? 'rgba(239,68,68,0.12)' : t.bg,
                                     padding: 10,
                                     borderRadius: 10,
-                                    color: t.color,
+                                    color: locked ? '#ef4444' : t.color,
                                     flexShrink: 0,
                                 }}>
                                     <Icon size={22} />
@@ -76,10 +79,23 @@ export default function ShapesPage({ setPage }) {
                                     fontWeight: 700,
                                     fontSize: 14,
                                     textAlign: 'left',
-                                    color: t.color,
+                                    color: locked ? '#ef4444' : t.color,
                                 }}>
                                     {t.name}
                                 </span>
+                                {locked && (
+                                    <span style={{
+                                        fontFamily: 'Inter,sans-serif',
+                                        fontSize: 10,
+                                        fontWeight: 600,
+                                        color: '#ef4444',
+                                        marginLeft: 6,
+                                        opacity: 0.8,
+                                        letterSpacing: 0.5,
+                                    }}>
+                                        LOGIN REQUIRED
+                                    </span>
+                                )}
                             </button>
                         );
                     })}

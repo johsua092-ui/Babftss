@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
@@ -35,6 +35,7 @@ export default function App() {
     const [helperOpen, setHelperOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState([]);
     const [chatId, setChatId] = useState(null);
+    const [guestAnnouncement, setGuestAnnouncement] = useState(false);
     const { user, loading: authLoading, logout } = useAuth();
     const { loadProgress, resetProgress } = useProgressSync(page);
 
@@ -80,6 +81,11 @@ export default function App() {
     };
     const goToCircuit = () => setPage("logic-gates-circuit");
     const bg = "#181b24", panel = "#0e1420";
+
+    const showGuestAnnouncement = useCallback(() => {
+        setGuestAnnouncement(true);
+        setTimeout(() => setGuestAnnouncement(false), 3000);
+    }, []);
     // User bar — tampil di pojok kanan atas semua halaman
     const userBar = (
         <div style={{ position: 'fixed', top: 12, right: 16, zIndex: 100, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -153,6 +159,22 @@ export default function App() {
             <style>{`@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }`}</style>
             <Toaster position="top-center" richColors theme="dark" toastOptions={{ style: { fontFamily: 'Inter,sans-serif', fontSize: 13 } }} />
         {userBar}
+        {guestAnnouncement && (
+            <div style={{
+                position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
+                zIndex: 999, padding: '12px 24px', borderRadius: 12,
+                backgroundColor: '#1c0a0a', border: '1px solid #7f1d1d',
+                boxShadow: '0 8px 32px rgba(127,29,29,0.4)',
+                display: 'flex', alignItems: 'center', gap: 10,
+                animation: 'bannerIn 0.3s ease-out',
+            }}>
+                <User size={18} color="#f87171" />
+                <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: '#fca5a5' }}>
+                    Harap sign in dahulu sebelum menggunakan fitur ini
+                </span>
+            </div>
+        )}
+        <style>{`@keyframes bannerIn { from { opacity: 0; transform: translateX(-50%) translateY(-20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }`}</style>
         <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
         <main>
         <AnimatePresence mode="wait">
@@ -174,7 +196,7 @@ export default function App() {
                 </div>
             </motion.div>}
             {page === "shapes" && <motion.div key="shapes" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-                <Suspense fallback={pageFallback}><ShapesPage setPage={setPage} /></Suspense>
+                <Suspense fallback={pageFallback}><ShapesPage setPage={setPage} user={user} onGuestClick={showGuestAnnouncement} /></Suspense>
             </motion.div>}
             {page === "shapes-calculator" && <motion.div key="shapes-calculator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <Suspense fallback={pageFallback}><ShapesCalculator setPage={setPage} /></Suspense>
@@ -232,12 +254,12 @@ export default function App() {
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
                         ><div style={{ backgroundColor: "rgba(6,182,212,0.18)", padding: 12, borderRadius: 12, color: "#06b6d4", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Circuit Generator</span></button>
-                        <button onClick={() => setPage("logic-gates-simulator")}
-                            className="animate-gold-pulse"
-                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: "1px solid rgba(251,191,36,0.5)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s", backgroundColor: panel }}
+                        <button onClick={() => user ? setPage("logic-gates-simulator") : showGuestAnnouncement()}
+                            className={user ? "animate-gold-pulse" : undefined}
+                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: user ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s", backgroundColor: panel, opacity: user ? 1 : 0.5 }}
                             onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: "rgba(251,191,36,0.18)", padding: 12, borderRadius: 12, color: "#fbbf24", flexShrink: 0 }}><FlaskConical size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#fbbf24" }}>Create Logic Gates Simulator</span></button>
+                        ><div style={{ backgroundColor: user ? "rgba(251,191,36,0.18)" : "rgba(239,68,68,0.12)", padding: 12, borderRadius: 12, color: user ? "#fbbf24" : "#ef4444", flexShrink: 0 }}><FlaskConical size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: user ? "#fbbf24" : "#ef4444" }}>Create Logic Gates Simulator</span>{!user && <span style={{ fontFamily: "Inter,sans-serif", fontSize: 10, fontWeight: 600, color: "#ef4444", marginLeft: 6, opacity: 0.8, letterSpacing: 0.5 }}>LOGIN REQUIRED</span>}</button>
                     </div>
                     <button onClick={() => setPage("menu")}
                         style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #334155", color: "#94a3b8", cursor: "pointer", fontFamily: "Inter,sans-serif", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}
