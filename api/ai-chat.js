@@ -115,10 +115,9 @@ export default async function handler(req, res) {
         .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
     }
 
-    // Catat topik pertanyaan (best-effort) untuk statistik "dipakai buat apa".
     logChatTopic(uid, message);
 
-    const canned = getCannedResponse(message);
+    const canned = !admin ? getCannedResponse(message) : null;
     if (canned) {
       return res.status(200).json({
         answer: canned,
@@ -130,6 +129,7 @@ export default async function handler(req, res) {
     const result = await askAI(message, {
       chatId: chatId || undefined,
       history: cleanHistory || undefined,
+      isAdmin: admin,
     });
 
     if (!result.status) {
