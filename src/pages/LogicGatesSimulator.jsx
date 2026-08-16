@@ -398,17 +398,28 @@ function pickOrthogonalRoute(p1, p2, comps, srcId, dstId) {
   // Kalau gap negatif (overlap), fallback ke rata-rata
   const hvhMidXDefault = (dstLeft === srcRight) ? (x1 + x2) / 2 : hvhMidXIdeal;
 
-  // Kumpulin kandidat midX: (a) hug box edge tiap comp, (b) offset dari midX ideal.
+  // Kumpulin kandidat midX: (a) hug box edge tiap comp (TERMASUK src/dst), (b) extreme boundary,
+  // (c) offset dari midX ideal.
   const hvhMidXs = new Set();
   // (a) Hug box edge: midX pas di luar GAP_MARGIN tiap komponen (kiri & kanan).
-  //     Ini explicitly route di sekitar comp penghalang.
+  //     Termasuk src & dst — penting supaya V segment bisa route di luar body dst.
+  let allMinX = Infinity, allMaxX = -Infinity, allMinY = Infinity, allMaxY = -Infinity;
   for (const c of comps) {
-    if (c.id === srcId || c.id === dstId) continue;
     const box = getCompBox(c);
     hvhMidXs.add(box.x - GAP_MARGIN - 2);             // just left of comp
     hvhMidXs.add(box.x + box.w + GAP_MARGIN + 2);     // just right of comp
+    // Track global bounding box for extreme candidates
+    allMinX = Math.min(allMinX, box.x - GAP_MARGIN);
+    allMaxX = Math.max(allMaxX, box.x + box.w + GAP_MARGIN);
+    allMinY = Math.min(allMinY, box.y - GAP_MARGIN);
+    allMaxY = Math.max(allMaxY, box.y + box.h + GAP_MARGIN);
   }
-  // (b) Offset dari midX ideal (Z-shape di tengah gap, lalu eksplorasi kiri/kanan).
+  // (b) Extreme boundary candidates — far outside all components, guaranteed collision-free.
+  if (allMinX < Infinity) {
+    hvhMidXs.add(allMinX - 50);   // far left of everything
+    hvhMidXs.add(allMaxX + 50);   // far right of everything
+  }
+  // (c) Offset dari midX ideal (Z-shape di tengah gap, lalu eksplorasi kiri/kanan).
   const hvhOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 250, -250, 300, -300, 400, -400, 500, -500];
   for (const off of hvhOffsets) hvhMidXs.add(hvhMidXDefault + off);
 
@@ -423,12 +434,19 @@ function pickOrthogonalRoute(p1, p2, comps, srcId, dstId) {
   const vhvMidYIdeal = srcBottom + (dstTop - srcBottom) / 2;
   const vhvMidYDefault = (dstTop === srcBottom) ? (y1 + y2) / 2 : vhvMidYIdeal;
   const vhvMidYs = new Set();
+  // (a) Hug box edge: midY pas di luar GAP_MARGIN tiap komponen (atas & bawah).
+  //     Termasuk src & dst — penting supaya H segment bisa route di luar body.
   for (const c of comps) {
-    if (c.id === srcId || c.id === dstId) continue;
     const box = getCompBox(c);
     vhvMidYs.add(box.y - GAP_MARGIN - 2);             // just above comp
     vhvMidYs.add(box.y + box.h + GAP_MARGIN + 2);     // just below comp
   }
+  // (b) Extreme boundary candidates — far above/below all components.
+  if (allMinY < Infinity) {
+    vhvMidYs.add(allMinY - 50);   // far above everything
+    vhvMidYs.add(allMaxY + 50);   // far below everything
+  }
+  // (c) Offset dari midY ideal.
   const vhvOffsets = [0, 25, -25, 50, -50, 75, -75, 100, -100, 150, -150, 200, -200, 300, -300, 400, -400, 500, -500];
   for (const off of vhvOffsets) vhvMidYs.add(vhvMidYDefault + off);
 
@@ -1791,6 +1809,21 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.strokeStyle = '#0f172a';
           ctx.lineWidth = 2;
           ctx.stroke();
+        }
+
+        // ── Selection overlay: semi-transparent 50% tint over selected component body ──
+        // Move = teal (#0ea5e9), Rotate = amber (#f59e0b), Clone = purple (#c084fc)
+        const cSel = stateRef.current.cloneSelectedIds;
+        const mSel = stateRef.current.moveSelectedIds;
+        const rSel = stateRef.current.rotateSelectedIds;
+        let overlayColor = null;
+        if (mSel && mSel.includes(comp.id)) overlayColor = 'rgba(14, 165, 233, 0.50)';      // move = teal
+        else if (rSel && rSel.includes(comp.id)) overlayColor = 'rgba(245, 158, 11, 0.50)';   // rotate = amber
+        else if (cSel && cSel.includes(comp.id)) overlayColor = 'rgba(192, 132, 252, 0.50)';  // clone = purple
+        if (overlayColor) {
+          ctx.fillStyle = overlayColor;
+          roundRect(ctx, comp.x, comp.y, comp.width, comp.height, 8);
+          ctx.fill();
         }
       }
 
