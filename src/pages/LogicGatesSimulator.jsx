@@ -1531,6 +1531,54 @@ export default function LogicGatesSimulator({ setPage }) {
     let animId;
 
     let dashOffset = 0;
+
+    // ── Minimum Enclosing Circle (Welzl's algorithm) ──
+    // Mencari lingkaran TERKECIL yang mengandung semua titik.
+    // Dipakai untuk marching ants rotate: lingkaran sempurna yang serapat mungkin ke komponen.
+    const mecDist2 = (A, B) => (A.x - B.x) ** 2 + (A.y - B.y) ** 2;
+    const mecIsInside = (p, c) => (p.x - c.x) ** 2 + (p.y - c.y) ** 2 <= (c.r + 1e-6) ** 2;
+    const mecTrivialCircle = (R) => {
+      if (R.length === 0) return null;
+      if (R.length === 1) return { x: R[0].x, y: R[0].y, r: 0 };
+      if (R.length === 2) {
+        return {
+          x: (R[0].x + R[1].x) / 2,
+          y: (R[0].y + R[1].y) / 2,
+          r: Math.sqrt(mecDist2(R[0], R[1])) / 2
+        };
+      }
+      // 3 points — circumscribed circle of triangle
+      const A = R[0], B = R[1], C = R[2];
+      const D = 2 * (A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
+      if (Math.abs(D) < 1e-10) {
+        // Collinear — pakai 2 titik terjauh
+        const d1 = mecDist2(A, B), d2 = mecDist2(B, C), d3 = mecDist2(A, C);
+        if (d1 >= d2 && d1 >= d3) return mecTrivialCircle([A, B]);
+        if (d2 >= d1 && d2 >= d3) return mecTrivialCircle([B, C]);
+        return mecTrivialCircle([A, C]);
+      }
+      const ux = ((A.x * A.x + A.y * A.y) * (B.y - C.y) + (B.x * B.x + B.y * B.y) * (C.y - A.y) + (C.x * C.x + C.y * C.y) * (A.y - B.y)) / D;
+      const uy = ((A.x * A.x + A.y * A.y) * (C.x - B.x) + (B.x * B.x + B.y * B.y) * (A.x - C.x) + (C.x * C.x + C.y * C.y) * (B.x - A.x)) / D;
+      return { x: ux, y: uy, r: Math.sqrt((A.x - ux) ** 2 + (A.y - uy) ** 2) };
+    };
+    const welzl = (P, R) => {
+      if (P.length === 0 || R.length === 3) return mecTrivialCircle(R);
+      const p = P[0];
+      const D = welzl(P.slice(1), R);
+      if (D && mecIsInside(p, D)) return D;
+      return welzl(P.slice(1), [...R, p]);
+    };
+    const minimumEnclosingCircle = (points) => {
+      if (points.length === 0) return null;
+      // Fisher-Yates shuffle untuk Welzl's randomized algorithm
+      const shuffled = [...points];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return welzl(shuffled, []);
+    };
+
     const draw = () => {
       dashOffset = (dashOffset + 0.4) % 20; // marching ants animation speed
       const { components: comps, wires: wrs, wiring, hoverNode, hoverZone, selectedId: selId, view } = stateRef.current;
@@ -2235,42 +2283,42 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Marching ants ROUNDED RECT around selected rotate components ──
-      // Rounded rectangle: sudut bulat (kesan "bentuk bulat"), sisi lurus (rapat ke komponen).
-      // Jadi seakurat kotak tapi tetap rounded — tidak ada area kosong berlebih.
+      // ── Marching ants MINIMUM ENCLOSING CIRCLE around selected rotate components ──
+      // Lingkaran TERKECIL yang mengandung semua sudut komponen terpilih (Welzl's algorithm).
+      // Hasil: lingkaran sempurna yang serapat MUNGKIN ke komponen — pucuk terluar yang menentukan batas.
       const rSelIds = stateRef.current.rotateSelectedIds;
       if (rSelIds && rSelIds.length > 0 && rAnch) {
-        let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
+        // Kumpulkan semua 4 sudut setiap komponen terpilih (screen space)
+        const cornerPts = [];
         for (const comp of comps) {
           if (rSelIds.includes(comp.id)) {
             const sx = comp.x * view.scale + view.x;
             const sy = comp.y * view.scale + view.y;
             const sw = comp.width * view.scale;
             const sh = comp.height * view.scale;
-            minSx = Math.min(minSx, sx);
-            minSy = Math.min(minSy, sy);
-            maxSx = Math.max(maxSx, sx + sw);
-            maxSy = Math.max(maxSy, sy + sh);
+            cornerPts.push({ x: sx, y: sy });
+            cornerPts.push({ x: sx + sw, y: sy });
+            cornerPts.push({ x: sx, y: sy + sh });
+            cornerPts.push({ x: sx + sw, y: sy + sh });
           }
         }
-        if (minSx < Infinity) {
-          const bx = minSx - 4;
-          const by = minSy - 4;
-          const bw = (maxSx - minSx) + 8;
-          const bh = (maxSy - minSy) + 8;
-          // Corner radius: min of half-dimension, capped at 12 for nice roundness
-          const cr = Math.min(bw / 2, bh / 2, 12);
-          ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
-          ctx.beginPath();
-          ctx.roundRect(bx, by, bw, bh, cr);
-          ctx.fill();
-          ctx.setLineDash([6, 4]);
-          ctx.lineDashOffset = -dashOffset;
-          ctx.strokeStyle = '#f59e0b';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.lineDashOffset = 0;
+        if (cornerPts.length > 0) {
+          const mec = minimumEnclosingCircle(cornerPts);
+          if (mec && mec.r > 0) {
+            // +4px padding supaya garis tidak menempel persis di sudut komponen
+            const drawR = mec.r + 4;
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
+            ctx.beginPath();
+            ctx.arc(mec.x, mec.y, drawR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.setLineDash([6, 4]);
+            ctx.lineDashOffset = -dashOffset;
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.lineDashOffset = 0;
+          }
         }
       }
 
