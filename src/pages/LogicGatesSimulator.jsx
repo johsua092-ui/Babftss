@@ -472,6 +472,37 @@ function drawSmartOrthogonalPath(ctx, p1, p2, route, r = 8) {
 }
 
 // Titik di sepanjang path orthogonal pada parameter t (0..1).
+// Hitung anchor positions dari bounding box komponen terpilih (SCREEN SPACE).
+// Anchor ditempatkan di tepi bounding box + offset 30px ke luar.
+// Ini memastikan anchor sejajar dengan marching ants border.
+function calcAnchorsFromComponents(selComps, view) {
+  if (!selComps || selComps.length === 0) return null;
+  let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
+  for (const c of selComps) {
+    const sx = c.x * view.scale + view.x;
+    const sy = c.y * view.scale + view.y;
+    const sw = c.width * view.scale;
+    const sh = c.height * view.scale;
+    minSx = Math.min(minSx, sx);
+    minSy = Math.min(minSy, sy);
+    maxSx = Math.max(maxSx, sx + sw);
+    maxSy = Math.max(maxSy, sy + sh);
+  }
+  const cx = (minSx + maxSx) / 2;
+  const cy = (minSy + maxSy) / 2;
+  const hw = (maxSx - minSx) / 2;
+  const hh = (maxSy - minSy) / 2;
+  return {
+    box: { sx: minSx, sy: minSy, ex: maxSx, ey: maxSy },
+    anchors: {
+      top:    { x: cx, y: cy - hh - 30 },
+      bottom: { x: cx, y: cy + hh + 30 },
+      left:   { x: cx - hw - 30, y: cy },
+      right:  { x: cx + hw + 30, y: cy },
+    },
+  };
+}
+
 // Dipakai buat animasi pulse dot (titik putih yang jalan di wire ON).
 // Path = H1 (|dx|/2) → V (|dy|) → H2 (|dx|/2), total = |dx| + |dy|.
 function pointOnOrthogonal(p1, p2, t) {
@@ -2934,17 +2965,14 @@ export default function LogicGatesSimulator({ setPage }) {
 
         const hasComponents = insideIds.length > 0;
         if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
-          // Box is big enough AND has components inside → keep box visible + show 4 anchor points
-          const cx = (box.sx + box.ex) / 2;
-          const cy = (box.sy + box.ey) / 2;
-          const hw = Math.abs(box.ex - box.sx) / 2;
-          const hh = Math.abs(box.ey - box.sy) / 2;
-          setCloneAnchors({
-            top: { x: cx, y: cy - hh - 30 },
-            bottom: { x: cx, y: cy + hh + 30 },
-            left: { x: cx - hw - 30, y: cy },
-            right: { x: cx + hw + 30, y: cy },
-          });
+          // Box is big enough AND has components inside → show anchors based on component bounding box
+          const v = stateRef.current.view;
+          const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
+          const result = calcAnchorsFromComponents(selComps, v);
+          if (result) {
+            setCloneBox(result.box);
+            setCloneAnchors(result.anchors);
+          }
         } else {
           // Box too small OR no components inside → dismiss everything
           setCloneBox(null);
@@ -2963,33 +2991,14 @@ export default function LogicGatesSimulator({ setPage }) {
         // Recompute anchors based on current component positions
         const mb = stateRef.current.moveBox;
         if (mb) {
-          // Recalc box from current component positions
+          // Recalc box from current component positions using helper
           const selIds = stateRef.current.moveSelectedIds;
           const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
-          if (selComps.length > 0) {
-            const v = stateRef.current.view;
-            let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
-            for (const c of selComps) {
-              const csx = c.x * v.scale + v.x;
-              const csy = c.y * v.scale + v.y;
-              const csw = c.width * v.scale;
-              const csh = c.height * v.scale;
-              minSx = Math.min(minSx, csx);
-              minSy = Math.min(minSy, csy);
-              maxSx = Math.max(maxSx, csx + csw);
-              maxSy = Math.max(maxSy, csy + csh);
-            }
-            setMoveBox({ sx: minSx, sy: minSy, ex: maxSx, ey: maxSy });
-            const cx = (minSx + maxSx) / 2;
-            const cy = (minSy + maxSy) / 2;
-            const bw = (maxSx - minSx) / 2;
-            const bh = (maxSy - minSy) / 2;
-            setMoveAnchors({
-              top: { x: cx, y: cy - bh - 30 },
-              bottom: { x: cx, y: cy + bh + 30 },
-              left: { x: cx - bw - 30, y: cy },
-              right: { x: cx + bw + 30, y: cy },
-            });
+          const v = stateRef.current.view;
+          const result = calcAnchorsFromComponents(selComps, v);
+          if (result) {
+            setMoveBox(result.box);
+            setMoveAnchors(result.anchors);
           }
         }
         const { comps: simComps, wrs: simWrs } = simulate(stateRef.current.components, stateRef.current.wires);
@@ -3013,16 +3022,12 @@ export default function LogicGatesSimulator({ setPage }) {
         setMoveSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
         if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
-          const cx = (box.sx + box.ex) / 2;
-          const cy = (box.sy + box.ey) / 2;
-          const hw = Math.abs(box.ex - box.sx) / 2;
-          const hh = Math.abs(box.ey - box.sy) / 2;
-          setMoveAnchors({
-            top: { x: cx, y: cy - hh - 30 },
-            bottom: { x: cx, y: cy + hh + 30 },
-            left: { x: cx - hw - 30, y: cy },
-            right: { x: cx + hw + 30, y: cy },
-          });
+          const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
+          const result = calcAnchorsFromComponents(selComps, v);
+          if (result) {
+            setMoveBox(result.box);
+            setMoveAnchors(result.anchors);
+          }
         } else {
           setMoveBox(null);
           setMoveSelectedIds([]);
@@ -3045,16 +3050,12 @@ export default function LogicGatesSimulator({ setPage }) {
         setRotateSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
         if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
-          const cx = (box.sx + box.ex) / 2;
-          const cy = (box.sy + box.ey) / 2;
-          const hw = Math.abs(box.ex - box.sx) / 2;
-          const hh = Math.abs(box.ey - box.sy) / 2;
-          setRotateAnchors({
-            top: { x: cx, y: cy - hh - 30 },
-            bottom: { x: cx, y: cy + hh + 30 },
-            left: { x: cx - hw - 30, y: cy },
-            right: { x: cx + hw + 30, y: cy },
-          });
+          const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
+          const result = calcAnchorsFromComponents(selComps, v);
+          if (result) {
+            setRotateBox(result.box);
+            setRotateAnchors(result.anchors);
+          }
         } else {
           setRotateBox(null);
           setRotateSelectedIds([]);
