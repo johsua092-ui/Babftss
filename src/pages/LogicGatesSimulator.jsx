@@ -553,10 +553,16 @@ function calcWorldMECPivot(selComps) {
   if (!selComps || selComps.length === 0) return null;
   const cornerPts = [];
   for (const c of selComps) {
-    cornerPts.push({ x: c.x, y: c.y });
-    cornerPts.push({ x: c.x + c.width, y: c.y });
-    cornerPts.push({ x: c.x, y: c.y + c.height });
-    cornerPts.push({ x: c.x + c.width, y: c.y + c.height });
+    // Facing 1 or 3 = 90°/270° → effective visual width/height swapped
+    const facing = c.facing || 0;
+    const ew = (facing === 1 || facing === 3) ? c.height : c.width;
+    const eh = (facing === 1 || facing === 3) ? c.width : c.height;
+    const cx = c.x + c.width / 2;
+    const cy = c.y + c.height / 2;
+    cornerPts.push({ x: cx - ew / 2, y: cy - eh / 2 });
+    cornerPts.push({ x: cx + ew / 2, y: cy - eh / 2 });
+    cornerPts.push({ x: cx - ew / 2, y: cy + eh / 2 });
+    cornerPts.push({ x: cx + ew / 2, y: cy + eh / 2 });
   }
   const mec = minimumEnclosingCircle(cornerPts);
   if (!mec || mec.r <= 0) return null;
@@ -566,21 +572,27 @@ function calcWorldMECPivot(selComps) {
 function calcRotateAnchorsFromMEC(selComps, view) {
   if (!selComps || selComps.length === 0) return null;
   // Kumpulkan semua 4 sudut setiap komponen (screen space)
+  // Facing 1 or 3 = 90°/270° → effective visual width/height swapped
   const cornerPts = [];
   let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
   for (const c of selComps) {
-    const sx = c.x * view.scale + view.x;
-    const sy = c.y * view.scale + view.y;
-    const sw = c.width * view.scale;
-    const sh = c.height * view.scale;
-    cornerPts.push({ x: sx, y: sy });
-    cornerPts.push({ x: sx + sw, y: sy });
-    cornerPts.push({ x: sx, y: sy + sh });
-    cornerPts.push({ x: sx + sw, y: sy + sh });
-    minSx = Math.min(minSx, sx);
-    minSy = Math.min(minSy, sy);
-    maxSx = Math.max(maxSx, sx + sw);
-    maxSy = Math.max(maxSy, sy + sh);
+    const facing = c.facing || 0;
+    const ew = (facing === 1 || facing === 3) ? c.height : c.width;
+    const eh = (facing === 1 || facing === 3) ? c.width : c.height;
+    const cx = c.x + c.width / 2;
+    const cy = c.y + c.height / 2;
+    const sx1 = (cx - ew / 2) * view.scale + view.x;
+    const sy1 = (cy - eh / 2) * view.scale + view.y;
+    const sx2 = (cx + ew / 2) * view.scale + view.x;
+    const sy2 = (cy + eh / 2) * view.scale + view.y;
+    cornerPts.push({ x: sx1, y: sy1 });
+    cornerPts.push({ x: sx2, y: sy1 });
+    cornerPts.push({ x: sx1, y: sy2 });
+    cornerPts.push({ x: sx2, y: sy2 });
+    minSx = Math.min(minSx, sx1);
+    minSy = Math.min(minSy, sy1);
+    maxSx = Math.max(maxSx, sx2);
+    maxSy = Math.max(maxSy, sy2);
   }
   const mec = minimumEnclosingCircle(cornerPts);
   if (!mec || mec.r <= 0) return null;
@@ -2576,8 +2588,15 @@ export default function LogicGatesSimulator({ setPage }) {
       let liveRResult = null;
       if (rAnch) {
         // Recompute anchor positions dari current component positions + current view via MEC
+        // During rotation animation, use ANIMATED positions (not final) so MEC encompasses drawn components
         const rSelIdsLive = stateRef.current.rotateSelectedIds;
-        const rSelComps = comps.filter(c => rSelIdsLive.includes(c.id));
+        const rSelCompsRaw = comps.filter(c => rSelIdsLive.includes(c.id));
+        const rSelComps = rotAnimOverrides
+          ? rSelCompsRaw.map(c => {
+              const ovr = rotAnimOverrides[c.id];
+              return ovr ? { ...c, x: ovr.x, y: ovr.y, facing: ovr.facing } : c;
+            })
+          : rSelCompsRaw;
         liveRResult = rSelComps.length > 0 ? calcRotateAnchorsFromMEC(rSelComps, view) : null;
         const anchorPts = liveRResult ? liveRResult.anchors : rAnch; // fallback
         const dirs = ['top', 'bottom', 'left', 'right'];
@@ -2837,9 +2856,11 @@ export default function LogicGatesSimulator({ setPage }) {
     if (!canvas) return;
 
     const isPanningTrigger = (e) => {
-      // Pan aktif jika: middle mouse button (button=1) ATAU left mouse + space held.
+      // Pan aktif jika: middle mouse button (button=1) ATAU left mouse + space held
+      // ATAU right mouse button (button=2) in move/rotate/clone mode (workspace pan).
       if (e.button === 1) return true;
       if (e.button === 0 && spaceDownRef.current) return true;
+      if (e.button === 2 && (moveModeRef.current || rotateModeRef.current || cloneModeRef.current)) return true;
       return false;
     };
 
@@ -3872,11 +3893,10 @@ export default function LogicGatesSimulator({ setPage }) {
         const midY = (p1.y + p2.y) / 2;
         const v = stateRef.current.view;
 
-        // ── MOBILE: pinch-to-select-box when move/rotate/clone mode active ──
-        // Zoom out → select box membesar, zoom in → mengecil
-        // Gerak jari → select box ikut pindah
-        // Lepas jari → finalize (pilih komponen di dalam, tampil anchor)
-        const isSelectBoxMode = moveModeRef.current || rotateModeRef.current || cloneModeRef.current;
+        // ── MOBILE: pinch-to-select-box when rotate/clone mode active ──
+        // Move mode: 2-finger = normal pan+zoom (user can freely scroll workspace)
+        // Rotate/Clone mode: 2-finger = select box
+        const isSelectBoxMode = rotateModeRef.current || cloneModeRef.current;
         if (isSelectBoxMode) {
           // Pinch = select box mode, BUKAN zoom
           // Simpan pinch start + mode + initial select box center (world coords)
@@ -3887,17 +3907,12 @@ export default function LogicGatesSimulator({ setPage }) {
             selectBoxMode: true,
             selectBoxCenterWorld: { x: worldMidX, y: worldMidY },
             selectBoxStartDist: dist,
-            mode: moveModeRef.current ? 'move' : (rotateModeRef.current ? 'rotate' : 'clone'),
+            mode: rotateModeRef.current ? 'rotate' : 'clone',
           };
           // Initialize select box di midpoint (world coords)
           const { x: wmx, y: wmy } = screenToWorld(midX, midY);
           const halfSize = 0; // mulai dari 0, membesar saat zoom out
-          if (moveModeRef.current) {
-            setMoveBox({ sx: midX, sy: midY, ex: midX, ey: midY });
-            setMoveSelectedIds([]);
-            setMoveAnchors(null);
-            setMoveActiveDir(null);
-          } else if (rotateModeRef.current) {
+          if (rotateModeRef.current) {
             setRotateBox({ sx: midX, sy: midY, ex: midX, ey: midY });
             setRotateSelectedIds([]);
             setRotateAnchors(null);
