@@ -117,7 +117,7 @@ export default async function handler(req, res) {
 
     logChatTopic(uid, message);
 
-    const canned = !admin ? getCannedResponse(message) : null;
+    const canned = getCannedResponse(message);
     if (canned) {
       return res.status(200).json({
         answer: canned,
@@ -129,7 +129,6 @@ export default async function handler(req, res) {
     const result = await askAI(message, {
       chatId: chatId || undefined,
       history: cleanHistory || undefined,
-      isAdmin: admin,
     });
 
     if (!result.status) {
@@ -247,17 +246,17 @@ Kalau kamu butuh bantuan coding, coba tanya ke tools yang tepat seperti GitHub C
 
 Ada yang bisa saya bantu tentang Logic Gates atau BABFT? 😊`;
 
-const IDENTITY_MSG = `# 👋 Halo! Saya AI Tutor BABFT Learning 🏴‍☠️
+const IDENTITY_MSG = `# 👋 Halo! Aku Yuki, AI Tutor BABFT Learning 🏴‍☠️
 
-Saya dibuat oleh **tim pengembang BABFT Learning** untuk membantu kamu belajar:
+Aku dibuat oleh **tim pengembang BABFT Learning** untuk membantu kamu belajar:
 
-## 📚 Yang Bisa Saya Bantu:
+## 📚 Yang Bisa Aku Bantu:
 - ⚡ **Logic Gates** — AND, OR, NOT, XOR, NAND, NOR, XNOR
 - ⚙️ **Gears & Mechanisms** — 36 jenis gear
 - 🔩 **Linkages Mechanic** — 45 jenis linkage
 - 🎮 **Build A Boat For Treasure** — Chest, Quest, Event, Tools, Codes
 
-## ❌ Yang TIDAK Bisa Saya Lakukan:
+## ❌ Yang TIDAK Bisa Aku Lakukan:
 - Membuat kode/program/script
 - Membuat website atau aplikasi
 - Konfigurasi server
