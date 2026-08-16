@@ -1210,7 +1210,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
   // ── Rotate Area selection state ──
   // Amber (#f59e0b). Drag → selection box. Anchors = 4 double-circle (lingkaran di dalam lingkaran).
-  // Klik anchor → rotate area by 45° in that direction.
+  // Klik anchor → rotate area by 90° in that direction.
   const [rotateBox, setRotateBox] = useState(null);
   const [rotateSelectedIds, setRotateSelectedIds] = useState([]);
   const [rotateAnchors, setRotateAnchors] = useState(null);
@@ -1288,6 +1288,7 @@ export default function LogicGatesSimulator({ setPage }) {
       x, y,
       width: w,
       height: h,
+      facing: 0,  // 0=right (default), 1=down, 2=left, 3=up
       inputs: Array(inputCount).fill(false),
       outputs: Array(outputCount).fill(false),
       inputWires: Array(inputCount).fill(null),
@@ -1358,36 +1359,50 @@ export default function LogicGatesSimulator({ setPage }) {
   }, []);
 
   const getNodePos = useCallback((comp, isInput, idx) => {
-    // Port y untuk INPUT/OUTPUT (Switch/LED): default spacing berdasarkan jumlah port.
-    // Port y untuk logic gate (NOT/AND/.../XNOR): DISESUAIKAN supaya LURUS dengan
-    // gate internal wire y. Konstanta match drawGateShape + render call site:
-    //   drawGateShape: L=15, N=5, q=25 (lokal)
-    //   render call: translate y = comp.y+20, GATE_SCALE = 1.2
-    //   → NOT input & gate output wire y global = comp.y + 20 + 15*1.2 = comp.y + 38
-    //   → dual input atas y global = comp.y + 20 + (N+3)*1.2 = comp.y + 29.6
-    //   → dual input bawah y global = comp.y + 20 + (q-3)*1.2 = comp.y + 46.4
-    // Sebelumnya port pakai spacing comp.height/(n+1) → y gak lurus dengan gate wire
-    // → kabel gak nyambung. User minta port digeser biar lurus.
-    if (comp.type === 'INPUT' || comp.type === 'OUTPUT') {
+    const facing = comp.facing || 0; // 0=right, 1=down, 2=left, 3=up
+
+    // Helper: posisi port untuk facing=right (default), lalu rotate sesuai facing
+    const rightPos = () => {
+      if (comp.type === 'INPUT' || comp.type === 'OUTPUT') {
+        if (isInput) {
+          const spacing = comp.height / (comp.inputs.length + 1);
+          return { x: comp.x, y: comp.y + spacing * (idx + 1) };
+        } else {
+          const spacing = comp.height / (comp.outputs.length + 1);
+          return { x: comp.x + comp.width, y: comp.y + spacing * (idx + 1) };
+        }
+      }
+      // Logic gate
       if (isInput) {
-        const spacing = comp.height / (comp.inputs.length + 1);
-        return { x: comp.x, y: comp.y + spacing * (idx + 1) };
+        if (comp.type === 'not') {
+          return { x: comp.x, y: comp.y + 38 };
+        }
+        return { x: comp.x, y: comp.y + (idx === 0 ? 29.6 : 46.4) };
       } else {
-        const spacing = comp.height / (comp.outputs.length + 1);
-        return { x: comp.x + comp.width, y: comp.y + spacing * (idx + 1) };
+        return { x: comp.x + comp.width, y: comp.y + 38 };
       }
-    }
-    // Logic gate (not/and/nand/or/nor/xor/xnor)
-    if (isInput) {
-      if (comp.type === 'not') {
-        return { x: comp.x, y: comp.y + 38 };  // match L=15 scaled
-      }
-      // Dual input
-      return { x: comp.x, y: comp.y + (idx === 0 ? 29.6 : 46.4) };
-    } else {
-      // Output (selalu 1, di tengah-tengah body, y = L=15 scaled)
-      return { x: comp.x + comp.width, y: comp.y + 38 };
-    }
+    };
+
+    // Facing=0 (right): default
+    if (facing === 0) return rightPos();
+
+    // For other facings, compute default position then rotate around component center
+    const pos = rightPos();
+    const cx = comp.x + comp.width / 2;
+    const cy = comp.y + comp.height / 2;
+    const dx = pos.x - cx;
+    const dy = pos.y - cy;
+
+    // facing 1=down (90° CW), 2=left (180°), 3=up (270° CW)
+    // Rotation: x' = dx*cos - dy*sin, y' = dx*sin + dy*cos
+    const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+    const a = angles[facing];
+    const cosA = Math.cos(a);
+    const sinA = Math.sin(a);
+    return {
+      x: cx + dx * cosA - dy * sinA,
+      y: cy + dx * sinA + dy * cosA,
+    };
   }, []);
 
   const hitTest = useCallback((mx, my, comps) => {
@@ -1757,65 +1772,114 @@ export default function LogicGatesSimulator({ setPage }) {
 
         // ── Gate body (NOT/AND/NAND/OR/NOR/XOR/XNOR) ──
         if (comp.type !== 'INPUT' && comp.type !== 'OUTPUT') {
-          // Header bar
-          ctx.fillStyle = compColor + '18';
-          roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, 14, [7, 7, 0, 0]);
-          ctx.fill();
-
-          // Label — dengan numbering per-type (AND 1, AND 2, OR 1, INPUT 1, OUTPUT 1, dll).
-          // typeNum fallback ke 1 kalau comp lama (sebelum fitur ini) gak punya field.
+          const facing = comp.facing || 0; // 0=right, 1=down, 2=left, 3=up
           const labelNum = comp.typeNum || 1;
           const labelText = def.label + ' ' + labelNum;
+
+          // ── Label & Header bar — facing-aware ──
+          // right/left: text horizontal di atas (header bar)
+          // up/down: text vertikal di kiri (header bar vertikal)
           ctx.fillStyle = compColor;
           ctx.font = 'bold 9px "Orbitron", monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(labelText, comp.x + comp.width / 2, comp.y + 8);
 
-          // Gate body — model dari "7 Basic Logic Gates" menu (GateDiagram.jsx)
-          // CENTER sejati + SCALE UP supaya gate body gak kelihatan kecil di box.
-          // Iterasi: 1.5x kegedean → overflow border (XNOR 48*1.5=72, plus back curve
-          // extend ke kiri). 1.2x muat dengan margin aman (XNOR 48*1.2=57.6 < 90).
+          if (facing === 0 || facing === 2) {
+            // Horizontal header bar (top)
+            ctx.fillStyle = compColor + '18';
+            roundRect(ctx, comp.x + 1, comp.y + 1, comp.width - 2, 14, [7, 7, 0, 0]);
+            ctx.fill();
+            ctx.fillStyle = compColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelText, comp.x + comp.width / 2, comp.y + 8);
+          } else {
+            // Vertical header bar (left side) — untuk facing up/down
+            ctx.fillStyle = compColor + '18';
+            roundRect(ctx, comp.x + 1, comp.y + 1, 14, comp.height - 2, [7, 0, 0, 7]);
+            ctx.fill();
+            ctx.fillStyle = compColor;
+            // Draw text vertically: each character stacked top-to-bottom
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const chars = labelText.split('');
+            const charSpacing = 9;
+            const startY = comp.y + comp.height / 2 - (chars.length - 1) * charSpacing / 2;
+            for (let ci = 0; ci < chars.length; ci++) {
+              ctx.fillText(chars[ci], comp.x + 8, startY + ci * charSpacing);
+            }
+          }
+
+          // ── Gate body shape — rotate sesuai facing ──
           ctx.save();
           const GATE_SCALE = 1.2;
           const gateDrawW = getGateDrawWidth(comp.type) * GATE_SCALE;
           const gateTranslateX = (comp.width - gateDrawW) / 2;
-          // Vertical centering: body area = comp.y+14 to comp.y+56 (42px tall).
-          // Gate local y spans 0..25, scaled = 0..30, center at 15.
-          // Target center = comp.y + 35 (mid of 14..56). Translate y = 35 - 15 = 20.
+
+          // Compute rotation around component center
+          const compCx = comp.x + comp.width / 2;
+          const compCy = comp.y + comp.height / 2;
+
+          // Default position (facing=right): translate to gate local origin
+          // Gate center offset from comp center for facing=right
+          const gateLocalX = gateTranslateX - comp.width / 2 + gateDrawW / 2;  // offset from comp center
+          const gateLocalY = 20 - comp.height / 2 + 15 * GATE_SCALE / GATE_SCALE; // approx center
+
+          // Apply rotation around component center
+          const facingAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+          const facingAngle = facingAngles[facing];
+
+          ctx.translate(compCx, compCy);
+          ctx.rotate(facingAngle);
+          ctx.translate(-compCx, -compCy);
+
+          // Now draw at facing=right position (rotation handles the rest)
           ctx.translate(comp.x + gateTranslateX, comp.y + 20);
           ctx.scale(GATE_SCALE, GATE_SCALE);
           drawGateShape(ctx, comp.type, compColor, isOn, comp.inputs);
           ctx.restore();
 
-          // ── Global input/output wires: PORT → gate internal wire start/end ──
-          // User complaint: kabel input/output kependekan, gak nyentuh port.
-          // Root cause: gate internal wires (di drawGateShape lokal) cuma dari
-          // x=0 ke x=C=5, jadi global x = comp.x+gateTranslateX ke comp.x+gateTranslateX+6.
-          // Port ada di comp.x & comp.x+comp.width → gap gede antara port & wire.
-          // Fix: tambah global wires dari port ke gate internal wire start (kiri)
-          // dan dari gate internal wire end (kanan) ke port output. Karena port y
-          // udah di-align sama gate internal wire y (lihat getNodePos), wires ini
-          // garis horizontal lurus.
+          // ── Global input/output wires: PORT → gate body ──
+          // For rotated gates, connect port positions to the rotated gate body edges
           const wireColor = (v) => v ? compColor : '#475569';
           ctx.lineWidth = 2.2 * GATE_SCALE;
           ctx.lineCap = 'round';
-          // Input wires: port (comp.x, port_y) → gate internal wire start (comp.x+gateTranslateX, port_y)
+
+          // Input wires: from port to gate internal wire start
           for (let i = 0; i < comp.inputs.length; i++) {
             const portPos = getNodePos(comp, true, i);
+            // Gate internal wire start for this input (in local space before rotation)
+            const gateInputY = comp.type === 'not' ? 15 : (i === 0 ? 8 : 21.4);
+            // Compute gate internal wire start position (rotated)
+            const gateStartLocalX = comp.x + gateTranslateX + 6 * GATE_SCALE;
+            const gateStartLocalY = comp.y + 20 + gateInputY * GATE_SCALE;
+            // Rotate around comp center
+            const gsDx = gateStartLocalX - compCx;
+            const gsDy = gateStartLocalY - compCy;
+            const gsRotX = compCx + gsDx * Math.cos(facingAngle) - gsDy * Math.sin(facingAngle);
+            const gsRotY = compCy + gsDx * Math.sin(facingAngle) + gsDy * Math.cos(facingAngle);
+
             ctx.beginPath();
             ctx.strokeStyle = wireColor(comp.inputs[i]);
             ctx.moveTo(portPos.x, portPos.y);
-            ctx.lineTo(comp.x + gateTranslateX, portPos.y);
+            ctx.lineTo(gsRotX, gsRotY);
             ctx.stroke();
           }
-          // Output wire: gate internal wire end (comp.x+gateTranslateX+gateDrawW, out_y) → port (comp.x+comp.width, out_y)
-          const outPortPos = getNodePos(comp, false, 0);
-          ctx.beginPath();
-          ctx.strokeStyle = wireColor(comp.outputs[0]);
-          ctx.moveTo(comp.x + gateTranslateX + gateDrawW, outPortPos.y);
-          ctx.lineTo(outPortPos.x, outPortPos.y);
-          ctx.stroke();
+          // Output wire: from gate internal wire end to port
+          {
+            const outPortPos = getNodePos(comp, false, 0);
+            // Gate internal wire end (in local space before rotation)
+            const gateEndLocalX = comp.x + gateTranslateX + gateDrawW;
+            const gateEndLocalY = comp.y + 20 + 15 * GATE_SCALE;
+            const geDx = gateEndLocalX - compCx;
+            const geDy = gateEndLocalY - compCy;
+            const geRotX = compCx + geDx * Math.cos(facingAngle) - geDy * Math.sin(facingAngle);
+            const geRotY = compCy + geDx * Math.sin(facingAngle) + geDy * Math.cos(facingAngle);
+
+            ctx.beginPath();
+            ctx.strokeStyle = wireColor(comp.outputs[0]);
+            ctx.moveTo(geRotX, geRotY);
+            ctx.lineTo(outPortPos.x, outPortPos.y);
+            ctx.stroke();
+          }
         }
 
         // ── Switch (INPUT) ──
@@ -2322,12 +2386,12 @@ export default function LogicGatesSimulator({ setPage }) {
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 1.5;
           ctx.stroke();
-          // 45° label
+          // 90° label
           ctx.fillStyle = '#ffffff';
           ctx.font = '8px Inter, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          const label = (dir === 'top' || dir === 'left') ? '+45°' : '-45°';
+          const label = (dir === 'top' || dir === 'left') ? '+90°' : '-90°';
           // Don't draw label inside tiny circle, draw below anchor
           ctx.fillText(label, pt.x, pt.y + 22);
         }
@@ -2775,8 +2839,8 @@ export default function LogicGatesSimulator({ setPage }) {
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 20) {
-            // Rotate selected components by 45° around MEC circle center
-            // top = +45° (CW), bottom = -45° (CCW), left = +45°, right = -45°
+            // Rotate selected components by 90° around MEC circle center
+            // top = +90° (CW), bottom = -90° (CCW), left = +90°, right = -90°
             const selIds = stateRef.current.rotateSelectedIds;
             const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
             if (selComps.length === 0) return;
@@ -2802,9 +2866,10 @@ export default function LogicGatesSimulator({ setPage }) {
               cy /= selComps.length;
             }
 
-            const angle = (dir === 'top' || dir === 'left') ? Math.PI / 4 : -Math.PI / 4;
+            const angle = (dir === 'top' || dir === 'left') ? Math.PI / 2 : -Math.PI / 2; // 90° increments
             const cosA = Math.cos(angle);
             const sinA = Math.sin(angle);
+            const facingDelta = (dir === 'top' || dir === 'left') ? 1 : -1; // CW=+1, CCW=-1
 
             // Compute MEC radius in world space for clamping
             let mecWorldR = Infinity;
@@ -2823,13 +2888,11 @@ export default function LogicGatesSimulator({ setPage }) {
               let newCy = cy + dx * sinA + dy * cosA;
 
               // CLAMP: pastikan komponen center tetap di dalam MEC circle
-              // (jarak dari MEC center ke comp center < mecWorldR - halfDiagonal)
               if (mecWorldR < Infinity) {
                 const distFromCenter = Math.sqrt((newCx - cx) ** 2 + (newCy - cy) ** 2);
                 const halfDiag = Math.sqrt(c.width ** 2 + c.height ** 2) / 2;
                 const maxDist = mecWorldR - halfDiag;
                 if (maxDist > 0 && distFromCenter > maxDist) {
-                  // Scale back ke batas MEC
                   const scale = maxDist / distFromCenter;
                   newCx = cx + (newCx - cx) * scale;
                   newCy = cy + (newCy - cy) * scale;
@@ -2840,13 +2903,16 @@ export default function LogicGatesSimulator({ setPage }) {
               newCx = Math.round(newCx * 2) / 2;
               newCy = Math.round(newCy * 2) / 2;
 
-              return { ...c, x: newCx - c.width / 2, y: newCy - c.height / 2 };
+              // Update facing direction: CW rotation = facing + 1, CCW = facing - 1 (mod 4)
+              const newFacing = ((c.facing || 0) + facingDelta + 4) % 4;
+
+              return { ...c, x: newCx - c.width / 2, y: newCy - c.height / 2, facing: newFacing };
             });
 
             const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
             setComponents(simComps);
             setWires(simWrs);
-            setStatus('Rotated ' + selComps.length + ' component(s) by 45° ' + (angle > 0 ? 'CW' : 'CCW'));
+            setStatus('Rotated ' + selComps.length + ' component(s) by 90° ' + (angle > 0 ? 'CW' : 'CCW'));
             return;
           }
         }
@@ -4624,7 +4690,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 Mutual exclusive dengan semua mode lain. */}
             <button
               onClick={toggleRotate}
-              title={rotateMode ? 'Rotate Area mode ON — drag to select, click circles to rotate 45°' : 'Turn on Rotate Area mode'}
+              title={rotateMode ? 'Rotate Area mode ON — drag to select, click circles to rotate 90°' : 'Turn on Rotate Area mode'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
