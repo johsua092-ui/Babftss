@@ -2026,6 +2026,8 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
         if (minSx < Infinity) {
+          ctx.fillStyle = 'rgba(192, 132, 252, 0.10)';
+          ctx.fillRect(minSx, minSy, maxSx - minSx, maxSy - minSy);
           ctx.setLineDash([6, 4]);
           ctx.lineDashOffset = -dashOffset;
           ctx.strokeStyle = '#c084fc';
@@ -2109,6 +2111,8 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
         if (minSx < Infinity) {
+          ctx.fillStyle = 'rgba(14, 165, 233, 0.10)';
+          ctx.fillRect(minSx, minSy, maxSx - minSx, maxSy - minSy);
           ctx.setLineDash([6, 4]);
           ctx.lineDashOffset = -dashOffset;
           ctx.strokeStyle = '#0ea5e9';
@@ -2186,6 +2190,8 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
         if (minSx < Infinity) {
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
+          ctx.fillRect(minSx, minSy, maxSx - minSx, maxSy - minSy);
           ctx.setLineDash([6, 4]);
           ctx.lineDashOffset = -dashOffset;
           ctx.strokeStyle = '#f59e0b';
