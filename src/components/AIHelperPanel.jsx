@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, MessageCircle } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Send, Bot, MessageCircle, Coins, Clock, Zap, AlertTriangle, ShoppingCart, Play, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -90,6 +90,111 @@ const styles = {
     },
 };
 
+/* ── Gold & Timer bar styles ── */
+const goldStyles = {
+    bar: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px', backgroundColor: '#0a0f18',
+        borderBottom: '1px solid #1e293b', flexShrink: 0, gap: 8,
+    },
+    goldBadge: {
+        display: 'flex', alignItems: 'center', gap: 6,
+        backgroundColor: '#1a1f2e', border: '1px solid #2d3548',
+        borderRadius: 8, padding: '4px 10px',
+    },
+    goldIcon: { color: '#fbbf24' },
+    goldText: {
+        fontFamily: 'Orbitron,sans-serif', fontSize: 13, fontWeight: 700,
+        color: '#fbbf24', letterSpacing: 0.5,
+    },
+    timerBadge: (active) => ({
+        display: 'flex', alignItems: 'center', gap: 6,
+        backgroundColor: active ? '#0f2a1a' : '#1a1f2e',
+        border: '1px solid ' + (active ? '#16a34a' : '#2d3548'),
+        borderRadius: 8, padding: '4px 10px',
+    }),
+    timerIcon: (active) => ({ color: active ? '#4ade80' : '#64748b' }),
+    timerText: (active) => ({
+        fontFamily: 'Orbitron,sans-serif', fontSize: 12, fontWeight: 700,
+        color: active ? '#4ade80' : '#64748b', letterSpacing: 0.5,
+    }),
+    buyBtn: {
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '4px 8px', borderRadius: 6, cursor: 'pointer',
+        backgroundColor: '#1e293b', border: '1px solid #334155',
+        color: '#94a3b8', fontFamily: 'Inter,sans-serif', fontSize: 11,
+        fontWeight: 600, transition: 'all 0.2s', flexShrink: 0,
+    },
+    activateBtn: {
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+        backgroundColor: '#0f2a1a', border: '1px solid #16a34a',
+        color: '#4ade80', fontFamily: 'Inter,sans-serif', fontSize: 11,
+        fontWeight: 600, transition: 'all 0.2s', flexShrink: 0,
+    },
+    expandBtn: {
+        background: 'transparent', border: 'none', color: '#64748b',
+        cursor: 'pointer', padding: 2, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+    },
+    dropdown: {
+        backgroundColor: '#0a0f18', borderBottom: '1px solid #1e293b',
+        padding: '10px 14px', flexShrink: 0,
+    },
+    pkgGrid: {
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+    },
+    pkgCard: (affordable) => ({
+        display: 'flex', flexDirection: 'column', gap: 4,
+        padding: '8px 10px', borderRadius: 8,
+        backgroundColor: affordable ? '#111a27' : '#0e1219',
+        border: '1px solid ' + (affordable ? '#1e4976' : '#1e293b'),
+        cursor: affordable ? 'pointer' : 'default',
+        transition: 'all 0.2s', opacity: affordable ? 1 : 0.5,
+    }),
+    pkgLabel: {
+        fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600,
+        color: '#e2e8f0',
+    },
+    pkgCost: {
+        fontFamily: 'Inter,sans-serif', fontSize: 11,
+        color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4,
+    },
+    warningBox: {
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        padding: '10px 12px', borderRadius: 8,
+        backgroundColor: '#1a1000', border: '1px solid #92400e',
+        marginBottom: 8,
+    },
+    warningIcon: { color: '#f59e0b', flexShrink: 0, marginTop: 1 },
+    warningText: {
+        fontFamily: 'Inter,sans-serif', fontSize: 12,
+        color: '#fbbf24', lineHeight: 1.5,
+    },
+    warningBtns: {
+        display: 'flex', gap: 8, marginTop: 8,
+    },
+    warningConfirm: {
+        padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+        backgroundColor: '#92400e', border: '1px solid #b45309',
+        color: '#fef3c7', fontFamily: 'Inter,sans-serif', fontSize: 11,
+        fontWeight: 600, transition: 'all 0.2s',
+    },
+    warningCancel: {
+        padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
+        backgroundColor: '#1e293b', border: '1px solid #334155',
+        color: '#94a3b8', fontFamily: 'Inter,sans-serif', fontSize: 11,
+        fontWeight: 600, transition: 'all 0.2s',
+    },
+    errorToast: {
+        padding: '8px 12px', borderRadius: 8,
+        backgroundColor: '#2a0a0a', border: '1px solid #7f1d1d',
+        fontFamily: 'Inter,sans-serif', fontSize: 12,
+        color: '#f87171', lineHeight: 1.4,
+        display: 'flex', alignItems: 'center', gap: 6,
+    },
+};
+
 const mdStyles = {
     p: { margin: '0 0 8px 0' },
     h1: { fontFamily: 'Orbitron,sans-serif', fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '12px 0 6px 0' },
@@ -140,14 +245,84 @@ function MarkdownContent({ content }) {
     );
 }
 
+/* ── Countdown hook ── */
+function useCountdown(expiresAt) {
+    const [remaining, setRemaining] = useState(null);
+
+    useEffect(() => {
+        if (!expiresAt) { setRemaining(null); return; }
+        const tick = () => {
+            const diff = expiresAt - Date.now();
+            if (diff <= 0) { setRemaining(0); return; }
+            setRemaining(diff);
+        };
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [expiresAt]);
+
+    if (remaining === null) return null;
+    if (remaining <= 0) return '00:00';
+    const totalSec = Math.ceil(remaining / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/* ── Format minutes to human-readable ── */
+function formatMinutes(min) {
+    if (min === null || min === undefined) return '-';
+    if (min === Infinity) return '\u221E';
+    if (min <= 0) return '0 min';
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 export default function AIHelperPanel({ onClose, messages, setMessages, chatId, setChatId }) {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [goldError, setGoldError] = useState(null);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
     const { user, getIdToken } = useAuth();
 
+    /* ── Gold & Timer state ── */
+    const [goldInfo, setGoldInfo] = useState(null);     // { gold, remainingMinutes, timerActive, timerExpiresAt, packages, isAdmin }
+    const [showPackages, setShowPackages] = useState(false);
+    const [showTimerWarning, setShowTimerWarning] = useState(false);
+    const [buyingPkg, setBuyingPkg] = useState(null);
+    const [activating, setActivating] = useState(false);
+
+    const countdown = useCountdown(goldInfo?.timerExpiresAt || null);
+    const timerActive = goldInfo?.timerActive && countdown !== '00:00' && countdown !== null;
+
+    /* ── Fetch gold info ── */
+    const fetchGoldInfo = useCallback(async () => {
+        if (!user) return;
+        try {
+            const token = await getIdToken();
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(`${API_URL}?action=gold-info`, { headers });
+            if (res.ok) {
+                const data = await res.json();
+                setGoldInfo(data);
+            }
+        } catch {
+            // silent fail — don't block chat
+        }
+    }, [user, getIdToken]);
+
+    useEffect(() => {
+        fetchGoldInfo();
+        const id = setInterval(fetchGoldInfo, 30000);
+        return () => clearInterval(id);
+    }, [fetchGoldInfo]);
+
+    /* ── Re-fetch when timer might have changed ── */
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, loading]);
@@ -156,7 +331,81 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
         setTimeout(() => inputRef.current?.focus(), 150);
     }, []);
 
+    /* ── Buy package ── */
+    async function buyPackage(pkg) {
+        if (!user || buyingPkg) return;
+        setBuyingPkg(pkg.id);
+        setGoldError(null);
+        try {
+            const token = await getIdToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(`${API_URL}?action=buy-time`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ packageId: pkg.id }),
+            });
+            const data = await res.json();
+            if (res.status === 402) {
+                setGoldError('Gold tidak cukup! Kamu butuh ' + pkg.gold + ' gold tapi cuma punya ' + (data.gold ?? '?') + '.');
+                return;
+            }
+            if (res.status === 400) {
+                setGoldError(data.error || 'Paket tidak valid.');
+                return;
+            }
+            if (res.status === 429) {
+                setGoldError('Tunggu 3 detik sebelum beli lagi.');
+                return;
+            }
+            if (!res.ok) {
+                setGoldError(data.error || 'Gagal membeli paket.');
+                return;
+            }
+            // success — refresh gold info
+            await fetchGoldInfo();
+            setGoldError(null);
+            setShowPackages(false);
+        } catch {
+            setGoldError('Gagal menghubungi server. Coba lagi.');
+        } finally {
+            setBuyingPkg(null);
+        }
+    }
 
+    /* ── Activate timer ── */
+    async function confirmActivateTimer() {
+        if (!user || activating) return;
+        setActivating(true);
+        setGoldError(null);
+        setShowTimerWarning(false);
+        try {
+            const token = await getIdToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(`${API_URL}?action=activate-timer`, {
+                method: 'POST', headers,
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (res.status === 400) {
+                setGoldError(data.error || 'Belum punya waktu AI. Beli dulu paketnya.');
+                return;
+            }
+            if (res.status === 409) {
+                setGoldError('Timer sudah aktif.');
+                return;
+            }
+            if (!res.ok) {
+                setGoldError(data.error || 'Gagal mengaktifkan timer.');
+                return;
+            }
+            await fetchGoldInfo();
+        } catch {
+            setGoldError('Gagal menghubungi server. Coba lagi.');
+        } finally {
+            setActivating(false);
+        }
+    }
 
     async function sendMessage() {
         const text = input.trim();
@@ -189,6 +438,28 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                 body: JSON.stringify(body),
             });
 
+            /* ── Handle 402: Gold kurang ── */
+            if (res.status === 402) {
+                const data = await res.json().catch(() => ({}));
+                setError('Gold tidak cukup! Beli paket AI waktu dulu.');
+                await fetchGoldInfo();
+                return;
+            }
+
+            /* ── Handle 403: Timer not active / expired ── */
+            if (res.status === 403) {
+                const data = await res.json().catch(() => ({}));
+                if (data.code === 'TIMER_NOT_ACTIVE') {
+                    setError('Aktifkan timer AI dulu sebelum chat. Klik tombol "Aktifkan Timer" di atas.');
+                } else if (data.code === 'TIMER_EXPIRED') {
+                    setError('Waktu AI sudah habis! Beli paket baru untuk lanjut chat.');
+                } else {
+                    setError(data.error || 'Akses AI ditolak.');
+                }
+                await fetchGoldInfo();
+                return;
+            }
+
             if (res.status === 401) {
                 setError('Sesi expired. Coba login ulang.');
                 return;
@@ -213,8 +484,14 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
         }
     }
 
+    const gold = goldInfo?.isAdmin ? Infinity : (goldInfo?.gold ?? 0);
+    const remainingMin = goldInfo?.isAdmin ? Infinity : (goldInfo?.remainingMinutes ?? 0);
+    const packages = goldInfo?.packages || [];
+    const isAdmin = goldInfo?.isAdmin || false;
+
     return (
         <div style={styles.panelOuter}>
+            {/* ── Header ── */}
             <div style={styles.header}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Bot size={18} color="#64748b" />
@@ -230,6 +507,126 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                 </button>
             </div>
 
+            {/* ── Gold & Timer Bar ── */}
+            {user && goldInfo && (
+                <div style={goldStyles.bar}>
+                    {/* Gold balance */}
+                    <div style={goldStyles.goldBadge}>
+                        <Coins size={14} style={goldStyles.goldIcon} />
+                        <span style={goldStyles.goldText}>
+                            {gold === Infinity ? '\u221E' : gold}
+                        </span>
+                    </div>
+
+                    {/* Timer / Countdown */}
+                    <div style={goldStyles.timerBadge(timerActive)}>
+                        <Clock size={14} style={goldStyles.timerIcon(timerActive)} />
+                        <span style={goldStyles.timerText(timerActive)}>
+                            {timerActive ? countdown : (remainingMin > 0 ? formatMinutes(remainingMin) : 'No Time')}
+                        </span>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {!isAdmin && !timerActive && remainingMin > 0 && (
+                            <button
+                                style={goldStyles.activateBtn}
+                                onClick={() => setShowTimerWarning(true)}
+                                disabled={activating}
+                            >
+                                <Play size={12} /> Aktifkan
+                            </button>
+                        )}
+                        {!isAdmin && (
+                            <button
+                                style={goldStyles.buyBtn}
+                                onClick={() => setShowPackages(p => !p)}
+                            >
+                                <ShoppingCart size={12} />
+                                {showPackages ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Timer Irreversible Warning ── */}
+            {showTimerWarning && (
+                <div style={goldStyles.dropdown}>
+                    <div style={goldStyles.warningBox}>
+                        <AlertTriangle size={16} style={goldStyles.warningIcon} />
+                        <div>
+                            <div style={goldStyles.warningText}>
+                                Timer <strong>tidak bisa dihentikan</strong> setelah diaktifkan! Waktu akan terus berjalan sampai habis. Kamu punya <strong>{formatMinutes(remainingMin)}</strong> waktu AI.
+                            </div>
+                            <div style={goldStyles.warningBtns}>
+                                <button
+                                    style={goldStyles.warningConfirm}
+                                    onClick={confirmActivateTimer}
+                                    disabled={activating}
+                                >
+                                    {activating ? 'Mengaktifkan...' : 'Ya, Aktifkan Timer'}
+                                </button>
+                                <button
+                                    style={goldStyles.warningCancel}
+                                    onClick={() => setShowTimerWarning(false)}
+                                >
+                                    Batal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Package Purchase Dropdown ── */}
+            {showPackages && (
+                <div style={goldStyles.dropdown}>
+                    <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Zap size={13} color="#fbbf24" /> Beli Waktu AI
+                    </div>
+                    <div style={goldStyles.pkgGrid}>
+                        {packages.map(pkg => {
+                            const affordable = gold >= pkg.gold;
+                            const isBuying = buyingPkg === pkg.id;
+                            return (
+                                <button
+                                    key={pkg.id}
+                                    style={goldStyles.pkgCard(affordable)}
+                                    onClick={() => affordable && buyPackage(pkg)}
+                                    disabled={!affordable || isBuying}
+                                >
+                                    <span style={goldStyles.pkgLabel}>
+                                        {isBuying ? '...' : pkg.label}
+                                    </span>
+                                    <span style={goldStyles.pkgCost}>
+                                        <Coins size={11} style={{ color: '#fbbf24' }} />
+                                        {pkg.gold} gold
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Gold/Timer Error ── */}
+            {goldError && (
+                <div style={{ padding: '8px 14px', backgroundColor: '#0a0f18', borderBottom: '1px solid #1e293b', flexShrink: 0 }}>
+                    <div style={goldStyles.errorToast}>
+                        <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                        <span>{goldError}</span>
+                        <button
+                            onClick={() => setGoldError(null)}
+                            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', padding: 2, flexShrink: 0 }}
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Messages ── */}
             <div style={styles.messages}>
                 {messages.length === 0 && !loading && (
                     <div style={styles.emptyState}>
@@ -271,6 +668,7 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* ── Input Area ── */}
             <div style={styles.inputArea}>
                 <input
                     ref={inputRef}
