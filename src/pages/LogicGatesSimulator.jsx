@@ -223,12 +223,11 @@ function getCompBox(c) {
   return { x: c.x, y: c.y, w: c.width || 90, h: c.height || 56 };
 }
 
-// STRICT collision: pakai FULL bounding box + GAP_MARGIN di tiap sisi.
-// User request: kabel gak boleh menempel/nabrak kotak komponen, harus ada gap minimal.
-// Gap 12px = cukup buat visual clearance (wire 3px + 9px whitespace).
-// Ini KEBALIKAN dari versi lama (COLLISION_MARGIN=8 yang SHRINK box → wire bisa
-// lewat 8px dari tepi body tanpa dianggap nabrak).
-const GAP_MARGIN = 12;
+// MUTUAL GAP: komponen & kabel saling memberikan gap (seperti magnet kutub sama).
+// Komponen "mendorong" kabel 12px, kabel juga "mendorong" komponen 12px → total 24px.
+// Ini memastikan kabel TIDAK PERNAH menabrak/menindih body komponen, dan sebaliknya.
+// 24px = cukup buat visual clearance (wire 3px + 21px whitespace mutual gap).
+const GAP_MARGIN = 24;
 function getCompBlockedBox(c) {
   const b = getCompBox(c);
   return {
