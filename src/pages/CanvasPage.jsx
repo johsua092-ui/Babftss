@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API = '/api/canvas';
@@ -207,6 +207,22 @@ function DrawTab({ token }) {
         clearCanvas();
     };
 
+    const downloadPng = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        try {
+            const dataUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `canvas-${Date.now()}.png`;
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            console.error('Failed to export PNG:', err);
+        }
+    };
+
     return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0, overflow: 'hidden' }}>
             {/* Toolbar */}
@@ -229,8 +245,8 @@ function DrawTab({ token }) {
                     style={{ width: 60, accentColor: C.accent }} />
                 <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 10, color: C.textMuted }}>{lineWidth}px</span>
                 <div style={{ flex: 1 }} />
-                <button onClick={saveStrokes} disabled={saving} style={actionBtnStyle}>
-                    <Save size={13} /> {saving ? '...' : 'Save'}
+                <button onClick={downloadPng} style={actionBtnStyle}>
+                    <Download size={13} /> Save as PNG
                 </button>
                 <button onClick={() => setConfirmDelete(true)} style={{ ...actionBtnStyle, color: C.danger }}>
                     <Trash2 size={13} />
