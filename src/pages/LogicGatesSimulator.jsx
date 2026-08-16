@@ -2235,9 +2235,9 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Marching ants ELLIPSE around selected rotate components ──
-      // Ellipse (bukan circle) supaya rapat ke bounding box komponen,
-      // sama akuratnya dengan kotak tapi berbentuk bulat.
+      // ── Marching ants ROUNDED RECT around selected rotate components ──
+      // Rounded rectangle: sudut bulat (kesan "bentuk bulat"), sisi lurus (rapat ke komponen).
+      // Jadi seakurat kotak tapi tetap rounded — tidak ada area kosong berlebih.
       const rSelIds = stateRef.current.rotateSelectedIds;
       if (rSelIds && rSelIds.length > 0 && rAnch) {
         let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
@@ -2254,13 +2254,15 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
         if (minSx < Infinity) {
-          const cx = (minSx + maxSx) / 2;
-          const cy = (minSy + maxSy) / 2;
-          const rx = (maxSx - minSx) / 2 + 4;
-          const ry = (maxSy - minSy) / 2 + 4;
+          const bx = minSx - 4;
+          const by = minSy - 4;
+          const bw = (maxSx - minSx) + 8;
+          const bh = (maxSy - minSy) + 8;
+          // Corner radius: min of half-dimension, capped at 12 for nice roundness
+          const cr = Math.min(bw / 2, bh / 2, 12);
           ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
           ctx.beginPath();
-          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+          ctx.roundRect(bx, by, bw, bh, cr);
           ctx.fill();
           ctx.setLineDash([6, 4]);
           ctx.lineDashOffset = -dashOffset;
