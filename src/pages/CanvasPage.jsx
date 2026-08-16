@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download, Undo2, Redo2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API = '/api/canvas';
@@ -68,6 +68,67 @@ function DrawTab({ token }) {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const lastPos = useRef(null);
 
+    // ── Undo / Redo ──
+    const [history, setHistory] = useState([]);   // array of path snapshots
+    const [historyIdx, setHistoryIdx] = useState(-1); // current position in history
+    const historyRef = useRef([]);
+    const historyIdxRef = useRef(-1);
+    const canUndo = historyIdx > 0;
+    const canRedo = historyIdx < history.length - 1;
+
+    // Sync refs with state
+    useEffect(() => { historyRef.current = history; }, [history]);
+    useEffect(() => { historyIdxRef.current = historyIdx; }, [historyIdx]);
+
+    // Push a new snapshot into history (called after each stroke)
+    const pushHistory = (paths) => {
+        const snap = JSON.parse(JSON.stringify(paths));
+        const idx = historyIdxRef.current;
+        const h = historyRef.current.slice(0, idx + 1);
+        h.push(snap);
+        // Limit history to 50 entries
+        if (h.length > 50) h.shift();
+        setHistory(h);
+        setHistoryIdx(h.length - 1);
+    };
+
+    const undo = () => {
+        if (!canUndo) return;
+        const newIdx = historyIdx - 1;
+        const paths = history[newIdx];
+        pathsRef.current = JSON.parse(JSON.stringify(paths));
+        setHistoryIdx(newIdx);
+        replayCanvas(pathsRef.current);
+    };
+
+    const redo = () => {
+        if (!canRedo) return;
+        const newIdx = historyIdx + 1;
+        const paths = history[newIdx];
+        pathsRef.current = JSON.parse(JSON.stringify(paths));
+        setHistoryIdx(newIdx);
+        replayCanvas(pathsRef.current);
+    };
+
+    // Replay all paths onto canvas from scratch
+    const replayCanvas = (paths) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (const p of paths) {
+            if (p.eraser) { ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = p.width || 10; }
+            else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = p.color || '#2dd4bf'; ctx.lineWidth = p.width || 3; }
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            if (p.points && p.points.length > 1) {
+                ctx.beginPath(); ctx.moveTo(p.points[0].x, p.points[0].y);
+                for (let i = 1; i < p.points.length; i++) ctx.lineTo(p.points[i].x, p.points[i].y);
+                ctx.stroke();
+            }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+    };
+
     // Resize canvas to match container — keeps drawing coords 1:1
     useEffect(() => {
         const resize = () => {
@@ -94,26 +155,76 @@ function DrawTab({ token }) {
 
     const colors = ['#2dd4bf', '#60a5fa', '#a855f7', '#f472b6', '#fbbf24', '#ef4444', '#4ade80', '#e2e8f0'];
 
-    // Load strokes on mount
+    // ── Auto-save: localStorage key ──
+    const AUTO_SAVE_KEY = 'babft_canvas_autosave';
+
+    // Save paths to localStorage (instant, always works)
+    const saveToLocal = (paths) => {
+        try {
+            localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify({ paths, ts: Date.now() }));
+        } catch { }
+    };
+
+    // Load paths from localStorage
+    const loadFromLocal = () => {
+        try {
+            const raw = localStorage.getItem(AUTO_SAVE_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed.paths) ? parsed.paths : null;
+        } catch { return null; }
+    };
+
+    // Save to API (cloud) — best effort, non-blocking
+    const saveToCloud = async () => {
+        if (!token) return;
+        try {
+            await canvasApi('strokes', 'POST', token, { data: { paths: pathsRef.current } });
+        } catch { }
+    };
+
+    // The master auto-save function — saves everywhere
+    const autoSave = () => {
+        const paths = pathsRef.current;
+        if (!paths || paths.length === 0) return;
+        saveToLocal(paths);
+        saveToCloud();
+    };
+
+    // Load strokes on mount — try localStorage first (instant), then API (cloud)
     useEffect(() => {
         (async () => {
+            // 1) Try localStorage first for instant restore
+            const localPaths = loadFromLocal();
+            if (localPaths && localPaths.length > 0) {
+                pathsRef.current = localPaths;
+                pushHistory(localPaths);
+                replayCanvas(localPaths);
+                setLoading(false);
+                // Still sync from cloud in background
+                if (token) {
+                    try {
+                        const { ok, data } = await canvasApi('strokes', 'GET', token);
+                        if (ok && data.strokes && Array.isArray(data.strokes.paths) && data.strokes.paths.length > 0) {
+                            // Cloud has newer data? Use cloud if more strokes
+                            if (data.strokes.paths.length > localPaths.length) {
+                                pathsRef.current = data.strokes.paths;
+                                pushHistory(data.strokes.paths);
+                                replayCanvas(data.strokes.paths);
+                            }
+                        }
+                    } catch { }
+                }
+                return;
+            }
+            // 2) No localStorage — load from cloud
             if (!token) { setLoading(false); return; }
             try {
                 const { ok, data } = await canvasApi('strokes', 'GET', token);
                 if (ok && data.strokes && Array.isArray(data.strokes.paths)) {
-                    const ctx = canvasRef.current?.getContext('2d');
-                    if (!ctx) return;
-                    for (const p of data.strokes.paths) {
-                        if (p.eraser) { ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = p.width || 10; }
-                        else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = p.color || '#2dd4bf'; ctx.lineWidth = p.width || 3; }
-                        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-                        if (p.points && p.points.length > 1) {
-                            ctx.beginPath(); ctx.moveTo(p.points[0].x, p.points[0].y);
-                            for (let i = 1; i < p.points.length; i++) ctx.lineTo(p.points[i].x, p.points[i].y);
-                            ctx.stroke();
-                        }
-                    }
-                    ctx.globalCompositeOperation = 'source-over';
+                    pathsRef.current = data.strokes.paths;
+                    pushHistory(data.strokes.paths);
+                    replayCanvas(data.strokes.paths);
                 }
             } catch { } finally { setLoading(false); }
         })();
@@ -172,6 +283,10 @@ function DrawTab({ token }) {
             });
         }
         currentPathRef.current = null;
+        // Push to undo history after each stroke
+        pushHistory(pathsRef.current);
+        // Auto-save to localStorage after every stroke
+        saveToLocal(pathsRef.current);
     };
 
     const pathsRef = useRef([]);
@@ -190,6 +305,9 @@ function DrawTab({ token }) {
         const ctx = canvasRef.current?.getContext('2d');
         if (ctx) { ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height); }
         pathsRef.current = [];
+        setHistory([]);
+        setHistoryIdx(-1);
+        try { localStorage.removeItem(AUTO_SAVE_KEY); } catch { }
     };
 
     const saveStrokes = async () => {
@@ -206,6 +324,41 @@ function DrawTab({ token }) {
         await canvasApi('strokes', 'DELETE', token);
         clearCanvas();
     };
+
+    // ── Auto-save on ANY leave event ──
+    // This is the MUTLAK system — saves on every possible way user can leave
+    useEffect(() => {
+        // visibilitychange: user switches tab, minimizes browser, locks screen
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') autoSave();
+        };
+        // beforeunload: user closes tab, refreshes, navigates away
+        const onBeforeUnload = () => { autoSave(); };
+        // pagehide: back-forward cache, mobile swipe-back
+        const onPageHide = () => { autoSave(); };
+        // freeze: page is frozen by browser (Chrome)
+        const onFreeze = () => { autoSave(); };
+        // blur on window: user clicks outside browser, alt-tab, etc
+        const onBlur = () => { autoSave(); };
+        // mouseleave on document: mouse leaves the page entirely
+        const onMouseLeave = () => { autoSave(); };
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('beforeunload', onBeforeUnload);
+        window.addEventListener('pagehide', onPageHide);
+        window.addEventListener('freeze', onFreeze);
+        window.addEventListener('blur', onBlur);
+        document.addEventListener('mouseleave', onMouseLeave);
+
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            window.removeEventListener('beforeunload', onBeforeUnload);
+            window.removeEventListener('pagehide', onPageHide);
+            window.removeEventListener('freeze', onFreeze);
+            window.removeEventListener('blur', onBlur);
+            document.removeEventListener('mouseleave', onMouseLeave);
+        };
+    }, [token]);
 
     const downloadPng = () => {
         const canvas = canvasRef.current;
@@ -232,6 +385,13 @@ function DrawTab({ token }) {
                 </button>
                 <button onClick={() => setTool('eraser')} style={{ ...toolBtnStyle, backgroundColor: tool === 'eraser' ? C.dangerDim : 'transparent', border: `1px solid ${tool === 'eraser' ? C.danger : C.border}` }}>
                     <Eraser size={14} color={tool === 'eraser' ? C.danger : C.textMuted} />
+                </button>
+                <div style={{ width: 1, height: 20, backgroundColor: C.border }} />
+                <button onClick={undo} disabled={!canUndo} style={{ ...toolBtnStyle, opacity: canUndo ? 1 : 0.35, cursor: canUndo ? 'pointer' : 'not-allowed' }}>
+                    <Undo2 size={14} color={canUndo ? C.blue : C.textMuted} />
+                </button>
+                <button onClick={redo} disabled={!canRedo} style={{ ...toolBtnStyle, opacity: canRedo ? 1 : 0.35, cursor: canRedo ? 'pointer' : 'not-allowed' }}>
+                    <Redo2 size={14} color={canRedo ? C.blue : C.textMuted} />
                 </button>
                 <div style={{ width: 1, height: 20, backgroundColor: C.border }} />
                 {colors.map(c => (
