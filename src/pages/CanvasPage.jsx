@@ -58,6 +58,7 @@ function TabBar({ active, onChange }) {
    ══════════════════════════════════════════ */
 function DrawTab({ token }) {
     const canvasRef = useRef(null);
+    const containerRef = useRef(null);
     const [drawing, setDrawing] = useState(false);
     const [color, setColor] = useState('#2dd4bf');
     const [lineWidth, setLineWidth] = useState(3);
@@ -65,6 +66,30 @@ function DrawTab({ token }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
     const lastPos = useRef(null);
+
+    // Resize canvas to match container — keeps drawing coords 1:1
+    useEffect(() => {
+        const resize = () => {
+            const canvas = canvasRef.current;
+            const container = containerRef.current;
+            if (!canvas || !container) return;
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            if (canvas.width !== w || canvas.height !== h) {
+                // Save current image, resize, then restore
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                canvas.width = w;
+                canvas.height = h;
+                ctx.putImageData(imgData, 0, 0);
+            }
+        };
+        resize();
+        const ro = new ResizeObserver(resize);
+        if (containerRef.current) ro.observe(containerRef.current);
+        window.addEventListener('resize', resize);
+        return () => { ro.disconnect(); window.removeEventListener('resize', resize); };
+    }, []);
 
     const colors = ['#2dd4bf', '#60a5fa', '#a855f7', '#f472b6', '#fbbf24', '#ef4444', '#4ade80', '#e2e8f0'];
 
@@ -94,11 +119,18 @@ function DrawTab({ token }) {
     }, [token]);
 
     const getPos = (e) => {
-        const rect = canvasRef.current.getBoundingClientRect();
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
         const touch = e.touches?.[0];
         const clientX = touch ? touch.clientX : e.clientX;
         const clientY = touch ? touch.clientY : e.clientY;
-        return { x: clientX - rect.left, y: clientY - rect.top };
+        // Scale: CSS display size vs canvas internal pixel size
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY,
+        };
     };
 
     const startDraw = (e) => {
@@ -204,9 +236,9 @@ function DrawTab({ token }) {
                 </button>
             </div>
             {/* Canvas */}
-            <div style={{ flex: 1, position: 'relative', backgroundColor: '#05080f', overflow: 'hidden' }}>
+            <div ref={containerRef} style={{ flex: 1, position: 'relative', backgroundColor: '#05080f', overflow: 'hidden' }}>
                 {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontFamily: 'Inter,sans-serif', fontSize: 13 }}>Loading...</div>}
-                <canvas ref={canvasRef} width={800} height={500}
+                <canvas ref={canvasRef}
                     style={{ width: '100%', height: '100%', display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
                     onMouseDown={patchedStartDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
                     onTouchStart={patchedStartDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
