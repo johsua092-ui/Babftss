@@ -1008,6 +1008,48 @@ export default function LogicGatesSimulator({ setPage }) {
       return next;
     });
   };
+  // ── Keyboard shortcuts 1-6 (PC only): toggle tool modes + auto-open tools panel ──
+  // 1=move, 2=rotate, 3=clone, 4=connect wire, 5=paint, 6=delete
+  // Jika tools panel tertutup → auto-buka + aktifkan mode.
+  const toggleMoveRef = useRef(toggleMove);
+  const toggleRotateRef = useRef(toggleRotate);
+  const toggleCloneRef = useRef(toggleClone);
+  const togglePaintRef = useRef(togglePaint);
+  const toggleDeleteRef = useRef(toggleDelete);
+  toggleMoveRef.current = toggleMove;
+  toggleRotateRef.current = toggleRotate;
+  toggleCloneRef.current = toggleClone;
+  togglePaintRef.current = togglePaint;
+  toggleDeleteRef.current = toggleDelete;
+  useEffect(() => {
+    if (isMobile) return; // PC only
+    const onToolKey = (e) => {
+      // Ignore kalau lagi ngetik di input/textarea
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const k = e.key;
+      if (k >= '1' && k <= '6') {
+        e.preventDefault();
+        setToolsOpen(true); // Auto-open tools panel
+        if (k === '1') toggleMoveRef.current();
+        else if (k === '2') toggleRotateRef.current();
+        else if (k === '3') toggleCloneRef.current();
+        else if (k === '4') {
+          // Connect wire: toggle via mode state
+          setMode(prev => {
+            if (prev === 'connect') return 'build';
+            setPaintMode(false); setDeleteMode(false); setCloneMode(false); setMoveMode(false); setRotateMode(false);
+            return 'connect';
+          });
+        }
+        else if (k === '5') togglePaintRef.current();
+        else if (k === '6') toggleDeleteRef.current();
+      }
+    };
+    window.addEventListener('keydown', onToolKey);
+    return () => window.removeEventListener('keydown', onToolKey);
+  }, [isMobile]);
+
   // ── Clone selection state ──
   // Saat cloneMode ON & user drag canvas → muncul purple selection box.
   // cloneBox = { sx, sy, ex, ey } (screen coords). null = gak ada active drag.
@@ -4365,6 +4407,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
               <span>{moveMode ? 'move area on' : 'move area off'}</span>
+              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2 }}>[1]</span>}
             </button>
 
             {/* ── Rotate Area toggle (#2) ──
@@ -4394,6 +4437,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <polyline points="21 3 21 9 15 9" />
               </svg>
               <span>{rotateMode ? 'rotate area on' : 'rotate area off'}</span>
+              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2 }}>[2]</span>}
             </button>
 
             {/* ── Cloning Area toggle (#3) ──
@@ -4425,6 +4469,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
               </svg>
               <span>{cloneMode ? 'cloning area on' : 'cloning area off'}</span>
+              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2 }}>[3]</span>}
             </button>
 
             {/* ── mode: connect wire ──
@@ -4464,6 +4509,7 @@ export default function LogicGatesSimulator({ setPage }) {
             >
               <Cable size={13} />
               <span>{mode === 'connect' ? 'connect wire on' : 'connect wire off'}</span>
+              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2 }}>[4]</span>}
             </button>
 
             {/* ── Paint Mode toggle ──
@@ -4504,6 +4550,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 }}
               />
               <span>{paintMode ? 'paint on' : 'paint off'}</span>
+              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2 }}>[5]</span>}
             </button>
 
             {/* ── Delete Mode toggle ──
@@ -4564,6 +4611,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 />
               </svg>
               <span>{deleteMode ? 'delete on' : 'delete off'}</span>
+              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2 }}>[6]</span>}
             </button>
             </>}
           </div>
