@@ -194,6 +194,9 @@ function DrawTab({ token }) {
     // Load strokes on mount — try localStorage first (instant), then API (cloud)
     useEffect(() => {
         (async () => {
+            // Always push empty canvas as history[0] so undo can go back to blank
+            pushHistory([]);
+
             // 1) Try localStorage first for instant restore
             const localPaths = loadFromLocal();
             if (localPaths && localPaths.length > 0) {
@@ -221,7 +224,7 @@ function DrawTab({ token }) {
             if (!token) { setLoading(false); return; }
             try {
                 const { ok, data } = await canvasApi('strokes', 'GET', token);
-                if (ok && data.strokes && Array.isArray(data.strokes.paths)) {
+                if (ok && data.strokes && Array.isArray(data.strokes.paths) && data.strokes.paths.length > 0) {
                     pathsRef.current = data.strokes.paths;
                     pushHistory(data.strokes.paths);
                     replayCanvas(data.strokes.paths);
