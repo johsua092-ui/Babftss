@@ -2775,35 +2775,71 @@ export default function LogicGatesSimulator({ setPage }) {
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 20) {
-            // Rotate selected components by 45° around center of bounding box
+            // Rotate selected components by 45° around MEC circle center
             // top = +45° (CW), bottom = -45° (CCW), left = +45°, right = -45°
             const selIds = stateRef.current.rotateSelectedIds;
             const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
             if (selComps.length === 0) return;
 
-            // Calculate rotation center from component CENTER points (not top-left)
-            // This prevents drift when spamming rotate — center of mass is rotation-invariant.
-            let cx = 0, cy = 0;
-            for (const c of selComps) {
-              cx += c.x + c.width / 2;
-              cy += c.y + c.height / 2;
+            // Calculate rotation pivot from MEC center (bukan center of mass)
+            // MEC center = center lingkaran pembatas, jadi rotasi di sekitar ini
+            // mempertahankan komponen di dalam lingkaran
+            const v = stateRef.current.view;
+            const mecResult = calcRotateAnchorsFromMEC(selComps, v);
+            let cx, cy;
+            if (mecResult && mecResult.mec) {
+              // MEC center di screen space → convert ke world space
+              cx = (mecResult.mec.x - v.x) / v.scale;
+              cy = (mecResult.mec.y - v.y) / v.scale;
+            } else {
+              // Fallback: center of mass
+              cx = 0; cy = 0;
+              for (const c of selComps) {
+                cx += c.x + c.width / 2;
+                cy += c.y + c.height / 2;
+              }
+              cx /= selComps.length;
+              cy /= selComps.length;
             }
-            cx /= selComps.length;
-            cy /= selComps.length;
 
             const angle = (dir === 'top' || dir === 'left') ? Math.PI / 4 : -Math.PI / 4;
             const cosA = Math.cos(angle);
             const sinA = Math.sin(angle);
 
-            const newComps = stateRef.current.components.map(c => {
+            // Compute MEC radius in world space for clamping
+            let mecWorldR = Infinity;
+            if (mecResult && mecResult.mec) {
+              mecWorldR = (mecResult.mec.r - 4) / v.scale; // -4 padding
+            }
+
+            let newComps = stateRef.current.components.map(c => {
               if (!selIds.includes(c.id)) return c;
-              // Rotate component CENTER around the group center
+              // Rotate component CENTER around the MEC center
               const compCx = c.x + c.width / 2;
               const compCy = c.y + c.height / 2;
               const dx = compCx - cx;
               const dy = compCy - cy;
-              const newCx = cx + dx * cosA - dy * sinA;
-              const newCy = cy + dx * sinA + dy * cosA;
+              let newCx = cx + dx * cosA - dy * sinA;
+              let newCy = cy + dx * sinA + dy * cosA;
+
+              // CLAMP: pastikan komponen center tetap di dalam MEC circle
+              // (jarak dari MEC center ke comp center < mecWorldR - halfDiagonal)
+              if (mecWorldR < Infinity) {
+                const distFromCenter = Math.sqrt((newCx - cx) ** 2 + (newCy - cy) ** 2);
+                const halfDiag = Math.sqrt(c.width ** 2 + c.height ** 2) / 2;
+                const maxDist = mecWorldR - halfDiag;
+                if (maxDist > 0 && distFromCenter > maxDist) {
+                  // Scale back ke batas MEC
+                  const scale = maxDist / distFromCenter;
+                  newCx = cx + (newCx - cx) * scale;
+                  newCy = cy + (newCy - cy) * scale;
+                }
+              }
+
+              // Snap ke 0.5 pixel untuk mengurangi floating-point drift
+              newCx = Math.round(newCx * 2) / 2;
+              newCy = Math.round(newCy * 2) / 2;
+
               return { ...c, x: newCx - c.width / 2, y: newCy - c.height / 2 };
             });
 
