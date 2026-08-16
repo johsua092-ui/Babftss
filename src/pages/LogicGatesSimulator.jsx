@@ -545,6 +545,24 @@ function minimumEnclosingCircle(points) {
 // Anchor diposisikan di UJUNG DALAM lingkaran MEC (tepi lingkaran, sedikit ke dalam).
 // Top: ujung atas lingkaran, Bottom: ujung bawah, Left: ujung kiri, Right: ujung kanan.
 // Offset ke dalam = 18px supaya anchor masih di dalam garis putus-putus tapi di tepi.
+// ── World-space MEC pivot ──
+// Hitung MEC center langsung di world space (tanpa screen↔world roundtrip).
+// Dipakai sebagai rotation pivot — menghilangkan floating-point drift
+// yang menyebabkan MEC mengecil saat spam rotate.
+function calcWorldMECPivot(selComps) {
+  if (!selComps || selComps.length === 0) return null;
+  const cornerPts = [];
+  for (const c of selComps) {
+    cornerPts.push({ x: c.x, y: c.y });
+    cornerPts.push({ x: c.x + c.width, y: c.y });
+    cornerPts.push({ x: c.x, y: c.y + c.height });
+    cornerPts.push({ x: c.x + c.width, y: c.y + c.height });
+  }
+  const mec = minimumEnclosingCircle(cornerPts);
+  if (!mec || mec.r <= 0) return null;
+  return { x: mec.x, y: mec.y, r: mec.r };
+}
+
 function calcRotateAnchorsFromMEC(selComps, view) {
   if (!selComps || selComps.length === 0) return null;
   // Kumpulkan semua 4 sudut setiap komponen (screen space)
@@ -2066,6 +2084,72 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
+      // ── Rotation animation ghost trail ──
+      // Saat animasi rotasi aktif, gambar ghost (semi-transparent) di posisi LAMA
+      // komponen + arc dari old ke new position → user lihat jejak pergerakan.
+      if (rotAnimOverrides && liveRotAnim) {
+        const animNow = performance.now();
+        let animT = (animNow - liveRotAnim.startTime) / liveRotAnim.duration;
+        if (animT > 1) animT = 1;
+        // Ease-in-out
+        const easedT = animT < 0.5 ? 4 * animT * animT * animT : 1 - Math.pow(-2 * animT + 2, 3) / 2;
+        // Ghost opacity fades out saat animasi mendekati selesai
+        const ghostAlpha = Math.max(0, 0.3 * (1 - easedT));
+
+        if (ghostAlpha > 0.01) {
+          ctx.globalAlpha = ghostAlpha;
+          for (const oldC of liveRotAnim.oldComps) {
+            const comp = comps.find(c => c.id === oldC.id);
+            if (!comp) continue;
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            const compColor = comp.userColor || def.color;
+            // Ghost body di posisi lama
+            ctx.fillStyle = '#1e293b';
+            roundRect(ctx, oldC.x, oldC.y, comp.width, comp.height, 8);
+            ctx.fill();
+            ctx.strokeStyle = compColor;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]);
+            roundRect(ctx, oldC.x, oldC.y, comp.width, comp.height, 8);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // Label kecil di ghost
+            if (comp.type !== 'INPUT' && comp.type !== 'OUTPUT') {
+              ctx.fillStyle = compColor;
+              ctx.font = 'bold 8px "Orbitron", monospace';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(def.label + ' ' + (comp.typeNum || 1), oldC.x + comp.width / 2, oldC.y + 8);
+            }
+          }
+          // Arc dari pivot ke midpoint komponen (visual rotation path indicator)
+          const pivot = liveRotAnim.pivot;
+          if (liveRotAnim.oldComps.length > 0 && liveRotAnim.angleDelta) {
+            ctx.globalAlpha = ghostAlpha * 0.8;
+            ctx.strokeStyle = '#f59e0b'; // amber
+            ctx.lineWidth = 1.5 / view.scale; // compensate scale supaya line width konsisten
+            ctx.setLineDash([3 / view.scale, 3 / view.scale]);
+            // Draw arc around pivot showing rotation direction (world coords)
+            const avgDist = liveRotAnim.oldComps.reduce((sum, oc) => {
+              const comp = comps.find(c => c.id === oc.id);
+              if (!comp) return sum;
+              const cx = oc.x + comp.width / 2;
+              const cy = oc.y + comp.height / 2;
+              return sum + Math.sqrt((cx - pivot.x) ** 2 + (cy - pivot.y) ** 2);
+            }, 0) / liveRotAnim.oldComps.length;
+            if (avgDist > 5) {
+              const startAngle = 0;
+              const endAngle = liveRotAnim.angleDelta * easedT;
+              ctx.beginPath();
+              ctx.arc(pivot.x, pivot.y, avgDist, startAngle, endAngle, liveRotAnim.angleDelta < 0);
+              ctx.stroke();
+            }
+            ctx.setLineDash([]);
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+
       // Hover node
       if (hoverNode) {
         ctx.beginPath();
@@ -2911,13 +2995,13 @@ export default function LogicGatesSimulator({ setPage }) {
             // Skip jika animasi masih jalan
             if (rotAnimRef.current) return;
 
-            // Pivot = MEC center (world space) — titik tengah lingkaran pembatas
-            const v = stateRef.current.view;
-            const mecResult = calcRotateAnchorsFromMEC(selComps, v);
+            // Pivot = MEC center langsung di WORLD SPACE
+            // (tanpa screen↔world roundtrip → zero drift saat spam rotate)
+            const worldPivot = calcWorldMECPivot(selComps);
             let pivotX, pivotY;
-            if (mecResult && mecResult.mec) {
-              pivotX = (mecResult.mec.x - v.x) / v.scale;
-              pivotY = (mecResult.mec.y - v.y) / v.scale;
+            if (worldPivot) {
+              pivotX = worldPivot.x;
+              pivotY = worldPivot.y;
             } else {
               // Fallback: center of mass
               pivotX = 0; pivotY = 0;
