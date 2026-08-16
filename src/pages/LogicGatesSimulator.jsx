@@ -503,6 +503,86 @@ function calcAnchorsFromComponents(selComps, view) {
   };
 }
 
+// ── Minimum Enclosing Circle helper (top-level, dipakai juga oleh calcRotateAnchorsFromMEC) ──
+const _mecDist2 = (A, B) => (A.x - B.x) ** 2 + (A.y - B.y) ** 2;
+const _mecIsInside = (p, c) => (p.x - c.x) ** 2 + (p.y - c.y) ** 2 <= (c.r + 1e-6) ** 2;
+const _mecTrivialCircle = (R) => {
+  if (R.length === 0) return null;
+  if (R.length === 1) return { x: R[0].x, y: R[0].y, r: 0 };
+  if (R.length === 2) {
+    return { x: (R[0].x + R[1].x) / 2, y: (R[0].y + R[1].y) / 2, r: Math.sqrt(_mecDist2(R[0], R[1])) / 2 };
+  }
+  const A = R[0], B = R[1], C = R[2];
+  const D = 2 * (A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
+  if (Math.abs(D) < 1e-10) {
+    const d1 = _mecDist2(A, B), d2 = _mecDist2(B, C), d3 = _mecDist2(A, C);
+    if (d1 >= d2 && d1 >= d3) return _mecTrivialCircle([A, B]);
+    if (d2 >= d1 && d2 >= d3) return _mecTrivialCircle([B, C]);
+    return _mecTrivialCircle([A, C]);
+  }
+  const ux = ((A.x * A.x + A.y * A.y) * (B.y - C.y) + (B.x * B.x + B.y * B.y) * (C.y - A.y) + (C.x * C.x + C.y * C.y) * (A.y - B.y)) / D;
+  const uy = ((A.x * A.x + A.y * A.y) * (C.x - B.x) + (B.x * B.x + B.y * B.y) * (A.x - C.x) + (C.x * C.x + C.y * C.y) * (B.x - A.x)) / D;
+  return { x: ux, y: uy, r: Math.sqrt((A.x - ux) ** 2 + (A.y - uy) ** 2) };
+};
+const _welzl = (P, R) => {
+  if (P.length === 0 || R.length === 3) return _mecTrivialCircle(R);
+  const p = P[0];
+  const D = _welzl(P.slice(1), R);
+  if (D && _mecIsInside(p, D)) return D;
+  return _welzl(P.slice(1), [...R, p]);
+};
+function minimumEnclosingCircle(points) {
+  if (points.length === 0) return null;
+  const shuffled = [...points];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return _welzl(shuffled, []);
+}
+
+// ── Rotate anchors dari MEC circle ──
+// Anchor diposisikan di UJUNG DALAM lingkaran MEC (tepi lingkaran, sedikit ke dalam).
+// Top: ujung atas lingkaran, Bottom: ujung bawah, Left: ujung kiri, Right: ujung kanan.
+// Offset ke dalam = 18px supaya anchor masih di dalam garis putus-putus tapi di tepi.
+function calcRotateAnchorsFromMEC(selComps, view) {
+  if (!selComps || selComps.length === 0) return null;
+  // Kumpulkan semua 4 sudut setiap komponen (screen space)
+  const cornerPts = [];
+  let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
+  for (const c of selComps) {
+    const sx = c.x * view.scale + view.x;
+    const sy = c.y * view.scale + view.y;
+    const sw = c.width * view.scale;
+    const sh = c.height * view.scale;
+    cornerPts.push({ x: sx, y: sy });
+    cornerPts.push({ x: sx + sw, y: sy });
+    cornerPts.push({ x: sx, y: sy + sh });
+    cornerPts.push({ x: sx + sw, y: sy + sh });
+    minSx = Math.min(minSx, sx);
+    minSy = Math.min(minSy, sy);
+    maxSx = Math.max(maxSx, sx + sw);
+    maxSy = Math.max(maxSy, sy + sh);
+  }
+  const mec = minimumEnclosingCircle(cornerPts);
+  if (!mec || mec.r <= 0) return null;
+  const cx = mec.x;
+  const cy = mec.y;
+  const drawR = mec.r + 4; // +4 padding sama seperti marching ants
+  // Anchor di tepi dalam lingkaran: posisi di lingkaran, offset 18px ke dalam (ke center)
+  const inwardOffset = 18;
+  return {
+    box: { sx: minSx, sy: minSy, ex: maxSx, ey: maxSy },
+    anchors: {
+      top:    { x: cx, y: cy - drawR + inwardOffset },
+      bottom: { x: cx, y: cy + drawR - inwardOffset },
+      left:   { x: cx - drawR + inwardOffset, y: cy },
+      right:  { x: cx + drawR - inwardOffset, y: cy },
+    },
+    mec: { x: cx, y: cy, r: drawR }, // simpan MEC info buat marching ants
+  };
+}
+
 // Dipakai buat animasi pulse dot (titik putih yang jalan di wire ON).
 // Path = H1 (|dx|/2) → V (|dy|) → H2 (|dx|/2), total = |dx| + |dy|.
 function pointOnOrthogonal(p1, p2, t) {
@@ -1532,53 +1612,6 @@ export default function LogicGatesSimulator({ setPage }) {
 
     let dashOffset = 0;
 
-    // ── Minimum Enclosing Circle (Welzl's algorithm) ──
-    // Mencari lingkaran TERKECIL yang mengandung semua titik.
-    // Dipakai untuk marching ants rotate: lingkaran sempurna yang serapat mungkin ke komponen.
-    const mecDist2 = (A, B) => (A.x - B.x) ** 2 + (A.y - B.y) ** 2;
-    const mecIsInside = (p, c) => (p.x - c.x) ** 2 + (p.y - c.y) ** 2 <= (c.r + 1e-6) ** 2;
-    const mecTrivialCircle = (R) => {
-      if (R.length === 0) return null;
-      if (R.length === 1) return { x: R[0].x, y: R[0].y, r: 0 };
-      if (R.length === 2) {
-        return {
-          x: (R[0].x + R[1].x) / 2,
-          y: (R[0].y + R[1].y) / 2,
-          r: Math.sqrt(mecDist2(R[0], R[1])) / 2
-        };
-      }
-      // 3 points — circumscribed circle of triangle
-      const A = R[0], B = R[1], C = R[2];
-      const D = 2 * (A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y));
-      if (Math.abs(D) < 1e-10) {
-        // Collinear — pakai 2 titik terjauh
-        const d1 = mecDist2(A, B), d2 = mecDist2(B, C), d3 = mecDist2(A, C);
-        if (d1 >= d2 && d1 >= d3) return mecTrivialCircle([A, B]);
-        if (d2 >= d1 && d2 >= d3) return mecTrivialCircle([B, C]);
-        return mecTrivialCircle([A, C]);
-      }
-      const ux = ((A.x * A.x + A.y * A.y) * (B.y - C.y) + (B.x * B.x + B.y * B.y) * (C.y - A.y) + (C.x * C.x + C.y * C.y) * (A.y - B.y)) / D;
-      const uy = ((A.x * A.x + A.y * A.y) * (C.x - B.x) + (B.x * B.x + B.y * B.y) * (A.x - C.x) + (C.x * C.x + C.y * C.y) * (B.x - A.x)) / D;
-      return { x: ux, y: uy, r: Math.sqrt((A.x - ux) ** 2 + (A.y - uy) ** 2) };
-    };
-    const welzl = (P, R) => {
-      if (P.length === 0 || R.length === 3) return mecTrivialCircle(R);
-      const p = P[0];
-      const D = welzl(P.slice(1), R);
-      if (D && mecIsInside(p, D)) return D;
-      return welzl(P.slice(1), [...R, p]);
-    };
-    const minimumEnclosingCircle = (points) => {
-      if (points.length === 0) return null;
-      // Fisher-Yates shuffle untuk Welzl's randomized algorithm
-      const shuffled = [...points];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return welzl(shuffled, []);
-    };
-
     const draw = () => {
       dashOffset = (dashOffset + 0.4) % 20; // marching ants animation speed
       const { components: comps, wires: wrs, wiring, hoverNode, hoverZone, selectedId: selId, view } = stateRef.current;
@@ -2092,12 +2125,17 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.setLineDash([]);
       }
 
-      // ── Clone anchor points ──
+      // ── Clone anchor points (RECOMPUTE tiap frame — pan/zoom safe) ──
       if (ca) {
+        // Recompute anchor positions dari current component positions + current view
+        const cSelIds = stateRef.current.cloneSelectedIds;
+        const cSelComps = comps.filter(c => cSelIds.includes(c.id));
+        const liveCAnch = cSelComps.length > 0 ? calcAnchorsFromComponents(cSelComps, view) : null;
+        const anchorPts = liveCAnch ? liveCAnch.anchors : ca; // fallback
         const dirs = ['top', 'bottom', 'left', 'right'];
         const arrows = { top: '\u25B2', bottom: '\u25BC', left: '\u25C4', right: '\u25BA' };
         for (const dir of dirs) {
-          const pt = ca[dir];
+          const pt = anchorPts[dir];
           if (!pt) continue;
           // Circle
           ctx.beginPath();
@@ -2162,11 +2200,16 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.setLineDash([]);
       }
 
-      // ── Move Area arrow anchors ──
+      // ── Move Area arrow anchors (RECOMPUTE tiap frame dari selected IDs — pan/zoom safe) ──
       if (mAnch) {
+        // Recompute anchor positions dari current component positions + current view
+        const mSelIds = stateRef.current.moveSelectedIds;
+        const mSelComps = comps.filter(c => mSelIds.includes(c.id));
+        const liveMAnch = mSelComps.length > 0 ? calcAnchorsFromComponents(mSelComps, view) : null;
+        const anchorPts = liveMAnch ? liveMAnch.anchors : mAnch; // fallback ke stored kalau recompute gagal
         const dirs = stateRef.current.moveActiveDir ? [stateRef.current.moveActiveDir] : ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
-          const pt = mAnch[dir];
+          const pt = anchorPts[dir];
           if (!pt) continue;
           // Draw arrow shape (pointing outward)
           ctx.save();
@@ -2250,11 +2293,18 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Rotate Area double-circle anchors ──
+      // ── Rotate Area double-circle anchors (RECOMPUTE tiap frame via MEC — pan/zoom safe) ──
+      // Hitung MEC sekali di scope ini, dipakai anchor + marching ants
+      let liveRResult = null;
       if (rAnch) {
+        // Recompute anchor positions dari current component positions + current view via MEC
+        const rSelIdsLive = stateRef.current.rotateSelectedIds;
+        const rSelComps = comps.filter(c => rSelIdsLive.includes(c.id));
+        liveRResult = rSelComps.length > 0 ? calcRotateAnchorsFromMEC(rSelComps, view) : null;
+        const anchorPts = liveRResult ? liveRResult.anchors : rAnch; // fallback
         const dirs = ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
-          const pt = rAnch[dir];
+          const pt = anchorPts[dir];
           if (!pt) continue;
           // Outer circle
           ctx.beginPath();
@@ -2284,42 +2334,20 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Marching ants MINIMUM ENCLOSING CIRCLE around selected rotate components ──
-      // Lingkaran TERKECIL yang mengandung semua sudut komponen terpilih (Welzl's algorithm).
-      // Hasil: lingkaran sempurna yang serapat MUNGKIN ke komponen — pucuk terluar yang menentukan batas.
-      const rSelIds = stateRef.current.rotateSelectedIds;
-      if (rSelIds && rSelIds.length > 0 && rAnch) {
-        // Kumpulkan semua 4 sudut setiap komponen terpilih (screen space)
-        const cornerPts = [];
-        for (const comp of comps) {
-          if (rSelIds.includes(comp.id)) {
-            const sx = comp.x * view.scale + view.x;
-            const sy = comp.y * view.scale + view.y;
-            const sw = comp.width * view.scale;
-            const sh = comp.height * view.scale;
-            cornerPts.push({ x: sx, y: sy });
-            cornerPts.push({ x: sx + sw, y: sy });
-            cornerPts.push({ x: sx, y: sy + sh });
-            cornerPts.push({ x: sx + sw, y: sy + sh });
-          }
-        }
-        if (cornerPts.length > 0) {
-          const mec = minimumEnclosingCircle(cornerPts);
-          if (mec && mec.r > 0) {
-            // +4px padding supaya garis tidak menempel persis di sudut komponen
-            const drawR = mec.r + 4;
-            ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
-            ctx.beginPath();
-            ctx.arc(mec.x, mec.y, drawR, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.setLineDash([6, 4]);
-            ctx.lineDashOffset = -dashOffset;
-            ctx.strokeStyle = '#f59e0b';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.lineDashOffset = 0;
-          }
-        }
+      // Pakai MEC yang sudah dihitung di anchor block (liveRResult.mec) supaya konsisten & pan/zoom safe.
+      if (rAnch && liveRResult && liveRResult.mec) {
+        const mecInfo = liveRResult.mec;
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
+        ctx.beginPath();
+        ctx.arc(mecInfo.x, mecInfo.y, mecInfo.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = -dashOffset;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
       }
 
       animId = requestAnimationFrame(draw);
@@ -2578,11 +2606,16 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── CLONE MODE: check anchor point clicks first ──
+      // ── CLONE MODE: check anchor point clicks first (recompute — pan/zoom safe) ──
       if (cloneModeRef.current && stateRef.current.cloneAnchors) {
+        // Recompute anchor positions dari current view
+        const cSelIdsHit = stateRef.current.cloneSelectedIds;
+        const cSelCompsHit = stateRef.current.components.filter(c => cSelIdsHit.includes(c.id));
+        const cHitResult = cSelCompsHit.length > 0 ? calcAnchorsFromComponents(cSelCompsHit, stateRef.current.view) : null;
+        const cHitAnchors = cHitResult ? cHitResult.anchors : stateRef.current.cloneAnchors;
         const dirs = ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
-          const pt = stateRef.current.cloneAnchors[dir];
+          const pt = cHitAnchors[dir];
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 18) {
@@ -2695,11 +2728,16 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── MOVE MODE: check arrow anchor clicks first ──
+      // ── MOVE MODE: check arrow anchor clicks first (recompute — pan/zoom safe) ──
       if (moveModeRef.current && stateRef.current.moveAnchors && !stateRef.current.moveActiveDir) {
+        // Recompute anchor positions dari current view
+        const mSelIdsHit = stateRef.current.moveSelectedIds;
+        const mSelCompsHit = stateRef.current.components.filter(c => mSelIdsHit.includes(c.id));
+        const mHitResult = mSelCompsHit.length > 0 ? calcAnchorsFromComponents(mSelCompsHit, stateRef.current.view) : null;
+        const mHitAnchors = mHitResult ? mHitResult.anchors : stateRef.current.moveAnchors;
         const dirs = ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
-          const pt = stateRef.current.moveAnchors[dir];
+          const pt = mHitAnchors[dir];
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 20) {
@@ -2724,11 +2762,16 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── ROTATE MODE: check double-circle anchor clicks ──
+      // ── ROTATE MODE: check double-circle anchor clicks (recompute via MEC — pan/zoom safe) ──
       if (rotateModeRef.current && stateRef.current.rotateAnchors) {
+        // Recompute anchor positions dari current view
+        const rSelIdsHit = stateRef.current.rotateSelectedIds;
+        const rSelCompsHit = stateRef.current.components.filter(c => rSelIdsHit.includes(c.id));
+        const rHitResult = rSelCompsHit.length > 0 ? calcRotateAnchorsFromMEC(rSelCompsHit, stateRef.current.view) : null;
+        const rHitAnchors = rHitResult ? rHitResult.anchors : stateRef.current.rotateAnchors;
         const dirs = ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
-          const pt = stateRef.current.rotateAnchors[dir];
+          const pt = rHitAnchors[dir];
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 20) {
@@ -3136,7 +3179,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const hasComponents = insideIds.length > 0;
         if ((Math.abs(box.ex - box.sx) > 5 || Math.abs(box.ey - box.sy) > 5) && hasComponents) {
           const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
-          const result = calcAnchorsFromComponents(selComps, v);
+          const result = calcRotateAnchorsFromMEC(selComps, v);
           if (result) {
             setRotateBox(result.box);
             setRotateAnchors(result.anchors);
