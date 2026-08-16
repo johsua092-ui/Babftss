@@ -569,15 +569,15 @@ function calcRotateAnchorsFromMEC(selComps, view) {
   const cx = mec.x;
   const cy = mec.y;
   const drawR = mec.r + 4; // +4 padding sama seperti marching ants
-  // Anchor di tepi dalam lingkaran: posisi di lingkaran, offset 18px ke dalam (ke center)
-  const inwardOffset = 18;
+  // Anchor di luar lingkaran MEC: offset 30px ke luar (konsisten dengan move/clone)
+  const outwardOffset = 30;
   return {
     box: { sx: minSx, sy: minSy, ex: maxSx, ey: maxSy },
     anchors: {
-      top:    { x: cx, y: cy - drawR + inwardOffset },
-      bottom: { x: cx, y: cy + drawR - inwardOffset },
-      left:   { x: cx - drawR + inwardOffset, y: cy },
-      right:  { x: cx + drawR - inwardOffset, y: cy },
+      top:    { x: cx, y: cy - drawR - outwardOffset },
+      bottom: { x: cx, y: cy + drawR + outwardOffset },
+      left:   { x: cx - drawR - outwardOffset, y: cy },
+      right:  { x: cx + drawR + outwardOffset, y: cy },
     },
     mec: { x: cx, y: cy, r: drawR }, // simpan MEC info buat marching ants
   };
