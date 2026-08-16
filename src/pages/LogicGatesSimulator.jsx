@@ -2015,14 +2015,14 @@ export default function LogicGatesSimulator({ setPage }) {
         let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
         for (const comp of comps) {
           if (cSelIds.includes(comp.id)) {
-            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
-            const w = (def?.w || 60); const h = (def?.h || 50);
-            const sx2 = comp.x * view.scale + view.x;
-            const sy2 = comp.y * view.scale + view.y;
-            minSx = Math.min(minSx, sx2 - w * view.scale / 2 - 4);
-            minSy = Math.min(minSy, sy2 - h * view.scale / 2 - 4);
-            maxSx = Math.max(maxSx, sx2 + w * view.scale / 2 + 4);
-            maxSy = Math.max(maxSy, sy2 + h * view.scale / 2 + 4);
+            const sx = comp.x * view.scale + view.x;
+            const sy = comp.y * view.scale + view.y;
+            const sw = comp.width * view.scale;
+            const sh = comp.height * view.scale;
+            minSx = Math.min(minSx, sx - 4);
+            minSy = Math.min(minSy, sy - 4);
+            maxSx = Math.max(maxSx, sx + sw + 4);
+            maxSy = Math.max(maxSy, sy + sh + 4);
           }
         }
         if (minSx < Infinity) {
@@ -2100,14 +2100,14 @@ export default function LogicGatesSimulator({ setPage }) {
         let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
         for (const comp of comps) {
           if (mSelIds.includes(comp.id)) {
-            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
-            const w = (def?.w || 60); const h = (def?.h || 50);
-            const sx2 = comp.x * view.scale + view.x;
-            const sy2 = comp.y * view.scale + view.y;
-            minSx = Math.min(minSx, sx2 - w * view.scale / 2 - 4);
-            minSy = Math.min(minSy, sy2 - h * view.scale / 2 - 4);
-            maxSx = Math.max(maxSx, sx2 + w * view.scale / 2 + 4);
-            maxSy = Math.max(maxSy, sy2 + h * view.scale / 2 + 4);
+            const sx = comp.x * view.scale + view.x;
+            const sy = comp.y * view.scale + view.y;
+            const sw = comp.width * view.scale;
+            const sh = comp.height * view.scale;
+            minSx = Math.min(minSx, sx - 4);
+            minSy = Math.min(minSy, sy - 4);
+            maxSx = Math.max(maxSx, sx + sw + 4);
+            maxSy = Math.max(maxSy, sy + sh + 4);
           }
         }
         if (minSx < Infinity) {
@@ -2179,14 +2179,14 @@ export default function LogicGatesSimulator({ setPage }) {
         let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
         for (const comp of comps) {
           if (rSelIds.includes(comp.id)) {
-            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
-            const w = (def?.w || 60); const h = (def?.h || 50);
-            const sx2 = comp.x * view.scale + view.x;
-            const sy2 = comp.y * view.scale + view.y;
-            minSx = Math.min(minSx, sx2 - w * view.scale / 2 - 4);
-            minSy = Math.min(minSy, sy2 - h * view.scale / 2 - 4);
-            maxSx = Math.max(maxSx, sx2 + w * view.scale / 2 + 4);
-            maxSy = Math.max(maxSy, sy2 + h * view.scale / 2 + 4);
+            const sx = comp.x * view.scale + view.x;
+            const sy = comp.y * view.scale + view.y;
+            const sw = comp.width * view.scale;
+            const sh = comp.height * view.scale;
+            minSx = Math.min(minSx, sx - 4);
+            minSy = Math.min(minSy, sy - 4);
+            maxSx = Math.max(maxSx, sx + sw + 4);
+            maxSy = Math.max(maxSy, sy + sh + 4);
           }
         }
         if (minSx < Infinity) {
@@ -2474,13 +2474,10 @@ export default function LogicGatesSimulator({ setPage }) {
             // Calculate bounding box of selected
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             for (const c of selComps) {
-              const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-              const hw = (def?.w || 60) / 2;
-              const hh = (def?.h || 50) / 2;
-              minX = Math.min(minX, c.x - hw);
-              minY = Math.min(minY, c.y - hh);
-              maxX = Math.max(maxX, c.x + hw);
-              maxY = Math.max(maxY, c.y + hh);
+              minX = Math.min(minX, c.x);
+              minY = Math.min(minY, c.y);
+              maxX = Math.max(maxX, c.x + c.width);
+              maxY = Math.max(maxY, c.y + c.height);
             }
             const boxW = maxX - minX;
             const boxH = maxY - minY;
@@ -2775,10 +2772,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-          const hw = (def?.w || 60) / 2;
-          const hh = (def?.h || 50) / 2;
-          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
         });
         setCloneSelectedIds(inside.map(c => c.id));
         return;
@@ -2816,10 +2810,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-          const hw = (def?.w || 60) / 2;
-          const hh = (def?.h || 50) / 2;
-          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
         });
         setMoveSelectedIds(inside.map(c => c.id));
         return;
@@ -2835,10 +2826,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-          const hw = (def?.w || 60) / 2;
-          const hh = (def?.h || 50) / 2;
-          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
         });
         setRotateSelectedIds(inside.map(c => c.id));
         return;
@@ -2912,10 +2900,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-          const hw = (def?.w || 60) / 2;
-          const hh = (def?.h || 50) / 2;
-          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
         }).map(c => c.id);
         setCloneSelectedIds(insideIds);
 
@@ -2957,15 +2942,14 @@ export default function LogicGatesSimulator({ setPage }) {
             const v = stateRef.current.view;
             let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
             for (const c of selComps) {
-              const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-              const hw = (def?.w || 60) / 2;
-              const hh = (def?.h || 50) / 2;
               const csx = c.x * v.scale + v.x;
               const csy = c.y * v.scale + v.y;
-              minSx = Math.min(minSx, csx - hw * v.scale);
-              minSy = Math.min(minSy, csy - hh * v.scale);
-              maxSx = Math.max(maxSx, csx + hw * v.scale);
-              maxSy = Math.max(maxSy, csy + hh * v.scale);
+              const csw = c.width * v.scale;
+              const csh = c.height * v.scale;
+              minSx = Math.min(minSx, csx);
+              minSy = Math.min(minSy, csy);
+              maxSx = Math.max(maxSx, csx + csw);
+              maxSy = Math.max(maxSy, csy + csh);
             }
             setMoveBox({ sx: minSx, sy: minSy, ex: maxSx, ey: maxSy });
             const cx = (minSx + maxSx) / 2;
@@ -2996,10 +2980,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-          const hw = (def?.w || 60) / 2;
-          const hh = (def?.h || 50) / 2;
-          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
         }).map(c => c.id);
         setMoveSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
@@ -3031,10 +3012,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-          const hw = (def?.w || 60) / 2;
-          const hh = (def?.h || 50) / 2;
-          return c.x - hw >= wx1 && c.x + hw <= wx2 && c.y - hh >= wy1 && c.y + hh <= wy2;
+          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
         }).map(c => c.id);
         setRotateSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
