@@ -4295,12 +4295,14 @@ export default function LogicGatesSimulator({ setPage }) {
               Klik → expand/collapse semua tool buttons di bawahnya.
               Wrapper div positioned absolute, top berubah tergantung paletteOpen. */}
           <div style={{
-            position: 'absolute',
-            top: paletteOpen ? 8 : 60,
-            left: 8,
+            position: isMobile && paletteOpen ? 'fixed' : 'absolute',
+            top: isMobile && paletteOpen ? 94 : (paletteOpen ? 8 : 60),
+            left: isMobile && paletteOpen ? '50%' : 8,
+            transform: isMobile && paletteOpen ? 'translateX(-50%)' : 'none',
             zIndex: 20,
             display: 'flex', flexDirection: 'column', gap: 6,
-            transition: 'top 0.22s ease',
+            transition: 'top 0.22s ease, left 0.22s ease',
+            width: isMobile && paletteOpen ? 'auto' : undefined,
           }}>
             {/* ── Tools header button (always bright yellow, never dims) ── */}
             <button
