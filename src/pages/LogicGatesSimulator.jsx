@@ -3416,7 +3416,10 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
       // ── Clone box: finalize selection & show anchor points ──
-      if (cloneBoxRef.current) {
+      // ── Clone BOX: finalize selection & show arrow anchors ──
+      // Guard: only finalize if anchors aren't already showing (prevents re-selection
+      // when mouseUp fires after clicking a clone anchor — box is stale at that point)
+      if (cloneBoxRef.current && !cloneAnchorsRef.current) {
         const box = cloneBoxRef.current;
         // Recompute which components are inside the box at this moment
         // (stateRef.cloneSelectedIds may be stale due to async setState in mouseMove)
@@ -3437,7 +3440,7 @@ export default function LogicGatesSimulator({ setPage }) {
           const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
           const result = calcAnchorsFromComponents(selComps, v);
           if (result) {
-            setCloneBox(result.box);
+            setCloneBox(null); // Clear box after finalization — anchors + selectedIds are sufficient
             setCloneAnchors(result.anchors);
           }
         } else {
@@ -3504,7 +3507,9 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Rotate BOX: finalize selection & show double-circle anchors ──
-      if (rotateBoxRef.current) {
+      // Guard: only finalize if anchors aren't already showing (prevents re-selection
+      // when mouseUp fires after clicking a rotate anchor — box is stale at that point)
+      if (rotateBoxRef.current && !rotateAnchorsRef.current) {
         const box = rotateBoxRef.current;
         const v = stateRef.current.view;
         // AABB overlap check (kotak, bukan lingkaran — sama seperti drag)
@@ -3521,7 +3526,7 @@ export default function LogicGatesSimulator({ setPage }) {
           const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
           const result = calcRotateAnchorsFromMEC(selComps, v);
           if (result) {
-            setRotateBox(result.box);
+            setRotateBox(null); // Clear box after finalization — anchors + selectedIds are sufficient
             setRotateAnchors(result.anchors);
           }
         } else {
@@ -4176,7 +4181,7 @@ export default function LogicGatesSimulator({ setPage }) {
           setMoveBox(null);
           setMoveActiveDir(null);
         }
-        if (rotateModeRef.current && stateRef.current.rotateBox) {
+        if (rotateModeRef.current && stateRef.current.rotateBox && !rotateAnchorsRef.current) {
           const box = stateRef.current.rotateBox;
           const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
           const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
@@ -4185,7 +4190,7 @@ export default function LogicGatesSimulator({ setPage }) {
           setRotateAnchors(inside.length > 0 ? 'active' : null);
           setRotateBox(null);
         }
-        if (cloneModeRef.current && stateRef.current.cloneBox) {
+        if (cloneModeRef.current && stateRef.current.cloneBox && !cloneAnchorsRef.current) {
           const box = stateRef.current.cloneBox;
           const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
           const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
