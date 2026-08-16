@@ -218,8 +218,9 @@ function drawOrthogonalPathVHV(ctx, p1, p2, midY, r = 8) {
 
 // Bounding box komponen (fallback width/height kalau def gak punya field).
 function getCompBox(c) {
-  const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-  return { x: c.x, y: c.y, w: def.width || 90, h: def.height || 56 };
+  // Gunakan c.width/c.height langsung dari component object — akurat dan konsisten
+  // (createComponent menyimpan dimensi sebenarnya: gate 90x56, NOT 80x56, IO 60x60).
+  return { x: c.x, y: c.y, w: c.width || 90, h: c.height || 56 };
 }
 
 // STRICT collision: pakai FULL bounding box + GAP_MARGIN di tiap sisi.
@@ -1873,14 +1874,9 @@ export default function LogicGatesSimulator({ setPage }) {
         mctx.clearRect(0, 0, mini.width, mini.height);
 
         if (comps.length >= 3) {
-          // Bounding box semua komponen.
-          // Penting: GATE_MAP entries gak punya field width/height (cuma IO_DEFS yang punya),
-          // jadi fallback ke default gate box 90x56 untuk gate types biasa.
+          // Bounding box semua komponen — pakai dimensi langsung dari component object.
           const compBox = (c) => {
-            const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-            const w = def.width || 90;
-            const h = def.height || 56;
-            return { w, h };
+            return { w: c.width || 90, h: c.height || 56 };
           };
           let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
           for (const c of comps) {
@@ -2772,7 +2768,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         });
         setCloneSelectedIds(inside.map(c => c.id));
         return;
@@ -2810,7 +2806,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         });
         setMoveSelectedIds(inside.map(c => c.id));
         return;
@@ -2826,7 +2822,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         });
         setRotateSelectedIds(inside.map(c => c.id));
         return;
@@ -2900,7 +2896,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         }).map(c => c.id);
         setCloneSelectedIds(insideIds);
 
@@ -2980,7 +2976,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         }).map(c => c.id);
         setMoveSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
@@ -3012,7 +3008,7 @@ export default function LogicGatesSimulator({ setPage }) {
         const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
         const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          return c.x >= wx1 && c.x + c.width <= wx2 && c.y >= wy1 && c.y + c.height <= wy2;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         }).map(c => c.id);
         setRotateSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
@@ -3590,9 +3586,8 @@ export default function LogicGatesSimulator({ setPage }) {
       let nearest = null;
       let nearestDist = Infinity;
       for (const c of comps) {
-        const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-        const w = def.width || 90;
-        const h = def.height || 56;
+        const w = c.width || 90;
+        const h = c.height || 56;
         // Dot position di minimap internal coords.
         const dotX = t.offX + (c.x + w / 2 - t.minX) * t.s;
         const dotY = t.offY + (c.y + h / 2 - t.minY) * t.s;
@@ -3617,9 +3612,8 @@ export default function LogicGatesSimulator({ setPage }) {
     // Pan view supaya component c ada di center canvas.
     // Center comp = (c.x + w/2, c.y + h/2) di world coords.
     const panToComponent = (c) => {
-      const def = GATE_MAP[c.type] || IO_DEFS[c.type];
-      const w = def.width || 90;
-      const h = def.height || 56;
+      const w = c.width || 90;
+      const h = c.height || 56;
       panTo({ x: c.x + w / 2, y: c.y + h / 2 });
     };
 
