@@ -3861,10 +3861,9 @@ export default function LogicGatesSimulator({ setPage }) {
         } else {
           // Empty area: check mode untuk select box vs panning
           if (moveModeRef.current) {
-            setMoveBox({ sx, sy, ex: sx, ey: sy });
-            setMoveSelectedIds([]);
-            setMoveAnchors(null);
-            setMoveActiveDir(null);
+            // Move mode: 1 finger = pan workspace (2 fingers = select box, handled in pinch section)
+            const v = stateRef.current.view;
+            touchStateRef.current.panStart = { startSX: sx, startSY: sy, startVX: v.x, startVY: v.y };
           } else if (rotateModeRef.current) {
             setRotateBox({ sx, sy, ex: sx, ey: sy });
             setRotateSelectedIds([]);
@@ -3893,10 +3892,10 @@ export default function LogicGatesSimulator({ setPage }) {
         const midY = (p1.y + p2.y) / 2;
         const v = stateRef.current.view;
 
-        // ── MOBILE: pinch-to-select-box when rotate/clone mode active ──
-        // Move mode: 2-finger = normal pan+zoom (user can freely scroll workspace)
+        // ── MOBILE: pinch-to-select-box when move/rotate/clone mode active ──
+        // Move mode: 1 finger = pan, 2 fingers = select box
         // Rotate/Clone mode: 2-finger = select box
-        const isSelectBoxMode = rotateModeRef.current || cloneModeRef.current;
+        const isSelectBoxMode = moveModeRef.current || rotateModeRef.current || cloneModeRef.current;
         if (isSelectBoxMode) {
           // Pinch = select box mode, BUKAN zoom
           // Simpan pinch start + mode + initial select box center (world coords)
@@ -3907,12 +3906,17 @@ export default function LogicGatesSimulator({ setPage }) {
             selectBoxMode: true,
             selectBoxCenterWorld: { x: worldMidX, y: worldMidY },
             selectBoxStartDist: dist,
-            mode: rotateModeRef.current ? 'rotate' : 'clone',
+            mode: moveModeRef.current ? 'move' : (rotateModeRef.current ? 'rotate' : 'clone'),
           };
           // Initialize select box di midpoint (world coords)
           const { x: wmx, y: wmy } = screenToWorld(midX, midY);
           const halfSize = 0; // mulai dari 0, membesar saat zoom out
-          if (rotateModeRef.current) {
+          if (moveModeRef.current) {
+            setMoveBox({ sx: midX, sy: midY, ex: midX, ey: midY });
+            setMoveSelectedIds([]);
+            setMoveAnchors(null);
+            setMoveActiveDir(null);
+          } else if (rotateModeRef.current) {
             setRotateBox({ sx: midX, sy: midY, ex: midX, ey: midY });
             setRotateSelectedIds([]);
             setRotateAnchors(null);
