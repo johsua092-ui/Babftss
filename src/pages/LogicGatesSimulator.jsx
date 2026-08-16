@@ -1105,6 +1105,7 @@ export default function LogicGatesSimulator({ setPage }) {
         setMoveMode(false);
         setRotateMode(false);
         setMode('build');
+        setToolsOpen(false);
       }
       return next;
     });
@@ -1118,6 +1119,7 @@ export default function LogicGatesSimulator({ setPage }) {
         setMoveMode(false);
         setRotateMode(false);
         setMode('build');
+        setToolsOpen(false);
       }
       return next;
     });
@@ -1131,6 +1133,27 @@ export default function LogicGatesSimulator({ setPage }) {
         setMoveMode(false);
         setRotateMode(false);
         setMode('build');
+        setToolsOpen(false);
+        // Transfer selection from other mode if active
+        const v = stateRef.current.view;
+        const comps = stateRef.current.components;
+        if (moveModeRef.current && moveSelectedIdsRef.current.length > 0) {
+          const selIds = moveSelectedIdsRef.current;
+          const selComps = comps.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            setCloneSelectedIds(selIds);
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) { setCloneBox(result.box); setCloneAnchors(result.anchors); }
+          }
+        } else if (rotateModeRef.current && rotateSelectedIdsRef.current.length > 0) {
+          const selIds = rotateSelectedIdsRef.current;
+          const selComps = comps.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            setCloneSelectedIds(selIds);
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) { setCloneBox(result.box); setCloneAnchors(result.anchors); }
+          }
+        }
       }
       return next;
     });
@@ -1144,6 +1167,27 @@ export default function LogicGatesSimulator({ setPage }) {
         setCloneMode(false);
         setRotateMode(false);
         setMode('build');
+        setToolsOpen(false);
+        // Transfer selection from other mode if active
+        const v = stateRef.current.view;
+        const comps = stateRef.current.components;
+        if (cloneModeRef.current && cloneSelectedIdsRef.current.length > 0) {
+          const selIds = cloneSelectedIdsRef.current;
+          const selComps = comps.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            setMoveSelectedIds(selIds);
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) { setMoveBox(result.box); setMoveAnchors(result.anchors); }
+          }
+        } else if (rotateModeRef.current && rotateSelectedIdsRef.current.length > 0) {
+          const selIds = rotateSelectedIdsRef.current;
+          const selComps = comps.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            setMoveSelectedIds(selIds);
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) { setMoveBox(result.box); setMoveAnchors(result.anchors); }
+          }
+        }
       }
       return next;
     });
@@ -1157,6 +1201,29 @@ export default function LogicGatesSimulator({ setPage }) {
         setCloneMode(false);
         setMoveMode(false);
         setMode('build');
+        setToolsOpen(false);
+        // Transfer selection from other mode if active
+        const v = stateRef.current.view;
+        const comps = stateRef.current.components;
+        if (moveModeRef.current && moveSelectedIdsRef.current.length > 0) {
+          const selIds = moveSelectedIdsRef.current;
+          const selComps = comps.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            setRotateSelectedIds(selIds);
+            setRotateAnchors('active');
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) setRotateBox(result.box);
+          }
+        } else if (cloneModeRef.current && cloneSelectedIdsRef.current.length > 0) {
+          const selIds = cloneSelectedIdsRef.current;
+          const selComps = comps.filter(c => selIds.includes(c.id));
+          if (selComps.length > 0) {
+            setRotateSelectedIds(selIds);
+            setRotateAnchors('active');
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) setRotateBox(result.box);
+          }
+        }
       }
       return next;
     });
