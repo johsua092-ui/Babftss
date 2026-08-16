@@ -4605,9 +4605,9 @@ export default function LogicGatesSimulator({ setPage }) {
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 999,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 5 : 8,
-              padding: isMobile ? '7px 14px' : '14px 22px', borderRadius: isMobile ? 8 : 12,
-              border: (isMobile ? '1.5px' : '2px') + ' solid ' + (
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 8 : 8,
+              padding: isMobile ? '10px 14px' : '14px 22px', borderRadius: isMobile ? 10 : 12,
+              border: (isMobile ? '1px' : '2px') + ' solid ' + (
                 moveMode ? '#0ea5e9' :
                 rotateMode ? '#f59e0b' :
                 cloneMode ? '#9400D3' :
@@ -4634,7 +4634,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 deleteMode ? '#ff1744' :
                 '#4ade80'
               ),
-              fontSize: isMobile ? 11 : 15, fontWeight: 800, fontFamily: '"Inter", sans-serif',
+              fontSize: isMobile ? 13 : 15, fontWeight: isMobile ? 700 : 800, fontFamily: '"Inter", sans-serif',
               cursor: anySpecialMode ? 'pointer' : 'default',
               boxShadow: isMobile ? '0 2px 8px rgba(0,0,0,0.4)' : '0 3px 12px rgba(0,0,0,0.5)',
               backdropFilter: 'blur(6px)',
@@ -4647,27 +4647,27 @@ export default function LogicGatesSimulator({ setPage }) {
           >
             {/* Ikon dinamis sesuai mode aktif */}
             {moveMode ? (
-               <svg width={isMobile ? 12 : 16} height={isMobile ? 12 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+               <svg width={isMobile ? 16 : 16} height={isMobile ? 16 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                  <path d="M5 12h14M12 5l7 7-7 7" />
                </svg>
              ) : rotateMode ? (
-               <svg width={isMobile ? 12 : 16} height={isMobile ? 12 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+               <svg width={isMobile ? 16 : 16} height={isMobile ? 16 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                  <polyline points="21 3 21 9 15 9" />
                </svg>
              ) : cloneMode ? (
-               <svg width={isMobile ? 12 : 16} height={isMobile ? 12 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+               <svg width={isMobile ? 16 : 16} height={isMobile ? 16 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                  <rect x="8" y="8" width="13" height="13" rx="2" />
                  <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
                </svg>
-             ) : mode === 'connect' ? <Cable size={isMobile ? 12 : 16} /> :
-             paintMode ? <Paintbrush size={isMobile ? 12 : 16} strokeWidth={2.2} /> :
+             ) : mode === 'connect' ? <Cable size={isMobile ? 16 : 16} /> :
+             paintMode ? <Paintbrush size={isMobile ? 16 : 16} strokeWidth={2.2} /> :
              deleteMode ? (
-               <svg width={isMobile ? 14 : 18} height={isMobile ? 14 : 18} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+               <svg width={isMobile ? 18 : 18} height={isMobile ? 18 : 18} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
                  <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.8" fill="rgba(255,23,68,0.12)" opacity="0.7" />
                  <path d="M8.5 8.5 L15.5 15.5 M8.5 15.5 L15.5 8.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                </svg>
-             ) : <MousePointer2 size={isMobile ? 12 : 16} />}
+             ) : <MousePointer2 size={isMobile ? 16 : 16} />}
             <span>{isMobile ? '' : 'mode: '}{moveMode ? 'move area' : rotateMode ? 'rotate area' : cloneMode ? 'cloning area' : mode === 'connect' ? 'connect wire' : paintMode ? 'paint' : deleteMode ? 'delete' : 'build'}</span>
           </button>
           {/* Status text removed — user request: hilangin sepenuhnya */}
