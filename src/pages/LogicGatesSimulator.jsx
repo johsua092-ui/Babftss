@@ -2182,21 +2182,24 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Rotate Area selection box (amber #f59e0b) — only during drag, NOT after anchors appear ──
+      // ── Rotate Area selection circle (amber #f59e0b) — only during drag, NOT after anchors appear ──
       const rBx = stateRef.current.rotateBox;
       const rAnch = stateRef.current.rotateAnchors;
       if (rBx && !rAnch) {
-        const x = Math.min(rBx.sx, rBx.ex);
-        const y = Math.min(rBx.sy, rBx.ey);
-        const w = Math.abs(rBx.ex - rBx.sx);
-        const h = Math.abs(rBx.ey - rBx.sy);
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.12)';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        ctx.strokeRect(x, y, w, h);
-        ctx.setLineDash([]);
+        const centerX = rBx.sx;
+        const centerY = rBx.sy;
+        const radius = Math.sqrt((rBx.ex - rBx.sx) ** 2 + (rBx.ey - rBx.sy) ** 2);
+        if (radius > 2) {
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.12)';
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
       }
 
       // ── Rotate Area double-circle anchors ──
@@ -2232,7 +2235,7 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Marching ants bounding box around selected rotate components ──
+      // ── Marching ants CIRCLE around selected rotate components ──
       const rSelIds = stateRef.current.rotateSelectedIds;
       if (rSelIds && rSelIds.length > 0 && rAnch) {
         let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
@@ -2242,20 +2245,28 @@ export default function LogicGatesSimulator({ setPage }) {
             const sy = comp.y * view.scale + view.y;
             const sw = comp.width * view.scale;
             const sh = comp.height * view.scale;
-            minSx = Math.min(minSx, sx - 4);
-            minSy = Math.min(minSy, sy - 4);
-            maxSx = Math.max(maxSx, sx + sw + 4);
-            maxSy = Math.max(maxSy, sy + sh + 4);
+            minSx = Math.min(minSx, sx);
+            minSy = Math.min(minSy, sy);
+            maxSx = Math.max(maxSx, sx + sw);
+            maxSy = Math.max(maxSy, sy + sh);
           }
         }
         if (minSx < Infinity) {
+          // Circle that circumscribes the bounding box
+          const cx = (minSx + maxSx) / 2;
+          const cy = (minSy + maxSy) / 2;
+          const rx = (maxSx - minSx) / 2 + 4;
+          const ry = (maxSy - minSy) / 2 + 4;
+          const radius = Math.max(rx, ry);
           ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
-          ctx.fillRect(minSx, minSy, maxSx - minSx, maxSy - minSy);
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.fill();
           ctx.setLineDash([6, 4]);
           ctx.lineDashOffset = -dashOffset;
           ctx.strokeStyle = '#f59e0b';
           ctx.lineWidth = 2;
-          ctx.strokeRect(minSx, minSy, maxSx - minSx, maxSy - minSy);
+          ctx.stroke();
           ctx.setLineDash([]);
           ctx.lineDashOffset = 0;
         }
@@ -2603,10 +2614,23 @@ export default function LogicGatesSimulator({ setPage }) {
             setWires(simWrs);
             setStatus('Cloned ' + selComps.length + ' component(s) ' + dir);
 
-            // Clear selection
+            // Auto-switch to MOVE mode with cloned components selected
+            // so user can immediately position the clones
+            const clonedIds = Object.values(idMap);
+            setCloneMode(false);
             setCloneBox(null);
             setCloneSelectedIds([]);
             setCloneAnchors(null);
+            setMoveMode(true);
+            const simSelComps = simComps.filter(c => clonedIds.includes(c.id));
+            setMoveSelectedIds(clonedIds);
+            const v = stateRef.current.view;
+            const moveResult = calcAnchorsFromComponents(simSelComps, v);
+            if (moveResult) {
+              setMoveBox(moveResult.box);
+              setMoveAnchors(moveResult.anchors);
+            }
+            setStatus('Cloned! Now in Move mode — drag arrows to position clones');
             return;
           }
         }
@@ -2658,15 +2682,19 @@ export default function LogicGatesSimulator({ setPage }) {
           if (!pt) continue;
           const dist = Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2);
           if (dist < 20) {
-            // Rotate selected components by 45° around center
+            // Rotate selected components by 45° around center of bounding box
             // top = +45° (CW), bottom = -45° (CCW), left = +45°, right = -45°
             const selIds = stateRef.current.rotateSelectedIds;
             const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
             if (selComps.length === 0) return;
 
-            // Calculate center of selected components
+            // Calculate rotation center from component CENTER points (not top-left)
+            // This prevents drift when spamming rotate — center of mass is rotation-invariant.
             let cx = 0, cy = 0;
-            for (const c of selComps) { cx += c.x; cy += c.y; }
+            for (const c of selComps) {
+              cx += c.x + c.width / 2;
+              cy += c.y + c.height / 2;
+            }
             cx /= selComps.length;
             cy /= selComps.length;
 
@@ -2676,9 +2704,14 @@ export default function LogicGatesSimulator({ setPage }) {
 
             const newComps = stateRef.current.components.map(c => {
               if (!selIds.includes(c.id)) return c;
-              const dx = c.x - cx;
-              const dy = c.y - cy;
-              return { ...c, x: cx + dx * cosA - dy * sinA, y: cy + dx * sinA + dy * cosA };
+              // Rotate component CENTER around the group center
+              const compCx = c.x + c.width / 2;
+              const compCy = c.y + c.height / 2;
+              const dx = compCx - cx;
+              const dy = compCy - cy;
+              const newCx = cx + dx * cosA - dy * sinA;
+              const newCy = cy + dx * sinA + dy * cosA;
+              return { ...c, x: newCx - c.width / 2, y: newCy - c.height / 2 };
             });
 
             const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
@@ -2875,17 +2908,21 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── Rotate box dragging: update box end point ──
+      // ── Rotate circle dragging: update end point (radius from center) ──
       if (rotateBoxRef.current && !stateRef.current.rotateAnchors) {
         const box = rotateBoxRef.current;
         setRotateBox({ ...box, ex: sx, ey: sy });
         const v = stateRef.current.view;
-        const wx1 = (Math.min(box.sx, sx) - v.x) / v.scale;
-        const wy1 = (Math.min(box.sy, sy) - v.y) / v.scale;
-        const wx2 = (Math.max(box.sx, sx) - v.x) / v.scale;
-        const wy2 = (Math.max(box.sy, sy) - v.y) / v.scale;
+        // Circle: center = mousedown point, radius = distance to current mouse
+        const wcx = (box.sx - v.x) / v.scale;
+        const wcy = (box.sy - v.y) / v.scale;
+        const wr = Math.sqrt((sx - box.sx) ** 2 + (sy - box.sy) ** 2) / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
+          // Component center distance from circle center < radius
+          const ccx = c.x + c.width / 2;
+          const ccy = c.y + c.height / 2;
+          const dist = Math.sqrt((ccx - wcx) ** 2 + (ccy - wcy) ** 2);
+          return dist < wr;
         });
         setRotateSelectedIds(inside.map(c => c.id));
         return;
@@ -3036,16 +3073,19 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── Rotate box: finalize selection & show double-circle anchors ──
+      // ── Rotate circle: finalize selection & show double-circle anchors ──
       if (rotateBoxRef.current) {
         const box = rotateBoxRef.current;
         const v = stateRef.current.view;
-        const wx1 = (Math.min(box.sx, box.ex) - v.x) / v.scale;
-        const wy1 = (Math.min(box.sy, box.ey) - v.y) / v.scale;
-        const wx2 = (Math.max(box.sx, box.ex) - v.x) / v.scale;
-        const wy2 = (Math.max(box.sy, box.ey) - v.y) / v.scale;
+        // Circle: center = mousedown, radius = distance to mouseup
+        const wcx = (box.sx - v.x) / v.scale;
+        const wcy = (box.sy - v.y) / v.scale;
+        const wr = Math.sqrt((box.ex - box.sx) ** 2 + (box.ey - box.sy) ** 2) / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
+          const ccx = c.x + c.width / 2;
+          const ccy = c.y + c.height / 2;
+          const dist = Math.sqrt((ccx - wcx) ** 2 + (ccy - wcy) ** 2);
+          return dist < wr;
         }).map(c => c.id);
         setRotateSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
