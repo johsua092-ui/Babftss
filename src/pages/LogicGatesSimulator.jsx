@@ -3023,9 +3023,15 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── CLONE MODE: drag = create purple selection box ──
       if (cloneModeRef.current) {
         e.preventDefault();
-        setCloneBox({ sx, sy, ex: sx, ey: sy });
+        const newBox = { sx, sy, ex: sx, ey: sy };
+        setCloneBox(newBox);
         setCloneSelectedIds([]);
         setCloneAnchors(null);
+        // Sync fast-path: mutate stateRef directly so the next mouseMove
+        // sees the updated cloneBox/cloneAnchors without waiting for React re-render.
+        stateRef.current.cloneBox = newBox;
+        stateRef.current.cloneSelectedIds = [];
+        stateRef.current.cloneAnchors = null;
         return;
       }
 
@@ -3080,10 +3086,17 @@ export default function LogicGatesSimulator({ setPage }) {
         }
         // Click is clearly outside existing selection → start a new selection box
         e.preventDefault();
-        setMoveBox({ sx, sy, ex: sx, ey: sy });
+        const newMoveBox = { sx, sy, ex: sx, ey: sy };
+        setMoveBox(newMoveBox);
         setMoveSelectedIds([]);
         setMoveAnchors(null);
         setMoveActiveDir(null);
+        // Sync fast-path: mutate stateRef directly so the next mouseMove
+        // sees the updated moveBox/moveAnchors without waiting for React re-render.
+        stateRef.current.moveBox = newMoveBox;
+        stateRef.current.moveSelectedIds = [];
+        stateRef.current.moveAnchors = null;
+        stateRef.current.moveActiveDir = null;
         return;
       }
 
@@ -3183,9 +3196,15 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── ROTATE MODE: drag = create amber selection box ──
       if (rotateModeRef.current) {
         e.preventDefault();
-        setRotateBox({ sx, sy, ex: sx, ey: sy });
+        const newRotBox = { sx, sy, ex: sx, ey: sy };
+        setRotateBox(newRotBox);
         setRotateSelectedIds([]);
         setRotateAnchors(null);
+        // Sync fast-path: mutate stateRef directly so the next mouseMove
+        // sees the updated rotateBox/rotateAnchors without waiting for React re-render.
+        stateRef.current.rotateBox = newRotBox;
+        stateRef.current.rotateSelectedIds = [];
+        stateRef.current.rotateAnchors = null;
         return;
       }
 
@@ -3443,8 +3462,8 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── Clone BOX: finalize selection & show arrow anchors ──
       // Guard: only finalize if anchors aren't already showing (prevents re-selection
       // when mouseUp fires after clicking a clone anchor — box is stale at that point)
-      if (cloneBoxRef.current && !cloneAnchorsRef.current) {
-        const box = cloneBoxRef.current;
+      if (stateRef.current.cloneBox && !stateRef.current.cloneAnchors) {
+        const box = stateRef.current.cloneBox;
         // Recompute which components are inside the box at this moment
         // (stateRef.cloneSelectedIds may be stale due to async setState in mouseMove)
         const v = stateRef.current.view;
@@ -3505,8 +3524,8 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── Move box: finalize selection & show arrow anchors ──
       // Guard: only finalize if anchors aren't already showing (prevents re-selection
       // when mouseUp fires after clicking a move anchor — box is stale at that point)
-      if (moveBoxRef.current && !moveAnchorsRef.current) {
-        const box = moveBoxRef.current;
+      if (stateRef.current.moveBox && !stateRef.current.moveAnchors) {
+        const box = stateRef.current.moveBox;
         const v = stateRef.current.view;
         const wx1 = (Math.min(box.sx, box.ex) - v.x) / v.scale;
         const wy1 = (Math.min(box.sy, box.ey) - v.y) / v.scale;
@@ -3535,8 +3554,8 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── Rotate BOX: finalize selection & show double-circle anchors ──
       // Guard: only finalize if anchors aren't already showing (prevents re-selection
       // when mouseUp fires after clicking a rotate anchor — box is stale at that point)
-      if (rotateBoxRef.current && !rotateAnchorsRef.current) {
-        const box = rotateBoxRef.current;
+      if (stateRef.current.rotateBox && !stateRef.current.rotateAnchors) {
+        const box = stateRef.current.rotateBox;
         const v = stateRef.current.view;
         // AABB overlap check (kotak, bukan lingkaran — sama seperti drag)
         const wx1 = Math.min(box.sx, box.ex) / v.scale - v.x / v.scale;
