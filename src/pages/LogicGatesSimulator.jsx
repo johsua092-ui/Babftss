@@ -2235,7 +2235,9 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Marching ants CIRCLE around selected rotate components ──
+      // ── Marching ants ELLIPSE around selected rotate components ──
+      // Ellipse (bukan circle) supaya rapat ke bounding box komponen,
+      // sama akuratnya dengan kotak tapi berbentuk bulat.
       const rSelIds = stateRef.current.rotateSelectedIds;
       if (rSelIds && rSelIds.length > 0 && rAnch) {
         let minSx = Infinity, minSy = Infinity, maxSx = -Infinity, maxSy = -Infinity;
@@ -2252,15 +2254,13 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
         if (minSx < Infinity) {
-          // Circle that circumscribes the bounding box
           const cx = (minSx + maxSx) / 2;
           const cy = (minSy + maxSy) / 2;
           const rx = (maxSx - minSx) / 2 + 4;
           const ry = (maxSy - minSy) / 2 + 4;
-          const radius = Math.max(rx, ry);
           ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
           ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.setLineDash([6, 4]);
           ctx.lineDashOffset = -dashOffset;
