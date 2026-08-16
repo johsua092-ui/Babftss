@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_URL = '/api/coin-transfer';
+const API_URL = '/api/ai-chat';
 
 const s = {
   overlay: {
