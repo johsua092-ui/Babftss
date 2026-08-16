@@ -6,31 +6,32 @@ terblokir: menu tampil **redup** sampai user login.
 Base URL: `https://babftss.vercel.app` (juga tersedia di
 `babft-learning-project.zone.id` dan `babftlearning.dpdns.org`).
 
+Semua endpoint Canvas digabung di SATU route: `/api/canvas` dengan query
+param `action`. (Digabung karena limit serverless function Vercel Hobby.)
+
 ## Auth
-Semua endpoint membutuhkan header:
+Semua request member membutuhkan header:
 
 ```
 Authorization: Bearer <idToken Firebase>
 ```
 
-Ambil token dengan `await user.getIdToken()` (Firebase Auth v9). Token
-otomatis refresh, jadi tidak perlu diurus manual.
-
-Cara detect user login (tanpa blokir): panggil `GET /api/canvas/access`.
+Ambil token dengan `await user.getIdToken()` (Firebase Auth v9).
 
 ---
 
-## 1. GET /api/canvas/access — Cek akses (gating menu)
+## 1. Cek akses (gating menu redup)
 
-Gunakan ini pas halaman dimuat untuk memutuskan apakah menu Canvas redup
-atau aktif.
+```
+GET /api/canvas?action=access
+```
 
-- **Tanpa login** (guest):
+- **Tanpa login** (guest) — HTTP 200:
 ```json
 { "allowed": false, "reason": "Tolong masuk menjadi member untuk menggunakan Canvas", "code": "AUTH_REQUIRED" }
 ```
 
-- **Sudah login**:
+- **Sudah login** — HTTP 200:
 ```json
 {
   "allowed": true,
@@ -46,10 +47,12 @@ atau aktif.
 
 ---
 
-## 2. GET /api/canvas/prompts — Muat 3 slot prompt/memory
+## 2. Slot prompt/memory (3 slot, 0..2)
 
-Header auth wajib. Tanpa `?slot` mengembalikan semua slot:
-
+### Muat semua slot
+```
+GET /api/canvas?action=prompts
+```
 ```json
 {
   "slots": [
@@ -61,19 +64,20 @@ Header auth wajib. Tanpa `?slot` mengembalikan semua slot:
 }
 ```
 
-Dengan `?slot=0` mengembalikan satu slot:
-
+### Muat satu slot
+```
+GET /api/canvas?action=prompts&slot=0
+```
 ```json
 { "slot": 0, "title": "Gipsy Danger", "content": "...", "updated_at": 1700000000000 }
 ```
+Slot kosong: `{ "slot": 1, "content": null, "title": null }`.
 
-Jika slot kosong: `{ "slot": 1, "content": null, "title": null }`.
-
----
-
-## 3. POST /api/canvas/prompts — Simpan/upsert slot
-
-Body:
+### Simpan/upsert slot
+```
+POST /api/canvas?action=prompts
+Content-Type: application/json
+```
 ```json
 { "slot": 0, "title": "Gipsy Danger", "content": "teks panjang ingatan ai..." }
 ```
@@ -87,51 +91,50 @@ Respons 201 (baru) / 200 (update):
 { "slot": 0, "title": "Gipsy Danger", "content": "...", "updated_at": 1700000000000, "updated": false }
 ```
 
+### Kosongkan slot
+```
+DELETE /api/canvas?action=prompts&slot=0
+```
+Respons: `{ "ok": true, "deleted": 1 }`.
+
 ---
 
-## 4. DELETE /api/canvas/prompts?slot=N — Kosongkan slot
+## 3. Coret-coret (strokes)
 
-Respons: `{ "ok": true, "deleted": 1 }` (atau `deleted: 0` kalau sudah kosong).
-
----
-
-## 5. GET /api/canvas/strokes — Muat gambar coret-coret
-
+### Muat
+```
+GET /api/canvas?action=strokes
+```
 ```json
 { "strokes": { ... }, "updated_at": 1700000000000 }
 ```
+Belum ada: `{ "strokes": null, "updated_at": null }`.
 
-Jika belum ada: `{ "strokes": null, "updated_at": null }`.
-
-Struktur `strokes` bebas — frontend yang menentukan (misal array objek
-stroke berisi `points`, `color`, `width`, `tool`, dsb). Backend hanya
-menyimpan & mengembalikan apa adanya.
-
----
-
-## 6. POST /api/canvas/strokes — Simpan coret-coret
-
-Body:
+### Simpan
+```
+POST /api/canvas?action=strokes
+Content-Type: application/json
+```
 ```json
 { "data": { "strokes": [ ... ] } }
 ```
-
 `data` boleh object JSON apa pun (max 500 KB). Respons:
 ```json
 { "ok": true, "updated": true, "updated_at": 1700000000000 }
 ```
 
----
-
-## 7. DELETE /api/canvas/strokes — Hapus coret-coret
-
+### Hapus
+```
+DELETE /api/canvas?action=strokes
+```
 Respons: `{ "ok": true, "deleted": 1 }`.
 
 ---
 
 ## Catatan
-- Semua endpoint member-auth. Guest mendapat `401` `AUTH_REQUIRED` untuk
-  prompts/strokes, dan `200 allowed:false` untuk `/access`.
-- Rate limit: 60 req/menit per IP (access: 120/menit).
-- Data tersimpan di Firestore project `punya-si-jawa`, koleksi
+- `action=access` boleh guest (balikin `allowed:false`).
+- Semua action lain WAJIB member; guest dapat `401 AUTH_REQUIRED`.
+- Rate limit: 60 req/menit per IP.
+- Data disimpan di Firestore project `punya-si-jawa`, koleksi
   `canvas_prompts` (slot memory) dan `canvas_strokes` (coret-coret).
+- Struktur `strokes` bebas — frontend yang menentukan (points, color, width, dst.).
