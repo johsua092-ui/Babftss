@@ -3936,13 +3936,11 @@ export default function LogicGatesSimulator({ setPage }) {
             const v = stateRef.current.view;
             touchStateRef.current.panStart = { startSX: sx, startSY: sy, startVX: v.x, startVY: v.y };
           } else if (rotateModeRef.current) {
-            setRotateBox({ sx, sy, ex: sx, ey: sy });
-            setRotateSelectedIds([]);
-            setRotateAnchors(null);
+            // Rotate mode: 1-finger DISABLED — no select box, no pan.
+            // Select box only via 2-finger pinch. 1 finger = nothing.
           } else if (cloneModeRef.current) {
-            setCloneBox({ sx, sy, ex: sx, ey: sy });
-            setCloneSelectedIds([]);
-            setCloneAnchors(null);
+            // Clone mode: 1-finger DISABLED — no select box, no pan.
+            // Select box only via 2-finger pinch. 1 finger = nothing.
           } else if (modeRef.current === 'connect') {
             // Connect wire mode: 1-finger pan DISABLED — user must use 2 fingers to pan.
             // Single finger on empty space = nothing (prevents accidental workspace movement).
