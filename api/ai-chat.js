@@ -1,5 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold } from "../lib/gold-system.js";
 
 export default async function handler(req, res) {
   applyCors(req, res, "GET, POST, OPTIONS");
@@ -7,7 +8,21 @@ export default async function handler(req, res) {
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
+  const action = req.query?.action || null;
+
   if (req.method === "GET") {
+    if (action === "packages" || action === "gold-info") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const admin = isAdmin(user);
+        const status = await getFullAIStatus(user.sub, admin);
+        return res.status(200).json(status);
+      } catch (e) {
+        console.error("[ai-chat] gold-info error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
     return res.status(200).json({ status: "ok" });
   }
 
@@ -17,10 +32,60 @@ export default async function handler(req, res) {
     const user = await authenticateRequest(req);
     if (!user) return res.status(401).json({ error: "Login required to use AI chat" });
 
-    if (!isAdmin(user)) {
-      const uid = user.sub || "unknown";
+    const admin = isAdmin(user);
+    const uid = user.sub || "unknown";
+
+    if (action === "buy-time") {
+      if (admin) return res.status(200).json({ message: "Admin has unlimited access", remainingMinutes: Infinity, goldBalance: Infinity });
+      const { packageId } = req.body || {};
+      if (!packageId || typeof packageId !== "string") {
+        return res.status(400).json({ error: "packageId wajib diisi" });
+      }
+      try {
+        const result = await buyAITime(uid, packageId);
+        return res.status(200).json({ message: "Berhasil membeli waktu AI", remainingMinutes: result.remainingMinutes, goldBalance: result.goldBalance });
+      } catch (e) {
+        if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold tidak cukup", gold: await getGoldBalance(uid) });
+        if (e.message.startsWith("cooldown")) return res.status(429).json({ error: "Tunggu 3 detik sebelum beli lagi" });
+        if (e.message === "invalid package") return res.status(400).json({ error: "Paket tidak valid" });
+        throw e;
+      }
+    }
+
+    if (action === "activate-timer") {
+      if (admin) return res.status(200).json({ message: "Admin has unlimited access", timerActive: true, remainingMinutes: Infinity });
+      try {
+        const result = await activateTimer(uid);
+        return res.status(200).json({ message: "Timer diaktifkan", timerExpiresAt: result.timerExpiresAt, remainingMinutes: result.remainingMinutes, warning: "Timer tidak bisa dihentikan setelah diaktifkan!" });
+      } catch (e) {
+        if (e.message === "no remaining time") return res.status(400).json({ error: "Belum punya waktu AI. Beli dulu paketnya." });
+        if (e.message === "timer already active") return res.status(409).json({ error: "Timer sudah aktif" });
+        throw e;
+      }
+    }
+
+    if (action === "add-gold") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa menambah gold" });
+      const { targetUid, amount, type } = req.body || {};
+      if (!targetUid || !amount || amount <= 0) return res.status(400).json({ error: "targetUid dan amount wajib diisi" });
+      const newBalance = await addGold(targetUid, amount, type || "admin_grant", { grantedBy: uid });
+      return res.status(200).json({ message: "Gold ditambahkan", uid: targetUid, newBalance });
+    }
+
+    if (!admin) {
       if (!checkRateLimit("ai-chat:" + uid, 10, 60000)) {
         return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
+      }
+      const timerCheck = await checkAITimerAccess(uid);
+      if (!timerCheck.allowed) {
+        const status = await getFullAIStatus(uid, false);
+        if (timerCheck.reason === "timer_not_active") {
+          return res.status(403).json({ error: "Aktifkan timer AI terlebih dahulu", code: "TIMER_NOT_ACTIVE", remainingMinutes: timerCheck.remainingMinutes, gold: status.gold });
+        }
+        if (timerCheck.reason === "timer_expired") {
+          return res.status(403).json({ error: "Waktu AI sudah habis. Beli paket baru untuk lanjut.", code: "TIMER_EXPIRED", gold: status.gold });
+        }
+        return res.status(403).json({ error: "Akses AI ditolak", code: "NO_ACCESS" });
       }
     }
 
