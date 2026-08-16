@@ -4389,7 +4389,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onClick={toggleMove}
               title={moveMode ? 'Move Area mode ON — drag to select, click arrows to move' : 'Turn on Move Area mode'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (moveMode ? '#0ea5e9' : 'rgba(14, 165, 233, 0.3)'),
                 backgroundColor: moveMode ? 'rgba(14, 165, 233, 0.10)' : 'rgba(14, 165, 233, 0.06)',
@@ -4407,7 +4407,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
               <span>{moveMode ? 'move area on' : 'move area off'}</span>
-              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2, lineHeight: '13px', alignSelf: 'center' }}>[1]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[1]</span>}
             </button>
 
             {/* ── Rotate Area toggle (#2) ──
@@ -4418,7 +4418,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onClick={toggleRotate}
               title={rotateMode ? 'Rotate Area mode ON — drag to select, click circles to rotate 45°' : 'Turn on Rotate Area mode'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (rotateMode ? '#f59e0b' : 'rgba(245, 158, 11, 0.3)'),
                 backgroundColor: rotateMode ? 'rgba(245, 158, 11, 0.10)' : 'rgba(245, 158, 11, 0.06)',
@@ -4437,7 +4437,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <polyline points="21 3 21 9 15 9" />
               </svg>
               <span>{rotateMode ? 'rotate area on' : 'rotate area off'}</span>
-              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2, lineHeight: '13px', alignSelf: 'center' }}>[2]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[2]</span>}
             </button>
 
             {/* ── Cloning Area toggle (#3) ──
@@ -4450,7 +4450,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onClick={toggleClone}
               title={cloneMode ? 'Cloning Area mode ON — drag to select, click arrows to clone' : 'Turn on Cloning Area mode'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (cloneMode ? '#c084fc' : 'rgba(192, 132, 252, 0.3)'),
                 backgroundColor: cloneMode ? 'rgba(192, 132, 252, 0.10)' : 'rgba(192, 132, 252, 0.06)',
@@ -4469,7 +4469,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
               </svg>
               <span>{cloneMode ? 'cloning area on' : 'cloning area off'}</span>
-              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2, lineHeight: '13px', alignSelf: 'center' }}>[3]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[3]</span>}
             </button>
 
             {/* ── mode: connect wire ──
@@ -4492,7 +4492,7 @@ export default function LogicGatesSimulator({ setPage }) {
               }}
               title={mode === 'connect' ? 'Connect Wire mode ON — click zones to wire' : 'Turn on Connect Wire mode'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (mode === 'connect' ? '#22d3ee' : 'rgba(34, 211, 238, 0.3)'),
                 backgroundColor: mode === 'connect' ? 'rgba(34, 211, 238, 0.15)' : 'rgba(34, 211, 238, 0.06)',
@@ -4509,7 +4509,7 @@ export default function LogicGatesSimulator({ setPage }) {
             >
               <Cable size={13} />
               <span>{mode === 'connect' ? 'connect wire on' : 'connect wire off'}</span>
-              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2, lineHeight: '13px', alignSelf: 'center' }}>[4]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[4]</span>}
             </button>
 
             {/* ── Paint Mode toggle ──
@@ -4523,7 +4523,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onClick={togglePaint}
               title={paintMode ? 'Paint mode ON — click wire/component to recolor' : 'Turn on Paint mode'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (paintMode ? '#ff0080' : 'rgba(255, 0, 128, 0.3)'),
                 backgroundColor: paintMode ? 'rgba(255, 0, 128, 0.10)' : 'rgba(255, 0, 128, 0.06)',
@@ -4550,7 +4550,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 }}
               />
               <span>{paintMode ? 'paint on' : 'paint off'}</span>
-              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2, lineHeight: '13px', alignSelf: 'center' }}>[5]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[5]</span>}
             </button>
 
             {/* ── Delete Mode toggle ──
@@ -4563,7 +4563,7 @@ export default function LogicGatesSimulator({ setPage }) {
               onClick={toggleDelete}
               title={deleteMode ? 'Delete mode ON — click wire/component to delete' : 'Turn on Delete mode'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (deleteMode ? '#ff1744' : 'rgba(255, 23, 68, 0.3)'),
                 backgroundColor: deleteMode ? 'rgba(255, 23, 68, 0.12)' : 'rgba(255, 23, 68, 0.06)',
@@ -4611,7 +4611,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 />
               </svg>
               <span>{deleteMode ? 'delete on' : 'delete off'}</span>
-              {!isMobile && <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 2, lineHeight: '13px', alignSelf: 'center' }}>[6]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[6]</span>}
             </button>
             </>}
           </div>
