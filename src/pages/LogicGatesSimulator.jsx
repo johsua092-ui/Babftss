@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2 } from 'lucide-react';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -1007,6 +1007,69 @@ export default function LogicGatesSimulator({ setPage }) {
   const minimapRef = useRef(null);
   const [components, setComponents] = useState([]);
   const [wires, setWires] = useState([]);
+
+  // ── Undo / Redo ──
+  const [circuitHistory, setCircuitHistory] = useState([]);
+  const [circuitHistoryIdx, setCircuitHistoryIdx] = useState(-1);
+  const circuitHistoryRef = useRef([]);
+  const circuitHistoryIdxRef = useRef(-1);
+  const canUndoCircuit = circuitHistoryIdx > 0;
+  const canRedoCircuit = circuitHistoryIdx < circuitHistory.length - 1;
+  // Flag to prevent recording undo snapshots during undo/redo itself
+  const skipHistoryRef = useRef(false);
+
+  useEffect(() => { circuitHistoryRef.current = circuitHistory; }, [circuitHistory]);
+  useEffect(() => { circuitHistoryIdxRef.current = circuitHistoryIdx; }, [circuitHistoryIdx]);
+
+  const pushCircuitHistory = (comps, wrs) => {
+    if (skipHistoryRef.current) return;
+    const snap = { components: JSON.parse(JSON.stringify(comps)), wires: JSON.parse(JSON.stringify(wrs)) };
+    const idx = circuitHistoryIdxRef.current;
+    const h = circuitHistoryRef.current.slice(0, idx + 1);
+    h.push(snap);
+    if (h.length > 50) h.shift();
+    setCircuitHistory(h);
+    setCircuitHistoryIdx(h.length - 1);
+  };
+
+  // Push initial empty state on mount
+  useEffect(() => {
+    pushCircuitHistory([], []);
+  }, []);
+
+  // Debounced history recording: track changes to components/wires
+  const lastRecordedRef = useRef({ comps: '[]', wrs: '[]' });
+  useEffect(() => {
+    if (skipHistoryRef.current) { skipHistoryRef.current = false; return; }
+    const compsKey = JSON.stringify(components);
+    const wrsKey = JSON.stringify(wires);
+    if (compsKey !== lastRecordedRef.current.comps || wrsKey !== lastRecordedRef.current.wrs) {
+      lastRecordedRef.current = { comps: compsKey, wrs: wrsKey };
+      pushCircuitHistory(components, wires);
+    }
+  }, [components, wires]);
+
+  const undoCircuit = () => {
+    if (!canUndoCircuit) return;
+    skipHistoryRef.current = true;
+    const newIdx = circuitHistoryIdx - 1;
+    const snap = circuitHistory[newIdx];
+    setComponents(JSON.parse(JSON.stringify(snap.components)));
+    setWires(JSON.parse(JSON.stringify(snap.wires)));
+    setCircuitHistoryIdx(newIdx);
+    lastRecordedRef.current = { comps: JSON.stringify(snap.components), wrs: JSON.stringify(snap.wires) };
+  };
+
+  const redoCircuit = () => {
+    if (!canRedoCircuit) return;
+    skipHistoryRef.current = true;
+    const newIdx = circuitHistoryIdx + 1;
+    const snap = circuitHistory[newIdx];
+    setComponents(JSON.parse(JSON.stringify(snap.components)));
+    setWires(JSON.parse(JSON.stringify(snap.wires)));
+    setCircuitHistoryIdx(newIdx);
+    lastRecordedRef.current = { comps: JSON.stringify(snap.components), wrs: JSON.stringify(snap.wires) };
+  };
   // ── Rotation animation state ──
   // Saat animasi rotasi aktif, komponen yang ter-select di-interpolasi
   // dari posisi lama ke posisi baru. Durasi ~250ms.
@@ -5260,6 +5323,49 @@ export default function LogicGatesSimulator({ setPage }) {
               }}>
                 <polyline points="6 9 12 15 18 9" />
               </svg>
+            </button>
+            {/* ── Undo / Redo buttons (always visible, next to Tools) ── */}
+            <button
+              onClick={undoCircuit}
+              disabled={!canUndoCircuit}
+              title="Undo"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (canUndoCircuit ? '#60a5fa' : 'rgba(96,165,250,0.3)'),
+                backgroundColor: canUndoCircuit ? 'rgba(96,165,250,0.10)' : 'rgba(96,165,250,0.06)',
+                color: canUndoCircuit ? '#60a5fa' : 'rgba(96,165,250,0.4)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: canUndoCircuit ? 'pointer' : 'not-allowed',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                opacity: canUndoCircuit ? 1 : 0.45,
+                transition: 'opacity 0.15s ease',
+                userSelect: 'none',
+              }}
+            >
+              <Undo2 size={16} />
+            </button>
+            <button
+              onClick={redoCircuit}
+              disabled={!canRedoCircuit}
+              title="Redo"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid ' + (canRedoCircuit ? '#60a5fa' : 'rgba(96,165,250,0.3)'),
+                backgroundColor: canRedoCircuit ? 'rgba(96,165,250,0.10)' : 'rgba(96,165,250,0.06)',
+                color: canRedoCircuit ? '#60a5fa' : 'rgba(96,165,250,0.4)',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: canRedoCircuit ? 'pointer' : 'not-allowed',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                opacity: canRedoCircuit ? 1 : 0.45,
+                transition: 'opacity 0.15s ease',
+                userSelect: 'none',
+              }}
+            >
+              <Redo2 size={16} />
             </button>
             {toolsOpen && <>
             {/* ── Move! Area toggle (#1) ──
