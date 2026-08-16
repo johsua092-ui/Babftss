@@ -3975,26 +3975,30 @@ export default function LogicGatesSimulator({ setPage }) {
             const selIds = stateRef.current.moveSelectedIds;
             const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
             if (selComps.length > 0) {
-              const dx = sx - mds.sx;
-              const dy = sy - mds.sy;
-              const dir = stateRef.current.moveActiveDir;
-              let moveX = 0, moveY = 0;
-              if (dir === 'left') moveX = -Math.abs(dx);
-              else if (dir === 'right') moveX = Math.abs(dx);
-              else if (dir === 'top') moveY = -Math.abs(dy);
-              else if (dir === 'bottom') moveY = Math.abs(dy);
-              // Convert pixel delta ke world delta
-              const worldDx = moveX / stateRef.current.view.scale;
-              const worldDy = moveY / stateRef.current.view.scale;
+              // Free 2D movement — same logic as onMouseMove (PC)
+              const dxWorld = (sx - mds.sx) / stateRef.current.view.scale;
+              const dyWorld = (sy - mds.sy) / stateRef.current.view.scale;
               const newComps = stateRef.current.components.map(c => {
                 if (!selIds.includes(c.id)) return c;
                 const startC = mds.comps.find(mc => mc.id === c.id);
                 if (!startC) return c;
-                return { ...c, x: startC.x + worldDx, y: startC.y + worldDy };
+                return { ...c, x: startC.x + dxWorld, y: startC.y + dyWorld };
               });
               const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
               setComponents(simComps);
               setWires(simWrs);
+              // Update move box to follow dragged components
+              const mb = stateRef.current.moveBox;
+              if (mb) {
+                setMoveBox({
+                  sx: mb.sx + (sx - (stateRef.current._lastMoveSx || mds.sx)),
+                  sy: mb.sy + (sy - (stateRef.current._lastMoveSy || mds.sy)),
+                  ex: mb.ex + (sx - (stateRef.current._lastMoveSx || mds.sx)),
+                  ey: mb.ey + (sy - (stateRef.current._lastMoveSy || mds.sy))
+                });
+              }
+              stateRef.current._lastMoveSx = sx;
+              stateRef.current._lastMoveSy = sy;
             }
           }
         }
@@ -4105,9 +4109,26 @@ export default function LogicGatesSimulator({ setPage }) {
           setCloneBox(null);
         }
         // Move anchor drag selesai
-        if (moveModeRef.current) {
+        if (moveModeRef.current && stateRef.current.moveActiveDir) {
           setMoveActiveDir(null);
           stateRef.current.moveDragStart = null;
+          stateRef.current._lastMoveSx = null;
+          stateRef.current._lastMoveSy = null;
+          // Recompute anchors based on current component positions
+          const mb = stateRef.current.moveBox;
+          if (mb) {
+            const selIds = stateRef.current.moveSelectedIds;
+            const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
+            const v = stateRef.current.view;
+            const result = calcAnchorsFromComponents(selComps, v);
+            if (result) {
+              setMoveBox(result.box);
+              setMoveAnchors(result.anchors);
+            }
+          }
+          const { comps: simComps, wrs: simWrs } = simulate(stateRef.current.components, stateRef.current.wires);
+          setComponents(simComps);
+          setWires(simWrs);
         }
 
         // ── Connect mode: drop-to-connect ──
