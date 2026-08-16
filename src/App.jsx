@@ -221,7 +221,7 @@ export default function App() {
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(59,130,246,0.35)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(59,130,246,0.25)", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
                             onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: "rgba(59,130,246,0.18)", padding: 10, borderRadius: 10, color: "#60a5fa", flexShrink: 0 }}><Cpu size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left" }}>Logic Gates</span></button>
+                        ><div style={{ backgroundColor: "rgba(59,130,246,0.18)", padding: 10, borderRadius: 10, color: "#60a5fa", flexShrink: 0 }}><Cpu size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#60a5fa" }}>Logic Gates</span></button>
                         <button onClick={() => setPage("gears")}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(251,146,60,0.38)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(251,146,60,0.22)", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
