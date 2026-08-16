@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
+import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw, PenTool } from 'lucide-react';
 import GearIcon from './components/GearIcon';
 import LinkageIcon from './components/LinkageIcon';
 import ShapesIcon from './components/ShapesIcon';
@@ -21,6 +21,7 @@ const GearsPage = lazy(() => import('./pages/GearsPage'));
 const LinkagesPage = lazy(() => import('./pages/LinkagesPage'));
 const AIHelperPanel = lazy(() => import('./components/AIHelperPanel'));
 const LogicGatesSimulator = lazy(() => import('./pages/LogicGatesSimulator'));
+const CanvasPage = lazy(() => import('./pages/CanvasPage'));
 
 const pageFallback = (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px 0', color: '#475569', fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
@@ -195,6 +196,9 @@ export default function App() {
                     >START LEARNING</button>
                 </div>
             </motion.div>}
+            {page === "canvas" && <motion.div key="canvas" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+                <Suspense fallback={pageFallback}><CanvasPage setPage={setPage} /></Suspense>
+            </motion.div>}
             {page === "shapes" && <motion.div key="shapes" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <Suspense fallback={pageFallback}><ShapesPage setPage={setPage} user={user} onGuestClick={showGuestAnnouncement} /></Suspense>
             </motion.div>}
@@ -212,6 +216,11 @@ export default function App() {
                         <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
                     </picture>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
+                        <button onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
+                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: user ? "1px solid rgba(139,92,246,0.38)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: user ? "0 0 18px rgba(139,92,246,0.22)" : "none", transition: "all 0.2s", opacity: user ? 1 : 0.5 }}
+                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
+                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
+                        ><div style={{ backgroundColor: user ? "rgba(139,92,246,0.18)" : "rgba(239,68,68,0.12)", padding: 10, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><PenTool size={22} color={user ? "#a78bfa" : "#ef4444"} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: user ? "#a78bfa" : "#ef4444" }}>Canvas</span>{!user && <span style={{ fontFamily: "Inter,sans-serif", fontSize: 10, fontWeight: 600, color: "#ef4444", marginLeft: 6, opacity: 0.8, letterSpacing: 0.5 }}>LOGIN REQUIRED</span>}</button>
                         <button onClick={() => setPage("shapes")}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(45,212,191,0.38)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(45,212,191,0.22)", transition: "all 0.2s" }}
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
