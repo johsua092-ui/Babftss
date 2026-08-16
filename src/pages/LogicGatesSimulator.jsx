@@ -1481,7 +1481,9 @@ export default function LogicGatesSimulator({ setPage }) {
     const ctx = canvas.getContext('2d');
     let animId;
 
+    let dashOffset = 0;
     const draw = () => {
+      dashOffset = (dashOffset + 0.4) % 20; // marching ants animation speed
       const { components: comps, wires: wrs, wiring, hoverNode, hoverZone, selectedId: selId, view } = stateRef.current;
       // Blueprint background: deep blue paper + white grid lines (ala gambar teknik).
       // Bikin canvas gak kosong & kasih sense of scale pas pan/zoom.
@@ -1966,9 +1968,10 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Clone selection box (purple) ──
+      // ── Clone selection box (purple) — only during drag, NOT after anchors appear ──
       const cb = stateRef.current.cloneBox;
-      if (cb) {
+      const ca = stateRef.current.cloneAnchors;
+      if (cb && !ca) {
         const x = Math.min(cb.sx, cb.ex);
         const y = Math.min(cb.sy, cb.ey);
         const w = Math.abs(cb.ex - cb.sx);
@@ -1983,7 +1986,6 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Clone anchor points ──
-      const ca = stateRef.current.cloneAnchors;
       if (ca) {
         const dirs = ['top', 'bottom', 'left', 'right'];
         const arrows = { top: '\u25B2', bottom: '\u25BC', left: '\u25C4', right: '\u25BA' };
@@ -2007,9 +2009,13 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Highlight selected components in clone box ──
+      // ── Marching ants around selected clone components (after selection, not during drag) ──
       const cSelIds = stateRef.current.cloneSelectedIds;
-      if (cSelIds && cSelIds.length > 0) {
+      if (cSelIds && cSelIds.length > 0 && ca) {
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = -dashOffset;
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 2;
         for (const comp of comps) {
           if (cSelIds.includes(comp.id)) {
             const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
@@ -2017,16 +2023,17 @@ export default function LogicGatesSimulator({ setPage }) {
             const h = def?.h || 50;
             const sx2 = comp.x * view.scale + view.x;
             const sy2 = comp.y * view.scale + view.y;
-            ctx.strokeStyle = '#c084fc';
-            ctx.lineWidth = 2;
             ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
           }
         }
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
       }
 
-      // ── Move Area selection box (teal #0ea5e9) ──
+      // ── Move Area selection box (teal #0ea5e9) — only during drag, NOT after anchors appear ──
       const mBx = stateRef.current.moveBox;
-      if (mBx) {
+      const mAnch = stateRef.current.moveAnchors;
+      if (mBx && !mAnch) {
         const x = Math.min(mBx.sx, mBx.ex);
         const y = Math.min(mBx.sy, mBx.ey);
         const w = Math.abs(mBx.ex - mBx.sx);
@@ -2041,7 +2048,6 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Move Area arrow anchors ──
-      const mAnch = stateRef.current.moveAnchors;
       if (mAnch) {
         const dirs = stateRef.current.moveActiveDir ? [stateRef.current.moveActiveDir] : ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
@@ -2079,9 +2085,14 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Highlight selected components in move box ──
+      // ── Marching ants around selected move components (after selection, hide during anchor drag) ──
       const mSelIds = stateRef.current.moveSelectedIds;
-      if (mSelIds && mSelIds.length > 0) {
+      const mActive = stateRef.current.moveActiveDir;
+      if (mSelIds && mSelIds.length > 0 && mAnch && !mActive) {
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = -dashOffset;
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
         for (const comp of comps) {
           if (mSelIds.includes(comp.id)) {
             const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
@@ -2089,16 +2100,17 @@ export default function LogicGatesSimulator({ setPage }) {
             const h = def?.h || 50;
             const sx2 = comp.x * view.scale + view.x;
             const sy2 = comp.y * view.scale + view.y;
-            ctx.strokeStyle = '#0ea5e9';
-            ctx.lineWidth = 2;
             ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
           }
         }
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
       }
 
-      // ── Rotate Area selection box (amber #f59e0b) ──
+      // ── Rotate Area selection box (amber #f59e0b) — only during drag, NOT after anchors appear ──
       const rBx = stateRef.current.rotateBox;
-      if (rBx) {
+      const rAnch = stateRef.current.rotateAnchors;
+      if (rBx && !rAnch) {
         const x = Math.min(rBx.sx, rBx.ex);
         const y = Math.min(rBx.sy, rBx.ey);
         const w = Math.abs(rBx.ex - rBx.sx);
@@ -2113,7 +2125,6 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Rotate Area double-circle anchors ──
-      const rAnch = stateRef.current.rotateAnchors;
       if (rAnch) {
         const dirs = ['top', 'bottom', 'left', 'right'];
         for (const dir of dirs) {
@@ -2146,9 +2157,13 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Highlight selected components in rotate box ──
+      // ── Marching ants around selected rotate components (after selection) ──
       const rSelIds = stateRef.current.rotateSelectedIds;
-      if (rSelIds && rSelIds.length > 0) {
+      if (rSelIds && rSelIds.length > 0 && rAnch) {
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = -dashOffset;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
         for (const comp of comps) {
           if (rSelIds.includes(comp.id)) {
             const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
@@ -2156,11 +2171,11 @@ export default function LogicGatesSimulator({ setPage }) {
             const h = def?.h || 50;
             const sx2 = comp.x * view.scale + view.x;
             const sy2 = comp.y * view.scale + view.y;
-            ctx.strokeStyle = '#f59e0b';
-            ctx.lineWidth = 2;
             ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
           }
         }
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
       }
 
       animId = requestAnimationFrame(draw);
