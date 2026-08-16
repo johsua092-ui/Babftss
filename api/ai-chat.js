@@ -1,6 +1,7 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
 import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold } from "../lib/gold-system.js";
+import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
   applyCors(req, res, "GET, POST, OPTIONS");
@@ -11,6 +12,18 @@ export default async function handler(req, res) {
   const action = req.query?.action || null;
 
   if (req.method === "GET") {
+    if (action === "stats") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        if (!isAdmin(user)) return res.status(403).json({ error: "Hanya admin yang bisa akses statistik" });
+        const [stats, topics] = await Promise.all([getAnalyticsStats(), getTopicUsage()]);
+        return res.status(200).json({ ...stats, topics });
+      } catch (e) {
+        console.error("[ai-chat] stats error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
     if (action === "packages" || action === "gold-info") {
       try {
         const user = await authenticateRequest(req);
@@ -101,6 +114,9 @@ export default async function handler(req, res) {
         .slice(-20)
         .map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
     }
+
+    // Catat topik pertanyaan (best-effort) untuk statistik "dipakai buat apa".
+    logChatTopic(uid, message);
 
     const canned = getCannedResponse(message);
     if (canned) {
