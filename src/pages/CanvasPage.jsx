@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API = '/api/canvas';
@@ -65,6 +65,7 @@ function DrawTab({ token }) {
     const [tool, setTool] = useState('pen'); // pen | eraser
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const lastPos = useRef(null);
 
     // Resize canvas to match container — keeps drawing coords 1:1
@@ -231,10 +232,23 @@ function DrawTab({ token }) {
                 <button onClick={saveStrokes} disabled={saving} style={actionBtnStyle}>
                     <Save size={13} /> {saving ? '...' : 'Save'}
                 </button>
-                <button onClick={deleteStrokes} style={{ ...actionBtnStyle, color: C.danger }}>
+                <button onClick={() => setConfirmDelete(true)} style={{ ...actionBtnStyle, color: C.danger }}>
                     <Trash2 size={13} />
                 </button>
             </div>
+            {/* Delete confirmation */}
+            {confirmDelete && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ padding: '16px 20px', borderRadius: 12, backgroundColor: C.panel, border: `1px solid #92400e`, maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                        <AlertTriangle size={24} color="#f59e0b" />
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: '#fbbf24', textAlign: 'center' }}>Apakah kamu yakin ingin menghapus canvas?</span>
+                        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                            <button onClick={async () => { await deleteStrokes(); setConfirmDelete(false); }} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', backgroundColor: '#92400e', border: '1px solid #b45309', color: '#fef3c7', fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600 }}>Ya, Hapus</button>
+                            <button onClick={() => setConfirmDelete(false)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', backgroundColor: C.card, border: `1px solid ${C.borderLight}`, color: C.textDim, fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600 }}>Batal</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Canvas */}
             <div ref={containerRef} style={{ flex: 1, position: 'relative', backgroundColor: '#05080f', overflow: 'hidden' }}>
                 {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontFamily: 'Inter,sans-serif', fontSize: 13 }}>Loading...</div>}
