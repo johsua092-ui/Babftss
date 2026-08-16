@@ -224,10 +224,10 @@ function getCompBox(c) {
 }
 
 // MUTUAL GAP: komponen & kabel saling memberikan gap (seperti magnet kutub sama).
-// Komponen "mendorong" kabel 12px, kabel juga "mendorong" komponen 12px → total 24px.
+// Komponen "mendorong" kabel 18px, kabel juga "mendorong" komponen 18px → total 36px.
 // Ini memastikan kabel TIDAK PERNAH menabrak/menindih body komponen, dan sebaliknya.
-// 24px = cukup buat visual clearance (wire 3px + 21px whitespace mutual gap).
-const GAP_MARGIN = 24;
+// 36px = cukup buat visual clearance (wire 3px + 33px whitespace mutual gap).
+const GAP_MARGIN = 36;
 function getCompBlockedBox(c) {
   const b = getCompBox(c);
   return {
