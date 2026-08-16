@@ -3055,6 +3055,30 @@ export default function LogicGatesSimulator({ setPage }) {
 
       // ── MOVE MODE: drag = create teal selection box ──
       if (moveModeRef.current) {
+        // Guard: if components are already selected (e.g. after clone→move switch),
+        // clicking inside/near their bounding box should deselect, NOT start a new
+        // selection box that accidentally picks up nearby original components.
+        if (stateRef.current.moveAnchors && stateRef.current.moveSelectedIds.length > 0) {
+          const guardIds = stateRef.current.moveSelectedIds;
+          const guardComps = stateRef.current.components.filter(c => guardIds.includes(c.id));
+          if (guardComps.length > 0) {
+            const guardResult = calcAnchorsFromComponents(guardComps, stateRef.current.view);
+            if (guardResult) {
+              const b = guardResult.box;
+              const pad = 15; // padding around bbox for easier click targeting
+              if (sx >= b.sx - pad && sx <= b.ex + pad && sy >= b.sy - pad && sy <= b.ey + pad) {
+                // Click inside selection area → deselect cleanly
+                e.preventDefault();
+                setMoveSelectedIds([]);
+                setMoveAnchors(null);
+                setMoveBox(null);
+                setMoveActiveDir(null);
+                return;
+              }
+            }
+          }
+        }
+        // Click is clearly outside existing selection → start a new selection box
         e.preventDefault();
         setMoveBox({ sx, sy, ex: sx, ey: sy });
         setMoveSelectedIds([]);
