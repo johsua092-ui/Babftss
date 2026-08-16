@@ -2182,22 +2182,22 @@ export default function LogicGatesSimulator({ setPage }) {
         }
       }
 
-      // ── Rotate Area selection circle (amber #f59e0b) — only during drag, NOT after anchors appear ──
+      // ── Rotate Area selection BOX (amber #f59e0b) — only during drag, NOT after anchors appear ──
+      // Select box tetap KOTAK (seperti move/clone), hanya marching ants setelah seleksi yang bulat.
       const rBx = stateRef.current.rotateBox;
       const rAnch = stateRef.current.rotateAnchors;
       if (rBx && !rAnch) {
-        const centerX = rBx.sx;
-        const centerY = rBx.sy;
-        const radius = Math.sqrt((rBx.ex - rBx.sx) ** 2 + (rBx.ey - rBx.sy) ** 2);
-        if (radius > 2) {
+        const x = Math.min(rBx.sx, rBx.ex);
+        const y = Math.min(rBx.sy, rBx.ey);
+        const w = Math.abs(rBx.ex - rBx.sx);
+        const h = Math.abs(rBx.ey - rBx.sy);
+        if (w > 2 || h > 2) {
           ctx.fillStyle = 'rgba(245, 158, 11, 0.12)';
-          ctx.beginPath();
-          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(x, y, w, h);
           ctx.strokeStyle = '#f59e0b';
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 4]);
-          ctx.stroke();
+          ctx.strokeRect(x, y, w, h);
           ctx.setLineDash([]);
         }
       }
@@ -2908,21 +2908,18 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── Rotate circle dragging: update end point (radius from center) ──
+      // ── Rotate BOX dragging: update end point (AABB rectangle like move/clone) ──
       if (rotateBoxRef.current && !stateRef.current.rotateAnchors) {
         const box = rotateBoxRef.current;
         setRotateBox({ ...box, ex: sx, ey: sy });
         const v = stateRef.current.view;
-        // Circle: center = mousedown point, radius = distance to current mouse
-        const wcx = (box.sx - v.x) / v.scale;
-        const wcy = (box.sy - v.y) / v.scale;
-        const wr = Math.sqrt((sx - box.sx) ** 2 + (sy - box.sy) ** 2) / v.scale;
+        // AABB overlap check (sama seperti move/clone — kotak, bukan lingkaran)
+        const wx1 = Math.min(box.sx, sx) / v.scale - v.x / v.scale;
+        const wy1 = Math.min(box.sy, sy) / v.scale - v.y / v.scale;
+        const wx2 = Math.max(box.sx, sx) / v.scale - v.x / v.scale;
+        const wy2 = Math.max(box.sy, sy) / v.scale - v.y / v.scale;
         const inside = stateRef.current.components.filter(c => {
-          // Component center distance from circle center < radius
-          const ccx = c.x + c.width / 2;
-          const ccy = c.y + c.height / 2;
-          const dist = Math.sqrt((ccx - wcx) ** 2 + (ccy - wcy) ** 2);
-          return dist < wr;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         });
         setRotateSelectedIds(inside.map(c => c.id));
         return;
@@ -3073,19 +3070,17 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
-      // ── Rotate circle: finalize selection & show double-circle anchors ──
+      // ── Rotate BOX: finalize selection & show double-circle anchors ──
       if (rotateBoxRef.current) {
         const box = rotateBoxRef.current;
         const v = stateRef.current.view;
-        // Circle: center = mousedown, radius = distance to mouseup
-        const wcx = (box.sx - v.x) / v.scale;
-        const wcy = (box.sy - v.y) / v.scale;
-        const wr = Math.sqrt((box.ex - box.sx) ** 2 + (box.ey - box.sy) ** 2) / v.scale;
+        // AABB overlap check (kotak, bukan lingkaran — sama seperti drag)
+        const wx1 = Math.min(box.sx, box.ex) / v.scale - v.x / v.scale;
+        const wy1 = Math.min(box.sy, box.ey) / v.scale - v.y / v.scale;
+        const wx2 = Math.max(box.sx, box.ex) / v.scale - v.x / v.scale;
+        const wy2 = Math.max(box.sy, box.ey) / v.scale - v.y / v.scale;
         const insideIds = stateRef.current.components.filter(c => {
-          const ccx = c.x + c.width / 2;
-          const ccy = c.y + c.height / 2;
-          const dist = Math.sqrt((ccx - wcx) ** 2 + (ccy - wcy) ** 2);
-          return dist < wr;
+          return c.x < wx2 && c.x + c.width > wx1 && c.y < wy2 && c.y + c.height > wy1;
         }).map(c => c.id);
         setRotateSelectedIds(insideIds);
         const hasComponents = insideIds.length > 0;
