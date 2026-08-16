@@ -5363,6 +5363,7 @@ export default function LogicGatesSimulator({ setPage }) {
                   setCloneMode(false);
                   setMoveMode(false);
                   setRotateMode(false);
+                  setToolsOpen(false);
                 }
               }}
               title={mode === 'connect' ? 'Connect Wire mode ON — click zones to wire' : 'Turn on Connect Wire mode'}
