@@ -86,6 +86,8 @@ export default async function handler(req, res) {
         return handleDatasetDelete(req, res, user, db);
       case 'dataset_clear':
         return handleDatasetClear(req, res, user, db);
+      case 'dataset_image':
+        return handleDatasetImage(req, res, user, db);
       default:
         return res.status(404).json({ error: 'Action tidak dikenal' });
     }
@@ -389,6 +391,28 @@ async function handleDatasetProcess(req, res, user, db) {
 // Stub vision — ganti isi ini saat provider dipilih.
 async function processDatasetImage(image) {
   return { status: 'pending', description: null, note: 'Vision belum dikonfigurasi' + (image.mime_type ? ' (' + image.mime_type + ')' : '') };
+}
+
+// Ambil bytes gambar (base64) by id — buat preview <img> di frontend.
+async function handleDatasetImage(req, res, user, db) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const { id } = req.query || {};
+  if (!id || typeof id !== 'string' || id.length > 200) {
+    return res.status(400).json({ error: 'id diperlukan' });
+  }
+  const doc = await db.collection(DATASET_COLLECTION).doc(id).get();
+  if (!doc.exists || doc.data().firebase_uid !== user.sub) {
+    return res.status(404).json({ error: 'Image tidak ditemukan' });
+  }
+  const x = doc.data();
+  return res.status(200).json({
+    id,
+    filename: x.filename,
+    mime_type: x.mime_type,
+    size_bytes: x.size_bytes,
+    // Kembalikan sebagai data URL agar frontend bisa langsung <img src=...>.
+    data_url: 'data:' + x.mime_type + ';base64,' + x.data_base64,
+  });
 }
 
 async function handleDatasetDelete(req, res, user, db) {

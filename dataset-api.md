@@ -63,6 +63,27 @@ Catatan: `list` TIDAK mengembalikan bytes gambar (hemat payload) — hanya metad
 
 ---
 
+## 2b. Ambil bytes gambar (untuk preview <img>)
+
+```
+GET /api/canvas?action=dataset_image&id=abc123
+```
+```json
+{
+  "id": "abc123",
+  "filename": "gear-ref.png",
+  "mime_type": "image/png",
+  "size_bytes": 45123,
+  "data_url": "data:image/png;base64,iVBORw0KGgo..."
+}
+```
+
+Gunakan `data_url` langsung sebagai `src` pada tag `<img>` untuk menampilkan
+preview/thumbnail. (List di atas hanya metadata — panggil endpoint ini per image
+saat perlu menampilkan gambarnya.)
+
+---
+
 ## 3. Upload image
 
 Dua mode — **base64** atau **URL**:
