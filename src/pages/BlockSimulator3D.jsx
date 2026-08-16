@@ -59,6 +59,8 @@ export default function BlockSimulator3D({ setPage }) {
     camStart: null,
     transformStart: null,
     blockStart: null,
+    hoverGrid: null,   // posisi grid (Vec3) tempat ghost block akan digambar, null = tidak ada ghost
+    hoverColor: '#3b82f6',
     dpr: 1,
     W: 0, H: 0, cx: 0, cy: 0,
   });
@@ -201,6 +203,55 @@ export default function BlockSimulator3D({ setPage }) {
         ctx.shadowBlur = 0;
       }
     });
+
+    // Ghost/preview block — muncul saat mode Place & kursor di atas grid
+    if (s.hoverGrid) {
+      const ghost = { pos: s.hoverGrid, size: new Vec3(1, 1, 1), rot: new Vec3(0, 0, 0) };
+      const gCorners = getBlockCorners(ghost);
+      const gpc = gCorners.map(project);
+      const gFaces = [
+        { idx: [3, 2, 1, 0] },
+        { idx: [4, 5, 6, 7] },
+        { idx: [0, 1, 5, 4] },
+        { idx: [7, 6, 2, 3] },
+        { idx: [4, 7, 3, 0] },
+        { idx: [1, 2, 6, 5] }
+      ];
+      gFaces.forEach(f => { f.avgZ = f.idx.reduce((sum, i2) => sum + gpc[i2].z, 0) / 4; });
+      gFaces.sort((a, b2) => b2.avgZ - a.avgZ);
+
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      gFaces.forEach(f => {
+        const pts = f.idx.map(i2 => gpc[i2]);
+        const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y;
+        const bx = pts[2].x - pts[1].x, by = pts[2].y - pts[1].y;
+        if (ax * by - ay * bx < 0) return; // backface cull, sama seperti block asli
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
+        ctx.closePath();
+        ctx.fillStyle = shadeColor(s.hoverColor, 1);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = s.hoverColor;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      gFaces.forEach(f => {
+        const pts = f.idx.map(i2 => gpc[i2]);
+        const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y;
+        const bx = pts[2].x - pts[1].x, by = pts[2].y - pts[1].y;
+        if (ax * by - ay * bx < 0) return;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
+        ctx.closePath();
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
   }, [project]);
 
   /* ---------- Resize ---------- */
@@ -295,10 +346,8 @@ export default function BlockSimulator3D({ setPage }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const runPlace = (mx, my) => {
+    const getPlacementY = (gp) => {
       const s = stateRef.current;
-      const gp = getGridPos(mx, my);
-      if (!gp) return;
       let y = 0.5;
       const stack = s.blocks.filter(b =>
         Math.abs(b.pos.x - gp.x) < 0.1 && Math.abs(b.pos.z - gp.z) < 0.1
@@ -307,6 +356,14 @@ export default function BlockSimulator3D({ setPage }) {
         stack.sort((a, b) => b.pos.y - a.pos.y);
         y = stack[0].pos.y + (stack[0].size ? stack[0].size.y : 1);
       }
+      return y;
+    };
+
+    const runPlace = (mx, my) => {
+      const s = stateRef.current;
+      const gp = getGridPos(mx, my);
+      if (!gp) return;
+      const y = getPlacementY(gp);
       const nb = {
         pos: new Vec3(gp.x, y, gp.z),
         size: new Vec3(1, 1, 1),
@@ -336,6 +393,7 @@ export default function BlockSimulator3D({ setPage }) {
         s.isOrbiting = true;
         s.dragStart = { x: mx, y: my };
         s.camStart = { yaw: s.cam.yaw, pitch: s.cam.pitch };
+        s.hoverGrid = null; // sembunyikan ghost selama orbit
         canvas.style.cursor = 'grabbing';
         return;
       }
@@ -420,6 +478,30 @@ export default function BlockSimulator3D({ setPage }) {
         }
         updateUISelection(s.selected);
         render();
+        return;
+      }
+
+      // Tidak sedang orbit atau transform — update ghost preview kalau tool = Place.
+      // PENTING: cuma render ulang kalau posisi grid-nya BENERAN berubah (bukan tiap
+      // gerakan pixel), biar gak berat karena getGridPos scan seluruh grid.
+      if (tool === 'place') {
+        const gp = getGridPos(mx, my);
+        if (gp) {
+          const y = getPlacementY(gp);
+          const prev = s.hoverGrid;
+          const changed = !prev || prev.x !== gp.x || prev.y !== y || prev.z !== gp.z;
+          if (changed) {
+            s.hoverGrid = new Vec3(gp.x, y, gp.z);
+            s.hoverColor = currentColor;
+            render();
+          }
+        } else if (s.hoverGrid) {
+          s.hoverGrid = null;
+          render();
+        }
+      } else if (s.hoverGrid) {
+        s.hoverGrid = null;
+        render();
       }
     };
 
@@ -428,6 +510,14 @@ export default function BlockSimulator3D({ setPage }) {
       s.isOrbiting = false;
       s.isTransforming = false;
       canvas.style.cursor = 'grab';
+    };
+
+    const onMouseLeave = () => {
+      const s = stateRef.current;
+      if (s.hoverGrid) {
+        s.hoverGrid = null;
+        render();
+      }
     };
 
     const onWheel = (e) => {
@@ -441,6 +531,7 @@ export default function BlockSimulator3D({ setPage }) {
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
 
     return () => {
@@ -448,6 +539,7 @@ export default function BlockSimulator3D({ setPage }) {
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
   }, [tool, currentColor, project, render]);

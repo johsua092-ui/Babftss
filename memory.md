@@ -2864,3 +2864,67 @@ User melaporkan beberapa issue:
 - Smooth 250ms animation dengan ease-in-out cubic membuat rotate terasa natural.
 - Komponen TIDAK akan pernah keluar dari area marching ants setelah rotate (mathematically guaranteed).
 - Commit & push.
+---
+
+## Bagian 43 — Fitur Ghost/Preview Block di Mode Place BlockSimulator3D (16 Aug 2026)
+
+### Latar belakang
+
+Task V1 (layout) & V2 (kamera/bentuk/background) SUDAH selesai dan terverifikasi — tidak diulang. Task V3 ini fitur baru: ghost block transparan yang ngikutin kursor pas mode "Place" aktif, jadi user lihat dulu di mana block bakal ke-taruh sebelum klik. Semua perubahan HANYA di `src/pages/BlockSimulator3D.jsx` — tidak menyentuh `App.jsx` atau file lain.
+
+### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
+
+- `src/pages/BlockSimulator3D.jsx` — 3 langkah (state + render + mouse events)
+
+### Perubahan
+
+**LANGKAH 1 — Tambah state ghost di `stateRef`:**
+- Tambah 2 field baru di `stateRef.current`:
+  - `hoverGrid: null` — posisi grid (Vec3) tempat ghost block akan digambar, null = tidak ada ghost.
+  - `hoverColor: '#3b82f6'` — warna ghost (default = warna palet pertama).
+- Ditaruh tepat sebelum baris `dpr: 1,` di inisialisasi stateRef.
+
+**LANGKAH 2 — Gambar ghost block di `render()`:**
+- Tambah blok baru di akhir `render()`, persis setelah loop `sorted.forEach` selesai dan sebelum `}, [project]);` (penutup render).
+- Ghost dibaca langsung dari `stateRef.current.hoverGrid` & `hoverColor` — BUKAN dari React state. Makanya `render` tidak perlu dependency baru (tetap `[project]`).
+- Visual ghost:
+  - Pakai `getBlockCorners` + `project` yang sama dengan block asli (konsisten dengan FIX B V2: faces winding `[7,6,2,3]` & `[4,7,3,0]`, backface cull `< 0`).
+  - Fill: `globalAlpha = 0.35`, `fillStyle = shadeColor(hoverColor, 1)` (warna penuh, tapi transparan via alpha).
+  - Stroke: `globalAlpha = 0.7`, `strokeStyle = hoverColor`, `lineWidth = 1.5`, `setLineDash([4, 3])` (garis putus-putus, biar jelas beda dari block asli yang solid).
+  - `ctx.save()` di awal + `ctx.restore()` di akhir (supaya state ctx tidak bocor ke render frame berikutnya).
+  - `setLineDash([])` sebelum restore (reset dash ke solid biar tidak ikut ke grid line / axis).
+
+**LANGKAH 3 — Update logic mouse event (V2 → V3):**
+- Ganti seluruh isi `useEffect` blok `/* ---------- Mouse Events ---------- */`. Versi V3 = V2 + 3 tambahan:
+  1. **`getPlacementY(gp)` helper** — diekstrak dari `runPlace` supaya dipakai BARENG oleh `runPlace` (saat klik beneran) DAN ghost preview (saat hover). Ini jaminan posisi ghost dan posisi block asli SELALU identik — gak mungkin beda karena pakai fungsi yang sama. Sebelumnya (V2) logic stacking itu inline di `runPlace`, sekarang jadi fungsi terpisah.
+  2. **Hover tracking di `onMouseMove`** — setelah branch orbit & transform, tambah branch baru: kalau `tool === 'place'`, hitung `gp = getGridPos(mx, my)`, lalu `y = getPlacementY(gp)`, lalu cek apakah posisi grid BERUBAH dari frame sebelumnya (`prev.x !== gp.x || prev.y !== y || prev.z !== gp.z`). Kalau berubah → update `s.hoverGrid` + `s.hoverColor` + `render()`. Kalau tidak berubah → skip render (optimisasi performa, karena `getGridPos` scan ribuan titik grid dan `mousemove` nembak puluhan-ratusan kali per detik). Kalau tool bukan 'place' → set `hoverGrid = null` + render (biar ghost hilang saat ganti tool).
+  3. **`onMouseLeave` handler baru** — kalau kursor keluar dari area canvas, set `hoverGrid = null` + render (biar ghost tidak nyangkut kelihatan di posisi terakhir). Listener `mouseleave` didaftarkan + di-cleanup di return.
+- Tambahan kecil di `onMouseDown` (orbit branch): 1 baris `s.hoverGrid = null;` pas mulai klik-kanan orbit — biar ghost langsung hilang selama orbit, tidak ikut kelihatan aneh.
+- Dependency array `[tool, currentColor, project, render]` TETAP SAMA (tidak diubah).
+- `onMouseDown`, `onMouseUp`, `onWheel`, `onContextMenu` isi lainnya PERSIS SAMA seperti V2.
+
+### Yang TIDAK diubah (sesuai scope)
+
+- `src/App.jsx` — TIDAK disentuh.
+- 3D engine logic (`project`, `getBlockCorners`, painter's algorithm, hitTest, getGridPos, snap) — TIDAK disentuh.
+- 4 fix V2 (kamera right-click, winding block, y=0.5, background gradient) — TIDAK disentuh, masih utuh.
+- File backend/auth apapun — TIDAK disentuh (lihat `instruction.md` Bagian 5).
+- Circuit card / logic gates / gears / linkages / halaman lain — TIDAK disentuh.
+
+### Catatan performa (WAJIB dipertahankan)
+
+`getGridPos` scan seluruh grid (ribuan titik, dari `-GRID_SIZE` ke `+GRID_SIZE` dengan step `0.5` = ~2857 titik). Kalau dipanggil di SETIAP event `mousemove` tanpa penyaring, bisa berat. Karena itu di V3, canvas HANYA di-render ulang kalau posisi grid ghost BERUBAH dari frame sebelumnya (bukan setiap pixel gerakan kursor). Optimisasi ini WAJIB dipertahankan — jangan dihapus di task mendatang.
+
+### Verifikasi
+
+- `git diff --stat src/` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+95/-3 baris). Tidak ada file `src/` lain berubah.
+- `npm run build` sukses 0 error: `built in 9.67s`. BlockSimulator3D chunk: 17.42 KB (gzip 6.10 KB — naik tipis dari V2 17.34 KB, wajar karena tambah ghost logic).
+- Review diff manual: semua 3 langkah cocok persis dengan spesifikasi prompt kerja V3 (state init, ghost drawing dengan alpha 0.35 + dashed stroke, getPlacementY helper, hover tracking dengan optimisasi "render cuma kalau berubah", onMouseLeave baru, hoverGrid=null saat orbit, dependency array tetap sama).
+- Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri sesuai checklist prompt kerja V3:
+  1. Tool "Place" aktif, gerakkan kursor di atas grid → muncul block transparan garis putus-putus ngikutin kursor, snap ke grid.
+  2. Ghost ikut "naik" (stack) kalau diarahkan ke kolom yang sudah ada block-nya, bukan nembus/ketimpa.
+  3. Klik → block asli muncul PERSIS di posisi ghost terakhir (tidak geser).
+  4. Ganti tool ke selain "Place" → ghost langsung hilang.
+  5. Gerakkan kursor keluar dari area canvas → ghost hilang (tidak nyangkut di posisi terakhir).
+  6. Klik-kanan drag (orbit kamera) sambil tool "Place" aktif → ghost hilang selama orbit, tidak ikut orbit dengan aneh.
+  7. Gerakkan mouse cepat-cepat di atas grid dalam waktu lama → tidak ada lag/patah-patah yang berasa (indikasi optimisasi "render ulang cuma kalau posisi berubah" jalan dengan benar).
