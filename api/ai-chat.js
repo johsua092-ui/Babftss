@@ -1,5 +1,5 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest } from "../lib/api-helpers.js";
-import { askAI, getAvailableModels } from "../lib/ai-client.js";
+import { askAI } from "../lib/ai-client.js";
 
 export default async function handler(req, res) {
   applyCors(req, res, "GET, POST, OPTIONS");
@@ -8,16 +8,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method === "GET") {
-    const url = new URL(req.url, `https://${req.headers.host || "localhost"}`);
-    if (url.searchParams.get("action") === "models") {
-      try {
-        const models = await getAvailableModels();
-        return res.status(200).json({ models });
-      } catch {
-        return res.status(500).json({ error: "Gagal memuat daftar model" });
-      }
-    }
-    return res.status(200).json({ status: "ok", endpoints: { chat: "POST /api/ai-chat", models: "GET /api/ai-chat?action=models" } });
+    return res.status(200).json({ status: "ok" });
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -31,7 +22,7 @@ export default async function handler(req, res) {
       return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
     }
 
-    const { message, chatId, history, model } = req.body || {};
+    const { message, chatId, history } = req.body || {};
     if (!validateStr(message, 2000)) {
       return res.status(400).json({ error: "message wajib diisi (max 2000 karakter)" });
     }
@@ -56,7 +47,6 @@ export default async function handler(req, res) {
     const result = await askAI(message, {
       chatId: chatId || undefined,
       history: cleanHistory || undefined,
-      model: model || undefined,
     });
 
     if (!result.status) {
