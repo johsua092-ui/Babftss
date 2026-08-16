@@ -74,6 +74,18 @@ export default async function handler(req, res) {
         return handlePrompts(req, res, user, db);
       case 'strokes':
         return handleStrokes(req, res, user, db);
+      case 'dataset_status':
+        return handleDatasetStatus(req, res, user, db);
+      case 'dataset_list':
+        return handleDatasetList(req, res, user, db);
+      case 'dataset_upload':
+        return handleDatasetUpload(req, res, user, db);
+      case 'dataset_process':
+        return handleDatasetProcess(req, res, user, db);
+      case 'dataset_delete':
+        return handleDatasetDelete(req, res, user, db);
+      case 'dataset_clear':
+        return handleDatasetClear(req, res, user, db);
       default:
         return res.status(404).json({ error: 'Action tidak dikenal' });
     }
@@ -239,4 +251,165 @@ async function handleStrokes(req, res, user, db) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ════════════════════════════════════════════════════════════════
+// DATASET IMAGE — Fitur "belajar" AI Helper
+// Routing: action=dataset_status | dataset_list | dataset_upload |
+//          dataset_process | dataset_delete | dataset_clear
+// (digabung ke file ini agar total serverless function <= 12 limit Hobby)
+// ════════════════════════════════════════════════════════════════
+const DATASET_COLLECTION = 'dataset_images';
+const MAX_IMAGES = 100;
+const MAX_BASE64_BYTES = 8 * 1024 * 1024;
+const ALLOWED_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+async function handleDatasetStatus(req, res, user, db) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const snap = await db.collection(DATASET_COLLECTION).where('firebase_uid', '==', user.sub).get();
+  let processed = 0, pending = 0, failed = 0;
+  snap.docs.forEach((d) => {
+    const s = d.data().status;
+    if (s === 'done') processed++;
+    else if (s === 'failed') failed++;
+    else pending++;
+  });
+  return res.status(200).json({
+    total: snap.docs.length,
+    max: MAX_IMAGES,
+    remaining: Math.max(0, MAX_IMAGES - snap.docs.length),
+    processed,
+    pending,
+    failed,
+  });
+}
+
+async function handleDatasetList(req, res, user, db) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const snap = await db.collection(DATASET_COLLECTION).where('firebase_uid', '==', user.sub).get();
+  const items = snap.docs
+    .map((d) => {
+      const x = d.data();
+      return {
+        id: d.id,
+        filename: x.filename,
+        mime_type: x.mime_type,
+        size_bytes: x.size_bytes,
+        status: x.status,
+        description: x.description || null,
+        created_at: x.created_at,
+        updated_at: x.updated_at,
+      };
+    })
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  return res.status(200).json({ images: items, total: items.length, max: MAX_IMAGES });
+}
+
+async function handleDatasetUpload(req, res, user, db) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const existing = await db.collection(DATASET_COLLECTION).where('firebase_uid', '==', user.sub).get();
+  if (existing.docs.length >= MAX_IMAGES) {
+    return res.status(400).json({
+      error: 'Kuota dataset penuh (' + MAX_IMAGES + ' image). Hapus dulu sebelum upload lagi.',
+      code: 'QUOTA_FULL',
+    });
+  }
+
+  const { filename, mime_type, data_base64, url } = req.body || {};
+  let base64 = null;
+  let finalMime = mime_type || null;
+
+  if (data_base64 && typeof data_base64 === 'string') {
+    base64 = data_base64.replace(/^data:[^;]+;base64,/, '');
+    if (!finalMime && /^data:([^;]+);base64,/.test(data_base64)) {
+      finalMime = data_base64.match(/^data:([^;]+);base64,/)[1];
+    }
+  } else if (url && typeof url === 'string') {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      if (!resp.ok) return res.status(400).json({ error: 'Gagal mengunduh URL (' + resp.status + ')' });
+      const buf = Buffer.from(await resp.arrayBuffer());
+      base64 = buf.toString('base64');
+      finalMime = finalMime || resp.headers.get('content-type') || null;
+    } catch {
+      return res.status(400).json({ error: 'URL tidak dapat diakses' });
+    }
+  } else {
+    return res.status(400).json({ error: 'Sediakan data_base64 ATAU url' });
+  }
+
+  if (!finalMime || !ALLOWED_MIME.includes(finalMime)) {
+    return res.status(400).json({ error: 'Tipe gambar tidak didukung (' + ALLOWED_MIME.join(', ') + ')' });
+  }
+  if (!base64 || base64.length === 0) return res.status(400).json({ error: 'Data gambar kosong' });
+  const sizeBytes = Math.ceil(base64.length * 0.75);
+  if (sizeBytes > MAX_BASE64_BYTES) return res.status(400).json({ error: 'Gambar terlalu besar (max 8 MB)' });
+
+  const now = Date.now();
+  const payload = {
+    firebase_uid: user.sub,
+    filename: typeof filename === 'string' && filename ? filename.slice(0, 200) : 'image-' + now,
+    mime_type: finalMime,
+    size_bytes: sizeBytes,
+    data_base64: base64,
+    status: 'pending',
+    description: null,
+    created_at: now,
+    updated_at: now,
+  };
+  const ref = await db.collection(DATASET_COLLECTION).add(payload);
+  return res.status(201).json({
+    id: ref.id,
+    filename: payload.filename,
+    mime_type: finalMime,
+    size_bytes: sizeBytes,
+    status: 'pending',
+    remaining: Math.max(0, MAX_IMAGES - existing.docs.length - 1),
+  });
+}
+
+async function handleDatasetProcess(req, res, user, db) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { id } = req.query || {};
+  if (!id || typeof id !== 'string' || id.length > 200) {
+    return res.status(400).json({ error: 'id diperlukan' });
+  }
+  const doc = await db.collection(DATASET_COLLECTION).doc(id).get();
+  if (!doc.exists || doc.data().firebase_uid !== user.sub) {
+    return res.status(404).json({ error: 'Image tidak ditemukan' });
+  }
+  const result = await processDatasetImage(doc.data());
+  if (result.status === 'done') {
+    await doc.ref.update({ status: 'done', description: result.description, updated_at: Date.now() });
+    return res.status(200).json({ id, status: 'done', description: result.description });
+  }
+  return res.status(202).json({ id, status: 'pending', description: null, note: result.note });
+}
+
+// Stub vision — ganti isi ini saat provider dipilih.
+async function processDatasetImage(image) {
+  return { status: 'pending', description: null, note: 'Vision belum dikonfigurasi' + (image.mime_type ? ' (' + image.mime_type + ')' : '') };
+}
+
+async function handleDatasetDelete(req, res, user, db) {
+  if (req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+  const { id } = req.query || {};
+  if (!id || typeof id !== 'string' || id.length > 200) {
+    return res.status(400).json({ error: 'id diperlukan' });
+  }
+  const doc = await db.collection(DATASET_COLLECTION).doc(id).get();
+  if (!doc.exists || doc.data().firebase_uid !== user.sub) {
+    return res.status(404).json({ error: 'Image tidak ditemukan' });
+  }
+  await doc.ref.delete();
+  return res.status(200).json({ ok: true, deleted: 1 });
+}
+
+async function handleDatasetClear(req, res, user, db) {
+  if (req.method !== 'DELETE') return res.status(405).json({ error: 'Method not allowed' });
+  const snap = await db.collection(DATASET_COLLECTION).where('firebase_uid', '==', user.sub).get();
+  const batch = db.batch();
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+  return res.status(200).json({ ok: true, deleted: snap.docs.length });
 }

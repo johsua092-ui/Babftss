@@ -6,14 +6,16 @@ akan "dibaca" AI Helper (vision) untuk dijadikan bahan belajar/ingatan AI.
 Base URL: `https://babftss.vercel.app`.
 Auth: semua endpoint butuh header `Authorization: Bearer <idToken Firebase>`.
 
-Route tunggal: `/api/dataset` dengan query param `action`.
+Route: `/api/canvas` dengan query param `action=dataset_*`.
+(Digabung ke endpoint Canvas agar total serverless function tidak melebihi
+limit 12 Vercel Hobby plan.)
 
 ---
 
 ## 1. Cek status kuota
 
 ```
-GET /api/dataset?action=status
+GET /api/canvas?action=dataset_status
 ```
 ```json
 {
@@ -35,7 +37,7 @@ GET /api/dataset?action=status
 ## 2. List semua image
 
 ```
-GET /api/dataset?action=list
+GET /api/canvas?action=dataset_list
 ```
 ```json
 {
@@ -67,7 +69,7 @@ Dua mode — **base64** atau **URL**:
 
 ### mode base64
 ```
-POST /api/dataset?action=upload
+POST /api/canvas?action=dataset_upload
 Content-Type: application/json
 ```
 ```json
@@ -102,7 +104,7 @@ Respons 201:
 ## 4. Proses baca (vision) satu image
 
 ```
-POST /api/dataset?action=process&id=abc123
+POST /api/canvas?action=dataset_process&id=abc123
 ```
 
 Saat vision belum dikonfigurasi, respons 202:
@@ -120,7 +122,7 @@ Saat vision sudah aktif, respons 200:
 ## 5. Hapus satu image
 
 ```
-DELETE /api/dataset?action=delete&id=abc123
+DELETE /api/canvas?action=dataset_delete&id=abc123
 ```
 Respons: `{ "ok": true, "deleted": 1 }`.
 
@@ -129,7 +131,7 @@ Respons: `{ "ok": true, "deleted": 1 }`.
 ## 6. Hapus SEMUA image (clear all)
 
 ```
-DELETE /api/dataset?action=clear
+DELETE /api/canvas?action=dataset_clear
 ```
 Respons: `{ "ok": true, "deleted": 12 }`.
 
