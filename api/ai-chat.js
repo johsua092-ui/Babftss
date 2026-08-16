@@ -1,4 +1,4 @@
-import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest } from "../lib/api-helpers.js";
+import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
 
 export default async function handler(req, res) {
@@ -17,9 +17,11 @@ export default async function handler(req, res) {
     const user = await authenticateRequest(req);
     if (!user) return res.status(401).json({ error: "Login required to use AI chat" });
 
-    const ip = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
-    if (!checkRateLimit("ai-chat:" + ip, 30, 60000)) {
-      return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
+    if (!isAdmin(user)) {
+      const uid = user.sub || "unknown";
+      if (!checkRateLimit("ai-chat:" + uid, 10, 60000)) {
+        return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
+      }
     }
 
     const { message, chatId, history } = req.body || {};
