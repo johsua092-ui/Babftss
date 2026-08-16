@@ -1931,9 +1931,9 @@ export default function LogicGatesSimulator({ setPage }) {
         const y = Math.min(cb.sy, cb.ey);
         const w = Math.abs(cb.ex - cb.sx);
         const h = Math.abs(cb.ey - cb.sy);
-        ctx.fillStyle = 'rgba(148, 0, 211, 0.15)';
+        ctx.fillStyle = 'rgba(192, 132, 252, 0.15)';
         ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = '#9400D3';
+        ctx.strokeStyle = '#c084fc';
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(x, y, w, h);
@@ -1951,9 +1951,9 @@ export default function LogicGatesSimulator({ setPage }) {
           // Circle
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, 14, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(148, 0, 211, 0.7)';
+          ctx.fillStyle = 'rgba(192, 132, 252, 0.7)';
           ctx.fill();
-          ctx.strokeStyle = '#9400D3';
+          ctx.strokeStyle = '#c084fc';
           ctx.lineWidth = 2;
           ctx.stroke();
           // Arrow text
@@ -1975,7 +1975,7 @@ export default function LogicGatesSimulator({ setPage }) {
             const h = def?.h || 50;
             const sx2 = comp.x * view.scale + view.x;
             const sy2 = comp.y * view.scale + view.y;
-            ctx.strokeStyle = '#9400D3';
+            ctx.strokeStyle = '#c084fc';
             ctx.lineWidth = 2;
             ctx.strokeRect(sx2 - w * view.scale / 2 - 4, sy2 - h * view.scale / 2 - 4, w * view.scale + 8, h * view.scale + 8);
           }
@@ -4397,9 +4397,9 @@ export default function LogicGatesSimulator({ setPage }) {
             </button>
 
             {/* ── Cloning Area toggle (#3) ──
-                Dark violet (#9400D3). OFF = dim, text 'cloning area off'.
-                ON = bright (#9400D3), text 'cloning area on'.
-                Saat ON: mode indicator berganti jadi "mode: cloning area" + dark violet.
+                Bright purple (#c084fc). OFF = dim, text 'cloning area off'.
+                ON = bright (#c084fc), text 'cloning area on'.
+                Saat ON: mode indicator berganti jadi "mode: cloning area" + bright purple.
                 Saat connect/paint/delete/move/rotate ON → cloning area redup.
                 Mutual exclusive dengan semua mode lain. */}
             <button
@@ -4408,9 +4408,9 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '10px 14px', borderRadius: 10,
-                border: '1px solid ' + (cloneMode ? '#9400D3' : 'rgba(148, 0, 211, 0.3)'),
-                backgroundColor: cloneMode ? 'rgba(148, 0, 211, 0.10)' : 'rgba(148, 0, 211, 0.06)',
-                color: cloneMode ? '#9400D3' : anySpecialMode ? 'rgba(148, 0, 211, 0.5)' : '#9400D3',
+                border: '1px solid ' + (cloneMode ? '#c084fc' : 'rgba(192, 132, 252, 0.3)'),
+                backgroundColor: cloneMode ? 'rgba(192, 132, 252, 0.10)' : 'rgba(192, 132, 252, 0.06)',
+                color: cloneMode ? '#c084fc' : anySpecialMode ? 'rgba(192, 132, 252, 0.5)' : '#c084fc',
                 fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -4612,7 +4612,7 @@ export default function LogicGatesSimulator({ setPage }) {
               border: (isMobile ? '1px' : '2px') + ' solid ' + (
                 moveMode ? '#0ea5e9' :
                 rotateMode ? '#f59e0b' :
-                cloneMode ? '#9400D3' :
+                cloneMode ? '#c084fc' :
                 mode === 'connect' ? '#22d3ee' :
                 paintMode ? '#ff0080' :
                 deleteMode ? '#ff1744' :
@@ -4621,7 +4621,7 @@ export default function LogicGatesSimulator({ setPage }) {
               backgroundColor: (
                 moveMode ? 'rgba(14, 165, 233, 0.10)' :
                 rotateMode ? 'rgba(245, 158, 11, 0.10)' :
-                cloneMode ? 'rgba(148, 0, 211, 0.10)' :
+                cloneMode ? 'rgba(192, 132, 252, 0.10)' :
                 mode === 'connect' ? 'rgba(34, 211, 238, 0.18)' :
                 paintMode ? 'rgba(255, 0, 128, 0.10)' :
                 deleteMode ? 'rgba(255, 23, 68, 0.12)' :
@@ -4630,7 +4630,7 @@ export default function LogicGatesSimulator({ setPage }) {
               color: (
                 moveMode ? '#0ea5e9' :
                 rotateMode ? '#f59e0b' :
-                cloneMode ? '#9400D3' :
+                cloneMode ? '#c084fc' :
                 mode === 'connect' ? '#22d3ee' :
                 paintMode ? '#ff0080' :
                 deleteMode ? '#ff1744' :
