@@ -1189,7 +1189,7 @@ export default function LogicGatesSimulator({ setPage }) {
           if (selComps.length > 0) {
             setMoveSelectedIds(selIds);
             const result = calcAnchorsFromComponents(selComps, v);
-            if (result) { setMoveBox(result.box); setMoveAnchors(result.anchors); }
+            if (result) { setMoveBox(null); setMoveAnchors(result.anchors); }
           }
         } else if (rotateModeRef.current && rotateSelectedIdsRef.current.length > 0) {
           const selIds = rotateSelectedIdsRef.current;
@@ -1197,7 +1197,7 @@ export default function LogicGatesSimulator({ setPage }) {
           if (selComps.length > 0) {
             setMoveSelectedIds(selIds);
             const result = calcAnchorsFromComponents(selComps, v);
-            if (result) { setMoveBox(result.box); setMoveAnchors(result.anchors); }
+            if (result) { setMoveBox(null); setMoveAnchors(result.anchors); }
           }
         }
       }
@@ -3011,7 +3011,7 @@ export default function LogicGatesSimulator({ setPage }) {
             const v = stateRef.current.view;
             const moveResult = calcAnchorsFromComponents(simSelComps, v);
             if (moveResult) {
-              setMoveBox(moveResult.box);
+              setMoveBox(null); // No box needed — anchors + selectedIds are sufficient
               setMoveAnchors(moveResult.anchors);
             }
             setStatus('Cloned! Now in Move mode — drag arrows to position clones');
@@ -3467,7 +3467,7 @@ export default function LogicGatesSimulator({ setPage }) {
           const v = stateRef.current.view;
           const result = calcAnchorsFromComponents(selComps, v);
           if (result) {
-            setMoveBox(result.box);
+            setMoveBox(null); // Clear box — anchors + selectedIds are sufficient
             setMoveAnchors(result.anchors);
           }
         }
@@ -3479,7 +3479,9 @@ export default function LogicGatesSimulator({ setPage }) {
       }
 
       // ── Move box: finalize selection & show arrow anchors ──
-      if (moveBoxRef.current) {
+      // Guard: only finalize if anchors aren't already showing (prevents re-selection
+      // when mouseUp fires after clicking a move anchor — box is stale at that point)
+      if (moveBoxRef.current && !moveAnchorsRef.current) {
         const box = moveBoxRef.current;
         const v = stateRef.current.view;
         const wx1 = (Math.min(box.sx, box.ex) - v.x) / v.scale;
@@ -3495,7 +3497,7 @@ export default function LogicGatesSimulator({ setPage }) {
           const selComps = stateRef.current.components.filter(c => insideIds.includes(c.id));
           const result = calcAnchorsFromComponents(selComps, v);
           if (result) {
-            setMoveBox(result.box);
+            setMoveBox(null); // Clear box after finalization — anchors + selectedIds are sufficient
             setMoveAnchors(result.anchors);
           }
         } else {
@@ -4171,7 +4173,7 @@ export default function LogicGatesSimulator({ setPage }) {
         // ── MOBILE: Finalize select box (single-touch drag) untuk move/rotate/clone ──
         const v = stateRef.current.view;
         const comps = stateRef.current.components;
-        if (moveModeRef.current && stateRef.current.moveBox) {
+        if (moveModeRef.current && stateRef.current.moveBox && !moveAnchorsRef.current) {
           const box = stateRef.current.moveBox;
           const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
           const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
@@ -4213,7 +4215,7 @@ export default function LogicGatesSimulator({ setPage }) {
             const v = stateRef.current.view;
             const result = calcAnchorsFromComponents(selComps, v);
             if (result) {
-              setMoveBox(result.box);
+              setMoveBox(null); // Clear box — anchors + selectedIds are sufficient
               setMoveAnchors(result.anchors);
             }
           }
