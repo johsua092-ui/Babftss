@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Send, Bot, MessageCircle, Coins, Clock, Zap, AlertTriangle, ShoppingCart, Play, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Send, Bot, MessageCircle, Coins, Clock, Zap, AlertTriangle, ShoppingCart, Play, ChevronDown, ChevronUp, ArrowRightLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '../contexts/AuthContext';
+import CoinTransferPanel from './CoinTransferPanel';
 
 const API_URL = '/api/ai-chat';
 
@@ -295,6 +296,7 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
     const [showTimerWarning, setShowTimerWarning] = useState(false);
     const [buyingPkg, setBuyingPkg] = useState(null);
     const [activating, setActivating] = useState(false);
+    const [showTransfer, setShowTransfer] = useState(false);
 
     const countdown = useCountdown(goldInfo?.timerExpiresAt || null);
     const timerActive = goldInfo?.timerActive && countdown !== '00:00' && countdown !== null;
@@ -528,6 +530,14 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
 
                     {/* Action buttons */}
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {/* Transfer coin button */}
+                        <button
+                            style={{ ...goldStyles.buyBtn, color: showTransfer ? '#fbbf24' : '#94a3b8' }}
+                            onClick={() => setShowTransfer(p => !p)}
+                            title="Transfer Coin"
+                        >
+                            <ArrowRightLeft size={12} />
+                        </button>
                         {!isAdmin && !timerActive && remainingMin > 0 && (
                             <button
                                 style={goldStyles.activateBtn}
@@ -692,6 +702,14 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     <Send size={16} />
                 </button>
             </div>
+            {/* ── Coin Transfer Panel (overlay) ── */}
+            {showTransfer && (
+                <CoinTransferPanel
+                    onClose={() => setShowTransfer(false)}
+                    currentGold={gold}
+                    isAdmin={isAdmin}
+                />
+            )}
         </div>
     );
 }
