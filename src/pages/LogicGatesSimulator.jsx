@@ -2780,6 +2780,8 @@ export default function LogicGatesSimulator({ setPage }) {
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
+      // Simpan di ref supaya onTouchStart bisa panggil (mobile anchor support)
+      stateRef.current._lastOnMouseDownArgs = { sx, sy };
 
       // ── Pan mode ──
       if (isPanningTrigger(e)) {
@@ -3625,6 +3627,64 @@ export default function LogicGatesSimulator({ setPage }) {
         // Track touch origin buat detect "tap" vs "drag" (Switch toggle perlu tap).
         touchStateRef.current.touchStart = { sx, sy, moved: false, time: Date.now() };
 
+        // ── MOBILE: Check anchor hits FIRST (move/rotate/clone) ──
+        // Anchor check harus SEBELUM hit test & delete/paint mode check.
+        // Ini yang sebelumnya HANYA ada di onMouseDown, jadi mobile gak bisa pencet anchor.
+
+        // CLONE anchor check
+        if (cloneModeRef.current && stateRef.current.cloneAnchors) {
+          const cSelIdsHit = stateRef.current.cloneSelectedIds;
+          const cSelCompsHit = stateRef.current.components.filter(c => cSelIdsHit.includes(c.id));
+          const cHitResult = cSelCompsHit.length > 0 ? calcAnchorsFromComponents(cSelCompsHit, stateRef.current.view) : null;
+          const cHitAnchors = cHitResult ? cHitResult.anchors : stateRef.current.cloneAnchors;
+          const dirs = ['top', 'bottom', 'left', 'right'];
+          for (const dir of dirs) {
+            const pt = cHitAnchors[dir];
+            if (!pt) continue;
+            if (Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2) < 24) {
+              const fakeEvt = { clientX: sx + canvas.getBoundingClientRect().left, clientY: sy + canvas.getBoundingClientRect().top, button: 0, preventDefault: () => {} };
+              onMouseDown(fakeEvt);
+              return;
+            }
+          }
+        }
+
+        // MOVE anchor check
+        if (moveModeRef.current && stateRef.current.moveAnchors && !stateRef.current.moveActiveDir) {
+          const mSelIdsHit = stateRef.current.moveSelectedIds;
+          const mSelCompsHit = stateRef.current.components.filter(c => mSelIdsHit.includes(c.id));
+          const mHitResult = mSelCompsHit.length > 0 ? calcAnchorsFromComponents(mSelCompsHit, stateRef.current.view) : null;
+          const mHitAnchors = mHitResult ? mHitResult.anchors : stateRef.current.moveAnchors;
+          const dirs = ['top', 'bottom', 'left', 'right'];
+          for (const dir of dirs) {
+            const pt = mHitAnchors[dir];
+            if (!pt) continue;
+            if (Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2) < 24) {
+              const fakeEvt = { clientX: sx + canvas.getBoundingClientRect().left, clientY: sy + canvas.getBoundingClientRect().top, button: 0, preventDefault: () => {} };
+              onMouseDown(fakeEvt);
+              return;
+            }
+          }
+        }
+
+        // ROTATE anchor check
+        if (rotateModeRef.current && stateRef.current.rotateAnchors) {
+          const rSelIdsHit = stateRef.current.rotateSelectedIds;
+          const rSelCompsHit = stateRef.current.components.filter(c => rSelIdsHit.includes(c.id));
+          const rHitResult = rSelCompsHit.length > 0 ? calcRotateAnchorsFromMEC(rSelCompsHit, stateRef.current.view) : null;
+          const rHitAnchors = rHitResult ? rHitResult.anchors : stateRef.current.rotateAnchors;
+          const dirs = ['top', 'bottom', 'left', 'right'];
+          for (const dir of dirs) {
+            const pt = rHitAnchors[dir];
+            if (!pt) continue;
+            if (Math.sqrt((sx - pt.x) ** 2 + (sy - pt.y) ** 2) < 24) {
+              const fakeEvt = { clientX: sx + canvas.getBoundingClientRect().left, clientY: sy + canvas.getBoundingClientRect().top, button: 0, preventDefault: () => {} };
+              onMouseDown(fakeEvt);
+              return;
+            }
+          }
+        }
+
         // Hit test dulu — kalau kena node/drag-handle/body, emulate mouse behavior.
         const { x: mx, y: my } = screenToWorld(sx, sy);
         const hit = hitTest(mx, my, stateRef.current.components);
@@ -3711,9 +3771,25 @@ export default function LogicGatesSimulator({ setPage }) {
             }
           }
         } else {
-          // Empty area: start panning canvas (1-finger drag = pan).
-          const v = stateRef.current.view;
-          touchStateRef.current.panStart = { startSX: sx, startSY: sy, startVX: v.x, startVY: v.y };
+          // Empty area: check mode untuk select box vs panning
+          if (moveModeRef.current) {
+            setMoveBox({ sx, sy, ex: sx, ey: sy });
+            setMoveSelectedIds([]);
+            setMoveAnchors(null);
+            setMoveActiveDir(null);
+          } else if (rotateModeRef.current) {
+            setRotateBox({ sx, sy, ex: sx, ey: sy });
+            setRotateSelectedIds([]);
+            setRotateAnchors(null);
+          } else if (cloneModeRef.current) {
+            setCloneBox({ sx, sy, ex: sx, ey: sy });
+            setCloneSelectedIds([]);
+            setCloneAnchors(null);
+          } else {
+            // Start panning canvas (1-finger drag = pan).
+            const v = stateRef.current.view;
+            touchStateRef.current.panStart = { startSX: sx, startSY: sy, startVX: v.x, startVY: v.y };
+          }
         }
       } else if (pointers.length === 2) {
         // ── TWO FINGERS: pinch-to-zoom + 2-finger pan ──
@@ -3884,6 +3960,52 @@ export default function LogicGatesSimulator({ setPage }) {
           comp.y = my - stateRef.current.dragOffset.y;
           setComponents([...stateRef.current.components]);
         }
+
+        // ── MOBILE: Select box drag (move/rotate/clone) & move anchor drag ──
+        // Emulate mousemove untuk mode select box & move active dir
+        if (moveModeRef.current) {
+          // Move select box drag
+          if (stateRef.current.moveBox && !stateRef.current.moveAnchors) {
+            const box = stateRef.current.moveBox;
+            setMoveBox({ ...box, ex: sx, ey: sy });
+          }
+          // Move anchor drag (moveActiveDir)
+          if (stateRef.current.moveActiveDir && stateRef.current.moveDragStart) {
+            const mds = stateRef.current.moveDragStart;
+            const selIds = stateRef.current.moveSelectedIds;
+            const selComps = stateRef.current.components.filter(c => selIds.includes(c.id));
+            if (selComps.length > 0) {
+              const dx = sx - mds.sx;
+              const dy = sy - mds.sy;
+              const dir = stateRef.current.moveActiveDir;
+              let moveX = 0, moveY = 0;
+              if (dir === 'left') moveX = -Math.abs(dx);
+              else if (dir === 'right') moveX = Math.abs(dx);
+              else if (dir === 'top') moveY = -Math.abs(dy);
+              else if (dir === 'bottom') moveY = Math.abs(dy);
+              // Convert pixel delta ke world delta
+              const worldDx = moveX / stateRef.current.view.scale;
+              const worldDy = moveY / stateRef.current.view.scale;
+              const newComps = stateRef.current.components.map(c => {
+                if (!selIds.includes(c.id)) return c;
+                const startC = mds.comps.find(mc => mc.id === c.id);
+                if (!startC) return c;
+                return { ...c, x: startC.x + worldDx, y: startC.y + worldDy };
+              });
+              const { comps: simComps, wrs: simWrs } = simulate(newComps, stateRef.current.wires);
+              setComponents(simComps);
+              setWires(simWrs);
+            }
+          }
+        }
+        if (rotateModeRef.current && stateRef.current.rotateBox && !stateRef.current.rotateAnchors) {
+          const box = stateRef.current.rotateBox;
+          setRotateBox({ ...box, ex: sx, ey: sy });
+        }
+        if (cloneModeRef.current && stateRef.current.cloneBox && !stateRef.current.cloneAnchors) {
+          const box = stateRef.current.cloneBox;
+          setCloneBox({ ...box, ex: sx, ey: sy });
+        }
       }
     };
 
@@ -3950,6 +4072,43 @@ export default function LogicGatesSimulator({ setPage }) {
       }
       if (pointers.length === 0) {
         // Semua jari diangkat — finalize single-touch action.
+
+        // ── MOBILE: Finalize select box (single-touch drag) untuk move/rotate/clone ──
+        const v = stateRef.current.view;
+        const comps = stateRef.current.components;
+        if (moveModeRef.current && stateRef.current.moveBox) {
+          const box = stateRef.current.moveBox;
+          const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
+          const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
+          const inside = comps.filter(c => c.x + c.width > wx1 && c.x < wx2 && c.y + c.height > wy1 && c.y < wy2);
+          setMoveSelectedIds(inside.map(c => c.id));
+          setMoveAnchors(inside.length > 0 ? calcAnchorsFromComponents(inside, v) : null);
+          setMoveBox(null);
+          setMoveActiveDir(null);
+        }
+        if (rotateModeRef.current && stateRef.current.rotateBox) {
+          const box = stateRef.current.rotateBox;
+          const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
+          const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
+          const inside = comps.filter(c => c.x + c.width > wx1 && c.x < wx2 && c.y + c.height > wy1 && c.y < wy2);
+          setRotateSelectedIds(inside.map(c => c.id));
+          setRotateAnchors(inside.length > 0 ? 'active' : null);
+          setRotateBox(null);
+        }
+        if (cloneModeRef.current && stateRef.current.cloneBox) {
+          const box = stateRef.current.cloneBox;
+          const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
+          const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
+          const inside = comps.filter(c => c.x + c.width > wx1 && c.x < wx2 && c.y + c.height > wy1 && c.y < wy2);
+          setCloneSelectedIds(inside.map(c => c.id));
+          setCloneAnchors(inside.length > 0 ? calcAnchorsFromComponents(inside, v) : null);
+          setCloneBox(null);
+        }
+        // Move anchor drag selesai
+        if (moveModeRef.current) {
+          setMoveActiveDir(null);
+          stateRef.current.moveDragStart = null;
+        }
 
         // ── Connect mode: drop-to-connect ──
         // Bug fix: sebelumnya wiring langsung di-clear di akhir onTouchEnd tanpa
