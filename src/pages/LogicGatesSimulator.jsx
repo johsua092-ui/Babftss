@@ -3728,10 +3728,48 @@ export default function LogicGatesSimulator({ setPage }) {
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
         const v = stateRef.current.view;
-        touchStateRef.current.pinchStart = {
-          dist, midX, midY,
-          viewX: v.x, viewY: v.y, scale: v.scale,
-        };
+
+        // ── MOBILE: pinch-to-select-box when move/rotate/clone mode active ──
+        // Zoom out → select box membesar, zoom in → mengecil
+        // Gerak jari → select box ikut pindah
+        // Lepas jari → finalize (pilih komponen di dalam, tampil anchor)
+        const isSelectBoxMode = moveModeRef.current || rotateModeRef.current || cloneModeRef.current;
+        if (isSelectBoxMode) {
+          // Pinch = select box mode, BUKAN zoom
+          // Simpan pinch start + mode + initial select box center (world coords)
+          const { x: worldMidX, y: worldMidY } = screenToWorld(midX, midY);
+          touchStateRef.current.pinchStart = {
+            dist, midX, midY,
+            viewX: v.x, viewY: v.y, scale: v.scale,
+            selectBoxMode: true,
+            selectBoxCenterWorld: { x: worldMidX, y: worldMidY },
+            selectBoxStartDist: dist,
+            mode: moveModeRef.current ? 'move' : (rotateModeRef.current ? 'rotate' : 'clone'),
+          };
+          // Initialize select box di midpoint (world coords)
+          const { x: wmx, y: wmy } = screenToWorld(midX, midY);
+          const halfSize = 0; // mulai dari 0, membesar saat zoom out
+          if (moveModeRef.current) {
+            setMoveBox({ sx: midX, sy: midY, ex: midX, ey: midY });
+            setMoveSelectedIds([]);
+            setMoveAnchors(null);
+            setMoveActiveDir(null);
+          } else if (rotateModeRef.current) {
+            setRotateBox({ sx: midX, sy: midY, ex: midX, ey: midY });
+            setRotateSelectedIds([]);
+            setRotateAnchors(null);
+          } else if (cloneModeRef.current) {
+            setCloneBox({ sx: midX, sy: midY, ex: midX, ey: midY });
+            setCloneSelectedIds([]);
+            setCloneAnchors(null);
+          }
+        } else {
+          // Normal pinch zoom
+          touchStateRef.current.pinchStart = {
+            dist, midX, midY,
+            viewX: v.x, viewY: v.y, scale: v.scale,
+          };
+        }
       }
     };
 
@@ -3751,30 +3789,58 @@ export default function LogicGatesSimulator({ setPage }) {
       const pointers = Array.from(touchStateRef.current.pointers.values());
 
       if (pointers.length === 2 && touchStateRef.current.pinchStart) {
-        // ── PINCH ZOOM + 2-FINGER PAN ──
+        const ps = touchStateRef.current.pinchStart;
         const [p1, p2] = pointers;
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const dist = Math.hypot(dx, dy);
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
-        const ps = touchStateRef.current.pinchStart;
-        // Scale ratio relative to pinch start.
-        const scaleFactor = dist / ps.dist;
-        const newScale = Math.max(0.2, Math.min(5, ps.scale * scaleFactor));
-        // Pan offset: gerak midpoint dari start midpoint.
-        const panDx = midX - ps.midX;
-        const panDy = midY - ps.midY;
-        // Compute new view: keep pinch midpoint stable di world space.
-        // World point at midpoint: worldMid = (ps.midX - viewX) / scale
-        const worldMidX = (ps.midX - ps.viewX) / ps.scale;
-        const worldMidY = (ps.midY - ps.viewY) / ps.scale;
-        // New view supaya worldMid tetap di (midX, midY) on screen:
-        const v = stateRef.current.view;
-        v.scale = newScale;
-        v.x = midX - worldMidX * newScale + panDx;
-        v.y = midY - worldMidY * newScale + panDy;
-        setZoomPct(Math.round(newScale * 100));
+
+        if (ps.selectBoxMode) {
+          // ── MOBILE PINCH-TO-SELECT-BOX: update select box size & position ──
+          // Select box center = midpoint jari (dikonversi ke world lalu balik ke screen
+          // supaya konsisten dengan select box system yang pakai screen coords).
+          // Select box size = proporsional terhadap jarak antar jari (zoom out = membesar).
+          const v = stateRef.current.view;
+          const { x: worldMidX, y: worldMidY } = screenToWorld(midX, midY);
+
+          // Half-size di world coords: scale dari jarak jari
+          // Saat zoom out (jari menjauh), dist membesar → select box membesar
+          // Saat zoom in (jari mendekat), dist mengecil → select box mengecil
+          const halfWorldSize = (dist / 2) / v.scale;
+
+          // Convert ke screen coords untuk select box state
+          const sx1 = (worldMidX - halfWorldSize) * v.scale + v.x;
+          const sy1 = (worldMidY - halfWorldSize) * v.scale + v.y;
+          const sx2 = (worldMidX + halfWorldSize) * v.scale + v.x;
+          const sy2 = (worldMidY + halfWorldSize) * v.scale + v.y;
+
+          // Update select box untuk mode yang aktif
+          if (ps.mode === 'move') {
+            setMoveBox({ sx: sx1, sy: sy1, ex: sx2, ey: sy2 });
+          } else if (ps.mode === 'rotate') {
+            setRotateBox({ sx: sx1, sy: sy1, ex: sx2, ey: sy2 });
+          } else if (ps.mode === 'clone') {
+            setCloneBox({ sx: sx1, sy: sy1, ex: sx2, ey: sy2 });
+          }
+        } else {
+          // ── PINCH ZOOM + 2-FINGER PAN (normal) ──
+          // Scale ratio relative to pinch start.
+          const scaleFactor = dist / ps.dist;
+          const newScale = Math.max(0.2, Math.min(5, ps.scale * scaleFactor));
+          // Pan offset: gerak midpoint dari start midpoint.
+          const panDx = midX - ps.midX;
+          const panDy = midY - ps.midY;
+          // Compute new view: keep pinch midpoint stable di world space.
+          const worldMidX = (ps.midX - ps.viewX) / ps.scale;
+          const worldMidY = (ps.midY - ps.viewY) / ps.scale;
+          const v = stateRef.current.view;
+          v.scale = newScale;
+          v.x = midX - worldMidX * newScale + panDx;
+          v.y = midY - worldMidY * newScale + panDy;
+          setZoomPct(Math.round(newScale * 100));
+        }
       } else if (pointers.length === 1) {
         // ── SINGLE TOUCH MOVE: drag/pan/wiring ──
         const sx = pointers[0].x;
@@ -3830,7 +3896,56 @@ export default function LogicGatesSimulator({ setPage }) {
       const pointers = Array.from(touchStateRef.current.pointers.values());
 
       if (pointers.length < 2) {
-        // Pinch selesai (kurang dari 2 jari) — clear pinch state.
+        // Pinch selesai (kurang dari 2 jari) — finalize select box jika mode aktif.
+        const ps = touchStateRef.current.pinchStart;
+        if (ps && ps.selectBoxMode) {
+          // ── MOBILE: finalize pinch-to-select-box ──
+          // Cari komponen yang ada di dalam select box, lalu tampilkan anchor.
+          const v = stateRef.current.view;
+          const comps = stateRef.current.components;
+
+          if (ps.mode === 'move') {
+            const box = stateRef.current.moveBox;
+            if (box) {
+              const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
+              const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
+              const inside = comps.filter(c =>
+                c.x + c.width > wx1 && c.x < wx2 &&
+                c.y + c.height > wy1 && c.y < wy2
+              );
+              setMoveSelectedIds(inside.map(c => c.id));
+              setMoveAnchors(inside.length > 0 ? calcAnchorsFromComponents(inside, v) : null);
+            }
+            // Clear select box visual (anchor stays)
+            setMoveBox(null);
+          } else if (ps.mode === 'rotate') {
+            const box = stateRef.current.rotateBox;
+            if (box) {
+              const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
+              const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
+              const inside = comps.filter(c =>
+                c.x + c.width > wx1 && c.x < wx2 &&
+                c.y + c.height > wy1 && c.y < wy2
+              );
+              setRotateSelectedIds(inside.map(c => c.id));
+              setRotateAnchors(inside.length > 0 ? 'active' : null); // placeholder — akan di-recompute tiap frame
+            }
+            setRotateBox(null);
+          } else if (ps.mode === 'clone') {
+            const box = stateRef.current.cloneBox;
+            if (box) {
+              const { x: wx1, y: wy1 } = screenToWorld(Math.min(box.sx, box.ex), Math.min(box.sy, box.ey));
+              const { x: wx2, y: wy2 } = screenToWorld(Math.max(box.sx, box.ex), Math.max(box.sy, box.ey));
+              const inside = comps.filter(c =>
+                c.x + c.width > wx1 && c.x < wx2 &&
+                c.y + c.height > wy1 && c.y < wy2
+              );
+              setCloneSelectedIds(inside.map(c => c.id));
+              setCloneAnchors(inside.length > 0 ? calcAnchorsFromComponents(inside, v) : null);
+            }
+            setCloneBox(null);
+          }
+        }
         touchStateRef.current.pinchStart = null;
       }
       if (pointers.length === 0) {
