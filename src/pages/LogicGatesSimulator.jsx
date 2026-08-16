@@ -3943,6 +3943,9 @@ export default function LogicGatesSimulator({ setPage }) {
             setCloneBox({ sx, sy, ex: sx, ey: sy });
             setCloneSelectedIds([]);
             setCloneAnchors(null);
+          } else if (modeRef.current === 'connect') {
+            // Connect wire mode: 1-finger pan DISABLED — user must use 2 fingers to pan.
+            // Single finger on empty space = nothing (prevents accidental workspace movement).
           } else {
             // Start panning canvas (1-finger drag = pan).
             const v = stateRef.current.view;
@@ -4345,11 +4348,16 @@ export default function LogicGatesSimulator({ setPage }) {
         touchStateRef.current.toggleCandidate = null;
       } else if (pointers.length === 1) {
         // Dari 2 jari → 1 jari: reset panStart ke posisi jari tersisa (start new single-touch pan).
-        const p = pointers[0];
-        const v = stateRef.current.view;
-        touchStateRef.current.panStart = { startSX: p.x, startSY: p.y, startVX: v.x, startVY: v.y };
+        // BUT: disable 1-finger pan in rotate/clone/connect modes — workspace must not move.
         stateRef.current.dragging = null;
         stateRef.current.wiring = null;
+        if (!rotateModeRef.current && !cloneModeRef.current && modeRef.current !== 'connect') {
+          const p = pointers[0];
+          const v = stateRef.current.view;
+          touchStateRef.current.panStart = { startSX: p.x, startSY: p.y, startVX: v.x, startVY: v.y };
+        } else {
+          touchStateRef.current.panStart = null;
+        }
       }
     };
 
