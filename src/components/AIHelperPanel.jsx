@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, MessageCircle } from 'lucide-react';
+import { X, Send, Bot, MessageCircle, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
 
@@ -22,6 +23,22 @@ const styles = {
     headerTitle: {
         fontFamily: 'Orbitron,sans-serif', fontWeight: 700, fontSize: 14,
         color: '#e2e8f0', margin: 0, letterSpacing: 0.5,
+    },
+    modelSelector: {
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '8px 12px', backgroundColor: '#0e1420',
+        borderBottom: '1px solid #1e293b', flexShrink: 0,
+    },
+    modelSelect: {
+        flex: 1, padding: '6px 10px', borderRadius: 8,
+        backgroundColor: '#1a2234', border: '1px solid #253047',
+        color: '#e2e8f0', fontFamily: 'Inter,sans-serif', fontSize: 12,
+        outline: 'none', cursor: 'pointer',
+        appearance: 'none', WebkitAppearance: 'none',
+    },
+    modelChevron: {
+        position: 'absolute', right: 22, top: '50%', transform: 'translateY(-50%)',
+        pointerEvents: 'none', color: '#64748b',
     },
     closeBtn: {
         background: 'transparent', border: 'none', color: '#64748b',
@@ -143,8 +160,11 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [selectedModel, setSelectedModel] = useState('');
+    const [models, setModels] = useState([]);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const { user, getIdToken } = useAuth();
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -154,9 +174,27 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
         setTimeout(() => inputRef.current?.focus(), 150);
     }, []);
 
+    useEffect(() => {
+        async function loadModels() {
+            try {
+                const res = await fetch(`${API_URL}/models`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.models?.length) setModels(data.models);
+                }
+            } catch {}
+        }
+        loadModels();
+    }, []);
+
     async function sendMessage() {
         const text = input.trim();
         if (!text || loading) return;
+
+        if (!user) {
+            setError('Kamu harus login dulu buat pakai AI chat.');
+            return;
+        }
 
         const userMsg = { role: 'user', content: text };
         const newMessages = [...messages, userMsg];
@@ -166,15 +204,25 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
         setError(null);
 
         try {
+            const token = await getIdToken();
             const body = { message: text };
             if (chatId) body.chatId = chatId;
             if (newMessages.length > 0) body.history = newMessages;
+            if (selectedModel) body.model = selectedModel;
+
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
 
             const res = await fetch(API_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(body),
             });
+
+            if (res.status === 401) {
+                setError('Sesi expired. Coba login ulang.');
+                return;
+            }
 
             if (!res.ok) throw new Error(`Server error (${res.status})`);
 
@@ -211,6 +259,23 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     <X size={18} />
                 </button>
             </div>
+
+            {models.length > 0 && (
+                <div style={styles.modelSelector}>
+                    <select
+                        style={styles.modelSelect}
+                        value={selectedModel}
+                        onChange={e => setSelectedModel(e.target.value)}
+                    >
+                        <option value="">Auto (Default)</option>
+                        {models.map(m => (
+                            <option key={m.id} value={m.id}>
+                                {m.name} {m.premium ? '⭐' : ''} — {m.provider}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             <div style={styles.messages}>
                 {messages.length === 0 && !loading && (
@@ -258,18 +323,18 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     ref={inputRef}
                     style={styles.input}
                     type="text"
-                    placeholder="Ketik pertanyaan..."
+                    placeholder={user ? "Ketik pertanyaan..." : "Login dulu ya..."}
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    disabled={loading}
+                    disabled={loading || !user}
                     onFocus={e => e.currentTarget.style.borderColor = '#475569'}
                     onBlur={e => e.currentTarget.style.borderColor = '#253047'}
                 />
                 <button
-                    style={styles.sendBtn(!input.trim() || loading)}
+                    style={styles.sendBtn(!input.trim() || loading || !user)}
                     onClick={sendMessage}
-                    disabled={!input.trim() || loading}
+                    disabled={!input.trim() || loading || !user}
                     onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = '#475569'; }}
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = e.currentTarget.disabled ? '#1e293b' : '#334155'; }}
                 >

@@ -1,18 +1,28 @@
-// api/ai-chat.js — AI Chat API Route (serverless)
-// POST /api/ai-chat — AI Tutor + Game FAQ endpoint
-// Pre-filter handles: identity, coding block, platform & game facts → AI handles Logic Gates tutoring
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest } from "../lib/api-helpers.js";
-import { askAI } from "../lib/ai-client.js";
+import { askAI, getAvailableModels } from "../lib/ai-client.js";
 
 export default async function handler(req, res) {
-  applyCors(req, res, "POST, OPTIONS");
+  applyCors(req, res, "GET, POST, OPTIONS");
   applySecurityHeaders(res);
 
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (req.method === "GET") {
+    const path = req.url?.split("?")[0] || "";
+    if (path.endsWith("/models")) {
+      try {
+        const models = await getAvailableModels();
+        return res.status(200).json({ models });
+      } catch {
+        return res.status(500).json({ error: "Gagal memuat daftar model" });
+      }
+    }
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    // Require auth — prevent open proxy abuse
     const user = await authenticateRequest(req);
     if (!user) return res.status(401).json({ error: "Login required to use AI chat" });
 
@@ -21,7 +31,7 @@ export default async function handler(req, res) {
       return res.status(429).json({ error: "Terlalu banyak request. Tunggu sebentar ya." });
     }
 
-    const { message, chatId, history } = req.body || {};
+    const { message, chatId, history, model } = req.body || {};
     if (!validateStr(message, 2000)) {
       return res.status(400).json({ error: "message wajib diisi (max 2000 karakter)" });
     }
@@ -46,6 +56,7 @@ export default async function handler(req, res) {
     const result = await askAI(message, {
       chatId: chatId || undefined,
       history: cleanHistory || undefined,
+      model: model || undefined,
     });
 
     if (!result.status) {
@@ -56,6 +67,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       answer: result.answer,
       chatId: result.chatId,
+      model: result.model,
     });
   } catch (e) {
     console.error("[ai-chat]", e?.message || e);
@@ -63,59 +75,45 @@ export default async function handler(req, res) {
   }
 }
 
-// ============================================================
-// SMART PRE-FILTER — Security + Platform & Game FAQ
-// ============================================================
 function getCannedResponse(message) {
   const msg = message.toLowerCase().trim();
 
-  // ===== SECURITY: Block coding requests =====
   if (isCodingRequest(msg)) return CODE_BLOCK_MSG;
-
-  // ===== IDENTITY: "kamu siapa/bisa apa?" =====
   if (isIdentityQuestion(msg)) return IDENTITY_MSG;
 
-  // Platform identity
   if (/^(apa|what|jelaskan|jelasin|info|definisi|tell me about).*(babft|platform ini|platform apa)/.test(msg) ||
       /(belajar|diajarkan|diajarin|materi|pelajaran) (apa|apa aja) (di|disini|di sini)/.test(msg)) {
     return PLATFORM_INFO;
   }
 
-  // Creator
   if (/(siapa|who|siapakah).*(buat|pembuat|developer|creator|bikin).*(babft|build a boat|boat for treasure|game ini)/.test(msg) ||
       /chillthrill/.test(msg)) {
     return CREATOR_INFO;
   }
 
-  // Chests/Shop
   if (/(chest|peti|harga|beli|gold|shop|toko).*(babft|game|build a boat|boat for treasure)/.test(msg) ||
       /(berapa|apa saja|sebutkan|jenis|macam).*(chest|peti)/.test(msg) ||
       /(common|uncommon|rare|epic|legendary).*(chest|peti)/.test(msg)) {
     return CHEST_INFO;
   }
 
-  // Quests
   if (/(quest|misi|objective).*(babft|game|build a boat|boat for treasure)/.test(msg) ||
       /(quest|misi) (apa|yg|yang) (ada|tersedia|bisa)/.test(msg)) {
     return QUEST_INFO;
   }
 
-  // Codes
   if (/(kode|code|redeem).*(aktif|active|masih|babft|game|build a boat)/.test(msg)) {
     return CODE_INFO;
   }
 
-  // Events
   if (/(event|acara|halloween|christmas|natal|easter|paskah).*(babft|game|build a boat|boat for treasure)/.test(msg)) {
     return EVENT_INFO;
   }
 
-  // Jetpack
   if (/jetpack|jet pack/.test(msg) && /dapat|dapetin|cara|beli|how|get/.test(msg)) {
     return JETPACK_INFO;
   }
 
-  // Tools
   if (/(tool|alat).*(apa|yg|yang|ada|tersedia|bisa).*(babft|game|build a boat|boat for treasure)/.test(msg) ||
       /binding tool|scaling tool|property tool|trowel tool|paint tool|building tool|delete tool/.test(msg)) {
     return TOOLS_INFO;
@@ -124,9 +122,6 @@ function getCannedResponse(message) {
   return null;
 }
 
-// ============================================================
-// IDENTITY DETECTOR
-// ============================================================
 function isIdentityQuestion(msg) {
   const identityPatterns = [
     /^kamu (siapa|siapakah|apa)\b/i,
@@ -143,9 +138,6 @@ function isIdentityQuestion(msg) {
   return false;
 }
 
-// ============================================================
-// ANTI-CODING DETECTOR
-// ============================================================
 function isCodingRequest(msg) {
   const codePatterns = [
     /\bbuat(?:kan|in|kode)?\b.*\b(?:kode|coding|script|program|aplikasi|app|bot|website|html|css|js|javascript|python|php|java|ruby|go|rust|c\+\+|sql|api|endpoint|function|fungsi|class)\b/i,
@@ -164,14 +156,9 @@ function isCodingRequest(msg) {
   return false;
 }
 
-// ============================================================
-// CANNED RESPONSES
-// ============================================================
-
 const CODE_BLOCK_MSG = `# 🚫 Maaf, Saya Tidak Bisa Membuat Kode
 
-Saya adalah **AI Tutor BABFT Learning** — tugas saya membantu kamu belajar tentang:
-
+Saya adalah **AI Tutor BABFT Learning** — tugas saya membantu kamu belajar:
 - ⚡ **Logic Gates** (AND, OR, NOT, XOR, dll)
 - ⚙️ **Gears & Mechanisms**
 - 🔩 **Linkages Mechanic**
@@ -183,7 +170,7 @@ Saya **tidak bisa**:
 - ❌ Konfigurasi server/nginx/docker
 - ❌ Hacking/exploit/aktivitas ilegal
 
-Kalau kamu butuh bantuan coding, coba tanya ke tools yang tepat seperti GitHub Copilot, ChatGPT, atau Stack Overflow ya! 
+Kalau kamu butuh bantuan coding, coba tanya ke tools yang tepat seperti GitHub Copilot, ChatGPT, atau Stack Overflow ya!
 
 Ada yang bisa saya bantu tentang Logic Gates atau BABFT? 😊`;
 
