@@ -6193,10 +6193,9 @@ export default function LogicGatesSimulator({ setPage }) {
                           >
                             SAVE
                           </button>
-                          {/* Load button — lime green chunky */}
+                          {/* load button — lime green chunky */}
                           <button
                             onClick={() => {
-                              if (slotLocks[idx]) { setLockWarning(true); return; }
                               setSaveConfirm({ slotIndex: idx, action: 'load' });
                             }}
                             disabled={saveLoading || !hasData}
