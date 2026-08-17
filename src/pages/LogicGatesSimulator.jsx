@@ -6779,7 +6779,7 @@ export default function LogicGatesSimulator({ setPage }) {
             onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
           />
 
-          {/* Action buttons: Confirm | Reset | Cancel — directly below */}
+          {/* Action buttons: Confirm | Cancel — directly below */}
           <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
             <button
               onClick={() => {
@@ -6810,35 +6810,6 @@ export default function LogicGatesSimulator({ setPage }) {
               <Check size={12} strokeWidth={2.5} />
               Confirm
             </button>
-            {colorPicker.targetType === 'wire' ? (
-              <button
-                onClick={() => {
-                  setWires(prevWires => {
-                    const otherHues = prevWires
-                      .filter(w => w.id !== colorPicker.targetId && w.color)
-                      .map(w => w.color.h);
-                    const newColor = generateWireColor(otherHues);
-                    return prevWires.map(w =>
-                      w.id === colorPicker.targetId ? { ...w, color: newColor, userColor: null } : w
-                    );
-                  });
-                  setColorPicker(null);
-                  setStatus('Wire color reset');
-                }}
-                style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#334155', border: '1px solid #475569', borderRadius: 4, color: '#e2e8f0', cursor: 'pointer' }}
-              >Reset</button>
-            ) : (
-              <button
-                onClick={() => {
-                  setComponents(prevComps => prevComps.map(c =>
-                    c.id === colorPicker.targetId ? { ...c, userColor: null } : c
-                  ));
-                  setColorPicker(null);
-                  setStatus('Component color reset to default');
-                }}
-                style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#334155', border: '1px solid #475569', borderRadius: 4, color: '#e2e8f0', cursor: 'pointer' }}
-              >Reset</button>
-            )}
             <button
               onClick={() => {
                 const origHex = colorPicker.originalHex;
