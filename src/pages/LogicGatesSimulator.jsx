@@ -1267,6 +1267,8 @@ export default function LogicGatesSimulator({ setPage }) {
   // Color picker untuk wire: null = tutup, { wireId, x, y, hex } = buka di posisi (x,y).
   // x,y = screen coords (di mana panel muncul). hex = warna saat ini di picker.
   const [colorPicker, setColorPicker] = useState(null);
+  const colorPickerRef = useRef(null);
+  useEffect(() => { colorPickerRef.current = colorPicker; }, [colorPicker]);
   // Sidebar palette toggle — user minta: bisa tutup panel komponen biar leluasa berkreasi di canvas,
   // Default true (terbuka) supaya user langsung bisa lihat & drag komponen dari palette.
   // SELALU terbuka saat pertama kali, termasuk di mobile.
@@ -2894,6 +2896,56 @@ export default function LogicGatesSimulator({ setPage }) {
         ctx.lineDashOffset = 0;
       }
 
+      // ── Marching ants around component/wire being painted (colorPicker open OR pickFromWorkspace active) ──
+      const cpInfo = colorPickerRef.current || pickFromWorkspaceRef.current;
+      if (cpInfo && cpInfo.targetType === 'comp') {
+        const targetComp = comps.find(c => c.id === cpInfo.targetId);
+        if (targetComp) {
+          const tPos = rotAnimOverrides?.get(targetComp.id) || targetComp;
+          // Get bounding box
+          const bx = tPos.x, by = tPos.y;
+          const bw = targetComp.width || 64, bh = targetComp.height || 64;
+          const pad = 6;
+          // Use the component's current color for the marching ants
+          const def = GATE_MAP[targetComp.type] || IO_DEFS[targetComp.type];
+          const borderColor = targetComp.userColor || (def ? def.color : '#f59e0b');
+          // Draw animated dashed rectangle
+          ctx.setLineDash([8, 5]);
+          ctx.lineDashOffset = -dashOffset;
+          ctx.strokeStyle = borderColor;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(bx - pad, by - pad, bw + pad * 2, bh + pad * 2);
+          ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
+        }
+      }
+      if (cpInfo && cpInfo.targetType === 'wire') {
+        // For wires, find the wire and draw marching ants along its path
+        const targetWire = wrs.find(w => w.id === cpInfo.targetId);
+        if (targetWire) {
+          const src = comps.find(c => c.id === targetWire.from);
+          const dst = comps.find(c => c.id === targetWire.to);
+          if (src && dst) {
+            const wireColor = targetWire.userColor || (targetWire.color ? hslToHex(targetWire.color.h, targetWire.color.s, 50) : '#4ade80');
+            ctx.setLineDash([8, 5]);
+            ctx.lineDashOffset = -dashOffset;
+            ctx.strokeStyle = wireColor;
+            ctx.lineWidth = 4;
+            // Draw a thick dashed line along the wire path (simple: from output to input)
+            const fromPos = rotAnimOverrides?.get(src.id) || src;
+            const toPos = rotAnimOverrides?.get(dst.id) || dst;
+            const p1 = getNodePos({...src, ...fromPos}, false, targetWire.fromIdx);
+            const p2 = getNodePos({...dst, ...toPos}, true, targetWire.toIdx);
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.lineDashOffset = 0;
+          }
+        }
+      }
+
       animId = requestAnimationFrame(draw);
     };
 
@@ -3875,6 +3927,8 @@ export default function LogicGatesSimulator({ setPage }) {
 
     const onContextMenu = (e) => {
       e.preventDefault();
+      // In paint mode, pick mode, delete mode, or when color picker is open — suppress context menu entirely
+      if (paintModeRef.current || pickFromWorkspaceRef.current || deleteModeRef.current || colorPicker) return;
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
