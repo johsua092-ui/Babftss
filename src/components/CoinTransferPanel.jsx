@@ -310,7 +310,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
       const token = await getIdToken();
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_URL}?action=history&limit=15`, { headers });
+      const res = await fetch(`${API_URL}?action=transfer-history&limit=15`, { headers });
       if (res.ok) {
         const data = await res.json();
         setHistory(data.transfers || []);

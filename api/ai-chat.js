@@ -71,6 +71,18 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Internal server error" });
       }
     }
+    if (action === "transfer-history") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
+        const transfers = await getRecentTransfers(user.sub, limit);
+        return res.status(200).json({ transfers });
+      } catch (e) {
+        console.error("[ai-chat] transfer-history error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
     return res.status(200).json({ status: "ok" });
   }
 
@@ -170,12 +182,6 @@ export default async function handler(req, res) {
       if (!resolvedUid || !amount || amount <= 0 || amount > 10000) return res.status(400).json({ error: "targetUid/targetEmail dan amount wajib (1-10000)" });
       const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
       return res.status(200).json({ message: "Gold di-grant", uid: resolvedUid, amount, newBalance: nb });
-    }
-
-    if (action === "transfer-history") {
-      const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
-      const transfers = await getRecentTransfers(uid, limit);
-      return res.status(200).json({ transfers });
     }
 
     // ── Bulk Grant — Admin bagi coin ke SEMUA member sekaligus ──
