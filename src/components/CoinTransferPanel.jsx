@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield } from 'lucide-react';
+import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
@@ -136,6 +136,8 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -267,6 +269,37 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
       setError('Gagal menghubungi server. Coba lagi.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function doBulkGrant() {
+    if (!user || !isAdmin || !validAmount) return;
+    setBulkLoading(true);
+    setError(null);
+    setBulkResult(null);
+    try {
+      const token = await getIdToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_URL}?action=bulk-grant`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          amount: parsedAmount,
+          note: note.trim() || 'Bulk distribute',
+          excludeSelf: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Bulk grant gagal');
+        return;
+      }
+      setBulkResult(data);
+    } catch {
+      setError('Gagal menghubungi server. Coba lagi.');
+    } finally {
+      setBulkLoading(false);
     }
   }
 
@@ -434,6 +467,42 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
                 </>
               )}
             </button>
+
+            {/* Bulk Distribute — bagi coin ke semua member */}
+            <div style={{ borderTop: '1px solid #1e293b', paddingTop: 8, marginTop: 4 }}>
+              <div style={{ ...s.label, color: '#fbbf24', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Users size={12} /> Bagi ke Semua Member
+              </div>
+              <button
+                style={{
+                  width: '100%', padding: '10px', borderRadius: 10,
+                  cursor: (!validAmount || bulkLoading) ? 'default' : 'pointer',
+                  backgroundColor: (!validAmount || bulkLoading) ? '#1e293b' : '#1a0a00',
+                  border: '1px solid ' + ((!validAmount || bulkLoading) ? '#253047' : '#ea580c'),
+                  color: (!validAmount || bulkLoading) ? '#334155' : '#fb923c',
+                  fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'all 0.2s',
+                }}
+                onClick={doBulkGrant}
+                disabled={!validAmount || bulkLoading}
+              >
+                {bulkLoading ? 'Membagi...' : (
+                  <>
+                    <Users size={14} />
+                    Distribute {parsedAmount || '?'} Gold ke Semua
+                  </>
+                )}
+              </button>
+              {bulkResult && (
+                <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8,
+                  backgroundColor: '#0f2a1a', border: '1px solid #16a34a',
+                  fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#4ade80', lineHeight: 1.4 }}>
+                  ✅ <strong>{bulkResult.count}</strong> member dapat <strong>{parsedAmount}</strong> gold
+                  (total: <strong>{bulkResult.totalGranted}</strong>)
+                </div>
+              )}
+            </div>
           </div>
         )}
 

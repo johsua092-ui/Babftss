@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers, lookupUserByEmail } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -49,6 +49,25 @@ export default async function handler(req, res) {
         return res.status(200).json({ found: true, uid: found.uid, email: found.email, displayName: found.displayName, gold: found.gold });
       } catch (e) {
         console.error("[ai-chat] lookup-user error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    if (action === "list-members") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        if (!isAdmin(user)) return res.status(403).json({ error: "Hanya admin" });
+        const members = await getAllUsers();
+        // Don't expose full UID for privacy — only first 12 chars
+        const safe = members.map((m) => ({
+          uid: m.uid,
+          email: m.email,
+          displayName: m.displayName,
+          gold: m.gold,
+        }));
+        return res.status(200).json({ members: safe, total: safe.length });
+      } catch (e) {
+        console.error("[ai-chat] list-members error:", e?.message || e);
         return res.status(500).json({ error: "Internal server error" });
       }
     }
@@ -157,6 +176,27 @@ export default async function handler(req, res) {
       const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
       const transfers = await getRecentTransfers(uid, limit);
       return res.status(200).json({ transfers });
+    }
+
+    // ── Bulk Grant — Admin bagi coin ke SEMUA member sekaligus ──
+    if (action === "bulk-grant") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa bulk grant" });
+      const { amount, note, excludeSelf } = req.body || {};
+      if (!amount || typeof amount !== "number" || amount < 1 || amount > 10000) {
+        return res.status(400).json({ error: "Amount wajib 1-10000" });
+      }
+      try {
+        // Exclude admin UID from receiving
+        const excludeUids = excludeSelf !== false ? [uid] : [];
+        const result = await bulkGrantAll(amount, uid, excludeUids, note || "Bulk grant by admin");
+        return res.status(200).json({
+          message: `Berhasil bagi ${amount} gold ke ${result.count} member`,
+          ...result,
+        });
+      } catch (e) {
+        console.error("[ai-chat] bulk-grant error:", e?.message || e);
+        return res.status(500).json({ error: "Bulk grant gagal: " + (e?.message || "unknown error") });
+      }
     }
 
     if (!admin) {
