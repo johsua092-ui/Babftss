@@ -6052,12 +6052,12 @@ export default function LogicGatesSimulator({ setPage }) {
                     const compCount = hasData ? (slot.data.components?.length || 0) : 0;
                     const wireCount = hasData ? (slot.data.wires?.length || 0) : 0;
                     const dateStr = slot.updatedAt ? new Date(slot.updatedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
-                    // Cartridge body colors derived from slot.color (HSL-based)
-                    const { h: slotH, s: slotS, l: slotL } = hexToHsl(slot.color || '#3b82f6');
+                    // Cartridge body colors derived from slot.color hue — muted cartridge aesthetic
+                    const { h: slotH } = hexToHsl(slot.color || '#3b82f6');
                     const cc = {
-                      body:  hslToHex(slotH, slotS, Math.min(slotL + 5, 45)),
-                      dark:  hslToHex(slotH, Math.min(slotS + 10, 60), Math.max(slotL - 20, 12)),
-                      light: hslToHex(slotH, slotS, Math.min(slotL + 15, 55)),
+                      body:  hslToHex(slotH, 50, 35),
+                      dark:  hslToHex(slotH, 35, 14),
+                      light: hslToHex(slotH, 55, 48),
                     };
 
                     return (
