@@ -5975,7 +5975,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     textShadow: '0 2px 4px rgba(0,0,0,0.4)',
                   }}>SAVE PROGRESS</div>
                   <div style={{
-                    fontSize: 12, color: '#8aa4c0', marginTop: 4,
+                    fontSize: 12, color: '#FFFFFF', marginTop: 4,
                     fontFamily: '"Inter", sans-serif',
                   }}>Simpan & muat rangkaianmu ke cartridge slot</div>
                 </div>
