@@ -428,7 +428,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
           {/* Right column: preview swatch on top, hex input below */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{
-              width: 72, height: 36, borderRadius: 6,
+              width: 80, height: 40, borderRadius: 6,
               background: hex, border: '2px solid #000',
               boxShadow: `0 0 12px ${hex}66`,
             }} />
@@ -452,7 +452,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
                 }
               }}
               style={{
-                width: 72, height: 22, fontSize: 12, fontWeight: 700, color: '#fff',
+                width: 80, height: 26, fontSize: 14, fontWeight: 700, color: '#fff',
                 background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
                 borderRadius: 4,
                 textAlign: 'center', fontFamily: 'monospace', padding: 0,

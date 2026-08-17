@@ -6748,18 +6748,24 @@ export default function LogicGatesSimulator({ setPage }) {
       {colorPicker && (
         <div
           style={{
-            position: 'absolute',
-            left: Math.min(colorPicker.x, (canvasRef.current?.clientWidth || 800) - 450),
-            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 500),
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 1000,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setColorPicker(null)}
+        >
+        <div
+          style={{
             background: 'rgba(15, 23, 42, 0.98)',
             border: '1px solid #475569',
             borderRadius: 8,
             padding: 8,
             boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-            zIndex: 1000,
             fontFamily: '"Inter", sans-serif',
             display: 'flex', flexDirection: 'column', gap: 6,
           }}
+          onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
           onTouchStart={e => e.stopPropagation()}
         >
@@ -6853,6 +6859,7 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#1e293b', border: '1px solid #475569', borderRadius: 4, color: '#94a3b8', cursor: 'pointer' }}
             >Cancel</button>
           </div>
+        </div>
         </div>
       )}
     </div>
