@@ -1149,6 +1149,7 @@ export default function LogicGatesSimulator({ setPage }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyEmptyWarning, setHistoryEmptyWarning] = useState(null); // index number or null
   const [historyLoadConfirm, setHistoryLoadConfirm] = useState(null); // { historyIndex } or null
+  const [slotColorEdit, setSlotColorEdit] = useState(null); // { slotIndex } or null
 
   // Load all save slots from backend on mount
   useEffect(() => {
@@ -6046,10 +6047,17 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Color picker + name row */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <input
-                              type="color" value={slot.color}
-                              onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, color: e.target.value } : s))}
-                              style={{ width: 24, height: 24, border: 'none', borderRadius: 6, cursor: 'pointer', padding: 0, background: 'transparent', flexShrink: 0 }}
+                            <div
+                              onClick={() => setSlotColorEdit({ slotIndex: idx })}
+                              style={{
+                                width: 24, height: 24, borderRadius: 6, cursor: 'pointer', flexShrink: 0,
+                                background: slot.color,
+                                border: '2px solid rgba(255,255,255,0.15)',
+                                boxShadow: `0 0 6px ${slot.color}44, inset 0 1px 0 rgba(255,255,255,0.2)`,
+                                transition: 'box-shadow 0.2s',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 0 12px ${slot.color}66, inset 0 1px 0 rgba(255,255,255,0.3)`; }}
+                              onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 0 6px ${slot.color}44, inset 0 1px 0 rgba(255,255,255,0.2)`; }}
                             />
                             <input
                               type="text" value={slot.name}
@@ -6622,6 +6630,46 @@ export default function LogicGatesSimulator({ setPage }) {
                   </div>
                 </div>
               )}
+
+              {/* ── Slot Color Picker Modal ── */}
+              {slotColorEdit !== null && (() => {
+                const sIdx = slotColorEdit.slotIndex;
+                const sl = saveSlots[sIdx];
+                return (
+                  <div style={{
+                    position: 'fixed', inset: 0, zIndex: 1003,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,0,0,0.7)',
+                  }} onClick={() => setSlotColorEdit(null)}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+                      borderRadius: 16, padding: 16,
+                      border: '2px solid #334155',
+                      boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                      display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
+                        Slot {sIdx + 1} Color
+                      </div>
+                      <ColorWheelPicker
+                        hex={sl.color}
+                        onChange={newHex => setSaveSlots(prev => prev.map((s, i) => i === sIdx ? { ...s, color: newHex } : s))}
+                      />
+                      <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
+                        <button onClick={() => setSlotColorEdit(null)} style={{
+                          padding: '5px 16px', fontSize: 11, fontWeight: 700,
+                          background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
+                          borderRadius: 4, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                        }}>
+                          <Check size={12} strokeWidth={2.5} /> Oke
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
             </div>
           )}
 
