@@ -63,6 +63,19 @@ const SLIDER_H = 200;
 function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputChange }) {
   const ref = useRef(null);
   const [drag, setDrag] = useState(false);
+  const [localVal, setLocalVal] = useState(String(inputVal));
+  const [focused, setFocused] = useState(false);
+
+  // Sync local value when parent changes and input is not focused
+  useEffect(() => {
+    if (!focused) setLocalVal(String(inputVal));
+  }, [inputVal, focused]);
+
+  const commitValue = useCallback(() => {
+    const n = parseInt(localVal);
+    if (!isNaN(n)) onInputChange(String(n));
+    else setLocalVal(String(inputVal)); // revert if invalid
+  }, [localVal, inputVal, onInputChange]);
 
   const draw = useCallback(() => {
     const c = ref.current; if (!c) return;
@@ -122,8 +135,11 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
         <input
           type="text"
-          value={inputVal}
-          onChange={e => onInputChange(e.target.value)}
+          value={localVal}
+          onChange={e => setLocalVal(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => { setFocused(false); commitValue(); }}
+          onKeyDown={e => { if (e.key === 'Enter') { commitValue(); e.target.blur(); } }}
           style={INPUT}
         />
         <canvas
@@ -141,6 +157,19 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
 function HSlider({ color, value, onChange, label }) {
   const ref = useRef(null);
   const [drag, setDrag] = useState(false);
+  const [localVal, setLocalVal] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  // Sync local value when parent changes and input is not focused
+  useEffect(() => {
+    if (!focused) setLocalVal(String(value));
+  }, [value, focused]);
+
+  const commitValue = useCallback(() => {
+    const n = parseInt(localVal);
+    if (!isNaN(n)) onChange(Math.max(0, Math.min(255, n)));
+    else setLocalVal(String(value)); // revert if invalid
+  }, [localVal, value, onChange]);
 
   const draw = useCallback(() => {
     const c = ref.current; if (!c) return;
@@ -198,8 +227,11 @@ function HSlider({ color, value, onChange, label }) {
       <span style={{ ...LABEL, width: 52, textAlign: 'right' }}>{label}</span>
       <input
         type="text"
-        value={value}
-        onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) onChange(Math.max(0, Math.min(255, v))); }}
+        value={localVal}
+        onChange={e => setLocalVal(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); commitValue(); }}
+        onKeyDown={e => { if (e.key === 'Enter') { commitValue(); e.target.blur(); } }}
         style={INPUT}
       />
       <canvas
