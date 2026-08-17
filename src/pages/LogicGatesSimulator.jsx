@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ColorWheelPicker from '../components/ColorWheelPicker';
+import { toast } from 'sonner';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -6948,11 +6949,13 @@ export default function LogicGatesSimulator({ setPage }) {
                     c.id === tgtId ? { ...c, userColor: hex } : c
                   ));
                   setStatus('Component color confirmed: ' + hex.toUpperCase());
+                  toast.success('Warna komponen berhasil diubah!', { description: hex.toUpperCase() });
                 } else {
                   setWires(prevWires => prevWires.map(w =>
                     w.id === tgtId ? { ...w, userColor: hex } : w
                   ));
                   setStatus('Wire color confirmed: ' + hex.toUpperCase());
+                  toast.success('Warna kabel berhasil diubah!', { description: hex.toUpperCase() });
                 }
                 setColorPicker(null);
               }}

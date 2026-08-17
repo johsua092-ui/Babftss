@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download, Undo2, Redo2, Lock, Unlock, ArrowRightLeft, RotateCcw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ColorWheelPicker from '../components/ColorWheelPicker';
+import { toast } from 'sonner';
 
 const API = '/api/canvas';
 
@@ -454,7 +455,7 @@ function DrawTab({ token }) {
                         />
                         {/* Buttons directly below */}
                         <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); }} style={{
+                            <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); toast.success('Warna berhasil diubah!', { description: customColorPicker.hex.toUpperCase() }); }} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
                                 borderRadius: 4, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
