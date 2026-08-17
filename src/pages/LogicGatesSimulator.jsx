@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -1118,6 +1119,114 @@ export default function LogicGatesSimulator({ setPage }) {
     lastRecordedRef.current = { comps: JSON.stringify(snap.components), wrs: JSON.stringify(snap.wires) };
     clearToolUIState();
   };
+
+  // ── Save Progress system ──
+  const { user, getIdToken } = useAuth();
+  const [saveOverlayOpen, setSaveOverlayOpen] = useState(false);
+  const [saveSlots, setSaveSlots] = useState([
+    { slotId: 'save-slot-1', name: '', description: '', color: '#3b82f6', data: null, updatedAt: null },
+    { slotId: 'save-slot-2', name: '', description: '', color: '#8b5cf6', data: null, updatedAt: null },
+    { slotId: 'save-slot-3', name: '', description: '', color: '#ec4899', data: null, updatedAt: null },
+  ]);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState(null); // { slotIndex, action: 'save'|'load' }
+  const [saveStatus, setSaveStatus] = useState(null); // { message, type: 'success'|'error' }
+
+  // Load all save slots from backend on mount
+  useEffect(() => {
+    if (!user) return;
+    const loadSlots = async () => {
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await fetch('/api/circuits', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const { circuits } = await res.json();
+        if (!circuits) return;
+        setSaveSlots(prev => prev.map(slot => {
+          const match = circuits.find(c => c.item_id === slot.slotId);
+          if (match) {
+            return {
+              ...slot,
+              name: match.name || '',
+              description: match.data?.description || '',
+              color: match.data?.color || slot.color,
+              data: match.data?.circuitState || null,
+              updatedAt: match.updated_at || match.created_at || null,
+            };
+          }
+          return slot;
+        }));
+      } catch (e) { /* silent */ }
+    };
+    loadSlots();
+  }, [user, getIdToken]);
+
+  const doSaveSlot = async (slotIndex) => {
+    const slot = saveSlots[slotIndex];
+    setSaveLoading(true);
+    setSaveStatus(null);
+    try {
+      const token = await getIdToken();
+      if (!token) { setSaveStatus({ message: 'Harap login terlebih dahulu!', type: 'error' }); setSaveLoading(false); return; }
+      const circuitState = {
+        components: JSON.parse(JSON.stringify(components)),
+        wires: JSON.parse(JSON.stringify(wires)),
+        typeCounters: JSON.parse(JSON.stringify(typeCounters)),
+        nextId: stateRef.current.nextId,
+      };
+      const res = await fetch('/api/circuits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          itemId: slot.slotId,
+          name: slot.name || `Slot ${slotIndex + 1}`,
+          data: { circuitState, color: slot.color, description: slot.description },
+        }),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); setSaveStatus({ message: err.error || 'Gagal menyimpan', type: 'error' }); setSaveLoading(false); return; }
+      const now = Date.now();
+      setSaveSlots(prev => prev.map((s, i) => i === slotIndex ? { ...s, data: circuitState, updatedAt: now } : s));
+      setSaveStatus({ message: `Slot ${slotIndex + 1} berhasil disimpan!`, type: 'success' });
+    } catch (e) { setSaveStatus({ message: 'Gagal menyimpan: ' + e.message, type: 'error' }); }
+    setSaveLoading(false);
+  };
+
+  const doLoadSlot = async (slotIndex) => {
+    const slot = saveSlots[slotIndex];
+    if (!slot.data) { setSaveStatus({ message: 'Slot ini kosong, tidak ada data untuk di-load.', type: 'error' }); return; }
+    setSaveLoading(true);
+    setSaveStatus(null);
+    try {
+      let loadedData = slot.data;
+      if (!loadedData) {
+        const token = await getIdToken();
+        if (!token) { setSaveStatus({ message: 'Harap login terlebih dahulu!', type: 'error' }); setSaveLoading(false); return; }
+        const res = await fetch(`/api/circuits?id=${slot.slotId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) { setSaveStatus({ message: 'Gagal memuat data slot', type: 'error' }); setSaveLoading(false); return; }
+        const { circuit } = await res.json();
+        loadedData = circuit?.data?.circuitState;
+      }
+      if (loadedData) {
+        skipHistoryRef.current = true;
+        setComponents(JSON.parse(JSON.stringify(loadedData.components || [])));
+        setWires(JSON.parse(JSON.stringify(loadedData.wires || [])));
+        if (loadedData.typeCounters) setTypeCounters(loadedData.typeCounters);
+        if (loadedData.nextId) setNextId(loadedData.nextId);
+        // Record in undo history
+        setTimeout(() => {
+          pushCircuitHistory(loadedData.components || [], loadedData.wires || []);
+          lastRecordedRef.current = { comps: JSON.stringify(loadedData.components || []), wrs: JSON.stringify(loadedData.wires || []) };
+        }, 50);
+        clearToolUIState();
+        setSaveStatus({ message: `Slot ${slotIndex + 1} berhasil di-load!`, type: 'success' });
+      }
+    } catch (e) { setSaveStatus({ message: 'Gagal me-load: ' + e.message, type: 'error' }); }
+    setSaveLoading(false);
+  };
+
   // ── Rotation animation state ──
   // Saat animasi rotasi aktif, komponen yang ter-select di-interpolasi
   // dari posisi lama ke posisi baru. Durasi ~250ms.
@@ -5331,9 +5440,10 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{ display: 'block', width: '100%', height: '100%' }}
             />
           </div>
-          {/* ── Tools collapsible menu (top-left) ──
+          {/* ── Tools collapsible menu + Save Progress button (top-left) ──
               Tombol "Tools" warna kuning terang, gak pernah redup.
               Klik → expand/collapse semua tool buttons di bawahnya.
+              "Save Progress" tombol hijau di samping kanan Tools.
               Wrapper div positioned absolute, top berubah tergantung paletteOpen. */}
           <div style={{
             position: isMobile && paletteOpen ? 'fixed' : 'absolute',
@@ -5341,10 +5451,11 @@ export default function LogicGatesSimulator({ setPage }) {
             left: isMobile && paletteOpen ? '50%' : 8,
             transform: isMobile && paletteOpen ? 'translateX(-50%)' : 'none',
             zIndex: 20,
-            display: 'flex', flexDirection: 'column', gap: 6,
+            display: 'flex', flexDirection: 'row', gap: 6, alignItems: 'flex-start',
             transition: 'top 0.22s ease, left 0.22s ease',
-            width: isMobile && paletteOpen ? 'auto' : undefined,
           }}>
+            {/* Left column: Tools button + expandable panel */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {/* ── Tools header button (always bright yellow, never dims) ── */}
             <button
               onClick={() => setToolsOpen(prev => !prev)}
@@ -5369,7 +5480,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                 </svg>
-                tools
+                Tools
               </span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
                 flexShrink: 0,
@@ -5664,7 +5775,280 @@ export default function LogicGatesSimulator({ setPage }) {
               {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[8]</span>}
             </button>
             </>}
+            </div>{/* end left column */}
+
+            {/* ── Save Progress button ── Green (#22c55e), cartridge icon ── */}
+            <button
+              onClick={() => { setSaveOverlayOpen(true); setSaveStatus(null); }}
+              title="Save Progress"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10,
+                border: '1px solid #22c55e',
+                backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                color: '#22c55e',
+                fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                userSelect: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <HardDrive size={16} />
+              <span>Save Progress</span>
+            </button>
           </div>
+
+          {/* ── Save Progress Overlay ── */}
+          {saveOverlayOpen && (
+            <div style={{
+              position: 'fixed', inset: 0,
+              zIndex: 1000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.7)',
+              backdropFilter: 'blur(8px)',
+            }}>
+              <div style={{
+                width: isMobile ? '92vw' : '50vw',
+                maxHeight: '90vh',
+                background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                borderRadius: 20,
+                border: '1px solid rgba(148,163,184,0.2)',
+                boxShadow: '0 25px 80px rgba(0,0,0,0.6)',
+                padding: isMobile ? '20px 16px' : '32px 36px',
+                display: 'flex', flexDirection: 'column', gap: 20,
+                overflow: 'auto',
+                position: 'relative',
+              }}>
+                {/* Close button */}
+                <button
+                  onClick={() => { setSaveOverlayOpen(false); setSaveConfirm(null); setSaveStatus(null); }}
+                  style={{
+                    position: 'absolute', top: 12, right: 14,
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 8, color: '#94a3b8', cursor: 'pointer',
+                    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 18, lineHeight: 1, transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { e.target.style.color = '#fff'; e.target.style.background = 'rgba(255,255,255,0.15)'; }}
+                  onMouseLeave={e => { e.target.style.color = '#94a3b8'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
+                >✕</button>
+
+                {/* Title */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingRight: 36 }}>
+                  <HardDrive size={28} style={{ color: '#22c55e', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#e2e8f0', fontFamily: '"Inter", sans-serif' }}>Save Progress</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Simpan & muat progress rangkaianmu ke save slot</div>
+                  </div>
+                </div>
+
+                {/* Status message */}
+                {saveStatus && (
+                  <div style={{
+                    padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                    background: saveStatus.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                    color: saveStatus.type === 'success' ? '#4ade80' : '#f87171',
+                    border: `1px solid ${saveStatus.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                  }}>
+                    {saveStatus.message}
+                  </div>
+                )}
+
+                {/* Save Slots */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflow: 'auto' }}>
+                  {saveSlots.map((slot, idx) => {
+                    const hasData = !!slot.data;
+                    const compCount = hasData ? (slot.data.components?.length || 0) : 0;
+                    const wireCount = hasData ? (slot.data.wires?.length || 0) : 0;
+                    const dateStr = slot.updatedAt ? new Date(slot.updatedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
+
+                    return (
+                      <div key={slot.slotId} style={{
+                        position: 'relative',
+                        borderRadius: 16,
+                        border: `2px solid ${slot.color}44`,
+                        background: `linear-gradient(135deg, ${slot.color}15 0%, ${slot.color}08 100%)`,
+                        overflow: 'hidden',
+                        boxShadow: `0 4px 20px ${slot.color}15`,
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                      }}>
+                        {/* Cartridge notch top */}
+                        <div style={{ position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 6, background: '#0f172a', borderRadius: '0 0 8 8' }} />
+                        {/* Cartridge notch bottom */}
+                        <div style={{ position: 'absolute', bottom: -1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 6, background: '#0f172a', borderRadius: '8 8 0 0' }} />
+
+                        <div style={{ padding: isMobile ? '16px 14px' : '20px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {/* Slot header: color picker + name + slot number */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {/* Color picker */}
+                            <input
+                              type="color"
+                              value={slot.color}
+                              onChange={e => {
+                                const newColor = e.target.value;
+                                setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, color: newColor } : s));
+                              }}
+                              style={{ width: 32, height: 32, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 0, background: 'transparent' }}
+                            />
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {/* Name input */}
+                              <input
+                                type="text"
+                                value={slot.name}
+                                onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                                placeholder={`Slot ${idx + 1}`}
+                                maxLength={40}
+                                style={{
+                                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: 8, padding: '6px 10px', color: '#e2e8f0', fontSize: 14, fontWeight: 700,
+                                  fontFamily: '"Inter", sans-serif', outline: 'none',
+                                }}
+                              />
+                            </div>
+                            {/* Slot badge */}
+                            <div style={{
+                              background: slot.color + '30', color: slot.color,
+                              borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 800,
+                              border: `1px solid ${slot.color}50`,
+                            }}>
+                              SLOT {idx + 1}
+                            </div>
+                          </div>
+
+                          {/* Description input */}
+                          <input
+                            type="text"
+                            value={slot.description}
+                            onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, description: e.target.value } : s))}
+                            placeholder="Tambahkan deskripsi..."
+                            maxLength={80}
+                            style={{
+                              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                              borderRadius: 8, padding: '5px 10px', color: '#94a3b8', fontSize: 12,
+                              fontFamily: '"Inter", sans-serif', outline: 'none',
+                            }}
+                          />
+
+                          {/* Info line */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#64748b' }}>
+                            {hasData ? (
+                              <>
+                                <span>{compCount} komponen</span>
+                                <span>•</span>
+                                <span>{wireCount} wire</span>
+                                {dateStr && <><span>•</span><span>{dateStr}</span></>}
+                              </>
+                            ) : (
+                              <span style={{ fontStyle: 'italic' }}>Kosong — belum ada data tersimpan</span>
+                            )}
+                          </div>
+
+                          {/* Save / Load buttons */}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                            <button
+                              onClick={() => setSaveConfirm({ slotIndex: idx, action: 'save' })}
+                              disabled={saveLoading}
+                              style={{
+                                flex: 1, padding: '8px 0', borderRadius: 10,
+                                background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)',
+                                color: '#4ade80', fontSize: 13, fontWeight: 700, cursor: saveLoading ? 'wait' : 'pointer',
+                                fontFamily: '"Inter", sans-serif', transition: 'all 0.15s',
+                              }}
+                            >
+                              💾 Save
+                            </button>
+                            <button
+                              onClick={() => setSaveConfirm({ slotIndex: idx, action: 'load' })}
+                              disabled={saveLoading || !hasData}
+                              style={{
+                                flex: 1, padding: '8px 0', borderRadius: 10,
+                                background: hasData ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.05)',
+                                border: `1px solid ${hasData ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.1)'}`,
+                                color: hasData ? '#60a5fa' : 'rgba(59,130,246,0.3)',
+                                fontSize: 13, fontWeight: 700,
+                                cursor: (saveLoading || !hasData) ? 'not-allowed' : 'pointer',
+                                fontFamily: '"Inter", sans-serif', transition: 'all 0.15s',
+                              }}
+                            >
+                              📂 Load
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Login hint if not logged in */}
+                {!user && (
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 10, fontSize: 12, color: '#f59e0b',
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)',
+                    textAlign: 'center', fontWeight: 600,
+                  }}>
+                    ⚠️ Harap login terlebih dahulu untuk menyimpan progress ke cloud
+                  </div>
+                )}
+              </div>
+
+              {/* Confirmation dialog */}
+              {saveConfirm && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1001,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.6)',
+                }}>
+                  <div style={{
+                    background: '#1e293b', borderRadius: 16, padding: '28px 32px',
+                    border: '1px solid rgba(148,163,184,0.2)',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                    display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center',
+                    maxWidth: 380, textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0', fontFamily: '"Inter", sans-serif' }}>
+                      {saveConfirm.action === 'save' ? '💾 Simpan Progress?' : '📂 Load Progress?'}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+                      {saveConfirm.action === 'save'
+                        ? `Apakah Anda ingin save progress saat ini ke Slot ${saveConfirm.slotIndex + 1}?`
+                        : `Apakah Anda ingin load save Slot ${saveConfirm.slotIndex + 1}? Progress saat ini akan ditimpa.`}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+                      <button
+                        onClick={() => {
+                          if (saveConfirm.action === 'save') doSaveSlot(saveConfirm.slotIndex);
+                          else doLoadSlot(saveConfirm.slotIndex);
+                          setSaveConfirm(null);
+                        }}
+                        style={{
+                          flex: 1, padding: '10px 0', borderRadius: 10,
+                          background: saveConfirm.action === 'save' ? 'rgba(34,197,94,0.2)' : 'rgba(59,130,246,0.2)',
+                          border: `1px solid ${saveConfirm.action === 'save' ? 'rgba(34,197,94,0.4)' : 'rgba(59,130,246,0.4)'}`,
+                          color: saveConfirm.action === 'save' ? '#4ade80' : '#60a5fa',
+                          fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif',
+                        }}
+                      >
+                        Ya
+                      </button>
+                      <button
+                        onClick={() => setSaveConfirm(null)}
+                        style={{
+                          flex: 1, padding: '10px 0', borderRadius: 10,
+                          background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+                          color: '#94a3b8', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif',
+                        }}
+                      >
+                        Tidak
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Mode indicator (FIXED tengah layar, gede, dynamic) ──
               Posisi fixed di tengah-atas layar — left:50% + translateX(-50%).
