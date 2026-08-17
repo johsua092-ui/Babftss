@@ -368,27 +368,29 @@ export default function ColorWheelPicker({ hex, onChange }) {
           <HSlider color="#00ff00" value={g0} onChange={onGChange} label="Green:" />
           <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
         </div>
-        {/* Right side: [Reset Color] [preview swatch + hex input] */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Left column: Reset Color button, vertically centered */}
+        {/* Right side: [Reset Color (full height)] [preview swatch + hex input] */}
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
+          {/* Left column: Reset Color button, stretches full height of right column */}
           <button
             onClick={() => onChange('#ffffff')}
             onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
             onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
             style={{
-              padding: '4px 6px', fontSize: 9, fontWeight: 700,
+              padding: '6px 4px', fontSize: 9, fontWeight: 700,
               color: '#fff', background: '#4a5d75', border: '1px solid #000',
               borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
               textTransform: 'uppercase', letterSpacing: 0.3,
               lineHeight: 1.2, transition: 'background 0.15s',
               whiteSpace: 'nowrap', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              textAlign: 'center',
             }}
             title="Reset color to white (center of wheel)"
           >
             Reset<br/>Color
           </button>
           {/* Right column: preview swatch on top, hex input below */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{
               width: 72, height: 36, borderRadius: 6,
               background: hex, border: '2px solid #000',
@@ -414,10 +416,10 @@ export default function ColorWheelPicker({ hex, onChange }) {
                 }
               }}
               style={{
-                width: 76, fontSize: 13, fontWeight: 700, color: '#fff',
+                width: 72, height: 22, fontSize: 12, fontWeight: 700, color: '#fff',
                 background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
                 borderRadius: 4,
-                textAlign: 'center', fontFamily: 'monospace', padding: '4px 0',
+                textAlign: 'center', fontFamily: 'monospace', padding: 0,
                 outline: 'none',
               }}
             />
