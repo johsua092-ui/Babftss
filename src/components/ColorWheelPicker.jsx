@@ -51,7 +51,7 @@ function hsvToHex(h, s, v) { return rgbToHex(...hsvToRgb(h, s, v)); }
 
 // ── Styles ──
 const BG = '#7b9cc2';
-const LABEL = { fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'Arial,sans-serif' };
+const LABEL = { fontSize: 14, fontWeight: 700, color: '#000', fontFamily: 'Arial,sans-serif' };
 const INPUT = {
   width: 52, height: 26, fontSize: 14, fontWeight: 700, color: '#fff',
   background: '#555', border: '1px solid #000', borderRadius: 3, textAlign: 'center',
@@ -377,7 +377,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
             onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
             style={{
               padding: '6px 10px', fontSize: 10, fontWeight: 700,
-              color: '#000', background: '#4a5d75', border: '1px solid #000',
+              color: '#fff', background: '#4a5d75', border: '1px solid #000',
               borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
               textTransform: 'uppercase', letterSpacing: 0.5,
               lineHeight: 1.8, transition: 'background 0.15s',
