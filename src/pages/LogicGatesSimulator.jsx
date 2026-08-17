@@ -1005,8 +1005,25 @@ function DragGhost({ type, x, y }) {
 }
 
 /* ── Slot Color Picker Modal (with draft + Confirm/Cancel) ── */
-function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickColor }) {
+function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFromWorkspace }) {
   const [draftHex, setDraftHex] = useState(slot._draftHex || slot.color);
+  const handlePickColor = async () => {
+    // Primary: browser native EyeDropper API (Chrome/Edge) — picks from ANYWHERE on screen
+    // Modal stays open; eyedropper overlays the entire browser
+    if (window.EyeDropper) {
+      try {
+        const dropper = new window.EyeDropper();
+        const result = await dropper.open();
+        setDraftHex(result.sRGBHex);
+        return;
+      } catch {
+        // User cancelled eyedropper (pressed Esc)
+        return;
+      }
+    }
+    // Fallback: close modal temporarily, enter pick-from-workspace mode on canvas
+    onPickFromWorkspace(draftHex);
+  };
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1003,
@@ -1026,7 +1043,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickColo
         <ColorWheelPicker
           hex={draftHex}
           onChange={setDraftHex}
-          onPickColor={() => onPickColor && onPickColor(draftHex)}
+          onPickColor={handlePickColor}
         />
         <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
           <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
@@ -6704,12 +6721,11 @@ export default function LogicGatesSimulator({ setPage }) {
                   setSlotColorEdit(null);
                 }}
                 onCancel={() => setSlotColorEdit(null)}
-                onPickColor={(currentDraftHex) => {
-                  // Save current slot color edit state, close modal, enter pick-from-workspace mode
+                onPickFromWorkspace={(currentDraftHex) => {
+                  // Fallback: close modal, enter pick-from-workspace mode on canvas
                   const savedState = { slotIndex: slotColorEdit.slotIndex, draftHex: currentDraftHex, source: 'slot' };
                   setSlotColorEdit(null);
                   setPickFromWorkspace(savedState);
-                  // Generate custom eyedropper cursor (same as workspace picker)
                   const curCanvas = document.createElement('canvas');
                   curCanvas.width = 48; curCanvas.height = 48;
                   const ctx = curCanvas.getContext('2d');
