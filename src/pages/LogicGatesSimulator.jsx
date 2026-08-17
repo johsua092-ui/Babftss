@@ -6769,49 +6769,54 @@ export default function LogicGatesSimulator({ setPage }) {
             {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
           </div>
 
-          {/* Color input — native browser RGB picker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          {/* Color palette — custom swatches (bukan native <input type="color"> yang buka dialog sistem) */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3, marginBottom: 8,
+          }}>
+            {[
+              '#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4',
+              '#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#fb7185',
+              '#fbbf24','#a3e635','#4ade80','#2dd4bf','#38bdf8','#818cf8','#c084fc','#f472b6',
+            ].map(c => (
+              <div
+                key={c}
+                onClick={() => setColorPicker(cp => cp ? { ...cp, hex: c } : cp)}
+                style={{
+                  width: 24, height: 18, borderRadius: 4, cursor: 'pointer',
+                  background: c,
+                  border: colorPicker.hex === c ? '2px solid #ffffff' : '1px solid #334155',
+                  boxShadow: colorPicker.hex === c ? `0 0 6px ${c}88` : 'none',
+                  transition: 'transform 0.1s, border-color 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              />
+            ))}
+          </div>
+          {/* Hex input */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <div style={{
+              width: 32, height: 24, borderRadius: 4,
+              background: colorPicker.hex,
+              border: '2px solid #475569',
+              boxShadow: `0 0 8px ${colorPicker.hex}44`,
+              flexShrink: 0,
+            }} />
             <input
-              type="color"
-              value={colorPicker.hex}
+              type="text"
+              value={colorPicker.hex.toUpperCase()}
               onChange={e => {
-                const hex = e.target.value;
-                // Hanya update preview (hex di state), TIDAK apply ke wire/comp.
-                // User harus klik tombol ✓ Confirm untuk menerapkan.
-                setColorPicker(cp => cp ? { ...cp, hex } : cp);
-              }}
-              onInput={e => {
-                // Fallback untuk mobile browser yang gak fire onChange pada <input type="color">.
-                // onInput fires real-time di semua browser (termasuk mobile Safari/Chrome).
-                // Hanya update preview, TIDAK apply.
-                const hex = e.target.value;
-                if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
-                setColorPicker(cp => cp ? { ...cp, hex } : cp);
+                const v = e.target.value;
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                  setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
+                }
               }}
               style={{
-                width: 48, height: 36, border: '1px solid #475569',
-                borderRadius: 6, cursor: 'pointer', padding: 0,
+                flex: 1, padding: '4px 8px', fontSize: 12,
+                background: '#0f172a', border: '1px solid #334155',
+                borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace',
               }}
             />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>Hex</div>
-              <input
-                type="text"
-                value={colorPicker.hex.toUpperCase()}
-                onChange={e => {
-                  const v = e.target.value;
-                  if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-                    // Hanya update preview, TIDAK apply.
-                    setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
-                  }
-                }}
-                style={{
-                  width: '100%', padding: '4px 8px', fontSize: 12,
-                  background: '#0f172a', border: '1px solid #334155',
-                  borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace',
-                }}
-              />
-            </div>
           </div>
 
           {/* Preview: wire = ON/OFF (redup/terang), comp = solid color saja */}
