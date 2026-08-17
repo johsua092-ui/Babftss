@@ -353,11 +353,11 @@ export default function ColorWheelPicker({ hex, onChange }) {
         {/* HSV vertical sliders */}
         <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
           <VSlider gradient={hueGrad} value={Math.round(hue)} maxVal={360} onChange={onHueChange}
-            label="Hue" inputVal={Math.round(hue)} onInputChange={onHueInput} />
+            label="Color" inputVal={Math.round(hue)} onInputChange={onHueInput} />
           <VSlider gradient={satGrad} value={Math.round(sat * 100)} maxVal={100} onChange={onSatChange}
-            label="Sat" inputVal={Math.round(sat * 100)} onInputChange={onSatInput} />
+            label="Saturation" inputVal={Math.round(sat * 100)} onInputChange={onSatInput} />
           <VSlider gradient={valGrad} value={Math.round(val * 100)} maxVal={100} onChange={onValChange}
-            label="Val" inputVal={Math.round(val * 100)} onInputChange={onValInput} />
+            label="Value" inputVal={Math.round(val * 100)} onInputChange={onValInput} />
         </div>
       </div>
 
@@ -377,7 +377,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
             onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
             style={{
               padding: '6px 10px', fontSize: 10, fontWeight: 700,
-              color: '#fff', background: '#4a5d75', border: '1px solid #000',
+              color: '#000', background: '#4a5d75', border: '1px solid #000',
               borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
               textTransform: 'uppercase', letterSpacing: 0.5,
               lineHeight: 1.8, transition: 'background 0.15s',
