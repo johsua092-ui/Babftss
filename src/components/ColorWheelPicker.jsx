@@ -51,13 +51,13 @@ function hsvToHex(h, s, v) { return rgbToHex(...hsvToRgb(h, s, v)); }
 
 // ── Styles ──
 const BG = '#7b9cc2';
-const LABEL = { fontSize: 11, fontWeight: 700, color: '#fff', fontFamily: 'Arial,sans-serif' };
+const LABEL = { fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'Arial,sans-serif' };
 const INPUT = {
-  width: 40, height: 20, fontSize: 11, fontWeight: 700, color: '#fff',
-  background: '#555', border: '1px solid #000', borderRadius: 2, textAlign: 'center',
+  width: 52, height: 26, fontSize: 14, fontWeight: 700, color: '#fff',
+  background: '#555', border: '1px solid #000', borderRadius: 3, textAlign: 'center',
   fontFamily: 'Arial,sans-serif', padding: 0,
 };
-const SLIDER_H = 140;
+const SLIDER_H = 200;
 
 // ── Vertical slider component (Hue, Sat, Val) ──
 function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputChange }) {
@@ -68,7 +68,7 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
     const c = ref.current; if (!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const w = 32, h = SLIDER_H;
+    const w = 42, h = SLIDER_H;
     c.width = w * dpr; c.height = h * dpr;
     c.style.width = w + 'px'; c.style.height = h + 'px';
     ctx.scale(dpr, dpr);
@@ -89,8 +89,8 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.moveTo(w + 1, ty);
-    ctx.lineTo(w + 10, ty - 5);
-    ctx.lineTo(w + 10, ty + 5);
+    ctx.lineTo(w + 14, ty - 7);
+    ctx.lineTo(w + 14, ty + 7);
     ctx.closePath();
     ctx.fill();
   }, [gradient, value, maxVal]);
@@ -144,7 +144,7 @@ function HSlider({ color, value, onChange, label }) {
     const c = ref.current; if (!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const w = 130, h = 18;
+    const w = 180, h = 24;
     c.width = w * dpr; c.height = h * dpr;
     c.style.width = w + 'px'; c.style.height = h + 'px';
     ctx.scale(dpr, dpr);
@@ -165,8 +165,8 @@ function HSlider({ color, value, onChange, label }) {
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.moveTo(tx, -1);
-    ctx.lineTo(tx - 5, -9);
-    ctx.lineTo(tx + 5, -9);
+    ctx.lineTo(tx - 7, -12);
+    ctx.lineTo(tx + 7, -12);
     ctx.closePath();
     ctx.fill();
   }, [color, value]);
@@ -191,7 +191,7 @@ function HSlider({ color, value, onChange, label }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ ...LABEL, width: 40, textAlign: 'right' }}>{label}</span>
+      <span style={{ ...LABEL, width: 52, textAlign: 'right' }}>{label}</span>
       <input
         type="text"
         value={value}
@@ -212,10 +212,17 @@ function HSlider({ color, value, onChange, label }) {
 export default function ColorWheelPicker({ hex, onChange }) {
   const wheelRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [hexInput, setHexInput] = useState(hex.toUpperCase());
+  const [hexFocused, setHexFocused] = useState(false);
+
+  // Sync hexInput when parent hex changes and input is not focused
+  useEffect(() => {
+    if (!hexFocused) setHexInput(hex.toUpperCase());
+  }, [hex, hexFocused]);
 
   const [r0, g0, b0] = hexToRgb(hex);
   const [hue, sat, val] = rgbToHsv(r0, g0, b0);
-  const WHEEL_SIZE = 200;
+  const WHEEL_SIZE = 280;
   const wheelR = WHEEL_SIZE / 2;
 
   // ── Draw color wheel ──
@@ -263,11 +270,11 @@ export default function ColorWheelPicker({ hex, onChange }) {
 
     // Hollow circle indicator
     ctx.beginPath();
-    ctx.arc(selX, selY, 7, 0, Math.PI * 2);
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.arc(selX, selY, 10, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.stroke();
     ctx.beginPath();
-    ctx.arc(selX, selY, 5, 0, Math.PI * 2);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.arc(selX, selY, 7, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
 
     // Outer border
     ctx.beginPath();
@@ -330,12 +337,30 @@ export default function ColorWheelPicker({ hex, onChange }) {
   return (
     <div style={{
       background: BG, border: '2px solid #fff', borderRadius: 0,
-      padding: 10, display: 'flex', flexDirection: 'column', gap: 6,
+      padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
       boxShadow: 'inset 1px 1px 0 #4a5d75, inset -1px -1px 0 #4a5d75',
       fontFamily: 'Arial,sans-serif',
     }}>
       {/* Top row: Wheel + HSV sliders */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        {/* Left column: Reset Color button */}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: 0 }}>
+          <button
+            onClick={() => onChange('#ffffff')}
+            onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
+            onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
+            style={{
+              width: 70, padding: '8px 4px', fontSize: 11, fontWeight: 700,
+              color: '#fff', background: '#4a5d75', border: '1px solid #000',
+              borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
+              textTransform: 'uppercase', letterSpacing: 0.5,
+              lineHeight: 1.3, transition: 'background 0.15s',
+            }}
+            title="Reset color to white (center of wheel)"
+          >
+            Reset<br/>Color
+          </button>
+        </div>
         {/* Color wheel */}
         <canvas
           ref={wheelRef}
@@ -344,7 +369,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
           style={{ cursor: 'crosshair', borderRadius: '50%', flexShrink: 0 }}
         />
         {/* HSV vertical sliders */}
-        <div style={{ display: 'flex', gap: 6, paddingTop: 4 }}>
+        <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
           <VSlider gradient={hueGrad} value={Math.round(hue)} maxVal={360} onChange={onHueChange}
             label="Hue" inputVal={Math.round(hue)} onInputChange={onHueInput} />
           <VSlider gradient={satGrad} value={Math.round(sat * 100)} maxVal={100} onChange={onSatChange}
@@ -355,27 +380,44 @@ export default function ColorWheelPicker({ hex, onChange }) {
       </div>
 
       {/* Bottom row: RGB sliders + eyedropper area */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
           <HSlider color="#ff0000" value={r0} onChange={onRChange} label="Red:" />
           <HSlider color="#00ff00" value={g0} onChange={onGChange} label="Green:" />
           <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
         </div>
         {/* Right side: preview swatch + hex */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 60 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 80 }}>
           <div style={{
-            width: 56, height: 28, borderRadius: 4,
+            width: 72, height: 36, borderRadius: 6,
             background: hex, border: '2px solid #000',
-            boxShadow: `0 0 8px ${hex}66`,
+            boxShadow: `0 0 12px ${hex}66`,
           }} />
           <input
             type="text"
-            value={hex.toUpperCase()}
-            onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange(v.toLowerCase()); }}
+            value={hexInput}
+            onChange={e => setHexInput(e.target.value)}
+            onFocus={() => setHexFocused(true)}
+            onBlur={() => {
+              setHexFocused(false);
+              const v = hexInput.trim();
+              if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
+              else setHexInput(hex.toUpperCase()); // revert if invalid
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                const v = hexInput.trim();
+                if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
+                else setHexInput(hex.toUpperCase());
+                e.target.blur();
+              }
+            }}
             style={{
-              width: 56, fontSize: 10, fontWeight: 700, color: '#fff',
-              background: '#555', border: '1px solid #000', borderRadius: 2,
-              textAlign: 'center', fontFamily: 'monospace', padding: '2px 0',
+              width: 76, fontSize: 13, fontWeight: 700, color: '#fff',
+              background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
+              borderRadius: 4,
+              textAlign: 'center', fontFamily: 'monospace', padding: '4px 0',
+              outline: 'none',
             }}
           />
         </div>
