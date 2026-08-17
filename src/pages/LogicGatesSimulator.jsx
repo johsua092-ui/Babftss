@@ -1148,6 +1148,7 @@ export default function LogicGatesSimulator({ setPage }) {
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyEmptyWarning, setHistoryEmptyWarning] = useState(null); // index number or null
+  const [historyLoadConfirm, setHistoryLoadConfirm] = useState(null); // { historyIndex } or null
 
   // Load all save slots from backend on mount
   useEffect(() => {
@@ -6458,34 +6459,9 @@ export default function LogicGatesSimulator({ setPage }) {
                           const hasD = entry && entry.data;
                           const hDate = entry?.pushed_at ? new Date(entry.pushed_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
                           return (
-                            <button key={i} onClick={async () => {
+                            <button key={i} onClick={() => {
                               if (!hasD) { setHistoryEmptyWarning(i); return; }
-                              try {
-                                const token = await getIdToken();
-                                const res = await fetch('/api/circuits?action=history_load', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                  body: JSON.stringify({ itemId: saveSlots[historyOpen].slotId, historyIndex: i }),
-                                });
-                                if (res.ok) {
-                                  const d = await res.json();
-                                  if (d.data?.circuitState) {
-                                    const loaded = d.data.circuitState;
-                                    skipHistoryRef.current = true;
-                                    setComponents(JSON.parse(JSON.stringify(loaded.components || [])));
-                                    setWires(JSON.parse(JSON.stringify(loaded.wires || [])));
-                                    if (loaded.typeCounters) setTypeCounters(loaded.typeCounters);
-                                    if (loaded.nextId) setNextId(loaded.nextId);
-                                    setTimeout(() => {
-                                      pushCircuitHistory(loaded.components || [], loaded.wires || []);
-                                      lastRecordedRef.current = { comps: JSON.stringify(loaded.components || []), wrs: JSON.stringify(loaded.wires || []) };
-                                    }, 50);
-                                    clearToolUIState();
-                                    setSaveStatus({ message: `History [${i + 1}] berhasil di-load!`, type: 'success' });
-                                    setHistoryOpen(null);
-                                  }
-                                }
-                              } catch (e) { setSaveStatus({ message: 'Gagal load history: ' + e.message, type: 'error' }); }
+                              setHistoryLoadConfirm({ historyIndex: i });
                             }} style={{
                               padding: '10px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
                               background: hasD
@@ -6558,6 +6534,86 @@ export default function LogicGatesSimulator({ setPage }) {
                       color: '#fff', fontSize: 16, fontWeight: 900, cursor: 'pointer',
                       fontFamily: '"Inter", sans-serif', letterSpacing: 2,
                     }}>Ya</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── History Load Confirmation ── */}
+              {historyLoadConfirm !== null && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1003,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.7)',
+                }}>
+                  <div className="animate-dialog-pop-in" style={{
+                    background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 100%)',
+                    borderRadius: 20, padding: '24px 28px',
+                    border: '3px solid #60a5fa',
+                    boxShadow: '0 0 0 2px #1a2744, 0 20px 60px rgba(0,0,0,0.6)',
+                    display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center',
+                    maxWidth: 420, textAlign: 'center',
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: '50%',
+                      background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(96,165,250,0.3)',
+                    }}>
+                      <AlertTriangle size={24} color="#fff" />
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#f0f4f8', fontFamily: '"Inter", sans-serif' }}>
+                      Apakah Anda akan load save sebelumnya [{historyLoadConfirm.historyIndex + 1}]?
+                    </div>
+                    <div style={{ fontSize: 11, color: '#8aa4c0', fontFamily: '"Inter", sans-serif' }}>
+                      Progress saat ini akan ditimpa.
+                    </div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button onClick={async () => {
+                        const i = historyLoadConfirm.historyIndex;
+                        setHistoryLoadConfirm(null);
+                        try {
+                          const token = await getIdToken();
+                          const res = await fetch('/api/circuits?action=history_load', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ itemId: saveSlots[historyOpen].slotId, historyIndex: i }),
+                          });
+                          if (res.ok) {
+                            const d = await res.json();
+                            if (d.data?.circuitState) {
+                              const loaded = d.data.circuitState;
+                              skipHistoryRef.current = true;
+                              setComponents(JSON.parse(JSON.stringify(loaded.components || [])));
+                              setWires(JSON.parse(JSON.stringify(loaded.wires || [])));
+                              if (loaded.typeCounters) setTypeCounters(loaded.typeCounters);
+                              if (loaded.nextId) setNextId(loaded.nextId);
+                              setTimeout(() => {
+                                pushCircuitHistory(loaded.components || [], loaded.wires || []);
+                                lastRecordedRef.current = { comps: JSON.stringify(loaded.components || []), wrs: JSON.stringify(loaded.wires || []) };
+                              }, 50);
+                              clearToolUIState();
+                              setSaveStatus({ message: `History [${i + 1}] berhasil di-load!`, type: 'success' });
+                              setHistoryOpen(null);
+                            }
+                          }
+                        } catch (e) { setSaveStatus({ message: 'Gagal load history: ' + e.message, type: 'error' }); }
+                      }} style={{
+                        padding: '10px 32px', borderRadius: 50,
+                        background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                        border: '2px solid #2563eb',
+                        boxShadow: '0 4px 0 #1d4ed8, 0 6px 12px rgba(0,0,0,0.4)',
+                        color: '#fff', fontSize: 14, fontWeight: 900, cursor: 'pointer',
+                        fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                      }}>Ya</button>
+                      <button onClick={() => setHistoryLoadConfirm(null)} style={{
+                        padding: '10px 32px', borderRadius: 50,
+                        background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                        border: '2px solid #2a3548',
+                        boxShadow: '0 4px 0 #1a2538, 0 6px 12px rgba(0,0,0,0.4)',
+                        color: '#8aa4c0', fontSize: 14, fontWeight: 900, cursor: 'pointer',
+                        fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                      }}>Tidak</button>
+                    </div>
                   </div>
                 </div>
               )}

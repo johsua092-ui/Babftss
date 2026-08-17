@@ -556,6 +556,7 @@ function PromptsTab({ token }) {
     const [historyData, setHistoryData] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyEmptyWarning, setHistoryEmptyWarning] = useState(null); // index number or null
+    const [historyLoadConfirm, setHistoryLoadConfirm] = useState(null); // { historyIndex } or null
 
     /* ── Load slots from backend ── */
     useEffect(() => {
@@ -863,7 +864,10 @@ function PromptsTab({ token }) {
                                     const entry = historyData[i];
                                     const hasData = entry && entry.content;
                                     return (
-                                        <button key={i} onClick={() => loadFromHistory(i)} style={{
+                                        <button key={i} onClick={() => {
+                                            if (!hasData) { setHistoryEmptyWarning(i); return; }
+                                            setHistoryLoadConfirm({ historyIndex: i });
+                                        }} style={{
                                             padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
                                             backgroundColor: hasData ? C.card : 'rgba(17,24,39,0.5)',
                                             border: `1px solid ${hasData ? C.borderLight : 'rgba(37,48,71,0.4)'}`,
@@ -917,6 +921,39 @@ function PromptsTab({ token }) {
                             backgroundColor: C.blueDim, border: `1px solid ${C.blue}`, color: C.blue,
                             fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
                         }}>Ya</button>
+                    </div>
+                </DialogOverlay>
+            )}
+
+            {/* ══════════ HISTORY LOAD CONFIRM ══════════ */}
+            {historyLoadConfirm !== null && (
+                <DialogOverlay onClose={() => setHistoryLoadConfirm(null)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: C.blueDim, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <AlertTriangle size={22} color={C.blue} />
+                        </div>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: C.text, textAlign: 'center' }}>
+                            Apakah Anda akan load save sebelumnya [{historyLoadConfirm.historyIndex + 1}]?
+                        </span>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: C.textDim, textAlign: 'center' }}>
+                            Progress saat ini akan ditimpa.
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                        <button onClick={async () => {
+                            const idx = historyLoadConfirm.historyIndex;
+                            setHistoryLoadConfirm(null);
+                            await loadFromHistory(idx);
+                        }} style={{
+                            padding: '8px 32px', borderRadius: 8, cursor: 'pointer',
+                            backgroundColor: C.blueDim, border: `1px solid ${C.blue}`, color: C.blue,
+                            fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                        }}>Ya</button>
+                        <button onClick={() => setHistoryLoadConfirm(null)} style={{
+                            padding: '8px 32px', borderRadius: 8, cursor: 'pointer',
+                            backgroundColor: C.card, border: `1px solid ${C.borderLight}`, color: C.textDim,
+                            fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                        }}>Tidak</button>
                     </div>
                 </DialogOverlay>
             )}
