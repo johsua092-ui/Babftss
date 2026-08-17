@@ -66,6 +66,7 @@ function DrawTab({ token }) {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [customColorPicker, setCustomColorPicker] = useState(null);  // { hex, originalHex } or null
     const lastPos = useRef(null);
 
     // ── Undo / Redo ──
@@ -403,6 +404,14 @@ function DrawTab({ token }) {
                         backgroundColor: c, cursor: 'pointer', transition: 'border 0.2s',
                     }} />
                 ))}
+                {/* Custom color picker button */}
+                <button onClick={() => { setCustomColorPicker({ hex: color, originalHex: color }); }} style={{
+                    width: 18, height: 18, borderRadius: '50%', border: `1px dashed ${C.border}`,
+                    backgroundColor: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    position: 'relative',
+                }}>
+                    <span style={{ fontSize: 12, color: C.textMuted, lineHeight: 1 }}>+</span>
+                </button>
                 <div style={{ width: 1, height: 20, backgroundColor: C.border }} />
                 <input type="range" min={1} max={20} value={lineWidth} onChange={e => setLineWidth(+e.target.value)}
                     style={{ width: 60, accentColor: C.accent }} />
@@ -415,6 +424,57 @@ function DrawTab({ token }) {
                     <Trash2 size={13} />
                 </button>
             </div>
+            {/* Custom Color Picker with Confirm */}
+            {customColorPicker && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{
+                        padding: '16px 20px', borderRadius: 12, backgroundColor: 'rgba(15, 23, 42, 0.98)',
+                        border: '1px solid #475569', maxWidth: 240, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                    }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>Custom Color</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <input
+                                type="color"
+                                value={customColorPicker.hex}
+                                onChange={e => setCustomColorPicker(cp => cp ? { ...cp, hex: e.target.value } : cp)}
+                                onInput={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setCustomColorPicker(cp => cp ? { ...cp, hex: v } : cp); }}
+                                style={{ width: 48, height: 36, border: '1px solid #475569', borderRadius: 6, cursor: 'pointer', padding: 0 }}
+                            />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2, fontFamily: 'Inter,sans-serif' }}>Hex</div>
+                                <input
+                                    type="text"
+                                    value={customColorPicker.hex.toUpperCase()}
+                                    onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setCustomColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp); }}
+                                    style={{ width: '100%', padding: '4px 8px', fontSize: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace' }}
+                                />
+                            </div>
+                        </div>
+                        {/* Preview */}
+                        <div style={{ width: '100%', height: 24, borderRadius: 6, background: customColorPicker.hex, border: '2px solid #334155', boxShadow: `0 0 12px ${customColorPicker.hex}80` }} />
+                        <div style={{ fontSize: 10, color: '#64748b', fontStyle: 'italic', fontFamily: 'Inter,sans-serif' }}>Tekan ✓ untuk menerapkan warna</div>
+                        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                            <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); }} style={{
+                                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 700,
+                                background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
+                                borderRadius: 6, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                            }}>
+                                <Check size={13} strokeWidth={2.5} /> Confirm
+                            </button>
+                            <button onClick={() => setCustomColorPicker(null)} style={{
+                                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                                background: '#1e293b', border: '1px solid #475569',
+                                borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                            }}>
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Delete confirmation */}
             {confirmDelete && (
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

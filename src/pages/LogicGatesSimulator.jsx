@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
@@ -3461,8 +3461,8 @@ export default function LogicGatesSimulator({ setPage }) {
           const comp = hit.comp;
           const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
           const currentHex = comp.userColor || def.color;
-          setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex });
-          setStatus('Component clicked — pick a color');
+          setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
+          setStatus('Component clicked — pick a color, then confirm');
           return;
         }
         const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
@@ -3471,8 +3471,8 @@ export default function LogicGatesSimulator({ setPage }) {
           // Wire ke-1 (color=null) tetap bisa di-recolor via userColor (override hijau default).
           const w = wireHit.wire;
           const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
-          setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex });
-          setStatus('Wire clicked — pick a color');
+          setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
+          setStatus('Wire clicked — pick a color, then confirm');
           return;
         }
         // Empty click → tutup picker kalau kebuka.
@@ -4113,16 +4113,16 @@ export default function LogicGatesSimulator({ setPage }) {
             const comp = hit.comp;
             const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
             const currentHex = comp.userColor || def.color;
-            setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex });
-            setStatus('Component tapped — pick a color');
+            setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
+            setStatus('Component tapped — pick a color, then confirm');
             return;
           }
           const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
           if (wireHit) {
             const w = wireHit.wire;
             const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
-            setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex });
-            setStatus('Wire tapped — pick a color');
+            setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
+            setStatus('Wire tapped — pick a color, then confirm');
             return;
           }
           // Empty tap → tutup picker kalau kebuka, no pan/drag.
@@ -6742,16 +6742,17 @@ export default function LogicGatesSimulator({ setPage }) {
 
       {/* ── Color Picker (Wire & Component) ──
           Muncul saat user klik wire/komponen di Paint Mode.
-          - Wire target: full RGB palette + preview ON/OFF (redup/terang) + tombol Random + Close.
-          - Component target: full RGB palette + preview warna solid + tombol Reset (ke default) + Close.
+          - Wire target: full RGB palette + preview ON/OFF (redup/terang) + tombol Random + Confirm ✓ + Close.
+          - Component target: full RGB palette + preview warna solid + tombol Reset (ke default) + Confirm ✓ + Close.
+          - User harus klik ✓ (Confirm) untuk menerapkan warna. Close = batal, revert ke originalHex.
           Posisi: dekat click point, tapi clamp supaya gak off-screen.
-          State: colorPicker = { targetType: 'wire'|'comp', targetId, x, y, hex } */}
+          State: colorPicker = { targetType: 'wire'|'comp', targetId, x, y, hex, originalHex } */}
       {colorPicker && (
         <div
           style={{
             position: 'absolute',
             left: Math.min(colorPicker.x, (canvasRef.current?.clientWidth || 800) - 280),
-            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 200),
+            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 260),
             background: 'rgba(15, 23, 42, 0.98)',
             border: '1px solid #475569',
             borderRadius: 10,
@@ -6775,38 +6776,17 @@ export default function LogicGatesSimulator({ setPage }) {
               value={colorPicker.hex}
               onChange={e => {
                 const hex = e.target.value;
-                const tgtType = colorPicker.targetType;
-                const tgtId = colorPicker.targetId;
+                // Hanya update preview (hex di state), TIDAK apply ke wire/comp.
+                // User harus klik tombol ✓ Confirm untuk menerapkan.
                 setColorPicker(cp => cp ? { ...cp, hex } : cp);
-                // Apply ke target (wire atau comp) langsung (live preview).
-                // Capture tgtType/tgtId di local var sebelum setColorPicker supaya gak stale.
-                if (tgtType === 'comp') {
-                  setComponents(prevComps => prevComps.map(c =>
-                    c.id === tgtId ? { ...c, userColor: hex } : c
-                  ));
-                } else {
-                  setWires(prevWires => prevWires.map(w =>
-                    w.id === tgtId ? { ...w, userColor: hex } : w
-                  ));
-                }
               }}
               onInput={e => {
                 // Fallback untuk mobile browser yang gak fire onChange pada <input type="color">.
                 // onInput fires real-time di semua browser (termasuk mobile Safari/Chrome).
+                // Hanya update preview, TIDAK apply.
                 const hex = e.target.value;
                 if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
-                const tgtType = colorPicker.targetType;
-                const tgtId = colorPicker.targetId;
                 setColorPicker(cp => cp ? { ...cp, hex } : cp);
-                if (tgtType === 'comp') {
-                  setComponents(prevComps => prevComps.map(c =>
-                    c.id === tgtId ? { ...c, userColor: hex } : c
-                  ));
-                } else {
-                  setWires(prevWires => prevWires.map(w =>
-                    w.id === tgtId ? { ...w, userColor: hex } : w
-                  ));
-                }
               }}
               style={{
                 width: 48, height: 36, border: '1px solid #475569',
@@ -6821,18 +6801,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 onChange={e => {
                   const v = e.target.value;
                   if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-                    const tgtType = colorPicker.targetType;
-                    const tgtId = colorPicker.targetId;
+                    // Hanya update preview, TIDAK apply.
                     setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
-                    if (tgtType === 'comp') {
-                      setComponents(prevComps => prevComps.map(c =>
-                        c.id === tgtId ? { ...c, userColor: v.toLowerCase() } : c
-                      ));
-                    } else {
-                      setWires(prevWires => prevWires.map(w =>
-                        w.id === tgtId ? { ...w, userColor: v.toLowerCase() } : w
-                      ));
-                    }
                   }
                 }}
                 style={{
@@ -6888,8 +6858,43 @@ export default function LogicGatesSimulator({ setPage }) {
             </div>
           )}
 
-          {/* Action buttons: wire = Random, comp = Reset (ke default) */}
+          {/* Hint: tekan ✓ untuk konfirmasi */}
+          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 8, textAlign: 'center', fontStyle: 'italic' }}>
+            Tekan ✓ untuk menerapkan warna
+          </div>
+
+          {/* Action buttons: Confirm ✓ | Random/Reset | Close (batal) */}
           <div style={{ display: 'flex', gap: 8 }}>
+            {/* ✓ Confirm — terapkan warna yang dipilih ke target */}
+            <button
+              onClick={() => {
+                const hex = colorPicker.hex;
+                const tgtType = colorPicker.targetType;
+                const tgtId = colorPicker.targetId;
+                if (tgtType === 'comp') {
+                  setComponents(prevComps => prevComps.map(c =>
+                    c.id === tgtId ? { ...c, userColor: hex } : c
+                  ));
+                  setStatus('Component color confirmed: ' + hex.toUpperCase());
+                } else {
+                  setWires(prevWires => prevWires.map(w =>
+                    w.id === tgtId ? { ...w, userColor: hex } : w
+                  ));
+                  setStatus('Wire color confirmed: ' + hex.toUpperCase());
+                }
+                setColorPicker(null);
+              }}
+              style={{
+                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 700,
+                background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
+                borderRadius: 6, color: '#ffffff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+              }}
+            >
+              <Check size={13} strokeWidth={2.5} />
+              <span>Confirm</span>
+            </button>
             {colorPicker.targetType === 'wire' ? (
               <button
                 onClick={() => {
@@ -6933,15 +6938,36 @@ export default function LogicGatesSimulator({ setPage }) {
                 Reset
               </button>
             )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button
-              onClick={() => setColorPicker(null)}
+              onClick={() => {
+                // Close = BATAL. Revert ke originalHex kalau user sudah ubah preview.
+                const origHex = colorPicker.originalHex;
+                const tgtType = colorPicker.targetType;
+                const tgtId = colorPicker.targetId;
+                // Revert target ke original color (kalau preview berubah tapi belum confirm).
+                // Karena kita gak lagi apply live, revert cuma perlu kalau ada race condition.
+                // Tapi untuk safety, tetap revert explicit.
+                if (tgtType === 'comp') {
+                  setComponents(prevComps => prevComps.map(c =>
+                    c.id === tgtId ? { ...c, userColor: origHex } : c
+                  ));
+                } else {
+                  setWires(prevWires => prevWires.map(w =>
+                    w.id === tgtId ? { ...w, userColor: origHex } : w
+                  ));
+                }
+                setColorPicker(null);
+                setStatus('Color change cancelled');
+              }}
               style={{
                 flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
                 background: '#1e293b', border: '1px solid #475569',
                 borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
               }}
             >
-              Close
+              Cancel
             </button>
           </div>
         </div>

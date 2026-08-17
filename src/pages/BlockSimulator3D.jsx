@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   ArrowLeft, Box, Plus, Move, RotateCw, Maximize, Paintbrush,
-  Copy, Trash2, MousePointer2, Hand, Info, Cuboid
+  Copy, Trash2, MousePointer2, Hand, Info, Cuboid, Check, X
 } from 'lucide-react';
 
 /* ================================================================
@@ -44,6 +44,7 @@ export default function BlockSimulator3D({ setPage }) {
   const [blockCount, setBlockCount] = useState(0);
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [paintConfirm, setPaintConfirm] = useState(null);  // { block, newColor, originalColor, x, y } or null
 
   const stateRef = useRef({
     blocks: [],
@@ -440,7 +441,18 @@ export default function BlockSimulator3D({ setPage }) {
           s.selected = nb;
           updateUISelection(nb);
         } else if (tool === 'color') {
-          hit.color = currentColor;
+          // Show confirmation popup instead of instantly applying color.
+          // User must click ✓ Confirm to apply, or Cancel to revert.
+          const originalColor = hit.color;
+          hit.color = currentColor;  // Apply temporarily for preview
+          render();
+          setPaintConfirm({
+            block: hit,
+            newColor: currentColor,
+            originalColor: originalColor,
+            x: mx,
+            y: my,
+          });
         }
       } else {
         s.selected = null;
@@ -726,6 +738,11 @@ export default function BlockSimulator3D({ setPage }) {
             }}>
               Colors
             </div>
+            {tool === 'color' && (
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 4, fontStyle: 'italic' }}>
+                Click block, then confirm
+              </div>
+            )}
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(4, 30px)', gap: 6,
             }}>
@@ -736,8 +753,17 @@ export default function BlockSimulator3D({ setPage }) {
                     setCurrentColor(c);
                     const s = stateRef.current;
                     if (s.selected && tool === 'color') {
-                      s.selected.color = c;
+                      // Show confirmation popup instead of instantly applying.
+                      const originalColor = s.selected.color;
+                      s.selected.color = c;  // Apply temporarily for preview
                       render();
+                      setPaintConfirm({
+                        block: s.selected,
+                        newColor: c,
+                        originalColor: originalColor,
+                        x: 140,  // Near the palette (approx position)
+                        y: 80,
+                      });
                     }
                   }}
                   style={{
@@ -812,6 +838,86 @@ export default function BlockSimulator3D({ setPage }) {
               <span style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 10 }}>⌨</span>
               <strong>P / M / R / S / C / K / X</strong> = Switch tools
             </span>
+          </div>
+        )}
+
+        {/* Paint Confirm Popup — muncul saat user klik block di Paint mode.
+            User harus klik ✓ Confirm untuk menerapkan warna, atau Cancel untuk revert. */}
+        {paintConfirm && (
+          <div
+            style={{
+              position: 'absolute',
+              left: Math.min(paintConfirm.x, (containerRef.current?.clientWidth || 800) - 200),
+              top: Math.min(paintConfirm.y + 10, (containerRef.current?.clientHeight || 600) - 80),
+              background: 'rgba(15, 23, 42, 0.98)',
+              border: '1px solid #475569',
+              borderRadius: 10,
+              padding: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              zIndex: 1000,
+              fontFamily: '"Inter", sans-serif',
+              minWidth: 180,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', marginBottom: 8, textAlign: 'center' }}>
+              Apply this color?
+            </div>
+            {/* Color preview */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 6,
+                  background: paintConfirm.originalColor,
+                  border: '2px solid #334155',
+                  opacity: 0.5,
+                }} />
+                <span style={{ fontSize: 9, color: '#64748b' }}>Before</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 6,
+                  background: paintConfirm.newColor,
+                  border: '2px solid #34d399',
+                  boxShadow: `0 0 8px ${paintConfirm.newColor}66`,
+                }} />
+                <span style={{ fontSize: 9, color: '#34d399' }}>After</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  // Confirm — color already applied as preview, just close.
+                  setPaintConfirm(null);
+                }}
+                style={{
+                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
+                  background: 'linear-gradient(135deg, #059669, #10b981)',
+                  border: '1px solid #34d399', borderRadius: 6,
+                  color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                }}
+              >
+                <Check size={12} strokeWidth={2.5} />
+                Confirm
+              </button>
+              <button
+                onClick={() => {
+                  // Cancel — revert to original color.
+                  paintConfirm.block.color = paintConfirm.originalColor;
+                  render();
+                  setPaintConfirm(null);
+                }}
+                style={{
+                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
+                  background: '#1e293b', border: '1px solid #475569',
+                  borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                }}
+              >
+                <X size={12} />
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>
