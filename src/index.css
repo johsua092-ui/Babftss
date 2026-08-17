@@ -22,12 +22,69 @@
   }
 }
 
+@keyframes lock-shake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
+}
+
+@keyframes lock-bounce {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.15) rotate(-8deg); }
+  60% { transform: scale(0.95) rotate(4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes lock-open {
+  0% { transform: rotate(0deg) scale(1); }
+  40% { transform: rotate(-20deg) scale(1.2); }
+  70% { transform: rotate(5deg) scale(1.05); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes lock-close {
+  0% { transform: rotate(0deg) scale(1); }
+  30% { transform: rotate(10deg) scale(1.15); }
+  60% { transform: rotate(-3deg) scale(0.95); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes panel-slide-in {
+  0% { opacity: 0; transform: translateX(20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes overlay-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes dialog-pop-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
 @layer utilities {
   .animate-pulse-glow {
     animation: 2s cubic-bezier(.4, 0, .6, 1) infinite pulse-glow;
   }
   .animate-gold-pulse {
     animation: 3s ease-in-out infinite gold-pulse;
+  }
+  .animate-lock-open {
+    animation: 0.4s cubic-bezier(.4,0,.2,1) lock-open;
+  }
+  .animate-lock-close {
+    animation: 0.4s cubic-bezier(.4,0,.2,1) lock-close;
+  }
+  .animate-panel-slide-in {
+    animation: 0.3s cubic-bezier(.4,0,.2,1) panel-slide-in;
+  }
+  .animate-overlay-fade-in {
+    animation: 0.2s ease-out overlay-fade-in;
+  }
+  .animate-dialog-pop-in {
+    animation: 0.25s cubic-bezier(.34,1.56,.64,1) dialog-pop-in;
   }
   .linkage-grid {
     display: grid;

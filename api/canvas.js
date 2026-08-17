@@ -8,6 +8,8 @@
 //   GET    /api/canvas?action=prompts&slot=N   -> muat satu slot
 //   POST   /api/canvas?action=prompts          -> simpan/upsert slot { slot, title?, content }
 //   DELETE /api/canvas?action=prompts&slot=N   -> kosongkan slot
+//   GET    /api/canvas?action=prompts_history&slot=N -> daftar 10 history slot
+//   POST   /api/canvas?action=prompts_history_load     -> load dari history { slot, historyIndex }
 //   GET    /api/canvas?action=strokes          -> muat coret-coret
 //   POST   /api/canvas?action=strokes          -> simpan coret-coret { data }
 //   DELETE /api/canvas?action=strokes          -> hapus coret-coret
@@ -25,11 +27,13 @@ import {
 } from '../lib/api-helpers.js';
 
 const PROMPTS_COLLECTION = 'canvas_prompts';
+const PROMPTS_HISTORY_COLLECTION = 'canvas_prompts_history';
 const STROKES_COLLECTION = 'canvas_strokes';
 const MAX_SLOTS = 3;
 const MAX_CONTENT = 20000;
 const MAX_TITLE = 200;
 const MAX_JSON_BYTES = 500000;
+const MAX_HISTORY = 10;
 
 export default async function handler(req, res) {
   applyCors(req, res, 'GET, POST, DELETE, OPTIONS');
@@ -72,6 +76,10 @@ export default async function handler(req, res) {
     switch (action) {
       case 'prompts':
         return handlePrompts(req, res, user, db);
+      case 'prompts_history':
+        return handlePromptsHistory(req, res, user, db);
+      case 'prompts_history_load':
+        return handlePromptsHistoryLoad(req, res, user, db);
       case 'strokes':
         return handleStrokes(req, res, user, db);
       case 'dataset_status':
@@ -177,7 +185,35 @@ async function handlePrompts(req, res, user, db) {
       .get();
 
     if (!existing.empty) {
-      const ref = existing.docs[0].ref;
+      const oldDoc = existing.docs[0];
+      const oldData = oldDoc.data();
+
+      // ── Push old save to history before overwriting ──
+      if (oldData.content && oldData.content.length > 0) {
+        const historySnap = await db
+          .collection(PROMPTS_HISTORY_COLLECTION)
+          .where('firebase_uid', '==', user.sub)
+          .where('slot', '==', n)
+          .orderBy('pushed_at', 'desc')
+          .get();
+
+        // If we already have 10 history entries, delete the oldest
+        if (historySnap.docs.length >= MAX_HISTORY) {
+          const toDelete = historySnap.docs.slice(MAX_HISTORY - 1);
+          for (const d of toDelete) await d.ref.delete();
+        }
+
+        // Push old save to history
+        await db.collection(PROMPTS_HISTORY_COLLECTION).add({
+          firebase_uid: user.sub,
+          slot: n,
+          title: oldData.title || ('Slot ' + (n + 1)),
+          content: oldData.content,
+          pushed_at: now,
+        });
+      }
+
+      const ref = oldDoc.ref;
       await ref.update({ title: cleanTitle, content, updated_at: now });
       return res.status(200).json({ slot: n, title: cleanTitle, content, updated_at: now, updated: true });
     }
@@ -205,6 +241,72 @@ async function handlePrompts(req, res, user, db) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ── prompts_history ──────────────────────────────────
+async function handlePromptsHistory(req, res, user, db) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { slot } = req.query || {};
+  const n = parseSlot(slot);
+  if (n === null) return res.status(400).json({ error: 'slot harus 0..' + (MAX_SLOTS - 1) });
+
+  const snap = await db
+    .collection(PROMPTS_HISTORY_COLLECTION)
+    .where('firebase_uid', '==', user.sub)
+    .where('slot', '==', n)
+    .orderBy('pushed_at', 'desc')
+    .limit(MAX_HISTORY)
+    .get();
+
+  const history = snap.docs.map((d, idx) => {
+    const x = d.data();
+    return {
+      index: idx,
+      id: d.id,
+      title: x.title || null,
+      content: x.content || null,
+      pushed_at: x.pushed_at || null,
+    };
+  });
+
+  return res.status(200).json({ slot: n, history, maxHistory: MAX_HISTORY });
+}
+
+// ── prompts_history_load ──────────────────────────────
+async function handlePromptsHistoryLoad(req, res, user, db) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { slot, historyIndex } = req.body || {};
+  const n = parseSlot(slot);
+  if (n === null) return res.status(400).json({ error: 'slot harus 0..' + (MAX_SLOTS - 1) });
+
+  const hIdx = Number(historyIndex);
+  if (!Number.isInteger(hIdx) || hIdx < 0 || hIdx >= MAX_HISTORY) {
+    return res.status(400).json({ error: 'historyIndex harus 0..' + (MAX_HISTORY - 1) });
+  }
+
+  const snap = await db
+    .collection(PROMPTS_HISTORY_COLLECTION)
+    .where('firebase_uid', '==', user.sub)
+    .where('slot', '==', n)
+    .orderBy('pushed_at', 'desc')
+    .limit(MAX_HISTORY)
+    .get();
+
+  if (hIdx >= snap.docs.length) {
+    return res.status(404).json({ error: 'History entry tidak ditemukan' });
+  }
+
+  const doc = snap.docs[hIdx];
+  const data = doc.data();
+  return res.status(200).json({
+    slot: n,
+    historyIndex: hIdx,
+    title: data.title || null,
+    content: data.content || null,
+    pushed_at: data.pushed_at || null,
+  });
 }
 
 // ── strokes ─────────────────────────────────────────

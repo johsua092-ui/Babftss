@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download, Undo2, Redo2, Lock, Unlock, ArrowRightLeft, RotateCcw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API = '/api/canvas';
@@ -445,14 +445,59 @@ const toolBtnStyle = { padding: 4, borderRadius: 6, cursor: 'pointer', display: 
 const actionBtnStyle = { display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6, cursor: 'pointer', backgroundColor: C.card, border: `1px solid ${C.borderLight}`, color: C.textDim, fontFamily: 'Inter,sans-serif', fontSize: 11, fontWeight: 600, transition: 'all 0.2s' };
 
 /* ══════════════════════════════════════════
-   PROMPTS TAB — 3 memory slot
+   PROMPTS TAB — 3 memory slot + lock + history
    ══════════════════════════════════════════ */
+
+/* ── Lock state helpers (localStorage) ── */
+const LOCK_STORAGE_KEY = 'canvas_slot_locks';
+function getStoredLocks() {
+    try { return JSON.parse(localStorage.getItem(LOCK_STORAGE_KEY)) || [false, false, false]; }
+    catch { return [false, false, false]; }
+}
+function setStoredLocks(locks) {
+    try { localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(locks)); } catch {}
+}
+
+/* ── Generic Dialog Overlay ── */
+function DialogOverlay({ children, onClose }) {
+    return (
+        <div className="animate-overlay-fade-in" onClick={onClose} style={{
+            position: 'absolute', inset: 0, zIndex: 50,
+            backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+        }}>
+            <div className="animate-dialog-pop-in" onClick={e => e.stopPropagation()} style={{
+                backgroundColor: C.panel, borderRadius: 12,
+                border: `1px solid ${C.border}`, padding: '20px 24px',
+                display: 'flex', flexDirection: 'column', gap: 14,
+                maxWidth: 340, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            }}>
+                {children}
+            </div>
+        </div>
+    );
+}
+
 function PromptsTab({ token }) {
     const [slots, setSlots] = useState([{ slot: 0, filled: false, title: null, content: '' }, { slot: 1, filled: false, title: null, content: '' }, { slot: 2, filled: false, title: null, content: '' }]);
     const [activeSlot, setActiveSlot] = useState(0);
     const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [loaded, setLoaded] = useState(false);
 
+    /* ── Lock state ── */
+    const [slotLocks, setSlotLocks] = useState(getStoredLocks);
+    const [lockAnim, setLockAnim] = useState(null);       // 'opening' | 'closing' | null
+    const [lockConfirm, setLockConfirm] = useState(null);  // 'lock' | 'unlock' | null
+    const [lockWarning, setLockWarning] = useState(false);  // "buka kunci" warning
+
+    /* ── History state ── */
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyData, setHistoryData] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyEmptyWarning, setHistoryEmptyWarning] = useState(null); // index number or null
+
+    /* ── Load slots from backend ── */
     useEffect(() => {
         (async () => {
             if (!token) return;
@@ -465,8 +510,36 @@ function PromptsTab({ token }) {
     }, [token]);
 
     const current = slots[activeSlot] || slots[0];
+    const isLocked = slotLocks[activeSlot] || false;
 
+    /* ── Toggle lock ── */
+    const requestToggleLock = () => {
+        if (isLocked) {
+            setLockConfirm('unlock');
+        } else {
+            setLockConfirm('lock');
+        }
+    };
+
+    const confirmToggleLock = (proceed) => {
+        if (!proceed) { setLockConfirm(null); return; }
+        const newLocks = [...slotLocks];
+        const willLock = !isLocked;
+        newLocks[activeSlot] = willLock;
+        setSlotLocks(newLocks);
+        setStoredLocks(newLocks);
+        setLockConfirm(null);
+        // Trigger animation
+        setLockAnim(willLock ? 'closing' : 'opening');
+        setTimeout(() => setLockAnim(null), 450);
+    };
+
+    /* ── Show lock warning ── */
+    const showLockWarning = () => setLockWarning(true);
+
+    /* ── Save slot ── */
     const saveSlot = async () => {
+        if (isLocked) { showLockWarning(); return; }
         if (!token || saving || !current.content.trim()) return;
         setSaving(true);
         await canvasApi('prompts', 'POST', token, { slot: activeSlot, title: current.title || `Slot ${activeSlot + 1}`, content: current.content });
@@ -475,18 +548,66 @@ function PromptsTab({ token }) {
         setSaving(false);
     };
 
+    /* ── Load slot ── */
+    const loadSlot = async () => {
+        if (isLocked) { showLockWarning(); return; }
+        if (!token || loading) return;
+        setLoading(true);
+        const { ok, data } = await canvasApi('prompts', 'GET', token, null, { slot: activeSlot });
+        if (ok && data.content) {
+            setSlots(prev => prev.map((s, i) => i === activeSlot ? { ...s, filled: true, title: data.title, content: data.content } : s));
+        }
+        setLoading(false);
+    };
+
+    /* ── Delete slot ── */
     const deleteSlot = async () => {
         if (!token) return;
         await canvasApi('prompts', 'DELETE', token, null, { slot: activeSlot });
         setSlots(prev => prev.map((s, i) => i === activeSlot ? { ...s, filled: false, title: null, content: '' } : s));
     };
 
+    /* ── Update current slot fields ── */
     const updateCurrent = (field, val) => {
+        // Editing title/content is allowed even when locked — no warning
         setSlots(prev => prev.map((s, i) => i === activeSlot ? { ...s, [field]: val } : s));
     };
 
+    /* ── Open history panel ── */
+    const openHistory = async () => {
+        if (isLocked) { showLockWarning(); return; }
+        setHistoryOpen(true);
+        setHistoryLoading(true);
+        const { ok, data } = await canvasApi('prompts_history', 'GET', token, null, { slot: activeSlot });
+        if (ok) setHistoryData(data.history || []);
+        setHistoryLoading(false);
+    };
+
+    /* ── Load from history ── */
+    const loadFromHistory = async (idx) => {
+        if (!historyData[idx] || !historyData[idx].content) {
+            setHistoryEmptyWarning(idx);
+            return;
+        }
+        const { ok, data } = await canvasApi('prompts_history_load', 'POST', token, { slot: activeSlot, historyIndex: idx });
+        if (ok && data.content) {
+            setSlots(prev => prev.map((s, i) => i === activeSlot ? { ...s, filled: true, title: data.title, content: data.content } : s));
+            setHistoryOpen(false);
+        }
+    };
+
+    /* ── Lock icon animation class ── */
+    const lockAnimClass = lockAnim === 'opening' ? 'animate-lock-open' : lockAnim === 'closing' ? 'animate-lock-close' : '';
+
+    /* ── Format timestamp ── */
+    const fmtTime = (ts) => {
+        if (!ts) return '';
+        const d = new Date(ts);
+        return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+
     return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, padding: 16, overflowY: 'auto' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, padding: 16, overflowY: 'auto', position: 'relative' }}>
             {/* Slot selector */}
             <div style={{ display: 'flex', gap: 8 }}>
                 {[0, 1, 2].map(i => (
@@ -500,6 +621,7 @@ function PromptsTab({ token }) {
                     }}>
                         {slots[i]?.filled && <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: C.accent }} />}
                         Slot {i + 1}
+                        {slotLocks[i] && <Lock size={10} style={{ opacity: 0.7 }} />}
                     </button>
                 ))}
             </div>
@@ -512,8 +634,42 @@ function PromptsTab({ token }) {
             <textarea value={current.content} onChange={e => updateCurrent('content', e.target.value)} placeholder="Tulis prompt / memory / catatan di sini..."
                 style={{ flex: 1, minHeight: 200, padding: '10px 12px', borderRadius: 8, backgroundColor: C.card, border: `1px solid ${C.borderLight}`, color: C.text, fontFamily: 'Inter,sans-serif', fontSize: 13, lineHeight: 1.6, outline: 'none', resize: 'vertical' }} />
 
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: 8 }}>
+            {/* ── Action row: Lock | History | Save | Load | Delete ── */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {/* Lock button */}
+                <button
+                    onClick={requestToggleLock}
+                    className={lockAnimClass}
+                    title={isLocked ? 'Buka kunci slot' : 'Kunci slot'}
+                    style={{
+                        padding: 8, borderRadius: 8, cursor: 'pointer',
+                        backgroundColor: isLocked ? C.goldDim : C.card,
+                        border: `1px solid ${isLocked ? C.gold : C.borderLight}`,
+                        color: isLocked ? C.gold : C.textDim,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all 0.2s',
+                    }}
+                >
+                    {isLocked ? <Lock size={15} /> : <Unlock size={15} />}
+                </button>
+
+                {/* History button (double arrows) */}
+                <button
+                    onClick={openHistory}
+                    title="Load Save Sebelumnya"
+                    style={{
+                        padding: 8, borderRadius: 8, cursor: 'pointer',
+                        backgroundColor: C.blueDim,
+                        border: `1px solid ${C.blue}`,
+                        color: C.blue,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all 0.2s',
+                    }}
+                >
+                    <ArrowRightLeft size={15} />
+                </button>
+
+                {/* Save button */}
                 <button onClick={saveSlot} disabled={saving || !current.content.trim()} style={{
                     flex: 1, padding: 8, borderRadius: 8, cursor: 'pointer',
                     backgroundColor: C.accentDim, border: `1px solid ${C.accent}`, color: C.accent,
@@ -521,18 +677,189 @@ function PromptsTab({ token }) {
                 }}>
                     <Save size={14} /> {saving ? 'Saving...' : 'Save'}
                 </button>
+
+                {/* Load button */}
+                <button onClick={loadSlot} disabled={loading || !current.filled} style={{
+                    padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                    backgroundColor: C.goldDim, border: `1px solid ${C.gold}`, color: C.gold,
+                    fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                    <RotateCcw size={14} /> {loading ? 'Loading...' : 'Load'}
+                </button>
+
+                {/* Delete button */}
                 {current.filled && (
                     <button onClick={deleteSlot} style={{
                         padding: 8, borderRadius: 8, cursor: 'pointer',
                         backgroundColor: C.dangerDim, border: `1px solid ${C.danger}`, color: C.danger,
                         fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                     }}>
-                        <Trash2 size={14} /> Delete
+                        <Trash2 size={14} />
                     </button>
                 )}
             </div>
 
+            {/* Locked slot indicator bar */}
+            {isLocked && (
+                <div style={{
+                    padding: '6px 12px', borderRadius: 8,
+                    backgroundColor: C.goldDim, border: `1px solid rgba(251,191,36,0.3)`,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontFamily: 'Inter,sans-serif', fontSize: 11, color: C.gold,
+                }}>
+                    <Lock size={12} /> Slot ini terkunci — Save, Load, dan History dinonaktifkan
+                </div>
+            )}
+
             {!loaded && <div style={{ color: C.textMuted, fontFamily: 'Inter,sans-serif', fontSize: 12, textAlign: 'center' }}>Loading slots...</div>}
+
+            {/* ══════════ LOCK CONFIRMATION DIALOG ══════════ */}
+            {lockConfirm && (
+                <DialogOverlay onClose={() => setLockConfirm(null)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: C.goldDim, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {lockConfirm === 'lock' ? <Lock size={22} color={C.gold} /> : <Unlock size={22} color={C.gold} />}
+                        </div>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: C.text, textAlign: 'center' }}>
+                            {lockConfirm === 'lock'
+                                ? 'Apakah anda ingin mengunci slot ini?'
+                                : 'Apakah anda ingin membuka kunci slot ini?'}
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <button onClick={() => confirmToggleLock(true)} style={{
+                            padding: '8px 24px', borderRadius: 8, cursor: 'pointer',
+                            backgroundColor: C.goldDim, border: `1px solid ${C.gold}`, color: C.gold,
+                            fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                        }}>Ya</button>
+                        <button onClick={() => confirmToggleLock(false)} style={{
+                            padding: '8px 24px', borderRadius: 8, cursor: 'pointer',
+                            backgroundColor: C.card, border: `1px solid ${C.borderLight}`, color: C.textDim,
+                            fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                        }}>Tidak</button>
+                    </div>
+                </DialogOverlay>
+            )}
+
+            {/* ══════════ LOCK WARNING DIALOG ══════════ */}
+            {lockWarning && (
+                <DialogOverlay onClose={() => setLockWarning(false)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: C.dangerDim, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Lock size={22} color={C.danger} />
+                        </div>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: C.text, textAlign: 'center' }}>
+                            Mohon buka kunci slot ini terlebih dahulu!
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <button onClick={() => setLockWarning(false)} style={{
+                            padding: '8px 32px', borderRadius: 8, cursor: 'pointer',
+                            backgroundColor: C.dangerDim, border: `1px solid ${C.danger}`, color: C.danger,
+                            fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                        }}>Oke</button>
+                    </div>
+                </DialogOverlay>
+            )}
+
+            {/* ══════════ HISTORY PANEL OVERLAY ══════════ */}
+            {historyOpen && (
+                <div className="animate-overlay-fade-in" onClick={() => setHistoryOpen(false)} style={{
+                    position: 'absolute', inset: 0, zIndex: 40,
+                    backgroundColor: 'rgba(0,0,0,0.45)',
+                    display: 'flex', justifyContent: 'flex-end',
+                }}>
+                    <div className="animate-panel-slide-in" onClick={e => e.stopPropagation()} style={{
+                        width: '50%', minWidth: 240, height: '100%',
+                        backgroundColor: C.panel, borderLeft: `1px solid ${C.border}`,
+                        padding: 16, display: 'flex', flexDirection: 'column', gap: 10,
+                        overflowY: 'auto',
+                    }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontFamily: 'Orbitron,sans-serif', fontWeight: 700, fontSize: 13, color: C.blue, letterSpacing: 0.5 }}>
+                                SAVE SEBELUMNYA
+                            </span>
+                            <button onClick={() => setHistoryOpen(false)} style={{
+                                background: 'transparent', border: 'none', cursor: 'pointer',
+                                color: C.textMuted, display: 'flex', padding: 4,
+                            }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: C.textMuted }}>
+                            Slot {activeSlot + 1} — 10 save terakhir
+                        </div>
+
+                        {/* History buttons */}
+                        {historyLoading ? (
+                            <div style={{ color: C.textMuted, fontFamily: 'Inter,sans-serif', fontSize: 12, textAlign: 'center', padding: 24 }}>
+                                Memuat history...
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {Array.from({ length: 10 }, (_, i) => {
+                                    const entry = historyData[i];
+                                    const hasData = entry && entry.content;
+                                    return (
+                                        <button key={i} onClick={() => loadFromHistory(i)} style={{
+                                            padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                                            backgroundColor: hasData ? C.card : 'rgba(17,24,39,0.5)',
+                                            border: `1px solid ${hasData ? C.borderLight : 'rgba(37,48,71,0.4)'}`,
+                                            color: hasData ? C.text : C.textMuted,
+                                            fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 600,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            transition: 'all 0.2s', textAlign: 'left',
+                                            opacity: hasData ? 1 : 0.5,
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' }}>
+                                                <RotateCcw size={13} style={{ flexShrink: 0, opacity: hasData ? 1 : 0.4 }} />
+                                                <div style={{ overflow: 'hidden' }}>
+                                                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        Load Save Sebelumnya [{i + 1}]
+                                                    </div>
+                                                    {hasData && entry.title && (
+                                                        <div style={{ fontSize: 10, color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {entry.title}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {hasData && entry.pushed_at && (
+                                                <span style={{ fontSize: 9, color: C.textMuted, flexShrink: 0, marginLeft: 8 }}>
+                                                    {fmtTime(entry.pushed_at)}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ══════════ HISTORY EMPTY WARNING ══════════ */}
+            {historyEmptyWarning !== null && (
+                <DialogOverlay onClose={() => setHistoryEmptyWarning(null)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: C.blueDim, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <AlertTriangle size={22} color={C.blue} />
+                        </div>
+                        <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: C.text, textAlign: 'center' }}>
+                            Belum ada save yang tertampung di tombol ini!
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <button onClick={() => setHistoryEmptyWarning(null)} style={{
+                            padding: '8px 32px', borderRadius: 8, cursor: 'pointer',
+                            backgroundColor: C.blueDim, border: `1px solid ${C.blue}`, color: C.blue,
+                            fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 600,
+                        }}>Ya</button>
+                    </div>
+                </DialogOverlay>
+            )}
         </div>
     );
 }
