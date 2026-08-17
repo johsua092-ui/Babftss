@@ -151,12 +151,14 @@ async function handlePost(req, res, user, db) {
         .collection(HISTORY_COLLECTION)
         .where('firebase_uid', '==', user.sub)
         .where('item_id', '==', itemId)
-        .orderBy('pushed_at', 'desc')
         .get();
 
+      // Urutkan di memori (terbaru dulu) — hindari composite index Firestore.
+      const historyDocs = historySnap.docs.sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0));
+
       // If we already have MAX_HISTORY entries, delete the oldest
-      if (historySnap.docs.length >= MAX_HISTORY) {
-        const toDelete = historySnap.docs.slice(MAX_HISTORY - 1);
+      if (historyDocs.length >= MAX_HISTORY) {
+        const toDelete = historyDocs.slice(MAX_HISTORY - 1);
         for (const d of toDelete) await d.ref.delete();
       }
 
@@ -216,11 +218,12 @@ async function handleHistory(req, res, user, db) {
     .collection(HISTORY_COLLECTION)
     .where('firebase_uid', '==', user.sub)
     .where('item_id', '==', id)
-    .orderBy('pushed_at', 'desc')
-    .limit(MAX_HISTORY)
     .get();
 
-  const history = snap.docs.map((d, idx) => {
+  const sorted = snap.docs
+    .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0))
+    .slice(0, MAX_HISTORY);
+  const history = sorted.map((d, idx) => {
     const x = d.data();
     return { index: idx, id: d.id, name: x.name || null, data: x.data || null, pushed_at: x.pushed_at || null };
   });
@@ -239,12 +242,13 @@ async function handleHistoryLoad(req, res, user, db) {
     .collection(HISTORY_COLLECTION)
     .where('firebase_uid', '==', user.sub)
     .where('item_id', '==', itemId)
-    .orderBy('pushed_at', 'desc')
-    .limit(MAX_HISTORY)
     .get();
 
-  if (hIdx >= snap.docs.length) return res.status(404).json({ error: 'History entry tidak ditemukan' });
-  const doc = snap.docs[hIdx];
+  const sorted = snap.docs
+    .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0))
+    .slice(0, MAX_HISTORY);
+  if (hIdx >= sorted.length) return res.status(404).json({ error: 'History entry tidak ditemukan' });
+  const doc = sorted[hIdx];
   const data = doc.data();
   return res.status(200).json({ itemId, historyIndex: hIdx, name: data.name || null, data: data.data || null, pushed_at: data.pushed_at || null });
 }
