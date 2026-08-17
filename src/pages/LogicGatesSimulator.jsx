@@ -1026,6 +1026,21 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel }) {
         <ColorWheelPicker
           hex={draftHex}
           onChange={setDraftHex}
+          onPickColor={async () => {
+            // Use browser native EyeDropper API (Chrome/Edge)
+            if (window.EyeDropper) {
+              try {
+                const dropper = new window.EyeDropper();
+                const result = await dropper.open();
+                setDraftHex(result.sRGBHex);
+              } catch {
+                // User cancelled the eyedropper
+              }
+            } else {
+              // Fallback: pick from workspace component/wire colors
+              // (would need parent state access — for now just alert)
+            }
+          }}
         />
         <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
           <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
