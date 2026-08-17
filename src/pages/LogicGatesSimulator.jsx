@@ -1005,8 +1005,8 @@ function DragGhost({ type, x, y }) {
 }
 
 /* ── Slot Color Picker Modal (with draft + Confirm/Cancel) ── */
-function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel }) {
-  const [draftHex, setDraftHex] = useState(slot.color);
+function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickColor }) {
+  const [draftHex, setDraftHex] = useState(slot._draftHex || slot.color);
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1003,
@@ -1026,21 +1026,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel }) {
         <ColorWheelPicker
           hex={draftHex}
           onChange={setDraftHex}
-          onPickColor={async () => {
-            // Use browser native EyeDropper API (Chrome/Edge)
-            if (window.EyeDropper) {
-              try {
-                const dropper = new window.EyeDropper();
-                const result = await dropper.open();
-                setDraftHex(result.sRGBHex);
-              } catch {
-                // User cancelled the eyedropper
-              }
-            } else {
-              // Fallback: pick from workspace component/wire colors
-              // (would need parent state access — for now just alert)
-            }
-          }}
+          onPickColor={() => onPickColor && onPickColor(draftHex)}
         />
         <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
           <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
@@ -3572,6 +3558,7 @@ export default function LogicGatesSimulator({ setPage }) {
       // ── PICK FROM WORKSPACE MODE (eyedropper): prioritas tertinggi, dicek SEBELUM paintMode ──
       if (pickFromWorkspaceRef.current) {
         const savedPicker = pickFromWorkspaceRef.current;
+        const isSlotPicker = savedPicker.source === 'slot';
         let pickedHex = null;
         if (hit) {
           const comp = hit.comp;
@@ -3585,14 +3572,22 @@ export default function LogicGatesSimulator({ setPage }) {
           }
         }
         if (pickedHex) {
-          setColorPicker({ ...savedPicker, hex: pickedHex });
+          if (isSlotPicker) {
+            setSlotColorEdit({ slotIndex: savedPicker.slotIndex, draftHex: pickedHex });
+          } else {
+            setColorPicker({ ...savedPicker, hex: pickedHex });
+          }
           setPickFromWorkspace(null);
           canvas.style.cursor = 'default';
           setStatus('Color picked: ' + pickedHex.toUpperCase());
         } else {
           setPickFromWorkspace(null);
           canvas.style.cursor = 'default';
-          setColorPicker(savedPicker);
+          if (isSlotPicker) {
+            setSlotColorEdit({ slotIndex: savedPicker.slotIndex, draftHex: savedPicker.draftHex });
+          } else {
+            setColorPicker(savedPicker);
+          }
           setStatus('Pick cancelled — click a component or wire next time');
         }
         return;
@@ -4261,6 +4256,7 @@ export default function LogicGatesSimulator({ setPage }) {
         // ── PICK FROM WORKSPACE MODE (mobile): prioritas tertinggi, dicek SEBELUM paintMode ──
         if (pickFromWorkspaceRef.current) {
           const savedPicker = pickFromWorkspaceRef.current;
+          const isSlotPicker = savedPicker.source === 'slot';
           let pickedHex = null;
           if (hit) {
             const comp = hit.comp;
@@ -4274,12 +4270,20 @@ export default function LogicGatesSimulator({ setPage }) {
             }
           }
           if (pickedHex) {
-            setColorPicker({ ...savedPicker, hex: pickedHex });
+            if (isSlotPicker) {
+              setSlotColorEdit({ slotIndex: savedPicker.slotIndex, draftHex: pickedHex });
+            } else {
+              setColorPicker({ ...savedPicker, hex: pickedHex });
+            }
             setPickFromWorkspace(null);
             setStatus('Color picked: ' + pickedHex.toUpperCase());
           } else {
             setPickFromWorkspace(null);
-            setColorPicker(savedPicker);
+            if (isSlotPicker) {
+              setSlotColorEdit({ slotIndex: savedPicker.slotIndex, draftHex: savedPicker.draftHex });
+            } else {
+              setColorPicker(savedPicker);
+            }
             setStatus('Pick cancelled — tap a component or wire next time');
           }
           return;
@@ -6694,12 +6698,35 @@ export default function LogicGatesSimulator({ setPage }) {
               {/* ── Slot Color Picker Modal ── */}
               {slotColorEdit !== null && <SlotColorPickerModal
                 slotIndex={slotColorEdit.slotIndex}
-                slot={saveSlots[slotColorEdit.slotIndex]}
+                slot={{ ...saveSlots[slotColorEdit.slotIndex], _draftHex: slotColorEdit.draftHex }}
                 onConfirm={(sIdx, newColor) => {
                   setSaveSlots(prev => prev.map((s, i) => i === sIdx ? { ...s, color: newColor } : s));
                   setSlotColorEdit(null);
                 }}
                 onCancel={() => setSlotColorEdit(null)}
+                onPickColor={(currentDraftHex) => {
+                  // Save current slot color edit state, close modal, enter pick-from-workspace mode
+                  const savedState = { slotIndex: slotColorEdit.slotIndex, draftHex: currentDraftHex, source: 'slot' };
+                  setSlotColorEdit(null);
+                  setPickFromWorkspace(savedState);
+                  // Generate custom eyedropper cursor (same as workspace picker)
+                  const curCanvas = document.createElement('canvas');
+                  curCanvas.width = 48; curCanvas.height = 48;
+                  const ctx = curCanvas.getContext('2d');
+                  ctx.save();
+                  ctx.translate(24, 24);
+                  ctx.rotate(-Math.PI / 4);
+                  ctx.fillStyle = '#333'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+                  ctx.beginPath(); ctx.roundRect(-3, -20, 6, 28, 3); ctx.fill(); ctx.stroke();
+                  ctx.fillStyle = '#555'; ctx.beginPath(); ctx.ellipse(0, -20, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                  ctx.fillStyle = '#333'; ctx.beginPath(); ctx.moveTo(-2, 8); ctx.lineTo(2, 8); ctx.lineTo(0.7, 18); ctx.lineTo(-0.7, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
+                  ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(0, 20, 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                  ctx.restore();
+                  const cursorUrl = curCanvas.toDataURL('image/png');
+                  const canvas = document.querySelector('canvas');
+                  if (canvas) canvas.style.cursor = `url('${cursorUrl}') 6 26, crosshair`;
+                  setStatus('Click a component or wire to pick its color');
+                }}
               />}
 
             </div>
