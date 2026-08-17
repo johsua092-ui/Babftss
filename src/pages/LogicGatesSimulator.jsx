@@ -1038,15 +1038,41 @@ export default function LogicGatesSimulator({ setPage }) {
   }, []);
 
   // Debounced history recording: track changes to components/wires
+  // Debounce (300ms) prevents recording every intermediate drag pixel —
+  // only the final resting state is recorded. Without this, a 1-second
+  // drag at 60fps would produce 60 snapshots, pushing meaningful states
+  // out of the 50-entry buffer and making undo step one pixel at a time.
   const lastRecordedRef = useRef({ comps: '[]', wrs: '[]' });
+  const historyDebounceRef = useRef(null);
+  const pendingHistoryRef = useRef(null);
   useEffect(() => {
-    if (skipHistoryRef.current) { skipHistoryRef.current = false; return; }
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      // Cancel any pending debounced recording (stale after undo/redo)
+      if (historyDebounceRef.current) { clearTimeout(historyDebounceRef.current); historyDebounceRef.current = null; }
+      pendingHistoryRef.current = null;
+      return;
+    }
     const compsKey = JSON.stringify(components);
     const wrsKey = JSON.stringify(wires);
     if (compsKey !== lastRecordedRef.current.comps || wrsKey !== lastRecordedRef.current.wrs) {
-      lastRecordedRef.current = { comps: compsKey, wrs: wrsKey };
-      pushCircuitHistory(components, wires);
+      // Store the pending state (will be committed after debounce)
+      pendingHistoryRef.current = { comps: components, wrs: wires, compsKey, wrsKey };
+      // Reset debounce timer
+      if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current);
+      historyDebounceRef.current = setTimeout(() => {
+        const p = pendingHistoryRef.current;
+        if (!p) return;
+        // Double-check dedup (state might have reverted during debounce)
+        if (p.compsKey !== lastRecordedRef.current.comps || p.wrsKey !== lastRecordedRef.current.wrs) {
+          lastRecordedRef.current = { comps: p.compsKey, wrs: p.wrsKey };
+          pushCircuitHistory(p.comps, p.wrs);
+        }
+        pendingHistoryRef.current = null;
+        historyDebounceRef.current = null;
+      }, 300);
     }
+    return () => { if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current); };
   }, [components, wires]);
 
   const undoCircuit = () => {
