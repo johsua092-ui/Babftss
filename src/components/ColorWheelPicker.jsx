@@ -341,26 +341,26 @@ export default function ColorWheelPicker({ hex, onChange }) {
       boxShadow: 'inset 1px 1px 0 #4a5d75, inset -1px -1px 0 #4a5d75',
       fontFamily: 'Arial,sans-serif',
     }}>
-      {/* Top row: Wheel + HSV sliders */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        {/* Left column: Reset Color button */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: 0 }}>
-          <button
-            onClick={() => onChange('#ffffff')}
-            onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
-            onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
-            style={{
-              width: 70, padding: '8px 4px', fontSize: 11, fontWeight: 700,
-              color: '#fff', background: '#4a5d75', border: '1px solid #000',
-              borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
-              textTransform: 'uppercase', letterSpacing: 0.5,
-              lineHeight: 1.3, transition: 'background 0.15s',
-            }}
-            title="Reset color to white (center of wheel)"
-          >
-            Reset<br/>Color
-          </button>
-        </div>
+      {/* Top row: Reset Color button + Wheel + HSV sliders */}
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        {/* Reset Color button — flush left of color wheel */}
+        <button
+          onClick={() => onChange('#ffffff')}
+          onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
+          onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
+          style={{
+            width: 56, height: 56, padding: 0, fontSize: 10, fontWeight: 700,
+            color: '#fff', background: '#4a5d75', border: '1px solid #000',
+            borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
+            textTransform: 'uppercase', letterSpacing: 0.3,
+            lineHeight: 1.2, transition: 'background 0.15s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            textAlign: 'center', flexShrink: 0,
+          }}
+          title="Reset color to white (center of wheel)"
+        >
+          Reset<br/>Color
+        </button>
         {/* Color wheel */}
         <canvas
           ref={wheelRef}
