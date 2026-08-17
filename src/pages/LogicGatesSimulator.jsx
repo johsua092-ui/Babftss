@@ -6816,7 +6816,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
           {/* Preview: wire = ON/OFF (redup/terang), comp = solid color saja */}
           {colorPicker.targetType === 'wire' ? (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
               <div style={{ flex: 1, textAlign: 'center' }}>
                 <div
                   style={{
@@ -6845,7 +6845,7 @@ export default function LogicGatesSimulator({ setPage }) {
               </div>
             </div>
           ) : (
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 6 }}>
               <div
                 style={{
                   height: 32, borderRadius: 6, marginBottom: 4,
@@ -6858,13 +6858,8 @@ export default function LogicGatesSimulator({ setPage }) {
             </div>
           )}
 
-          {/* Hint: tekan ✓ untuk konfirmasi */}
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 8, textAlign: 'center', fontStyle: 'italic' }}>
-            Tekan ✓ untuk menerapkan warna
-          </div>
-
-          {/* Action buttons: Confirm ✓ | Random/Reset | Close (batal) */}
-          <div style={{ display: 'flex', gap: 8 }}>
+          {/* Action buttons: Confirm ✓ | Reset/Random | Cancel — tepat di bawah preview */}
+          <div style={{ display: 'flex', gap: 6 }}>
             {/* ✓ Confirm — terapkan warna yang dipilih ke target */}
             <button
               onClick={() => {
@@ -6885,15 +6880,15 @@ export default function LogicGatesSimulator({ setPage }) {
                 setColorPicker(null);
               }}
               style={{
-                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 700,
+                flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
                 borderRadius: 6, color: '#ffffff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
                 boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
               }}
             >
-              <Check size={13} strokeWidth={2.5} />
-              <span>Confirm</span>
+              <Check size={12} strokeWidth={2.5} />
+              Confirm
             </button>
             {colorPicker.targetType === 'wire' ? (
               <button
@@ -6912,12 +6907,12 @@ export default function LogicGatesSimulator({ setPage }) {
                   setStatus('Wire color randomized');
                 }}
                 style={{
-                  flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
                   background: '#334155', border: '1px solid #475569',
                   borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
                 }}
               >
-                Random
+                Reset
               </button>
             ) : (
               <button
@@ -6930,7 +6925,7 @@ export default function LogicGatesSimulator({ setPage }) {
                   setStatus('Component color reset to default');
                 }}
                 style={{
-                  flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
                   background: '#334155', border: '1px solid #475569',
                   borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
                 }}
@@ -6938,17 +6933,12 @@ export default function LogicGatesSimulator({ setPage }) {
                 Reset
               </button>
             )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button
               onClick={() => {
-                // Close = BATAL. Revert ke originalHex kalau user sudah ubah preview.
+                // Cancel = BATAL. Revert ke originalHex.
                 const origHex = colorPicker.originalHex;
                 const tgtType = colorPicker.targetType;
                 const tgtId = colorPicker.targetId;
-                // Revert target ke original color (kalau preview berubah tapi belum confirm).
-                // Karena kita gak lagi apply live, revert cuma perlu kalau ada race condition.
-                // Tapi untuk safety, tetap revert explicit.
                 if (tgtType === 'comp') {
                   setComponents(prevComps => prevComps.map(c =>
                     c.id === tgtId ? { ...c, userColor: origHex } : c
@@ -6962,7 +6952,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 setStatus('Color change cancelled');
               }}
               style={{
-                flex: 1, padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
                 background: '#1e293b', border: '1px solid #475569',
                 borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
               }}
