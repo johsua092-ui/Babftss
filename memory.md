@@ -2928,3 +2928,54 @@ Task V1 (layout) & V2 (kamera/bentuk/background) SUDAH selesai dan terverifikasi
   5. Gerakkan kursor keluar dari area canvas → ghost hilang (tidak nyangkut di posisi terakhir).
   6. Klik-kanan drag (orbit kamera) sambil tool "Place" aktif → ghost hilang selama orbit, tidak ikut orbit dengan aneh.
   7. Gerakkan mouse cepat-cepat di atas grid dalam waktu lama → tidak ada lag/patah-patah yang berasa (indikasi optimisasi "render ulang cuma kalau posisi berubah" jalan dengan benar).
+
+---
+
+## Bagian 44 — LogicGatesSimulator: Save Slot Color Picker & Cartridge Color Fix (18 Aug 2026)
+
+**Masalah 1 — Confirm/Cancel button pada SlotColorPickerModal:**
+- Sebelumnya modal tidak punya tombol Confirm & Cancel yang jelas.
+- Ditambahkan tombol Confirm (hijau, ikon ✓) dan Cancel (abu-abu) di bawah ColorWheelPicker.
+- Confirm memanggil `onConfirm(slotIndex, draftHex)`, Cancel memanggil `onCancel()`.
+
+**Masalah 2 — Warna slot tidak berubah setelah Confirm:**
+- **Akar masalah:** Warna body cartridge (gradient utama slot card) di-hardcode di array `cartColors` — TIDAK diturunkan dari `slot.color`. Saat user ganti warna & tekan Confirm, hanya kotak kecil 24×24px yang berubah, seluruh body cartridge tetap pakai warna hardcoded.
+- **Perbaikan:** Ganti hardcoded `cartColors` dengan kalkulasi dinamis dari `slot.color` via `hexToHsl` + `hslToHex`. Formula: ambil **hue** dari `slot.color`, pakai saturasi & lightness tetap untuk estetika cartridge (muted, profesional).
+
+**Masalah 3 — Formula HSL awal menghasilkan warna terlalu vivid:**
+- Formula pertama (`Math.min(slotL + 5, 45)` dll) mempertahankan saturasi tinggi (91%), menghasilkan warna cartridge terlalu terang/vivid — jauh dari desain asli yang muted & gelap. User melaporkan "color picker tidak bisa dipakai" karena hasilnya terlihat rusak.
+- **Perbaikan final:** Formula "hue-only" — hanya ambil hue dari `slot.color`, saturasi & lightness tetap sesuai estetika cartridge.
+
+**Masalah 4 — Bulatan warna di pojok kiri atas mengganggu:**
+- User minta bulatan warna kecil (14×14, `position: absolute, top: 8, left: 8`) dibuat invisible tapi tetap ada di DOM.
+- Ikon gembok mini (Lock) dipindah dari pojok kanan (`top: 6, right: 50`) ke pojok kiri atas (`top: 4, left: 4`), menimpa posisi bulatan warna yang sudah invisible.
+- Saat slot di-lock → gembok kuning muncul di kiri atas. Saat unlock → kiri atas kosong.
+
+### Formula Warna Cartridge (FINAL — WAJIB DIPERTAHANKAN)
+
+```js
+// Di dalam saveSlots.map((slot, idx) => { ... })
+const { h: slotH } = hexToHsl(slot.color || '#3b82f6');
+const cc = {
+  body:  hslToHex(slotH, 50, 35),   // muted medium-dark
+  dark:  hslToHex(slotH, 35, 14),   // sangat gelap, desaturated
+  light: hslToHex(slotH, 55, 48),   // lebih terang, tetap muted
+};
+```
+
+**Konsekuensi penting untuk slot baru:**
+- Saat menambah slot baru, **WAJIB** set `slot.color` ke hex warna yang valid (default: salah satu dari `['#3b82f6', '#8b5cf6', '#ec4899']` atau warna lain sesuai pilihan user).
+- Formula di atas otomatis menghitung warna cartridge dari `slot.color` — TIDAK perlu hardcode warna cartridge lagi.
+- Jika `slot.color` undefined/null, fallback ke `'#3b82f6'` (biru Tailwind).
+
+### File yang diubah
+
+- `src/pages/LogicGatesSimulator.jsx` — 3 area:
+  1. `cartColors` hardcoded → formula HSL hue-only (baris ~6055-6061)
+  2. Slot indicator dot → `visibility: hidden` (baris ~6285)
+  3. Lock icon → pindah ke `top: 4, left: 4` (baris ~6290)
+
+### Verifikasi
+
+- `npx vite build` sukses 0 error.
+- Git push: commit `6922e22` ke `origin/main`.

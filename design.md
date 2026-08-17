@@ -953,3 +953,51 @@ di `LogicGatesCircuit.jsx` dihapus, dan slot Card 17 dikosongkan.
 Jika di masa depan user ingin membuat T Flip-Flop lagi, **WAJIB** mengikuti
 TEMPLATE Card 16 (lihat Bagian 36) dengan topologi yang sesuai. Jangan gunakan
 apapun dari Card 17 yang sudah dihapus sebagai referensi.
+
+---
+
+## 37. SISTEM WARNA CARTRIDGE SLOT — LOGIC GATES SIMULATOR (WAJIB DIPERTAHANKAN)
+
+### 37.1 Prinsip
+
+Warna body cartridge save slot **TIDAK** di-hardcode — diturunkan secara dinamis dari `slot.color` via formula HSL "hue-only". Ini memastikan saat user ganti warna via color picker, seluruh cartridge card (gradient, shadow, groove) ikut berubah, bukan hanya kotak kecil 24×24px.
+
+### 37.2 Formula (FINAL)
+
+```js
+const { h: slotH } = hexToHsl(slot.color || '#3b82f6');
+const cc = {
+  body:  hslToHex(slotH, 50, 35),   // muted medium-dark
+  dark:  hslToHex(slotH, 35, 14),   // sangat gelap, desaturated
+  light: hslToHex(slotH, 55, 48),   // lebih terang, tetap muted
+};
+```
+
+**Hanya hue (rona) yang diambil dari `slot.color`.** Saturasi & lightness tetap sesuai estetika cartridge — muted, gelap, profesional. Ini menjaga tampilan cartridge konsisten walau user pilih warna apapun.
+
+### 37.3 Default Warna Slot
+
+| Slot | Default `slot.color` | Hue | Cartridge body |
+|------|---------------------|-----|----------------|
+| 1 | `#3b82f6` (biru) | 217° | `#2d4f86` |
+| 2 | `#8b5cf6` (ungu) | 258° | `#472d86` |
+| 3 | `#ec4899` (pink) | 330° | `#862d59` |
+
+### 37.4 Aturan untuk Slot Baru
+
+- **WAJIB** set `slot.color` ke hex warna valid saat membuat slot baru.
+- Default: rotasi dari `['#3b82f6', '#8b5cf6', '#ec4899']` atau warna pilihan user.
+- Jika `slot.color` undefined/null → fallback `'#3b82f6'`.
+- **DILARANG** hardcode warna cartridge — formula di atas yang menentukan.
+
+### 37.5 Elemen Visual Slot Card
+
+| Elemen | Posisi | Status |
+|--------|--------|--------|
+| Bulatan warna (indicator dot) | `position: absolute, top: 8, left: 8` (14×14) | `visibility: hidden` — tetap di DOM tapi invisible |
+| Ikon gembok (Lock) | `position: absolute, top: 4, left: 4` (20×20) | Muncul hanya saat `slotLocks[idx] === true` — menimpa posisi bulatan warna |
+| Color swatch (picker trigger) | Di dalam info area (24×24) | Klik → buka `SlotColorPickerModal` |
+
+### 37.6 Fungsi Pendukung
+
+`hexToHsl(hex)` dan `hslToHex(h, s, l)` sudah ada di `LogicGatesSimulator.jsx` (baris ~91-118). Kedua fungsi ini WAJIB dipertahankan dan tidak boleh diubah tanpa pengujian visual menyeluruh.
