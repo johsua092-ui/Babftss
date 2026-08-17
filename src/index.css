@@ -153,3 +153,28 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ═══ Custom Scrollbar — Sleek Dark Theme ═══ */
+.slot-desc-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.slot-desc-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+}
+.slot-desc-scroll::-webkit-scrollbar-thumb {
+  background: rgba(96, 165, 250, 0.35);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.slot-desc-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(96, 165, 250, 0.6);
+}
+.slot-desc-scroll::-webkit-scrollbar-button {
+  display: none;
+}
+/* Firefox */
+.slot-desc-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.35) rgba(255, 255, 255, 0.03);
+}

@@ -6064,6 +6064,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           </div>
                           {/* Description */}
                           <textarea
+                            className="slot-desc-scroll"
                             value={slot.description}
                             onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, description: e.target.value } : s))}
                             placeholder="Deskripsi..." maxLength={200} rows={3}
