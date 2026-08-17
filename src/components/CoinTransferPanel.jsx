@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users } from 'lucide-react';
+import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users, Inbox } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
@@ -399,6 +399,19 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
               </button>
             ))}
           </div>
+          {/* Live tax preview */}
+          {validAmount && (
+            <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'Inter,sans-serif', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {isAdmin ? (
+                <span style={{ color: '#4ade80' }}>🛡️ Tax-free (admin)</span>
+              ) : (
+                <>
+                  <span style={{ color: '#fbbf24' }}>💰 Tax 5%: {Math.ceil(parsedAmount * 0.05)} gold</span>
+                  <span>→ Penerima dapat: <strong style={{ color: '#4ade80' }}>{parsedAmount - Math.ceil(parsedAmount * 0.05)}</strong></span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Note (optional) */}
@@ -427,6 +440,8 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
           <div style={s.successBox}>
             <strong>Transfer berhasil!</strong><br />
             {success.amount && `${success.amount} gold dikirim`}
+            {success.tax > 0 && <span style={{ color: '#fbbf24' }}> (tax: {success.tax}, diterima: {success.receiveAmount})</span>}
+            {success.tax === 0 && success.receiveAmount && ' (tax-free)'}
             {success.targetUid && ` ke ${targetName || success.targetUid.slice(0, 12) + '...'}`}
             {success.fromBalance !== undefined && ` — Saldo: ${success.fromBalance}`}
             {success.targetNewBalance !== undefined && ` → Tujuan: ${success.targetNewBalance}`}

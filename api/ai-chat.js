@@ -1,6 +1,6 @@
-import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
+import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin, getPunyaSiJawaFirestore } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -87,6 +87,41 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Internal server error" });
       }
     }
+    if (action === "inbox") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        await ensureUserDoc(user.sub, user.email, user.name);
+        const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
+        const messages = await getInbox(user.sub, limit);
+        const unreadCount = await getUnreadInboxCount(user.sub);
+        return res.status(200).json({ messages, unreadCount });
+      } catch (e) {
+        console.error("[ai-chat] inbox error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    if (action === "tax-info") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const admin = isAdmin(user);
+        const amount = parseInt(req.query?.amount || "0", 10);
+        const info = {
+          rate: 0.05,
+          ratePercent: "5%",
+          adminTaxFree: true,
+        };
+        if (amount > 0) {
+          info.tax = admin ? 0 : getTransferTax(amount);
+          info.receiveAmount = admin ? amount : getReceiveAmount(amount);
+        }
+        return res.status(200).json(info);
+      } catch (e) {
+        console.error("[ai-chat] tax-info error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
     return res.status(200).json({ status: "ok" });
   }
 
@@ -158,12 +193,15 @@ export default async function handler(req, res) {
       if (!amount || typeof amount !== "number" || amount < 1 || amount > 1000) return res.status(400).json({ error: "Amount wajib 1-1000 gold" });
       if (resolvedUid === uid) return res.status(400).json({ error: "Nggak bisa transfer ke diri sendiri" });
       if (admin) {
+        // Admin transfers are tax-free
         const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
-        return res.status(200).json({ message: "Gold dikirim (admin grant)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, targetNewBalance: nb });
+        return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb });
       }
       try {
-        const result = await transferGold(uid, resolvedUid, amount, { note: note || null });
-        return res.status(200).json({ message: "Transfer berhasil!", ...result });
+        const tax = getTransferTax(amount);
+        const receiveAmount = getReceiveAmount(amount);
+        const result = await transferGold(uid, resolvedUid, amount, { note: note || null, fromEmail: user.email || null, fromName: user.name || null });
+        return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result });
       } catch (e) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
         if (e.message === "recipient not found") return res.status(404).json({ error: "User tujuan tidak ditemukan" });
@@ -252,6 +290,34 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error("[ai-chat] bulk-deduct error:", e?.message || e);
         return res.status(500).json({ error: "Bulk deduct gagal: " + (e?.message || "unknown error") });
+      }
+    }
+
+    // ── Inbox: mark message read ──
+    if (action === "inbox-read") {
+      const { messageId } = req.body || {};
+      if (!messageId || typeof messageId !== "string") {
+        return res.status(400).json({ error: "messageId wajib diisi" });
+      }
+      try {
+        await markInboxRead(uid, messageId);
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        if (e.message === "not your message") return res.status(403).json({ error: "Bukan pesan kamu" });
+        if (e.message === "message not found") return res.status(404).json({ error: "Pesan tidak ditemukan" });
+        console.error("[ai-chat] inbox-read error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+
+    // ── Inbox: mark all read ──
+    if (action === "inbox-read-all") {
+      try {
+        const count = await markAllInboxRead(uid);
+        return res.status(200).json({ ok: true, count });
+      } catch (e) {
+        console.error("[ai-chat] inbox-read-all error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
       }
     }
 
