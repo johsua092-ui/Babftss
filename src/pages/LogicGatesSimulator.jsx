@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
@@ -1131,6 +1131,21 @@ export default function LogicGatesSimulator({ setPage }) {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState(null); // { slotIndex, action: 'save'|'load' }
   const [saveStatus, setSaveStatus] = useState(null); // { message, type: 'success'|'error' }
+
+  /* ── Slot Lock state (localStorage) ── */
+  const LOCK_KEY = 'circuit_slot_locks';
+  const getStoredLocks = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY)) || [false, false, false]; } catch { return [false, false, false]; } };
+  const setStoredLocks = (locks) => { try { localStorage.setItem(LOCK_KEY, JSON.stringify(locks)); } catch {} };
+  const [slotLocks, setSlotLocks] = useState(getStoredLocks);
+  const [lockAnim, setLockAnim] = useState(null);       // 'opening' | 'closing' | null
+  const [lockConfirm, setLockConfirm] = useState(null);  // { slotIndex, action: 'lock'|'unlock' }
+  const [lockWarning, setLockWarning] = useState(false);
+
+  /* ── Save History state ── */
+  const [historyOpen, setHistoryOpen] = useState(null);  // slotIndex or null
+  const [historyData, setHistoryData] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyEmptyWarning, setHistoryEmptyWarning] = useState(null); // index number or null
 
   // Load all save slots from backend on mount
   useEffect(() => {
@@ -5979,9 +5994,69 @@ export default function LogicGatesSimulator({ setPage }) {
 
                         {/* Action buttons area */}
                         <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {/* Lock + History row */}
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {/* Lock button */}
+                            <button
+                              onClick={() => {
+                                const isL = slotLocks[idx] || false;
+                                setLockConfirm({ slotIndex: idx, action: isL ? 'unlock' : 'lock' });
+                              }}
+                              className={lockAnim && lockAnim.slotIndex === idx ? (lockAnim.type === 'opening' ? 'animate-lock-open' : 'animate-lock-close') : ''}
+                              title={slotLocks[idx] ? 'Buka kunci slot' : 'Kunci slot'}
+                              style={{
+                                flex: 1, padding: '6px 0', borderRadius: 8,
+                                background: slotLocks[idx]
+                                  ? 'linear-gradient(180deg, #fbbf24 0%, #d4a020 100%)'
+                                  : 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                                border: `2px solid ${slotLocks[idx] ? '#b8960e' : '#2a3548'}`,
+                                boxShadow: slotLocks[idx]
+                                  ? '0 3px 0 #8a6e18, 0 4px 8px rgba(0,0,0,0.3)'
+                                  : '0 2px 0 #1a2538',
+                                color: slotLocks[idx] ? '#3a2800' : '#8aa4c0',
+                                fontSize: 14, fontWeight: 900, cursor: 'pointer',
+                                fontFamily: '"Inter", sans-serif',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              {slotLocks[idx] ? <Lock size={13} /> : <Unlock size={13} />}
+                            </button>
+                            {/* History button (double arrows) */}
+                            <button
+                              onClick={async () => {
+                                if (slotLocks[idx]) { setLockWarning(true); return; }
+                                setHistoryOpen(idx);
+                                setHistoryLoading(true);
+                                try {
+                                  const token = await getIdToken();
+                                  const res = await fetch(`/api/circuits?action=history&id=${slot.slotId}`, { headers: { Authorization: `Bearer ${token}` } });
+                                  if (res.ok) { const d = await res.json(); setHistoryData(d.history || []); }
+                                  else setHistoryData([]);
+                                } catch { setHistoryData([]); }
+                                setHistoryLoading(false);
+                              }}
+                              title="Load Save Sebelumnya"
+                              style={{
+                                flex: 1, padding: '6px 0', borderRadius: 8,
+                                background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                                border: '2px solid #2563eb',
+                                boxShadow: '0 3px 0 #1d4ed8, 0 4px 8px rgba(0,0,0,0.3)',
+                                color: '#fff', fontSize: 14, fontWeight: 900, cursor: 'pointer',
+                                fontFamily: '"Inter", sans-serif',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              <ArrowRightLeft size={13} />
+                            </button>
+                          </div>
                           {/* Save button — hot pink pill */}
                           <button
-                            onClick={() => setSaveConfirm({ slotIndex: idx, action: 'save' })}
+                            onClick={() => {
+                              if (slotLocks[idx]) { setLockWarning(true); return; }
+                              setSaveConfirm({ slotIndex: idx, action: 'save' });
+                            }}
                             disabled={saveLoading}
                             style={{
                               width: '100%', padding: '10px 0', borderRadius: 50,
@@ -6000,7 +6075,10 @@ export default function LogicGatesSimulator({ setPage }) {
                           </button>
                           {/* Load button — lime green chunky */}
                           <button
-                            onClick={() => setSaveConfirm({ slotIndex: idx, action: 'load' })}
+                            onClick={() => {
+                              if (slotLocks[idx]) { setLockWarning(true); return; }
+                              setSaveConfirm({ slotIndex: idx, action: 'load' });
+                            }}
                             disabled={saveLoading || !hasData}
                             style={{
                               width: '100%', padding: hasData ? '12px 0' : '10px 0', borderRadius: 14,
@@ -6030,6 +6108,19 @@ export default function LogicGatesSimulator({ setPage }) {
                           boxShadow: `0 0 6px ${slot.color}80, inset 0 -2px 3px rgba(0,0,0,0.3)`,
                           border: '2px solid rgba(255,255,255,0.2)',
                         }} />
+                        {/* Lock indicator overlay on card */}
+                        {slotLocks[idx] && (
+                          <div style={{
+                            position: 'absolute', top: 6, right: 50,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 20, height: 20, borderRadius: 6,
+                            background: 'linear-gradient(180deg, #fbbf24 0%, #d4a020 100%)',
+                            border: '1px solid #b8960e',
+                            boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                          }}>
+                            <Lock size={10} color="#3a2800" />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -6110,6 +6201,246 @@ export default function LogicGatesSimulator({ setPage }) {
                         TIDAK
                       </button>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Lock Confirmation Dialog ── */}
+              {lockConfirm && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1002,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.7)',
+                }}>
+                  <div className="animate-dialog-pop-in" style={{
+                    background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 100%)',
+                    borderRadius: 20, padding: '24px 28px',
+                    border: '3px solid #5a7a9a',
+                    boxShadow: '0 0 0 2px #1a2744, 0 20px 60px rgba(0,0,0,0.6)',
+                    display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center',
+                    maxWidth: 400, textAlign: 'center',
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: '50%',
+                      background: 'linear-gradient(180deg, #fbbf24 0%, #d4a020 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(251,191,36,0.3)',
+                    }}>
+                      {lockConfirm.action === 'lock' ? <Lock size={24} color="#3a2800" /> : <Unlock size={24} color="#3a2800" />}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f0f4f8', fontFamily: '"Inter", sans-serif' }}>
+                      {lockConfirm.action === 'lock'
+                        ? 'Apakah anda ingin mengunci slot ini?'
+                        : 'Apakah anda ingin membuka kunci slot ini?'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, width: '100%' }}>
+                      <button onClick={() => {
+                        const newLocks = [...slotLocks];
+                        const willLock = lockConfirm.action === 'lock';
+                        newLocks[lockConfirm.slotIndex] = willLock;
+                        setSlotLocks(newLocks);
+                        setStoredLocks(newLocks);
+                        setLockAnim({ slotIndex: lockConfirm.slotIndex, type: willLock ? 'closing' : 'opening' });
+                        setTimeout(() => setLockAnim(null), 450);
+                        setLockConfirm(null);
+                      }} style={{
+                        flex: 1, padding: '12px 0', borderRadius: 50,
+                        background: 'linear-gradient(180deg, #fbbf24 0%, #d4a020 100%)',
+                        border: '2px solid #b8960e',
+                        boxShadow: '0 4px 0 #8a6e18, 0 6px 12px rgba(0,0,0,0.4)',
+                        color: '#3a2800', fontSize: 16, fontWeight: 900, cursor: 'pointer',
+                        fontFamily: '"Inter", sans-serif', letterSpacing: 2,
+                      }}>Ya</button>
+                      <button onClick={() => setLockConfirm(null)} style={{
+                        flex: 1, padding: '12px 0', borderRadius: 50,
+                        background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                        border: '2px solid #2a3548',
+                        boxShadow: '0 4px 0 #1a2538, 0 6px 12px rgba(0,0,0,0.4)',
+                        color: '#8aa4c0', fontSize: 16, fontWeight: 900, cursor: 'pointer',
+                        fontFamily: '"Inter", sans-serif', letterSpacing: 2,
+                      }}>Tidak</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Lock Warning Dialog ── */}
+              {lockWarning && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1002,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.7)',
+                }}>
+                  <div className="animate-dialog-pop-in" style={{
+                    background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 100%)',
+                    borderRadius: 20, padding: '24px 28px',
+                    border: '3px solid #ef4444',
+                    boxShadow: '0 0 0 2px #1a2744, 0 20px 60px rgba(0,0,0,0.6)',
+                    display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center',
+                    maxWidth: 400, textAlign: 'center',
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: '50%',
+                      background: 'linear-gradient(180deg, #ef4444 0%, #dc2626 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(239,68,68,0.3)',
+                    }}>
+                      <Lock size={24} color="#fff" />
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f0f4f8', fontFamily: '"Inter", sans-serif' }}>
+                      Mohon buka kunci slot ini terlebih dahulu!
+                    </div>
+                    <button onClick={() => setLockWarning(false)} style={{
+                      padding: '12px 40px', borderRadius: 50,
+                      background: 'linear-gradient(180deg, #ef4444 0%, #dc2626 100%)',
+                      border: '2px solid #b91c1c',
+                      boxShadow: '0 4px 0 #991b1b, 0 6px 12px rgba(0,0,0,0.4)',
+                      color: '#fff', fontSize: 16, fontWeight: 900, cursor: 'pointer',
+                      fontFamily: '"Inter", sans-serif', letterSpacing: 2,
+                    }}>Oke</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── History Panel Overlay ── */}
+              {historyOpen !== null && (
+                <div className="animate-overlay-fade-in" onClick={() => setHistoryOpen(null)} style={{
+                  position: 'fixed', inset: 0, zIndex: 1002,
+                  background: 'rgba(0,0,0,0.6)',
+                  display: 'flex', justifyContent: 'flex-end',
+                }}>
+                  <div className="animate-panel-slide-in" onClick={e => e.stopPropagation()} style={{
+                    width: isMobile ? '85%' : '50%', minWidth: 260, height: '100%',
+                    background: 'linear-gradient(180deg, #2c3e5a 0%, #1a2744 100%)',
+                    borderLeft: '3px solid #5a7a9a',
+                    padding: 20, display: 'flex', flexDirection: 'column', gap: 12,
+                    overflowY: 'auto',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 18, fontWeight: 900, color: '#60a5fa', fontFamily: '"Inter", sans-serif', letterSpacing: 1 }}>
+                        SAVE SEBELUMNYA
+                      </span>
+                      <button onClick={() => setHistoryOpen(null)} style={{
+                        width: 32, height: 32, borderRadius: 8,
+                        background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                        border: '2px solid #2a3548', color: '#8aa4c0', fontSize: 14, fontWeight: 900,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>X</button>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8aa4c0', fontFamily: '"Inter", sans-serif' }}>
+                      Slot {historyOpen + 1} — 10 save terakhir
+                    </div>
+                    {historyLoading ? (
+                      <div style={{ color: '#8aa4c0', fontSize: 13, textAlign: 'center', padding: 32, fontFamily: '"Inter", sans-serif' }}>
+                        Memuat history...
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto' }}>
+                        {Array.from({ length: 10 }, (_, i) => {
+                          const entry = historyData[i];
+                          const hasD = entry && entry.data;
+                          const hDate = entry?.pushed_at ? new Date(entry.pushed_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+                          return (
+                            <button key={i} onClick={async () => {
+                              if (!hasD) { setHistoryEmptyWarning(i); return; }
+                              try {
+                                const token = await getIdToken();
+                                const res = await fetch('/api/circuits?action=history_load', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ itemId: saveSlots[historyOpen].slotId, historyIndex: i }),
+                                });
+                                if (res.ok) {
+                                  const d = await res.json();
+                                  if (d.data?.circuitState) {
+                                    const loaded = d.data.circuitState;
+                                    skipHistoryRef.current = true;
+                                    setComponents(JSON.parse(JSON.stringify(loaded.components || [])));
+                                    setWires(JSON.parse(JSON.stringify(loaded.wires || [])));
+                                    if (loaded.typeCounters) setTypeCounters(loaded.typeCounters);
+                                    if (loaded.nextId) setNextId(loaded.nextId);
+                                    setTimeout(() => {
+                                      pushCircuitHistory(loaded.components || [], loaded.wires || []);
+                                      lastRecordedRef.current = { comps: JSON.stringify(loaded.components || []), wrs: JSON.stringify(loaded.wires || []) };
+                                    }, 50);
+                                    clearToolUIState();
+                                    setSaveStatus({ message: `History [${i + 1}] berhasil di-load!`, type: 'success' });
+                                    setHistoryOpen(null);
+                                  }
+                                }
+                              } catch (e) { setSaveStatus({ message: 'Gagal load history: ' + e.message, type: 'error' }); }
+                            }} style={{
+                              padding: '10px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                              background: hasD
+                                ? 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 100%)'
+                                : 'linear-gradient(180deg, #2a3548 0%, #1a2538 100%)',
+                              border: `2px solid ${hasD ? '#5a7a9a' : '#2a3548'}`,
+                              boxShadow: hasD ? '0 2px 8px rgba(0,0,0,0.3)' : 'none',
+                              color: hasD ? '#f0f4f8' : '#5a7a9a',
+                              fontSize: 13, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              opacity: hasD ? 1 : 0.5,
+                              transition: 'all 0.15s',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' }}>
+                                <RotateCcw size={14} style={{ flexShrink: 0, opacity: hasD ? 1 : 0.3 }} />
+                                <div style={{ overflow: 'hidden' }}>
+                                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    Load Save Sebelumnya [{i + 1}]
+                                  </div>
+                                  {hasD && entry.name && (
+                                    <div style={{ fontSize: 10, color: '#8aa4c0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {entry.name}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              {hasD && hDate && (
+                                <span style={{ fontSize: 9, color: '#5a7a9a', flexShrink: 0, marginLeft: 8 }}>{hDate}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── History Empty Warning ── */}
+              {historyEmptyWarning !== null && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1003,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.7)',
+                }}>
+                  <div className="animate-dialog-pop-in" style={{
+                    background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 100%)',
+                    borderRadius: 20, padding: '24px 28px',
+                    border: '3px solid #60a5fa',
+                    boxShadow: '0 0 0 2px #1a2744, 0 20px 60px rgba(0,0,0,0.6)',
+                    display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center',
+                    maxWidth: 400, textAlign: 'center',
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: '50%',
+                      background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(96,165,250,0.3)',
+                    }}>
+                      <AlertTriangle size={24} color="#fff" />
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f0f4f8', fontFamily: '"Inter", sans-serif' }}>
+                      Belum ada save yang tertampung di tombol ini!
+                    </div>
+                    <button onClick={() => setHistoryEmptyWarning(null)} style={{
+                      padding: '12px 40px', borderRadius: 50,
+                      background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                      border: '2px solid #2563eb',
+                      boxShadow: '0 4px 0 #1d4ed8, 0 6px 12px rgba(0,0,0,0.4)',
+                      color: '#fff', fontSize: 16, fontWeight: 900, cursor: 'pointer',
+                      fontFamily: '"Inter", sans-serif', letterSpacing: 2,
+                    }}>Ya</button>
                   </div>
                 </div>
               )}

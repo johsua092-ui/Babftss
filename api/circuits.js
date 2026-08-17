@@ -5,10 +5,12 @@
 // Storage : Firestore project "punya-si-jawa" (via FIREBASE_ADMIN_* named app).
 //
 // Endpoint:
-//   GET    /api/circuits          -> daftar rangkaian milik user
-//   GET    /api/circuits?id=xxx   -> muat satu rangkaian (wajib milik user)
-//   POST   /api/circuits          -> simpan/upsert rangkaian
-//   DELETE /api/circuits?id=xxx   -> hapus rangkaian
+//   GET    /api/circuits                           -> daftar rangkaian milik user
+//   GET    /api/circuits?id=xxx                    -> muat satu rangkaian (wajib milik user)
+//   POST   /api/circuits                           -> simpan/upsert rangkaian
+//   DELETE /api/circuits?id=xxx                    -> hapus rangkaian
+//   GET    /api/circuits?action=history&id=xxx      -> daftar 10 history slot
+//   POST   /api/circuits?action=history_load         -> load dari history { itemId, historyIndex }
 import {
   applyCors,
   applySecurityHeaders,
@@ -20,6 +22,8 @@ import {
 } from '../lib/api-helpers.js';
 
 const COLLECTION = 'circuits';
+const HISTORY_COLLECTION = 'circuits_history';
+const MAX_HISTORY = 10;
 
 export default async function handler(req, res) {
   applyCors(req, res, 'GET, POST, DELETE, OPTIONS');
@@ -44,6 +48,12 @@ export default async function handler(req, res) {
     }
 
     const db = await getPunyaSiJawaFirestore();
+
+    const { action } = req.query || {};
+
+    // ── History endpoints ──
+    if (action === 'history') return handleHistory(req, res, user, db);
+    if (action === 'history_load') return handleHistoryLoad(req, res, user, db);
 
     switch (req.method) {
       case 'GET':
@@ -132,7 +142,35 @@ async function handlePost(req, res, user, db) {
     .get();
 
   if (!existing.empty) {
-    const docRef = existing.docs[0].ref;
+    const oldDoc = existing.docs[0];
+    const oldData = oldDoc.data();
+
+    // ── Push old save to history before overwriting ──
+    if (oldData.data) {
+      const historySnap = await db
+        .collection(HISTORY_COLLECTION)
+        .where('firebase_uid', '==', user.sub)
+        .where('item_id', '==', itemId)
+        .orderBy('pushed_at', 'desc')
+        .get();
+
+      // If we already have MAX_HISTORY entries, delete the oldest
+      if (historySnap.docs.length >= MAX_HISTORY) {
+        const toDelete = historySnap.docs.slice(MAX_HISTORY - 1);
+        for (const d of toDelete) await d.ref.delete();
+      }
+
+      // Push old save to history
+      await db.collection(HISTORY_COLLECTION).add({
+        firebase_uid: user.sub,
+        item_id: itemId,
+        name: oldData.name || '',
+        data: oldData.data,
+        pushed_at: now,
+      });
+    }
+
+    const docRef = oldDoc.ref;
     await docRef.update({
       name: payload.name,
       data,
@@ -166,4 +204,47 @@ async function handleDelete(req, res, user, db) {
 
   await snap.docs[0].ref.delete();
   return res.status(200).json({ ok: true, deleted: 1 });
+}
+
+// ── GET /api/circuits?action=history&id=xxx ──────────────────
+async function handleHistory(req, res, user, db) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const { id } = req.query || {};
+  if (!validateStr(id, 200)) return res.status(400).json({ error: 'id diperlukan' });
+
+  const snap = await db
+    .collection(HISTORY_COLLECTION)
+    .where('firebase_uid', '==', user.sub)
+    .where('item_id', '==', id)
+    .orderBy('pushed_at', 'desc')
+    .limit(MAX_HISTORY)
+    .get();
+
+  const history = snap.docs.map((d, idx) => {
+    const x = d.data();
+    return { index: idx, id: d.id, name: x.name || null, data: x.data || null, pushed_at: x.pushed_at || null };
+  });
+  return res.status(200).json({ itemId: id, history, maxHistory: MAX_HISTORY });
+}
+
+// ── POST /api/circuits?action=history_load ──────────────────
+async function handleHistoryLoad(req, res, user, db) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { itemId, historyIndex } = req.body || {};
+  if (!validateStr(itemId, 200)) return res.status(400).json({ error: 'itemId diperlukan' });
+  const hIdx = Number(historyIndex);
+  if (!Number.isInteger(hIdx) || hIdx < 0 || hIdx >= MAX_HISTORY) return res.status(400).json({ error: 'historyIndex harus 0..' + (MAX_HISTORY - 1) });
+
+  const snap = await db
+    .collection(HISTORY_COLLECTION)
+    .where('firebase_uid', '==', user.sub)
+    .where('item_id', '==', itemId)
+    .orderBy('pushed_at', 'desc')
+    .limit(MAX_HISTORY)
+    .get();
+
+  if (hIdx >= snap.docs.length) return res.status(404).json({ error: 'History entry tidak ditemukan' });
+  const doc = snap.docs[hIdx];
+  const data = doc.data();
+  return res.status(200).json({ itemId, historyIndex: hIdx, name: data.name || null, data: data.data || null, pushed_at: data.pushed_at || null });
 }
