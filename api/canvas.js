@@ -25,6 +25,7 @@ import {
   safeError,
   getPunyaSiJawaFirestore,
 } from '../lib/api-helpers.js';
+import { ensureUserDoc } from '../lib/gold-system.js';
 
 const PROMPTS_COLLECTION = 'canvas_prompts';
 const PROMPTS_HISTORY_COLLECTION = 'canvas_prompts_history';
@@ -70,6 +71,9 @@ export default async function handler(req, res) {
         code: 'AUTH_REQUIRED',
       });
     }
+
+    // Ensure user doc exists with email/displayName
+    await ensureUserDoc(user.sub, user.email, user.name);
 
     const db = await getPunyaSiJawaFirestore();
 

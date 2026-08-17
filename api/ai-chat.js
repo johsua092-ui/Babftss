@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, ensureUserDoc } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -28,6 +28,7 @@ export default async function handler(req, res) {
       try {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
+        await ensureUserDoc(user.sub, user.email, user.name);
         const admin = isAdmin(user);
         const status = await getFullAIStatus(user.sub, admin);
         return res.status(200).json(status);
@@ -40,6 +41,7 @@ export default async function handler(req, res) {
       try {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
+        await ensureUserDoc(user.sub, user.email, user.name);
         const email = req.query?.email;
         if (!email || typeof email !== "string" || !email.includes("@")) {
           return res.status(400).json({ error: "Email tidak valid" });
@@ -56,6 +58,7 @@ export default async function handler(req, res) {
       try {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
+        await ensureUserDoc(user.sub, user.email, user.name);
         if (!isAdmin(user)) return res.status(403).json({ error: "Hanya admin" });
         const members = await getAllUsers();
         // Don't expose full UID for privacy — only first 12 chars
@@ -75,6 +78,7 @@ export default async function handler(req, res) {
       try {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
+        await ensureUserDoc(user.sub, user.email, user.name);
         const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
         const transfers = await getRecentTransfers(user.sub, limit);
         return res.status(200).json({ transfers });
@@ -91,6 +95,9 @@ export default async function handler(req, res) {
   try {
     const user = await authenticateRequest(req);
     if (!user) return res.status(401).json({ error: "Login required to use AI chat" });
+
+    // Ensure user doc exists in Firestore with email/displayName
+    await ensureUserDoc(user.sub, user.email, user.name);
 
     const admin = isAdmin(user);
     const uid = user.sub || "unknown";
