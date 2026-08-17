@@ -250,6 +250,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
   const [dragging, setDragging] = useState(false);
   const [hexInput, setHexInput] = useState(hex.toUpperCase());
   const [hexFocused, setHexFocused] = useState(false);
+  const nativePickerRef = useRef(null);
 
   // Sync hexInput when parent hex changes and input is not focused
   useEffect(() => {
@@ -404,9 +405,42 @@ export default function ColorWheelPicker({ hex, onChange }) {
           <HSlider color="#00ff00" value={g0} onChange={onGChange} label="Green:" />
           <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
         </div>
-        {/* Right side: [Reset Color (full height)] [preview swatch + hex input] */}
+        {/* Right side: [Color Picker] [Reset Color] [preview swatch + hex input] */}
         <div style={{ display: 'flex', alignItems: 'stretch', gap: 12 }}>
-          {/* Left column: Reset Color button, stretches full height of right column */}
+          {/* Hidden native color picker input */}
+          <input
+            ref={nativePickerRef}
+            type="color"
+            value={hex}
+            onChange={e => onChange(e.target.value)}
+            style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}
+          />
+          {/* Color Picker button with icon */}
+          <button
+            onClick={() => nativePickerRef.current && nativePickerRef.current.click()}
+            onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
+            onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
+            style={{
+              padding: '6px 8px', fontSize: 10, fontWeight: 700,
+              color: '#fff', background: '#4a5d75', border: '1px solid #000',
+              borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
+              textTransform: 'uppercase', letterSpacing: 0.5,
+              lineHeight: 1.4, transition: 'background 0.15s',
+              whiteSpace: 'nowrap', flexShrink: 0,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              textAlign: 'center', gap: 3,
+            }}
+            title="Open system color picker"
+          >
+            <img
+              src="/color-picker-icon.png"
+              alt="picker"
+              style={{ width: 22, height: 22, objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
+            />
+            Color<br/>Picker
+          </button>
+          {/* Reset Color button, stretches full height of right column */}
           <button
             onClick={() => onChange('#ffffff')}
             onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
