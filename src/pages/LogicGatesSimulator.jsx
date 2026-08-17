@@ -6145,7 +6145,6 @@ export default function LogicGatesSimulator({ setPage }) {
                             {/* History button (double arrows) */}
                             <button
                               onClick={async () => {
-                                if (slotLocks[idx]) { setLockWarning(true); return; }
                                 setHistoryOpen(idx);
                                 setHistoryLoading(true);
                                 try {
