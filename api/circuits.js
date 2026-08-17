@@ -4,6 +4,10 @@
 //        Guest yang memaksa akan mendapat 401 dengan pesan agar masuk jadi member.
 // Storage : Firestore project "punya-si-jawa" (via FIREBASE_ADMIN_* named app).
 //
+// CATATAN INDEX: semua query sengaja memakai SATU equality filter saja
+// (`firebase_uid`) lalu memfilter `item_id` di memori + sort di memori,
+// supaya TIDAK butuh composite index Firestore (yang sering jadi penyebab 500).
+//
 // Endpoint:
 //   GET    /api/circuits                           -> daftar rangkaian milik user
 //   GET    /api/circuits?id=xxx                    -> muat satu rangkaian (wajib milik user)
@@ -17,7 +21,6 @@ import {
   checkRateLimit,
   authenticateRequest,
   validateStr,
-  safeError,
   getPunyaSiJawaFirestore,
 } from '../lib/api-helpers.js';
 
@@ -75,9 +78,11 @@ export default async function handler(req, res) {
   }
 }
 
+function byUserId(db, uid) {
+  return db.collection(COLLECTION).where('firebase_uid', '==', uid);
+}
+
 // ── GET /api/circuits ──────────────────────────────────────────
-//    ?id=xxx -> muat satu dokumen (harus milik user)
-//    tanpa id -> daftar semua rangkaian milik user
 async function handleGet(req, res, user, db) {
   const { id } = req.query || {};
 
@@ -85,27 +90,15 @@ async function handleGet(req, res, user, db) {
     if (!validateStr(id, 200)) {
       return res.status(400).json({ error: 'id tidak valid' });
     }
-    const snap = await db
-      .collection(COLLECTION)
-      .where('firebase_uid', '==', user.sub)
-      .where('item_id', '==', id)
-      .limit(1)
-      .get();
-
-    if (snap.empty) {
+    const snap = await byUserId(db, user.sub).get();
+    const doc = snap.docs.find((d) => d.data().item_id === id);
+    if (!doc) {
       return res.status(404).json({ error: 'Rangkaian tidak ditemukan' });
     }
-    const doc = snap.docs[0];
     return res.status(200).json({ circuit: { id: doc.id, ...doc.data() } });
   }
 
-  // NOTE: tidak pakai .orderBy() karena butuh composite index di Firestore.
-  //       Urutkan di memori saja (jumlah rangkaian per user kecil).
-  const snap = await db
-    .collection(COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .get();
-
+  const snap = await byUserId(db, user.sub).get();
   const circuits = snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
@@ -113,8 +106,6 @@ async function handleGet(req, res, user, db) {
 }
 
 // ── POST /api/circuits ──────────────────────────────────────────
-//    Body: { itemId: string, name?: string, data: object }
-//    Upsert — kalau item_id sudah ada untuk user ini, update; else insert.
 async function handlePost(req, res, user, db) {
   const { itemId, name, data } = req.body || {};
 
@@ -137,17 +128,11 @@ async function handlePost(req, res, user, db) {
     updated_at: now,
   };
 
-  // Cari dokumen existing untuk upsert (Firestore tidak punya upsert native
-  // dengan key custom, jadi cari dulu lalu update/insert).
-  const existing = await db
-    .collection(COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .where('item_id', '==', itemId)
-    .limit(1)
-    .get();
+  // Cari dokumen existing untuk upsert (filter item_id di memori — tanpa composite index).
+  const existingSnap = await byUserId(db, user.sub).get();
+  const oldDoc = existingSnap.docs.find((d) => d.data().item_id === itemId);
 
-  if (!existing.empty) {
-    const oldDoc = existing.docs[0];
+  if (oldDoc) {
     const oldData = oldDoc.data();
 
     // ── Push old save to history before overwriting ──
@@ -155,19 +140,18 @@ async function handlePost(req, res, user, db) {
       const historySnap = await db
         .collection(HISTORY_COLLECTION)
         .where('firebase_uid', '==', user.sub)
-        .where('item_id', '==', itemId)
         .get();
 
-      // Urutkan di memori (terbaru dulu) — hindari composite index Firestore.
-      const historyDocs = historySnap.docs.sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0));
+      const historyDocs = historySnap.docs
+        .filter((d) => d.data().item_id === itemId)
+        .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0));
 
-      // If we already have MAX_HISTORY entries, delete the oldest
+      // Jika sudah MAX_HISTORY, hapus yang tertua
       if (historyDocs.length >= MAX_HISTORY) {
         const toDelete = historyDocs.slice(MAX_HISTORY - 1);
         for (const d of toDelete) await d.ref.delete();
       }
 
-      // Push old save to history
       await db.collection(HISTORY_COLLECTION).add({
         firebase_uid: user.sub,
         item_id: itemId,
@@ -177,13 +161,12 @@ async function handlePost(req, res, user, db) {
       });
     }
 
-    const docRef = oldDoc.ref;
-    await docRef.update({
+    await oldDoc.ref.update({
       name: payload.name,
       data,
       updated_at: now,
     });
-    return res.status(200).json({ circuit: { id: docRef.id, ...payload }, updated: true });
+    return res.status(200).json({ circuit: { id: oldDoc.id, ...payload }, updated: true });
   }
 
   const docRef = await db.collection(COLLECTION).add(payload);
@@ -198,18 +181,14 @@ async function handleDelete(req, res, user, db) {
     return res.status(400).json({ error: 'id diperlukan' });
   }
 
-  const snap = await db
-    .collection(COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .where('item_id', '==', id)
-    .limit(1)
-    .get();
+  const snap = await byUserId(db, user.sub).get();
+  const doc = snap.docs.find((d) => d.data().item_id === id);
 
-  if (snap.empty) {
+  if (!doc) {
     return res.status(404).json({ error: 'Rangkaian tidak ditemukan' });
   }
 
-  await snap.docs[0].ref.delete();
+  await doc.ref.delete();
   return res.status(200).json({ ok: true, deleted: 1 });
 }
 
@@ -222,12 +201,13 @@ async function handleHistory(req, res, user, db) {
   const snap = await db
     .collection(HISTORY_COLLECTION)
     .where('firebase_uid', '==', user.sub)
-    .where('item_id', '==', id)
     .get();
 
   const sorted = snap.docs
+    .filter((d) => d.data().item_id === id)
     .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0))
     .slice(0, MAX_HISTORY);
+
   const history = sorted.map((d, idx) => {
     const x = d.data();
     return { index: idx, id: d.id, name: x.name || null, data: x.data || null, pushed_at: x.pushed_at || null };
@@ -246,12 +226,13 @@ async function handleHistoryLoad(req, res, user, db) {
   const snap = await db
     .collection(HISTORY_COLLECTION)
     .where('firebase_uid', '==', user.sub)
-    .where('item_id', '==', itemId)
     .get();
 
   const sorted = snap.docs
+    .filter((d) => d.data().item_id === itemId)
     .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0))
     .slice(0, MAX_HISTORY);
+
   if (hIdx >= sorted.length) return res.status(404).json({ error: 'History entry tidak ditemukan' });
   const doc = sorted[hIdx];
   const data = doc.data();
