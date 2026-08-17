@@ -3126,7 +3126,7 @@ export default function LogicGatesSimulator({ setPage }) {
           startSX: sx, startSY: sy,
           startVX: v.x, startVY: v.y,
         };
-        canvas.style.cursor = 'grabbing';
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = 'grabbing';
         return;
       }
 
@@ -3582,7 +3582,7 @@ export default function LogicGatesSimulator({ setPage }) {
             startSX: sx, startSY: sy,
             startVX: v.x, startVY: v.y,
           };
-          canvas.style.cursor = 'grabbing';
+          if (!pickFromWorkspaceRef.current) canvas.style.cursor = 'grabbing';
         }
         setSelectedId(null);
         stateRef.current.wiring = null;
@@ -3714,16 +3714,16 @@ export default function LogicGatesSimulator({ setPage }) {
       }
       if (hit && (hit.kind === 'input' || hit.kind === 'output')) {
         stateRef.current.hoverNode = { x: hit.x, y: hit.y };
-        canvas.style.cursor = 'pointer';
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = 'pointer';
       } else if (hit && hit.kind === 'drag-handle') {
         stateRef.current.hoverNode = null;
-        canvas.style.cursor = 'move';
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = 'move';
       } else if (hit && hit.kind === 'body') {
         stateRef.current.hoverNode = null;
-        canvas.style.cursor = hit.comp.type === 'INPUT' ? 'pointer' : 'move';
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = hit.comp.type === 'INPUT' ? 'pointer' : 'move';
       } else {
         stateRef.current.hoverNode = null;
-        canvas.style.cursor = spaceDownRef.current ? 'grab' : (stateRef.current.wiring ? 'crosshair' : 'default');
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = spaceDownRef.current ? 'grab' : (stateRef.current.wiring ? 'crosshair' : 'default');
       }
     };
 
@@ -3731,7 +3731,7 @@ export default function LogicGatesSimulator({ setPage }) {
       // Stop panning (button 1 release atau button 0 release saat panning aktif).
       if (stateRef.current.panning) {
         stateRef.current.panning = null;
-        canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
         return;
       }
       // ── Clone box: finalize selection & show anchor points ──
@@ -3949,7 +3949,7 @@ export default function LogicGatesSimulator({ setPage }) {
       if (e.code === 'Space' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         spaceDownRef.current = true;
-        if (!stateRef.current.panning) canvas.style.cursor = 'grab';
+        if (!stateRef.current.panning && !pickFromWorkspaceRef.current) canvas.style.cursor = 'grab';
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null
           && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
@@ -3982,7 +3982,7 @@ export default function LogicGatesSimulator({ setPage }) {
     const onKeyUp = (e) => {
       if (e.code === 'Space') {
         spaceDownRef.current = false;
-        if (!stateRef.current.panning) canvas.style.cursor = 'default';
+        if (!stateRef.current.panning && !pickFromWorkspaceRef.current) canvas.style.cursor = 'default';
       }
     };
 
@@ -3990,7 +3990,7 @@ export default function LogicGatesSimulator({ setPage }) {
     const onMouseLeave = () => {
       if (stateRef.current.panning) {
         stateRef.current.panning = null;
-        canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
+        if (!pickFromWorkspaceRef.current) canvas.style.cursor = spaceDownRef.current ? 'grab' : 'default';
       }
       // Clear active selection box drags so they don't "stick to cursor"
       // when mouse leaves canvas and mouseUp fires outside (not caught by canvas).
@@ -6845,39 +6845,39 @@ export default function LogicGatesSimulator({ setPage }) {
               setPickFromWorkspace(savedPicker);
               // Generate custom eyedropper cursor from canvas (most reliable cross-browser)
               const curCanvas = document.createElement('canvas');
-              curCanvas.width = 32; curCanvas.height = 32;
+              curCanvas.width = 48; curCanvas.height = 48;
               const ctx = curCanvas.getContext('2d');
               ctx.save();
-              ctx.translate(16, 16);
+              ctx.translate(24, 24);
               ctx.rotate(-Math.PI / 4);
               // Glass tube
               ctx.fillStyle = '#333';
               ctx.strokeStyle = '#fff';
-              ctx.lineWidth = 1;
+              ctx.lineWidth = 1.5;
               ctx.beginPath();
-              ctx.roundRect(-2, -14, 4, 20, 2);
+              ctx.roundRect(-3, -20, 6, 28, 3);
               ctx.fill(); ctx.stroke();
               // Bulb
               ctx.fillStyle = '#555';
               ctx.beginPath();
-              ctx.ellipse(0, -14, 3.5, 2.5, 0, 0, Math.PI * 2);
+              ctx.ellipse(0, -20, 5, 3.5, 0, 0, Math.PI * 2);
               ctx.fill(); ctx.stroke();
               // Narrow tip
               ctx.fillStyle = '#333';
               ctx.beginPath();
-              ctx.moveTo(-1.5, 6); ctx.lineTo(1.5, 6);
-              ctx.lineTo(0.5, 13); ctx.lineTo(-0.5, 13);
+              ctx.moveTo(-2, 8); ctx.lineTo(2, 8);
+              ctx.lineTo(0.7, 18); ctx.lineTo(-0.7, 18);
               ctx.closePath();
               ctx.fill(); ctx.stroke();
               // Drop
               ctx.fillStyle = '#e74c3c';
               ctx.beginPath();
-              ctx.arc(0, 14, 1.5, 0, Math.PI * 2);
+              ctx.arc(0, 20, 2, 0, Math.PI * 2);
               ctx.fill(); ctx.stroke();
               ctx.restore();
               const cursorUrl = curCanvas.toDataURL('image/png');
               const canvas = document.querySelector('canvas');
-              if (canvas) canvas.style.cursor = `url('${cursorUrl}') 4 18, crosshair`;
+              if (canvas) canvas.style.cursor = `url('${cursorUrl}') 6 26, crosshair`;
               setStatus('Click a component or wire to pick its color');
             }}
           />
