@@ -3508,22 +3508,11 @@ export default function LogicGatesSimulator({ setPage }) {
           canvas.style.cursor = 'default';
           setStatus('Color picked: ' + pickedHex.toUpperCase());
         } else {
-          // Clicked empty space — fall back to EyeDropper API for pixel-level picking
+          // Clicked empty space — cancel pick, reopen picker with original color
           setPickFromWorkspace(null);
           canvas.style.cursor = 'default';
-          if (window.EyeDropper) {
-            const dropper = new window.EyeDropper();
-            dropper.open().then(result => {
-              setColorPicker({ ...savedPicker, hex: result.sRGBHex });
-              setStatus('Color picked from screen: ' + result.sRGBHex.toUpperCase());
-            }).catch(() => {
-              // User cancelled — reopen with original color
-              setColorPicker(savedPicker);
-            });
-          } else {
-            // No EyeDropper & no hit — just reopen
-            setColorPicker(savedPicker);
-          }
+          setColorPicker(savedPicker);
+          setStatus('Pick cancelled — click a component or wire next time');
         }
         return;
       }
@@ -4200,16 +4189,8 @@ export default function LogicGatesSimulator({ setPage }) {
             setStatus('Color picked: ' + pickedHex.toUpperCase());
           } else {
             setPickFromWorkspace(null);
-            if (window.EyeDropper) {
-              const dropper = new window.EyeDropper();
-              dropper.open().then(result => {
-                setColorPicker({ ...savedPicker, hex: result.sRGBHex });
-              }).catch(() => {
-                setColorPicker(savedPicker);
-              });
-            } else {
-              setColorPicker(savedPicker);
-            }
+            setColorPicker(savedPicker);
+            setStatus('Pick cancelled — tap a component or wire next time');
           }
           return;
         }
@@ -6864,9 +6845,9 @@ export default function LogicGatesSimulator({ setPage }) {
               const savedPicker = { ...colorPicker };
               setColorPicker(null);
               setPickFromWorkspace(savedPicker);
-              // Set cursor to crosshair/eyedropper style
+              // Set cursor to custom eyedropper icon (hotspot at tip: 1,29)
               const canvas = document.querySelector('canvas');
-              if (canvas) canvas.style.cursor = 'crosshair';
+              if (canvas) canvas.style.cursor = "url('/eyedropper-cursor.png') 1 29, crosshair";
               setStatus('Click a component or wire to pick its color');
             }}
           />
