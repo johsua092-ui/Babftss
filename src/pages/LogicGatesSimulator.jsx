@@ -6177,7 +6177,7 @@ export default function LogicGatesSimulator({ setPage }) {
                               if (slotLocks[idx]) { setLockWarning(true); return; }
                               setSaveConfirm({ slotIndex: idx, action: 'save' });
                             }}
-                            disabled={saveLoading || slotLocks[idx]}
+                            disabled={saveLoading}
                             style={{
                               width: '100%', padding: '10px 0', borderRadius: 50,
                               background: slotLocks[idx]
@@ -6190,7 +6190,7 @@ export default function LogicGatesSimulator({ setPage }) {
                                 ? '0 4px 0 #1a2538, 0 6px 12px rgba(0,0,0,0.3)'
                                 : '0 4px 0 #802050, 0 6px 12px rgba(0,0,0,0.4)',
                               color: slotLocks[idx] ? '#5a6a7a' : '#fff', fontSize: 15, fontWeight: 900,
-                              cursor: (saveLoading || slotLocks[idx]) ? 'not-allowed' : 'pointer',
+                              cursor: saveLoading ? 'wait' : 'pointer',
                               fontFamily: '"Inter", sans-serif', letterSpacing: 1,
                               textShadow: slotLocks[idx] ? 'none' : '0 1px 2px rgba(0,0,0,0.3)',
                               transition: 'transform 0.1s, boxShadow 0.1s, background 0.2s, color 0.2s, border-color 0.2s',
