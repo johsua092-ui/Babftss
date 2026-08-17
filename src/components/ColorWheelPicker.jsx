@@ -369,18 +369,18 @@ export default function ColorWheelPicker({ hex, onChange }) {
           <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
         </div>
         {/* Right side: [Reset Color (full height)] [preview swatch + hex input] */}
-        <div style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 12 }}>
           {/* Left column: Reset Color button, stretches full height of right column */}
           <button
             onClick={() => onChange('#ffffff')}
             onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
             onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
             style={{
-              padding: '6px 4px', fontSize: 9, fontWeight: 700,
+              padding: '6px 10px', fontSize: 10, fontWeight: 700,
               color: '#fff', background: '#4a5d75', border: '1px solid #000',
               borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
-              textTransform: 'uppercase', letterSpacing: 0.3,
-              lineHeight: 1.2, transition: 'background 0.15s',
+              textTransform: 'uppercase', letterSpacing: 0.5,
+              lineHeight: 1.8, transition: 'background 0.15s',
               whiteSpace: 'nowrap', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               textAlign: 'center',
