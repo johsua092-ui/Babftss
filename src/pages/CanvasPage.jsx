@@ -437,6 +437,20 @@ function DrawTab({ token }) {
                         <ColorWheelPicker
                             hex={customColorPicker.hex}
                             onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+                            onPickColor={() => {
+                                const saved = { ...customColorPicker };
+                                setCustomColorPicker(null);
+                                if (window.EyeDropper) {
+                                    const dropper = new window.EyeDropper();
+                                    dropper.open().then(result => {
+                                        setCustomColorPicker({ ...saved, hex: result.sRGBHex });
+                                    }).catch(() => {
+                                        setCustomColorPicker(saved);
+                                    });
+                                } else {
+                                    setCustomColorPicker(saved);
+                                }
+                            }}
                         />
                         {/* Buttons directly below */}
                         <div style={{ display: 'flex', gap: 6 }}>

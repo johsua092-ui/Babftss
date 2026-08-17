@@ -245,12 +245,11 @@ function HSlider({ color, value, onChange, label }) {
 }
 
 // ── Main component ──
-export default function ColorWheelPicker({ hex, onChange }) {
+export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   const wheelRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   const [hexInput, setHexInput] = useState(hex.toUpperCase());
   const [hexFocused, setHexFocused] = useState(false);
-  const nativePickerRef = useRef(null);
 
   // Sync hexInput when parent hex changes and input is not focused
   useEffect(() => {
@@ -407,17 +406,9 @@ export default function ColorWheelPicker({ hex, onChange }) {
         </div>
         {/* Right side: [Color Picker] [Reset Color] [preview swatch + hex input] */}
         <div style={{ display: 'flex', alignItems: 'stretch', gap: 12 }}>
-          {/* Hidden native color picker input */}
-          <input
-            ref={nativePickerRef}
-            type="color"
-            value={hex}
-            onChange={e => onChange(e.target.value)}
-            style={{ position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}
-          />
-          {/* Color Picker button with icon */}
+          {/* Color Picker button with icon — triggers eyedropper via parent */}
           <button
-            onClick={() => nativePickerRef.current && nativePickerRef.current.click()}
+            onClick={() => onPickColor && onPickColor()}
             onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
             onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
             style={{
@@ -431,7 +422,7 @@ export default function ColorWheelPicker({ hex, onChange }) {
               alignItems: 'center', justifyContent: 'center',
               textAlign: 'center', gap: 3,
             }}
-            title="Open system color picker"
+            title="Pick a color from the screen"
           >
             <img
               src="/color-picker-icon.png"
@@ -450,13 +441,19 @@ export default function ColorWheelPicker({ hex, onChange }) {
               color: '#fff', background: '#4a5d75', border: '1px solid #000',
               borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
               textTransform: 'uppercase', letterSpacing: 0.5,
-              lineHeight: 1.8, transition: 'background 0.15s',
+              lineHeight: 1.4, transition: 'background 0.15s',
               whiteSpace: 'nowrap', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              textAlign: 'center',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              textAlign: 'center', gap: 3,
             }}
             title="Reset color to white (center of wheel)"
           >
+            {/* Eraser icon */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.8 1.4c.8-.8 2-.8 2.8 0l5 5c.8.8.8 2 0 2.8L11 20"/>
+              <path d="M6 12l5 5"/>
+            </svg>
             Reset<br/>Color
           </button>
           {/* Right column: preview swatch on top, hex input below */}

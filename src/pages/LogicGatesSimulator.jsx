@@ -3918,7 +3918,8 @@ export default function LogicGatesSimulator({ setPage }) {
         spaceDownRef.current = true;
         if (!stateRef.current.panning) canvas.style.cursor = 'grab';
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null
+          && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         const comp = stateRef.current.components.find(c => c.id === selectedId);
         if (!comp) return;
         let wrs = [...stateRef.current.wires];
@@ -6777,6 +6778,29 @@ export default function LogicGatesSimulator({ setPage }) {
           <ColorWheelPicker
             hex={colorPicker.hex}
             onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+            onPickColor={() => {
+              // Save current picker state so we can reopen after picking
+              const savedPicker = { ...colorPicker };
+              // Close modal temporarily
+              setColorPicker(null);
+              // Use EyeDropper API if available, otherwise fallback
+              if (window.EyeDropper) {
+                const dropper = new window.EyeDropper();
+                dropper.open().then(result => {
+                  const pickedHex = result.sRGBHex;
+                  // Reopen modal with picked color
+                  setColorPicker({ ...savedPicker, hex: pickedHex });
+                  setStatus('Color picked from screen: ' + pickedHex.toUpperCase());
+                }).catch(() => {
+                  // User cancelled eyedropper — reopen with original color
+                  setColorPicker(savedPicker);
+                });
+              } else {
+                // Fallback: no EyeDropper support, just reopen
+                setColorPicker(savedPicker);
+                setStatus('EyeDropper not supported in this browser');
+              }
+            }}
           />
 
           {/* Action buttons: Confirm | Cancel — directly below */}
