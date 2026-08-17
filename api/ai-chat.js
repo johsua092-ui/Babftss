@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, ensureUserDoc } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -233,6 +233,25 @@ export default async function handler(req, res) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Saldo member kurang", gold: await getGoldBalance(resolvedUid) });
         console.error("[ai-chat] deduct-gold error:", e?.message || e);
         return res.status(500).json({ error: "Deduct gagal: " + (e?.message || "unknown error") });
+      }
+    }
+
+    // ── Bulk Deduct — Admin tarik gold dari SEMUA member sekaligus (anti-abuse) ──
+    if (action === "bulk-deduct") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa bulk deduct" });
+      const { amount, note } = req.body || {};
+      if (!amount || typeof amount !== "number" || amount < 1 || amount > 100000) {
+        return res.status(400).json({ error: "Amount wajib 1-100000" });
+      }
+      try {
+        const result = await bulkDeductAll(amount, uid, note || "Bulk deduct by admin");
+        return res.status(200).json({
+          message: `Berhasil tarik max ${amount} gold dari ${result.count} member`,
+          ...result,
+        });
+      } catch (e) {
+        console.error("[ai-chat] bulk-deduct error:", e?.message || e);
+        return res.status(500).json({ error: "Bulk deduct gagal: " + (e?.message || "unknown error") });
       }
     }
 
