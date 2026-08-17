@@ -6063,14 +6063,15 @@ export default function LogicGatesSimulator({ setPage }) {
                             />
                           </div>
                           {/* Description */}
-                          <input
-                            type="text" value={slot.description}
+                          <textarea
+                            value={slot.description}
                             onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, description: e.target.value } : s))}
-                            placeholder="Deskripsi..." maxLength={80}
+                            placeholder="Deskripsi..." maxLength={200} rows={3}
                             style={{
                               background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
                               borderRadius: 6, padding: '3px 8px', color: '#8aa4c0', fontSize: 11,
                               fontFamily: '"Inter", sans-serif', outline: 'none', width: '100%', boxSizing: 'border-box',
+                              resize: 'none', lineHeight: 1.4,
                             }}
                           />
                           {/* Info line */}
