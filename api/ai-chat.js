@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers, lookupUserByEmail } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -33,6 +33,22 @@ export default async function handler(req, res) {
         return res.status(200).json(status);
       } catch (e) {
         console.error("[ai-chat] gold-info error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    if (action === "lookup-user") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const email = req.query?.email;
+        if (!email || typeof email !== "string" || !email.includes("@")) {
+          return res.status(400).json({ error: "Email tidak valid" });
+        }
+        const found = await lookupUserByEmail(email);
+        if (!found) return res.status(404).json({ error: "User tidak ditemukan", found: false });
+        return res.status(200).json({ found: true, uid: found.uid, email: found.email, displayName: found.displayName, gold: found.gold });
+      } catch (e) {
+        console.error("[ai-chat] lookup-user error:", e?.message || e);
         return res.status(500).json({ error: "Internal server error" });
       }
     }
@@ -87,16 +103,28 @@ export default async function handler(req, res) {
 
     // ── Coin Transfer (merged from coin-transfer.js to stay under Vercel 12-function limit) ──
     if (action === "transfer") {
-      const { targetUid, amount, note } = req.body || {};
-      if (!targetUid || typeof targetUid !== "string" || targetUid.trim().length < 5) return res.status(400).json({ error: "targetUid wajib diisi" });
+      const { targetUid, targetEmail, amount, note } = req.body || {};
+      let resolvedUid = targetUid;
+
+      // If targetEmail provided instead of UID, resolve it
+      if (!resolvedUid && targetEmail) {
+        if (typeof targetEmail !== "string" || !targetEmail.includes("@")) {
+          return res.status(400).json({ error: "Email tujuan tidak valid" });
+        }
+        const found = await lookupUserByEmail(targetEmail);
+        if (!found) return res.status(404).json({ error: "User dengan email tersebut tidak ditemukan" });
+        resolvedUid = found.uid;
+      }
+
+      if (!resolvedUid || typeof resolvedUid !== "string" || resolvedUid.trim().length < 5) return res.status(400).json({ error: "targetUid atau targetEmail wajib diisi" });
       if (!amount || typeof amount !== "number" || amount < 1 || amount > 1000) return res.status(400).json({ error: "Amount wajib 1-1000 gold" });
-      if (targetUid === uid) return res.status(400).json({ error: "Nggak bisa transfer ke diri sendiri" });
+      if (resolvedUid === uid) return res.status(400).json({ error: "Nggak bisa transfer ke diri sendiri" });
       if (admin) {
-        const nb = await addGold(targetUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
-        return res.status(200).json({ message: "Gold dikirim (admin grant)", transferId: `admin_${Date.now()}`, targetUid, amount, targetNewBalance: nb });
+        const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
+        return res.status(200).json({ message: "Gold dikirim (admin grant)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, targetNewBalance: nb });
       }
       try {
-        const result = await transferGold(uid, targetUid, amount, { note: note || null });
+        const result = await transferGold(uid, resolvedUid, amount, { note: note || null });
         return res.status(200).json({ message: "Transfer berhasil!", ...result });
       } catch (e) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
@@ -107,10 +135,22 @@ export default async function handler(req, res) {
 
     if (action === "grant") {
       if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa grant gold" });
-      const { targetUid, amount, note } = req.body || {};
-      if (!targetUid || !amount || amount <= 0 || amount > 10000) return res.status(400).json({ error: "targetUid dan amount wajib (1-10000)" });
-      const nb = await addGold(targetUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
-      return res.status(200).json({ message: "Gold di-grant", uid: targetUid, amount, newBalance: nb });
+      const { targetUid, targetEmail, amount, note } = req.body || {};
+      let resolvedUid = targetUid;
+
+      // If targetEmail provided instead of UID, resolve it
+      if (!resolvedUid && targetEmail) {
+        if (typeof targetEmail !== "string" || !targetEmail.includes("@")) {
+          return res.status(400).json({ error: "Email tujuan tidak valid" });
+        }
+        const found = await lookupUserByEmail(targetEmail);
+        if (!found) return res.status(404).json({ error: "User dengan email tersebut tidak ditemukan" });
+        resolvedUid = found.uid;
+      }
+
+      if (!resolvedUid || !amount || amount <= 0 || amount > 10000) return res.status(400).json({ error: "targetUid/targetEmail dan amount wajib (1-10000)" });
+      const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
+      return res.status(200).json({ message: "Gold di-grant", uid: resolvedUid, amount, newBalance: nb });
     }
 
     if (action === "transfer-history") {

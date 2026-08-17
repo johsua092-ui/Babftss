@@ -129,7 +129,10 @@ const s = {
 
 export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
   const { user, getIdToken } = useAuth();
-  const [targetUid, setTargetUid] = useState('');
+  const [targetEmail, setTargetEmail] = useState('');
+  const [targetUid, setTargetUid] = useState(''); // resolved UID after lookup
+  const [targetName, setTargetName] = useState(''); // resolved display name
+  const [lookupStatus, setLookupStatus] = useState('idle'); // idle | searching | found | not_found
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -144,7 +147,51 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
   const gold = isAdmin ? Infinity : (currentGold ?? 0);
   const parsedAmount = parseInt(amount, 10);
   const validAmount = !isNaN(parsedAmount) && parsedAmount >= 1 && parsedAmount <= (isAdmin ? 10000 : 1000);
-  const canSend = targetUid.trim().length >= 5 && validAmount && !loading;
+  const canSend = targetUid && lookupStatus === 'found' && validAmount && !loading;
+
+  // ── Email lookup with debounce ──
+  const lookupTimerRef = useState(null);
+  async function doLookup(email) {
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      setLookupStatus('idle');
+      setTargetUid('');
+      setTargetName('');
+      return;
+    }
+    setLookupStatus('searching');
+    try {
+      const token = await getIdToken();
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_URL}?action=lookup-user&email=${encodeURIComponent(email.trim())}`, { headers });
+      const data = await res.json();
+      if (data.found) {
+        setTargetUid(data.uid);
+        setTargetName(data.displayName || data.email);
+        setLookupStatus('found');
+      } else {
+        setTargetUid('');
+        setTargetName('');
+        setLookupStatus('not_found');
+      }
+    } catch {
+      setLookupStatus('idle');
+      setTargetUid('');
+      setTargetName('');
+    }
+  }
+
+  function handleEmailChange(val) {
+    setTargetEmail(val);
+    setTargetUid('');
+    setTargetName('');
+    setLookupStatus('idle');
+    setError(null);
+    // Debounce lookup: 600ms after last keystroke
+    if (lookupTimerRef[0]) clearTimeout(lookupTimerRef[0]);
+    const timer = setTimeout(() => doLookup(val), 600);
+    lookupTimerRef[1](timer);
+  }
 
   // ── Quick amount presets ──
   const quickAmounts = isAdmin ? [10, 50, 100, 500, 1000] : [5, 10, 25, 50, 100];
@@ -162,7 +209,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          targetUid: targetUid.trim(),
+          targetEmail: targetEmail.trim(),
           amount: parsedAmount,
           note: note.trim() || undefined,
         }),
@@ -173,7 +220,10 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
         return;
       }
       setSuccess(data);
+      setTargetEmail('');
       setTargetUid('');
+      setTargetName('');
+      setLookupStatus('idle');
       setAmount('');
       setNote('');
     } catch {
@@ -184,7 +234,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
   }
 
   async function doAdminGrant() {
-    if (!user || !isAdmin || !targetUid.trim() || !validAmount) return;
+    if (!user || !isAdmin || !targetUid || !validAmount) return;
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -196,7 +246,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          targetUid: targetUid.trim(),
+          targetEmail: targetEmail.trim(),
           amount: parsedAmount,
           note: note.trim() || undefined,
         }),
@@ -207,7 +257,10 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
         return;
       }
       setSuccess(data);
+      setTargetEmail('');
       setTargetUid('');
+      setTargetName('');
+      setLookupStatus('idle');
       setAmount('');
       setNote('');
     } catch {
@@ -261,19 +314,29 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
           {isAdmin && <span style={{ marginLeft: 8 }}><Shield size={12} style={{ verticalAlign: -1 }} /> Admin</span>}
         </div>
 
-        {/* Target UID */}
+        {/* Target Email */}
         <div>
-          <div style={s.label}>UID Penerima</div>
+          <div style={s.label}>Email Penerima</div>
           <input
             style={{ ...s.input, ...(focusTarget ? s.inputFocused : {}) }}
-            type="text"
-            placeholder="Firebase UID tujuan..."
-            value={targetUid}
-            onChange={e => setTargetUid(e.target.value)}
+            type="email"
+            placeholder="Email temen kamu..."
+            value={targetEmail}
+            onChange={e => handleEmailChange(e.target.value)}
             onFocus={() => setFocusTarget(true)}
             onBlur={() => setFocusTarget(false)}
             maxLength={128}
+            autoComplete="off"
           />
+          {/* Lookup status indicator */}
+          {targetEmail.includes('@') && (
+            <div style={{ marginTop: 4, fontSize: 11, fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: 4,
+              color: lookupStatus === 'found' ? '#4ade80' : lookupStatus === 'not_found' ? '#f87171' : lookupStatus === 'searching' ? '#fbbf24' : '#64748b' }}>
+              {lookupStatus === 'searching' && '🔄 Mencari...'}
+              {lookupStatus === 'found' && `✅ ${targetName}`}
+              {lookupStatus === 'not_found' && '❌ User ga ketemu (belum pernah login)'}
+            </div>
+          )}
         </div>
 
         {/* Amount */}
@@ -331,7 +394,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
           <div style={s.successBox}>
             <strong>Transfer berhasil!</strong><br />
             {success.amount && `${success.amount} gold dikirim`}
-            {success.targetUid && ` ke ${success.targetUid.slice(0, 12)}...`}
+            {success.targetUid && ` ke ${targetName || success.targetUid.slice(0, 12) + '...'}`}
             {success.fromBalance !== undefined && ` — Saldo: ${success.fromBalance}`}
             {success.targetNewBalance !== undefined && ` → Tujuan: ${success.targetNewBalance}`}
           </div>
@@ -360,9 +423,9 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
                 </>
               )}
             </button>
-            <button style={s.adminBtn(!targetUid.trim() || !validAmount || loading)}
+            <button style={s.adminBtn(!canSend || loading)}
               onClick={doAdminGrant}
-              disabled={!targetUid.trim() || !validAmount || loading}
+              disabled={!canSend || loading}
             >
               {loading ? '...' : (
                 <>
