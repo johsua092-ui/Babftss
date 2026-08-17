@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import ColorWheelPicker from '../components/ColorWheelPicker';
 
 // ── Gate Data Model (Basic Wire dihapus total — gak dibutuhkan di simulator) ──
 const GATE_DATA = [
@@ -6752,12 +6753,12 @@ export default function LogicGatesSimulator({ setPage }) {
           style={{
             position: 'absolute',
             left: Math.min(colorPicker.x, (canvasRef.current?.clientWidth || 800) - 280),
-            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 260),
+            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 380),
             background: 'rgba(15, 23, 42, 0.98)',
             border: '1px solid #475569',
             borderRadius: 10,
-            padding: 14,
-            width: 260,
+            padding: 12,
+            width: 200,
             boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
             zIndex: 1000,
             fontFamily: '"Inter", sans-serif',
@@ -6765,38 +6766,21 @@ export default function LogicGatesSimulator({ setPage }) {
           onMouseDown={e => e.stopPropagation()}  // jangan trigger canvas mousedown
           onTouchStart={e => e.stopPropagation()}  // jangan trigger canvas touchstart (mobile)
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 8, textAlign: 'center' }}>
             {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
           </div>
 
-          {/* Color palette — custom swatches (bukan native <input type="color"> yang buka dialog sistem) */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3, marginBottom: 8,
-          }}>
-            {[
-              '#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4',
-              '#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#fb7185',
-              '#fbbf24','#a3e635','#4ade80','#2dd4bf','#38bdf8','#818cf8','#c084fc','#f472b6',
-            ].map(c => (
-              <div
-                key={c}
-                onClick={() => setColorPicker(cp => cp ? { ...cp, hex: c } : cp)}
-                style={{
-                  width: 24, height: 18, borderRadius: 4, cursor: 'pointer',
-                  background: c,
-                  border: colorPicker.hex === c ? '2px solid #ffffff' : '1px solid #334155',
-                  boxShadow: colorPicker.hex === c ? `0 0 6px ${c}88` : 'none',
-                  transition: 'transform 0.1s, border-color 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-              />
-            ))}
-          </div>
-          {/* Hex input */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          {/* Color wheel picker — HSV wheel + brightness slider */}
+          <ColorWheelPicker
+            hex={colorPicker.hex}
+            onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+            size={170}
+          />
+
+          {/* Hex input + preview swatch */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, marginBottom: 4 }}>
             <div style={{
-              width: 32, height: 24, borderRadius: 4,
+              width: 28, height: 20, borderRadius: 4,
               background: colorPicker.hex,
               border: '2px solid #475569',
               boxShadow: `0 0 8px ${colorPicker.hex}44`,
@@ -6812,7 +6796,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 }
               }}
               style={{
-                flex: 1, padding: '4px 8px', fontSize: 12,
+                flex: 1, padding: '3px 6px', fontSize: 11,
                 background: '#0f172a', border: '1px solid #334155',
                 borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace',
               }}

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowLeft, Save, Trash2, Pen, Eraser, Image, Upload, FileText, X, Check, AlertTriangle, Download, Undo2, Redo2, Lock, Unlock, ArrowRightLeft, RotateCcw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import ColorWheelPicker from '../components/ColorWheelPicker';
 
 const API = '/api/canvas';
 
@@ -428,37 +429,21 @@ function DrawTab({ token }) {
             {customColorPicker && (
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{
-                        padding: '14px 16px', borderRadius: 12, backgroundColor: 'rgba(15, 23, 42, 0.98)',
-                        border: '1px solid #475569', width: 240, display: 'flex', flexDirection: 'column', gap: 8,
+                        padding: '12px', borderRadius: 12, backgroundColor: 'rgba(15, 23, 42, 0.98)',
+                        border: '1px solid #475569', width: 200, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif', textAlign: 'center' }}>Custom Color</div>
-                        {/* Color palette — custom swatches */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3 }}>
-                            {[
-                                '#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4',
-                                '#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#fb7185',
-                                '#fbbf24','#a3e635','#4ade80','#2dd4bf','#38bdf8','#818cf8','#c084fc','#f472b6',
-                            ].map(c => (
-                                <div
-                                    key={c}
-                                    onClick={() => setCustomColorPicker(cp => cp ? { ...cp, hex: c } : cp)}
-                                    style={{
-                                        width: 24, height: 18, borderRadius: 4, cursor: 'pointer',
-                                        background: c,
-                                        border: customColorPicker.hex === c ? '2px solid #ffffff' : '1px solid #334155',
-                                        boxShadow: customColorPicker.hex === c ? `0 0 6px ${c}88` : 'none',
-                                        transition: 'transform 0.1s',
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                                />
-                            ))}
-                        </div>
+                        {/* Color wheel */}
+                        <ColorWheelPicker
+                            hex={customColorPicker.hex}
+                            onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+                            size={170}
+                        />
                         {/* Hex input + preview */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
                             <div style={{
-                                width: 32, height: 24, borderRadius: 4,
+                                width: 28, height: 20, borderRadius: 4,
                                 background: customColorPicker.hex,
                                 border: '2px solid #475569',
                                 boxShadow: `0 0 8px ${customColorPicker.hex}44`,
@@ -468,11 +453,11 @@ function DrawTab({ token }) {
                                 type="text"
                                 value={customColorPicker.hex.toUpperCase()}
                                 onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setCustomColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp); }}
-                                style={{ flex: 1, padding: '4px 8px', fontSize: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace' }}
+                                style={{ flex: 1, padding: '3px 6px', fontSize: 11, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace' }}
                             />
                         </div>
                         {/* Buttons directly below */}
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
                             <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); }} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
