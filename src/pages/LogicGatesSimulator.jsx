@@ -1201,7 +1201,7 @@ export default function LogicGatesSimulator({ setPage }) {
           data: { circuitState, color: slot.color, description: slot.description },
         }),
       });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); setSaveStatus({ message: err.error || 'Gagal menyimpan', type: 'error' }); setSaveLoading(false); return; }
+      if (!res.ok) { let err = {}; try { err = await res.json(); } catch (_) {} setSaveStatus({ message: `${err.error || err.message || 'Gagal menyimpan'} (status ${res.status})`, type: 'error' }); setSaveLoading(false); return; }
       const now = Date.now();
       setSaveSlots(prev => prev.map((s, i) => i === slotIndex ? { ...s, data: circuitState, updatedAt: now } : s));
       setSaveStatus({ message: `Slot ${slotIndex + 1} berhasil disimpan!`, type: 'success' });
