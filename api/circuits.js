@@ -70,6 +70,16 @@ export default async function handler(req, res) {
     }
   } catch (e) {
     console.error('[circuits] error:', e);
+    // Rekam error ke Firestore (koleksi _errlog) agar gampang di-diagnosa.
+    try {
+      const db2 = await getPunyaSiJawaFirestore();
+      await db2.collection('_errlog').add({
+        ts: Date.now(),
+        error: e?.message || String(e),
+        code: e?.code || null,
+        stack: (e?.stack || '').slice(0, 2000),
+      });
+    } catch (_) {}
     return res.status(500).json({
       error: e?.message || String(e),
       detail: e?.code || null,
