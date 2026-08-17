@@ -5801,182 +5801,235 @@ export default function LogicGatesSimulator({ setPage }) {
             </button>
           </div>
 
-          {/* ── Save Progress Overlay ── */}
+          {/* ── Save Progress Overlay ── Game cartridge style */}
           {saveOverlayOpen && (
             <div style={{
-              position: 'fixed', inset: 0,
-              zIndex: 1000,
+              position: 'fixed', inset: 0, zIndex: 1000,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(0,0,0,0.7)',
-              backdropFilter: 'blur(8px)',
+              background: 'linear-gradient(135deg, #2a3a5c 0%, #1a2744 50%, #0f1b30 100%)',
             }}>
               <div style={{
-                width: isMobile ? '92vw' : '50vw',
-                maxHeight: '90vh',
-                background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-                borderRadius: 20,
-                border: '1px solid rgba(148,163,184,0.2)',
-                boxShadow: '0 25px 80px rgba(0,0,0,0.6)',
-                padding: isMobile ? '20px 16px' : '32px 36px',
-                display: 'flex', flexDirection: 'column', gap: 20,
-                overflow: 'auto',
-                position: 'relative',
+                width: isMobile ? '95vw' : '52vw',
+                maxHeight: '92vh',
+                background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 40%, #243552 100%)',
+                borderRadius: 24,
+                border: '3px solid #5a7a9a',
+                boxShadow: '0 0 0 2px #1a2744, 0 30px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08)',
+                padding: isMobile ? '18px 14px' : '28px 32px',
+                display: 'flex', flexDirection: 'column', gap: 16,
+                overflow: 'auto', position: 'relative',
               }}>
-                {/* Close button */}
+                {/* Close button — gold rounded square like game icon */}
                 <button
                   onClick={() => { setSaveOverlayOpen(false); setSaveConfirm(null); setSaveStatus(null); }}
                   style={{
-                    position: 'absolute', top: 12, right: 14,
-                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 8, color: '#94a3b8', cursor: 'pointer',
-                    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 18, lineHeight: 1, transition: 'all 0.15s',
+                    position: 'absolute', top: 10, right: 10,
+                    width: 36, height: 36, borderRadius: 10,
+                    background: 'linear-gradient(180deg, #e6b800 0%, #c5a028 100%)',
+                    border: '2px solid #a08020',
+                    boxShadow: '0 3px 0 #8a6e18, 0 4px 8px rgba(0,0,0,0.4)',
+                    color: '#3a2800', fontSize: 18, fontWeight: 900, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    lineHeight: 1,
                   }}
-                  onMouseEnter={e => { e.target.style.color = '#fff'; e.target.style.background = 'rgba(255,255,255,0.15)'; }}
-                  onMouseLeave={e => { e.target.style.color = '#94a3b8'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
-                >✕</button>
+                >X</button>
 
-                {/* Title */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingRight: 36 }}>
-                  <HardDrive size={28} style={{ color: '#22c55e', flexShrink: 0 }} />
-                  <div>
-                    <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#e2e8f0', fontFamily: '"Inter", sans-serif' }}>Save Progress</div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Simpan & muat progress rangkaianmu ke save slot</div>
-                  </div>
+                {/* Title — game style */}
+                <div style={{ textAlign: 'center', paddingRight: 40 }}>
+                  <div style={{
+                    fontSize: isMobile ? 20 : 26, fontWeight: 900, color: '#f0f4f8',
+                    fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                    textShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                  }}>SAVE PROGRESS</div>
+                  <div style={{
+                    fontSize: 12, color: '#8aa4c0', marginTop: 4,
+                    fontFamily: '"Inter", sans-serif',
+                  }}>Simpan & muat rangkaianmu ke cartridge slot</div>
                 </div>
 
                 {/* Status message */}
                 {saveStatus && (
                   <div style={{
-                    padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                    background: saveStatus.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                    color: saveStatus.type === 'success' ? '#4ade80' : '#f87171',
-                    border: `1px solid ${saveStatus.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                    padding: '8px 16px', borderRadius: 12, fontSize: 13, fontWeight: 700, textAlign: 'center',
+                    background: saveStatus.type === 'success'
+                      ? 'linear-gradient(180deg, rgba(107,199,77,0.3) 0%, rgba(107,199,77,0.15) 100%)'
+                      : 'linear-gradient(180deg, rgba(239,68,68,0.3) 0%, rgba(239,68,68,0.15) 100%)',
+                    color: saveStatus.type === 'success' ? '#a5e88a' : '#f87171',
+                    border: `2px solid ${saveStatus.type === 'success' ? '#6bc74d' : '#ef4444'}55`,
+                    boxShadow: `0 2px 8px ${saveStatus.type === 'success' ? 'rgba(107,199,77,0.2)' : 'rgba(239,68,68,0.2)'}`,
                   }}>
                     {saveStatus.message}
                   </div>
                 )}
 
-                {/* Save Slots */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, overflow: 'auto' }}>
+                {/* 3 Cartridge Save Slots — side by side on PC, stacked on mobile */}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  gap: 14, flex: 1, overflow: 'auto',
+                  justifyContent: 'center', alignItems: 'stretch',
+                }}>
                   {saveSlots.map((slot, idx) => {
                     const hasData = !!slot.data;
                     const compCount = hasData ? (slot.data.components?.length || 0) : 0;
                     const wireCount = hasData ? (slot.data.wires?.length || 0) : 0;
                     const dateStr = slot.updatedAt ? new Date(slot.updatedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
+                    // Cartridge body colors per slot
+                    const cartColors = [
+                      { body: '#4a74b8', dark: '#1e2d45', light: '#5a8ad0' },
+                      { body: '#7c5cb8', dark: '#2a1d45', light: '#9a7cd0' },
+                      { body: '#b84a6f', dark: '#451e2d', light: '#d05a80' },
+                    ];
+                    const cc = cartColors[idx];
 
                     return (
                       <div key={slot.slotId} style={{
+                        flex: isMobile ? undefined : 1,
+                        minWidth: isMobile ? undefined : 180,
+                        maxWidth: isMobile ? undefined : 280,
                         position: 'relative',
-                        borderRadius: 16,
-                        border: `2px solid ${slot.color}44`,
-                        background: `linear-gradient(135deg, ${slot.color}15 0%, ${slot.color}08 100%)`,
+                        borderRadius: 14,
+                        background: `linear-gradient(180deg, ${cc.light} 0%, ${cc.body} 30%, ${cc.body} 70%, ${cc.dark} 100%)`,
+                        boxShadow: `4px 4px 0 ${cc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
                         overflow: 'hidden',
-                        boxShadow: `0 4px 20px ${slot.color}15`,
-                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                        transition: 'transform 0.15s, box-shadow 0.15s',
                       }}>
-                        {/* Cartridge notch top */}
-                        <div style={{ position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 6, background: '#0f172a', borderRadius: '0 0 8 8' }} />
-                        {/* Cartridge notch bottom */}
-                        <div style={{ position: 'absolute', bottom: -1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 6, background: '#0f172a', borderRadius: '8 8 0 0' }} />
+                        {/* Cartridge SD-card notch (top-right angled cutout) */}
+                        <div style={{
+                          position: 'absolute', top: 0, right: 20,
+                          width: 24, height: 12,
+                          background: '#2a3a5c',
+                          borderRadius: '0 0 6 6',
+                        }} />
 
-                        <div style={{ padding: isMobile ? '16px 14px' : '20px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {/* Slot header: color picker + name + slot number */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {/* Color picker */}
+                        {/* Label/screen area — recessed dark cavity */}
+                        <div style={{
+                          margin: '14px 12px 8px',
+                          padding: '10px 10px 8px',
+                          borderRadius: 8,
+                          background: cc.dark,
+                          boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
+                          display: 'flex', flexDirection: 'column', gap: 6,
+                        }}>
+                          {/* Color picker + name row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <input
-                              type="color"
-                              value={slot.color}
-                              onChange={e => {
-                                const newColor = e.target.value;
-                                setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, color: newColor } : s));
-                              }}
-                              style={{ width: 32, height: 32, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 0, background: 'transparent' }}
+                              type="color" value={slot.color}
+                              onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, color: e.target.value } : s))}
+                              style={{ width: 24, height: 24, border: 'none', borderRadius: 6, cursor: 'pointer', padding: 0, background: 'transparent', flexShrink: 0 }}
                             />
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {/* Name input */}
-                              <input
-                                type="text"
-                                value={slot.name}
-                                onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
-                                placeholder={`Slot ${idx + 1}`}
-                                maxLength={40}
-                                style={{
-                                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                                  borderRadius: 8, padding: '6px 10px', color: '#e2e8f0', fontSize: 14, fontWeight: 700,
-                                  fontFamily: '"Inter", sans-serif', outline: 'none',
-                                }}
-                              />
-                            </div>
-                            {/* Slot badge */}
-                            <div style={{
-                              background: slot.color + '30', color: slot.color,
-                              borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 800,
-                              border: `1px solid ${slot.color}50`,
-                            }}>
-                              SLOT {idx + 1}
-                            </div>
+                            <input
+                              type="text" value={slot.name}
+                              onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                              placeholder={`Slot ${idx + 1}`} maxLength={40}
+                              style={{
+                                flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+                                borderRadius: 6, padding: '4px 8px', color: '#e8eef4', fontSize: 13, fontWeight: 700,
+                                fontFamily: '"Inter", sans-serif', outline: 'none', minWidth: 0,
+                              }}
+                            />
                           </div>
-
-                          {/* Description input */}
+                          {/* Description */}
                           <input
-                            type="text"
-                            value={slot.description}
+                            type="text" value={slot.description}
                             onChange={e => setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, description: e.target.value } : s))}
-                            placeholder="Tambahkan deskripsi..."
-                            maxLength={80}
+                            placeholder="Deskripsi..." maxLength={80}
                             style={{
-                              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                              borderRadius: 8, padding: '5px 10px', color: '#94a3b8', fontSize: 12,
-                              fontFamily: '"Inter", sans-serif', outline: 'none',
+                              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                              borderRadius: 6, padding: '3px 8px', color: '#8aa4c0', fontSize: 11,
+                              fontFamily: '"Inter", sans-serif', outline: 'none', width: '100%', boxSizing: 'border-box',
                             }}
                           />
-
                           {/* Info line */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#64748b' }}>
+                          <div style={{ fontSize: 10, color: '#5a7a9a', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                             {hasData ? (
                               <>
-                                <span>{compCount} komponen</span>
-                                <span>•</span>
+                                <span style={{ color: '#8aa4c0' }}>{compCount} comp</span>
                                 <span>{wireCount} wire</span>
-                                {dateStr && <><span>•</span><span>{dateStr}</span></>}
+                                {dateStr && <span style={{ fontSize: 9 }}>{dateStr}</span>}
                               </>
                             ) : (
-                              <span style={{ fontStyle: 'italic' }}>Kosong — belum ada data tersimpan</span>
+                              <span style={{ fontStyle: 'italic', color: '#4a6a8a' }}>Kosong</span>
                             )}
                           </div>
-
-                          {/* Save / Load buttons */}
-                          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                            <button
-                              onClick={() => setSaveConfirm({ slotIndex: idx, action: 'save' })}
-                              disabled={saveLoading}
-                              style={{
-                                flex: 1, padding: '8px 0', borderRadius: 10,
-                                background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)',
-                                color: '#4ade80', fontSize: 13, fontWeight: 700, cursor: saveLoading ? 'wait' : 'pointer',
-                                fontFamily: '"Inter", sans-serif', transition: 'all 0.15s',
-                              }}
-                            >
-                              💾 Save
-                            </button>
-                            <button
-                              onClick={() => setSaveConfirm({ slotIndex: idx, action: 'load' })}
-                              disabled={saveLoading || !hasData}
-                              style={{
-                                flex: 1, padding: '8px 0', borderRadius: 10,
-                                background: hasData ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.05)',
-                                border: `1px solid ${hasData ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.1)'}`,
-                                color: hasData ? '#60a5fa' : 'rgba(59,130,246,0.3)',
-                                fontSize: 13, fontWeight: 700,
-                                cursor: (saveLoading || !hasData) ? 'not-allowed' : 'pointer',
-                                fontFamily: '"Inter", sans-serif', transition: 'all 0.15s',
-                              }}
-                            >
-                              📂 Load
-                            </button>
-                          </div>
                         </div>
+
+                        {/* Groove lines (cartridge detail) */}
+                        <div style={{ margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${cc.dark}60, transparent)` }} />
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${cc.dark}60, transparent)` }} />
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${cc.dark}60, transparent)` }} />
+                        </div>
+
+                        {/* Gold contact pins at bottom */}
+                        <div style={{
+                          margin: '8px 8px 0', padding: '6px 0', borderRadius: '4px 4px 0 0',
+                          background: 'linear-gradient(180deg, #d4af37 0%, #c5a028 50%, #a08020 100%)',
+                          display: 'flex', justifyContent: 'center', gap: 3,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)',
+                        }}>
+                          {[...Array(8)].map((_, pi) => (
+                            <div key={pi} style={{
+                              width: 8, height: 10, borderRadius: 2,
+                              background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
+                              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)',
+                            }} />
+                          ))}
+                        </div>
+
+                        {/* Action buttons area */}
+                        <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {/* Save button — hot pink pill */}
+                          <button
+                            onClick={() => setSaveConfirm({ slotIndex: idx, action: 'save' })}
+                            disabled={saveLoading}
+                            style={{
+                              width: '100%', padding: '10px 0', borderRadius: 50,
+                              background: saveLoading
+                                ? 'linear-gradient(180deg, #a0305a 0%, #802050 100%)'
+                                : 'linear-gradient(180deg, #e83e8c 0%, #d63384 50%, #c0256e 100%)',
+                              border: '2px solid #a0305a',
+                              boxShadow: '0 4px 0 #802050, 0 6px 12px rgba(0,0,0,0.4)',
+                              color: '#fff', fontSize: 15, fontWeight: 900, cursor: saveLoading ? 'wait' : 'pointer',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                              transition: 'transform 0.1s, boxShadow 0.1s',
+                            }}
+                          >
+                            SAVE
+                          </button>
+                          {/* Load button — lime green chunky */}
+                          <button
+                            onClick={() => setSaveConfirm({ slotIndex: idx, action: 'load' })}
+                            disabled={saveLoading || !hasData}
+                            style={{
+                              width: '100%', padding: hasData ? '12px 0' : '10px 0', borderRadius: 14,
+                              background: hasData
+                                ? 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)'
+                                : 'linear-gradient(180deg, #3a5530 0%, #2a4020 100%)',
+                              border: `2px solid ${hasData ? '#4a8a30' : '#1a3010'}`,
+                              boxShadow: hasData
+                                ? '0 4px 0 #3a7028, 0 6px 12px rgba(0,0,0,0.4)'
+                                : '0 2px 0 #1a3010',
+                              color: hasData ? '#fff' : '#5a7a50', fontSize: hasData ? 17 : 13, fontWeight: 900,
+                              cursor: (saveLoading || !hasData) ? 'not-allowed' : 'pointer',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: hasData ? 2 : 0,
+                              textShadow: hasData ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                              transition: 'transform 0.1s, boxShadow 0.1s',
+                            }}
+                          >
+                            {hasData ? 'LOAD' : 'EMPTY'}
+                          </button>
+                        </div>
+
+                        {/* Slot indicator dot */}
+                        <div style={{
+                          position: 'absolute', top: 8, left: 8,
+                          width: 14, height: 14, borderRadius: '50%',
+                          background: slot.color,
+                          boxShadow: `0 0 6px ${slot.color}80, inset 0 -2px 3px rgba(0,0,0,0.3)`,
+                          border: '2px solid rgba(255,255,255,0.2)',
+                        }} />
                       </div>
                     );
                   })}
@@ -5985,38 +6038,45 @@ export default function LogicGatesSimulator({ setPage }) {
                 {/* Login hint if not logged in */}
                 {!user && (
                   <div style={{
-                    padding: '10px 14px', borderRadius: 10, fontSize: 12, color: '#f59e0b',
-                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)',
-                    textAlign: 'center', fontWeight: 600,
+                    padding: '10px 16px', borderRadius: 12, fontSize: 12, color: '#e6b800', textAlign: 'center', fontWeight: 700,
+                    background: 'linear-gradient(180deg, rgba(230,184,0,0.15) 0%, rgba(197,160,40,0.1) 100%)',
+                    border: '2px solid rgba(230,184,0,0.3)',
+                    boxShadow: '0 2px 8px rgba(230,184,0,0.15)',
                   }}>
-                    ⚠️ Harap login terlebih dahulu untuk menyimpan progress ke cloud
+                    LOGIN DIPERLUKAN — Harap masuk untuk menyimpan ke cloud
                   </div>
                 )}
               </div>
 
-              {/* Confirmation dialog */}
+              {/* Confirmation dialog — game style */}
               {saveConfirm && (
                 <div style={{
                   position: 'fixed', inset: 0, zIndex: 1001,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'rgba(0,0,0,0.6)',
+                  background: 'rgba(0,0,0,0.7)',
                 }}>
                   <div style={{
-                    background: '#1e293b', borderRadius: 16, padding: '28px 32px',
-                    border: '1px solid rgba(148,163,184,0.2)',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                    background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 100%)',
+                    borderRadius: 20, padding: '24px 28px',
+                    border: '3px solid #5a7a9a',
+                    boxShadow: '0 0 0 2px #1a2744, 0 20px 60px rgba(0,0,0,0.6)',
                     display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center',
-                    maxWidth: 380, textAlign: 'center',
+                    maxWidth: 400, textAlign: 'center',
                   }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#e2e8f0', fontFamily: '"Inter", sans-serif' }}>
-                      {saveConfirm.action === 'save' ? '💾 Simpan Progress?' : '📂 Load Progress?'}
+                    <div style={{
+                      fontSize: 20, fontWeight: 900, color: '#f0f4f8',
+                      fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                      textShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                    }}>
+                      {saveConfirm.action === 'save' ? 'SIMPAN PROGRESS?' : 'LOAD PROGRESS?'}
                     </div>
-                    <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 13, color: '#8aa4c0', lineHeight: 1.6 }}>
                       {saveConfirm.action === 'save'
                         ? `Apakah Anda ingin save progress saat ini ke Slot ${saveConfirm.slotIndex + 1}?`
-                        : `Apakah Anda ingin load save Slot ${saveConfirm.slotIndex + 1}? Progress saat ini akan ditimpa.`}
+                        : `Apakah Anda ingin load Slot ${saveConfirm.slotIndex + 1}? Progress saat ini akan ditimpa.`}
                     </div>
-                    <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+                    <div style={{ display: 'flex', gap: 12, width: '100%' }}>
+                      {/* Ya — chunky green */}
                       <button
                         onClick={() => {
                           if (saveConfirm.action === 'save') doSaveSlot(saveConfirm.slotIndex);
@@ -6024,24 +6084,30 @@ export default function LogicGatesSimulator({ setPage }) {
                           setSaveConfirm(null);
                         }}
                         style={{
-                          flex: 1, padding: '10px 0', borderRadius: 10,
-                          background: saveConfirm.action === 'save' ? 'rgba(34,197,94,0.2)' : 'rgba(59,130,246,0.2)',
-                          border: `1px solid ${saveConfirm.action === 'save' ? 'rgba(34,197,94,0.4)' : 'rgba(59,130,246,0.4)'}`,
-                          color: saveConfirm.action === 'save' ? '#4ade80' : '#60a5fa',
-                          fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif',
+                          flex: 1, padding: '12px 0', borderRadius: 50,
+                          background: 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)',
+                          border: '2px solid #4a8a30',
+                          boxShadow: '0 4px 0 #3a7028, 0 6px 12px rgba(0,0,0,0.4)',
+                          color: '#fff', fontSize: 16, fontWeight: 900, cursor: 'pointer',
+                          fontFamily: '"Inter", sans-serif', letterSpacing: 2,
+                          textShadow: '0 1px 2px rgba(0,0,0,0.3)',
                         }}
                       >
-                        Ya
+                        YA
                       </button>
+                      {/* Tidak — dark muted */}
                       <button
                         onClick={() => setSaveConfirm(null)}
                         style={{
-                          flex: 1, padding: '10px 0', borderRadius: 10,
-                          background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-                          color: '#94a3b8', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif',
+                          flex: 1, padding: '12px 0', borderRadius: 50,
+                          background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                          border: '2px solid #2a3548',
+                          boxShadow: '0 4px 0 #1a2538, 0 6px 12px rgba(0,0,0,0.4)',
+                          color: '#8aa4c0', fontSize: 16, fontWeight: 900, cursor: 'pointer',
+                          fontFamily: '"Inter", sans-serif', letterSpacing: 2,
                         }}
                       >
-                        Tidak
+                        TIDAK
                       </button>
                     </div>
                   </div>
