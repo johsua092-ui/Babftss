@@ -1303,19 +1303,24 @@ export default function LogicGatesSimulator({ setPage }) {
       return next;
     });
   };
-  // ── Keyboard shortcuts 1-6 (PC only): toggle tool modes + auto-open tools panel ──
-  // 1=move, 2=rotate, 3=clone, 4=connect wire, 5=paint, 6=delete
+  // ── Keyboard shortcuts 1-8 (PC only): toggle tool modes + auto-open tools panel ──
+  // 1=undo, 2=redo, 3=move, 4=rotate, 5=clone, 6=connect wire, 7=paint, 8=delete
   // Jika tools panel tertutup → auto-buka + aktifkan mode.
+  // Undo/redo (1,2) do NOT close tools panel.
   const toggleMoveRef = useRef(toggleMove);
   const toggleRotateRef = useRef(toggleRotate);
   const toggleCloneRef = useRef(toggleClone);
   const togglePaintRef = useRef(togglePaint);
   const toggleDeleteRef = useRef(toggleDelete);
+  const undoCircuitRef = useRef(undoCircuit);
+  const redoCircuitRef = useRef(redoCircuit);
   toggleMoveRef.current = toggleMove;
   toggleRotateRef.current = toggleRotate;
   toggleCloneRef.current = toggleClone;
   togglePaintRef.current = togglePaint;
   toggleDeleteRef.current = toggleDelete;
+  undoCircuitRef.current = undoCircuit;
+  redoCircuitRef.current = redoCircuit;
   useEffect(() => {
     if (isMobile) return; // PC only
     const onToolKey = (e) => {
@@ -1323,13 +1328,15 @@ export default function LogicGatesSimulator({ setPage }) {
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       const k = e.key;
-      if (k >= '1' && k <= '6') {
+      if (k >= '1' && k <= '8') {
         e.preventDefault();
         setToolsOpen(true); // Auto-open tools panel
-        if (k === '1') toggleMoveRef.current();
-        else if (k === '2') toggleRotateRef.current();
-        else if (k === '3') toggleCloneRef.current();
-        else if (k === '4') {
+        if (k === '1') undoCircuitRef.current();       // undo — does NOT close tools
+        else if (k === '2') redoCircuitRef.current();   // redo — does NOT close tools
+        else if (k === '3') toggleMoveRef.current();
+        else if (k === '4') toggleRotateRef.current();
+        else if (k === '5') toggleCloneRef.current();
+        else if (k === '6') {
           // Connect wire: toggle via mode state
           setMode(prev => {
             if (prev === 'connect') return 'build';
@@ -1337,8 +1344,8 @@ export default function LogicGatesSimulator({ setPage }) {
             return 'connect';
           });
         }
-        else if (k === '5') togglePaintRef.current();
-        else if (k === '6') toggleDeleteRef.current();
+        else if (k === '7') togglePaintRef.current();
+        else if (k === '8') toggleDeleteRef.current();
       }
     };
     window.addEventListener('keydown', onToolKey);
@@ -5324,13 +5331,14 @@ export default function LogicGatesSimulator({ setPage }) {
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
-            {/* ── Undo / Redo buttons (always visible, next to Tools) ── */}
+            {toolsOpen && <>
+            {/* ── Undo (#1) ── Blue (#60a5fa). Does NOT close tools panel. ── */}
             <button
               onClick={undoCircuit}
               disabled={!canUndoCircuit}
-              title="Undo"
+              title="Undo (1)"
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (canUndoCircuit ? '#60a5fa' : 'rgba(96,165,250,0.3)'),
                 backgroundColor: canUndoCircuit ? 'rgba(96,165,250,0.10)' : 'rgba(96,165,250,0.06)',
@@ -5339,19 +5347,23 @@ export default function LogicGatesSimulator({ setPage }) {
                 cursor: canUndoCircuit ? 'pointer' : 'not-allowed',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
                 backdropFilter: 'blur(4px)',
-                opacity: canUndoCircuit ? 1 : 0.45,
                 transition: 'opacity 0.15s ease',
                 userSelect: 'none',
+                opacity: canUndoCircuit ? 1 : 0.45,
               }}
             >
               <Undo2 size={16} />
+              <span>undo</span>
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[1]</span>}
             </button>
+
+            {/* ── Redo (#2) ── Blue (#60a5fa). Does NOT close tools panel. ── */}
             <button
               onClick={redoCircuit}
               disabled={!canRedoCircuit}
-              title="Redo"
+              title="Redo (2)"
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
                 padding: '10px 14px', borderRadius: 10,
                 border: '1px solid ' + (canRedoCircuit ? '#60a5fa' : 'rgba(96,165,250,0.3)'),
                 backgroundColor: canRedoCircuit ? 'rgba(96,165,250,0.10)' : 'rgba(96,165,250,0.06)',
@@ -5360,15 +5372,17 @@ export default function LogicGatesSimulator({ setPage }) {
                 cursor: canRedoCircuit ? 'pointer' : 'not-allowed',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
                 backdropFilter: 'blur(4px)',
-                opacity: canRedoCircuit ? 1 : 0.45,
                 transition: 'opacity 0.15s ease',
                 userSelect: 'none',
+                opacity: canRedoCircuit ? 1 : 0.45,
               }}
             >
               <Redo2 size={16} />
+              <span>redo</span>
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[2]</span>}
             </button>
-            {toolsOpen && <>
-            {/* ── Move! Area toggle (#1) ──
+
+            {/* ── Move! Area toggle (#3) ──
                 Teal (#0ea5e9). OFF = dim, text 'move area off'.
                 ON = bright (#0ea5e9), text 'move area on'.
                 Mutual exclusive dengan semua mode lain. */}
@@ -5394,10 +5408,10 @@ export default function LogicGatesSimulator({ setPage }) {
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
               <span>move area <span style={{ visibility: 'hidden' }}>{moveMode ? 'on' : 'off'}</span></span>
-              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[1]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[3]</span>}
             </button>
 
-            {/* ── Rotate Area toggle (#2) ──
+            {/* ── Rotate Area toggle (#4) ──
                 Amber (#f59e0b). OFF = dim, text 'rotate area off'.
                 ON = bright (#f59e0b), text 'rotate area on'.
                 Mutual exclusive dengan semua mode lain. */}
@@ -5424,10 +5438,10 @@ export default function LogicGatesSimulator({ setPage }) {
                 <polyline points="21 3 21 9 15 9" />
               </svg>
               <span>rotate area <span style={{ visibility: 'hidden' }}>{rotateMode ? 'on' : 'off'}</span></span>
-              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[2]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[4]</span>}
             </button>
 
-            {/* ── Cloning Area toggle (#3) ──
+            {/* ── Cloning Area toggle (#5) ──
                 Bright purple (#c084fc). OFF = dim, text 'cloning area off'.
                 ON = bright (#c084fc), text 'cloning area on'.
                 Saat ON: mode indicator berganti jadi "mode: cloning area" + bright purple.
@@ -5456,7 +5470,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
               </svg>
               <span>cloning area <span style={{ visibility: 'hidden' }}>{cloneMode ? 'on' : 'off'}</span></span>
-              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[3]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[5]</span>}
             </button>
 
             {/* ── mode: connect wire ──
@@ -5497,7 +5511,7 @@ export default function LogicGatesSimulator({ setPage }) {
             >
               <Cable size={13} />
               <span>connect wire <span style={{ visibility: 'hidden' }}>{mode === 'connect' ? 'on' : 'off'}</span></span>
-              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[4]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[6]</span>}
             </button>
 
             {/* ── Paint Mode toggle ──
@@ -5538,7 +5552,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 }}
               />
               <span>paint <span style={{ visibility: 'hidden' }}>{paintMode ? 'on' : 'off'}</span></span>
-              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[5]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[7]</span>}
             </button>
 
             {/* ── Delete Mode toggle ──
@@ -5599,7 +5613,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 />
               </svg>
               <span>delete <span style={{ visibility: 'hidden' }}>{deleteMode ? 'on' : 'off'}</span></span>
-              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[6]</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, opacity: 0.5 }}>[8]</span>}
             </button>
             </>}
           </div>
