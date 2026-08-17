@@ -341,26 +341,8 @@ export default function ColorWheelPicker({ hex, onChange }) {
       boxShadow: 'inset 1px 1px 0 #4a5d75, inset -1px -1px 0 #4a5d75',
       fontFamily: 'Arial,sans-serif',
     }}>
-      {/* Top row: Reset Color button + Wheel + HSV sliders */}
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {/* Reset Color button — flush left of color wheel */}
-        <button
-          onClick={() => onChange('#ffffff')}
-          onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
-          onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
-          style={{
-            width: 56, height: 56, padding: 0, fontSize: 10, fontWeight: 700,
-            color: '#fff', background: '#4a5d75', border: '1px solid #000',
-            borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
-            textTransform: 'uppercase', letterSpacing: 0.3,
-            lineHeight: 1.2, transition: 'background 0.15s',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            textAlign: 'center', flexShrink: 0,
-          }}
-          title="Reset color to white (center of wheel)"
-        >
-          Reset<br/>Color
-        </button>
+      {/* Top row: Wheel + HSV sliders */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         {/* Color wheel */}
         <canvas
           ref={wheelRef}
@@ -386,40 +368,59 @@ export default function ColorWheelPicker({ hex, onChange }) {
           <HSlider color="#00ff00" value={g0} onChange={onGChange} label="Green:" />
           <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
         </div>
-        {/* Right side: preview swatch + hex */}
+        {/* Right side: preview swatch + Reset Color button + hex input */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 80 }}>
           <div style={{
             width: 72, height: 36, borderRadius: 6,
             background: hex, border: '2px solid #000',
             boxShadow: `0 0 12px ${hex}66`,
           }} />
-          <input
-            type="text"
-            value={hexInput}
-            onChange={e => setHexInput(e.target.value)}
-            onFocus={() => setHexFocused(true)}
-            onBlur={() => {
-              setHexFocused(false);
-              const v = hexInput.trim();
-              if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
-              else setHexInput(hex.toUpperCase()); // revert if invalid
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* Reset Color button — flush left of hex input */}
+            <button
+              onClick={() => onChange('#ffffff')}
+              onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
+              onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
+              style={{
+                width: 20, height: 20, padding: 0, fontSize: 9, fontWeight: 700,
+                color: '#fff', background: '#4a5d75', border: '1px solid #000',
+                borderRadius: 3, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
+                lineHeight: 1, transition: 'background 0.15s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}
+              title="Reset color to white (center of wheel)"
+            >
+              ↺
+            </button>
+            <input
+              type="text"
+              value={hexInput}
+              onChange={e => setHexInput(e.target.value)}
+              onFocus={() => setHexFocused(true)}
+              onBlur={() => {
+                setHexFocused(false);
                 const v = hexInput.trim();
                 if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
-                else setHexInput(hex.toUpperCase());
-                e.target.blur();
-              }
-            }}
-            style={{
-              width: 76, fontSize: 13, fontWeight: 700, color: '#fff',
-              background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
-              borderRadius: 4,
-              textAlign: 'center', fontFamily: 'monospace', padding: '4px 0',
-              outline: 'none',
-            }}
-          />
+                else setHexInput(hex.toUpperCase()); // revert if invalid
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const v = hexInput.trim();
+                  if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
+                  else setHexInput(hex.toUpperCase());
+                  e.target.blur();
+                }
+              }}
+              style={{
+                width: 76, fontSize: 13, fontWeight: 700, color: '#fff',
+                background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
+                borderRadius: 4,
+                textAlign: 'center', fontFamily: 'monospace', padding: '4px 0',
+                outline: 'none',
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>
