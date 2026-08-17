@@ -1004,6 +1004,50 @@ function DragGhost({ type, x, y }) {
   );
 }
 
+/* ── Slot Color Picker Modal (with draft + Confirm/Cancel) ── */
+function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel }) {
+  const [draftHex, setDraftHex] = useState(slot.color);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1003,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.7)',
+    }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+        borderRadius: 16, padding: 16,
+        border: '2px solid #334155',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
+          Slot {slotIndex + 1} Color
+        </div>
+        <ColorWheelPicker
+          hex={draftHex}
+          onChange={setDraftHex}
+        />
+        <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
+          <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
+            flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 700,
+            background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
+            borderRadius: 4, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+          }}>
+            <Check size={12} strokeWidth={2.5} /> Confirm
+          </button>
+          <button onClick={onCancel} style={{
+            flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 600,
+            background: '#1e293b', border: '1px solid #475569',
+            borderRadius: 4, color: '#94a3b8', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+          }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Canvas Simulator ──
 export default function LogicGatesSimulator({ setPage }) {
   const canvasRef = useRef(null);
@@ -6632,43 +6676,15 @@ export default function LogicGatesSimulator({ setPage }) {
               )}
 
               {/* ── Slot Color Picker Modal ── */}
-              {slotColorEdit !== null && (() => {
-                const sIdx = slotColorEdit.slotIndex;
-                const sl = saveSlots[sIdx];
-                return (
-                  <div style={{
-                    position: 'fixed', inset: 0, zIndex: 1003,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'rgba(0,0,0,0.7)',
-                  }} onClick={() => setSlotColorEdit(null)}>
-                    <div onClick={e => e.stopPropagation()} style={{
-                      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-                      borderRadius: 16, padding: 16,
-                      border: '2px solid #334155',
-                      boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-                      display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
-                    }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
-                        Slot {sIdx + 1} Color
-                      </div>
-                      <ColorWheelPicker
-                        hex={sl.color}
-                        onChange={newHex => setSaveSlots(prev => prev.map((s, i) => i === sIdx ? { ...s, color: newHex } : s))}
-                      />
-                      <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
-                        <button onClick={() => setSlotColorEdit(null)} style={{
-                          padding: '5px 16px', fontSize: 11, fontWeight: 700,
-                          background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
-                          borderRadius: 4, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
-                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-                        }}>
-                          <Check size={12} strokeWidth={2.5} /> Oke
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              {slotColorEdit !== null && <SlotColorPickerModal
+                slotIndex={slotColorEdit.slotIndex}
+                slot={saveSlots[slotColorEdit.slotIndex]}
+                onConfirm={(sIdx, newColor) => {
+                  setSaveSlots(prev => prev.map((s, i) => i === sIdx ? { ...s, color: newColor } : s));
+                  setSlotColorEdit(null);
+                }}
+                onCancel={() => setSlotColorEdit(null)}
+              />}
 
             </div>
           )}
