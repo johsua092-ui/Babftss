@@ -1,19 +1,17 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 
 /* ================================================================
-   ColorWheelPicker — HSV color wheel + brightness slider
-   Replicates the classic Windows color picker style but with
-   modern dark theme styling matching the BABFTSS app.
+   ColorWheelPicker — Classic Windows-style color picker
+   Color wheel (HSV) + 3 vertical HSV sliders + 3 horizontal RGB sliders
+   + input fields + eyedropper + preview swatch
 
    Props:
-     hex: string         — current color in #rrggbb
-     onChange: (hex) => void — called when color changes (preview only, no confirm)
-     size?: number       — wheel diameter (default 180)
+     hex: string            — current color in #rrggbb
+     onChange: (hex) => void — called on color change (preview only)
    ================================================================ */
 
-// ── HSV ↔ Hex conversions ──
+// ── Color math ──
 function hsvToRgb(h, s, v) {
-  // h: 0-360, s: 0-1, v: 0-1
   const c = v * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
   const m = v - c;
@@ -24,281 +22,366 @@ function hsvToRgb(h, s, v) {
   else if (h < 240) { r = 0; g = x; b = c; }
   else if (h < 300) { r = x; g = 0; b = c; }
   else              { r = c; g = 0; b = x; }
-  return [
-    Math.round((r + m) * 255),
-    Math.round((g + m) * 255),
-    Math.round((b + m) * 255),
-  ];
+  return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)];
 }
 
 function rgbToHsv(r, g, b) {
   r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const d = max - min;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b), d = max - min;
   let h = 0;
   if (d !== 0) {
-    if (max === r)      h = 60 * (((g - b) / d) % 6);
-    else if (max === g) h = 60 * (((b - r) / d) + 2);
-    else                h = 60 * (((r - g) / d) + 4);
+    if (max === r) h = 60 * (((g-b)/d) % 6);
+    else if (max === g) h = 60 * (((b-r)/d) + 2);
+    else h = 60 * (((r-g)/d) + 4);
   }
   if (h < 0) h += 360;
-  const s = max === 0 ? 0 : d / max;
-  return [h, s, max]; // h: 0-360, s: 0-1, v: 0-1
+  return [h, max === 0 ? 0 : d / max, max];
 }
 
 function hexToRgb(hex) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 255, 255];
+  return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
 }
 
 function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(x => Math.max(0, Math.min(255, x)).toString(16).padStart(2, '0')).join('');
+  return '#' + [r,g,b].map(x => Math.max(0,Math.min(255,x)).toString(16).padStart(2,'0')).join('');
 }
 
-function hsvToHex(h, s, v) {
-  const [r, g, b] = hsvToRgb(h, s, v);
-  return rgbToHex(r, g, b);
-}
+function hsvToHex(h, s, v) { return rgbToHex(...hsvToRgb(h, s, v)); }
 
-export default function ColorWheelPicker({ hex, onChange, size = 180 }) {
-  const canvasRef = useRef(null);
-  const brightnessRef = useRef(null);
-  const [dragging, setDragging] = useState(null); // 'wheel' | 'brightness' | null
+// ── Styles ──
+const BG = '#7b9cc2';
+const LABEL = { fontSize: 11, fontWeight: 700, color: '#fff', fontFamily: 'Arial,sans-serif' };
+const INPUT = {
+  width: 40, height: 20, fontSize: 11, fontWeight: 700, color: '#fff',
+  background: '#555', border: '1px solid #000', borderRadius: 2, textAlign: 'center',
+  fontFamily: 'Arial,sans-serif', padding: 0,
+};
+const SLIDER_H = 140;
 
-  // Derive HSV from hex prop
-  const [r0, g0, b0] = hexToRgb(hex);
-  const [hue, sat, val] = rgbToHsv(r0, g0, b0);
+// ── Vertical slider component (Hue, Sat, Val) ──
+function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputChange }) {
+  const ref = useRef(null);
+  const [drag, setDrag] = useState(false);
 
-  const radius = size / 2;
-  const innerRadius = radius * 0.05; // tiny hole in center
-
-  // ── Draw the color wheel ──
-  const drawWheel = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+  const draw = useCallback(() => {
+    const c = ref.current; if (!c) return;
+    const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    canvas.style.width = size + 'px';
-    canvas.style.height = size + 'px';
+    const w = 32, h = SLIDER_H;
+    c.width = w * dpr; c.height = h * dpr;
+    c.style.width = w + 'px'; c.style.height = h + 'px';
     ctx.scale(dpr, dpr);
 
-    // Draw HSV wheel pixel by pixel for accuracy
-    const imageData = ctx.createImageData(size * dpr, size * dpr);
-    const data = imageData.data;
-    const cx = radius, cy = radius;
-
-    for (let y = 0; y < size * dpr; y++) {
-      for (let x = 0; x < size * dpr; x++) {
-        const px = x / dpr;
-        const py = y / dpr;
-        const dx = px - cx;
-        const dy = py - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist <= radius && dist >= innerRadius) {
-          // Calculate hue and saturation from position
-          let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-          if (angle < 0) angle += 360;
-          // Rotate so red (0°) is at top
-          angle = (angle + 90) % 360;
-
-          const s = Math.min(1, dist / radius);
-          const [r, g, b] = hsvToRgb(angle, s, val);
-
-          const idx = (y * size * dpr + x) * 4;
-          data[idx] = r;
-          data[idx + 1] = g;
-          data[idx + 2] = b;
-          data[idx + 3] = 255;
-        } else if (dist < innerRadius) {
-          // White center
-          const idx = (y * size * dpr + x) * 4;
-          data[idx] = 255;
-          data[idx + 1] = 255;
-          data[idx + 2] = 255;
-          data[idx + 3] = 255;
-        }
-      }
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    // Draw selection indicator
-    const selAngle = ((hue - 90) % 360) * (Math.PI / 180);
-    const selDist = sat * radius;
-    const selX = cx + selDist * Math.cos(selAngle);
-    const selY = cy + selDist * Math.sin(selAngle);
-
-    ctx.beginPath();
-    ctx.arc(selX, selY, 6, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(selX, selY, 4, 0, Math.PI * 2);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Outer ring border
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }, [hue, sat, val, size, radius, innerRadius]);
-
-  // ── Draw brightness slider ──
-  const drawBrightness = useCallback(() => {
-    const canvas = brightnessRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const w = size, h = 16;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
-    ctx.scale(dpr, dpr);
-
-    // Gradient from black to full color
-    const [fullR, fullG, fullB] = hsvToRgb(hue, sat, 1);
-    const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, '#000000');
-    grad.addColorStop(1, rgbToHex(fullR, fullG, fullB));
+    // Track gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    gradient.forEach(([stop, color]) => grad.addColorStop(stop, color));
     ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.roundRect(0, 0, w, h, 4);
-    ctx.fill();
-
-    // Value indicator
-    const vx = val * w;
-    ctx.beginPath();
-    ctx.roundRect(vx - 3, 0, 6, h, 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx.fillRect(0, 0, w, h);
 
     // Border
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, w, h);
+
+    // Triangle thumb (right side)
+    const norm = 1 - (value / maxVal);
+    const ty = norm * h;
+    ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.roundRect(0, 0, w, h, 4);
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }, [hue, sat, val, size]);
+    ctx.moveTo(w + 1, ty);
+    ctx.lineTo(w + 10, ty - 5);
+    ctx.lineTo(w + 10, ty + 5);
+    ctx.closePath();
+    ctx.fill();
+  }, [gradient, value, maxVal]);
 
-  useEffect(() => { drawWheel(); drawBrightness(); }, [drawWheel, drawBrightness]);
+  useEffect(() => { draw(); }, [draw]);
 
-  // ── Wheel interaction ──
-  const handleWheelPos = useCallback((clientX, clientY) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const px = clientX - rect.left;
+  const handlePos = useCallback((clientY) => {
+    const c = ref.current; if (!c) return;
+    const rect = c.getBoundingClientRect();
     const py = clientY - rect.top;
-    const dx = px - radius;
-    const dy = py - radius;
-    const dist = Math.min(Math.sqrt(dx * dx + dy * dy), radius);
-    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    if (angle < 0) angle += 360;
-    angle = (angle + 90) % 360;
-    const newSat = Math.min(1, dist / radius);
-    const newHex = hsvToHex(angle, newSat, val);
-    onChange(newHex);
-  }, [radius, val, onChange]);
-
-  const handleBrightnessPos = useCallback((clientX) => {
-    const canvas = brightnessRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const px = clientX - rect.left;
-    const newVal = Math.max(0, Math.min(1, px / rect.width));
-    const newHex = hsvToHex(hue, sat, newVal);
-    onChange(newHex);
-  }, [hue, sat, onChange]);
-
-  // ── Mouse handlers ──
-  const onWheelMouseDown = useCallback((e) => {
-    e.preventDefault();
-    setDragging('wheel');
-    handleWheelPos(e.clientX, e.clientY);
-  }, [handleWheelPos]);
-
-  const onBrightnessMouseDown = useCallback((e) => {
-    e.preventDefault();
-    setDragging('brightness');
-    handleBrightnessPos(e.clientX);
-  }, [handleBrightnessPos]);
+    const norm = 1 - Math.max(0, Math.min(1, py / rect.height));
+    onChange(Math.round(norm * maxVal));
+  }, [maxVal, onChange]);
 
   useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e) => {
-      if (dragging === 'wheel') handleWheelPos(e.clientX, e.clientY);
-      else if (dragging === 'brightness') handleBrightnessPos(e.clientX);
-    };
-    const onUp = () => setDragging(null);
+    if (!drag) return;
+    const onMove = (e) => handlePos(e.clientY);
+    const onUp = () => setDrag(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [dragging, handleWheelPos, handleBrightnessPos]);
-
-  // ── Touch handlers (mobile) ──
-  const onWheelTouchStart = useCallback((e) => {
-    e.preventDefault();
-    setDragging('wheel');
-    const t = e.touches[0];
-    handleWheelPos(t.clientX, t.clientY);
-  }, [handleWheelPos]);
-
-  const onBrightnessTouchStart = useCallback((e) => {
-    e.preventDefault();
-    setDragging('brightness');
-    const t = e.touches[0];
-    handleBrightnessPos(t.clientX);
-  }, [handleBrightnessPos]);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e) => {
-      const t = e.touches[0];
-      if (!t) return;
-      if (dragging === 'wheel') handleWheelPos(t.clientX, t.clientY);
-      else if (dragging === 'brightness') handleBrightnessPos(t.clientX);
-    };
-    const onEnd = () => setDragging(null);
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onEnd);
-    return () => {
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onEnd);
-    };
-  }, [dragging, handleWheelPos, handleBrightnessPos]);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [drag, handlePos]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      {/* Color wheel */}
-      <canvas
-        ref={canvasRef}
-        onMouseDown={onWheelMouseDown}
-        onTouchStart={onWheelTouchStart}
-        style={{ cursor: 'crosshair', borderRadius: '50%' }}
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+      <div style={LABEL}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+        <input
+          type="text"
+          value={inputVal}
+          onChange={e => onInputChange(e.target.value)}
+          style={INPUT}
+        />
+        <canvas
+          ref={ref}
+          onMouseDown={e => { e.preventDefault(); setDrag(true); handlePos(e.clientY); }}
+          onTouchStart={e => { e.preventDefault(); setDrag(true); handlePos(e.touches[0].clientY); }}
+          style={{ cursor: 'pointer' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Horizontal slider component (Red, Green, Blue) ──
+function HSlider({ color, value, onChange, label }) {
+  const ref = useRef(null);
+  const [drag, setDrag] = useState(false);
+
+  const draw = useCallback(() => {
+    const c = ref.current; if (!c) return;
+    const ctx = c.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = 130, h = 18;
+    c.width = w * dpr; c.height = h * dpr;
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    ctx.scale(dpr, dpr);
+
+    // Gradient from black to color
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, '#000000');
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Border
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, w, h);
+
+    // Triangle thumb (top)
+    const tx = (value / 255) * w;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.moveTo(tx, -1);
+    ctx.lineTo(tx - 5, -9);
+    ctx.lineTo(tx + 5, -9);
+    ctx.closePath();
+    ctx.fill();
+  }, [color, value]);
+
+  useEffect(() => { draw(); }, [draw]);
+
+  const handlePos = useCallback((clientX) => {
+    const c = ref.current; if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const px = clientX - rect.left;
+    onChange(Math.round(Math.max(0, Math.min(1, px / rect.width)) * 255));
+  }, [onChange]);
+
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e) => handlePos(e.clientX);
+    const onUp = () => setDrag(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [drag, handlePos]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ ...LABEL, width: 40, textAlign: 'right' }}>{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) onChange(Math.max(0, Math.min(255, v))); }}
+        style={INPUT}
       />
-      {/* Brightness / Value slider */}
       <canvas
-        ref={brightnessRef}
-        onMouseDown={onBrightnessMouseDown}
-        onTouchStart={onBrightnessTouchStart}
-        style={{ cursor: 'pointer', borderRadius: 4, marginTop: 2 }}
+        ref={ref}
+        onMouseDown={e => { e.preventDefault(); setDrag(true); handlePos(e.clientX); }}
+        onTouchStart={e => { e.preventDefault(); setDrag(true); handlePos(e.touches[0].clientX); }}
+        style={{ cursor: 'pointer' }}
       />
     </div>
   );
 }
 
-// Export helpers for use in parent components
+// ── Main component ──
+export default function ColorWheelPicker({ hex, onChange }) {
+  const wheelRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+
+  const [r0, g0, b0] = hexToRgb(hex);
+  const [hue, sat, val] = rgbToHsv(r0, g0, b0);
+  const WHEEL_SIZE = 200;
+  const wheelR = WHEEL_SIZE / 2;
+
+  // ── Draw color wheel ──
+  const drawWheel = useCallback(() => {
+    const canvas = wheelRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const s = WHEEL_SIZE;
+    canvas.width = s * dpr; canvas.height = s * dpr;
+    canvas.style.width = s + 'px'; canvas.style.height = s + 'px';
+    ctx.scale(dpr, dpr);
+
+    const imgData = ctx.createImageData(s * dpr, s * dpr);
+    const data = imgData.data;
+    const cx = wheelR, cy = wheelR;
+
+    for (let y = 0; y < s * dpr; y++) {
+      for (let x = 0; x < s * dpr; x++) {
+        const px = x / dpr, py = y / dpr;
+        const dx = px - cx, dy = py - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= wheelR) {
+          let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          if (angle < 0) angle += 360;
+          angle = (angle + 90) % 360; // Red at top
+          const satAt = Math.min(1, dist / wheelR);
+          // Wheel shows full brightness (V=1), saturation varies by distance
+          const [r, g, b] = hsvToRgb(angle, satAt, 1);
+          // Multiply by current value (brightness)
+          const idx = (y * s * dpr + x) * 4;
+          data[idx]   = Math.round(r * val);
+          data[idx+1] = Math.round(g * val);
+          data[idx+2] = Math.round(b * val);
+          data[idx+3] = 255;
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Selection indicator
+    const selAngle = ((hue - 90) % 360) * (Math.PI / 180);
+    const selDist = sat * wheelR;
+    const selX = cx + selDist * Math.cos(selAngle);
+    const selY = cy + selDist * Math.sin(selAngle);
+
+    // Hollow circle indicator
+    ctx.beginPath();
+    ctx.arc(selX, selY, 7, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(selX, selY, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Outer border
+    ctx.beginPath();
+    ctx.arc(cx, cy, wheelR, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+  }, [hue, sat, val, wheelR]);
+
+  useEffect(() => { drawWheel(); }, [drawWheel]);
+
+  // ── Wheel interaction ──
+  const handleWheelPos = useCallback((clientX, clientY) => {
+    const c = wheelRef.current; if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const px = clientX - rect.left, py = clientY - rect.top;
+    const dx = px - wheelR, dy = py - wheelR;
+    const dist = Math.min(Math.sqrt(dx*dx + dy*dy), wheelR);
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    if (angle < 0) angle += 360;
+    angle = (angle + 90) % 360;
+    const newSat = Math.min(1, dist / wheelR);
+    onChange(hsvToHex(angle, newSat, val));
+  }, [wheelR, val, onChange]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => handleWheelPos(e.clientX, e.clientY);
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [dragging, handleWheelPos]);
+
+  // ── HSV slider handlers ──
+  const onHueChange = useCallback(v => onChange(hsvToHex(v, sat, val)), [sat, val, onChange]);
+  const onSatChange = useCallback(v => onChange(hsvToHex(hue, v / 100, val)), [hue, val, onChange]);
+  const onValChange = useCallback(v => onChange(hsvToHex(hue, sat, v / 100)), [hue, sat, onChange]);
+
+  // ── RGB slider handlers ──
+  const onRChange = useCallback(v => { const [_, g, b] = hexToRgb(hex); onChange(rgbToHex(v, g, b)); }, [hex, onChange]);
+  const onGChange = useCallback(v => { const [r, _, b] = hexToRgb(hex); onChange(rgbToHex(r, v, b)); }, [hex, onChange]);
+  const onBChange = useCallback(v => { const [r, g, _] = hexToRgb(hex); onChange(rgbToHex(r, g, v)); }, [hex, onChange]);
+
+  // HSV input change handlers (accept typed values)
+  const onHueInput = useCallback(v => { const n = parseInt(v); if (!isNaN(n)) onHueChange(Math.max(0, Math.min(360, n))); }, [onHueChange]);
+  const onSatInput = useCallback(v => { const n = parseInt(v); if (!isNaN(n)) onSatChange(Math.max(0, Math.min(100, n))); }, [onSatChange]);
+  const onValInput = useCallback(v => { const n = parseInt(v); if (!isNaN(n)) onValChange(Math.max(0, Math.min(100, n))); }, [onValChange]);
+
+  // Hue slider gradient (rainbow top to bottom)
+  const hueGrad = [
+    [0, '#ff0000'], [0.17, '#ffff00'], [0.33, '#00ff00'],
+    [0.5, '#00ffff'], [0.67, '#0000ff'], [0.83, '#ff00ff'], [1, '#ff0000'],
+  ];
+  // Sat slider gradient (white to full hue color)
+  const [fullR, fullG, fullB] = hsvToRgb(hue, 1, val);
+  const satGrad = [[0, rgbToHex(fullR, fullG, fullB)], [1, '#ffffff']];
+  // Val slider gradient (black to full color)
+  const [fullR2, fullG2, fullB2] = hsvToRgb(hue, sat, 1);
+  const valGrad = [[0, rgbToHex(fullR2, fullG2, fullB2)], [1, '#000000']];
+
+  return (
+    <div style={{
+      background: BG, border: '2px solid #fff', borderRadius: 0,
+      padding: 10, display: 'flex', flexDirection: 'column', gap: 6,
+      boxShadow: 'inset 1px 1px 0 #4a5d75, inset -1px -1px 0 #4a5d75',
+      fontFamily: 'Arial,sans-serif',
+    }}>
+      {/* Top row: Wheel + HSV sliders */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        {/* Color wheel */}
+        <canvas
+          ref={wheelRef}
+          onMouseDown={e => { e.preventDefault(); setDragging(true); handleWheelPos(e.clientX, e.clientY); }}
+          onTouchStart={e => { e.preventDefault(); setDragging(true); handleWheelPos(e.touches[0].clientX, e.touches[0].clientY); }}
+          style={{ cursor: 'crosshair', borderRadius: '50%', flexShrink: 0 }}
+        />
+        {/* HSV vertical sliders */}
+        <div style={{ display: 'flex', gap: 6, paddingTop: 4 }}>
+          <VSlider gradient={hueGrad} value={Math.round(hue)} maxVal={360} onChange={onHueChange}
+            label="Hue" inputVal={Math.round(hue)} onInputChange={onHueInput} />
+          <VSlider gradient={satGrad} value={Math.round(sat * 100)} maxVal={100} onChange={onSatChange}
+            label="Sat" inputVal={Math.round(sat * 100)} onInputChange={onSatInput} />
+          <VSlider gradient={valGrad} value={Math.round(val * 100)} maxVal={100} onChange={onValChange}
+            label="Val" inputVal={Math.round(val * 100)} onInputChange={onValInput} />
+        </div>
+      </div>
+
+      {/* Bottom row: RGB sliders + eyedropper area */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+          <HSlider color="#ff0000" value={r0} onChange={onRChange} label="Red:" />
+          <HSlider color="#00ff00" value={g0} onChange={onGChange} label="Green:" />
+          <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
+        </div>
+        {/* Right side: preview swatch + hex */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 60 }}>
+          <div style={{
+            width: 56, height: 28, borderRadius: 4,
+            background: hex, border: '2px solid #000',
+            boxShadow: `0 0 8px ${hex}66`,
+          }} />
+          <input
+            type="text"
+            value={hex.toUpperCase()}
+            onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange(v.toLowerCase()); }}
+            style={{
+              width: 56, fontSize: 10, fontWeight: 700, color: '#fff',
+              background: '#555', border: '1px solid #000', borderRadius: 2,
+              textAlign: 'center', fontFamily: 'monospace', padding: '2px 0',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export { hsvToHex, hexToRgb, rgbToHex, hsvToRgb, rgbToHsv };

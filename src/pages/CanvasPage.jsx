@@ -429,39 +429,21 @@ function DrawTab({ token }) {
             {customColorPicker && (
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{
-                        padding: '12px', borderRadius: 12, backgroundColor: 'rgba(15, 23, 42, 0.98)',
-                        border: '1px solid #475569', width: 200, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                        padding: 8, borderRadius: 8, backgroundColor: 'rgba(15, 23, 42, 0.98)',
+                        border: '1px solid #475569', display: 'flex', flexDirection: 'column', gap: 6,
                         boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif', textAlign: 'center' }}>Custom Color</div>
-                        {/* Color wheel */}
                         <ColorWheelPicker
                             hex={customColorPicker.hex}
                             onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
-                            size={170}
                         />
-                        {/* Hex input + preview */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                            <div style={{
-                                width: 28, height: 20, borderRadius: 4,
-                                background: customColorPicker.hex,
-                                border: '2px solid #475569',
-                                boxShadow: `0 0 8px ${customColorPicker.hex}44`,
-                                flexShrink: 0,
-                            }} />
-                            <input
-                                type="text"
-                                value={customColorPicker.hex.toUpperCase()}
-                                onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{6}$/.test(v)) setCustomColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp); }}
-                                style={{ flex: 1, padding: '3px 6px', fontSize: 11, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace' }}
-                            />
-                        </div>
                         {/* Buttons directly below */}
-                        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); }} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
-                                borderRadius: 6, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                                borderRadius: 4, color: '#fff', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
                                 boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
                             }}>
@@ -470,7 +452,7 @@ function DrawTab({ token }) {
                             <button onClick={() => setCustomColorPicker(null)} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
                                 background: '#1e293b', border: '1px solid #475569',
-                                borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                                borderRadius: 4, color: '#94a3b8', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
                             }}>
                                 Cancel
                             </button>

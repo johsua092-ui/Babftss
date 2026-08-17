@@ -6742,114 +6742,39 @@ export default function LogicGatesSimulator({ setPage }) {
       )}
 
       {/* ── Color Picker (Wire & Component) ──
-          Muncul saat user klik wire/komponen di Paint Mode.
-          - Wire target: full RGB palette + preview ON/OFF (redup/terang) + tombol Random + Confirm ✓ + Close.
-          - Component target: full RGB palette + preview warna solid + tombol Reset (ke default) + Confirm ✓ + Close.
-          - User harus klik ✓ (Confirm) untuk menerapkan warna. Close = batal, revert ke originalHex.
-          Posisi: dekat click point, tapi clamp supaya gak off-screen.
+          Classic Windows-style: Color wheel + HSV sliders + RGB sliders + preview.
+          Confirm/Reset/Cancel buttons directly below.
           State: colorPicker = { targetType: 'wire'|'comp', targetId, x, y, hex, originalHex } */}
       {colorPicker && (
         <div
           style={{
             position: 'absolute',
-            left: Math.min(colorPicker.x, (canvasRef.current?.clientWidth || 800) - 280),
-            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 380),
+            left: Math.min(colorPicker.x, (canvasRef.current?.clientWidth || 800) - 450),
+            top: Math.min(colorPicker.y, (canvasRef.current?.clientHeight || 600) - 500),
             background: 'rgba(15, 23, 42, 0.98)',
             border: '1px solid #475569',
-            borderRadius: 10,
-            padding: 12,
-            width: 200,
+            borderRadius: 8,
+            padding: 8,
             boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
             zIndex: 1000,
             fontFamily: '"Inter", sans-serif',
+            display: 'flex', flexDirection: 'column', gap: 6,
           }}
-          onMouseDown={e => e.stopPropagation()}  // jangan trigger canvas mousedown
-          onTouchStart={e => e.stopPropagation()}  // jangan trigger canvas touchstart (mobile)
+          onMouseDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 8, textAlign: 'center' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', textAlign: 'center' }}>
             {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
           </div>
 
-          {/* Color wheel picker — HSV wheel + brightness slider */}
+          {/* Classic color wheel picker — fully self-contained */}
           <ColorWheelPicker
             hex={colorPicker.hex}
             onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
-            size={170}
           />
 
-          {/* Hex input + preview swatch */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, marginBottom: 4 }}>
-            <div style={{
-              width: 28, height: 20, borderRadius: 4,
-              background: colorPicker.hex,
-              border: '2px solid #475569',
-              boxShadow: `0 0 8px ${colorPicker.hex}44`,
-              flexShrink: 0,
-            }} />
-            <input
-              type="text"
-              value={colorPicker.hex.toUpperCase()}
-              onChange={e => {
-                const v = e.target.value;
-                if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-                  setColorPicker(cp => cp ? { ...cp, hex: v.toLowerCase() } : cp);
-                }
-              }}
-              style={{
-                flex: 1, padding: '3px 6px', fontSize: 11,
-                background: '#0f172a', border: '1px solid #334155',
-                borderRadius: 4, color: '#e2e8f0', fontFamily: 'monospace',
-              }}
-            />
-          </div>
-
-          {/* Preview: wire = ON/OFF (redup/terang), comp = solid color saja */}
-          {colorPicker.targetType === 'wire' ? (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-              <div style={{ flex: 1, textAlign: 'center' }}>
-                <div
-                  style={{
-                    height: 28, borderRadius: 6, marginBottom: 4,
-                    background: (() => {
-                      const { h, s } = hexToHsl(colorPicker.hex);
-                      return hslToHex(h, s, 30);
-                    })(),
-                    border: '2px solid #334155',
-                  }}
-                />
-                <div style={{ fontSize: 10, color: '#94a3b8' }}>OFF (redup)</div>
-              </div>
-              <div style={{ flex: 1, textAlign: 'center' }}>
-                <div
-                  style={{
-                    height: 28, borderRadius: 6, marginBottom: 4,
-                    background: (() => {
-                      const { h, s } = hexToHsl(colorPicker.hex);
-                      return hslToHex(h, s, 65);
-                    })(),
-                    border: '2px solid #334155',
-                  }}
-                />
-                <div style={{ fontSize: 10, color: '#94a3b8' }}>ON (terang)</div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginBottom: 6 }}>
-              <div
-                style={{
-                  height: 32, borderRadius: 6, marginBottom: 4,
-                  background: colorPicker.hex,
-                  border: '2px solid #334155',
-                  boxShadow: `0 0 12px ${colorPicker.hex}80`,
-                }}
-              />
-              <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center' }}>Component color</div>
-            </div>
-          )}
-
-          {/* Action buttons: Confirm ✓ | Reset/Random | Cancel — tepat di bawah preview */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            {/* ✓ Confirm — terapkan warna yang dipilih ke target */}
+          {/* Action buttons: Confirm | Reset | Cancel — directly below */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
             <button
               onClick={() => {
                 const hex = colorPicker.hex;
@@ -6871,7 +6796,7 @@ export default function LogicGatesSimulator({ setPage }) {
               style={{
                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
-                borderRadius: 6, color: '#ffffff', cursor: 'pointer',
+                borderRadius: 4, color: '#ffffff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
                 boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
               }}
@@ -6882,7 +6807,6 @@ export default function LogicGatesSimulator({ setPage }) {
             {colorPicker.targetType === 'wire' ? (
               <button
                 onClick={() => {
-                  // Reset ke random color (regenerate).
                   setWires(prevWires => {
                     const otherHues = prevWires
                       .filter(w => w.id !== colorPicker.targetId && w.color)
@@ -6893,38 +6817,24 @@ export default function LogicGatesSimulator({ setPage }) {
                     );
                   });
                   setColorPicker(null);
-                  setStatus('Wire color randomized');
+                  setStatus('Wire color reset');
                 }}
-                style={{
-                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
-                  background: '#334155', border: '1px solid #475569',
-                  borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
-                }}
-              >
-                Reset
-              </button>
+                style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#334155', border: '1px solid #475569', borderRadius: 4, color: '#e2e8f0', cursor: 'pointer' }}
+              >Reset</button>
             ) : (
               <button
                 onClick={() => {
-                  // Reset ke default color (clear userColor → pakai def.color).
                   setComponents(prevComps => prevComps.map(c =>
                     c.id === colorPicker.targetId ? { ...c, userColor: null } : c
                   ));
                   setColorPicker(null);
                   setStatus('Component color reset to default');
                 }}
-                style={{
-                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
-                  background: '#334155', border: '1px solid #475569',
-                  borderRadius: 6, color: '#e2e8f0', cursor: 'pointer',
-                }}
-              >
-                Reset
-              </button>
+                style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#334155', border: '1px solid #475569', borderRadius: 4, color: '#e2e8f0', cursor: 'pointer' }}
+              >Reset</button>
             )}
             <button
               onClick={() => {
-                // Cancel = BATAL. Revert ke originalHex.
                 const origHex = colorPicker.originalHex;
                 const tgtType = colorPicker.targetType;
                 const tgtId = colorPicker.targetId;
@@ -6940,14 +6850,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 setColorPicker(null);
                 setStatus('Color change cancelled');
               }}
-              style={{
-                flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
-                background: '#1e293b', border: '1px solid #475569',
-                borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
+              style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#1e293b', border: '1px solid #475569', borderRadius: 4, color: '#94a3b8', cursor: 'pointer' }}
+            >Cancel</button>
           </div>
         </div>
       )}
