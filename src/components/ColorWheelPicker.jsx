@@ -83,14 +83,14 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
 
-    // Triangle thumb (right side)
+    // Triangle thumb (right side, tip pointing LEFT toward track)
     const norm = 1 - (value / maxVal);
     const ty = norm * h;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.moveTo(w + 1, ty);
-    ctx.lineTo(w + 14, ty - 7);
-    ctx.lineTo(w + 14, ty + 7);
+    ctx.moveTo(w + 1, ty);          // tip: near track edge, pointing left
+    ctx.lineTo(w + 14, ty - 7);     // base top (far from track)
+    ctx.lineTo(w + 14, ty + 7);     // base bottom (far from track)
     ctx.closePath();
     ctx.fill();
   }, [gradient, value, maxVal]);
@@ -160,13 +160,13 @@ function HSlider({ color, value, onChange, label }) {
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
 
-    // Triangle thumb (top)
+    // Triangle thumb (top, tip pointing DOWN toward track)
     const tx = (value / 255) * w;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.moveTo(tx, -1);
-    ctx.lineTo(tx - 7, -12);
-    ctx.lineTo(tx + 7, -12);
+    ctx.moveTo(tx, -1);           // tip: near track edge, pointing down
+    ctx.lineTo(tx - 7, -12);      // base left (far from track)
+    ctx.lineTo(tx + 7, -12);      // base right (far from track)
     ctx.closePath();
     ctx.fill();
   }, [color, value]);
