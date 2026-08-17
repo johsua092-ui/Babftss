@@ -6275,18 +6275,19 @@ export default function LogicGatesSimulator({ setPage }) {
                           </button>
                         </div>
 
-                        {/* Slot indicator dot */}
+                        {/* Slot indicator dot — invisible but kept in DOM */}
                         <div style={{
                           position: 'absolute', top: 8, left: 8,
                           width: 14, height: 14, borderRadius: '50%',
                           background: slot.color,
                           boxShadow: `0 0 6px ${slot.color}80, inset 0 -2px 3px rgba(0,0,0,0.3)`,
                           border: '2px solid rgba(255,255,255,0.2)',
+                          visibility: 'hidden',
                         }} />
-                        {/* Lock indicator overlay on card */}
+                        {/* Lock indicator — top-left, overlays the invisible color dot */}
                         {slotLocks[idx] && (
                           <div style={{
-                            position: 'absolute', top: 6, right: 50,
+                            position: 'absolute', top: 4, left: 4,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             width: 20, height: 20, borderRadius: 6,
                             background: 'linear-gradient(180deg, #fbbf24 0%, #d4a020 100%)',
