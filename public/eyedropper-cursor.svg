@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- Eyedropper/pipette cursor icon -->
+  <g transform="rotate(-45, 16, 16)">
+    <!-- Glass tube body -->
+    <rect x="14" y="2" width="4" height="18" rx="2" fill="#333" stroke="#fff" stroke-width="0.8"/>
+    <!-- Bulb top -->
+    <ellipse cx="16" cy="3" rx="3.5" ry="2.5" fill="#555" stroke="#fff" stroke-width="0.8"/>
+    <!-- Narrow tip -->
+    <polygon points="15,20 17,20 16.5,28 15.5,28" fill="#333" stroke="#fff" stroke-width="0.5"/>
+    <!-- Drop at tip -->
+    <circle cx="16" cy="29" r="1.2" fill="#e74c3c" stroke="#fff" stroke-width="0.5"/>
+  </g>
+</svg>

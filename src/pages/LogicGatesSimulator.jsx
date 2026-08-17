@@ -3455,6 +3455,35 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
+      // ── PICK FROM WORKSPACE MODE (eyedropper): prioritas tertinggi, dicek SEBELUM paintMode ──
+      if (pickFromWorkspaceRef.current) {
+        const savedPicker = pickFromWorkspaceRef.current;
+        let pickedHex = null;
+        if (hit) {
+          const comp = hit.comp;
+          const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+          pickedHex = comp.userColor || def.color;
+        } else {
+          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+          if (wireHit) {
+            const w = wireHit.wire;
+            pickedHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+          }
+        }
+        if (pickedHex) {
+          setColorPicker({ ...savedPicker, hex: pickedHex });
+          setPickFromWorkspace(null);
+          canvas.style.cursor = 'default';
+          setStatus('Color picked: ' + pickedHex.toUpperCase());
+        } else {
+          setPickFromWorkspace(null);
+          canvas.style.cursor = 'default';
+          setColorPicker(savedPicker);
+          setStatus('Pick cancelled — click a component or wire next time');
+        }
+        return;
+      }
+
       // ── PAINT MODE: klik wire/komponen = buka color picker. Drag & wiring di-block. ──
       // User request: 'jika mode aktif maka player ketika mengklik kabel dapat merubah
       // palet warna tersebut... player dapat mengubah warna komponen juga! (semua komponen
@@ -3483,37 +3512,6 @@ export default function LogicGatesSimulator({ setPage }) {
         // Empty click → tutup picker kalau kebuka.
         setColorPicker(null);
         setSelectedId(null);
-        return;
-      }
-
-      // ── PICK FROM WORKSPACE MODE (eyedropper): klik komponen/wire = grab its logical color ──
-      if (pickFromWorkspaceRef.current) {
-        const savedPicker = pickFromWorkspaceRef.current;
-        let pickedHex = null;
-        if (hit) {
-          const comp = hit.comp;
-          const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
-          pickedHex = comp.userColor || def.color;
-        } else {
-          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
-          if (wireHit) {
-            const w = wireHit.wire;
-            pickedHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
-          }
-        }
-        if (pickedHex) {
-          // Got a logical color from component/wire — reopen picker with it
-          setColorPicker({ ...savedPicker, hex: pickedHex });
-          setPickFromWorkspace(null);
-          canvas.style.cursor = 'default';
-          setStatus('Color picked: ' + pickedHex.toUpperCase());
-        } else {
-          // Clicked empty space — cancel pick, reopen picker with original color
-          setPickFromWorkspace(null);
-          canvas.style.cursor = 'default';
-          setColorPicker(savedPicker);
-          setStatus('Pick cancelled — click a component or wire next time');
-        }
         return;
       }
 
@@ -4144,31 +4142,7 @@ export default function LogicGatesSimulator({ setPage }) {
           return;
         }
 
-        // ── PAINT MODE (mobile): tap wire/komponen = buka color picker. Drag, wiring, toggle di-block. ──
-        if (paintModeRef.current) {
-          if (hit) {
-            const comp = hit.comp;
-            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
-            const currentHex = comp.userColor || def.color;
-            setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
-            setStatus('Component tapped — pick a color, then confirm');
-            return;
-          }
-          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
-          if (wireHit) {
-            const w = wireHit.wire;
-            const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
-            setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
-            setStatus('Wire tapped — pick a color, then confirm');
-            return;
-          }
-          // Empty tap → tutup picker kalau kebuka, no pan/drag.
-          setColorPicker(null);
-          setSelectedId(null);
-          return;
-        }
-
-        // ── PICK FROM WORKSPACE MODE (mobile): tap komponen/wire = grab its logical color ──
+        // ── PICK FROM WORKSPACE MODE (mobile): prioritas tertinggi, dicek SEBELUM paintMode ──
         if (pickFromWorkspaceRef.current) {
           const savedPicker = pickFromWorkspaceRef.current;
           let pickedHex = null;
@@ -4192,6 +4166,30 @@ export default function LogicGatesSimulator({ setPage }) {
             setColorPicker(savedPicker);
             setStatus('Pick cancelled — tap a component or wire next time');
           }
+          return;
+        }
+
+        // ── PAINT MODE (mobile): tap wire/komponen = buka color picker. Drag, wiring, toggle di-block. ──
+        if (paintModeRef.current) {
+          if (hit) {
+            const comp = hit.comp;
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            const currentHex = comp.userColor || def.color;
+            setColorPicker({ targetType: 'comp', targetId: comp.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
+            setStatus('Component tapped — pick a color, then confirm');
+            return;
+          }
+          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+          if (wireHit) {
+            const w = wireHit.wire;
+            const currentHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+            setColorPicker({ targetType: 'wire', targetId: w.id, x: sx, y: sy, hex: currentHex, originalHex: currentHex });
+            setStatus('Wire tapped — pick a color, then confirm');
+            return;
+          }
+          // Empty tap → tutup picker kalau kebuka, no pan/drag.
+          setColorPicker(null);
+          setSelectedId(null);
           return;
         }
 
@@ -6845,9 +6843,41 @@ export default function LogicGatesSimulator({ setPage }) {
               const savedPicker = { ...colorPicker };
               setColorPicker(null);
               setPickFromWorkspace(savedPicker);
-              // Set cursor to custom eyedropper icon (hotspot at tip: 1,29)
+              // Generate custom eyedropper cursor from canvas (most reliable cross-browser)
+              const curCanvas = document.createElement('canvas');
+              curCanvas.width = 32; curCanvas.height = 32;
+              const ctx = curCanvas.getContext('2d');
+              ctx.save();
+              ctx.translate(16, 16);
+              ctx.rotate(-Math.PI / 4);
+              // Glass tube
+              ctx.fillStyle = '#333';
+              ctx.strokeStyle = '#fff';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.roundRect(-2, -14, 4, 20, 2);
+              ctx.fill(); ctx.stroke();
+              // Bulb
+              ctx.fillStyle = '#555';
+              ctx.beginPath();
+              ctx.ellipse(0, -14, 3.5, 2.5, 0, 0, Math.PI * 2);
+              ctx.fill(); ctx.stroke();
+              // Narrow tip
+              ctx.fillStyle = '#333';
+              ctx.beginPath();
+              ctx.moveTo(-1.5, 6); ctx.lineTo(1.5, 6);
+              ctx.lineTo(0.5, 13); ctx.lineTo(-0.5, 13);
+              ctx.closePath();
+              ctx.fill(); ctx.stroke();
+              // Drop
+              ctx.fillStyle = '#e74c3c';
+              ctx.beginPath();
+              ctx.arc(0, 14, 1.5, 0, Math.PI * 2);
+              ctx.fill(); ctx.stroke();
+              ctx.restore();
+              const cursorUrl = curCanvas.toDataURL('image/png');
               const canvas = document.querySelector('canvas');
-              if (canvas) canvas.style.cursor = "url('/eyedropper-cursor.png') 1 29, crosshair";
+              if (canvas) canvas.style.cursor = `url('${cursorUrl}') 4 18, crosshair`;
               setStatus('Click a component or wire to pick its color');
             }}
           />
