@@ -375,52 +375,49 @@ export default function ColorWheelPicker({ hex, onChange }) {
             background: hex, border: '2px solid #000',
             boxShadow: `0 0 12px ${hex}66`,
           }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {/* Reset Color button — flush left of hex input */}
-            <button
-              onClick={() => onChange('#ffffff')}
-              onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
-              onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
-              style={{
-                width: 20, height: 20, padding: 0, fontSize: 9, fontWeight: 700,
-                color: '#fff', background: '#4a5d75', border: '1px solid #000',
-                borderRadius: 3, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
-                lineHeight: 1, transition: 'background 0.15s',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-              }}
-              title="Reset color to white (center of wheel)"
-            >
-              ↺
-            </button>
-            <input
-              type="text"
-              value={hexInput}
-              onChange={e => setHexInput(e.target.value)}
-              onFocus={() => setHexFocused(true)}
-              onBlur={() => {
-                setHexFocused(false);
+          <input
+            type="text"
+            value={hexInput}
+            onChange={e => setHexInput(e.target.value)}
+            onFocus={() => setHexFocused(true)}
+            onBlur={() => {
+              setHexFocused(false);
+              const v = hexInput.trim();
+              if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
+              else setHexInput(hex.toUpperCase()); // revert if invalid
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
                 const v = hexInput.trim();
                 if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
-                else setHexInput(hex.toUpperCase()); // revert if invalid
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  const v = hexInput.trim();
-                  if (/^#[0-9a-fA-F]{6}$/i.test(v)) onChange(v.toLowerCase());
-                  else setHexInput(hex.toUpperCase());
-                  e.target.blur();
-                }
-              }}
-              style={{
-                width: 76, fontSize: 13, fontWeight: 700, color: '#fff',
-                background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
-                borderRadius: 4,
-                textAlign: 'center', fontFamily: 'monospace', padding: '4px 0',
-                outline: 'none',
-              }}
-            />
-          </div>
+                else setHexInput(hex.toUpperCase());
+                e.target.blur();
+              }
+            }}
+            style={{
+              width: 76, fontSize: 13, fontWeight: 700, color: '#fff',
+              background: '#3a3a3a', border: hexFocused ? '1px solid #8cf' : '1px solid #888',
+              borderRadius: 4,
+              textAlign: 'center', fontFamily: 'monospace', padding: '4px 0',
+              outline: 'none',
+            }}
+          />
+          {/* Reset Color button — below hex input, same width */}
+          <button
+            onClick={() => onChange('#ffffff')}
+            onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
+            onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
+            style={{
+              width: 76, padding: '4px 0', fontSize: 10, fontWeight: 700,
+              color: '#fff', background: '#4a5d75', border: '1px solid #000',
+              borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
+              textTransform: 'uppercase', letterSpacing: 0.5,
+              transition: 'background 0.15s',
+            }}
+            title="Reset color to white (center of wheel)"
+          >
+            Reset Color
+          </button>
         </div>
       </div>
     </div>
