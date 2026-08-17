@@ -1007,23 +1007,6 @@ function DragGhost({ type, x, y }) {
 /* ── Slot Color Picker Modal (with draft + Confirm/Cancel) ── */
 function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFromWorkspace }) {
   const [draftHex, setDraftHex] = useState(slot._draftHex || slot.color);
-  const handlePickColor = async () => {
-    // Primary: browser native EyeDropper API (Chrome/Edge) — picks from ANYWHERE on screen
-    // Modal stays open; eyedropper overlays the entire browser
-    if (window.EyeDropper) {
-      try {
-        const dropper = new window.EyeDropper();
-        const result = await dropper.open();
-        setDraftHex(result.sRGBHex);
-        return;
-      } catch {
-        // User cancelled eyedropper (pressed Esc)
-        return;
-      }
-    }
-    // Fallback: close modal temporarily, enter pick-from-workspace mode on canvas
-    onPickFromWorkspace(draftHex);
-  };
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1003,
@@ -1043,7 +1026,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
         <ColorWheelPicker
           hex={draftHex}
           onChange={setDraftHex}
-          onPickColor={handlePickColor}
+          onPickColor={() => onPickFromWorkspace(draftHex)}
         />
         <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
           <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
@@ -6719,19 +6702,35 @@ export default function LogicGatesSimulator({ setPage }) {
                 onConfirm={(sIdx, newColor) => {
                   setSaveSlots(prev => prev.map((s, i) => i === sIdx ? { ...s, color: newColor } : s));
                   setSlotColorEdit(null);
+                  toast.success(`Warna Slot ${sIdx + 1} berhasil diubah!`, { description: newColor.toUpperCase() });
                 }}
                 onCancel={() => setSlotColorEdit(null)}
-                onPickFromWorkspace={(currentDraftHex) => {
-                  // Fallback: close modal, enter pick-from-workspace mode on canvas
-                  const savedState = { slotIndex: slotColorEdit.slotIndex, draftHex: currentDraftHex, source: 'slot' };
+                onPickFromWorkspace={async (currentDraftHex) => {
+                  const savedSlotIndex = slotColorEdit.slotIndex;
+                  const savedDraftHex = currentDraftHex;
+                  // Close modal temporarily so user sees Save Progress window
                   setSlotColorEdit(null);
-                  setPickFromWorkspace(savedState);
+                  // Primary: browser EyeDropper API — picks from ANYWHERE (including Save Progress overlay)
+                  if (window.EyeDropper) {
+                    try {
+                      const dropper = new window.EyeDropper();
+                      const result = await dropper.open();
+                      // Re-open modal with the picked color
+                      setSlotColorEdit({ slotIndex: savedSlotIndex, draftHex: result.sRGBHex });
+                      setStatus('Color picked: ' + result.sRGBHex.toUpperCase());
+                      return;
+                    } catch {
+                      // User cancelled (Esc) — re-open modal with previous draft
+                      setSlotColorEdit({ slotIndex: savedSlotIndex, draftHex: savedDraftHex });
+                      return;
+                    }
+                  }
+                  // Fallback (no EyeDropper API): enter pick-from-workspace mode on canvas
+                  setPickFromWorkspace({ slotIndex: savedSlotIndex, draftHex: savedDraftHex, source: 'slot' });
                   const curCanvas = document.createElement('canvas');
                   curCanvas.width = 48; curCanvas.height = 48;
                   const ctx = curCanvas.getContext('2d');
-                  ctx.save();
-                  ctx.translate(24, 24);
-                  ctx.rotate(-Math.PI / 4);
+                  ctx.save(); ctx.translate(24, 24); ctx.rotate(-Math.PI / 4);
                   ctx.fillStyle = '#333'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
                   ctx.beginPath(); ctx.roundRect(-3, -20, 6, 28, 3); ctx.fill(); ctx.stroke();
                   ctx.fillStyle = '#555'; ctx.beginPath(); ctx.ellipse(0, -20, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
