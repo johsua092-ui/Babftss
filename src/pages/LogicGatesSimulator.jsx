@@ -1075,6 +1075,26 @@ export default function LogicGatesSimulator({ setPage }) {
     return () => { if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current); };
   }, [components, wires]);
 
+  // Helper: clear all tool UI state (anchors, selected IDs, boxes, active dirs)
+  // so stale references to deleted components don't linger after undo/redo.
+  const clearToolUIState = () => {
+    // Move
+    setMoveAnchors(null); setMoveSelectedIds([]); setMoveBox(null); setMoveActiveDir(null);
+    // Rotate
+    setRotateAnchors(null); setRotateSelectedIds([]); setRotateBox(null);
+    // Clone
+    setCloneAnchors(null); setCloneSelectedIds([]); setCloneBox(null);
+    // Also clear refs so draw loop doesn't use stale values
+    stateRef.current.moveAnchors = null; stateRef.current.moveSelectedIds = []; stateRef.current.moveActiveDir = null;
+    stateRef.current.rotateAnchors = null; stateRef.current.rotateSelectedIds = [];
+    stateRef.current.cloneAnchors = null; stateRef.current.cloneSelectedIds = [];
+    // Misc
+    setSelectedId(null);
+    setColorPicker(null);
+    stateRef.current.wiring = null;
+    stateRef.current.dragging = null;
+  };
+
   const undoCircuit = () => {
     if (!canUndoCircuit) return;
     skipHistoryRef.current = true;
@@ -1084,6 +1104,7 @@ export default function LogicGatesSimulator({ setPage }) {
     setWires(JSON.parse(JSON.stringify(snap.wires)));
     setCircuitHistoryIdx(newIdx);
     lastRecordedRef.current = { comps: JSON.stringify(snap.components), wrs: JSON.stringify(snap.wires) };
+    clearToolUIState();
   };
 
   const redoCircuit = () => {
@@ -1095,6 +1116,7 @@ export default function LogicGatesSimulator({ setPage }) {
     setWires(JSON.parse(JSON.stringify(snap.wires)));
     setCircuitHistoryIdx(newIdx);
     lastRecordedRef.current = { comps: JSON.stringify(snap.components), wrs: JSON.stringify(snap.wires) };
+    clearToolUIState();
   };
   // ── Rotation animation state ──
   // Saat animasi rotasi aktif, komponen yang ter-select di-interpolasi
