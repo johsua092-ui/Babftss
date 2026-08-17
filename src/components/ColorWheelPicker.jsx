@@ -68,29 +68,31 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
     const c = ref.current; if (!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const w = 42, h = SLIDER_H;
-    c.width = w * dpr; c.height = h * dpr;
-    c.style.width = w + 'px'; c.style.height = h + 'px';
+    const trackW = 42, trackH = SLIDER_H;
+    const totalW = trackW + 16; // extra space for triangle on right
+    const totalH = trackH;
+    c.width = totalW * dpr; c.height = totalH * dpr;
+    c.style.width = totalW + 'px'; c.style.height = totalH + 'px';
     ctx.scale(dpr, dpr);
 
     // Track gradient
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    const grad = ctx.createLinearGradient(0, 0, 0, trackH);
     gradient.forEach(([stop, color]) => grad.addColorStop(stop, color));
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, trackW, trackH);
 
     // Border
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, w, h);
+    ctx.strokeRect(0, 0, trackW, trackH);
 
     // Triangle thumb (right side, tip pointing LEFT toward track)
     const norm = 1 - (value / maxVal);
-    const ty = norm * h;
+    const ty = norm * trackH;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.moveTo(w + 1, ty);          // tip: near track edge, pointing left
-    ctx.lineTo(w + 14, ty - 7);     // base top (far from track)
-    ctx.lineTo(w + 14, ty + 7);     // base bottom (far from track)
+    ctx.moveTo(trackW + 1, ty);          // tip: near track edge, pointing left
+    ctx.lineTo(trackW + 14, ty - 7);     // base top (far from track)
+    ctx.lineTo(trackW + 14, ty + 7);     // base bottom (far from track)
     ctx.closePath();
     ctx.fill();
   }, [gradient, value, maxVal]);
@@ -144,29 +146,31 @@ function HSlider({ color, value, onChange, label }) {
     const c = ref.current; if (!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const w = 180, h = 24;
-    c.width = w * dpr; c.height = h * dpr;
-    c.style.width = w + 'px'; c.style.height = h + 'px';
+    const trackW = 180, trackH = 24;
+    const totalW = trackW;
+    const totalH = trackH + 14; // extra space for triangle below
+    c.width = totalW * dpr; c.height = totalH * dpr;
+    c.style.width = totalW + 'px'; c.style.height = totalH + 'px';
     ctx.scale(dpr, dpr);
 
     // Gradient from black to color
-    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    const grad = ctx.createLinearGradient(0, 0, trackW, 0);
     grad.addColorStop(0, '#000000');
     grad.addColorStop(1, color);
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, trackW, trackH);
 
     // Border
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, w, h);
+    ctx.strokeRect(0, 0, trackW, trackH);
 
     // Triangle thumb (bottom, tip pointing UP toward track)
-    const tx = (value / 255) * w;
+    const tx = (value / 255) * trackW;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.moveTo(tx, h + 1);           // tip: near track bottom edge, pointing up
-    ctx.lineTo(tx - 7, h + 12);      // base left (far below track)
-    ctx.lineTo(tx + 7, h + 12);      // base right (far below track)
+    ctx.moveTo(tx, trackH + 1);           // tip: near track bottom edge, pointing up
+    ctx.lineTo(tx - 7, trackH + 12);      // base left (far below track)
+    ctx.lineTo(tx + 7, trackH + 12);      // base right (far below track)
     ctx.closePath();
     ctx.fill();
   }, [color, value]);
