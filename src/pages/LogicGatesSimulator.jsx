@@ -1303,6 +1303,10 @@ export default function LogicGatesSimulator({ setPage }) {
   const [moveMode, setMoveMode] = useState(false);
   const [rotateMode, setRotateMode] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // Eyedropper pick-from-workspace mode: close color picker, click component/wire to grab its color.
+  const [pickFromWorkspace, setPickFromWorkspace] = useState(null); // saved colorPicker state or null
+  const pickFromWorkspaceRef = useRef(null);
+  useEffect(() => { pickFromWorkspaceRef.current = pickFromWorkspace; }, [pickFromWorkspace]);
   const paintModeRef = useRef(false);
   const deleteModeRef = useRef(false);
   const cloneModeRef = useRef(false);
@@ -3482,6 +3486,48 @@ export default function LogicGatesSimulator({ setPage }) {
         return;
       }
 
+      // ── PICK FROM WORKSPACE MODE (eyedropper): klik komponen/wire = grab its logical color ──
+      if (pickFromWorkspaceRef.current) {
+        const savedPicker = pickFromWorkspaceRef.current;
+        let pickedHex = null;
+        if (hit) {
+          const comp = hit.comp;
+          const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+          pickedHex = comp.userColor || def.color;
+        } else {
+          const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+          if (wireHit) {
+            const w = wireHit.wire;
+            pickedHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+          }
+        }
+        if (pickedHex) {
+          // Got a logical color from component/wire — reopen picker with it
+          setColorPicker({ ...savedPicker, hex: pickedHex });
+          setPickFromWorkspace(null);
+          canvas.style.cursor = 'default';
+          setStatus('Color picked: ' + pickedHex.toUpperCase());
+        } else {
+          // Clicked empty space — fall back to EyeDropper API for pixel-level picking
+          setPickFromWorkspace(null);
+          canvas.style.cursor = 'default';
+          if (window.EyeDropper) {
+            const dropper = new window.EyeDropper();
+            dropper.open().then(result => {
+              setColorPicker({ ...savedPicker, hex: result.sRGBHex });
+              setStatus('Color picked from screen: ' + result.sRGBHex.toUpperCase());
+            }).catch(() => {
+              // User cancelled — reopen with original color
+              setColorPicker(savedPicker);
+            });
+          } else {
+            // No EyeDropper & no hit — just reopen
+            setColorPicker(savedPicker);
+          }
+        }
+        return;
+      }
+
       if (hit) {
         // ── Connect Wire mode: zone-based port selection ──
         // Saat mode connect, body/drag-handle/port hit semua di-interpret sebagai zone-based
@@ -4130,6 +4176,41 @@ export default function LogicGatesSimulator({ setPage }) {
           // Empty tap → tutup picker kalau kebuka, no pan/drag.
           setColorPicker(null);
           setSelectedId(null);
+          return;
+        }
+
+        // ── PICK FROM WORKSPACE MODE (mobile): tap komponen/wire = grab its logical color ──
+        if (pickFromWorkspaceRef.current) {
+          const savedPicker = pickFromWorkspaceRef.current;
+          let pickedHex = null;
+          if (hit) {
+            const comp = hit.comp;
+            const def = GATE_MAP[comp.type] || IO_DEFS[comp.type];
+            pickedHex = comp.userColor || def.color;
+          } else {
+            const wireHit = hitTestWire(mx, my, stateRef.current.wires, stateRef.current.components);
+            if (wireHit) {
+              const w = wireHit.wire;
+              pickedHex = w.userColor || (w.color ? hslToHex(w.color.h, w.color.s, 50) : '#4ade80');
+            }
+          }
+          if (pickedHex) {
+            setColorPicker({ ...savedPicker, hex: pickedHex });
+            setPickFromWorkspace(null);
+            setStatus('Color picked: ' + pickedHex.toUpperCase());
+          } else {
+            setPickFromWorkspace(null);
+            if (window.EyeDropper) {
+              const dropper = new window.EyeDropper();
+              dropper.open().then(result => {
+                setColorPicker({ ...savedPicker, hex: result.sRGBHex });
+              }).catch(() => {
+                setColorPicker(savedPicker);
+              });
+            } else {
+              setColorPicker(savedPicker);
+            }
+          }
           return;
         }
 
@@ -6779,27 +6860,14 @@ export default function LogicGatesSimulator({ setPage }) {
             hex={colorPicker.hex}
             onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
             onPickColor={() => {
-              // Save current picker state so we can reopen after picking
+              // Save current picker state, close modal, enter pick-from-workspace mode
               const savedPicker = { ...colorPicker };
-              // Close modal temporarily
               setColorPicker(null);
-              // Use EyeDropper API if available, otherwise fallback
-              if (window.EyeDropper) {
-                const dropper = new window.EyeDropper();
-                dropper.open().then(result => {
-                  const pickedHex = result.sRGBHex;
-                  // Reopen modal with picked color
-                  setColorPicker({ ...savedPicker, hex: pickedHex });
-                  setStatus('Color picked from screen: ' + pickedHex.toUpperCase());
-                }).catch(() => {
-                  // User cancelled eyedropper — reopen with original color
-                  setColorPicker(savedPicker);
-                });
-              } else {
-                // Fallback: no EyeDropper support, just reopen
-                setColorPicker(savedPicker);
-                setStatus('EyeDropper not supported in this browser');
-              }
+              setPickFromWorkspace(savedPicker);
+              // Set cursor to crosshair/eyedropper style
+              const canvas = document.querySelector('canvas');
+              if (canvas) canvas.style.cursor = 'crosshair';
+              setStatus('Click a component or wire to pick its color');
             }}
           />
 
