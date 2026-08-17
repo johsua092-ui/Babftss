@@ -160,13 +160,13 @@ function HSlider({ color, value, onChange, label }) {
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
 
-    // Triangle thumb (top, tip pointing DOWN toward track)
+    // Triangle thumb (bottom, tip pointing UP toward track)
     const tx = (value / 255) * w;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.moveTo(tx, -1);           // tip: near track edge, pointing down
-    ctx.lineTo(tx - 7, -12);      // base left (far from track)
-    ctx.lineTo(tx + 7, -12);      // base right (far from track)
+    ctx.moveTo(tx, h + 1);           // tip: near track bottom edge, pointing up
+    ctx.lineTo(tx - 7, h + 12);      // base left (far below track)
+    ctx.lineTo(tx + 7, h + 12);      // base right (far below track)
     ctx.closePath();
     ctx.fill();
   }, [color, value]);
