@@ -1,11 +1,9 @@
 // api/circuits.js — Simpan/Muat/Hapus rangkaian (circuit) milik member
 //
-// Auth : Firebase token (Bearer) REQUIRED — guest TIDAK bisa simpan.
-// Storage : Firestore project "punya-si-jawa" (via FIREBASE_ADMIN_* named app).
-//
-// CATATAN INDEX: semua query memakai SATU equality filter (`firebase_uid`)
-// lalu memfilter `item_id` di memori + sort di memori, supaya TIDAK butuh
-// composite index Firestore (akar penyebab 500 sebelumnya).
+// Auth   : Firebase token (Bearer) REQUIRED — guest TIDAK bisa simpan.
+// Storage: Supabase Postgres (tabel `circuits` & `circuits_history`) via
+//          service role (getSupabaseAdmin). Tidak ada composite index /
+//          Firestore lagi — menghilangkan error 500 kompleks.
 //
 // Endpoint:
 //   GET    /api/circuits                           -> daftar rangkaian milik user
@@ -20,11 +18,9 @@ import {
   checkRateLimit,
   authenticateRequest,
   validateStr,
-  getPunyaSiJawaFirestore,
+  getSupabaseAdmin,
 } from '../lib/api-helpers.js';
 
-const COLLECTION = 'circuits';
-const HISTORY_COLLECTION = 'circuits_history';
 const MAX_HISTORY = 10;
 
 export default async function handler(req, res) {
@@ -48,20 +44,20 @@ export default async function handler(req, res) {
       });
     }
 
-    const db = await getPunyaSiJawaFirestore();
+    const supabase = await getSupabaseAdmin();
 
     const { action } = req.query || {};
 
-    if (action === 'history') return handleHistory(req, res, user, db);
-    if (action === 'history_load') return handleHistoryLoad(req, res, user, db);
+    if (action === 'history') return handleHistory(req, res, user, supabase);
+    if (action === 'history_load') return handleHistoryLoad(req, res, user, supabase);
 
     switch (req.method) {
       case 'GET':
-        return handleGet(req, res, user, db);
+        return handleGet(req, res, user, supabase);
       case 'POST':
-        return handlePost(req, res, user, db);
+        return handlePost(req, res, user, supabase);
       case 'DELETE':
-        return handleDelete(req, res, user, db);
+        return handleDelete(req, res, user, supabase);
       default:
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -76,38 +72,41 @@ export default async function handler(req, res) {
 }
 
 // ── GET /api/circuits ──────────────────────────────────────────
-async function handleGet(req, res, user, db) {
+async function handleGet(req, res, user, supabase) {
   const { id } = req.query || {};
 
   if (id) {
     if (!validateStr(id, 200)) {
       return res.status(400).json({ error: 'id tidak valid' });
     }
-    const snap = await db
-      .collection(COLLECTION)
-      .where('firebase_uid', '==', user.sub)
-      .get();
+    const { data, error } = await supabase
+      .from('circuits')
+      .select('*')
+      .eq('firebase_uid', user.sub)
+      .eq('item_id', id)
+      .limit(1)
+      .maybeSingle();
 
-    const doc = snap.docs.find((d) => d.data().item_id === id);
-    if (!doc) {
+    if (error) throw error;
+    if (!data) {
       return res.status(404).json({ error: 'Rangkaian tidak ditemukan' });
     }
-    return res.status(200).json({ circuit: { id: doc.id, ...doc.data() } });
+    return res.status(200).json({ circuit: data });
   }
 
-  const snap = await db
-    .collection(COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .get();
+  const { data, error } = await supabase
+    .from('circuits')
+    .select('*')
+    .eq('firebase_uid', user.sub)
+    .order('updated_at', { ascending: false });
 
-  const circuits = snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  if (error) throw error;
+  const circuits = data || [];
   return res.status(200).json({ circuits, total: circuits.length });
 }
 
 // ── POST /api/circuits ──────────────────────────────────────────
-async function handlePost(req, res, user, db) {
+async function handlePost(req, res, user, supabase) {
   const { itemId, name, data } = req.body || {};
 
   if (!validateStr(itemId, 200)) {
@@ -119,130 +118,163 @@ async function handlePost(req, res, user, db) {
     return res.status(400).json({ error: 'data (rangkaian) diperlukan sebagai object JSON' });
   }
 
-  const now = Date.now();
-  const payload = {
-    firebase_uid: user.sub,
-    item_id: itemId,
-    name: validateStr(name, 200) ? name : 'Rangkaian tanpa nama',
-    data,
-    created_at: now,
-    updated_at: now,
-  };
+  // Cari dokumen existing milik user ini.
+  const { data: existing, error: qErr } = await supabase
+    .from('circuits')
+    .select('*')
+    .eq('firebase_uid', user.sub)
+    .eq('item_id', itemId)
+    .limit(1)
+    .maybeSingle();
 
-  // Upsert — cari dokumen existing by uid, filter item_id di memori.
-  const existingSnap = await db
-    .collection(COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .get();
+  if (qErr) throw qErr;
 
-  const oldDoc = existingSnap.docs.find((d) => d.data().item_id === itemId);
+  const cleanName = validateStr(name, 200) ? name : 'Rangkaian tanpa nama';
 
-  if (oldDoc) {
-    const oldData = oldDoc.data();
-
+  if (existing) {
     // Push old save ke history sebelum di-overwrite.
-    if (oldData.data) {
-      const historySnap = await db
-        .collection(HISTORY_COLLECTION)
-        .where('firebase_uid', '==', user.sub)
-        .get();
+    if (existing.data != null) {
+      const { data: hist, error: hErr } = await supabase
+        .from('circuits_history')
+        .select('*')
+        .eq('firebase_uid', user.sub)
+        .eq('item_id', itemId)
+        .order('pushed_at', { ascending: false });
 
-      const historyDocs = historySnap.docs
-        .filter((d) => d.data().item_id === itemId)
-        .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0));
+      if (hErr) throw hErr;
 
+      const historyDocs = hist || [];
+      // Hapus yang tertua jika sudah MAX_HISTORY
       if (historyDocs.length >= MAX_HISTORY) {
-        const toDelete = historyDocs.slice(MAX_HISTORY - 1);
-        for (const d of toDelete) await d.ref.delete();
+        const toDelete = historyDocs.slice(MAX_HISTORY - 1).map((d) => d.id);
+        await supabase.from('circuits_history').delete().in('id', toDelete);
       }
 
-      await db.collection(HISTORY_COLLECTION).add({
+      await supabase.from('circuits_history').insert({
         firebase_uid: user.sub,
         item_id: itemId,
-        name: oldData.name || '',
-        data: oldData.data,
-        pushed_at: now,
+        name: existing.name || '',
+        data: existing.data,
+        pushed_at: new Date().toISOString(),
       });
     }
 
-    await oldDoc.ref.update({
-      name: payload.name,
-      data,
-      updated_at: now,
+    const { error: upErr } = await supabase
+      .from('circuits')
+      .update({ name: cleanName, data, updated_at: new Date().toISOString() })
+      .eq('firebase_uid', user.sub)
+      .eq('item_id', itemId);
+
+    if (upErr) throw upErr;
+
+    return res.status(200).json({
+      circuit: { id: existing.id, firebase_uid: user.sub, item_id: itemId, name: cleanName, data },
+      updated: true,
     });
-    return res.status(200).json({ circuit: { id: oldDoc.id, ...payload }, updated: true });
   }
 
-  const docRef = await db.collection(COLLECTION).add(payload);
-  return res.status(201).json({ circuit: { id: docRef.id, ...payload }, updated: false });
+  const now = new Date().toISOString();
+  const { data: inserted, error: insErr } = await supabase
+    .from('circuits')
+    .insert({
+      firebase_uid: user.sub,
+      item_id: itemId,
+      name: cleanName,
+      data,
+      created_at: now,
+      updated_at: now,
+    })
+    .select('*')
+    .maybeSingle();
+
+  if (insErr) throw insErr;
+
+  return res.status(201).json({ circuit: inserted, updated: false });
 }
 
 // ── DELETE /api/circuits?id=xxx ──────────────────────────────────
-async function handleDelete(req, res, user, db) {
+async function handleDelete(req, res, user, supabase) {
   const { id } = req.query || {};
 
   if (!validateStr(id, 200)) {
     return res.status(400).json({ error: 'id diperlukan' });
   }
 
-  const snap = await db
-    .collection(COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .get();
+  const { data: existing, error: qErr } = await supabase
+    .from('circuits')
+    .select('id')
+    .eq('firebase_uid', user.sub)
+    .eq('item_id', id)
+    .limit(1)
+    .maybeSingle();
 
-  const doc = snap.docs.find((d) => d.data().item_id === id);
-
-  if (!doc) {
+  if (qErr) throw qErr;
+  if (!existing) {
     return res.status(404).json({ error: 'Rangkaian tidak ditemukan' });
   }
 
-  await doc.ref.delete();
+  const { error: delErr } = await supabase
+    .from('circuits')
+    .delete()
+    .eq('id', existing.id);
+
+  if (delErr) throw delErr;
+
   return res.status(200).json({ ok: true, deleted: 1 });
 }
 
 // ── GET /api/circuits?action=history&id=xxx ──────────────────
-async function handleHistory(req, res, user, db) {
+async function handleHistory(req, res, user, supabase) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   const { id } = req.query || {};
   if (!validateStr(id, 200)) return res.status(400).json({ error: 'id diperlukan' });
 
-  const snap = await db
-    .collection(HISTORY_COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .get();
+  const { data, error } = await supabase
+    .from('circuits_history')
+    .select('*')
+    .eq('firebase_uid', user.sub)
+    .eq('item_id', id)
+    .order('pushed_at', { ascending: false })
+    .limit(MAX_HISTORY);
 
-  const sorted = snap.docs
-    .filter((d) => d.data().item_id === id)
-    .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0))
-    .slice(0, MAX_HISTORY);
+  if (error) throw error;
 
-  const history = sorted.map((d, idx) => {
-    const x = d.data();
-    return { index: idx, id: d.id, name: x.name || null, data: x.data || null, pushed_at: x.pushed_at || null };
-  });
+  const history = (data || []).map((x, idx) => ({
+    index: idx,
+    id: x.id,
+    name: x.name || null,
+    data: x.data || null,
+    pushed_at: x.pushed_at || null,
+  }));
   return res.status(200).json({ itemId: id, history, maxHistory: MAX_HISTORY });
 }
 
 // ── POST /api/circuits?action=history_load ──────────────────
-async function handleHistoryLoad(req, res, user, db) {
+async function handleHistoryLoad(req, res, user, supabase) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { itemId, historyIndex } = req.body || {};
   if (!validateStr(itemId, 200)) return res.status(400).json({ error: 'itemId diperlukan' });
   const hIdx = Number(historyIndex);
   if (!Number.isInteger(hIdx) || hIdx < 0 || hIdx >= MAX_HISTORY) return res.status(400).json({ error: 'historyIndex harus 0..' + (MAX_HISTORY - 1) });
 
-  const snap = await db
-    .collection(HISTORY_COLLECTION)
-    .where('firebase_uid', '==', user.sub)
-    .get();
+  const { data, error } = await supabase
+    .from('circuits_history')
+    .select('*')
+    .eq('firebase_uid', user.sub)
+    .eq('item_id', itemId)
+    .order('pushed_at', { ascending: false })
+    .limit(MAX_HISTORY);
 
-  const sorted = snap.docs
-    .filter((d) => d.data().item_id === itemId)
-    .sort((a, b) => (b.data().pushed_at || 0) - (a.data().pushed_at || 0))
-    .slice(0, MAX_HISTORY);
+  if (error) throw error;
 
+  const sorted = data || [];
   if (hIdx >= sorted.length) return res.status(404).json({ error: 'History entry tidak ditemukan' });
-  const doc = sorted[hIdx];
-  const data = doc.data();
-  return res.status(200).json({ itemId, historyIndex: hIdx, name: data.name || null, data: data.data || null, pushed_at: data.pushed_at || null });
+  const x = sorted[hIdx];
+  return res.status(200).json({
+    itemId,
+    historyIndex: hIdx,
+    name: x.name || null,
+    data: x.data || null,
+    pushed_at: x.pushed_at || null,
+  });
 }
