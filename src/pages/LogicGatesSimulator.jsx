@@ -6177,18 +6177,23 @@ export default function LogicGatesSimulator({ setPage }) {
                               if (slotLocks[idx]) { setLockWarning(true); return; }
                               setSaveConfirm({ slotIndex: idx, action: 'save' });
                             }}
-                            disabled={saveLoading}
+                            disabled={saveLoading || slotLocks[idx]}
                             style={{
                               width: '100%', padding: '10px 0', borderRadius: 50,
-                              background: saveLoading
-                                ? 'linear-gradient(180deg, #a0305a 0%, #802050 100%)'
-                                : 'linear-gradient(180deg, #e83e8c 0%, #d63384 50%, #c0256e 100%)',
-                              border: '2px solid #a0305a',
-                              boxShadow: '0 4px 0 #802050, 0 6px 12px rgba(0,0,0,0.4)',
-                              color: '#fff', fontSize: 15, fontWeight: 900, cursor: saveLoading ? 'wait' : 'pointer',
+                              background: slotLocks[idx]
+                                ? 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)'
+                                : saveLoading
+                                  ? 'linear-gradient(180deg, #a0305a 0%, #802050 100%)'
+                                  : 'linear-gradient(180deg, #e83e8c 0%, #d63384 50%, #c0256e 100%)',
+                              border: `2px solid ${slotLocks[idx] ? '#2a3548' : '#a0305a'}`,
+                              boxShadow: slotLocks[idx]
+                                ? '0 4px 0 #1a2538, 0 6px 12px rgba(0,0,0,0.3)'
+                                : '0 4px 0 #802050, 0 6px 12px rgba(0,0,0,0.4)',
+                              color: slotLocks[idx] ? '#5a6a7a' : '#fff', fontSize: 15, fontWeight: 900,
+                              cursor: (saveLoading || slotLocks[idx]) ? 'not-allowed' : 'pointer',
                               fontFamily: '"Inter", sans-serif', letterSpacing: 1,
-                              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
-                              transition: 'transform 0.1s, boxShadow 0.1s',
+                              textShadow: slotLocks[idx] ? 'none' : '0 1px 2px rgba(0,0,0,0.3)',
+                              transition: 'transform 0.1s, boxShadow 0.1s, background 0.2s, color 0.2s, border-color 0.2s',
                             }}
                           >
                             SAVE
