@@ -368,31 +368,32 @@ export default function ColorWheelPicker({ hex, onChange }) {
           <HSlider color="#00ff00" value={g0} onChange={onGChange} label="Green:" />
           <HSlider color="#0000ff" value={b0} onChange={onBChange} label="Blue:" />
         </div>
-        {/* Right side: preview swatch + [Reset Color] [hex input] */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 80 }}>
-          <div style={{
-            width: 72, height: 36, borderRadius: 6,
-            background: hex, border: '2px solid #000',
-            boxShadow: `0 0 12px ${hex}66`,
-          }} />
-          {/* Row: Reset Color button LEFT of hex input */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              onClick={() => onChange('#ffffff')}
-              onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
-              onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
-              style={{
-                padding: '4px 6px', fontSize: 9, fontWeight: 700,
-                color: '#fff', background: '#4a5d75', border: '1px solid #000',
-                borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
-                textTransform: 'uppercase', letterSpacing: 0.3,
-                lineHeight: 1.2, transition: 'background 0.15s',
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}
-              title="Reset color to white (center of wheel)"
-            >
-              Reset<br/>Color
-            </button>
+        {/* Right side: [Reset Color] [preview swatch + hex input] */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Left column: Reset Color button, vertically centered */}
+          <button
+            onClick={() => onChange('#ffffff')}
+            onMouseEnter={e => e.currentTarget.style.background = '#5a7a99'}
+            onMouseLeave={e => e.currentTarget.style.background = '#4a5d75'}
+            style={{
+              padding: '4px 6px', fontSize: 9, fontWeight: 700,
+              color: '#fff', background: '#4a5d75', border: '1px solid #000',
+              borderRadius: 4, cursor: 'pointer', fontFamily: 'Arial,sans-serif',
+              textTransform: 'uppercase', letterSpacing: 0.3,
+              lineHeight: 1.2, transition: 'background 0.15s',
+              whiteSpace: 'nowrap', flexShrink: 0,
+            }}
+            title="Reset color to white (center of wheel)"
+          >
+            Reset<br/>Color
+          </button>
+          {/* Right column: preview swatch on top, hex input below */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <div style={{
+              width: 72, height: 36, borderRadius: 6,
+              background: hex, border: '2px solid #000',
+              boxShadow: `0 0 12px ${hex}66`,
+            }} />
             <input
               type="text"
               value={hexInput}
