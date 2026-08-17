@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, ensureUserDoc } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, ensureUserDoc } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -209,6 +209,30 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error("[ai-chat] bulk-grant error:", e?.message || e);
         return res.status(500).json({ error: "Bulk grant gagal: " + (e?.message || "unknown error") });
+      }
+    }
+
+    // ── Deduct Gold — Admin tarik gold dari member (antisipasi abuse) ──
+    if (action === "deduct-gold") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa tarik gold" });
+      const { targetUid, targetEmail, amount, note } = req.body || {};
+      let resolvedUid = targetUid;
+
+      if (!resolvedUid && targetEmail) {
+        const found = await lookupUserByEmail(targetEmail);
+        if (!found) return res.status(404).json({ error: "User tidak ditemukan" });
+        resolvedUid = found.uid;
+      }
+      if (!resolvedUid || !amount || typeof amount !== "number" || amount < 1 || amount > 10000) {
+        return res.status(400).json({ error: "targetUid/targetEmail dan amount wajib (1-10000)" });
+      }
+      try {
+        const result = await deductGold(resolvedUid, amount, "admin_deduct", { deductedBy: uid, note: note || null });
+        return res.status(200).json({ message: `Berhasil tarik ${amount} gold`, uid: resolvedUid, amount, newBalance: result });
+      } catch (e) {
+        if (e.message === "insufficient gold") return res.status(402).json({ error: "Saldo member kurang", gold: await getGoldBalance(resolvedUid) });
+        console.error("[ai-chat] deduct-gold error:", e?.message || e);
+        return res.status(500).json({ error: "Deduct gagal: " + (e?.message || "unknown error") });
       }
     }
 
