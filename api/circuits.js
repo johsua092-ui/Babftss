@@ -66,7 +66,12 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
   } catch (e) {
-    return safeError(res, 500, 'circuits', e);
+    console.error('[circuits] error:', e);
+    return res.status(500).json({
+      error: e?.message || String(e),
+      detail: e?.code || null,
+      stack: (e?.stack || '').split('\n').slice(0, 5).join(' | '),
+    });
   }
 }
 
