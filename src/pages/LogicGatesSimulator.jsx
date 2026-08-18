@@ -6692,26 +6692,31 @@ export default function LogicGatesSimulator({ setPage }) {
                             const toIdx = idx;
                             setSwapAnim({ from: fromIdx, to: toIdx });
                             setTimeout(async () => {
-                              // Swap in React state
-                              let swappedSlots = null;
-                              setSaveSlots(prev => {
-                                const arr = [...prev];
-                                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
-                                swappedSlots = arr;
-                                return arr;
-                              });
+                              // Compute swap result DIRECTLY from current state
+                              // (React 18 defers functional updater execution, so we CANNOT
+                              //  capture the result inside setSaveSlots(prev => ...) —
+                              //  the variable would still be null when we need it)
+                              const swappedArr = [...saveSlots];
+                              [swappedArr[fromIdx], swappedArr[toIdx]] = [swappedArr[toIdx], swappedArr[fromIdx]];
+
+                              // Apply swap to React state
+                              setSaveSlots(swappedArr);
                               setSlotLocks(prev => {
                                 const arr = [...prev];
                                 [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
                                 return arr;
                               });
-                              // Immediately persist both swapped slots to backend
-                              if (swappedSlots && user) {
+
+                              // Immediately persist BOTH swapped slots + order to backend
+                              // This runs BEFORE React even re-renders — data is safe
+                              if (user) {
+                                // Save slot order to localStorage FIRST (synchronous, instant)
+                                setStoredSlotOrder(swappedArr);
                                 try {
                                   const token = await getIdToken();
                                   if (token) {
-                                    const slotA = swappedSlots[fromIdx];
-                                    const slotB = swappedSlots[toIdx];
+                                    const slotA = swappedArr[fromIdx];
+                                    const slotB = swappedArr[toIdx];
                                     // Persist both swapped slots' metadata to backend
                                     for (const s of [slotA, slotB]) {
                                       await fetch('/api/circuits', {
@@ -6719,14 +6724,14 @@ export default function LogicGatesSimulator({ setPage }) {
                                         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                                         body: JSON.stringify({
                                           itemId: s.slotId,
-                                          name: s.name || `Slot ${swappedSlots.indexOf(s) + 1}`,
+                                          name: s.name || `Slot ${swappedArr.indexOf(s) + 1}`,
                                           data: { circuitState: s.data || null, color: s.color, description: s.description },
                                           metaOnly: true,
                                         }),
                                       });
                                     }
                                     // Persist slot ORDER to backend so refresh restores the swap
-                                    const newOrder = swappedSlots.map(s => s.slotId);
+                                    const newOrder = swappedArr.map(s => s.slotId);
                                     await fetch('/api/circuits', {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -6738,9 +6743,10 @@ export default function LogicGatesSimulator({ setPage }) {
                                       }),
                                     });
                                   }
-                                } catch (e) { /* localStorage already saved via effect */ }
-                                // Persist slot order to localStorage immediately
-                                setStoredSlotOrder(swappedSlots);
+                                } catch (e) {
+                                  // localStorage already saved above — backend failure is recoverable
+                                  // (debounced auto-save will retry on next render)
+                                }
                               }
                               setSwapAnim(null);
                               setMoveSlotIndex(null);
