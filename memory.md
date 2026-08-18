@@ -2951,6 +2951,15 @@ Task V1 (layout) & V2 (kamera/bentuk/background) SUDAH selesai dan terverifikasi
 - Ikon gembok mini (Lock) dipindah dari pojok kanan (`top: 6, right: 50`) ke pojok kiri atas (`top: 4, left: 4`), menimpa posisi bulatan warna yang sudah invisible.
 - Saat slot di-lock → gembok kuning muncul di kiri atas. Saat unlock → kiri atas kosong.
 
+**Masalah 5 — Eyedropper cursor salah pada slot color picker:**
+- Slot color picker menggunakan browser `EyeDropper` API sebagai primary method, yang menghasilkan cursor bawaan browser (bukan ikon eyedropper kustom).
+- User ingin cursor yang sama persis seperti di paint picker (component color) — ikon eyedropper pipet kustom.
+- **Perbaikan:** Hapus `EyeDropper` API dari slot picker. Selalu gunakan custom eyedropper flow: tutup modal → set `pickFromWorkspace` → ubah cursor ke ikon pipet kustom.
+- Ditambahkan shared utility `getEyedropperCursorUrl()` (useCallback) yang generate cursor URL sekali dan cache di `eyedropperCursorUrlRef`. Dipakai oleh: slot picker, component paint picker, dan Save Progress overlay.
+- Save Progress overlay sekarang punya `onClick` handler untuk mode `pickFromWorkspace`: membaca warna dari `e.target` (walk up DOM untuk cari backgroundColor), lalu re-open modal dengan warna terpilih.
+- Save Progress overlay cursor otomatis berubah ke ikon pipet ketika `pickFromWorkspace` aktif.
+- Close button (X) pada Save Progress overlay sekarang juga cancel pick-from-workspace mode & re-open modal.
+
 ### Formula Warna Cartridge (FINAL — WAJIB DIPERTAHANKAN)
 
 ```js
