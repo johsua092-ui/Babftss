@@ -19,6 +19,7 @@ import {
   authenticateRequest,
   validateStr,
   getSupabaseAdmin,
+  isAdmin,
 } from '../lib/api-helpers.js';
 
 const MAX_HISTORY = 10;
@@ -200,6 +201,11 @@ async function handleDelete(req, res, user, supabase) {
 
   if (!validateStr(id, 200)) {
     return res.status(400).json({ error: 'id diperlukan' });
+  }
+
+  // Slot yang sudah dibeli (save-slot-*) TIDAK bisa dihapus oleh member — hanya admin
+  if (id.startsWith('save-slot-') && !isAdmin(user)) {
+    return res.status(403).json({ error: 'Slot tidak bisa dihapus. Slot yang sudah dibeli bersifat permanen.' });
   }
 
   const { data: existing, error: qErr } = await supabase
