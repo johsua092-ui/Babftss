@@ -6047,23 +6047,32 @@ export default function LogicGatesSimulator({ setPage }) {
                 e.preventDefault();
                 const savedPicker = pickFromWorkspaceRef.current;
                 const isSlotPicker = savedPicker.source === 'slot';
-                // Read color from the clicked element (e.target is the deepest element at click position)
                 const el = e.target;
                 let pickedHex = null;
-                // Walk up from clicked element to find a colored ancestor
+                // Strategy 1: Walk up DOM looking for data-slot-color attribute (cartridge divs)
                 let candidate = el;
                 while (candidate && candidate !== document.body) {
-                  const raw = getComputedStyle(candidate).backgroundColor;
-                  const m = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-                  if (m && !raw.includes('rgba(0, 0, 0, 0)') && raw !== 'transparent') {
-                    const r = parseInt(m[1]), g = parseInt(m[2]), b = parseInt(m[3]);
-                    // Skip near-black and near-white (not useful colors)
-                    if (r + g + b > 15 && r + g + b < 740) {
-                      pickedHex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
-                      break;
-                    }
+                  if (candidate.dataset && candidate.dataset.slotColor) {
+                    pickedHex = candidate.dataset.slotColor;
+                    break;
                   }
                   candidate = candidate.parentElement;
+                }
+                // Strategy 2: Walk up DOM looking for a solid backgroundColor (buttons, dots, etc.)
+                if (!pickedHex) {
+                  candidate = el;
+                  while (candidate && candidate !== document.body) {
+                    const raw = getComputedStyle(candidate).backgroundColor;
+                    const m = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                    if (m && !raw.includes('rgba(0, 0, 0, 0)') && raw !== 'transparent') {
+                      const r = parseInt(m[1]), g = parseInt(m[2]), b = parseInt(m[3]);
+                      if (r + g + b > 15 && r + g + b < 740) {
+                        pickedHex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+                        break;
+                      }
+                    }
+                    candidate = candidate.parentElement;
+                  }
                 }
                 if (pickedHex) {
                   if (isSlotPicker) {
@@ -6182,7 +6191,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     };
 
                     return (
-                      <div key={slot.slotId} style={{
+                      <div key={slot.slotId} data-slot-color={slot.color || '#3b82f6'} style={{
                         flex: isMobile ? undefined : 1,
                         minWidth: isMobile ? undefined : 180,
                         maxWidth: isMobile ? undefined : 280,
