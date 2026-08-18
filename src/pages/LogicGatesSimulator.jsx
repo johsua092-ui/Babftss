@@ -5710,7 +5710,8 @@ export default function LogicGatesSimulator({ setPage }) {
     <div style={pageStyle}>
       {/* Custom scrollbar styling untuk palette — dark & slim biar gak kelihatan putih.
           Inject inline karena React inline style gak support pseudo-element selectors.
-          `.palette-scroll` class di-apply ke div inner palette. */}
+          `.palette-scroll` class di-apply ke div inner palette.
+          `.save-overlay-scroll` class di-apply ke Save Progress overlay modal. */}
       <style>{`
         .palette-scroll::-webkit-scrollbar { width: 8px; }
         .palette-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -5722,6 +5723,21 @@ export default function LogicGatesSimulator({ setPage }) {
         }
         .palette-scroll::-webkit-scrollbar-thumb:hover { background-color: #64748b; }
         .palette-scroll::-webkit-scrollbar-corner { background: transparent; }
+
+        .save-overlay-scroll::-webkit-scrollbar { width: 10px; }
+        .save-overlay-scroll::-webkit-scrollbar-track {
+          background: linear-gradient(180deg, #1a2744 0%, #0f1b30 100%);
+          border-radius: 5px;
+        }
+        .save-overlay-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, #5a7a9a 0%, #3a506b 100%);
+          border-radius: 5px;
+          border: 2px solid #1a2744;
+        }
+        .save-overlay-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(180deg, #6b8aaa 0%, #4a6080 100%);
+        }
+        .save-overlay-scroll { scrollbar-width: thin; scrollbar-color: #5a7a9a #1a2744; }
       `}</style>
       <div style={headerStyle}>
         <div style={titleStyle}>
@@ -6348,7 +6364,7 @@ export default function LogicGatesSimulator({ setPage }) {
               ...(pickFromWorkspace ? { cursor: `url('${getEyedropperCursorUrl()}') 6 26, crosshair` } : {}),
             }}>
               <div style={{
-                width: isMobile ? '95vw' : '52vw',
+                width: isMobile ? '95vw' : '58vw',
                 maxHeight: '92vh',
                 background: 'linear-gradient(180deg, #3a506b 0%, #2c3e5a 40%, #243552 100%)',
                 borderRadius: 24,
@@ -6357,7 +6373,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 padding: isMobile ? '18px 14px' : '28px 32px',
                 display: 'flex', flexDirection: 'column', gap: 16,
                 overflow: 'auto', position: 'relative',
-              }}>
+              }} className="save-overlay-scroll">
                 {/* Close button — gold rounded square like game icon */}
                 <button
                   onClick={() => {
@@ -6447,8 +6463,9 @@ export default function LogicGatesSimulator({ setPage }) {
                 <div style={{
                   display: 'flex',
                   flexDirection: isMobile ? 'column' : 'row',
-                  gap: 14, flex: 1, overflow: 'auto',
+                  gap: 14, flex: '0 0 auto',
                   justifyContent: 'center', alignItems: 'stretch',
+                  flexWrap: 'wrap',
                 }}>
                   {saveSlots.map((slot, idx) => {
                     const hasData = !!slot.data;
