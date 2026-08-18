@@ -218,3 +218,26 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(96, 165, 250, 0.5) rgba(15, 25, 50, 0.6);
 }
+
+/* ── Move Slot: animated dashed border ── */
+@keyframes moveSlotDash {
+  0%   { border-color: rgba(255,255,255,0.9); }
+  50%  { border-color: rgba(255,255,255,0.3); }
+  100% { border-color: rgba(255,255,255,0.9); }
+}
+.slot-move-active {
+  border: 3px dashed rgba(255,255,255,0.9) !important;
+  animation: moveSlotDash 1s ease-in-out infinite;
+  filter: grayscale(0.7) brightness(0.6);
+  pointer-events: none;
+}
+
+/* ── Swap animation ── */
+@keyframes swapPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.slot-swap-anim {
+  animation: swapPulse 0.3s ease-in-out;
+}

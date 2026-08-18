@@ -1263,6 +1263,10 @@ export default function LogicGatesSimulator({ setPage }) {
   /* ── Slot Search ── */
   const [slotSearchQuery, setSlotSearchQuery] = useState('');
 
+  /* ── Move Slot (swap) ── */
+  const [moveSlotIndex, setMoveSlotIndex] = useState(null); // null = not moving, number = slot being moved
+  const [swapAnim, setSwapAnim] = useState(null); // { from: idx, to: idx } during swap animation
+
   /* ── Auto Save: load from backend on mount ── */
   useEffect(() => {
     if (!user) return;
@@ -6430,7 +6434,7 @@ export default function LogicGatesSimulator({ setPage }) {
                         setColorPicker(savedPicker);
                       }
                     }
-                    setSaveOverlayOpen(false); setSaveConfirm(null); setSaveStatus(null);
+                    setSaveOverlayOpen(false); setSaveConfirm(null); setSaveStatus(null); setMoveSlotIndex(null);
                   }}
                   style={{
                     position: 'sticky', top: 10,
@@ -6567,7 +6571,38 @@ export default function LogicGatesSimulator({ setPage }) {
                         };
 
                     return (
-                      <div key={slot.slotId} data-slot-color={slot.color || '#3b82f6'} style={{
+                      <div
+                        key={slot.slotId}
+                        data-slot-color={slot.color || '#3b82f6'}
+                        className={
+                          (moveSlotIndex === idx ? 'slot-move-active ' : '')
+                          + (swapAnim && (swapAnim.from === idx || swapAnim.to === idx) ? 'slot-swap-anim' : '')
+                        }
+                        onClick={() => {
+                          // If in move mode and clicking a DIFFERENT slot → swap
+                          if (moveSlotIndex !== null && moveSlotIndex !== idx) {
+                            const fromIdx = moveSlotIndex;
+                            const toIdx = idx;
+                            setSwapAnim({ from: fromIdx, to: toIdx });
+                            setTimeout(() => {
+                              setSaveSlots(prev => {
+                                const arr = [...prev];
+                                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                                return arr;
+                              });
+                              setSlotLocks(prev => {
+                                const arr = [...prev];
+                                [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                                return arr;
+                              });
+                              setSwapAnim(null);
+                              setMoveSlotIndex(null);
+                              setSaveStatus({ message: `Slot ${fromIdx + 1} dan Slot ${toIdx + 1} berhasil ditukar!`, type: 'success' });
+                              setTimeout(() => setSaveStatus(null), 3000);
+                            }, 300);
+                          }
+                        }}
+                        style={{
                         minWidth: isMobile ? undefined : 180,
                         maxWidth: isMobile ? undefined : 280,
                         position: 'relative',
@@ -6576,6 +6611,7 @@ export default function LogicGatesSimulator({ setPage }) {
                         boxShadow: `4px 4px 0 ${cc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
                         overflow: 'hidden',
                         transition: 'transform 0.15s, box-shadow 0.15s',
+                        cursor: moveSlotIndex !== null && moveSlotIndex !== idx ? 'pointer' : undefined,
                       }}>
                         {/* Cartridge SD-card notch (top-right angled cutout) */}
                         <div style={{
@@ -6653,20 +6689,48 @@ export default function LogicGatesSimulator({ setPage }) {
                           <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${cc.dark}60, transparent)` }} />
                         </div>
 
-                        {/* Gold contact pins at bottom */}
+                        {/* Gold contact pins at bottom — left/right with MOVE SLOT in center */}
                         <div style={{
-                          margin: '8px 8px 0', padding: '6px 0', borderRadius: '4px 4px 0 0',
+                          margin: '8px 8px 0', padding: '6px 4px', borderRadius: '4px 4px 0 0',
                           background: 'linear-gradient(180deg, #d4af37 0%, #c5a028 50%, #a08020 100%)',
-                          display: 'flex', justifyContent: 'center', gap: 3,
-                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)', gap: 4,
                         }}>
-                          {[...Array(8)].map((_, pi) => (
-                            <div key={pi} style={{
-                              width: 8, height: 10, borderRadius: 2,
-                              background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
-                              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)',
-                            }} />
-                          ))}
+                          {/* Left pins */}
+                          <div style={{ display: 'flex', gap: 2 }}>
+                            {[0, 1, 2].map(pi => (
+                              <div key={pi} style={{ width: 7, height: 9, borderRadius: 2,
+                                background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
+                            ))}
+                          </div>
+                          {/* MOVE SLOT button */}
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setMoveSlotIndex(prev => prev === idx ? null : idx);
+                            }}
+                            style={{
+                              padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                              background: moveSlotIndex === idx
+                                ? 'linear-gradient(180deg, #f87171 0%, #dc2626 100%)'
+                                : 'linear-gradient(180deg, #4a5568 0%, #2d3748 100%)',
+                              border: `1.5px solid ${moveSlotIndex === idx ? '#991b1b' : '#1a202c'}`,
+                              color: moveSlotIndex === idx ? '#fff' : '#a0aec0',
+                              fontSize: 9, fontWeight: 900, fontFamily: '"Inter", sans-serif',
+                              letterSpacing: 0.5, whiteSpace: 'nowrap',
+                              boxShadow: moveSlotIndex === idx ? '0 1px 0 #7f1d1d' : '0 1px 0 #0f1520',
+                              transition: 'all 0.15s',
+                            }}
+                          >MOVE</button>
+                          {/* Right pins */}
+                          <div style={{ display: 'flex', gap: 2 }}>
+                            {[0, 1, 2].map(pi => (
+                              <div key={pi} style={{ width: 7, height: 9, borderRadius: 2,
+                                background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
+                            ))}
+                          </div>
                         </div>
 
                         {/* Action buttons area */}
