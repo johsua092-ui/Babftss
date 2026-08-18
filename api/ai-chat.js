@@ -240,14 +240,14 @@ export default async function handler(req, res) {
         // Admin transfers are tax-free
         const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
         // Write inbox message for recipient
-        await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
-        return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb, inboxCreated: true });
+        const inboxResult = await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
+        return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb, inbox: inboxResult });
       }
       try {
         const tax = getTransferTax(amount);
         const receiveAmount = getReceiveAmount(amount);
         const result = await transferGold(uid, resolvedUid, amount, { note: note || null, fromEmail: user.email || null, fromName: user.name || null });
-        return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result, inboxCreated: true });
+        return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result });
       } catch (e) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
         if (e.message === "recipient not found") return res.status(404).json({ error: "User tujuan tidak ditemukan" });
@@ -273,8 +273,8 @@ export default async function handler(req, res) {
       if (!resolvedUid || !amount || amount <= 0 || amount > 10000) return res.status(400).json({ error: "targetUid/targetEmail dan amount wajib (1-10000)" });
       const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
       // Write inbox message for recipient
-      await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
-      return res.status(200).json({ message: "Gold di-grant", uid: resolvedUid, amount, newBalance: nb });
+      const inboxResult = await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
+      return res.status(200).json({ message: "Gold di-grant", uid: resolvedUid, amount, newBalance: nb, inbox: inboxResult });
     }
 
     // ── Bulk Grant — Admin bagi coin ke SEMUA member sekaligus ──
