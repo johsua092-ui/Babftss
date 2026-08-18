@@ -538,10 +538,18 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
 
                     {/* Action buttons */}
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {/* Inbox button */}
+                        <button
+                            style={{ ...goldStyles.buyBtn, color: showInbox ? '#60a5fa' : '#94a3b8' }}
+                            onClick={() => { setShowInbox(p => !p); setShowTransfer(false); }}
+                            title="Inbox"
+                        >
+                            <Inbox size={12} />
+                        </button>
                         {/* Transfer coin button */}
                         <button
                             style={{ ...goldStyles.buyBtn, color: showTransfer ? '#fbbf24' : '#94a3b8' }}
-                            onClick={() => setShowTransfer(p => !p)}
+                            onClick={() => { setShowTransfer(p => !p); setShowInbox(false); }}
                             title="Transfer Coin"
                         >
                             <ArrowRightLeft size={12} />
@@ -718,6 +726,10 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     <Send size={16} />
                 </button>
             </div>
+            {/* ── Inbox Panel (overlay) ── */}
+            {showInbox && (
+                <InboxPanel onClose={() => setShowInbox(false)} />
+            )}
             {/* ── Coin Transfer Panel (overlay) ── */}
             {showTransfer && (
                 <CoinTransferPanel
