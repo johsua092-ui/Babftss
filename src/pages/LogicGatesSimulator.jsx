@@ -6727,15 +6727,7 @@ export default function LogicGatesSimulator({ setPage }) {
                       </div>
                     );
                   })}
-                </div>
 
-                {/* ── Auto Save & Buy Slot Row ── */}
-                <div style={{
-                  display: 'flex',
-                  flexDirection: isMobile ? 'column' : 'row',
-                  gap: 14,
-                  justifyContent: 'center', alignItems: 'stretch',
-                }}>
                   {/* ── Auto Save Cartridge ── */}
                   {(() => {
                     const asHsl = hexToHsl('#3b82f6');
@@ -6755,7 +6747,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     }
                     return (
                       <div style={{
-                        flex: isMobile ? undefined : 1, minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
+                        minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
                         position: 'relative', borderRadius: 14, overflow: 'hidden',
                         background: `linear-gradient(180deg, ${asCc.light} 0%, ${asCc.body} 30%, ${asCc.body} 70%, ${asCc.dark} 100%)`,
                         boxShadow: `4px 4px 0 ${asCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
@@ -6863,7 +6855,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     );
                   })()}
 
-                  {/* ── Buy Slot Cartridge ── */}
+                  {/* ── Buy Slot Cartridge (inside grid) ── */}
                   {(() => {
                     const bsHsl = hexToHsl('#3b82f6');
                     const bsCc = { body: hslToHex(bsHsl.h, 50, 35), dark: hslToHex(bsHsl.h, 35, 14), light: hslToHex(bsHsl.h, 55, 48) };
@@ -6871,7 +6863,7 @@ export default function LogicGatesSimulator({ setPage }) {
                       <div
                         onClick={() => { if (user) setBuySlotConfirm(true); else setSaveStatus({ message: 'Harap login terlebih dahulu!', type: 'error' }); }}
                         style={{
-                          flex: isMobile ? undefined : 1, minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
+                          minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
                           position: 'relative', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
                           background: `linear-gradient(180deg, ${bsCc.light} 0%, ${bsCc.body} 30%, ${bsCc.body} 70%, ${bsCc.dark} 100%)`,
                           boxShadow: `4px 4px 0 ${bsCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
