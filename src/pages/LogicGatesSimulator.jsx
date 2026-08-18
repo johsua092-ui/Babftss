@@ -6225,7 +6225,7 @@ export default function LogicGatesSimulator({ setPage }) {
                               onClick={() => setSlotColorEdit({ slotIndex: idx })}
                               style={{
                                 width: 24, height: 24, borderRadius: 6, cursor: 'pointer', flexShrink: 0,
-                                background: 'conic-gradient(from 0deg, #f87171, #facc15, #4ade80, #22d3ee, #818cf8, #e879f9, #f87171)',
+                                background: 'conic-gradient(from 0deg, #00ffff, #00ff00, #ffff00, #ff0000, #ff00ff, #0000ff, #00ffff)',
                                 border: '2px solid rgba(255,255,255,0.2)',
                                 boxShadow: '0 0 6px rgba(255,255,255,0.15), inset 0 1px 0 rgba(255,255,255,0.25)',
                                 transition: 'box-shadow 0.2s, transform 0.15s',
