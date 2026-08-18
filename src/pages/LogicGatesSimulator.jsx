@@ -6691,47 +6691,53 @@ export default function LogicGatesSimulator({ setPage }) {
                             const fromIdx = moveSlotIndex;
                             const toIdx = idx;
                             setSwapAnim({ from: fromIdx, to: toIdx });
-                            setTimeout(async () => {
-                              // Compute swap result DIRECTLY from current state
-                              // (React 18 defers functional updater execution, so we CANNOT
-                              //  capture the result inside setSaveSlots(prev => ...) —
-                              //  the variable would still be null when we need it)
-                              const swappedArr = [...saveSlots];
-                              [swappedArr[fromIdx], swappedArr[toIdx]] = [swappedArr[toIdx], swappedArr[fromIdx]];
+                            // Compute swap result IMMEDIATELY from current state (before timeout)
+                            // This is critical: saveSlots in the closure is current at click time
+                            const currentSlots = [...saveSlots];
+                            [currentSlots[fromIdx], currentSlots[toIdx]] = [currentSlots[toIdx], currentSlots[fromIdx]];
 
+                            // Save to localStorage FIRST — synchronous, instant, survives crash
+                            setStoredSlotMeta(currentSlots);
+                            setStoredSlotOrder(currentSlots);
+
+                            // Wait for swap animation to play, then apply state + persist to backend
+                            setTimeout(() => {
                               // Apply swap to React state
-                              setSaveSlots(swappedArr);
+                              setSaveSlots(currentSlots);
                               setSlotLocks(prev => {
                                 const arr = [...prev];
                                 [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
                                 return arr;
                               });
+                              // Clear animation + show notification IMMEDIATELY
+                              setSwapAnim(null);
+                              setMoveSlotIndex(null);
+                              setSwapSuccessOverlay({ from: fromIdx + 1, to: toIdx + 1 });
+                              setTimeout(() => setSwapSuccessOverlay(null), 2500);
 
-                              // Immediately persist BOTH swapped slots + order to backend
-                              // This runs BEFORE React even re-renders — data is safe
-                              if (user) {
-                                // Save slot order to localStorage FIRST (synchronous, instant)
-                                setStoredSlotOrder(swappedArr);
-                                try {
-                                  const token = await getIdToken();
-                                  if (token) {
-                                    const slotA = swappedArr[fromIdx];
-                                    const slotB = swappedArr[toIdx];
-                                    // Persist both swapped slots' metadata to backend
+                              // Persist to backend in background (fire-and-forget, don't block UI)
+                              if (user && getIdToken) {
+                                (async () => {
+                                  try {
+                                    const token = await getIdToken();
+                                    if (!token) return;
+                                    const slotA = currentSlots[fromIdx];
+                                    const slotB = currentSlots[toIdx];
+                                    // Persist both swapped slots' metadata
                                     for (const s of [slotA, slotB]) {
                                       await fetch('/api/circuits', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                                         body: JSON.stringify({
                                           itemId: s.slotId,
-                                          name: s.name || `Slot ${swappedArr.indexOf(s) + 1}`,
+                                          name: s.name || `Slot ${currentSlots.indexOf(s) + 1}`,
                                           data: { circuitState: s.data || null, color: s.color, description: s.description },
                                           metaOnly: true,
                                         }),
                                       });
                                     }
                                     // Persist slot ORDER to backend so refresh restores the swap
-                                    const newOrder = swappedArr.map(s => s.slotId);
+                                    const newOrder = currentSlots.map(s => s.slotId);
                                     await fetch('/api/circuits', {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -6742,17 +6748,13 @@ export default function LogicGatesSimulator({ setPage }) {
                                         metaOnly: true,
                                       }),
                                     });
+                                  } catch (e) {
+                                    // localStorage already saved above — backend failure is non-critical
+                                    // (debounced auto-save will retry on next render)
                                   }
-                                } catch (e) {
-                                  // localStorage already saved above — backend failure is recoverable
-                                  // (debounced auto-save will retry on next render)
-                                }
+                                })();
                               }
-                              setSwapAnim(null);
-                              setMoveSlotIndex(null);
-                              setSwapSuccessOverlay({ from: fromIdx + 1, to: toIdx + 1 });
-                              setTimeout(() => setSwapSuccessOverlay(null), 2500);
-                            }, 300);
+                            }, 500);
                           }
                         }}
                         style={{
