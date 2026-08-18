@@ -7257,7 +7257,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           background: asCc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
                           display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
-                          minHeight: 140,
+                          minHeight: 122,
                         }}>
                           {/* Title: AUTO SAVE with sync icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -7385,7 +7385,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           background: bsCc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
                           display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
-                          minHeight: 140,
+                          minHeight: 122,
                         }}>
                           {/* Title: BUY SLOT with plus icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
