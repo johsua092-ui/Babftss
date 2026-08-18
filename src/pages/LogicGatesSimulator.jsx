@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check, Coins } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check, Coins, RefreshCw, Plus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { toast } from 'sonner';
@@ -1249,6 +1249,136 @@ export default function LogicGatesSimulator({ setPage }) {
   const [historyEmptyWarning, setHistoryEmptyWarning] = useState(null); // index number or null
   const [historyLoadConfirm, setHistoryLoadConfirm] = useState(null); // { historyIndex } or null
   const [slotColorEdit, setSlotColorEdit] = useState(null); // { slotIndex } or null
+
+  /* ── Auto Save state ── */
+  const [autoSaveData, setAutoSaveData] = useState(null); // circuitState or null
+  const [autoSaveUpdatedAt, setAutoSaveUpdatedAt] = useState(null); // timestamp
+  const [autoSaveReloading, setAutoSaveReloading] = useState(false);
+  const AUTO_SAVE_ID = 'save-slot-auto';
+
+  /* ── Buy Slot state ── */
+  const [buySlotConfirm, setBuySlotConfirm] = useState(false);
+  const [buySlotLoading, setBuySlotLoading] = useState(false);
+
+  /* ── Auto Save: load from backend on mount ── */
+  useEffect(() => {
+    if (!user) return;
+    const loadAutoSave = async () => {
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await fetch(`/api/circuits?id=${AUTO_SAVE_ID}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const { circuit } = await res.json();
+        if (circuit?.data?.circuitState) {
+          setAutoSaveData(circuit.data.circuitState);
+          setAutoSaveUpdatedAt(circuit.updated_at || circuit.created_at || null);
+        }
+      } catch { /* silent */ }
+    };
+    loadAutoSave();
+  }, [user, getIdToken]);
+
+  /* ── Auto Save: save every 5 minutes + beforeunload ── */
+  const autoSaveTimerRef = useRef(null);
+  const autoSaveCircuitRef = useRef(null);
+  const doAutoSave = useCallback(async () => {
+    if (!user || !getIdToken) return;
+    const cs = autoSaveCircuitRef.current;
+    if (!cs) return;
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      await fetch('/api/circuits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          itemId: AUTO_SAVE_ID,
+          name: 'Auto Save',
+          data: { circuitState: cs, color: '#3b82f6', description: '' },
+          metaOnly: true,
+        }),
+      });
+      const now = Date.now();
+      setAutoSaveUpdatedAt(now);
+    } catch { /* silent */ }
+  }, [user, getIdToken]);
+
+  // Keep autoSaveCircuitRef in sync with current circuit
+  useEffect(() => {
+    autoSaveCircuitRef.current = {
+      components: JSON.parse(JSON.stringify(components)),
+      wires: JSON.parse(JSON.stringify(wires)),
+      typeCounters: JSON.parse(JSON.stringify(typeCounters)),
+      nextId: stateRef.current.nextId,
+    };
+  });
+
+  // 5-minute auto-save timer
+  useEffect(() => {
+    if (!user) return;
+    autoSaveTimerRef.current = setInterval(() => { doAutoSave(); }, 5 * 60 * 1000);
+    const handleBeforeUnload = () => { doAutoSave(); };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      clearInterval(autoSaveTimerRef.current);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user, doAutoSave]);
+
+  /* ── Load Auto Save ── */
+  const doLoadAutoSave = async () => {
+    if (!autoSaveData) { setSaveStatus({ message: 'Auto Save kosong, tidak ada data.', type: 'error' }); return; }
+    setAutoSaveReloading(true);
+    try {
+      setComponents(JSON.parse(JSON.stringify(autoSaveData.components || [])));
+      setWires(JSON.parse(JSON.stringify(autoSaveData.wires || [])));
+      if (autoSaveData.typeCounters) setTypeCounters(autoSaveData.typeCounters);
+      if (autoSaveData.nextId) setNextId(autoSaveData.nextId);
+      setSaveStatus({ message: 'Auto Save berhasil di-load!', type: 'success' });
+    } catch (e) {
+      setSaveStatus({ message: 'Gagal load Auto Save: ' + e.message, type: 'error' });
+    }
+    setAutoSaveReloading(false);
+  };
+
+  /* ── Buy Slot ── */
+  const doBuySlot = async () => {
+    if (!user || !getIdToken) { setSaveStatus({ message: 'Harap login terlebih dahulu!', type: 'error' }); return; }
+    setBuySlotLoading(true);
+    try {
+      const token = await getIdToken();
+      if (!token) { setBuySlotConfirm(false); setBuySlotLoading(false); return; }
+      // Check gold balance
+      const goldRes = await fetch('/api/ai-chat?action=gold-info', { headers: { Authorization: `Bearer ${token}` } });
+      if (!goldRes.ok) { setSaveStatus({ message: 'Gagal cek gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
+      const goldData = await goldRes.json();
+      const currentGold = goldData.isAdmin ? Infinity : (goldData.gold ?? 0);
+      if (currentGold < 100) { setSaveStatus({ message: 'Gold tidak cukup! Kamu butuh 100 gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
+      // Deduct gold via buy-slot action
+      const deductRes = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'buy-slot', amount: 100 }),
+      });
+      if (!deductRes.ok) { const d = await deductRes.json().catch(() => ({})); setSaveStatus({ message: d.error || 'Gagal memotong gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
+      // Add new slot
+      const newSlotNum = saveSlots.length + 1;
+      const newSlot = { slotId: `save-slot-${newSlotNum}`, name: '', description: '', color: '#3b82f6', data: null, updatedAt: null };
+      setSaveSlots(prev => [...prev, newSlot]);
+      // Also extend slotLocks
+      setSlotLocks(prev => [...prev, false]);
+      setSaveStatus({ message: `Slot ${newSlotNum} berhasil dibeli!`, type: 'success' });
+      // Refresh gold info
+      fetchGoldInfo();
+    } catch (e) {
+      setSaveStatus({ message: 'Gagal membeli slot: ' + e.message, type: 'error' });
+    }
+    setBuySlotLoading(false);
+    setBuySlotConfirm(false);
+  };
 
   // Load all save slots from backend on mount
   // Backend is authoritative for circuitState/updatedAt.
@@ -6584,7 +6714,245 @@ export default function LogicGatesSimulator({ setPage }) {
                   })}
                 </div>
 
-                {/* Login hint if not logged in */}
+                {/* ── Auto Save & Buy Slot Row ── */}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: isMobile ? 'column' : 'row',
+                  gap: 14,
+                  justifyContent: 'center', alignItems: 'stretch',
+                }}>
+                  {/* ── Auto Save Cartridge ── */}
+                  {(() => {
+                    const asHsl = hexToHsl('#3b82f6');
+                    const asCc = { body: hslToHex(asHsl.h, 50, 35), dark: hslToHex(asHsl.h, 35, 14), light: hslToHex(asHsl.h, 55, 48) };
+                    const asHasData = !!autoSaveData;
+                    const asCompCount = asHasData ? (autoSaveData.components?.length || 0) : 0;
+                    const asWireCount = asHasData ? (autoSaveData.wires?.length || 0) : 0;
+                    const asDateStr = autoSaveUpdatedAt ? new Date(autoSaveUpdatedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
+                    // Relative time
+                    let relTime = '';
+                    if (autoSaveUpdatedAt) {
+                      const diffMs = Date.now() - new Date(autoSaveUpdatedAt).getTime();
+                      const diffMin = Math.floor(diffMs / 60000);
+                      if (diffMin < 1) relTime = 'Baru saja';
+                      else if (diffMin < 60) relTime = `${diffMin} menit lalu`;
+                      else { const diffH = Math.floor(diffMin / 60); if (diffH < 24) relTime = `${diffH} jam lalu`; else relTime = asDateStr; }
+                    }
+                    return (
+                      <div style={{
+                        flex: isMobile ? undefined : 1, minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
+                        position: 'relative', borderRadius: 14, overflow: 'hidden',
+                        background: `linear-gradient(180deg, ${asCc.light} 0%, ${asCc.body} 30%, ${asCc.body} 70%, ${asCc.dark} 100%)`,
+                        boxShadow: `4px 4px 0 ${asCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
+                      }}>
+                        {/* SD-card notch */}
+                        <div style={{ position: 'absolute', top: 0, right: 20, width: 24, height: 12, background: '#2a3a5c', borderRadius: '0 0 6 6' }} />
+                        {/* Label area */}
+                        <div style={{
+                          margin: '14px 12px 8px', padding: '10px 10px 8px', borderRadius: 8,
+                          background: asCc.dark,
+                          boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
+                          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                        }}>
+                          {/* Title: AUTO SAVE with sync icon */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <RefreshCw size={20} style={{ color: '#fbbf24' }} />
+                            <span style={{
+                              fontSize: 16, fontWeight: 900, color: '#fbbf24',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                              textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                            }}>AUTO SAVE</span>
+                          </div>
+                          {/* Info: last saved */}
+                          <div style={{ fontSize: 10, color: '#5a7a9a', textAlign: 'center' }}>
+                            {asHasData ? (
+                              <>
+                                <span style={{ color: '#8aa4c0' }}>{asCompCount} comp</span>
+                                <span style={{ margin: '0 4px' }}>·</span>
+                                <span style={{ color: '#8aa4c0' }}>{asWireCount} wire</span>
+                                {relTime && <><span style={{ margin: '0 4px' }}>·</span><span style={{ fontSize: 9 }}>{relTime}</span></>}
+                              </>
+                            ) : (
+                              <span style={{ fontStyle: 'italic', color: '#4a6a8a' }}>Belum ada data</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Groove lines */}
+                        <div style={{ margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${asCc.dark}60, transparent)` }} />
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${asCc.dark}60, transparent)` }} />
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${asCc.dark}60, transparent)` }} />
+                        </div>
+                        {/* Gold contact pins */}
+                        <div style={{
+                          margin: '8px 8px 0', padding: '6px 0', borderRadius: '4px 4px 0 0',
+                          background: 'linear-gradient(180deg, #d4af37 0%, #c5a028 50%, #a08020 100%)',
+                          display: 'flex', justifyContent: 'center', gap: 3,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)',
+                        }}>
+                          {[...Array(8)].map((_, pi) => (
+                            <div key={pi} style={{ width: 8, height: 10, borderRadius: 2, background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
+                          ))}
+                        </div>
+                        {/* Action: Load only + History */}
+                        <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {/* History button for auto save */}
+                          <button
+                            onClick={async () => {
+                              setHistoryOpen(-1); // -1 = auto save
+                              setHistoryLoading(true);
+                              try {
+                                const token = await getIdToken();
+                                const res = await fetch(`/api/circuits?action=history&id=${AUTO_SAVE_ID}`, { headers: { Authorization: `Bearer ${token}` } });
+                                if (res.ok) { const d = await res.json(); setHistoryData(d.history || []); }
+                                else setHistoryData([]);
+                              } catch { setHistoryData([]); }
+                              setHistoryLoading(false);
+                            }}
+                            title="Load Save Sebelumnya"
+                            style={{
+                              width: '100%', padding: '6px 0', borderRadius: 8,
+                              background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)',
+                              border: '2px solid #2563eb',
+                              boxShadow: '0 3px 0 #1d4ed8, 0 4px 8px rgba(0,0,0,0.3)',
+                              color: '#fff', fontSize: 14, fontWeight: 900, cursor: 'pointer',
+                              fontFamily: '"Inter", sans-serif',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            <ArrowRightLeft size={13} />
+                          </button>
+                          {/* Load button */}
+                          <button
+                            onClick={doLoadAutoSave}
+                            disabled={autoSaveReloading || !asHasData}
+                            style={{
+                              width: '100%', padding: asHasData ? '12px 0' : '10px 0', borderRadius: 14,
+                              background: asHasData
+                                ? 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)'
+                                : 'linear-gradient(180deg, #3a5530 0%, #2a4020 100%)',
+                              border: `2px solid ${asHasData ? '#4a8a30' : '#1a3010'}`,
+                              boxShadow: asHasData ? '0 4px 0 #3a7028, 0 6px 12px rgba(0,0,0,0.4)' : '0 2px 0 #1a3010',
+                              color: asHasData ? '#fff' : '#5a7a50', fontSize: asHasData ? 17 : 13, fontWeight: 900,
+                              cursor: (autoSaveReloading || !asHasData) ? 'not-allowed' : 'pointer',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: asHasData ? 2 : 0,
+                              textShadow: asHasData ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                              transition: 'transform 0.1s, boxShadow 0.1s',
+                            }}
+                          >
+                            {asHasData ? 'LOAD' : 'EMPTY'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── Buy Slot Cartridge ── */}
+                  {(() => {
+                    const bsHsl = hexToHsl('#3b82f6');
+                    const bsCc = { body: hslToHex(bsHsl.h, 50, 35), dark: hslToHex(bsHsl.h, 35, 14), light: hslToHex(bsHsl.h, 55, 48) };
+                    return (
+                      <div
+                        onClick={() => { if (user) setBuySlotConfirm(true); else setSaveStatus({ message: 'Harap login terlebih dahulu!', type: 'error' }); }}
+                        style={{
+                          flex: isMobile ? undefined : 1, minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
+                          position: 'relative', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+                          background: `linear-gradient(180deg, ${bsCc.light} 0%, ${bsCc.body} 30%, ${bsCc.body} 70%, ${bsCc.dark} 100%)`,
+                          boxShadow: `4px 4px 0 ${bsCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
+                          transition: 'transform 0.15s, box-shadow 0.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `4px 6px 0 ${bsCc.dark}, 0 12px 32px rgba(0,0,0,0.6)`; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `4px 4px 0 ${bsCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`; }}
+                      >
+                        {/* SD-card notch */}
+                        <div style={{ position: 'absolute', top: 0, right: 20, width: 24, height: 12, background: '#2a3a5c', borderRadius: '0 0 6 6' }} />
+                        {/* Label area */}
+                        <div style={{
+                          margin: '14px 12px 8px', padding: '10px 10px 8px', borderRadius: 8,
+                          background: bsCc.dark,
+                          boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
+                          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                        }}>
+                          {/* Title: BUY SLOT with plus icon */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Plus size={22} style={{ color: '#4ade80' }} />
+                            <span style={{
+                              fontSize: 16, fontWeight: 900, color: '#4ade80',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                              textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                            }}>BUY SLOT</span>
+                          </div>
+                          {/* Price info */}
+                          <div style={{ fontSize: 10, color: '#5a7a9a', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Coins size={11} style={{ color: '#fbbf24' }} />
+                            <span style={{ color: '#fbbf24', fontWeight: 700 }}>100</span>
+                            <span>gold per slot</span>
+                          </div>
+                        </div>
+                        {/* Groove lines */}
+                        <div style={{ margin: '0 16px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${bsCc.dark}60, transparent)` }} />
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${bsCc.dark}60, transparent)` }} />
+                          <div style={{ height: 2, borderRadius: 1, background: `linear-gradient(90deg, transparent, ${bsCc.dark}60, transparent)` }} />
+                        </div>
+                        {/* Gold contact pins */}
+                        <div style={{
+                          margin: '8px 8px 0', padding: '6px 0', borderRadius: '4px 4px 0 0',
+                          background: 'linear-gradient(180deg, #d4af37 0%, #c5a028 50%, #a08020 100%)',
+                          display: 'flex', justifyContent: 'center', gap: 3,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)',
+                        }}>
+                          {[...Array(8)].map((_, pi) => (
+                            <div key={pi} style={{ width: 8, height: 10, borderRadius: 2, background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
+                          ))}
+                        </div>
+                        {/* Price display at bottom */}
+                        <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Coins size={16} style={{ color: '#fbbf24' }} />
+                            <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 18, fontWeight: 700, color: '#fbbf24', letterSpacing: 0.5 }}>100</span>
+                          </div>
+                          <span style={{ fontSize: 10, color: '#5a7a9a', fontFamily: '"Inter", sans-serif' }}>GOLD</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* ── Buy Slot Confirm Dialog ── */}
+                {buySlotConfirm && (
+                  <div style={{
+                    padding: '16px 20px', borderRadius: 14, textAlign: 'center',
+                    background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+                    border: '2px solid #334155', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  }}>
+                    <div style={{ fontSize: 14, color: '#e2e8f0', fontWeight: 700, marginBottom: 8 }}>
+                      Apakah anda ingin membeli slot baru seharga 100 gold?
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                      <button
+                        onClick={doBuySlot}
+                        disabled={buySlotLoading}
+                        style={{
+                          padding: '8px 24px', borderRadius: 10, cursor: buySlotLoading ? 'wait' : 'pointer',
+                          background: 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)',
+                          border: '2px solid #4a8a30', boxShadow: '0 3px 0 #3a7028',
+                          color: '#fff', fontSize: 14, fontWeight: 900, fontFamily: '"Inter", sans-serif',
+                        }}
+                      >YA</button>
+                      <button
+                        onClick={() => setBuySlotConfirm(false)}
+                        style={{
+                          padding: '8px 24px', borderRadius: 10, cursor: 'pointer',
+                          background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                          border: '2px solid #2a3548', boxShadow: '0 3px 0 #1a2538',
+                          color: '#8aa4c0', fontSize: 14, fontWeight: 900, fontFamily: '"Inter", sans-serif',
+                        }}
+                      >TIDAK</button>
+                    </div>
+                  </div>
+                )}
                 {!user && (
                   <div style={{
                     padding: '10px 16px', borderRadius: 12, fontSize: 12, color: '#e6b800', textAlign: 'center', fontWeight: 700,

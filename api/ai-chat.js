@@ -274,6 +274,28 @@ export default async function handler(req, res) {
       }
     }
 
+    // ── Buy Slot — User deducts own gold to buy a circuit save slot ──
+    if (action === "buy-slot") {
+      const { amount } = req.body || {};
+      const slotCost = 100; // Fixed price per slot
+      const deductAmount = amount || slotCost;
+      if (typeof deductAmount !== "number" || deductAmount < 1 || deductAmount > 10000) {
+        return res.status(400).json({ error: "Amount tidak valid (1-10000)" });
+      }
+      try {
+        const balance = await getGoldBalance(uid);
+        if (balance < deductAmount) {
+          return res.status(402).json({ error: "Gold tidak cukup!", gold: balance, required: deductAmount });
+        }
+        const result = await deductGold(uid, deductAmount, "buy_slot", { reason: "Buy circuit save slot" });
+        return res.status(200).json({ message: `Berhasil beli slot seharga ${deductAmount} gold`, amount: deductAmount, newBalance: result });
+      } catch (e) {
+        if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold tidak cukup!", gold: await getGoldBalance(uid) });
+        console.error("[ai-chat] buy-slot error:", e?.message || e);
+        return res.status(500).json({ error: "Buy slot gagal: " + (e?.message || "unknown error") });
+      }
+    }
+
     // ── Bulk Deduct — Admin tarik gold dari SEMUA member sekaligus (anti-abuse) ──
     if (action === "bulk-deduct") {
       if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa bulk deduct" });
