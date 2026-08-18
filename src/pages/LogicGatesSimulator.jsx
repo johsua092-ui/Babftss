@@ -6446,7 +6446,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 >X</button>
 
                 {/* Title row — gold badge + search (left) + title (absolute center) */}
-                <div style={{ display: 'flex', alignItems: 'center', position: 'relative', paddingRight: 40, minHeight: 50 }}>
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative', paddingRight: 40, minHeight: 50, marginBottom: 8 }}>
                   {/* Gold badge — top-left corner */}
                   {user && goldInfo && (() => {
                     const gold = goldInfo.isAdmin ? Infinity : (goldInfo.gold ?? 0);
