@@ -6264,14 +6264,14 @@ export default function LogicGatesSimulator({ setPage }) {
                     const gold = goldInfo.isAdmin ? Infinity : (goldInfo.gold ?? 0);
                     return (
                       <div style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
+                        display: 'flex', alignItems: 'center', gap: 8,
                         backgroundColor: '#1a1f2e', border: '1px solid #2d3548',
-                        borderRadius: 8, padding: '5px 12px',
-                        flexShrink: 0, marginRight: 10,
+                        borderRadius: 10, padding: '7px 16px',
+                        flexShrink: 0, marginRight: 12,
                       }}>
-                        <Coins size={15} style={{ color: '#fbbf24' }} />
+                        <Coins size={20} style={{ color: '#fbbf24' }} />
                         <span style={{
-                          fontFamily: 'Orbitron,sans-serif', fontSize: 13, fontWeight: 700,
+                          fontFamily: 'Orbitron,sans-serif', fontSize: 17, fontWeight: 700,
                           color: '#fbbf24', letterSpacing: 0.5,
                         }}>{gold === Infinity ? '\u221E' : gold}</span>
                       </div>
