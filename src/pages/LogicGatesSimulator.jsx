@@ -1244,25 +1244,92 @@ export default function LogicGatesSimulator({ setPage }) {
   /* ── Slot order persistence (localStorage) ── */
   // Stores the visual order of slotIds as an array, e.g. ["save-slot-1", "save-slot-9", "save-slot-2", ...]
   // This ensures swaps survive page refresh.
+
+  // ─── LAYER 1: ORDER INTEGRITY VALIDATION ───
+  // Validates an order array before it can be stored or applied.
+  // Rejects: non-array, empty, non-string entries, duplicate slotIds,
+  //   slotIds that don't match the expected pattern "save-slot-N".
+  const isValidSlotId = (id) => typeof id === 'string' && /^save-slot-\d+$/.test(id);
+  const validateOrder = (order) => {
+    if (!order || !Array.isArray(order) || order.length === 0) return false;
+    const seen = new Set();
+    for (const id of order) {
+      if (!isValidSlotId(id)) return false;   // invalid format
+      if (seen.has(id)) return false;          // duplicate
+      seen.add(id);
+    }
+    return true;
+  };
+
   const SLOT_ORDER_KEY = 'circuit_slot_order';
+  // ─── LAYER 2: ORDER BACKUP KEY ───
+  // Before any overwrite, the current good order is backed up here.
+  // If the primary order gets corrupted, we can fall back to the backup.
+  const SLOT_ORDER_BACKUP_KEY = 'circuit_slot_order_backup';
+
   const getStoredSlotOrder = () => {
     try {
       const raw = localStorage.getItem(SLOT_ORDER_KEY);
       if (!raw) return null;
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr) && arr.length > 0) return arr;
+      // ─── LAYER 1 CHECK: Validate order integrity on read ───
+      if (!validateOrder(arr)) {
+        // Order is CORRUPTED — try backup
+        console.warn('[slot-order] Primary order corrupted, trying backup...');
+        const backupRaw = localStorage.getItem(SLOT_ORDER_BACKUP_KEY);
+        if (backupRaw) {
+          const backupArr = JSON.parse(backupRaw);
+          if (validateOrder(backupArr)) {
+            // Restore from backup
+            localStorage.setItem(SLOT_ORDER_KEY, backupRaw);
+            console.info('[slot-order] Restored from backup');
+            return backupArr;
+          }
+        }
+        // No valid backup either — clear corrupted data
+        localStorage.removeItem(SLOT_ORDER_KEY);
+        localStorage.removeItem(SLOT_ORDER_BACKUP_KEY);
+        console.warn('[slot-order] No valid order found, cleared corrupted data');
+        return null;
+      }
+      return arr;
+    } catch {
+      // JSON parse error — data is corrupted
+      localStorage.removeItem(SLOT_ORDER_KEY);
       return null;
-    } catch { return null; }
+    }
   };
   const setStoredSlotOrder = (slots) => {
     try {
       const order = slots.map(s => s.slotId);
+      // ─── LAYER 1 CHECK: Validate before writing ───
+      if (!validateOrder(order)) {
+        console.error('[slot-order] REJECTED: order failed validation, NOT writing to localStorage', order);
+        return; // DO NOT write corrupted order
+      }
+      // ─── LAYER 2: Backup current good order before overwriting ───
+      const currentRaw = localStorage.getItem(SLOT_ORDER_KEY);
+      if (currentRaw) {
+        try {
+          const currentArr = JSON.parse(currentRaw);
+          if (validateOrder(currentArr)) {
+            localStorage.setItem(SLOT_ORDER_BACKUP_KEY, currentRaw);
+          }
+        } catch { /* current is corrupt, skip backup */ }
+      }
       localStorage.setItem(SLOT_ORDER_KEY, JSON.stringify(order));
-    } catch {}
+    } catch (e) {
+      console.error('[slot-order] Failed to write order to localStorage', e);
+    }
   };
   // Reorder a slot array to match a stored order. Slots not in order are appended at the end.
+  // ─── LAYER 1 CHECK: Reject corrupted order ───
   const applySlotOrder = (slots, order) => {
     if (!order || !Array.isArray(order) || order.length === 0) return slots;
+    if (!validateOrder(order)) {
+      console.warn('[slot-order] applySlotOrder: order failed validation, returning slots unchanged');
+      return slots;
+    }
     const orderSet = new Set(order);
     const ordered = [];
     for (const slotId of order) {
@@ -1499,15 +1566,19 @@ export default function LogicGatesSimulator({ setPage }) {
           });
           if (orderRes.ok) {
             const orderData = await orderRes.json();
-            if (orderData.circuit?.data?.order && Array.isArray(orderData.circuit.data.order)) {
-              backendOrder = orderData.circuit.data.order;
+            const rawOrder = orderData.circuit?.data?.order;
+            // ─── LAYER 1 CHECK: Validate backend order before trusting it ───
+            if (rawOrder && validateOrder(rawOrder)) {
+              backendOrder = rawOrder;
+            } else if (rawOrder) {
+              console.warn('[slot-order] Backend order failed validation, ignoring', rawOrder);
             }
           }
         } catch { /* order fetch failed, not critical */ }
         // Merge order: prefer backendOrder as source of truth (survives localStorage
         // corruption from the old bug where auto-persist overwrote order on first render
         // with a partial array). Fall back to localOrder only if backend has no order.
-        const localOrder = getStoredSlotOrder();
+        const localOrder = getStoredSlotOrder(); // already validated by getStoredSlotOrder()
         // Also validate localOrder: if it has fewer slotIds than backendOrder, it's
         // likely corrupted (old bug) — prefer backendOrder.
         let effectiveOrder = backendOrder;
@@ -1533,7 +1604,12 @@ export default function LogicGatesSimulator({ setPage }) {
                 name: localIsCustom ? (localM.name || '') : (match.name || ''),
                 description: localIsCustom ? (localM.description || '') : (match.data?.description || ''),
                 color: localIsCustom ? (localM.color || slot.color) : (match.data?.color || slot.color),
-                data: match.data?.circuitState || null,
+                // ─── LAYER 5: DEEP-CLONE circuit data on load ───
+                // Always deep-clone circuitState when loading from backend.
+                // This prevents accidental mutation of the stored reference,
+                // which could corrupt the save data if the user edits the
+                // circuit and the slot.data object is still the same reference.
+                data: match.data?.circuitState ? JSON.parse(JSON.stringify(match.data.circuitState)) : null,
                 updatedAt: match.updated_at || match.created_at || null,
               };
             }
@@ -1554,7 +1630,8 @@ export default function LogicGatesSimulator({ setPage }) {
               name: c.name || '',
               description: c.data?.description || '',
               color: c.data?.color || '#3b82f6',
-              data: c.data?.circuitState || null,
+              // ─── LAYER 5: DEEP-CLONE circuit data on load ───
+              data: c.data?.circuitState ? JSON.parse(JSON.stringify(c.data.circuitState)) : null,
               updatedAt: c.updated_at || c.created_at || null,
             }));
           // Apply persisted slot order so swaps survive refresh
@@ -1562,13 +1639,24 @@ export default function LogicGatesSimulator({ setPage }) {
           if (effectiveOrder) {
             finalSlots = applySlotOrder(finalSlots, effectiveOrder);
           }
+          // ─── LAYER 4: AUTO-RECOVERY ───
+          // If effectiveOrder references slotIds that don't exist in finalSlots
+          // (e.g., a slot was deleted/bought but backend is out of sync), clean
+          // the order to only include slotIds that actually exist. This prevents
+          // stale order entries from corrupting future swaps.
+          if (effectiveOrder) {
+            const existingIds = new Set(finalSlots.map(s => s.slotId));
+            const cleanOrder = effectiveOrder.filter(id => existingIds.has(id));
+            if (cleanOrder.length !== effectiveOrder.length) {
+              console.warn('[slot-order] Cleaned stale entries from order',
+                effectiveOrder.length, '→', cleanOrder.length);
+            }
+            // Always write the clean order (may be same as effectiveOrder)
+            try { localStorage.setItem(SLOT_ORDER_KEY, JSON.stringify(cleanOrder)); } catch {}
+          }
           // Re-sync slotLocks from localStorage slotId-keyed map based on final slot order
           const lockMap = getStoredLocksMap();
           setSlotLocks(buildLocksArray(finalSlots, lockMap));
-          // Also sync localStorage order with the effective order
-          if (effectiveOrder) {
-            try { localStorage.setItem(SLOT_ORDER_KEY, JSON.stringify(effectiveOrder)); } catch {}
-          }
           return finalSlots;
         });
       } catch (e) { /* silent */ }
@@ -1638,17 +1726,37 @@ export default function LogicGatesSimulator({ setPage }) {
     return () => { if (slotMetaSaveTimerRef.current) clearTimeout(slotMetaSaveTimerRef.current); };
   }, [saveSlots, saveMetaToBackend]);
   // Flush pending backend save on page hide / beforeunload (so refresh never loses data)
+  // ─── LAYER 3: BEFOREUNLOAD GUARD ───
+  // Track whether a backend save is in-flight. If the user tries to close/refresh
+  // the page while a save is pending, we attempt a synchronous flush AND we
+  // also warn the user via beforeunload prompt (browser shows "Leave site?" dialog).
+  const backendSaveInFlightRef = useRef(false);
   useEffect(() => {
     const flush = () => {
       if (slotMetaSaveTimerRef.current) {
         clearTimeout(slotMetaSaveTimerRef.current);
         slotMetaSaveTimerRef.current = null;
-        saveMetaToBackend(saveSlots);
+        backendSaveInFlightRef.current = true;
+        saveMetaToBackend(saveSlots).finally(() => { backendSaveInFlightRef.current = false; });
       }
     };
+    // Warn user if save is in-flight when they try to leave
+    const beforeUnloadHandler = (e) => {
+      if (backendSaveInFlightRef.current || slotMetaSaveTimerRef.current) {
+        // Standard way to trigger browser "Leave site?" confirmation
+        e.preventDefault();
+        e.returnValue = '';
+        // Also try to flush immediately
+        flush();
+      }
+    };
+    window.addEventListener('beforeunload', beforeUnloadHandler);
     window.addEventListener('beforeunload', flush);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
-    return () => { window.removeEventListener('beforeunload', flush); };
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnloadHandler);
+      window.removeEventListener('beforeunload', flush);
+    };
   }, [saveSlots, saveMetaToBackend]);
 
   const doSaveSlot = async (slotIndex) => {
@@ -6718,6 +6826,12 @@ export default function LogicGatesSimulator({ setPage }) {
                             const fromIdx = saveSlots.findIndex(s => s.slotId === moveSlotId);
                             const toIdx = idx;
                             if (fromIdx === -1) { setMoveSlotId(null); return; }
+                            // ─── SAFETY: Validate indices before swap ───
+                            if (fromIdx < 0 || fromIdx >= saveSlots.length || toIdx < 0 || toIdx >= saveSlots.length || fromIdx === toIdx) {
+                              console.error('[swap] Invalid indices, aborting', { fromIdx, toIdx, len: saveSlots.length });
+                              setMoveSlotId(null);
+                              return;
+                            }
                             setSwapAnim({ from: fromIdx, to: toIdx });
                             // Compute swap result IMMEDIATELY from current state (before timeout)
                             // This is critical: saveSlots in the closure is current at click time
@@ -6744,7 +6858,9 @@ export default function LogicGatesSimulator({ setPage }) {
                               setTimeout(() => setSwapSuccessOverlay(null), 2500);
 
                               // Persist to backend in background (fire-and-forget, don't block UI)
+                              // ─── LAYER 3: Mark in-flight to prevent data loss on page close ───
                               if (user && getIdToken) {
+                                backendSaveInFlightRef.current = true;
                                 (async () => {
                                   try {
                                     const token = await getIdToken();
@@ -6779,6 +6895,8 @@ export default function LogicGatesSimulator({ setPage }) {
                                   } catch (e) {
                                     // localStorage already saved above — backend failure is non-critical
                                     // (debounced auto-save will retry on next render)
+                                  } finally {
+                                    backendSaveInFlightRef.current = false;
                                   }
                                 })();
                               }
