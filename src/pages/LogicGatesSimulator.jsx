@@ -6937,36 +6937,43 @@ export default function LogicGatesSimulator({ setPage }) {
                   })()}
                 </div>
 
-                {/* ── Buy Slot Confirm Dialog ── */}
+                {/* ── Buy Slot Confirm Dialog — centered overlay ── */}
                 {buySlotConfirm && (
                   <div style={{
-                    padding: '16px 20px', borderRadius: 14, textAlign: 'center',
-                    background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
-                    border: '2px solid #334155', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    position: 'fixed', inset: 0, zIndex: 1100,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
                   }}>
-                    <div style={{ fontSize: 14, color: '#e2e8f0', fontWeight: 700, marginBottom: 8 }}>
-                      Apakah anda ingin membeli slot baru seharga 100 gold?
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                      <button
-                        onClick={doBuySlot}
-                        disabled={buySlotLoading}
-                        style={{
-                          padding: '8px 24px', borderRadius: 10, cursor: buySlotLoading ? 'wait' : 'pointer',
-                          background: 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)',
-                          border: '2px solid #4a8a30', boxShadow: '0 3px 0 #3a7028',
-                          color: '#fff', fontSize: 14, fontWeight: 900, fontFamily: '"Inter", sans-serif',
-                        }}
-                      >YA</button>
-                      <button
-                        onClick={() => setBuySlotConfirm(false)}
-                        style={{
-                          padding: '8px 24px', borderRadius: 10, cursor: 'pointer',
-                          background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
-                          border: '2px solid #2a3548', boxShadow: '0 3px 0 #1a2538',
-                          color: '#8aa4c0', fontSize: 14, fontWeight: 900, fontFamily: '"Inter", sans-serif',
-                        }}
-                      >TIDAK</button>
+                    <div style={{
+                      padding: '24px 32px', borderRadius: 18, textAlign: 'center',
+                      background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+                      border: '2px solid #334155', boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05)',
+                      minWidth: 280, maxWidth: 380,
+                    }}>
+                      <div style={{ fontSize: 15, color: '#e2e8f0', fontWeight: 700, marginBottom: 16, lineHeight: 1.5 }}>
+                        Apakah anda ingin membeli slot baru seharga 100 gold?
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                        <button
+                          onClick={doBuySlot}
+                          disabled={buySlotLoading}
+                          style={{
+                            padding: '10px 28px', borderRadius: 10, cursor: buySlotLoading ? 'wait' : 'pointer',
+                            background: 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)',
+                            border: '2px solid #4a8a30', boxShadow: '0 3px 0 #3a7028, 0 4px 12px rgba(0,0,0,0.3)',
+                            color: '#fff', fontSize: 15, fontWeight: 900, fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                          }}
+                        >YA</button>
+                        <button
+                          onClick={() => setBuySlotConfirm(false)}
+                          style={{
+                            padding: '10px 28px', borderRadius: 10, cursor: 'pointer',
+                            background: 'linear-gradient(180deg, #4a5568 0%, #3a4558 100%)',
+                            border: '2px solid #2a3548', boxShadow: '0 3px 0 #1a2538, 0 4px 12px rgba(0,0,0,0.3)',
+                            color: '#8aa4c0', fontSize: 15, fontWeight: 900, fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                          }}
+                        >TIDAK</button>
+                      </div>
                     </div>
                   </div>
                 )}
