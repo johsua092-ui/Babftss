@@ -343,7 +343,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
       <div style={s.body}>
         {/* Info */}
         <div style={s.infoBox}>
-          Saldo kamu: <strong style={{ color: '#fbbf24' }}>{gold === Infinity ? '∞' : gold}</strong> gold
+          Saldo kamu: <strong style={{ color: '#fbbf24' }}>{gold === Infinity ? <svg width="18" height="10" viewBox="0 0 24 12" fill="none" style={{display:'inline-block',verticalAlign:'middle'}}><path d="M12,6 C12,1.5 5,1.5 5,6 C5,10.5 12,10.5 12,6 C12,1.5 19,1.5 19,6 C19,10.5 12,10.5 12,6" stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round" fill="none"/></svg> : gold}</strong> gold
           {isAdmin && <span style={{ marginLeft: 8 }}><Shield size={12} style={{ verticalAlign: -1 }} /> Admin</span>}
         </div>
 

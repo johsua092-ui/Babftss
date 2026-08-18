@@ -516,7 +516,10 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     <div style={goldStyles.goldBadge}>
                         <Coins size={14} style={goldStyles.goldIcon} />
                         <span style={goldStyles.goldText}>
-                            {gold === Infinity ? '\u221E' : gold}
+                            {gold === Infinity
+                              ? <svg width="18" height="10" viewBox="0 0 24 12" fill="none" style={{display:'inline-block',verticalAlign:'middle'}}><path d="M12,6 C12,1.5 5,1.5 5,6 C5,10.5 12,10.5 12,6 C12,1.5 19,1.5 19,6 C19,10.5 12,10.5 12,6" stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round" fill="none"/></svg>
+                              : gold
+                            }
                         </span>
                     </div>
 
@@ -524,7 +527,10 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     <div style={goldStyles.timerBadge(timerActive)}>
                         <Clock size={14} style={goldStyles.timerIcon(timerActive)} />
                         <span style={goldStyles.timerText(timerActive)}>
-                            {timerActive ? countdown : (remainingMin > 0 ? formatMinutes(remainingMin) : 'No Time')}
+                            {timerActive ? countdown : (remainingMin === Infinity
+                              ? <svg width="18" height="10" viewBox="0 0 24 12" fill="none" style={{display:'inline-block',verticalAlign:'middle'}}><path d="M12,6 C12,1.5 5,1.5 5,6 C5,10.5 12,10.5 12,6 C12,1.5 19,1.5 19,6 C19,10.5 12,10.5 12,6" stroke={timerActive ? '#4ade80' : '#94a3b8'} strokeWidth="1.8" strokeLinecap="round" fill="none"/></svg>
+                              : (remainingMin > 0 ? formatMinutes(remainingMin) : 'No Time')
+                            )}
                         </span>
                     </div>
 
