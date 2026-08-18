@@ -219,17 +219,19 @@
   scrollbar-color: rgba(96, 165, 250, 0.5) rgba(15, 25, 50, 0.6);
 }
 
-/* ── Move Slot: animated dashed border ── */
-@keyframes moveSlotDash {
-  0%   { border-color: rgba(255,255,255,0.9); }
-  50%  { border-color: rgba(255,255,255,0.3); }
-  100% { border-color: rgba(255,255,255,0.9); }
-}
+/* ── Move Slot: grayscale effect for active slot ── */
 .slot-move-active {
-  border: 3px dashed rgba(255,255,255,0.9) !important;
-  animation: moveSlotDash 1s ease-in-out infinite;
+  border: 4px dashed #FFFFFF !important;
   filter: grayscale(0.7) brightness(0.6);
-  pointer-events: none;
+}
+
+/* ── Marching ants SVG overlay animation ── */
+@keyframes marchingAntsStroke {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -32; }
+}
+.marching-ants-svg rect {
+  animation: marchingAntsStroke 0.6s linear infinite;
 }
 
 /* ── Swap animation ── */
@@ -240,4 +242,10 @@
 }
 .slot-swap-anim {
   animation: swapPulse 0.3s ease-in-out;
+}
+
+/* ── Swap success overlay fade-in ── */
+@keyframes swapOverlayFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
 }
