@@ -1190,10 +1190,12 @@ export default function LogicGatesSimulator({ setPage }) {
 
   const [saveOverlayOpen, setSaveOverlayOpen] = useState(false);
 
-  /* Fetch gold info when save overlay opens */
+  /* Pre-fetch gold info on mount so it's ready when overlay opens */
   useEffect(() => {
-    if (saveOverlayOpen && user) fetchGoldInfo();
-  }, [saveOverlayOpen, user, fetchGoldInfo]);
+    if (user) fetchGoldInfo();
+    const id = setInterval(() => { if (user) fetchGoldInfo(); }, 30000);
+    return () => clearInterval(id);
+  }, [user, fetchGoldInfo]);
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState(null); // { slotIndex, action: 'save'|'load' }
