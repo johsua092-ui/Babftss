@@ -6247,13 +6247,22 @@ export default function LogicGatesSimulator({ setPage }) {
                     const compCount = hasData ? (slot.data.components?.length || 0) : 0;
                     const wireCount = hasData ? (slot.data.wires?.length || 0) : 0;
                     const dateStr = slot.updatedAt ? new Date(slot.updatedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
-                    // Cartridge body colors derived from slot.color hue — muted cartridge aesthetic
-                    const { h: slotH } = hexToHsl(slot.color || '#3b82f6');
-                    const cc = {
-                      body:  hslToHex(slotH, 50, 35),
-                      dark:  hslToHex(slotH, 35, 14),
-                      light: hslToHex(slotH, 55, 48),
-                    };
+                    // Cartridge body colors derived from slot.color — muted cartridge aesthetic
+                    // For highly saturated colors: use hue-only formula (fixed sat/l for consistency)
+                    // For low-saturation colors (white/gray/black): use neutral gray palette,
+                    //   preserving the original lightness so white→light gray, gray→medium, black→dark
+                    const { h: slotH, s: slotS, l: slotL } = hexToHsl(slot.color || '#3b82f6');
+                    const cc = slotS < 15
+                      ? { // Low saturation: neutral gray palette based on original lightness
+                          body:  hslToHex(210, 15, Math.max(18, Math.min(40, slotL * 0.4))),
+                          dark:  hslToHex(210, 12, Math.max(8, Math.min(18, slotL * 0.2))),
+                          light: hslToHex(210, 18, Math.max(30, Math.min(55, slotL * 0.6))),
+                        }
+                      : { // Normal: hue-only formula with fixed saturation/lightness for muted aesthetic
+                          body:  hslToHex(slotH, 50, 35),
+                          dark:  hslToHex(slotH, 35, 14),
+                          light: hslToHex(slotH, 55, 48),
+                        };
 
                     return (
                       <div key={slot.slotId} data-slot-color={slot.color || '#3b82f6'} style={{
