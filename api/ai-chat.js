@@ -98,13 +98,14 @@ export default async function handler(req, res) {
         return res.status(200).json({ messages, unreadCount });
       } catch (e) {
         console.error("[ai-chat] inbox error:", e?.message || e);
-        return res.status(500).json({ error: "Internal server error" });
+        return res.status(500).json({ error: "Inbox load failed", detail: e?.message || String(e) });
       }
     }
     if (action === "inbox-debug") {
       try {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
+        if (!isAdmin(user)) return res.status(403).json({ error: "Admin only" });
         const diag = { uid: user.sub, steps: [] };
         // Step 1: test write
         try {
@@ -213,14 +214,22 @@ export default async function handler(req, res) {
     if (action === "add-gold") {
       if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa menambah gold" });
       const { targetUid, amount, type } = req.body || {};
-      if (!targetUid || !amount || amount <= 0) return res.status(400).json({ error: "targetUid dan amount wajib diisi" });
-      const newBalance = await addGold(targetUid, amount, type || "admin_grant", { grantedBy: uid });
+      if (!targetUid || !amount || typeof amount !== "number" || amount <= 0 || amount > 10000) return res.status(400).json({ error: "targetUid dan amount wajib diisi (1-10000)" });
+      const safeType = ["admin_grant", "bonus", "refund"].includes(type) ? type : "admin_grant";
+      const newBalance = await addGold(targetUid, amount, safeType, { grantedBy: uid });
       return res.status(200).json({ message: "Gold ditambahkan", uid: targetUid, newBalance });
     }
 
     // ── Coin Transfer (merged from coin-transfer.js to stay under Vercel 12-function limit) ──
     if (action === "transfer") {
+      if (!checkRateLimit("transfer:" + uid, 5, 60000)) {
+        return res.status(429).json({ error: "Terlalu banyak transfer. Tunggu sebentar." });
+      }
       const { targetUid, targetEmail, amount, note } = req.body || {};
+      // Validate note length
+      if (note && (typeof note !== "string" || note.length > 500)) {
+        return res.status(400).json({ error: "Catatan terlalu panjang (max 500 karakter)" });
+      }
       let resolvedUid = targetUid;
 
       // If targetEmail provided instead of UID, resolve it
@@ -370,7 +379,7 @@ export default async function handler(req, res) {
     // ── Inbox: mark message read ──
     if (action === "inbox-read") {
       const { messageId } = req.body || {};
-      if (!messageId || typeof messageId !== "string") {
+      if (!messageId || typeof messageId !== "string" || messageId.length > 128) {
         return res.status(400).json({ error: "messageId wajib diisi" });
       }
       try {
