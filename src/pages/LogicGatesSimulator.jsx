@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check, Coins, RefreshCw, Plus } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check, Coins, RefreshCw, Plus, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { toast } from 'sonner';
@@ -1259,6 +1259,9 @@ export default function LogicGatesSimulator({ setPage }) {
   /* ── Buy Slot state ── */
   const [buySlotConfirm, setBuySlotConfirm] = useState(false);
   const [buySlotLoading, setBuySlotLoading] = useState(false);
+
+  /* ── Slot Search ── */
+  const [slotSearchQuery, setSlotSearchQuery] = useState('');
 
   /* ── Auto Save: load from backend on mount ── */
   useEffect(() => {
@@ -6311,7 +6314,7 @@ export default function LogicGatesSimulator({ setPage }) {
 
             {/* ── Save Progress button ── Green (#22c55e), cartridge icon ── */}
             <button
-              onClick={() => { setSaveOverlayOpen(true); setSaveStatus(null); }}
+              onClick={() => { setSaveOverlayOpen(true); setSaveStatus(null); setSlotSearchQuery(''); }}
               title="Save Progress"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
@@ -6427,14 +6430,15 @@ export default function LogicGatesSimulator({ setPage }) {
                     setSaveOverlayOpen(false); setSaveConfirm(null); setSaveStatus(null);
                   }}
                   style={{
-                    position: 'absolute', top: 10, right: 10,
+                    position: 'sticky', top: 10,
                     width: 36, height: 36, borderRadius: 10,
                     background: 'linear-gradient(180deg, #e6b800 0%, #c5a028 100%)',
                     border: '2px solid #a08020',
                     boxShadow: '0 3px 0 #8a6e18, 0 4px 8px rgba(0,0,0,0.4)',
                     color: '#3a2800', fontSize: 18, fontWeight: 900, cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    lineHeight: 1,
+                    lineHeight: 1, alignSelf: 'flex-end', zIndex: 10,
+                    flexShrink: 0,
                   }}
                 >X</button>
 
@@ -6465,6 +6469,36 @@ export default function LogicGatesSimulator({ setPage }) {
                       </div>
                     );
                   })()}
+                  {/* Slot Search Input — next to gold badge */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    backgroundColor: '#1a1f2e', border: '1px solid #2d3548',
+                    borderRadius: 10, padding: '5px 12px',
+                    flexShrink: 0, marginRight: 8,
+                  }}>
+                    <Search size={16} style={{ color: '#5a7a9a', flexShrink: 0 }} />
+                    <input
+                      type="text"
+                      value={slotSearchQuery}
+                      onChange={e => setSlotSearchQuery(e.target.value)}
+                      placeholder="Cari slot..."
+                      style={{
+                        background: 'transparent', border: 'none', outline: 'none',
+                        color: '#e8eef4', fontSize: 13, width: isMobile ? 80 : 120,
+                        fontFamily: '"Inter", sans-serif',
+                      }}
+                    />
+                    {slotSearchQuery && (
+                      <button
+                        onClick={() => setSlotSearchQuery('')}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: '#5a7a9a', fontSize: 14, lineHeight: 1, padding: 0,
+                          display: 'flex', alignItems: 'center',
+                        }}
+                      >×</button>
+                    )}
+                  </div>
                   {/* Title text */}
                   <div style={{ flex: 1, textAlign: 'center' }}>
                     <div style={{
@@ -6501,6 +6535,13 @@ export default function LogicGatesSimulator({ setPage }) {
                   gap: 14,
                 }}>
                   {saveSlots.map((slot, idx) => {
+                    // Search filter: match by name or description (case-insensitive)
+                    const slotSearchLower = slotSearchQuery.toLowerCase();
+                    const slotMatchesSearch = !slotSearchQuery
+                      || (slot.name || '').toLowerCase().includes(slotSearchLower)
+                      || (slot.description || '').toLowerCase().includes(slotSearchLower)
+                      || `slot ${idx + 1}`.includes(slotSearchLower);
+                    if (!slotMatchesSearch) return null;
                     const hasData = !!slot.data;
                     const compCount = hasData ? (slot.data.components?.length || 0) : 0;
                     const wireCount = hasData ? (slot.data.wires?.length || 0) : 0;
@@ -6764,6 +6805,12 @@ export default function LogicGatesSimulator({ setPage }) {
 
                   {/* ── Auto Save Cartridge ── */}
                   {(() => {
+                    // Search filter for Auto Save
+                    const asSearchLower = slotSearchQuery.toLowerCase();
+                    const asMatchesSearch = !slotSearchQuery
+                      || 'auto save'.includes(asSearchLower)
+                      || 'autosave'.includes(asSearchLower);
+                    if (!asMatchesSearch) return null;
                     const asHsl = hexToHsl('#3b82f6');
                     const asCc = { body: hslToHex(asHsl.h, 50, 35), dark: hslToHex(asHsl.h, 35, 14), light: hslToHex(asHsl.h, 55, 48) };
                     const asHasData = !!autoSaveData;
@@ -6891,6 +6938,13 @@ export default function LogicGatesSimulator({ setPage }) {
 
                   {/* ── Buy Slot Cartridge (inside grid) ── */}
                   {(() => {
+                    // Search filter for Buy Slot
+                    const bsSearchLower = slotSearchQuery.toLowerCase();
+                    const bsMatchesSearch = !slotSearchQuery
+                      || 'buy slot'.includes(bsSearchLower)
+                      || 'buyslot'.includes(bsSearchLower)
+                      || 'beli slot'.includes(bsSearchLower);
+                    if (!bsMatchesSearch) return null;
                     const bsHsl = hexToHsl('#3b82f6');
                     const bsCc = { body: hslToHex(bsHsl.h, 50, 35), dark: hslToHex(bsHsl.h, 35, 14), light: hslToHex(bsHsl.h, 55, 48) };
                     return (
