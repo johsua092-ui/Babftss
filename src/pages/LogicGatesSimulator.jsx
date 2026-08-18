@@ -6442,8 +6442,8 @@ export default function LogicGatesSimulator({ setPage }) {
                   }}
                 >X</button>
 
-                {/* Title row — gold badge (left) + title (center) */}
-                <div style={{ display: 'flex', alignItems: 'center', position: 'relative', paddingRight: 40 }}>
+                {/* Title row — gold badge + search (left) + title (absolute center) */}
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative', paddingRight: 40, minHeight: 50 }}>
                   {/* Gold badge — top-left corner */}
                   {user && goldInfo && (() => {
                     const gold = goldInfo.isAdmin ? Infinity : (goldInfo.gold ?? 0);
@@ -6452,7 +6452,7 @@ export default function LogicGatesSimulator({ setPage }) {
                         display: 'flex', alignItems: 'center', gap: 8,
                         backgroundColor: '#1a1f2e', border: '1px solid #2d3548',
                         borderRadius: 10, padding: '7px 16px',
-                        flexShrink: 0, marginRight: 12,
+                        flexShrink: 0, marginRight: 8,
                       }}>
                         <Coins size={20} style={{ color: '#fbbf24' }} />
                         {gold === Infinity ? (
@@ -6474,7 +6474,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     display: 'flex', alignItems: 'center', gap: 6,
                     backgroundColor: '#1a1f2e', border: '1px solid #2d3548',
                     borderRadius: 10, padding: '5px 12px',
-                    flexShrink: 0, marginRight: 8,
+                    flexShrink: 0,
                   }}>
                     <Search size={16} style={{ color: '#5a7a9a', flexShrink: 0 }} />
                     <input
@@ -6499,8 +6499,8 @@ export default function LogicGatesSimulator({ setPage }) {
                       >×</button>
                     )}
                   </div>
-                  {/* Title text */}
-                  <div style={{ flex: 1, textAlign: 'center' }}>
+                  {/* Title text — absolutely centered, not affected by left-side elements */}
+                  <div style={{ position: 'absolute', left: 0, right: 40, textAlign: 'center', pointerEvents: 'none' }}>
                     <div style={{
                       fontSize: isMobile ? 20 : 26, fontWeight: 900, color: '#f0f4f8',
                       fontFamily: '"Inter", sans-serif', letterSpacing: 1,
