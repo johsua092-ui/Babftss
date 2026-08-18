@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check } from 'lucide-react';
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeftOpen, MousePointer2, Cable, X, Paintbrush, Undo2, Redo2, Save, HardDrive, Lock, Unlock, ArrowRightLeft, RotateCcw, AlertTriangle, Check, Coins } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { toast } from 'sonner';
@@ -1169,6 +1169,30 @@ export default function LogicGatesSimulator({ setPage }) {
 
   // ── Save Progress system ──
   const { user, getIdToken } = useAuth();
+
+  /* ── Gold info for Save Progress overlay ── */
+  const [goldInfo, setGoldInfo] = useState(null);
+  const fetchGoldInfo = useCallback(async () => {
+    if (!user) return;
+    try {
+      const token = await getIdToken();
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/ai-chat?action=gold-info', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setGoldInfo(data);
+      }
+    } catch {
+      // silent fail
+    }
+  }, [user, getIdToken]);
+
+  /* Fetch gold info when save overlay opens */
+  useEffect(() => {
+    if (saveOverlayOpen && user) fetchGoldInfo();
+  }, [saveOverlayOpen, user, fetchGoldInfo]);
+
   const [saveOverlayOpen, setSaveOverlayOpen] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState(null); // { slotIndex, action: 'save'|'load' }
@@ -6230,17 +6254,38 @@ export default function LogicGatesSimulator({ setPage }) {
                   }}
                 >X</button>
 
-                {/* Title — game style */}
-                <div style={{ textAlign: 'center', paddingRight: 40 }}>
-                  <div style={{
-                    fontSize: isMobile ? 20 : 26, fontWeight: 900, color: '#f0f4f8',
-                    fontFamily: '"Inter", sans-serif', letterSpacing: 1,
-                    textShadow: '0 2px 4px rgba(0,0,0,0.4)',
-                  }}>SAVE PROGRESS</div>
-                  <div style={{
-                    fontSize: 12, color: '#FFFFFF', marginTop: 4,
-                    fontFamily: '"Inter", sans-serif',
-                  }}>Simpan & muat rangkaianmu ke cartridge slot</div>
+                {/* Title row — gold badge (left) + title (center) */}
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative', paddingRight: 40 }}>
+                  {/* Gold badge — top-left corner */}
+                  {user && goldInfo && (() => {
+                    const gold = goldInfo.isAdmin ? Infinity : (goldInfo.gold ?? 0);
+                    return (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        backgroundColor: '#1a1f2e', border: '1px solid #2d3548',
+                        borderRadius: 8, padding: '5px 12px',
+                        flexShrink: 0, marginRight: 10,
+                      }}>
+                        <Coins size={15} style={{ color: '#fbbf24' }} />
+                        <span style={{
+                          fontFamily: 'Orbitron,sans-serif', fontSize: 13, fontWeight: 700,
+                          color: '#fbbf24', letterSpacing: 0.5,
+                        }}>{gold === Infinity ? '\u221E' : gold}</span>
+                      </div>
+                    );
+                  })()}
+                  {/* Title text */}
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{
+                      fontSize: isMobile ? 20 : 26, fontWeight: 900, color: '#f0f4f8',
+                      fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                      textShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                    }}>SAVE PROGRESS</div>
+                    <div style={{
+                      fontSize: 12, color: '#FFFFFF', marginTop: 4,
+                      fontFamily: '"Inter", sans-serif',
+                    }}>Simpan & muat rangkaianmu ke cartridge slot</div>
+                  </div>
                 </div>
 
                 {/* Status message */}
