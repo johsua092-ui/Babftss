@@ -1203,9 +1203,21 @@ export default function LogicGatesSimulator({ setPage }) {
 
   /* ── Slot Lock state (localStorage) ── */
   const LOCK_KEY = 'circuit_slot_locks';
-  const getStoredLocks = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY)) || [false, false, false]; } catch { return [false, false, false]; } };
-  const setStoredLocks = (locks) => { try { localStorage.setItem(LOCK_KEY, JSON.stringify(locks)); } catch {} };
-  const [slotLocks, setSlotLocks] = useState(getStoredLocks);
+  const getStoredLocksMap = () => { try { const v = JSON.parse(localStorage.getItem(LOCK_KEY)); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}; } catch { return {}; } };
+  const setStoredLocksMap = (lockMap) => { try { localStorage.setItem(LOCK_KEY, JSON.stringify(lockMap)); } catch {} };
+  // Build slotLocks array from slotId-keyed map + saveSlots order
+  const buildLocksArray = (slots, lockMap) => slots.map((s, i) => lockMap[s.slotId] ?? false);
+  const [slotLocks, setSlotLocks] = useState(() => {
+    // Init from localStorage map + initial saveSlots order
+    const lockMap = getStoredLocksMap();
+    // We need the initial slot order — use defaults (will be re-synced by loadSlots effect)
+    const defaultSlotIds = ['save-slot-1', 'save-slot-2', 'save-slot-3'];
+    // If lockMap has entries, use them; otherwise default to [false, false, false]
+    if (Object.keys(lockMap).length > 0) {
+      return defaultSlotIds.map(id => lockMap[id] ?? false);
+    }
+    return [false, false, false];
+  });
   const [lockAnim, setLockAnim] = useState(null);       // 'opening' | 'closing' | null
   const [lockConfirm, setLockConfirm] = useState(null);  // { slotIndex, action: 'lock'|'unlock' }
   const [lockWarning, setLockWarning] = useState(false);
@@ -1221,8 +1233,11 @@ export default function LogicGatesSimulator({ setPage }) {
   };
   const setStoredSlotMeta = (slots) => {
     try {
-      // Only persist metadata (name, description, color) — not circuit data
-      const meta = slots.map(s => ({ slotId: s.slotId, name: s.name, description: s.description, color: s.color }));
+      // Store as slotId-keyed map so swap doesn't corrupt metadata
+      const meta = {};
+      for (const s of slots) {
+        meta[s.slotId] = { name: s.name, description: s.description, color: s.color };
+      }
       localStorage.setItem(SLOT_META_KEY, JSON.stringify(meta));
     } catch {}
   };
@@ -1235,8 +1250,8 @@ export default function LogicGatesSimulator({ setPage }) {
       { slotId: 'save-slot-3', name: '', description: '', color: '#ec4899', data: null, updatedAt: null },
     ];
     if (!initSlotMeta) return defaults;
-    return defaults.map((d, i) => {
-      const m = initSlotMeta[i];
+    return defaults.map(d => {
+      const m = initSlotMeta[d.slotId];
       if (m) return { ...d, name: m.name || '', description: m.description || '', color: m.color || d.color };
       return d;
     });
@@ -1421,13 +1436,15 @@ export default function LogicGatesSimulator({ setPage }) {
         if (!circuits) return;
         const localMeta = getStoredSlotMeta();
         setSaveSlots(prev => {
-          const updated = prev.map((slot, i) => {
+          const updated = prev.map((slot) => {
             const match = circuits.find(c => c.item_id === slot.slotId);
             if (match) {
               // Use localStorage metadata if it was customized (not default),
               // otherwise use backend metadata (for cross-device sync)
-              const localM = localMeta?.[i];
-              const localIsCustom = localM && (localM.name || localM.description || (localM.color && localM.color !== (i === 0 ? '#3b82f6' : i === 1 ? '#8b5cf6' : '#ec4899')));
+              // Lookup by slotId (not index) so swaps don't corrupt metadata
+              const localM = localMeta?.[slot.slotId];
+              const defaultColors = { 'save-slot-1': '#3b82f6', 'save-slot-2': '#8b5cf6', 'save-slot-3': '#ec4899' };
+              const localIsCustom = localM && (localM.name || localM.description || (localM.color && localM.color !== defaultColors[slot.slotId]));
               return {
                 ...slot,
                 name: localIsCustom ? (localM.name || '') : (match.name || ''),
@@ -1456,16 +1473,23 @@ export default function LogicGatesSimulator({ setPage }) {
               data: c.data?.circuitState || null,
               updatedAt: c.updated_at || c.created_at || null,
             }));
-          if (extraSlots.length > 0) {
-            // Also extend slotLocks for the new slots
-            setSlotLocks(locks => [...locks, ...extraSlots.map(() => false)]);
-          }
-          return [...updated, ...extraSlots];
+          // Re-sync slotLocks from localStorage slotId-keyed map based on final slot order
+          const finalSlots = [...updated, ...extraSlots];
+          const lockMap = getStoredLocksMap();
+          setSlotLocks(buildLocksArray(finalSlots, lockMap));
+          return finalSlots;
         });
       } catch (e) { /* silent */ }
     };
     loadSlots();
   }, [user, getIdToken]);
+
+  // ── Auto-persist slot locks to localStorage (slotId-keyed) ──
+  useEffect(() => {
+    const lockMap = {};
+    slotLocks.forEach((val, i) => { if (saveSlots[i]) lockMap[saveSlots[i].slotId] = val; });
+    setStoredLocksMap(lockMap);
+  }, [slotLocks, saveSlots]);
 
   // ── Auto-save slot metadata: localStorage (instant) + backend (debounced 500ms) ──
   // localStorage saves instantly on every change.
@@ -6585,10 +6609,13 @@ export default function LogicGatesSimulator({ setPage }) {
                             const fromIdx = moveSlotIndex;
                             const toIdx = idx;
                             setSwapAnim({ from: fromIdx, to: toIdx });
-                            setTimeout(() => {
+                            setTimeout(async () => {
+                              // Swap in React state
+                              let swappedSlots = null;
                               setSaveSlots(prev => {
                                 const arr = [...prev];
                                 [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
+                                swappedSlots = arr;
                                 return arr;
                               });
                               setSlotLocks(prev => {
@@ -6596,6 +6623,28 @@ export default function LogicGatesSimulator({ setPage }) {
                                 [arr[fromIdx], arr[toIdx]] = [arr[toIdx], arr[fromIdx]];
                                 return arr;
                               });
+                              // Immediately persist both swapped slots to backend
+                              if (swappedSlots && user) {
+                                try {
+                                  const token = await getIdToken();
+                                  if (token) {
+                                    const slotA = swappedSlots[fromIdx];
+                                    const slotB = swappedSlots[toIdx];
+                                    for (const s of [slotA, slotB]) {
+                                      await fetch('/api/circuits', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                        body: JSON.stringify({
+                                          itemId: s.slotId,
+                                          name: s.name || `Slot ${swappedSlots.indexOf(s) + 1}`,
+                                          data: { circuitState: s.data || null, color: s.color, description: s.description },
+                                          metaOnly: true,
+                                        }),
+                                      });
+                                    }
+                                  }
+                                } catch (e) { /* localStorage already saved via effect */ }
+                              }
                               setSwapAnim(null);
                               setMoveSlotIndex(null);
                               setSwapSuccessOverlay({ from: fromIdx + 1, to: toIdx + 1 });
@@ -7271,7 +7320,10 @@ export default function LogicGatesSimulator({ setPage }) {
                         const willLock = lockConfirm.action === 'lock';
                         newLocks[lockConfirm.slotIndex] = willLock;
                         setSlotLocks(newLocks);
-                        setStoredLocks(newLocks);
+                        // Save locks as slotId-keyed map
+                        const lockMap = {};
+                        newLocks.forEach((val, i) => { if (saveSlots[i]) lockMap[saveSlots[i].slotId] = val; });
+                        setStoredLocksMap(lockMap);
                         setLockAnim({ slotIndex: lockConfirm.slotIndex, type: willLock ? 'closing' : 'opening' });
                         setTimeout(() => setLockAnim(null), 450);
                         setLockConfirm(null);
