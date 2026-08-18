@@ -222,7 +222,6 @@
 /* ── Move Slot: grayscale effect for active slot ── */
 .slot-move-active {
   border: 4px dashed #FFFFFF !important;
-  filter: grayscale(0.7) brightness(0.6);
 }
 
 /* ── Marching ants SVG overlay animation ── */
@@ -231,7 +230,7 @@
   to   { stroke-dashoffset: -32; }
 }
 .marching-ants-svg rect {
-  animation: marchingAntsStroke 0.6s linear infinite;
+  animation: marchingAntsStroke 1.8s linear infinite;
 }
 
 /* ── Swap animation ── */

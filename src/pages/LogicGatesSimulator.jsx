@@ -6623,6 +6623,14 @@ export default function LogicGatesSimulator({ setPage }) {
                             />
                           </svg>
                         )}
+                        {/* Dim overlay for move mode — grays out content but not the border/SVG */}
+                        {moveSlotIndex === idx && (
+                          <div style={{
+                            position: 'absolute', inset: 0, borderRadius: 14,
+                            background: 'rgba(0,0,0,0.45)', pointerEvents: 'none', zIndex: 15,
+                            filter: 'grayscale(0.7) brightness(0.6)',
+                          }} />
+                        )}
                         {/* Cartridge SD-card notch (top-right angled cutout) */}
                         <div style={{
                           position: 'absolute', top: 0, right: 20,
