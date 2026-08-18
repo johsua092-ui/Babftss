@@ -1241,20 +1241,62 @@ export default function LogicGatesSimulator({ setPage }) {
       localStorage.setItem(SLOT_META_KEY, JSON.stringify(meta));
     } catch {}
   };
+  /* ── Slot order persistence (localStorage) ── */
+  // Stores the visual order of slotIds as an array, e.g. ["save-slot-1", "save-slot-9", "save-slot-2", ...]
+  // This ensures swaps survive page refresh.
+  const SLOT_ORDER_KEY = 'circuit_slot_order';
+  const getStoredSlotOrder = () => {
+    try {
+      const raw = localStorage.getItem(SLOT_ORDER_KEY);
+      if (!raw) return null;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length > 0) return arr;
+      return null;
+    } catch { return null; }
+  };
+  const setStoredSlotOrder = (slots) => {
+    try {
+      const order = slots.map(s => s.slotId);
+      localStorage.setItem(SLOT_ORDER_KEY, JSON.stringify(order));
+    } catch {}
+  };
+  // Reorder a slot array to match a stored order. Slots not in order are appended at the end.
+  const applySlotOrder = (slots, order) => {
+    if (!order || !Array.isArray(order) || order.length === 0) return slots;
+    const orderSet = new Set(order);
+    const ordered = [];
+    for (const slotId of order) {
+      const slot = slots.find(s => s.slotId === slotId);
+      if (slot) ordered.push(slot);
+    }
+    // Append any slots not in the order (e.g., newly bought slots)
+    for (const slot of slots) {
+      if (!orderSet.has(slot.slotId)) ordered.push(slot);
+    }
+    return ordered;
+  };
   // Initialize saveSlots from localStorage metadata if available (instant, no flicker)
   const initSlotMeta = getStoredSlotMeta();
+  const initSlotOrder = getStoredSlotOrder();
   const [saveSlots, setSaveSlots] = useState(() => {
     const defaults = [
       { slotId: 'save-slot-1', name: '', description: '', color: '#3b82f6', data: null, updatedAt: null },
       { slotId: 'save-slot-2', name: '', description: '', color: '#8b5cf6', data: null, updatedAt: null },
       { slotId: 'save-slot-3', name: '', description: '', color: '#ec4899', data: null, updatedAt: null },
     ];
-    if (!initSlotMeta) return defaults;
-    return defaults.map(d => {
-      const m = initSlotMeta[d.slotId];
-      if (m) return { ...d, name: m.name || '', description: m.description || '', color: m.color || d.color };
-      return d;
-    });
+    let base = defaults;
+    if (initSlotMeta) {
+      base = defaults.map(d => {
+        const m = initSlotMeta[d.slotId];
+        if (m) return { ...d, name: m.name || '', description: m.description || '', color: m.color || d.color };
+        return d;
+      });
+    }
+    // Apply persisted slot order so swaps are visible immediately on load
+    if (initSlotOrder) {
+      base = applySlotOrder(base, initSlotOrder);
+    }
+    return base;
   });
 
   /* ── Save History state ── */
@@ -1422,6 +1464,8 @@ export default function LogicGatesSimulator({ setPage }) {
   // For metadata (name/description/color): merge with localStorage —
   //   if localStorage has customized values (non-default), keep those (they're more recent).
   //   If localStorage is default/empty, use backend values (cross-device sync).
+  // Slot ORDER is persisted as a special 'save-slot-order' record in backend
+  //   and also in localStorage — swaps survive refresh and cross-device sync.
   useEffect(() => {
     if (!user) return;
     const loadSlots = async () => {
@@ -1435,6 +1479,22 @@ export default function LogicGatesSimulator({ setPage }) {
         const { circuits } = await res.json();
         if (!circuits) return;
         const localMeta = getStoredSlotMeta();
+        // Fetch slot order from backend (stored as 'save-slot-order')
+        let backendOrder = null;
+        try {
+          const orderRes = await fetch('/api/circuits?id=save-slot-order', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (orderRes.ok) {
+            const orderData = await orderRes.json();
+            if (orderData.circuit?.data?.order && Array.isArray(orderData.circuit.data.order)) {
+              backendOrder = orderData.circuit.data.order;
+            }
+          }
+        } catch { /* order fetch failed, not critical */ }
+        // Merge: localStorage order takes priority (more recent), then backend order
+        const localOrder = getStoredSlotOrder();
+        const effectiveOrder = localOrder || backendOrder;
         setSaveSlots(prev => {
           const updated = prev.map((slot) => {
             const match = circuits.find(c => c.item_id === slot.slotId);
@@ -1458,11 +1518,12 @@ export default function LogicGatesSimulator({ setPage }) {
           });
           // Add slots from backend that aren't in the initial hardcoded list
           // (e.g., slots bought after the 3 default ones)
-          // IMPORTANT: exclude save-slot-auto (Auto Save) — it's NOT a regular slot
+          // IMPORTANT: exclude save-slot-auto (Auto Save) and save-slot-order (meta record)
           const existingIds = new Set(updated.map(s => s.slotId));
           const extraSlots = circuits
             .filter(c => c.item_id?.startsWith('save-slot-')
               && c.item_id !== 'save-slot-auto'  // ← exclude Auto Save
+              && c.item_id !== 'save-slot-order' // ← exclude order meta record
               && !existingIds.has(c.item_id))
             .sort((a, b) => (a.item_id || '').localeCompare(b.item_id || ''))
             .map(c => ({
@@ -1473,10 +1534,18 @@ export default function LogicGatesSimulator({ setPage }) {
               data: c.data?.circuitState || null,
               updatedAt: c.updated_at || c.created_at || null,
             }));
+          // Apply persisted slot order so swaps survive refresh
+          let finalSlots = [...updated, ...extraSlots];
+          if (effectiveOrder) {
+            finalSlots = applySlotOrder(finalSlots, effectiveOrder);
+          }
           // Re-sync slotLocks from localStorage slotId-keyed map based on final slot order
-          const finalSlots = [...updated, ...extraSlots];
           const lockMap = getStoredLocksMap();
           setSlotLocks(buildLocksArray(finalSlots, lockMap));
+          // Also sync localStorage order with the effective order
+          if (effectiveOrder) {
+            try { localStorage.setItem(SLOT_ORDER_KEY, JSON.stringify(effectiveOrder)); } catch {}
+          }
           return finalSlots;
         });
       } catch (e) { /* silent */ }
@@ -1514,11 +1583,24 @@ export default function LogicGatesSimulator({ setPage }) {
           }),
         });
       }
+      // Also persist slot ORDER to backend so swaps survive refresh + cross-device
+      const order = slots.map(s => s.slotId);
+      await fetch('/api/circuits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          itemId: 'save-slot-order',
+          name: 'Slot Order',
+          data: { order },
+          metaOnly: true,
+        }),
+      });
     } catch (e) { /* silent — localStorage already has the data */ }
   }, [user, getIdToken]);
   useEffect(() => {
-    // Always persist to localStorage immediately
+    // Always persist to localStorage immediately (metadata + order)
     setStoredSlotMeta(saveSlots);
+    setStoredSlotOrder(saveSlots);
     // Skip backend save on very first render
     if (slotMetaFirstRenderRef.current) {
       slotMetaFirstRenderRef.current = false;
@@ -6630,6 +6712,7 @@ export default function LogicGatesSimulator({ setPage }) {
                                   if (token) {
                                     const slotA = swappedSlots[fromIdx];
                                     const slotB = swappedSlots[toIdx];
+                                    // Persist both swapped slots' metadata to backend
                                     for (const s of [slotA, slotB]) {
                                       await fetch('/api/circuits', {
                                         method: 'POST',
@@ -6642,8 +6725,22 @@ export default function LogicGatesSimulator({ setPage }) {
                                         }),
                                       });
                                     }
+                                    // Persist slot ORDER to backend so refresh restores the swap
+                                    const newOrder = swappedSlots.map(s => s.slotId);
+                                    await fetch('/api/circuits', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                      body: JSON.stringify({
+                                        itemId: 'save-slot-order',
+                                        name: 'Slot Order',
+                                        data: { order: newOrder },
+                                        metaOnly: true,
+                                      }),
+                                    });
                                   }
                                 } catch (e) { /* localStorage already saved via effect */ }
+                                // Persist slot order to localStorage immediately
+                                setStoredSlotOrder(swappedSlots);
                               }
                               setSwapAnim(null);
                               setMoveSlotIndex(null);
