@@ -6619,7 +6619,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           <svg className="marching-ants-svg" viewBox="0 0 100 100" preserveAspectRatio="none"
                             style={{ position: 'absolute', inset: -8, width: 'calc(100% + 16px)', height: 'calc(100% + 16px)', pointerEvents: 'none', zIndex: 20 }}>
                             <rect x="1.5" y="1.5" width="97" height="97" rx="5" ry="5"
-                              fill="none" stroke="#FFFFFF" strokeWidth="2" strokeDasharray="6 4"
+                              fill="none" stroke="#FFFFFF" strokeWidth="1" strokeDasharray="6 4"
                             />
                           </svg>
                         )}
