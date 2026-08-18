@@ -1365,9 +1365,22 @@ export default function LogicGatesSimulator({ setPage }) {
         body: JSON.stringify({ amount: 100 }),
       });
       if (!deductRes.ok) { const d = await deductRes.json().catch(() => ({})); setSaveStatus({ message: d.error || 'Gagal memotong gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
-      // Add new slot
+      // Add new slot — persist to Supabase so it survives refresh
       const newSlotNum = saveSlots.length + 1;
-      const newSlot = { slotId: `save-slot-${newSlotNum}`, name: '', description: '', color: '#3b82f6', data: null, updatedAt: null };
+      const newSlotId = `save-slot-${newSlotNum}`;
+      const newSlot = { slotId: newSlotId, name: '', description: '', color: '#3b82f6', data: null, updatedAt: null };
+      // Save empty circuit record to backend so the slot is persisted
+      try {
+        await fetch('/api/circuits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            itemId: newSlotId,
+            name: `Slot ${newSlotNum}`,
+            data: { circuitState: null, color: '#3b82f6', description: '' },
+          }),
+        });
+      } catch (e) { /* slot still added locally even if persist fails */ }
       setSaveSlots(prev => [...prev, newSlot]);
       // Also extend slotLocks
       setSlotLocks(prev => [...prev, false]);
@@ -1399,24 +1412,45 @@ export default function LogicGatesSimulator({ setPage }) {
         const { circuits } = await res.json();
         if (!circuits) return;
         const localMeta = getStoredSlotMeta();
-        setSaveSlots(prev => prev.map((slot, i) => {
-          const match = circuits.find(c => c.item_id === slot.slotId);
-          if (match) {
-            // Use localStorage metadata if it was customized (not default),
-            // otherwise use backend metadata (for cross-device sync)
-            const localM = localMeta?.[i];
-            const localIsCustom = localM && (localM.name || localM.description || (localM.color && localM.color !== (i === 0 ? '#3b82f6' : i === 1 ? '#8b5cf6' : '#ec4899')));
-            return {
-              ...slot,
-              name: localIsCustom ? (localM.name || '') : (match.name || ''),
-              description: localIsCustom ? (localM.description || '') : (match.data?.description || ''),
-              color: localIsCustom ? (localM.color || slot.color) : (match.data?.color || slot.color),
-              data: match.data?.circuitState || null,
-              updatedAt: match.updated_at || match.created_at || null,
-            };
+        setSaveSlots(prev => {
+          const updated = prev.map((slot, i) => {
+            const match = circuits.find(c => c.item_id === slot.slotId);
+            if (match) {
+              // Use localStorage metadata if it was customized (not default),
+              // otherwise use backend metadata (for cross-device sync)
+              const localM = localMeta?.[i];
+              const localIsCustom = localM && (localM.name || localM.description || (localM.color && localM.color !== (i === 0 ? '#3b82f6' : i === 1 ? '#8b5cf6' : '#ec4899')));
+              return {
+                ...slot,
+                name: localIsCustom ? (localM.name || '') : (match.name || ''),
+                description: localIsCustom ? (localM.description || '') : (match.data?.description || ''),
+                color: localIsCustom ? (localM.color || slot.color) : (match.data?.color || slot.color),
+                data: match.data?.circuitState || null,
+                updatedAt: match.updated_at || match.created_at || null,
+              };
+            }
+            return slot;
+          });
+          // Add slots from backend that aren't in the initial hardcoded list
+          // (e.g., slots bought after the 3 default ones)
+          const existingIds = new Set(updated.map(s => s.slotId));
+          const extraSlots = circuits
+            .filter(c => c.item_id?.startsWith('save-slot-') && !existingIds.has(c.item_id))
+            .sort((a, b) => (a.item_id || '').localeCompare(b.item_id || ''))
+            .map(c => ({
+              slotId: c.item_id,
+              name: c.name || '',
+              description: c.data?.description || '',
+              color: c.data?.color || '#3b82f6',
+              data: c.data?.circuitState || null,
+              updatedAt: c.updated_at || c.created_at || null,
+            }));
+          if (extraSlots.length > 0) {
+            // Also extend slotLocks for the new slots
+            setSlotLocks(locks => [...locks, ...extraSlots.map(() => false)]);
           }
-          return slot;
-        }));
+          return [...updated, ...extraSlots];
+        });
       } catch (e) { /* silent */ }
     };
     loadSlots();
