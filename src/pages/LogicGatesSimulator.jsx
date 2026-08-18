@@ -6460,12 +6460,11 @@ export default function LogicGatesSimulator({ setPage }) {
                   </div>
                 )}
 
-                {/* Cartridge Save Slots — always stacked vertically */}
+                {/* Cartridge Save Slots — max 3 per row, wrap to next row */}
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 14, flex: '0 0 auto',
-                  alignItems: 'stretch',
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                  gap: 14,
                 }}>
                   {saveSlots.map((slot, idx) => {
                     const hasData = !!slot.data;
@@ -6491,8 +6490,8 @@ export default function LogicGatesSimulator({ setPage }) {
 
                     return (
                       <div key={slot.slotId} data-slot-color={slot.color || '#3b82f6'} style={{
-                        minWidth: 180,
-                        maxWidth: 400,
+                        minWidth: isMobile ? undefined : 180,
+                        maxWidth: isMobile ? undefined : 280,
                         position: 'relative',
                         borderRadius: 14,
                         background: `linear-gradient(180deg, ${cc.light} 0%, ${cc.body} 30%, ${cc.body} 70%, ${cc.dark} 100%)`,
