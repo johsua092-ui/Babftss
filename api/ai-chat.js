@@ -282,6 +282,10 @@ export default async function handler(req, res) {
       if (typeof deductAmount !== "number" || deductAmount < 1 || deductAmount > 10000) {
         return res.status(400).json({ error: "Amount tidak valid (1-10000)" });
       }
+      // Admin gets free slots (infinite gold)
+      if (admin) {
+        return res.status(200).json({ message: `Berhasil beli slot seharga ${deductAmount} gold (admin — free)`, amount: deductAmount, newBalance: Infinity });
+      }
       try {
         const balance = await getGoldBalance(uid);
         if (balance < deductAmount) {

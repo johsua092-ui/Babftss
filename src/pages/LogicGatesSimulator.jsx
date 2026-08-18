@@ -1356,7 +1356,8 @@ export default function LogicGatesSimulator({ setPage }) {
       if (!goldRes.ok) { setSaveStatus({ message: 'Gagal cek gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
       const goldData = await goldRes.json();
       const currentGold = goldData.isAdmin ? Infinity : (goldData.gold ?? 0);
-      if (currentGold < 100) { setSaveStatus({ message: 'Gold tidak cukup! Kamu butuh 100 gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
+      // Skip gold check for infinite balance (admin or ∞ gold)
+      if (currentGold !== Infinity && currentGold < 100) { setSaveStatus({ message: 'Gold tidak cukup! Kamu butuh 100 gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
       // Deduct gold via buy-slot action
       const deductRes = await fetch('/api/ai-chat?action=buy-slot', {
         method: 'POST',
