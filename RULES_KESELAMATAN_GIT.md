@@ -91,12 +91,55 @@ Sebelum commit/push, WAJIB pastikan tidak ada file `.env` (isi asli, bukan `.env
 
 ---
 
-## RINGKASAN — 4 PERTANYAAN WAJIB DIJAWAB "YA" SEBELUM PUSH APAPUN
+## ATURAN 7 — DATA PROGRESS USER TIDAK BOLEH HILANG/DIOVERWRITE (MUTLAK ABSOLUT)
+
+> **Aturan ini lahir dari audit menyeluruh (18 Agustus 2026) yang menemukan race condition di `saveMetaToBackend` yang bisa meng-overwrite data circuit user dengan null secara permanen. Ini adalah data PALING SENSITIF di proyek — progress save-an user.**
+
+**Data yang dilindungi:** `slot.data.circuitState` — circuit/rangkaian yang user simpan di save slot. Ini adalah hasil kerja keras user dan **TIDAK BOLEH hilang karena bug, race condition, atau update fitur apapun.**
+
+### Aturan 7a — Frontend TIDAK BOLEH kirim `circuitState: null` ke backend tanpa `explicitClear: true`
+
+Kalau `slot.data` null di React state (belum di-load dari backend, atau slot baru), dan frontend mengirim `circuitState: null` ke backend → backend akan **overwrite data yang sudah ada** dengan null → **data loss permanen**.
+
+**Yang WAJIB dilakukan:**
+- Kirim `hasCircuitData: true/false` flag di setiap POST `/api/circuits`
+- `metaOnly: true` request HARUS sertakan `hasCircuitData` agar backend tahu apakah circuitState valid
+- First render HARUS skip localStorage/backend write (mencegah overwrite data benar dengan state parsial)
+
+### Aturan 7b — Backend HARUS tolak overwrite circuitState yang sudah ada dengan null
+
+Backend (`api/circuits.js`) WAJIB punya guard:
+- Non-metaOnly request dengan `circuitState: null/undefined` + record existing punya circuit data → **BLOCK dengan HTTP 409** (`CIRCUIT_DATA_OVERWRITE_BLOCKED`)
+- `metaOnly: true` + `hasCircuitData: false` → **MERGE** (keep existing circuitState, hanya update color/description)
+- Pengecualian: `explicitClear: true` flag → izinkan overwrite (user memang mau kosongkan slot)
+
+### Aturan 7c — Slot DELETE TIDAK BOLEH ada di frontend
+
+Slot yang sudah dibeli (`save-slot-*`) bersifat PERMANEN. Tidak ada tombol/button UI untuk menghapus slot. Backend sudah punya proteksi 403 untuk `save-slot-*` DELETE — hanya admin yang bisa.
+
+### Aturan 7d — Sebelum commit yang menyentuh slot/circuit data, WAJIB verifikasi:
+
+- [ ] Perubahan TIDAK mengirim `circuitState: null` ke backend tanpa `explicitClear: true`
+- [ ] Perubahan TIDAK mengubah `slot.data` secara langsung (harus via `setSaveSlots` dengan spread)
+- [ ] Perubahan TIDAK menambah tombol/button delete slot
+- [ ] Kalau mengubah metadata, gunakan `metaOnly: true` + `hasCircuitData` flag
+- [ ] Build sukses (`npx vite build`) sebelum push
+- [ ] Test manual: save → swap → refresh → verify data intact
+
+### Insiden yang melahirkan aturan ini:
+
+1. **Swap order corruption** — `applySlotOrder` pada array parsial (3 default slots) + auto-persist effect menimpa localStorage di first render → order korup permanen. Fixed dengan `orderIsSafe` check + skip first render.
+2. **`saveMetaToBackend` race condition** — mengirim `circuitState: null` saat `slot.data` belum di-load → overwrite data circuit yang sudah ada. Fixed dengan `hasCircuitData` flag + backend merge logic + HTTP 409 guard.
+
+---
+
+## RINGKASAN — 5 PERTANYAAN WAJIB DIJAWAB "YA" SEBELUM PUSH APAPUN
 
 1. Apakah saya SUDAH verifikasi ini folder project yang benar (Aturan 2)?
 2. Apakah ini push BIASA (bukan force)? (Aturan 1)
 3. Kalau ada penolakan/konflik, apakah saya BERHENTI dan tanya dulu (bukan mencoba force/"perbaiki sendiri")? (Aturan 1 & 4)
 4. Kalau ini operasi undo, apakah saya pakai `git revert` + push biasa (BUKAN force)? (Aturan 4B)
+5. Kalau perubahan ini menyentuh slot/circuit data, apakah data progress user TIDAK akan ter-overwrite/hilang? (Aturan 7)
 
 Kalau ada SATU SAJA jawabannya "tidak yakin" atau "tidak" — STOP, jangan push, tanya user/Claude dulu.
 
