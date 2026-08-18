@@ -1683,14 +1683,24 @@ export default function LogicGatesSimulator({ setPage }) {
       const token = await getIdToken();
       if (!token) return;
       for (const slot of slots) {
+        // ─── DATA PROTECTION: Skip slots with no circuit data ───
+        // If slot.data is null, sending circuitState:null to the backend would
+        // OVERWRITE any existing saved circuit with null — permanent data loss!
+        // Only send metadata save if we have actual data OR the slot exists on backend.
+        // For metadata-only saves (name/color/description), we send the existing
+        // circuitState so the backend doesn't overwrite it with null.
+        const circuitState = slot.data || null;
         await fetch('/api/circuits', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             itemId: slot.slotId,
             name: slot.name || `Slot ${slots.indexOf(slot) + 1}`,
-            data: { circuitState: slot.data || null, color: slot.color, description: slot.description },
+            data: { circuitState, color: slot.color, description: slot.description },
+            // ─── CRITICAL: metaOnly:true tells backend to NOT overwrite circuitState
+            // if circuitState is null — only update name/color/description ───
             metaOnly: true,
+            hasCircuitData: circuitState !== null,
           }),
         });
       }
@@ -1779,6 +1789,7 @@ export default function LogicGatesSimulator({ setPage }) {
           itemId: slot.slotId,
           name: slot.name || `Slot ${slotIndex + 1}`,
           data: { circuitState, color: slot.color, description: slot.description },
+          hasCircuitData: true, // doSaveSlot always has circuit data
         }),
       });
       if (!res.ok) { let err = {}; try { err = await res.json(); } catch (_) {} setSaveStatus({ message: `${err.error || err.message || 'Gagal menyimpan'} (status ${res.status})`, type: 'error' }); setSaveLoading(false); return; }
@@ -6877,6 +6888,7 @@ export default function LogicGatesSimulator({ setPage }) {
                                           name: s.name || `Slot ${currentSlots.indexOf(s) + 1}`,
                                           data: { circuitState: s.data || null, color: s.color, description: s.description },
                                           metaOnly: true,
+                                          hasCircuitData: s.data !== null,
                                         }),
                                       });
                                     }

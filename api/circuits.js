@@ -119,6 +119,21 @@ async function handlePost(req, res, user, supabase) {
     return res.status(400).json({ error: 'data (rangkaian) diperlukan sebagai object JSON' });
   }
 
+  // ─── DATA PROTECTION: Reject circuitState:null on existing records ───
+  // If this is NOT a metaOnly request and the incoming circuitState is null/undefined,
+  // it would overwrite existing circuit data with nothing. We reject this to prevent
+  // accidental data loss. (metaOnly requests are handled separately with merge logic.)
+  const metaOnlyEarly = req.body.metaOnly === true;
+  if (!metaOnlyEarly && (data.circuitState === null || data.circuitState === undefined)) {
+    // This is a full save request with no circuit data — could be a bug in the client.
+    // Log a warning but allow it (could be intentional slot clear by user).
+    // However, if the slot already has data, we require an explicit clear flag.
+    if (req.body.explicitClear !== true) {
+      console.warn('[circuits] POST with null circuitState for', itemId, '— checking existing data...');
+      // We'll check after fetching existing and only allow if no existing data
+    }
+  }
+
   // Cari dokumen existing milik user ini.
   const { data: existing, error: qErr } = await supabase
     .from('circuits')
@@ -133,9 +148,42 @@ async function handlePost(req, res, user, supabase) {
   const cleanName = validateStr(name, 200) ? name : 'Rangkaian tanpa nama';
 
   if (existing) {
+    // ─── DATA PROTECTION: Block non-metaOnly saves with null circuitState ───
+    // If existing record has circuit data and the incoming request has null circuitState
+    // WITHOUT the explicitClear flag, this is almost certainly a bug — reject it.
+    const metaOnly = req.body.metaOnly === true;
+    if (!metaOnly
+      && (data.circuitState === null || data.circuitState === undefined)
+      && existing.data?.circuitState != null
+      && req.body.explicitClear !== true) {
+      console.error('[circuits] BLOCKED: Attempted to overwrite existing circuit data with null circuitState for', itemId);
+      return res.status(409).json({
+        error: 'Ditolak: Data rangkaian yang sudah ada tidak bisa ditimpa dengan data kosong. Gunakan explicitClear=true jika memang ingin mengosongkan slot.',
+        code: 'CIRCUIT_DATA_OVERWRITE_BLOCKED',
+      });
+    }
+
     // Push old save ke history sebelum di-overwrite.
     // Skip history jika metaOnly=true (hanya update metadata, bukan circuit baru)
-    const metaOnly = req.body.metaOnly === true;
+    const hasCircuitData = req.body.hasCircuitData === true;
+
+    // ─── DATA PROTECTION: metaOnly circuitState guard ───
+    // When metaOnly=true, we are only updating name/color/description.
+    // If the incoming circuitState is null/undefined (hasCircuitData=false),
+    // we MUST NOT overwrite the existing circuitState — that would be
+    // permanent data loss. Instead, merge: keep existing circuitState,
+    // only update the metadata fields.
+    let finalData = data;
+    if (metaOnly && !hasCircuitData && existing.data) {
+      // Merge: keep existing circuitState, update only metadata fields
+      finalData = {
+        ...existing.data,
+        color: data.color ?? existing.data.color,
+        description: data.description ?? existing.data.description,
+        // circuitState stays from existing — NEVER overwritten with null
+      };
+    }
+
     if (!metaOnly && existing.data != null) {
       const { data: hist, error: hErr } = await supabase
         .from('circuits_history')
@@ -164,14 +212,14 @@ async function handlePost(req, res, user, supabase) {
 
     const { error: upErr } = await supabase
       .from('circuits')
-      .update({ name: cleanName, data, updated_at: new Date().toISOString() })
+      .update({ name: cleanName, data: finalData, updated_at: new Date().toISOString() })
       .eq('firebase_uid', user.sub)
       .eq('item_id', itemId);
 
     if (upErr) throw upErr;
 
     return res.status(200).json({
-      circuit: { id: existing.id, firebase_uid: user.sub, item_id: itemId, name: cleanName, data },
+      circuit: { id: existing.id, firebase_uid: user.sub, item_id: itemId, name: cleanName, data: finalData },
       updated: true,
     });
   }
