@@ -3000,9 +3000,10 @@ const cc = {
 **Perbaikan — Dual-layer auto-save:**
 
 1. **localStorage (instant)**: Setiap perubahan `saveSlots` langsung tulis metadata (name, description, color) ke `localStorage` key `circuit_slot_meta`. Ini menjamin perubahan bertahan saat refresh tanpa delay.
-2. **Backend (debounced 1.5s)**: Setelah 1.5 detik tanpa perubahan baru, auto-save metadata ke Supabase via POST `/api/circuits` dengan flag `metaOnly: true`. Ini menjamin perubahan bertahan di akun user (cross-device).
-3. **Backend `metaOnly` flag**: Ditambahkan di `api/circuits.js` — ketika `metaOnly=true`, history push di-skip. Hanya metadata yang di-update, tidak membuat entry history baru. Ini mencegah spam history dari setiap perubahan nama/deskripsi/warna.
-4. **Mount sequence**: localStorage dibaca dulu (instant, no flicker) → lalu backend load (authoritative, mungkin override localStorage).
+2. **Backend (debounced 500ms)**: Setelah 500ms tanpa perubahan baru, auto-save metadata ke Supabase via POST `/api/circuits` dengan flag `metaOnly: true`. Debounce pendek cukup untuk menghindari spam pada text input tapi cepat enough untuk persist.
+3. **beforeunload / visibilitychange flush**: Handler `beforeunload` dan `visibilitychange` memaksa pending save langsung eksekusi sebelum page unload — jadi refresh TIDAK pernah kehilangan data.
+4. **Backend `metaOnly` flag**: Ditambahkan di `api/circuits.js` — ketika `metaOnly=true`, history push di-skip. Hanya metadata yang di-update, tidak membuat entry history baru.
+5. **Mount sequence**: localStorage dibaca dulu (instant, no flicker) → lalu backend load (hanya circuitState/updatedAt dari backend; metadata dari localStorage kalau sudah di-customize, dari backend kalau masih default). Ini mencegah backend overwrite perubahan lokal yang belum sempat tersimpan.
 
 **File yang diubah:**
 - `src/pages/LogicGatesSimulator.jsx` — slot metadata init dari localStorage, auto-save useEffect

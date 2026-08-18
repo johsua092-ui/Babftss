@@ -1224,6 +1224,10 @@ export default function LogicGatesSimulator({ setPage }) {
   const [slotColorEdit, setSlotColorEdit] = useState(null); // { slotIndex } or null
 
   // Load all save slots from backend on mount
+  // Backend is authoritative for circuitState/updatedAt.
+  // For metadata (name/description/color): merge with localStorage —
+  //   if localStorage has customized values (non-default), keep those (they're more recent).
+  //   If localStorage is default/empty, use backend values (cross-device sync).
   useEffect(() => {
     if (!user) return;
     const loadSlots = async () => {
@@ -1236,14 +1240,19 @@ export default function LogicGatesSimulator({ setPage }) {
         if (!res.ok) return;
         const { circuits } = await res.json();
         if (!circuits) return;
-        setSaveSlots(prev => prev.map(slot => {
+        const localMeta = getStoredSlotMeta();
+        setSaveSlots(prev => prev.map((slot, i) => {
           const match = circuits.find(c => c.item_id === slot.slotId);
           if (match) {
+            // Use localStorage metadata if it was customized (not default),
+            // otherwise use backend metadata (for cross-device sync)
+            const localM = localMeta?.[i];
+            const localIsCustom = localM && (localM.name || localM.description || (localM.color && localM.color !== (i === 0 ? '#3b82f6' : i === 1 ? '#8b5cf6' : '#ec4899')));
             return {
               ...slot,
-              name: match.name || '',
-              description: match.data?.description || '',
-              color: match.data?.color || slot.color,
+              name: localIsCustom ? (localM.name || '') : (match.name || ''),
+              description: localIsCustom ? (localM.description || '') : (match.data?.description || ''),
+              color: localIsCustom ? (localM.color || slot.color) : (match.data?.color || slot.color),
               data: match.data?.circuitState || null,
               updatedAt: match.updated_at || match.created_at || null,
             };
@@ -1255,43 +1264,57 @@ export default function LogicGatesSimulator({ setPage }) {
     loadSlots();
   }, [user, getIdToken]);
 
-  // ── Auto-save slot metadata: localStorage (instant) + backend (debounced 1.5s) ──
-  // Any change to saveSlots name/description/color triggers immediate localStorage save
-  // and debounced backend save (metaOnly=true, no history push).
+  // ── Auto-save slot metadata: localStorage (instant) + backend (debounced 500ms) ──
+  // localStorage saves instantly on every change.
+  // Backend saves with 500ms debounce (avoids spam on text input keystrokes).
+  // A beforeunload handler flushes pending saves so data is never lost on refresh.
   const slotMetaSaveTimerRef = useRef(null);
-  const slotMetaLoadedRef = useRef(false); // skip auto-save during initial backend load
+  const slotMetaFirstRenderRef = useRef(true);
+  const saveMetaToBackend = useCallback(async (slots) => {
+    if (!user || !getIdToken) return;
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      for (const slot of slots) {
+        await fetch('/api/circuits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            itemId: slot.slotId,
+            name: slot.name || `Slot ${slots.indexOf(slot) + 1}`,
+            data: { circuitState: slot.data || null, color: slot.color, description: slot.description },
+            metaOnly: true,
+          }),
+        });
+      }
+    } catch (e) { /* silent — localStorage already has the data */ }
+  }, [user, getIdToken]);
   useEffect(() => {
     // Always persist to localStorage immediately
     setStoredSlotMeta(saveSlots);
-    // Debounced backend save
-    if (!user || !getIdToken) return;
-    if (!slotMetaLoadedRef.current) {
-      // First render after backend load — don't auto-save yet
-      slotMetaLoadedRef.current = true;
+    // Skip backend save on very first render
+    if (slotMetaFirstRenderRef.current) {
+      slotMetaFirstRenderRef.current = false;
       return;
     }
+    // Debounced backend save (500ms)
     if (slotMetaSaveTimerRef.current) clearTimeout(slotMetaSaveTimerRef.current);
-    slotMetaSaveTimerRef.current = setTimeout(async () => {
-      try {
-        const token = await getIdToken();
-        if (!token) return;
-        // Save each slot's metadata to backend
-        for (const slot of saveSlots) {
-          await fetch('/api/circuits', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-              itemId: slot.slotId,
-              name: slot.name || `Slot ${saveSlots.indexOf(slot) + 1}`,
-              data: { circuitState: slot.data || null, color: slot.color, description: slot.description },
-              metaOnly: true,
-            }),
-          });
-        }
-      } catch (e) { /* silent — localStorage already has the data */ }
-    }, 1500);
+    slotMetaSaveTimerRef.current = setTimeout(() => saveMetaToBackend(saveSlots), 500);
     return () => { if (slotMetaSaveTimerRef.current) clearTimeout(slotMetaSaveTimerRef.current); };
-  }, [saveSlots, user, getIdToken]);
+  }, [saveSlots, saveMetaToBackend]);
+  // Flush pending backend save on page hide / beforeunload (so refresh never loses data)
+  useEffect(() => {
+    const flush = () => {
+      if (slotMetaSaveTimerRef.current) {
+        clearTimeout(slotMetaSaveTimerRef.current);
+        slotMetaSaveTimerRef.current = null;
+        saveMetaToBackend(saveSlots);
+      }
+    };
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+    return () => { window.removeEventListener('beforeunload', flush); };
+  }, [saveSlots, saveMetaToBackend]);
 
   const doSaveSlot = async (slotIndex) => {
     const slot = saveSlots[slotIndex];
