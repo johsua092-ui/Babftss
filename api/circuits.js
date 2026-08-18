@@ -133,7 +133,9 @@ async function handlePost(req, res, user, supabase) {
 
   if (existing) {
     // Push old save ke history sebelum di-overwrite.
-    if (existing.data != null) {
+    // Skip history jika metaOnly=true (hanya update metadata, bukan circuit baru)
+    const metaOnly = req.body.metaOnly === true;
+    if (!metaOnly && existing.data != null) {
       const { data: hist, error: hErr } = await supabase
         .from('circuits_history')
         .select('*')

@@ -2988,3 +2988,25 @@ const cc = {
 
 - `npx vite build` sukses 0 error.
 - Git push: commit `6922e22` ke `origin/main`.
+
+---
+
+## Bagian 45 — LogicGatesSimulator: Slot Metadata Auto-Save (18 Aug 2026)
+
+**Masalah:** Perubahan slot metadata (nama, deskripsi, warna) hilang setelah refresh halaman. Data hanya tersimpan di React state — tidak persisten.
+
+**Penyebab:** `saveSlots` hanya disimpan ke backend via `doSaveSlot()` (klik tombol Save eksplisit). Perubahan nama/deskripsi/warna di UI hanya update React state, tidak pernah ditulis ke storage manapun.
+
+**Perbaikan — Dual-layer auto-save:**
+
+1. **localStorage (instant)**: Setiap perubahan `saveSlots` langsung tulis metadata (name, description, color) ke `localStorage` key `circuit_slot_meta`. Ini menjamin perubahan bertahan saat refresh tanpa delay.
+2. **Backend (debounced 1.5s)**: Setelah 1.5 detik tanpa perubahan baru, auto-save metadata ke Supabase via POST `/api/circuits` dengan flag `metaOnly: true`. Ini menjamin perubahan bertahan di akun user (cross-device).
+3. **Backend `metaOnly` flag**: Ditambahkan di `api/circuits.js` — ketika `metaOnly=true`, history push di-skip. Hanya metadata yang di-update, tidak membuat entry history baru. Ini mencegah spam history dari setiap perubahan nama/deskripsi/warna.
+4. **Mount sequence**: localStorage dibaca dulu (instant, no flicker) → lalu backend load (authoritative, mungkin override localStorage).
+
+**File yang diubah:**
+- `src/pages/LogicGatesSimulator.jsx` — slot metadata init dari localStorage, auto-save useEffect
+- `api/circuits.js` — `metaOnly` flag support (skip history push)
+
+### Verifikasi
+- `npx vite build` sukses 0 error.
