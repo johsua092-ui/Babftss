@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin, getPunyaSiJawaFirestore } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead, writeInboxMessage } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -195,6 +195,8 @@ export default async function handler(req, res) {
       if (admin) {
         // Admin transfers are tax-free
         const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
+        // Write inbox message for recipient
+        await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
         return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb });
       }
       try {
@@ -226,6 +228,8 @@ export default async function handler(req, res) {
 
       if (!resolvedUid || !amount || amount <= 0 || amount > 10000) return res.status(400).json({ error: "targetUid/targetEmail dan amount wajib (1-10000)" });
       const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
+      // Write inbox message for recipient
+      await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
       return res.status(200).json({ message: "Gold di-grant", uid: resolvedUid, amount, newBalance: nb });
     }
 

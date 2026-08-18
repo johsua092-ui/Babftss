@@ -206,19 +206,24 @@ export default function InboxPanel({ onClose }) {
             <div style={s.msgHeader}>
               <div style={s.msgTitle(!msg.read)}>
                 {!msg.read ? <Mail size={13} color="#60a5fa" /> : <MailOpen size={13} />}
-                {msg.type === 'transfer_in' ? 'Transfer Masuk' : 'Pesan'}
+                {msg.type === 'transfer_in' ? 'Transfer Masuk' : msg.type === 'admin_grant' ? 'Grant Admin' : 'Pesan'}
               </div>
               <span style={s.msgTime}>{formatTime(msg.createdAt)}</span>
             </div>
 
-            {msg.type === 'transfer_in' && (
+            {(msg.type === 'transfer_in' || msg.type === 'admin_grant') && (
               <div style={s.msgAmount}>
-                <ArrowDownToLine size={14} color="#4ade80" />
+                <ArrowDownToLine size={14} color={msg.type === 'admin_grant' ? '#fbbf24' : '#4ade80'} />
                 <Coins size={14} />
                 {msg.amount} gold
                 {msg.tax > 0 && (
                   <span style={{ color: '#94a3b8', fontSize: 10, fontWeight: 400 }}>
                     (tax: {msg.tax})
+                  </span>
+                )}
+                {msg.type === 'admin_grant' && (
+                  <span style={{ color: '#fbbf24', fontSize: 10, fontWeight: 400 }}>
+                    (tax-free)
                   </span>
                 )}
               </div>
