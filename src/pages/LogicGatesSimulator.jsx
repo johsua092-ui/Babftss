@@ -6503,7 +6503,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     )}
                   </div>
                   {/* Title text — absolutely centered, not affected by left-side elements */}
-                  <div style={{ position: 'absolute', left: 0, right: 40, textAlign: 'center', pointerEvents: 'none' }}>
+                  <div style={{ position: 'absolute', left: 100, right: 40, textAlign: 'center', pointerEvents: 'none' }}>
                     <div style={{
                       fontSize: isMobile ? 20 : 26, fontWeight: 900, color: '#f0f4f8',
                       fontFamily: '"Inter", sans-serif', letterSpacing: 1,
