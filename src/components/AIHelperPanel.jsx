@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Send, Bot, MessageCircle, Coins, Clock, Zap, AlertTriangle, ShoppingCart, Play, ChevronDown, ChevronUp, ArrowRightLeft } from 'lucide-react';
+import { X, Send, Bot, MessageCircle, Coins, Clock, Zap, AlertTriangle, ShoppingCart, Play, ChevronDown, ChevronUp, ArrowRightLeft, Inbox } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '../contexts/AuthContext';
 import CoinTransferPanel from './CoinTransferPanel';
+import InboxPanel from './InboxPanel';
 
 const API_URL = '/api/ai-chat';
 
@@ -297,6 +298,7 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
     const [buyingPkg, setBuyingPkg] = useState(null);
     const [activating, setActivating] = useState(false);
     const [showTransfer, setShowTransfer] = useState(false);
+    const [showInbox, setShowInbox] = useState(false);
 
     const countdown = useCountdown(goldInfo?.timerExpiresAt || null);
     const timerActive = goldInfo?.timerActive && countdown !== '00:00' && countdown !== null;
@@ -544,6 +546,14 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                         >
                             <ArrowRightLeft size={12} />
                         </button>
+                        {/* Inbox button */}
+                        <button
+                            style={{ ...goldStyles.buyBtn, color: showInbox ? '#fbbf24' : '#94a3b8' }}
+                            onClick={() => setShowInbox(p => !p)}
+                            title="Inbox"
+                        >
+                            <Inbox size={12} />
+                        </button>
                         {!isAdmin && !timerActive && remainingMin > 0 && (
                             <button
                                 style={goldStyles.activateBtn}
@@ -715,6 +725,10 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     currentGold={gold}
                     isAdmin={isAdmin}
                 />
+            )}
+            {/* ── Inbox Panel (overlay) ── */}
+            {showInbox && (
+                <InboxPanel onClose={() => setShowInbox(false)} />
             )}
         </div>
     );
