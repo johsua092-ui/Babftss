@@ -7251,12 +7251,13 @@ export default function LogicGatesSimulator({ setPage }) {
                       }}>
                         {/* SD-card notch */}
                         <div style={{ position: 'absolute', top: 0, right: 20, width: 24, height: 12, background: '#2a3a5c', borderRadius: '0 0 6 6' }} />
-                        {/* Label area */}
+                        {/* Label area — minHeight matches normal slot (color picker + textarea rows=3 + info) */}
                         <div style={{
                           margin: '14px 12px 8px', padding: '10px 10px 8px', borderRadius: 8,
                           background: asCc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
                           display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                          minHeight: 104,
                         }}>
                           {/* Title: AUTO SAVE with sync icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -7378,12 +7379,13 @@ export default function LogicGatesSimulator({ setPage }) {
                       >
                         {/* SD-card notch */}
                         <div style={{ position: 'absolute', top: 0, right: 20, width: 24, height: 12, background: '#2a3a5c', borderRadius: '0 0 6 6' }} />
-                        {/* Label area */}
+                        {/* Label area — minHeight matches normal slot (color picker + textarea rows=3 + info) */}
                         <div style={{
                           margin: '14px 12px 8px', padding: '10px 10px 8px', borderRadius: 8,
                           background: bsCc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
                           display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                          minHeight: 104,
                         }}>
                           {/* Title: BUY SLOT with plus icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
