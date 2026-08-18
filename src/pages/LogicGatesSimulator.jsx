@@ -6225,13 +6225,13 @@ export default function LogicGatesSimulator({ setPage }) {
                               onClick={() => setSlotColorEdit({ slotIndex: idx })}
                               style={{
                                 width: 24, height: 24, borderRadius: 6, cursor: 'pointer', flexShrink: 0,
-                                background: slot.color,
-                                border: '2px solid rgba(255,255,255,0.15)',
-                                boxShadow: `0 0 6px ${slot.color}44, inset 0 1px 0 rgba(255,255,255,0.2)`,
-                                transition: 'box-shadow 0.2s',
+                                background: 'conic-gradient(from 0deg, #f87171, #facc15, #4ade80, #22d3ee, #818cf8, #e879f9, #f87171)',
+                                border: '2px solid rgba(255,255,255,0.2)',
+                                boxShadow: '0 0 6px rgba(255,255,255,0.15), inset 0 1px 0 rgba(255,255,255,0.25)',
+                                transition: 'box-shadow 0.2s, transform 0.15s',
                               }}
-                              onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 0 12px ${slot.color}66, inset 0 1px 0 rgba(255,255,255,0.3)`; }}
-                              onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 0 6px ${slot.color}44, inset 0 1px 0 rgba(255,255,255,0.2)`; }}
+                              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 0 12px rgba(255,255,255,0.3), inset 0 1px 0 rgba(255,255,255,0.35)'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 0 6px rgba(255,255,255,0.15), inset 0 1px 0 rgba(255,255,255,0.25)'; e.currentTarget.style.transform = 'scale(1)'; }}
                             />
                             <input
                               type="text" value={slot.name}
