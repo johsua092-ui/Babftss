@@ -1278,6 +1278,13 @@ export default function LogicGatesSimulator({ setPage }) {
   // Initialize saveSlots from localStorage metadata if available (instant, no flicker)
   const initSlotMeta = getStoredSlotMeta();
   const initSlotOrder = getStoredSlotOrder();
+  // We only apply initSlotOrder to the initial defaults if ALL slotIds in the order
+  // exist in defaults. If the order references slots beyond the 3 defaults (e.g.,
+  // save-slot-4 through save-slot-9 from purchased slots), applying it to a partial
+  // array produces WRONG results — missing slots are skipped, shifting remaining
+  // slots to fill gaps and corrupting the visual order. In that case, we skip
+  // applying order here and let loadSlots() handle it on the FULL array after
+  // fetching from backend.
   const [saveSlots, setSaveSlots] = useState(() => {
     const defaults = [
       { slotId: 'save-slot-1', name: '', description: '', color: '#3b82f6', data: null, updatedAt: null },
@@ -1292,9 +1299,14 @@ export default function LogicGatesSimulator({ setPage }) {
         return d;
       });
     }
-    // Apply persisted slot order so swaps are visible immediately on load
+    // Only apply slot order if it's safe (all referenced slots exist in defaults)
     if (initSlotOrder) {
-      base = applySlotOrder(base, initSlotOrder);
+      const defaultIds = new Set(defaults.map(d => d.slotId));
+      const orderIsSafe = initSlotOrder.every(id => defaultIds.has(id));
+      if (orderIsSafe) {
+        base = applySlotOrder(base, initSlotOrder);
+      }
+      // If orderIsSafe is false, we skip — loadSlots() will apply the correct order
     }
     return base;
   });
@@ -1492,9 +1504,20 @@ export default function LogicGatesSimulator({ setPage }) {
             }
           }
         } catch { /* order fetch failed, not critical */ }
-        // Merge: localStorage order takes priority (more recent), then backend order
+        // Merge order: prefer backendOrder as source of truth (survives localStorage
+        // corruption from the old bug where auto-persist overwrote order on first render
+        // with a partial array). Fall back to localOrder only if backend has no order.
         const localOrder = getStoredSlotOrder();
-        const effectiveOrder = localOrder || backendOrder;
+        // Also validate localOrder: if it has fewer slotIds than backendOrder, it's
+        // likely corrupted (old bug) — prefer backendOrder.
+        let effectiveOrder = backendOrder;
+        if (!effectiveOrder && localOrder) {
+          effectiveOrder = localOrder;
+        } else if (effectiveOrder && localOrder && localOrder.length >= effectiveOrder.length) {
+          // localOrder is complete (same or more entries) — use it (more recent)
+          effectiveOrder = localOrder;
+        }
+        // else: backendOrder exists and is more complete than localOrder — keep backendOrder
         setSaveSlots(prev => {
           const updated = prev.map((slot) => {
             const match = circuits.find(c => c.item_id === slot.slotId);
@@ -1598,14 +1621,17 @@ export default function LogicGatesSimulator({ setPage }) {
     } catch (e) { /* silent — localStorage already has the data */ }
   }, [user, getIdToken]);
   useEffect(() => {
-    // Always persist to localStorage immediately (metadata + order)
-    setStoredSlotMeta(saveSlots);
-    setStoredSlotOrder(saveSlots);
-    // Skip backend save on very first render
+    // Skip BOTH localStorage AND backend save on very first render.
+    // CRITICAL: On first render, saveSlots only has 3 default slots (not the full
+    // array from backend). Writing order to localStorage now would overwrite the
+    // correct persisted order with a partial/wrong order, permanently corrupting it.
     if (slotMetaFirstRenderRef.current) {
       slotMetaFirstRenderRef.current = false;
       return;
     }
+    // Persist to localStorage (metadata + order) — only after loadSlots has run
+    setStoredSlotMeta(saveSlots);
+    setStoredSlotOrder(saveSlots);
     // Debounced backend save (500ms)
     if (slotMetaSaveTimerRef.current) clearTimeout(slotMetaSaveTimerRef.current);
     slotMetaSaveTimerRef.current = setTimeout(() => saveMetaToBackend(saveSlots), 500);
