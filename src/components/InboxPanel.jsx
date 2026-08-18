@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Inbox, Mail, MailOpen, CheckCheck, Coins, ArrowDownToLine } from 'lucide-react';
+import { X, Inbox, Mail, MailOpen, CheckCheck, Coins, ArrowDownToLine, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
@@ -83,10 +83,12 @@ export default function InboxPanel({ onClose }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
 
   const fetchInbox = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const token = await getIdToken();
       const headers = {};
@@ -96,8 +98,13 @@ export default function InboxPanel({ onClose }) {
         const data = await res.json();
         setMessages(data.messages || []);
         setUnreadCount(data.unreadCount || 0);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setFetchError(`API error ${res.status}: ${errData.error || 'Unknown'}`);
       }
-    } catch { /* silent */ }
+    } catch (e) {
+      setFetchError(e?.message || 'Fetch failed');
+    }
     finally { setLoading(false); }
   }, [user, getIdToken]);
 
@@ -167,6 +174,12 @@ export default function InboxPanel({ onClose }) {
               {markingAll ? '...' : 'Tandai semua dibaca'}
             </button>
           )}
+          <button style={s.closeBtn} onClick={fetchInbox} title="Refresh"
+            onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
+            onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+          >
+            <RefreshCw size={14} />
+          </button>
           <button style={s.closeBtn} onClick={onClose}
             onMouseEnter={e => e.currentTarget.style.color = '#e2e8f0'}
             onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
@@ -178,6 +191,11 @@ export default function InboxPanel({ onClose }) {
 
       {/* Body */}
       <div style={s.body}>
+        {fetchError && (
+          <div style={{ padding: '10px 12px', borderRadius: 8, backgroundColor: '#2a0a0a', border: '1px solid #7f1d1d', fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#f87171', lineHeight: 1.4, marginBottom: 8 }}>
+            Gagal memuat inbox: {fetchError}
+          </div>
+        )}
         {loading && (
           <div style={s.emptyState}>
             <Inbox size={24} />
@@ -185,7 +203,7 @@ export default function InboxPanel({ onClose }) {
           </div>
         )}
 
-        {!loading && messages.length === 0 && (
+        {!loading && messages.length === 0 && !fetchError && (
           <div style={s.emptyState}>
             <Mail size={28} />
             <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13, color: '#64748b' }}>

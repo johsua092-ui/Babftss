@@ -241,13 +241,13 @@ export default async function handler(req, res) {
         const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
         // Write inbox message for recipient
         await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
-        return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb });
+        return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb, inboxCreated: true });
       }
       try {
         const tax = getTransferTax(amount);
         const receiveAmount = getReceiveAmount(amount);
         const result = await transferGold(uid, resolvedUid, amount, { note: note || null, fromEmail: user.email || null, fromName: user.name || null });
-        return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result });
+        return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result, inboxCreated: true });
       } catch (e) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
         if (e.message === "recipient not found") return res.status(404).json({ error: "User tujuan tidak ditemukan" });
