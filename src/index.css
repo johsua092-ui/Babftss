@@ -219,15 +219,14 @@
   scrollbar-color: rgba(96, 165, 250, 0.5) rgba(15, 25, 50, 0.6);
 }
 
-/* ── Move Slot: grayscale effect for active slot ── */
+/* ── Move Slot: no CSS border — SVG marching ants handles it ── */
 .slot-move-active {
-  border: 4px dashed #FFFFFF !important;
 }
 
 /* ── Marching ants SVG overlay animation ── */
 @keyframes marchingAntsStroke {
   from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: -32; }
+  to   { stroke-dashoffset: -40; }
 }
 .marching-ants-svg rect {
   animation: marchingAntsStroke 1.8s linear infinite;

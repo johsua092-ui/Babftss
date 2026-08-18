@@ -6617,9 +6617,9 @@ export default function LogicGatesSimulator({ setPage }) {
                         {/* Marching ants SVG overlay for move mode */}
                         {moveSlotIndex === idx && (
                           <svg className="marching-ants-svg" viewBox="0 0 100 100" preserveAspectRatio="none"
-                            style={{ position: 'absolute', inset: -6, width: 'calc(100% + 12px)', height: 'calc(100% + 12px)', pointerEvents: 'none', zIndex: 20 }}>
-                            <rect x="1" y="1" width="98" height="98" rx="5" ry="5"
-                              fill="none" stroke="#FFFFFF" strokeWidth="1.5" strokeDasharray="6 4"
+                            style={{ position: 'absolute', inset: -8, width: 'calc(100% + 16px)', height: 'calc(100% + 16px)', pointerEvents: 'none', zIndex: 20 }}>
+                            <rect x="1.5" y="1.5" width="97" height="97" rx="5" ry="5"
+                              fill="none" stroke="#FFFFFF" strokeWidth="2" strokeDasharray="6 4"
                             />
                           </svg>
                         )}
