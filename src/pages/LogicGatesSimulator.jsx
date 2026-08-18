@@ -1358,10 +1358,10 @@ export default function LogicGatesSimulator({ setPage }) {
       const currentGold = goldData.isAdmin ? Infinity : (goldData.gold ?? 0);
       if (currentGold < 100) { setSaveStatus({ message: 'Gold tidak cukup! Kamu butuh 100 gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
       // Deduct gold via buy-slot action
-      const deductRes = await fetch('/api/ai-chat', {
+      const deductRes = await fetch('/api/ai-chat?action=buy-slot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'buy-slot', amount: 100 }),
+        body: JSON.stringify({ amount: 100 }),
       });
       if (!deductRes.ok) { const d = await deductRes.json().catch(() => ({})); setSaveStatus({ message: d.error || 'Gagal memotong gold.', type: 'error' }); setBuySlotLoading(false); setBuySlotConfirm(false); return; }
       // Add new slot
