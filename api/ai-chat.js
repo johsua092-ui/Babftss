@@ -101,6 +101,50 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Internal server error" });
       }
     }
+    if (action === "inbox-debug") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const diag = { uid: user.sub, steps: [] };
+        // Step 1: test write
+        try {
+          const db = await getPunyaSiJawaFirestore();
+          const testRef = db.collection("inbox").doc();
+          await testRef.set({
+            uid: user.sub, fromUid: "debug", fromEmail: null, fromName: "Debug Test",
+            type: "transfer_in", amount: 1, tax: 0, note: "debug test message",
+            read: false, createdAt: new Date(),
+          });
+          diag.steps.push({ step: "write", ok: true, docId: testRef.id });
+          // Read it back
+          const readDoc = await testRef.get();
+          diag.steps.push({ step: "read-back", ok: readDoc.exists, data: readDoc.exists ? readDoc.data() : null });
+          // Clean up - delete the test doc
+          await testRef.delete();
+          diag.steps.push({ step: "cleanup", ok: true });
+        } catch (e) {
+          diag.steps.push({ step: "write", ok: false, error: e?.message || String(e) });
+        }
+        // Step 2: try getInbox
+        try {
+          const msgs = await getInbox(user.sub, 5);
+          diag.steps.push({ step: "getInbox", ok: true, count: msgs.length, messages: msgs });
+        } catch (e) {
+          diag.steps.push({ step: "getInbox", ok: false, error: e?.message || String(e) });
+        }
+        // Step 3: try getUnreadInboxCount
+        try {
+          const count = await getUnreadInboxCount(user.sub);
+          diag.steps.push({ step: "getUnreadInboxCount", ok: true, unreadCount: count });
+        } catch (e) {
+          diag.steps.push({ step: "getUnreadInboxCount", ok: false, error: e?.message || String(e) });
+        }
+        return res.status(200).json(diag);
+      } catch (e) {
+        console.error("[ai-chat] inbox-debug error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error", detail: e?.message || String(e) });
+      }
+    }
     if (action === "tax-info") {
       try {
         const user = await authenticateRequest(req);

@@ -554,14 +554,6 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                         >
                             <ArrowRightLeft size={12} />
                         </button>
-                        {/* Inbox button */}
-                        <button
-                            style={{ ...goldStyles.buyBtn, color: showInbox ? '#fbbf24' : '#94a3b8' }}
-                            onClick={() => setShowInbox(p => !p)}
-                            title="Inbox"
-                        >
-                            <Inbox size={12} />
-                        </button>
                         {!isAdmin && !timerActive && remainingMin > 0 && (
                             <button
                                 style={goldStyles.activateBtn}
@@ -737,10 +729,6 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                     currentGold={gold}
                     isAdmin={isAdmin}
                 />
-            )}
-            {/* ── Inbox Panel (overlay) ── */}
-            {showInbox && (
-                <InboxPanel onClose={() => setShowInbox(false)} />
             )}
         </div>
     );
