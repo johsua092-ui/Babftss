@@ -1436,9 +1436,12 @@ export default function LogicGatesSimulator({ setPage }) {
           });
           // Add slots from backend that aren't in the initial hardcoded list
           // (e.g., slots bought after the 3 default ones)
+          // IMPORTANT: exclude save-slot-auto (Auto Save) — it's NOT a regular slot
           const existingIds = new Set(updated.map(s => s.slotId));
           const extraSlots = circuits
-            .filter(c => c.item_id?.startsWith('save-slot-') && !existingIds.has(c.item_id))
+            .filter(c => c.item_id?.startsWith('save-slot-')
+              && c.item_id !== 'save-slot-auto'  // ← exclude Auto Save
+              && !existingIds.has(c.item_id))
             .sort((a, b) => (a.item_id || '').localeCompare(b.item_id || ''))
             .map(c => ({
               slotId: c.item_id,
