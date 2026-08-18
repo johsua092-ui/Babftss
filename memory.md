@@ -3011,3 +3011,76 @@ const cc = {
 
 ### Verifikasi
 - `npx vite build` sukses 0 error.
+
+---
+
+## Bagian 46 — Slot Swap Persistensi: Fix Order Corruption + 5-Layer Data Protection (18 Aug 2026)
+
+**Masalah kritis:** Setelah user swap posisi slot lalu refresh, slot yang tertukar **SALAH** — bukan pair yang di-swap yang tertukar, malah slot lain yang berpindah. Root cause: race condition yang mengkorupsi slot order.
+
+**Root Cause Analysis (3 bug bertautan):**
+
+1. **`applySlotOrder` pada array parsial**: `useState` initializer hanya punya 3 default slots, tapi order tersimpan punya 9+ slotId. `applySlotOrder` me-skip slot yang tidak ada → sisa slot "geser" mengisi kekosongan → urutan SALAH.
+2. **Auto-persist effect menimpa localStorage di first render**: Effect langsung tulis `setStoredSlotOrder(saveSlots)` dengan state parsial (3 slot) → **menghancurkan order yang benar** secara permanen.
+3. **`loadSlots` memprioritaskan `localOrder` yang sudah korup**: `localOrder || backendOrder` → membaca order yang sudah ditimpa oleh bug #2.
+
+**Fix Swap Corruption:**
+- `orderIsSafe` check: hanya apply `initSlotOrder` ke defaults jika SEMUA slotId dalam order ada di defaults. Kalau tidak → skip, `loadSlots` yang handle.
+- Skip localStorage AND backend write pada first render (`slotMetaFirstRenderRef`).
+- Prefer `backendOrder` over `localOrder` ketika `localOrder` punya lebih sedikit entry (kemungkinan korup).
+
+**5-Layer Data Protection (ditambahkan setelah swap fix):**
+
+| Layer | Nama | Fungsi |
+|-------|------|--------|
+| 1 | **Order Integrity Validation** | `validateOrder()` cek format `save-slot-N`, tolak duplikat, tolak format invalid. Dipasang di: baca localStorage, tulis localStorage, baca backend, `applySlotOrder()`. Order korup TIDAK PERNAH ditulis. |
+| 2 | **Order Backup** | Sebelum overwrite, order baik saat ini disalin ke `circuit_slot_order_backup`. Saat baca, kalau primary korup → auto-restore dari backup. Kalau keduanya korup → hapus dan fallback ke urutan natural. |
+| 3 | **beforeunload Guard** | Track backend save in-flight via `backendSaveInFlightRef`. Swap handler tandai in-flight, bersihkan setelah selesai. Kalau user close/refresh saat save belum selesai → browser konfirmasi + flush save. |
+| 4 | **Auto-Recovery** | `loadSlots` auto-bersihkan entry order yang merujuk slot yang tidak ada. Entry stale dihapus. Order bersih ditulis ulang ke localStorage. |
+| 5 | **Deep-Clone Protection** | Circuit data dari backend di-deep-clone saat load (`JSON.parse/stringify`). Mencegah mutasi tidak sengaja pada reference yang sama. |
+
+**Plus: Swap index validation** — mencegah swap dengan index di luar batas array.
+
+---
+
+## Bagian 47 — Ironclad Data Protection: Backend + Frontend Safeguards (18 Aug 2026)
+
+**Audit menemukan 1 risiko HIGH dan 3 risiko MEDIUM yang ditambal:**
+
+### HIGH: `saveMetaToBackend` race condition
+- **Masalah:** `saveMetaToBackend` mengirim `circuitState: slot.data || null` ke backend. Kalau `slot.data` null (belum di-load dari backend), ini mengirim `circuitState: null` → backend **menimpa** data circuit yang sudah tersimpan dengan null → **data loss permanen**.
+- **Fix Frontend:** Kirim `hasCircuitData: circuitState !== null` flag bersama request.
+- **Fix Backend:** Saat `metaOnly=true` DAN `hasCircuitData=false`, backend **MERGE** data: keep existing `circuitState`, hanya update `color`/`description`. Tidak pernah overwrite circuitState yang sudah ada dengan null.
+
+### MEDIUM: Backend menerima `circuitState: null` tanpa guard
+- **Masalah:** Non-metaOnly request dengan `circuitState: null` akan overwrite data circuit yang sudah ada tanpa peringatan.
+- **Fix:** Backend BLOCK dengan HTTP 409 (`CIRCUIT_DATA_OVERWRITE_BLOCKED`) kalau:
+  - Bukan `metaOnly`
+  - `circuitState` null/undefined
+  - Record existing punya circuit data
+  - Tidak ada `explicitClear: true` flag
+
+### MEDIUM: `metaOnly: true` tetap overwrite seluruh `data` column
+- **Masalah:** Sebelumnya `metaOnly` hanya skip history push, tapi tetap `update({ data })` → kalau circuitState di request null/stale, overwrite data yang ada.
+- **Fix:** Merge logic seperti dijelaskan di HIGH fix.
+
+### INVARIANT DATA PROTECTION (WAJIB DIPATUHI DI MASA DEPAN)
+
+**Prinsip ABSOLUT yang TIDAK BOLEH dilanggar oleh update fitur apapun:**
+
+1. **Data circuit user (`slot.data.circuitState`) TIDAK PERNAH boleh ditimpa dengan null/undefined** kecuali user eksplisit minta (dengan `explicitClear: true`).
+2. **`metaOnly: true` request TIDAK PERNAH mengubah `circuitState`** — hanya update metadata (name, color, description).
+3. **Backend HARUS punya guard** yang menolak overwrite circuitState yang sudah ada dengan null tanpa `explicitClear` flag.
+4. **Frontend HARUS kirim `hasCircuitData` flag** pada setiap POST /api/circuits agar backend tahu apakah circuitState valid.
+5. **Slot DELETE TIDAK BOLEH ada di frontend** — slot yang sudah dibeli bersifat PERMANEN. Backend sudah punya proteksi 403 untuk `save-slot-*`.
+6. **Deep-clone data dari backend saat load** — mencegah accidental mutation.
+7. **First render HARUS skip localStorage/backend write** — mencegah overwrite data yang benar dengan state parsial.
+8. **beforeunload guard** — mencegah data loss saat user close page saat save in-flight.
+
+**File yang diubah:**
+- `src/pages/LogicGatesSimulator.jsx` — 5-layer protection, hasCircuitData flag, validateOrder, backup/restore, beforeunload guard, deep-clone
+- `api/circuits.js` — metaOnly merge logic, circuitState null guard (409), hasCircuitData handling
+
+### Verifikasi
+- `npx vite build` sukses 0 error.
+- Git pushed: `a9b450a` (5-layer protection), `4d2d086` (ironclad backend safeguards)

@@ -1001,3 +1001,53 @@ const cc = {
 ### 37.6 Fungsi Pendukung
 
 `hexToHsl(hex)` dan `hslToHex(h, s, l)` sudah ada di `LogicGatesSimulator.jsx` (baris ~91-118). Kedua fungsi ini WAJIB dipertahankan dan tidak boleh diubah tanpa pengujian visual menyeluruh.
+
+---
+
+## 38. DATA PROTECTION SYSTEM — INVARIANT YANG WAJIB DIPATUHI
+
+> **Bagian ini adalah KONSTITUSI perlindungan data user.** Setiap fitur baru, update, atau refactoring yang menyentuh save slot WAJIB mematuhi semua aturan di bawah. Pelanggaran = bug kritis yang harus di-fix sebelum merge.
+
+### 38.1 Prinsip ABSOLUT
+
+1. **Data circuit user (`slot.data.circuitState`) TIDAK PERNAH boleh ditimpa dengan null/undefined** kecuali user eksplisit minta (dengan `explicitClear: true` flag di request body). Ini adalah hukum tertinggi — tidak ada pengecualian.
+2. **`metaOnly: true` request TIDAK PERNAH mengubah `circuitState`** — hanya boleh update metadata (name, color, description). Backend meng-merge: keep existing circuitState, update metadata saja.
+3. **Backend HARUS punya guard** yang menolak (HTTP 409) overwrite circuitState yang sudah ada dengan null tanpa `explicitClear` flag.
+4. **Frontend HARUS kirim `hasCircuitData` flag** pada setiap POST `/api/circuits` agar backend tahu apakah circuitState valid atau harus di-preserve.
+5. **Slot DELETE TIDAK BOLEH ada di frontend** — slot yang sudah dibeli bersifat PERMANEN. Backend sudah punya proteksi 403 untuk `save-slot-*`.
+6. **Deep-clone data dari backend saat load** — `JSON.parse(JSON.stringify(data))` mencegah accidental mutation.
+7. **First render HARUS skip localStorage/backend write** — mencegah overwrite data yang benar dengan state parsial (3 default slots).
+8. **beforeunload guard** — mencegah data loss saat user close page saat save in-flight.
+
+### 38.2 5-Layer Protection Architecture
+
+| Layer | Nama | Mekanisme | Dilindungi dari |
+|-------|------|-----------|-----------------|
+| 1 | **Order Integrity Validation** | `validateOrder()` cek format `save-slot-N`, tolak duplikat, tolak format invalid | Corrupted order data, injection |
+| 2 | **Order Backup** | `circuit_slot_order_backup` — sebelum overwrite, backup order saat ini | Single-point failure, overwrite bug |
+| 3 | **beforeunload Guard** | `backendSaveInFlightRef` + browser prompt | Data loss on page close |
+| 4 | **Auto-Recovery** | `loadSlots` bersihkan stale entries, restore dari backup | Orphaned/stale order entries |
+| 5 | **Deep-Clone** | `JSON.parse(JSON.stringify())` on load | Accidental reference mutation |
+
+### 38.3 Backend Protection Architecture
+
+| Guard | Endpoint | Mekanisme | Dilindungi dari |
+|-------|----------|-----------|-----------------|
+| **metaOnly merge** | POST | `metaOnly=true` + `hasCircuitData=false` → merge, tidak overwrite circuitState | Race condition, partial state save |
+| **circuitState null block** | POST | Non-metaOnly + null circuitState + existing data → HTTP 409 | Client bug, accidental wipe |
+| **Slot delete 403** | DELETE | `save-slot-*` items → 403 for non-admin | Accidental/malicious deletion |
+| **Auth required** | ALL | Firebase Bearer token required | Unauthorized access |
+| **Rate limit** | ALL | 60 req/60s per IP | Abuse/DoS |
+
+### 38.4 Checklist untuk Setiap Fitur Baru yang Menyentuh Slot
+
+Sebelum menambah/update fitur yang menyentuh `saveSlots`, `slot.data`, atau `/api/circuits`, WAJIB verifikasi:
+
+- [ ] Fitur TIDAK mengirim `circuitState: null` ke backend tanpa `explicitClear: true`
+- [ ] Fitur TIDAK mengubah `slot.data` secara langsung (harus via `setSaveSlots` dengan spread)
+- [ ] Fitur TIDAK menambah tombol/button delete slot (slot = permanen)
+- [ ] Kalau fitur mengubah metadata (name/color/description), gunakan `metaOnly: true` + `hasCircuitData` flag
+- [ ] Kalau fitur menambah state baru yang di-persist, tambahkan ke localStorage DAN backend
+- [ ] Kalau fitur mengubah initial state, pastikan first-render guard masih bekerja
+- [ ] Build sukses (`npx vite build`) sebelum push
+- [ ] Test manual: save → swap → refresh → verify data intact
