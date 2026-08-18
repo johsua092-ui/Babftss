@@ -6270,10 +6270,17 @@ export default function LogicGatesSimulator({ setPage }) {
                         flexShrink: 0, marginRight: 12,
                       }}>
                         <Coins size={20} style={{ color: '#fbbf24' }} />
-                        <span style={{
-                          fontFamily: 'Orbitron,sans-serif', fontSize: 17, fontWeight: 700,
-                          color: '#fbbf24', letterSpacing: 0.5,
-                        }}>{gold === Infinity ? '\u221E' : gold}</span>
+                        {gold === Infinity ? (
+                          <svg width="28" height="16" viewBox="0 0 24 12" fill="none" style={{ display: 'block' }}>
+                            <path d="M12,6 C12,1.5 5,1.5 5,6 C5,10.5 12,10.5 12,6 C12,1.5 19,1.5 19,6 C19,10.5 12,10.5 12,6"
+                              stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+                          </svg>
+                        ) : (
+                          <span style={{
+                            fontFamily: 'Orbitron,sans-serif', fontSize: 17, fontWeight: 700,
+                            color: '#fbbf24', letterSpacing: 0.5,
+                          }}>{gold}</span>
+                        )}
                       </div>
                     );
                   })()}
