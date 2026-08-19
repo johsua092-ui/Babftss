@@ -7300,7 +7300,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           ))}
                         </div>
                         {/* Action: Load only + History */}
-                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 130 : 150 }}>
+                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 150 : 165, justifyContent: 'flex-end' }}>
                           {/* History button for auto save */}
                           <button
                             onClick={async () => {
@@ -7421,7 +7421,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           ))}
                         </div>
                         {/* Price display at bottom */}
-                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 130 : 150, alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 150 : 165, alignItems: 'center', justifyContent: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6 }}>
                             <Coins size={isMobile ? 12 : 16} style={{ color: '#fbbf24' }} />
                             <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: isMobile ? 14 : 18, fontWeight: 700, color: '#fbbf24', letterSpacing: 0.5 }}>100</span>
