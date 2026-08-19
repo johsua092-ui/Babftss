@@ -7260,22 +7260,22 @@ export default function LogicGatesSimulator({ setPage }) {
                           minHeight: 127,
                         }}>
                           {/* Title: AUTO SAVE with sync icon */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <RefreshCw size={28} style={{ color: '#fbbf24' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 10 }}>
+                            <RefreshCw size={isMobile ? 16 : 28} style={{ color: '#fbbf24' }} />
                             <span style={{
-                              fontSize: 22, fontWeight: 900, color: '#fbbf24',
-                              fontFamily: '"Inter", sans-serif', letterSpacing: 1.5,
+                              fontSize: isMobile ? 11 : 22, fontWeight: 900, color: '#fbbf24',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: isMobile ? 0.5 : 1.5,
                               textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                             }}>AUTO SAVE</span>
                           </div>
                           {/* Info: last saved */}
-                          <div style={{ fontSize: 12, color: '#5a7a9a', textAlign: 'center' }}>
+                          <div style={{ fontSize: isMobile ? 8 : 12, color: '#5a7a9a', textAlign: 'center' }}>
                             {asHasData ? (
                               <>
                                 <span style={{ color: '#8aa4c0' }}>{asCompCount} comp</span>
                                 <span style={{ margin: '0 4px' }}>·</span>
                                 <span style={{ color: '#8aa4c0' }}>{asWireCount} wire</span>
-                                {relTime && <><span style={{ margin: '0 4px' }}>·</span><span style={{ fontSize: 11 }}>{relTime}</span></>}
+                                {relTime && <><span style={{ margin: '0 4px' }}>·</span><span style={{ fontSize: isMobile ? 7 : 11 }}>{relTime}</span></>}
                               </>
                             ) : (
                               <span style={{ fontStyle: 'italic', color: '#4a6a8a' }}>Belum ada data</span>
@@ -7388,17 +7388,17 @@ export default function LogicGatesSimulator({ setPage }) {
                           minHeight: 127,
                         }}>
                           {/* Title: BUY SLOT with plus icon */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <Plus size={30} style={{ color: '#4ade80' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 10 }}>
+                            <Plus size={isMobile ? 18 : 30} style={{ color: '#4ade80' }} />
                             <span style={{
-                              fontSize: 22, fontWeight: 900, color: '#4ade80',
-                              fontFamily: '"Inter", sans-serif', letterSpacing: 1.5,
+                              fontSize: isMobile ? 11 : 22, fontWeight: 900, color: '#4ade80',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: isMobile ? 0.5 : 1.5,
                               textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                             }}>BUY SLOT</span>
                           </div>
                           {/* Price info */}
-                          <div style={{ fontSize: 12, color: '#5a7a9a', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Coins size={15} style={{ color: '#fbbf24' }} />
+                          <div style={{ fontSize: isMobile ? 8 : 12, color: '#5a7a9a', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Coins size={isMobile ? 9 : 15} style={{ color: '#fbbf24' }} />
                             <span style={{ color: '#fbbf24', fontWeight: 700 }}>100</span>
                             <span style={{ color: '#FFFFFF' }}>gold per slot</span>
                           </div>
