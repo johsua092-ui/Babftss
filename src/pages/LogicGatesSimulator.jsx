@@ -6758,18 +6758,18 @@ export default function LogicGatesSimulator({ setPage }) {
                       >×</button>
                     )}
                   </div>
-                  {/* Title text — absolutely centered, not affected by left-side elements */}
-                  <div style={{ position: 'absolute', left: 100, right: 40, textAlign: 'center', pointerEvents: 'none' }}>
-                    <div style={{
-                      fontSize: isMobile ? 20 : 26, fontWeight: 900, color: '#f0f4f8',
-                      fontFamily: '"Inter", sans-serif', letterSpacing: 1,
-                      textShadow: '0 2px 4px rgba(0,0,0,0.4)',
-                    }}>SAVE PROGRESS</div>
-                    <div style={{
-                      fontSize: 12, color: '#FFFFFF', marginTop: 4,
-                      fontFamily: '"Inter", sans-serif',
-                    }}>Simpan & muat rangkaianmu ke cartridge slot</div>
-                  </div>
+                </div>
+                {/* Title text — its own row, centered above the slot grid */}
+                <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                  <div style={{
+                    fontSize: isMobile ? 18 : 26, fontWeight: 900, color: '#f0f4f8',
+                    fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                    textShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                  }}>SAVE PROGRESS</div>
+                  <div style={{
+                    fontSize: isMobile ? 10 : 12, color: '#FFFFFF', marginTop: 4,
+                    fontFamily: '"Inter", sans-serif',
+                  }}>Simpan & muat rangkaianmu ke cartridge slot</div>
                 </div>
 
                 {/* Status message */}
@@ -7030,7 +7030,7 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Left pins — pushed inward with margin */}
                           <div style={{ display: 'flex', gap: isMobile ? 2 : 3, marginLeft: isMobile ? 4 : 6 }}>
-                            {[0, 1, 2].map(pi => (
+                            {[0, 1].map(pi => (
                               <div key={pi} style={{ width: isMobile ? 5 : 7, height: isMobile ? 7 : 9, borderRadius: 2,
                                 background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
@@ -7068,7 +7068,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           </button>
                           {/* Right pins — pushed inward with margin */}
                           <div style={{ display: 'flex', gap: isMobile ? 2 : 3, marginRight: isMobile ? 4 : 6 }}>
-                            {[0, 1, 2].map(pi => (
+                            {[0, 1].map(pi => (
                               <div key={pi} style={{ width: isMobile ? 5 : 7, height: isMobile ? 7 : 9, borderRadius: 2,
                                 background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
@@ -7300,7 +7300,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           ))}
                         </div>
                         {/* Action: Load only + History */}
-                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 150 : 165, justifyContent: 'flex-end' }}>
+                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 150 : 165, justifyContent: 'flex-start' }}>
                           {/* History button for auto save */}
                           <button
                             onClick={async () => {
@@ -7421,7 +7421,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           ))}
                         </div>
                         {/* Price display at bottom */}
-                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 150 : 165, alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8, minHeight: isMobile ? 150 : 165, alignItems: 'center', justifyContent: 'flex-start' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6 }}>
                             <Coins size={isMobile ? 12 : 16} style={{ color: '#fbbf24' }} />
                             <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: isMobile ? 14 : 18, fontWeight: 700, color: '#fbbf24', letterSpacing: 0.5 }}>100</span>
