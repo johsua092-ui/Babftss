@@ -7032,7 +7032,7 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Left pins — pushed inward with margin */}
                           <div style={{ display: 'flex', gap: isMobile ? 2 : 3, marginLeft: isMobile ? 4 : 6 }}>
-                            {[0, 1].map(pi => (
+                            {(isMobile ? [0, 1] : [0, 1, 2, 3, 4]).map(pi => (
                               <div key={pi} style={{ width: isMobile ? 5 : 7, height: isMobile ? 7 : 9, borderRadius: 2,
                                 background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
@@ -7070,7 +7070,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           </button>
                           {/* Right pins — pushed inward with margin */}
                           <div style={{ display: 'flex', gap: isMobile ? 2 : 3, marginRight: isMobile ? 4 : 6 }}>
-                            {[0, 1].map(pi => (
+                            {(isMobile ? [0, 1] : [0, 1, 2, 3, 4]).map(pi => (
                               <div key={pi} style={{ width: isMobile ? 5 : 7, height: isMobile ? 7 : 9, borderRadius: 2,
                                 background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
