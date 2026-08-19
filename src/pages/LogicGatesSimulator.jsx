@@ -7261,21 +7261,21 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Title: AUTO SAVE with sync icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <RefreshCw size={20} style={{ color: '#fbbf24' }} />
+                            <RefreshCw size={24} style={{ color: '#fbbf24' }} />
                             <span style={{
-                              fontSize: 16, fontWeight: 900, color: '#fbbf24',
-                              fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                              fontSize: 18, fontWeight: 900, color: '#fbbf24',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: 1.2,
                               textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                             }}>AUTO SAVE</span>
                           </div>
                           {/* Info: last saved */}
-                          <div style={{ fontSize: 10, color: '#5a7a9a', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, color: '#5a7a9a', textAlign: 'center' }}>
                             {asHasData ? (
                               <>
                                 <span style={{ color: '#8aa4c0' }}>{asCompCount} comp</span>
                                 <span style={{ margin: '0 4px' }}>·</span>
                                 <span style={{ color: '#8aa4c0' }}>{asWireCount} wire</span>
-                                {relTime && <><span style={{ margin: '0 4px' }}>·</span><span style={{ fontSize: 9 }}>{relTime}</span></>}
+                                {relTime && <><span style={{ margin: '0 4px' }}>·</span><span style={{ fontSize: 10 }}>{relTime}</span></>}
                               </>
                             ) : (
                               <span style={{ fontStyle: 'italic', color: '#4a6a8a' }}>Belum ada data</span>
@@ -7389,16 +7389,16 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Title: BUY SLOT with plus icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Plus size={22} style={{ color: '#4ade80' }} />
+                            <Plus size={26} style={{ color: '#4ade80' }} />
                             <span style={{
-                              fontSize: 16, fontWeight: 900, color: '#4ade80',
-                              fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                              fontSize: 18, fontWeight: 900, color: '#4ade80',
+                              fontFamily: '"Inter", sans-serif', letterSpacing: 1.2,
                               textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                             }}>BUY SLOT</span>
                           </div>
                           {/* Price info */}
-                          <div style={{ fontSize: 10, color: '#5a7a9a', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Coins size={11} style={{ color: '#fbbf24' }} />
+                          <div style={{ fontSize: 11, color: '#5a7a9a', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Coins size={13} style={{ color: '#fbbf24' }} />
                             <span style={{ color: '#fbbf24', fontWeight: 700 }}>100</span>
                             <span>gold per slot</span>
                           </div>
