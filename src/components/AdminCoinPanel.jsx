@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Users, Shield, Coins, Send, History, RefreshCw, AlertTriangle, Search } from 'lucide-react';
+import { X, Users, Shield, Coins, Send, History, RefreshCw, AlertTriangle, Search, Infinity as InfinityIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
@@ -317,8 +317,11 @@ export default function AdminCoinPanel({ onClose }) {
                       <span style={{ color: '#475569', fontFamily: 'Orbitron,sans-serif', fontSize: 10, minWidth: 24 }}>#{i + 1}</span>
                       <span style={{ color: '#e2e8f0' }}>{m.displayName || m.email || m.uid.slice(0, 16)}</span>
                     </div>
-                    <span style={{ color: '#fbbf24', fontFamily: 'Orbitron,sans-serif', fontWeight: 700, fontSize: 12 }}>
-                      {m.gold || 0} <Coins size={10} style={{ verticalAlign: -1 }} />
+                    <span style={{ color: '#fbbf24', fontFamily: 'Orbitron,sans-serif', fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {m.isAdmin
+                        ? <InfinityIcon size={14} color="#fbbf24" strokeWidth={2.5} />
+                        : <>{m.gold || 0} <Coins size={10} style={{ verticalAlign: -1 }} /></>
+                      }
                     </span>
                   </div>
                 ))}

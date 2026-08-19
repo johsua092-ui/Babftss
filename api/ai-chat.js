@@ -69,6 +69,7 @@ export default async function handler(req, res) {
           email: m.email,
           displayName: m.displayName,
           gold: m.gold,
+          isAdmin: isAdmin({ sub: m.uid, email: m.email }),
         }));
         return res.status(200).json({ members: safe, total: safe.length });
       } catch (e) {
