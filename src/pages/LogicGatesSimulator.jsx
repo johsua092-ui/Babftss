@@ -1814,6 +1814,12 @@ export default function LogicGatesSimulator({ setPage }) {
 
   const doSaveSlot = async (slotIndex) => {
     const slot = saveSlots[slotIndex];
+    // Prevent saving empty circuit — minimum 1 component required
+    if (!components || components.length === 0) {
+      setSaveStatus({ message: 'Tidak bisa menyimpan! Letakkan minimal 1 komponen terlebih dahulu.', type: 'error' });
+      setSaveConfirm(null);
+      return;
+    }
     setSaveLoading(true);
     setSaveStatus(null);
     try {
@@ -6817,10 +6823,10 @@ export default function LogicGatesSimulator({ setPage }) {
 
 
 
-                {/* Slot notification overlay — covers slot grid, auto-dismiss 3s */}
+                {/* Slot notification overlay — centered within save panel, doesn't scroll */}
                 {saveStatus && (
                   <div style={{
-                    position: 'absolute', left: 8, right: 8, top: 120, zIndex: 200,
+                    position: 'absolute', inset: 0, zIndex: 200,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     pointerEvents: 'none',
                     animation: 'swapOverlayFadeIn 0.3s ease-out',
