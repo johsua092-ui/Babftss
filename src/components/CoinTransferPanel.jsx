@@ -591,3 +591,4 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
     </div>
   );
 }
+// redeploy trigger
