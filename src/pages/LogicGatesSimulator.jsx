@@ -7426,7 +7426,7 @@ export default function LogicGatesSimulator({ setPage }) {
                             <Coins size={16} style={{ color: '#fbbf24' }} />
                             <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 18, fontWeight: 700, color: '#fbbf24', letterSpacing: 0.5 }}>100</span>
                           </div>
-                          <span style={{ fontSize: 10, color: '#5a7a9a', fontFamily: '"Inter", sans-serif' }}>GOLD</span>
+                          <span style={{ fontSize: 10, color: '#FFFFFF', fontFamily: '"Inter", sans-serif' }}>GOLD</span>
                         </div>
                       </div>
                     );
