@@ -49,15 +49,23 @@ export default function MenuButton3D({
     const shadow = interactive
         ? [
               `0 ${slabH}px 0 ${dark}`,                              // bottom "lip" — efek 3D extrusion
-              `0 ${ambientOffset}px ${ambientBlur}px rgba(0,0,0,0.45)`, // ambient drop shadow
-              `inset 0 2px 0 rgba(255,255,255,0.4)`,                 // top inner highlight (glossy)
-              `inset 0 -2px 0 ${dark}`,                              // bottom inner shadow (depth)
+              `0 ${ambientOffset}px ${ambientBlur}px rgba(0,0,0,0.5)`, // ambient drop shadow
+              `inset 0 1px 0 rgba(255,255,255,0.18)`,              // top inner highlight (subtle glossy, NOT 40% — avoids faded look)
+              `inset 0 -2px 0 rgba(0,0,0,0.25)`,                   // bottom inner shadow (depth, dark not accent-dark)
           ].join(', ')
         : 'none';
 
     const transform = pressed
         ? 'translateY(4px)'
         : (hovered && interactive ? 'translateY(-2px)' : 'translateY(0)');
+
+    // Background: layered gradient supaya 3D feel dapet tanpa "kabut putih".
+    // Layer 1 (top): subtle white 8% di top edge — glossy rim
+    // Layer 2 (bottom): subtle black 22% di bottom edge — depth shading
+    // Layer 3 (base): pure accent color
+    // Hasil: face tetap vibrant (pure accent), tapi ada sense 3D dari top/bottom shading.
+    const bgUnlocked = `linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.22) 100%), ${accent}`;
+    const bgLocked = '#1a1f2e';
 
     return (
         <button
@@ -71,8 +79,8 @@ export default function MenuButton3D({
                 padding: '16px 20px',
                 borderRadius: 18,
                 cursor: 'pointer',
-                // Locked: bg abu-abu gelap + border merah. Unlocked: bg accent + border deepest
-                backgroundColor: locked ? '#1a1f2e' : accent,
+                // Locked: bg abu-abu gelap + border merah. Unlocked: gradient 3D face + border deepest
+                background: locked ? bgLocked : bgUnlocked,
                 border: `3px solid ${locked ? '#3f1d1d' : deepest}`,
                 display: 'flex',
                 alignItems: 'center',
