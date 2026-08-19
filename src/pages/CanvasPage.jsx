@@ -62,6 +62,7 @@ function DrawTab({ token }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [drawing, setDrawing] = useState(false);
+    const drawingRef = useRef(false); // ref for instant sync in touch handlers (state is async)
     const [color, setColor] = useState('#2dd4bf');
     const [lineWidth, setLineWidth] = useState(3);
     const [tool, setTool] = useState('pen'); // pen | eraser
@@ -253,6 +254,7 @@ function DrawTab({ token }) {
 
     const startDraw = (e) => {
         e.preventDefault();
+        drawingRef.current = true;  // instant sync for touch
         setDrawing(true);
         const pos = getPos(e);
         lastPos.current = pos;
@@ -264,7 +266,7 @@ function DrawTab({ token }) {
     };
 
     const moveDraw = (e) => {
-        if (!drawing) return;
+        if (!drawingRef.current) return;  // use ref, not async state
         e.preventDefault();
         const pos = getPos(e);
         const ctx = canvasRef.current.getContext('2d');
@@ -276,7 +278,8 @@ function DrawTab({ token }) {
     };
 
     const endDraw = () => {
-        if (!drawing) return;
+        if (!drawingRef.current) return;  // use ref, not async state
+        drawingRef.current = false;  // instant sync
         setDrawing(false);
         const ctx = canvasRef.current.getContext('2d');
         ctx.globalCompositeOperation = 'source-over';
