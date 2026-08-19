@@ -6701,7 +6701,19 @@ export default function LogicGatesSimulator({ setPage }) {
                   }}
                 >X</button>
 
-                {/* Title row — gold badge + search (left) + title (absolute center) */}
+                {/* Title text — its own row, centered ABOVE gold/search */}
+                <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                  <div style={{
+                    fontSize: isMobile ? 18 : 26, fontWeight: 900, color: '#f0f4f8',
+                    fontFamily: '"Inter", sans-serif', letterSpacing: 1,
+                    textShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                  }}>SAVE PROGRESS</div>
+                  <div style={{
+                    fontSize: isMobile ? 10 : 12, color: '#FFFFFF', marginTop: 4,
+                    fontFamily: '"Inter", sans-serif',
+                  }}>Simpan & muat rangkaianmu ke cartridge slot</div>
+                </div>
+                {/* Gold badge + search row — BELOW title */}
                 <div style={{ display: 'flex', alignItems: 'center', position: 'relative', paddingRight: 40, minHeight: 50, marginBottom: 8 }}>
                   {/* Gold badge — top-left corner */}
                   {user && goldInfo && (() => {
@@ -6759,18 +6771,8 @@ export default function LogicGatesSimulator({ setPage }) {
                     )}
                   </div>
                 </div>
-                {/* Title text — its own row, centered above the slot grid */}
-                <div style={{ textAlign: 'center', marginBottom: 12 }}>
-                  <div style={{
-                    fontSize: isMobile ? 18 : 26, fontWeight: 900, color: '#f0f4f8',
-                    fontFamily: '"Inter", sans-serif', letterSpacing: 1,
-                    textShadow: '0 2px 4px rgba(0,0,0,0.4)',
-                  }}>SAVE PROGRESS</div>
-                  <div style={{
-                    fontSize: isMobile ? 10 : 12, color: '#FFFFFF', marginTop: 4,
-                    fontFamily: '"Inter", sans-serif',
-                  }}>Simpan & muat rangkaianmu ke cartridge slot</div>
-                </div>
+
+
 
                 {/* Status message */}
                 {saveStatus && (
@@ -7261,21 +7263,21 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Title: AUTO SAVE with sync icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 10 }}>
-                            <RefreshCw size={isMobile ? 16 : 28} style={{ color: '#fbbf24' }} />
+                            <RefreshCw size={isMobile ? 20 : 28} style={{ color: '#fbbf24' }} />
                             <span style={{
-                              fontSize: isMobile ? 11 : 22, fontWeight: 900, color: '#fbbf24',
+                              fontSize: isMobile ? 15 : 22, fontWeight: 900, color: '#fbbf24',
                               fontFamily: '"Inter", sans-serif', letterSpacing: isMobile ? 0.5 : 1.5,
                               textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                             }}>AUTO SAVE</span>
                           </div>
                           {/* Info: last saved */}
-                          <div style={{ fontSize: isMobile ? 8 : 12, color: '#5a7a9a', textAlign: 'center' }}>
+                          <div style={{ fontSize: isMobile ? 8 : 12, color: '#FFFFFF', textAlign: 'center' }}>
                             {asHasData ? (
                               <>
-                                <span style={{ color: '#8aa4c0' }}>{asCompCount} comp</span>
-                                <span style={{ margin: '0 4px' }}>·</span>
-                                <span style={{ color: '#8aa4c0' }}>{asWireCount} wire</span>
-                                {relTime && <><span style={{ margin: '0 4px' }}>·</span><span style={{ fontSize: isMobile ? 7 : 11 }}>{relTime}</span></>}
+                                <span style={{ color: '#FFFFFF' }}>{asCompCount} component</span>
+                                <span style={{ margin: '0 4px', color: '#FFFFFF' }}>·</span>
+                                <span style={{ color: '#FFFFFF' }}>{asWireCount} wire</span>
+                                {relTime && <><span style={{ margin: '0 4px', color: '#FFFFFF' }}>·</span><span style={{ fontSize: isMobile ? 7 : 11, color: '#FFFFFF' }}>{relTime}</span></>}
                               </>
                             ) : (
                               <span style={{ fontStyle: 'italic', color: '#4a6a8a' }}>Belum ada data</span>
@@ -7389,9 +7391,9 @@ export default function LogicGatesSimulator({ setPage }) {
                         }}>
                           {/* Title: BUY SLOT with plus icon */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 10 }}>
-                            <Plus size={isMobile ? 18 : 30} style={{ color: '#4ade80' }} />
+                            <Plus size={isMobile ? 22 : 30} style={{ color: '#4ade80' }} />
                             <span style={{
-                              fontSize: isMobile ? 11 : 22, fontWeight: 900, color: '#4ade80',
+                              fontSize: isMobile ? 15 : 22, fontWeight: 900, color: '#4ade80',
                               fontFamily: '"Inter", sans-serif', letterSpacing: isMobile ? 0.5 : 1.5,
                               textShadow: '0 2px 4px rgba(0,0,0,0.5)',
                             }}>BUY SLOT</span>
