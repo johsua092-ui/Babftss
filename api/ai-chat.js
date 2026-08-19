@@ -271,22 +271,28 @@ export default async function handler(req, res) {
       if (action === "mp_checkout") {
         const cart = await getCart(user.sub);
         if (cart.items.length === 0) return res.status(400).json({ error: "Cart is empty" });
-        const userGold = await getUserGold(user.sub);
-        if (!userGold.exists) return res.status(404).json({ error: "User not found" });
-        if (userGold.gold < cart.totalGold) {
-          return res.status(402).json({ error: `Insufficient gold (need ${cart.totalGold}, have ${userGold.gold})` });
+        const admin = isAdmin(user);
+        if (!admin) {
+          const userGold = await getUserGold(user.sub);
+          if (!userGold.exists) return res.status(404).json({ error: "User not found" });
+          if (userGold.gold < cart.totalGold) {
+            return res.status(402).json({ error: `Insufficient gold (need ${cart.totalGold}, have ${userGold.gold})` });
+          }
+          await deductGoldForCheckout(user.sub, cart.totalGold, {
+            itemCount: cart.items.length,
+            totalGold: cart.totalGold,
+          });
         }
-        await deductGoldForCheckout(user.sub, cart.totalGold, {
-          itemCount: cart.items.length,
-          totalGold: cart.totalGold,
-        });
-        const result = await checkout(user.sub, email);
+        const result = await checkout(user.sub, email, { adminMode: admin });
         return res.status(200).json({
           ok: true,
           orderId: result.orderId,
           totalGold: result.totalGold,
           itemCount: result.itemCount,
-          message: `Checkout berhasil! ${result.itemCount} item, ${result.totalGold} gold terpakai.`,
+          adminMode: admin,
+          message: admin
+            ? `Checkout berhasil (ADMIN — free)! ${result.itemCount} item. Seller tetap dibayar dari pool platform.`
+            : `Checkout berhasil! ${result.itemCount} item, ${result.totalGold} gold terpakai.`,
         });
       }
       return res.status(400).json({ error: "Unknown marketplace action" });
