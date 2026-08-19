@@ -3,6 +3,7 @@ import { askAI } from "../lib/ai-client.js";
 import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead, writeInboxMessage, createAnnouncement, getAnnouncements, editAnnouncement, deleteAnnouncement } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 import { getProducts, getCart, getCartCount, addToCart, updateCartQuantity, removeFromCart, clearCart, checkout, getOrders, getUserGold, deductGoldForCheckout } from "../lib/marketplace.js";
+import { writeAuditLog } from "../lib/auditLog.js";
 
 export default async function handler(req, res) {
   applyCors(req, res, "GET, POST, OPTIONS");
@@ -202,7 +203,7 @@ export default async function handler(req, res) {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
         const cart = await getCart(user.sub);
-        return res.status(200).json(cart);
+        return res.status(200).json({ ...cart, admin: isAdmin(user) });
       } catch (e) {
         console.error("[ai-chat] mp_cart error:", e?.message || e);
         return res.status(500).json({ error: "Internal server error" });
@@ -213,7 +214,7 @@ export default async function handler(req, res) {
         const user = await authenticateRequest(req);
         if (!user) return res.status(401).json({ error: "Login required" });
         const count = await getCartCount(user.sub);
-        return res.status(200).json({ count });
+        return res.status(200).json({ count, admin: isAdmin(user) });
       } catch (e) {
         console.error("[ai-chat] mp_count error:", e?.message || e);
         return res.status(500).json({ error: "Internal server error" });
@@ -387,6 +388,7 @@ export default async function handler(req, res) {
         // Write inbox message for recipient
         const inboxResult = await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
         console.log("[ai-chat] transfer admin: inboxResult=%j", inboxResult);
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "admin_transfer", targetUid: resolvedUid, targetEmail: targetEmail || null, amount, meta: { note: note || null, taxFree: true, newBalance: nb }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb, inbox: inboxResult });
       }
       try {
@@ -421,6 +423,7 @@ export default async function handler(req, res) {
       const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
       // Write inbox message for recipient
       const inboxResult = await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
+      await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "grant", targetUid: resolvedUid, targetEmail: targetEmail || null, amount, meta: { note: note || null, newBalance: nb }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
       return res.status(200).json({ message: "Gold di-grant", uid: resolvedUid, amount, newBalance: nb, inbox: inboxResult });
     }
 
@@ -435,6 +438,7 @@ export default async function handler(req, res) {
         // Exclude admin UID from receiving
         const excludeUids = excludeSelf !== false ? [uid] : [];
         const result = await bulkGrantAll(amount, uid, excludeUids, note || "Bulk grant by admin");
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "bulk_grant", amount, meta: { note: note || "Bulk grant by admin", count: result.count, totalGranted: result.totalGranted, excludeSelf: excludeSelf !== false }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({
           message: `Berhasil bagi ${amount} gold ke ${result.count} member`,
           ...result,
@@ -461,6 +465,7 @@ export default async function handler(req, res) {
       }
       try {
         const result = await deductGold(resolvedUid, amount, "admin_deduct", { deductedBy: uid, note: note || null });
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "deduct", targetUid: resolvedUid, targetEmail: targetEmail || null, amount: -amount, meta: { note: note || null, newBalance: result }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({ message: `Berhasil tarik ${amount} gold`, uid: resolvedUid, amount, newBalance: result });
       } catch (e) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Saldo member kurang", gold: await getGoldBalance(resolvedUid) });
@@ -504,6 +509,7 @@ export default async function handler(req, res) {
       }
       try {
         const result = await bulkDeductAll(amount, uid, note || "Bulk deduct by admin");
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "bulk_deduct", amount: -amount, meta: { note: note || "Bulk deduct by admin", count: result.count, totalDeducted: result.totalDeducted }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({
           message: `Berhasil tarik max ${amount} gold dari ${result.count} member`,
           ...result,
@@ -553,6 +559,7 @@ export default async function handler(req, res) {
           createdByEmail: user.email || null,
           createdByName: user.name || "Admin",
         });
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "announcement_create", targetUid: String(result.id), amount: 0, meta: { title: (title || "").slice(0, 100), body: (body || "").slice(0, 200), recipientCount: result.recipientCount }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({ ok: true, ...result });
       } catch (e) {
         if (e.message.includes("wajib") || e.message.includes("max")) return res.status(400).json({ error: e.message });
@@ -569,6 +576,7 @@ export default async function handler(req, res) {
       }
       try {
         const result = await editAnnouncement(announcementId, { title, body }, uid);
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "announcement_edit", targetUid: announcementId, amount: 0, meta: { title: title ? String(title).slice(0, 100) : null, body: body ? String(body).slice(0, 200) : null }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({ ok: true, ...result });
       } catch (e) {
         if (e.message.includes("tidak ditemukan")) return res.status(404).json({ error: e.message });
@@ -586,6 +594,7 @@ export default async function handler(req, res) {
       }
       try {
         const result = await deleteAnnouncement(announcementId, uid);
+        await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "announcement_delete", targetUid: announcementId, amount: 0, meta: {}, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({ ok: true, ...result });
       } catch (e) {
         if (e.message.includes("tidak ditemukan")) return res.status(404).json({ error: e.message });

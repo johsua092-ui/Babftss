@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, ShoppingCart, Trash2, Minus, Plus, Loader2, CheckCircle2, Package } from 'lucide-react';
+import { X, ShoppingCart, Trash2, Minus, Plus, Loader2, CheckCircle2, Package, Infinity as InfinityIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -12,6 +12,7 @@ export default function CartPanel({ onClose, onCheckoutSuccess }) {
     const [updating, setUpdating] = useState(false);
     const [checkingOut, setCheckingOut] = useState(false);
     const [orderResult, setOrderResult] = useState(null);
+    const [isAdmin, setIsAdmin] = useState(false);
 
     const apiCall = useCallback(async (action, method = 'GET', body = null) => {
         const token = await getIdToken();
@@ -33,6 +34,7 @@ export default function CartPanel({ onClose, onCheckoutSuccess }) {
         const { ok, data } = await apiCall('cart');
         if (ok && data.items) {
             setItems(data.items);
+            setIsAdmin(!!data.admin);
         }
         setLoading(false);
     }, [apiCall]);
@@ -232,10 +234,14 @@ export default function CartPanel({ onClose, onCheckoutSuccess }) {
                                 Total <strong style={{ color: '#e2e8f0' }}>{totalItems}</strong> item
                             </span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 22, fontWeight: 800, color: '#fbbf24' }}>
-                                    {totalGold}
-                                </span>
-                                <span style={{ fontSize: 11, color: '#94a3b8' }}>coins</span>
+                                {isAdmin ? (
+                                    <InfinityIcon size={28} color="#fbbf24" strokeWidth={2.5} />
+                                ) : (
+                                    <span style={{ fontFamily: 'Orbitron,sans-serif', fontSize: 22, fontWeight: 800, color: '#fbbf24' }}>
+                                        {totalGold}
+                                    </span>
+                                )}
+                                <span style={{ fontSize: 11, color: '#94a3b8' }}>{isAdmin ? 'unlimited' : 'coins'}</span>
                             </div>
                         </div>
                         <button
