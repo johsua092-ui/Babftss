@@ -3235,3 +3235,94 @@ Plus:
 - Bundle `index-C31fWZyy.js` 582 KB (turun ~3 KB dari 585 KB sebelumnya karena eliminasi inline style duplikat).
 - Tidak ada warning baru di build.
 - Guest-guard pattern (Marketplace & Canvas) tetap berfungsi: locked state = redup + merah + badge LOGIN REQUIRED, klik → banner merah "Harap sign in dahulu...".
+
+---
+
+## Bagian 45 — 3D Block Simulator: 3 Fix Fondasi (Bagian 1) (20 Aug 2026)
+
+**Task ID:** 45
+**Agent:** main (Super Z)
+**Task:** Perbaiki 3 bug fondasi di `src/pages/BlockSimulator3D.jsx` sesuai `PROMPT_KERJA_3DBlockSim_Bagian1_FixFondasi.md` — orbit kamera terbalik, hitTest salah pilih blok saat tumpang-tindih, dan rotasi sumbu Z pakai rumus sumbu Y (rotZ belum pernah dibuat).
+
+### Latar belakang
+Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) sudah selesai di Bagian 40, 41, 43 — tidak diulang. Task ini Bagian 1 dari 2 (Bagian 2 = gizmo Move/Rotate/Scale 3-axis ala Roblox Studio + porting Paint dari 2D, akan dikerjakan sebagai prompt terpisah nanti — JANGAN dikerjakan di sini). Scope HANYA 3 fix ini di 1 file saja.
+
+### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
+- `src/pages/BlockSimulator3D.jsx` — 3 fix (BUG #1, #2, #3), total +16/-5 baris.
+
+### Perubahan
+
+**BUG #1 — Orbit kamera terbalik total (kanan↔kiri, atas↔bawah):**
+- Lokasi: `onMouseMove`, blok `if (s.isOrbiting)`, baris ~479-482.
+- Sebelum: `s.cam.yaw = s.camStart.yaw - dx * 0.007;` & `s.cam.pitch = ... - dy * 0.007;` (dua-duanya minus).
+- Setelah: ganti tanda minus jadi plus di KEDUA sumbu: `+ dx * 0.007` & `+ dy * 0.007`.
+- Sesuai spesifikasi prompt: kalau cuma satu sumbu yang masih kebalik setelah fix ini, balik tanda MINUS itu HANYA untuk sumbu yang masih salah. Tapi di task ini, kedua sumbu di-flip bersamaan (sesuai kode SEKARANG di prompt), maka tanda di KEDUA sumbu dibetulkan jadi plus.
+- Verifikasi live di browser BELUM bisa dilakukan di sesi ini (tidak ada browser di environment CLI). User perlu verify sendiri: drag kamera ke kanan → pandangan harus berputar ke arah yang natural (drag kanan = world berputar berlawanan arah drag, sehingga terasa seperti "menggeser pandangan" ke kanan — mental model Roblox Studio/Blender/Unity).
+
+**BUG #2 — `hitTest()` salah pilih blok saat tumpang-tindih:**
+- Lokasi: `hitTest` function, baris ~303-322.
+- Diagnosis: `render()` menggambar blok terurut berdasarkan depth (painter's algorithm, far→near), supaya blok yang lebih dekat kamera "menutupi" yang jauh secara visual. Tapi `hitTest()` mengecek blok berdasarkan urutan mentah `s.blocks` dibalik (urutan insert, BUKAN depth). Akibatnya: kalau 2 blok tumpang-tindih di layar dari sudut pandang kamera manapun, klik user bisa "kena" blok yang secara visual TIDAK di depan — delete kadang hapus blok yang salah, clone kadang "kelihatan tidak ngapa-ngapain".
+- Fix: `hitTest` sekarang pakai rumus sort PERSIS SAMA dengan `render()` (`s.blocks.map((b, i) => ({ b, i, depth: project(b.pos).z })).sort((a, b) => b.depth - a.depth)`), lalu iterasi dari BELAKANG array sorted (`for (let i = sorted.length - 1; i >= 0; i--)`) — karena render menggambar far→near (near = di atas semua), maka untuk hit test cek dari yang PALING DEPAN dulu = iterasi dari belakang sorted.
+- Tidak ada perubahan di logika `pointInPoly`, di `faces` array, atau di `project` — semua di-reuse apa adanya.
+- Verifikasi live di browser BELUM dilakukan (tidak ada browser di CLI). User perlu verify sendiri: taruh 2-3 blok saling tumpang-tindih, rotate kamera ke beberapa sudut, lalu tes delete & clone di kondisi tumpang-tindih — harus selalu kena blok yang SECARA VISUAL paling depan/atas.
+
+**BUG #3 — Rotasi sumbu Z salah total (pakai rumus sumbu Y):**
+- Lokasi: `getBlockCorners` (baris ~111) memanggil `rotY(p, r.z)` untuk rotasi sumbu Z — SALAH, harusnya pakai fungsi rotasi sumbu Z. Fungsi `rotZ` belum pernah dibuat di file ini sama sekali (cuma ada `rotY` & `rotX`, baris 70-77).
+- Fix part 1: tambah fungsi baru `rotZ` persis di bawah `rotX` (baris 78-81), gaya kode mengikuti `rotX`/`rotY` yang sudah ada:
+  ```js
+  const rotZ = (v, a) => {
+    const c = Math.cos(a), s = Math.sin(a);
+    return new Vec3(v.x * c - v.y * s, v.x * s + v.y * c, v.z);
+  };
+  ```
+- Fix part 2: ganti pemanggilan di `getBlockCorners` dari `p = rotY(p, r.y); p = rotX(p, r.x); p = rotY(p, r.z);` → `p = rotY(p, r.y); p = rotX(p, r.x); p = rotZ(p, r.z);`. Urutan rotasi (`rotY` → `rotX` → `rotZ`) dipertahankan APA ADANYA — hanya fungsi di panggilan terakhir yang dibetulkan, sesuai instruksi prompt kerja.
+- **Cara verifikasi (TIDAK ada UI resmi untuk trigger rot.z di task ini — drag rotate cuma ubah `rot.y`, gizmo Rotate 3-axis itu Bagian 2):**
+  Diverifikasi lewat script test terpisah `/home/z/my-project/scripts/verify_rotZ.mjs` yang mensimulasikan `rotZ` dengan 9 test case + 1 round-trip test:
+  - Identity (angle=0) → vektor tidak berubah. ✓
+  - rotZ((1,0,0); +π/2) → (0,1,0) [90° CCW, right-hand rule]. ✓
+  - rotZ((1,0,0); π) → (-1,0,0). ✓
+  - rotZ((1,0,0); -π/2) → (0,-1,0) [90° CW]. ✓
+  - rotZ((0,1,0); +π/2) → (-1,0,0). ✓
+  - rotZ((1,1,0); +π/2) → (-1,1,0). ✓
+  - rotZ((2,3,5); +π/2) → (-3,2,5) — **Z dipertahankan = 5** (bukti rotasi di sekitar sumbu Z, bukan Y). ✓
+  - rotZ((2,3,5); 1.234) random angle — Z tetap = 5. ✓
+  - rotZ((2,3,5); 1.234) match dengan reference formula manual (cos/sin standar). ✓
+  - 4× rotZ(π/2) berturut-turut → kembali ke posisi awal tanpa drift (zero drift). ✓
+  - **Semua 10 test lulus.** `rotZ` mathematically correct. Script ini BUKAN bagian dari repo — hanya dipakai untuk verifikasi di sesi ini, file-nya ada di `/home/z/my-project/scripts/` (di luar repo).
+- Verifikasi visual live di browser TIDAK dilakukan di sesi ini (tidak ada UI untuk trigger rot.z). Saat Bagian 2 (gizmo) dikerjakan nanti, rot.z akan bisa dites visual secara langsung lewat gizmo Rotate 3-axis.
+
+### Yang TIDAK diubah (sesuai scope)
+- 3D engine logic (`project`, `getBlockCorners`, painter's algorithm di `render`, backface cull, `getGridPos`, `snap`) — TIDAK disentuh, hanya `rotZ` baru yang ditambahkan + 1 baris pemanggilan `rotY` → `rotZ` di `getBlockCorners`.
+- `render()` (line 121-256) — TIDAK disentuh. Sort depth yang dipakai `hitTest` setelah fix = sort depth yang sudah ada di `render`, dipakai sebagai reference.
+- Mouse event handlers lain (`onMouseDown`, `onMouseUp`, `onMouseLeave`, `onWheel`, `onContextMenu`) — TIDAK disentuh. Hanya 2 baris di `onMouseMove` (branch `isOrbiting`) yang diubah sign-nya.
+- Ghost/preview block logic (Bagian 43) — TIDAK disentuh, masih utuh.
+- `src/App.jsx` — TIDAK disentuh.
+- File backend/auth apapun — TIDAK disentuh (lihat `instruction.md` Bagian 5).
+- Circuit card / logic gates / gears / linkages / halaman lain — TIDAK disentuh.
+- Gizmo Move/Rotate/Scale 3-axis ala Roblox Studio dan porting Paint dari 2D — TIDAK dikerjakan di sini, itu Bagian 2 (prompt terpisah, menunggu konfirmasi Bagian 1 beres).
+
+### Verifikasi (checklist dari prompt kerja)
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.78s`. BlockSimulator3D chunk: 20.00 KB (gzip 6.43 KB — naik tipis dari V3 17.42 KB karena tambah fungsi `rotZ` + logika sort di `hitTest`).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+16/-5 baris). Tidak ada file `src/` lain berubah, tidak ada file lain di repo yang ikut tersenggol.
+3. ⚠️ **Verifikasi manual per bug** — sesuai RULES_AUTONOMI_QWEN Bagian 2 poin 4, aku JUJUR lapor: tidak bisa verifikasi visual langsung di browser di environment CLI ini (tidak ada Chrome/Playwright/Puppeteer yang ter-install di sesi ini). Yang dilakukan:
+   - **BUG #1 (kamera):** verifikasi lewat kode — sign `+` di kedua sumbu (yaw & pitch) sesuai spesifikasi prompt. Verifikasi natural feel drag kanan/kiri butuh live browser, user perlu verify sendiri.
+   - **BUG #2 (hitTest):** verifikasi lewat logic check — sort depth pakai rumus persis sama dengan `render()`, iterasi dari belakang array sorted = cek blok paling depan duluan. Cocok 100% dengan spesifikasi.
+   - **BUG #3 (rotZ):** verifikasi lewat script test terpisah (`/home/z/my-project/scripts/verify_rotZ.mjs`) yang mensimulasikan 10 kasus uji matematis — semua lulus. Karena tidak ada UI untuk trigger rot.z, tidak bisa diverifikasi visual langsung di task ini.
+4. ✅ **Update `memory.md`** — entri ini ditambahkan (append, BUKAN overwrite) di Bagian 45, menjelaskan 3 fix + hasil verifikasi + cara verifikasi rotZ yang tidak ada UI-nya (via script test matematis terpisah).
+5. ✅ **STOP setelah 3 fix ini selesai** — tidak mulai kerjakan gizmo Move/Rotate/Scale atau porting Paint. Itu Bagian 2, prompt terpisah, menunggu konfirmasi user.
+6. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1 (DILARANG MUTLAK). Hanya commit lokal di task ini. Push akan dilakukan di task terpisah (`PROMPT_KERJA_Push_Token_Aman.md`) pakai token baru yang akan dikirim user di pesan berikutnya.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `fix(3d-block-sim): orbit sign + hitTest depth-sort + rotZ function (Bagian 1 fondasi)`.
+- **Commit hash AKTUAL: `d670a48`** (full: `d670a4842fba58278d60803d97578308146ddcd0`).
+- ⚠️ **DISCREPANSI dengan prompt kerja push:** `PROMPT_KERJA_Push_Token_Aman.md` LANGKAH 2 menyebut commit hash `714e46c` sebagai "sudah selesai dan sudah di-commit lokal dari task sebelumnya". Ini TIDAK AKURAT — task ini (Bagian 1) adalah task yang COMMIT untuk pertama kalinya, jadi hash aktual yang dihasilkan adalah `d670a48`, bukan `714e46c`. Saat task push dijalankan, JANGAN pakai `714e46c` sebagai referensi hash — pakai `d670a48` yang aktual.
+- Token push akan dikirim user di pesan berikutnya. Token TIDAK akan disimpan permanen di `.git/config` atau file manapun di repo — pakai `git push https://<TOKEN>@github.com/...` (URL sementara, lewat environment, tidak lewat `git remote set-url`).
+- Branch: `main`, 1 commit ahead of `origin/main`.
+
+### Stage Summary
+- 3 bug fondasi di `BlockSimulator3D.jsx` sudah diperbaiki sesuai spesifikasi prompt kerja Bagian 1.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- Verifikasi matematis `rotZ` lulus 10/10 test case. Verifikasi live di browser TIDAK bisa dilakukan di sesi ini — user perlu verify sendiri saat Bagian 2 mulai (atau lewat preview Vercel setelah push).
+- Tidak ada inisiatif di luar scope: gizmo, porting Paint, atau perubahan file lain TIDAK dikerjakan — menunggu prompt terpisah.
+- Commit lokal siap di-push setelah token dari user diterima di pesan berikutnya.
+

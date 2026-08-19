@@ -75,6 +75,10 @@ export default function BlockSimulator3D({ setPage }) {
     const c = Math.cos(a), s = Math.sin(a);
     return new Vec3(v.x, v.y * c - v.z * s, v.y * s + v.z * c);
   };
+  const rotZ = (v, a) => {
+    const c = Math.cos(a), s = Math.sin(a);
+    return new Vec3(v.x * c - v.y * s, v.x * s + v.y * c, v.z);
+  };
 
   const project = useCallback((p) => {
     const s = stateRef.current;
@@ -104,7 +108,7 @@ export default function BlockSimulator3D({ setPage }) {
     ];
     return corners.map(v => {
       let p = new Vec3(v.x * sz.x, v.y * sz.y, v.z * sz.z);
-      p = rotY(p, r.y); p = rotX(p, r.x); p = rotY(p, r.z);
+      p = rotY(p, r.y); p = rotX(p, r.x); p = rotZ(p, r.z);
       return b.pos.add(p);
     });
   };
@@ -302,8 +306,15 @@ export default function BlockSimulator3D({ setPage }) {
 
   const hitTest = (mx, my) => {
     const s = stateRef.current;
-    for (let i = s.blocks.length - 1; i >= 0; i--) {
-      const b = s.blocks[i];
+    // WAJIB pakai rumus sort yang SAMA PERSIS dengan render() supaya konsisten:
+    //   render() menggambar far→near, near berarti digambar TERAKHIR alias "di atas" di layar.
+    //   Untuk hit test, cek dari yang PALING DEPAN (near) dulu → iterasi dari BELAKANG array sorted.
+    //   Sebelumnya hitTest pakai urutan insert mentah (s.blocks dibalik) → bisa kena blok yang
+    //   bukan paling depan secara visual → delete/clone salah pilih blok saat tumpang-tindih.
+    const sorted = s.blocks.map((b, i) => ({ b, i, depth: project(b.pos).z }))
+      .sort((a, b) => b.depth - a.depth);
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const b = sorted[i].b;
       const pc = getBlockCorners(b).map(project);
       const faces = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[3,2,6,7],[0,3,7,4],[1,2,6,5]];
       for (const f of faces) {
@@ -468,8 +479,8 @@ export default function BlockSimulator3D({ setPage }) {
 
       if (s.isOrbiting) {
         const dx = mx - s.dragStart.x, dy = my - s.dragStart.y;
-        s.cam.yaw = s.camStart.yaw - dx * 0.007;
-        s.cam.pitch = Math.max(-1.45, Math.min(1.45, s.camStart.pitch - dy * 0.007));
+        s.cam.yaw = s.camStart.yaw + dx * 0.007;
+        s.cam.pitch = Math.max(-1.45, Math.min(1.45, s.camStart.pitch + dy * 0.007));
         render();
         return;
       }
