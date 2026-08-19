@@ -3314,10 +3314,14 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 
 ### Catatan untuk task berikutnya (push commit)
 - Commit lokal dibuat dengan pesan: `fix(3d-block-sim): orbit sign + hitTest depth-sort + rotZ function (Bagian 1 fondasi)`.
-- **Commit hash AKTUAL: `d670a48`** (full: `d670a4842fba58278d60803d97578308146ddcd0`).
-- ⚠️ **DISCREPANSI dengan prompt kerja push:** `PROMPT_KERJA_Push_Token_Aman.md` LANGKAH 2 menyebut commit hash `714e46c` sebagai "sudah selesai dan sudah di-commit lokal dari task sebelumnya". Ini TIDAK AKURAT — task ini (Bagian 1) adalah task yang COMMIT untuk pertama kalinya, jadi hash aktual yang dihasilkan adalah `d670a48`, bukan `714e46c`. Saat task push dijalankan, JANGAN pakai `714e46c` sebagai referensi hash — pakai `d670a48` yang aktual.
-- Token push akan dikirim user di pesan berikutnya. Token TIDAK akan disimpan permanen di `.git/config` atau file manapun di repo — pakai `git push https://<TOKEN>@github.com/...` (URL sementara, lewat environment, tidak lewat `git remote set-url`).
-- Branch: `main`, 1 commit ahead of `origin/main`.
+- **Commit hash AKTUAL (final, setelah amend): `9cd1542`** (full: `9cd1542af36465f2073f1de363e6056b8c790791`).
+- ⚠️ **DISCREPANSI dengan prompt kerja push:** `PROMPT_KERJA_Push_Token_Aman.md` LANGKAH 2 menyebut commit hash `714e46c` sebagai "sudah selesai dan sudah di-commit lokal dari task sebelumnya". Ini TIDAK AKURAT — task Bagian 1 ini baru dikerjakan dan commit di task yang sama, jadi hash aktualnya `9cd1542` (sebelum amend sempat `d670a48`, tapi hash final setelah memory.md di-amend = `9cd1542`).
+- **PUSH SUDAH SELESAI** (task terpisah sesuai `PROMPT_KERJA_Push_Token_Aman.md`, 20 Aug 2026):
+  - Push biasa (non-force), fast-forward `bbd4cfc..9cd1542 main -> main`, tanpa konflik.
+  - Token dipass via env var `GH_TOKEN`, di-push lewat URL sementara `https://$GH_TOKEN@github.com/...`. Token **TIDAK** tertulis di `.git/config` (verified), **TIDAK** tertinggal di shell history (environment non-interactive, tidak persist).
+  - Verifikasi post-push (Aturan 3): `git ls-remote origin main` mengembalikan hash `9cd1542af36465f2073f1de363e6056b8c790791` = persis HEAD lokal. `git fetch` + `git status` = "up to date with origin/main".
+  - ⚠️ **Token yang dipakai = `ghp_YVnv...` (token LAMA yang sama dengan yang awal sesi).** User diberitahu sebelum push bahwa token ini sudah ter-expose di history chat dan harus di-revoke SETELAH push sukses. **Status revoke: belum dikonfirmasi user — ada di todo user.**
+- Branch: `main`, sync dengan `origin/main` (0 commit ahead, 0 commit behind).
 
 ### Stage Summary
 - 3 bug fondasi di `BlockSimulator3D.jsx` sudah diperbaiki sesuai spesifikasi prompt kerja Bagian 1.
