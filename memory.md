@@ -3330,3 +3330,120 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 - Tidak ada inisiatif di luar scope: gizmo, porting Paint, atau perubahan file lain TIDAK dikerjakan — menunggu prompt terpisah.
 - Commit lokal siap di-push setelah token dari user diterima di pesan berikutnya.
 
+---
+
+## Bagian 46 — 3D Block Simulator: Bagian 2 — Gizmo 3-Axis + Paint Port (20 Aug 2026)
+
+**Task ID:** 46
+**Agent:** main (Super Z)
+**Task:** Implementasi 4 fitur sesuai `PROMPT_KERJA_3DBlockSim_Bagian2_Gizmo_Paint.md` — Move/Rotate/Scale gizmo 3-axis ala Roblox Studio + porting Paint dari 2D (`ColorWheelPicker` modal). Dibangun di atas Bagian 1 (fix orbit sign, hitTest depth-sort, rotZ function — semua SUDAH terverifikasi & ter-push sebagai commit `9cd1542`).
+
+### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
+- `src/pages/BlockSimulator3D.jsx` — 4 fitur, total +293/-17 baris.
+
+### File yang DIBACA (referensi, TIDAK diubah)
+- `src/components/ColorWheelPicker.jsx` — baca props (`hex`, `onChange`, `onPickColor` opsional) untuk pakai komponen yang sudah ada tanpa duplikat.
+- `src/pages/LogicGatesSimulator.jsx` baris 1008-1086 — baca `SlotColorPickerModal` buat contek styling modal (gradient gelap, border #334155, tombol Confirm hijau gradient, tombol Cancel abu-abu). Tidak import apapun dari file ini, cuma contek visual/struktur JSX.
+
+### Perubahan
+
+**FITUR 1 — Move gizmo 3-axis (X/Y/Z gaya Roblox):**
+- Tambah helper `getHandleOffset(block)` — `Math.max(size.x, size.y, size.z) * 0.5 + 0.8` (handle selalu di luar blok).
+- Tambah helper `hitHandle(mx, my, block)` — cek 3 handle (merah=X, hijau=Y, biru=Z), return axis string atau null. Radius klik 14px. PRIORITAS LEBIH TINGGI dari hitTest biasa.
+- Tambah helper `dragAxisDelta(mx, my, dragStartMouse, blockStartPos, axis)` — proyeksi vektor mouse delta ke vektor arah sumbu di layar. Return world-unit delta sepanjang axis. Anti div-by-zero (`denom < 0.0001` → return 0) untuk axis yang nyaris tegak lurus layar.
+- Tambah helper `snapSingleAxis(v)` — `Math.round(v)` tunggal, BUKAN `snap()` lama yang bulatkan 3 sumbu (sumbu lain harus tetap presisi).
+- Ganti `onMouseDown` untuk tool move/rotate/scale: cek handle duluan kalau `s.selected != null`. Klik handle → mulai drag axis itu (`s.dragAxis = ax`). Klik TIDAK kena handle → jatuh ke hitTest biasa (pilih blok baru / deselect).
+- Ganti `onMouseMove` untuk tool move: hitung `t = dragAxisDelta(...)`, lalu `s.selected.pos[ax] = snapSingleAxis(s.blockStart.pos[ax] + t)`.
+- Hapus logika lama yang gerakin `pos.x`/`pos.z` dari `dx`/`dy` mentah (baris lama ~479-481).
+- Reset `s.dragAxis = null` di `onMouseUp`.
+
+**FITUR 2 — Rotate gizmo 3-axis (X/Y/Z):**
+- Reuse `hitHandle`, `dragAxisDelta` (posisi & radius klik SAMA dengan Move).
+- Render: handle Rotate dibedakan visual — lingkaran outline (bukan padat) + busur kecil di dalam (biar jelas "ini rotate tool, bukan move").
+- Drag interaction (pola sederhana, konsisten dengan rotate Y yang SUDAH ADA):
+  - `ax === 'y'`: `rot.y = blockStart.rot.y + (mx - dragStart.x) * 0.008`
+  - `ax === 'x'`: `rot.x = blockStart.rot.x + (my - dragStart.y) * 0.008`
+  - `ax === 'z'`: `rot.z = blockStart.rot.z + (mx - dragStart.x) * 0.008`
+  - Y & Z pakai horizontal drag, X pakai vertical drag — pola umum software 3D.
+- HAPUS behavior lama "drag-anywhere buat rotate Y" — sekarang rotate hanya lewat handle, konsisten dengan Move.
+
+**FITUR 3 — Scale per-axis (sisi -axis tetap diam, sisi +axis maju/mundur):**
+- Reuse `hitHandle`, `dragAxisDelta` (sama dengan Move & Rotate).
+- Drag logic:
+  ```js
+  const t = dragAxisDelta(mx, my, dragStart, blockStart.pos, ax);
+  const newSize = Math.max(0.2, blockStart.size[ax] + t); // min 0.2, gak bisa negatif
+  const actualDelta = newSize - blockStart.size[ax];
+  s.selected.size[ax] = newSize;
+  s.selected.pos[ax] = blockStart.pos[ax] + actualDelta / 2; // kompensasi: sisi -axis tetap diam
+  ```
+- Verifikasi matematis: 3 test case di `verify_gizmo.mjs` (TEST 5, 6, 7) — sisi -X tetap -1 setelah tarik +1 unit, sisi +X maju dari 1 jadi 2. Min size 0.2 enforced.
+
+**FITUR 4 — Paint port (ColorWheelPicker modal):**
+- Import `ColorWheelPicker` dari `'../components/ColorWheelPicker'` (line 6).
+- Tambah state `showColorWheel` (bool) & `colorWheelDraft` (hex string, mulai dari `currentColor`).
+- Tambah tombol "Pilih Warna Lain" di palet warna (bawah grid 12 swatch). Tombol ini bg = `currentColor` (live preview), border pink, icon `Paintbrush`, label "Pilih Warna Lain". Klik → `setColorWheelDraft(currentColor)` + `setShowColorWheel(true)`.
+- Tambah modal overlay (line 1122-1203): styling PERSIS contek `SlotColorPickerModal` dari `LogicGatesSimulator.jsx` — `position: fixed, inset:0, background: rgba(0,0,0,0.7)`, modal card `background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%)`, `border: 2px solid #334155`, `borderRadius: 16`, `boxShadow: 0 20px 60px rgba(0,0,0,0.5)`. Tombol Confirm hijau gradient (`linear-gradient(135deg, #059669, #10b981)`, border `#34d399`, icon `Check`). Tombol Cancel abu-abu (`#1e293b`, border `#475569`).
+- Confirm handler: `setCurrentColor(colorWheelDraft)` + `setShowColorWheel(false)` + (kalau `tool='color'` & ada blok terpilih) auto-trigger `paintConfirm` popup untuk preview before/after seperti klik swatch biasa.
+- Cancel handler: `setShowColorWheel(false)` saja, tanpa ubah `currentColor`.
+- **FITUR 4 poin 2 (tombol "Pilih Warna Lain" di dalam `paintConfirm` popup):** DI-SKIP sesuai izin opsional di prompt kerja. Alasan: paintConfirm popup cuma tampil setelah user klik blok di Paint mode, dan saat itu `currentColor` sudah dipilih user lewat palet. Tombol "Pilih Warna Lain" di popup akan menumpuk modal di atas modal (paintConfirm + ColorWheelPicker), UX-nya jadi rumit & bisa bikin bug z-index. Solusi yang lebih bersih: user mau ganti warna → Cancel paintConfirm dulu → klik tombol "Pilih Warna Lain" di palet → buka blok lagi. Kalau user mau tetap pakai pendekatan modal-in-modal di masa depan, bisa dikerjakan di task terpisah.
+
+**BONUS — Update Help Panel:**
+- Tambah info "Drag handle (Merah=X, Hijau=Y, Biru=Z) = Move/Rotate/Scale per-axis".
+- Tambah italic note: "Tool Move/Rotate/Scale: klik blok dulu → muncul 3 handle → drag salah satu".
+
+### Yang TIDAK diubah (sesuai scope)
+- 3D engine (`project`, `rotY`/`rotX`/`rotZ`, painter's algorithm, backface cull, `hitTest` sort depth, `getGridPos`, `snap`) — TIDAK disentuh.
+- Orbit kamera, zoom wheel, ghost/preview block (Bagian 43) — TIDAK disentuh.
+- `runPlace`, `getPlacementY`, hover tracking — TIDAK disentuh.
+- `src/App.jsx`, `src/components/ColorWheelPicker.jsx`, `src/pages/LogicGatesSimulator.jsx`, file lain — TIDAK disentuh.
+- File backend/auth apapun — TIDAK disentuh (lihat `instruction.md` Bagian 5).
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. **Move** (drag handle per-axis):
+   - Logic: `dragAxisDelta` pakai proyeksi vektor, bukan dx/dy mentah → akurat dari sudut kamera manapun.
+   - Test matematis (TEST 1-4 di `verify_gizmo.mjs`): dragAxisDelta sumbu X identity camera = 70/scale ≈ 2.2 ✓; dragAxisDelta saat mouse gerak tegak lurus sumbu = 0 ✓; dragAxisDelta sumbu Y mouse naik → blok Y naik ✓; dragAxisDelta sumbu Z saat axis tegak lurus layar = 0 (no div-by-zero) ✓.
+   - ⚠️ Verifikasi live di browser BELUM dilakukan (environment CLI tidak ada browser). User perlu verify: drag tiap handle X/Y/Z dari beberapa sudut kamera berbeda, blok harus gerak SESUAI arah handle, sumbu lain TIDAK berubah.
+
+2. **Rotate** (tiap handle X/Y/Z bisa diputar independen):
+   - Logic: Y & Z pakai horizontal drag (dx), X pakai vertical drag (dy).
+   - ⚠️ Rotasi sumbu Z baru pertama kali bisa dites visual secara langsung (sebelum Bagian 1 rotZ belum ada, sebelum Bagian 2 tidak ada UI untuk trigger rot.z). User perlu verify: drag handle Z → blok berputar mengelilingi sumbu Z (bukan Y lagi), tidak terdistorsi/meledak. Kalau terdistorsi → cek ulang apakah rotZ dari Bagian 1 benar-benar ke-apply (seharusnya iya, sudah diverifikasi di commit `9cd1542`).
+
+3. **Scale** (tarik handle, sisi berlawanan tetap diam):
+   - Logic: `actualDelta / 2` kompensasi posisi pusat blok supaya sisi -axis tetap diam.
+   - Test matematis (TEST 5, 6, 7): sisi -X = -1 sebelum & sesudah tarik +1 unit ✓; sisi +X maju dari 1 jadi 2 ✓; min size 0.2 enforced ✓.
+   - ⚠️ Verifikasi live di browser BELUM dilakukan. User perlu verify: tarik tiap handle, sisi berlawanan blok harus DIAM, cuma sisi yang ditarik yang berubah.
+
+4. **Paint** (ColorWheelPicker modal):
+   - Import ColorWheelPicker ✓ (line 6).
+   - State `showColorWheel`, `colorWheelDraft` ✓ (line 49-50).
+   - Tombol "Pilih Warna Lain" di palet ✓ (line 953-973).
+   - Modal overlay dengan styling contek SlotColorPickerModal ✓ (line 1122-1203).
+   - Confirm menerapkan `colorWheelDraft` ke `currentColor` (+ auto-trigger `paintConfirm` kalau tool=color & ada blok terpilih) ✓.
+   - Cancel tidak mengubah apapun ✓.
+   - ⚠️ Verifikasi live di browser BELUM dilakukan. User perlu verify: buka modal, pilih warna bebas via wheel/slider/input hex, Confirm → `currentColor` berubah, swatch di palet tidak ikut highlight (karena bukan preset), tombol "Pilih Warna Lain" berubah warna bg = warna baru.
+   - ⚠️ FITUR 4 poin 2 (tombol di dalam `paintConfirm` popup) DI-SKIP sesuai izin opsional. Lihat alasan di bagian "Perubahan" di atas.
+
+5. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.22s`. BlockSimulator3D chunk: 24.77 KB (gzip 7.57 KB — naik dari 20.00 KB karena tambah gizmo render + handle logic + ColorWheelPicker modal import).
+6. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+293/-17 baris). Tidak ada file lain tersenggol.
+7. ✅ **Update `memory.md`** — entri ini ditambahkan (append, BUKAN overwrite) di Bagian 46.
+8. ✅ **STOP setelah task ini** — tidak cari perbaikan tambahan sendiri di luar 4 fitur ini.
+9. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa akan dilakukan di task terpisah setelah token dari user diterima.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim): gizmo 3-axis ala Roblox + Paint port ColorWheelPicker (Bagian 2)`.
+- **Commit hash AKTUAL: `0edd04d`** (full: `0edd04d48599bd65ab4089c8d352f86ad02e2064`).
+- Token push perlu dikirim user. Token TIDAK akan disimpan permanen di `.git/config` — pakai `git push https://<TOKEN>@github.com/...` (URL sementara via env var, tidak lewat `git remote set-url`).
+- Branch: `main`, 2 commit ahead of `origin/main`:
+  1. `4d14933` — docs memory update Bagian 45 (dari task push Bagian 1, belum di-push karena user belum kasih token saat itu).
+  2. `0edd04d` — feat Bagian 2 (4 fitur gizmo + paint).
+- Saat task push dijalankan, kedua commit ini WAJIB di-push bersama-sama (push biasa, fast-forward).
+
+### Stage Summary
+- 4 fitur Bagian 2 di `BlockSimulator3D.jsx` sudah dikerjakan sesuai spesifikasi prompt kerja.
+- Build sukses 0 error, scope terjaga (1 file saja, +293/-17 baris).
+- Verifikasi matematis (9/9 test di `verify_gizmo.mjs`) lulus untuk dragAxisDelta, scale kompensasi, snap per-axis. Verifikasi live di browser TIDAK bisa dilakukan di sesi ini — user perlu verify sendiri saat preview Vercel setelah push.
+- Tidak ada inisiatif di luar scope. FITUR 4 poin 2 (tombol di dalam `paintConfirm` popup) di-skip sesuai izin opsional di prompt kerja — alasan dicatat di atas.
+- Commit lokal siap di-push setelah token dari user diterima.
+

@@ -3,6 +3,7 @@ import {
   ArrowLeft, Box, Plus, Move, RotateCw, Maximize, Paintbrush,
   Copy, Trash2, MousePointer2, Hand, Info, Cuboid, Check, X
 } from 'lucide-react';
+import ColorWheelPicker from '../components/ColorWheelPicker';
 
 /* ================================================================
    3D BLOCK SIMULATOR — BABFTSS Style
@@ -45,6 +46,8 @@ export default function BlockSimulator3D({ setPage }) {
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
   const [paintConfirm, setPaintConfirm] = useState(null);  // { block, newColor, originalColor, x, y } or null
+  const [showColorWheel, setShowColorWheel] = useState(false);
+  const [colorWheelDraft, setColorWheelDraft] = useState(currentColor);
 
   const stateRef = useRef({
     blocks: [],
@@ -56,10 +59,11 @@ export default function BlockSimulator3D({ setPage }) {
     cam: { yaw: -0.75, pitch: -0.55, dist: 22, target: new Vec3(0, 0, 0) },
     isOrbiting: false,
     isTransforming: false,
+    dragAxis: null,        // 'x' | 'y' | 'z' | null — sumbu yang sedang di-grab saat gizmo Move/Rotate/Scale aktif
     dragStart: null,
     camStart: null,
     transformStart: null,
-    blockStart: null,
+    blockStart: null,      // { pos, rot, size } — snapshot awal blok saat mulai drag (untuk reference drag)
     hoverGrid: null,   // posisi grid (Vec3) tempat ghost block akan digambar, null = tidak ada ghost
     hoverColor: '#3b82f6',
     dpr: 1,
@@ -257,7 +261,69 @@ export default function BlockSimulator3D({ setPage }) {
       ctx.setLineDash([]);
       ctx.restore();
     }
-  }, [project]);
+
+    // Gizmo 3-axis handles — digambar HANYA kalau ada blok terpilih & tool = move/rotate/scale.
+    // Gaya Roblox Studio: merah=X, hijau=Y, biru=Z. Tiap handle = garis dari pusat blok
+    // + lingkaran di ujung (Move/Scale) atau busur kecil (Rotate — dibedakan biar jelas
+    // visual bahwa Rotate tool aktif, bukan Move). Posisi & radius klik SAMA untuk semua tool.
+    if (s.selected && (tool === 'move' || tool === 'rotate' || tool === 'scale')) {
+      const b = s.selected;
+      const off = getHandleOffset(b);
+      const centerScreen = project(b.pos);
+      const axes = [
+        { axis: 'x', vec: new Vec3(off, 0, 0), color: '#ef4444' }, // merah = X
+        { axis: 'y', vec: new Vec3(0, off, 0), color: '#22c55e' }, // hijau = Y
+        { axis: 'z', vec: new Vec3(0, 0, off), color: '#3b82f6' }, // biru = Z
+      ];
+
+      ctx.save();
+      for (const { axis, vec, color } of axes) {
+        const tipScreen = project(b.pos.add(vec));
+        // Garis dari pusat blok ke ujung handle
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(centerScreen.x, centerScreen.y);
+        ctx.lineTo(tipScreen.x, tipScreen.y);
+        ctx.stroke();
+
+        // Handle di ujung — bentuknya beda per tool biar jelas visual:
+        //  - Move/Scale: lingkaran padat (target klik jelas, 7px radius)
+        //  - Rotate: lingkaran outline + busur kecil di dalam (biar kelihatan "nggulir")
+        if (tool === 'move' || tool === 'scale') {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(tipScreen.x, tipScreen.y, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.shadowBlur = 0;
+          ctx.beginPath();
+          ctx.arc(tipScreen.x, tipScreen.y, 7, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (tool === 'rotate') {
+          // Outer ring outline
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(tipScreen.x, tipScreen.y, 9, 0, Math.PI * 2);
+          ctx.stroke();
+          // Inner arc supaya kelihatan "rotate"
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.2;
+          ctx.shadowBlur = 0;
+          ctx.beginPath();
+          ctx.arc(tipScreen.x, tipScreen.y, 5, -Math.PI * 0.4, Math.PI * 0.4);
+          ctx.stroke();
+        }
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  }, [project, tool]);
 
   /* ---------- Resize ---------- */
   useEffect(() => {
@@ -303,6 +369,60 @@ export default function BlockSimulator3D({ setPage }) {
     }
     return inside;
   };
+
+  /* ---------- Gizmo Helpers (Move/Rotate/Scale 3-axis ala Roblox Studio) ----------
+     Konsep: tiap blok terpilih punya 3 handle berwarna (merah=X, hijau=Y, biru=Z)
+     yang keluar dari pusat blok. Klik handle → drag sepanjang axis itu saja.
+     Sumbu lain TIDAK ikut berubah — presisi, tidak kena "drag dx/dy mentah" yang
+     arahnya bisa campur dari sudut kamera tertentu. */
+
+  // Posisi handle 3-axis relatif terhadap pusat blok.
+  // handleOffset = setengah ukuran blok terbesar + 0.8 (biar handle selalu di luar blok).
+  const getHandleOffset = (block) =>
+    Math.max(block.size.x, block.size.y, block.size.z) * 0.5 + 0.8;
+
+  // Hit-test handle: cek mana dari 3 sumbu yang posisi layar-nya dekat klik mouse.
+  // PRIORITAS LEBIH TINGGI dari hitTest blok biasa — dipanggil duluan saat tool=move/rotate/scale & s.selected != null.
+  // Return: 'x' | 'y' | 'z' | null.
+  const hitHandle = (mx, my, block) => {
+    if (!block) return null;
+    const off = getHandleOffset(block);
+    const axes = [
+      { axis: 'x', vec: new Vec3(off, 0, 0) },
+      { axis: 'y', vec: new Vec3(0, off, 0) },
+      { axis: 'z', vec: new Vec3(0, 0, off) },
+    ];
+    for (const { axis, vec } of axes) {
+      const p = project(block.pos.add(vec));
+      if (Math.hypot(p.x - mx, p.y - my) < 14) return axis; // 14px radius klik, cukup toleran buat jari/mouse
+    }
+    return null;
+  };
+
+  // Rumus drag per-axis pakai proyeksi vektor (bukan dx/dy mentah).
+  // Supaya drag akurat dari sudut kamera manapun: project pusat blok & project titik axis-tip
+  // ke layar → dapat vektor arah sumbu di layar → proyeksikan mouse delta ke vektor tsb.
+  // Return: world-unit delta sepanjang axis (LANGSUNG dalam satuan world, bukan pixel).
+  const dragAxisDelta = (mx, my, dragStartMouse, blockStartPos, axis) => {
+    const axisUnit = axis === 'x' ? new Vec3(1, 0, 0)
+                  : axis === 'y' ? new Vec3(0, 1, 0)
+                  : new Vec3(0, 0, 1);
+    const centerScreen = project(blockStartPos);
+    const axisTipScreen = project(blockStartPos.add(axisUnit));
+    const screenAxisVec = {
+      x: axisTipScreen.x - centerScreen.x,
+      y: axisTipScreen.y - centerScreen.y,
+    };
+    const mouseDelta = { x: mx - dragStartMouse.x, y: my - dragStartMouse.y };
+    const denom = screenAxisVec.x * screenAxisVec.x + screenAxisVec.y * screenAxisVec.y;
+    if (denom < 0.0001) return 0; // axis nyaris tegak lurus layar (invisible), hindari div-by-zero
+    const t = (mouseDelta.x * screenAxisVec.x + mouseDelta.y * screenAxisVec.y) / denom;
+    return t;
+  };
+
+  // Snap per-axis: Math.round tunggal, BUKAN snap 3-sumbu (yang lama).
+  // Sumbu lain harus tetap presisi — tidak ikut ke-snap kalau tidak digerakkan.
+  const snapSingleAxis = (v) => Math.round(v);
 
   const hitTest = (mx, my) => {
     const s = stateRef.current;
@@ -417,22 +537,50 @@ export default function BlockSimulator3D({ setPage }) {
         return;
       }
 
-      const hit = hitTest(mx, my);
+      // ---- Tool move/rotate/scale: gizmo 3-axis ala Roblox Studio ----
+      // Cek handle DULUAN (prioritas lebih tinggi dari hitTest blok biasa) —
+      // HANYA kalau sudah ada blok terpilih. Klik handle = mulai drag axis itu.
       if (tool === 'move' || tool === 'rotate' || tool === 'scale') {
+        if (s.selected) {
+          const ax = hitHandle(mx, my, s.selected);
+          if (ax) {
+            // Mulai drag handle axis tsb.
+            s.dragAxis = ax;
+            s.isTransforming = true;
+            s.dragStart = { x: mx, y: my };
+            s.blockStart = {
+              pos: s.selected.pos.clone(),
+              rot: s.selected.rot.clone(),
+              size: s.selected.size.clone(),
+            };
+            canvas.style.cursor = 'grabbing';
+            return;
+          }
+        }
+        // Klik TIDAK kena handle → jalankan hitTest blok biasa (pilih blok baru / deselect).
+        const hit = hitTest(mx, my);
         if (hit) {
           s.selected = hit;
-          s.isTransforming = true;
-          s.transformStart = { x: mx, y: my };
-          s.blockStart = { pos: hit.pos.clone(), rot: hit.rot.clone(), size: hit.size.clone() };
+          s.dragAxis = null;     // belum mulai drag axis (harus klik handle dulu)
+          s.isTransforming = false;
+          s.blockStart = {
+            pos: hit.pos.clone(),
+            rot: hit.rot.clone(),
+            size: hit.size.clone(),
+          };
           updateUISelection(hit);
         } else {
           s.selected = null;
+          s.dragAxis = null;
+          s.isTransforming = false;
           updateUISelection(null);
         }
         render();
         return;
       }
 
+      // ---- Tool delete/clone/color: tetap pakai hitTest blok biasa ----
+      const hit = hitTest(mx, my);
       if (hit) {
         s.selected = hit;
         if (tool === 'delete') {
@@ -485,19 +633,30 @@ export default function BlockSimulator3D({ setPage }) {
         return;
       }
 
-      if (s.isTransforming && s.selected && s.blockStart) {
-        const dx = mx - s.transformStart.x, dy = my - s.transformStart.y;
+      if (s.isTransforming && s.selected && s.blockStart && s.dragAxis) {
+        const ax = s.dragAxis;
         if (tool === 'move') {
-          s.selected.pos.x = s.blockStart.pos.x + dx * 0.018;
-          s.selected.pos.z = s.blockStart.pos.z - dy * 0.018;
-          s.selected.pos = snap(s.selected.pos);
+          // Move per-axis: drag handle = ubah posisi sepanjang axis itu SAJA.
+          // Sumbu lain TIDAK diubah. Pakai dragAxisDelta (proyeksi vektor) supaya
+          // akurat dari sudut kamera manapun, bukan dx/dy mentah.
+          const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, ax);
+          s.selected.pos[ax] = snapSingleAxis(s.blockStart.pos[ax] + t);
         } else if (tool === 'rotate') {
-          s.selected.rot.y = s.blockStart.rot.y + dx * 0.008;
+          // Rotate per-axis. Pola: Y & Z pakai horizontal drag (dx), X pakai vertical (dy).
+          // Pola umum di software 3D: putar sumbu yang "menghadap ke layar" pakai drag horizontal,
+          // sumbu yang "mendatar ke layar" pakai drag vertical.
+          if (ax === 'y')      s.selected.rot.y = s.blockStart.rot.y + (mx - s.dragStart.x) * 0.008;
+          else if (ax === 'x') s.selected.rot.x = s.blockStart.rot.x + (my - s.dragStart.y) * 0.008;
+          else if (ax === 'z') s.selected.rot.z = s.blockStart.rot.z + (mx - s.dragStart.x) * 0.008;
         } else if (tool === 'scale') {
-          const sc = Math.max(0.2, 1 + dy * 0.004);
-          s.selected.size.x = Math.max(0.2, s.blockStart.size.x * sc);
-          s.selected.size.y = Math.max(0.2, s.blockStart.size.y * sc);
-          s.selected.size.z = Math.max(0.2, s.blockStart.size.z * sc);
+          // Scale per-axis: tarik handle = sisi +axis maju/mundur, sisi -axis tetap diam.
+          // Sisi berlawanan (sisi -axis) WAJIB tetap diam — dicapai dengan kompensasi posisi
+          // pusat blok setengah dari delta size (supaya sisi -axis tidak ikut geser).
+          const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, ax);
+          const newSize = Math.max(0.2, s.blockStart.size[ax] + t);
+          const actualDelta = newSize - s.blockStart.size[ax];
+          s.selected.size[ax] = newSize;
+          s.selected.pos[ax] = s.blockStart.pos[ax] + actualDelta / 2;
         }
         updateUISelection(s.selected);
         render();
@@ -532,6 +691,7 @@ export default function BlockSimulator3D({ setPage }) {
       const s = stateRef.current;
       s.isOrbiting = false;
       s.isTransforming = false;
+      s.dragAxis = null;
       canvas.style.cursor = 'grab';
     };
 
@@ -790,6 +950,27 @@ export default function BlockSimulator3D({ setPage }) {
                 />
               ))}
             </div>
+            {/* Tombol "Pilih Warna Lain" — buka modal ColorWheelPicker (port dari 2D). */}
+            <button
+              onClick={() => {
+                setColorWheelDraft(currentColor); // mulai draft dari warna saat ini
+                setShowColorWheel(true);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 10px', marginTop: 4, borderRadius: 8,
+                backgroundColor: currentColor, border: `1px solid ${pink}`,
+                color: '#fff', cursor: 'pointer',
+                fontSize: 10, fontWeight: 700, fontFamily: 'Inter, sans-serif',
+                textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.04)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+            >
+              <Paintbrush size={12} />
+              Pilih Warna Lain
+            </button>
           </div>
         )}
 
@@ -845,7 +1026,13 @@ export default function BlockSimulator3D({ setPage }) {
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <Box size={12} /> <strong>Click block</strong> = Select
             </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(148,163,184,0.15)' }}>
+              <Move size={12} /> <strong>Drag handle</strong> (Merah=X, Hijau=Y, Biru=Z) = Move/Rotate/Scale per-axis
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontStyle: 'italic', color: '#64748b', fontSize: 11 }}>
+              Tool Move/Rotate/Scale: klik blok dulu → muncul 3 handle → drag salah satu
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(148,163,184,0.15)' }}>
               <span style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 10 }}>⌨</span>
               <strong>P / M / R / S / C / K / X</strong> = Switch tools
             </span>
@@ -928,6 +1115,95 @@ export default function BlockSimulator3D({ setPage }) {
                 <X size={12} />
                 Cancel
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ColorWheelPicker modal — port dari LogicGatesSimulator SlotColorPickerModal.
+            Styling PERSIS sama: gradient gelap, border #334155, tombol Confirm hijau gradient,
+            tombol Cancel abu-abu. Dipakai buat pilih warna bebas (bukan cuma 12 preset COLORS). */}
+        {showColorWheel && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, zIndex: 1003,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.7)', padding: 16,
+            }}
+            onClick={() => setShowColorWheel(false)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+                borderRadius: 16, padding: 16,
+                border: '2px solid #334155',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+                maxHeight: 'calc(100dvh - 32px)', boxSizing: 'border-box',
+              }}
+            >
+              <div style={{
+                overflowY: 'auto', overflowX: 'auto',
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+                flex: 1, minHeight: 0, alignSelf: 'stretch',
+              }}>
+                <div style={{
+                  fontSize: 12, fontWeight: 700, color: '#e2e8f0',
+                  fontFamily: 'Inter, sans-serif', marginBottom: 6, textAlign: 'center',
+                }}>
+                  Pilih Warna Bebas
+                </div>
+                <ColorWheelPicker
+                  hex={colorWheelDraft}
+                  onChange={setColorWheelDraft}
+                />
+              </div>
+              <div style={{
+                display: 'flex', gap: 6, width: '100%',
+                justifyContent: 'center', flexShrink: 0, alignSelf: 'stretch',
+              }}>
+                <button
+                  onClick={() => {
+                    setCurrentColor(colorWheelDraft);
+                    setShowColorWheel(false);
+                    // Kalau tool=color & ada blok terpilih, tampilkan paintConfirm seperti klik swatch biasa.
+                    const s = stateRef.current;
+                    if (s.selected && tool === 'color') {
+                      const originalColor = (paintConfirm && paintConfirm.originalColor) || s.selected.color;
+                      s.selected.color = colorWheelDraft;
+                      render();
+                      setPaintConfirm({
+                        block: s.selected,
+                        newColor: colorWheelDraft,
+                        originalColor: originalColor,
+                        x: 140, y: 80,
+                      });
+                    }
+                  }}
+                  style={{
+                    flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 700,
+                    background: 'linear-gradient(135deg, #059669, #10b981)',
+                    border: '1px solid #34d399', borderRadius: 4,
+                    color: '#fff', cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  }}
+                >
+                  <Check size={12} strokeWidth={2.5} /> Confirm
+                </button>
+                <button
+                  onClick={() => setShowColorWheel(false)}
+                  style={{
+                    flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 600,
+                    background: '#1e293b', border: '1px solid #475569',
+                    borderRadius: 4, color: '#fff', cursor: 'pointer',
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
