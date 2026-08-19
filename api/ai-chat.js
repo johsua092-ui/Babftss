@@ -1,6 +1,6 @@
 import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authenticateRequest, isAdmin, getPunyaSiJawaFirestore } from "../lib/api-helpers.js";
 import { askAI } from "../lib/ai-client.js";
-import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead, writeInboxMessage } from "../lib/gold-system.js";
+import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead, writeInboxMessage, createAnnouncement, getAnnouncements, editAnnouncement, deleteAnnouncement } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
 
 export default async function handler(req, res) {
@@ -146,6 +146,20 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error("[ai-chat] inbox-debug error:", e?.message || e);
         return res.status(500).json({ error: "Internal server error", detail: e?.message || String(e) });
+      }
+    }
+    // ── Announcements (GET) ──
+    if (action === "announcements") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        if (!isAdmin(user)) return res.status(403).json({ error: "Hanya admin" });
+        const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
+        const announcements = await getAnnouncements(limit);
+        return res.status(200).json({ announcements });
+      } catch (e) {
+        console.error("[ai-chat] announcements error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
       }
     }
     if (action === "tax-info") {
@@ -406,6 +420,58 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, count });
       } catch (e) {
         console.error("[ai-chat] inbox-read-all error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+
+    // ── Announcements (POST) ──
+    if (action === "create-announcement") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin yang bisa membuat announcement" });
+      const { title, body } = req.body || {};
+      try {
+        const result = await createAnnouncement({
+          title, body,
+          createdByUid: uid,
+          createdByEmail: user.email || null,
+          createdByName: user.name || "Admin",
+        });
+        return res.status(200).json({ ok: true, ...result });
+      } catch (e) {
+        if (e.message.includes("wajib") || e.message.includes("max")) return res.status(400).json({ error: e.message });
+        console.error("[ai-chat] create-announcement error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+
+    if (action === "edit-announcement") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin" });
+      const { announcementId, title, body } = req.body || {};
+      if (!announcementId || typeof announcementId !== "string" || announcementId.length > 128) {
+        return res.status(400).json({ error: "announcementId wajib diisi" });
+      }
+      try {
+        const result = await editAnnouncement(announcementId, { title, body }, uid);
+        return res.status(200).json({ ok: true, ...result });
+      } catch (e) {
+        if (e.message.includes("tidak ditemukan")) return res.status(404).json({ error: e.message });
+        if (e.message.includes("max")) return res.status(400).json({ error: e.message });
+        console.error("[ai-chat] edit-announcement error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+
+    if (action === "delete-announcement") {
+      if (!admin) return res.status(403).json({ error: "Hanya admin" });
+      const { announcementId } = req.body || {};
+      if (!announcementId || typeof announcementId !== "string" || announcementId.length > 128) {
+        return res.status(400).json({ error: "announcementId wajib diisi" });
+      }
+      try {
+        const result = await deleteAnnouncement(announcementId, uid);
+        return res.status(200).json({ ok: true, ...result });
+      } catch (e) {
+        if (e.message.includes("tidak ditemukan")) return res.status(404).json({ error: e.message });
+        console.error("[ai-chat] delete-announcement error:", e?.message || e);
         return res.status(500).json({ error: "Internal server error" });
       }
     }

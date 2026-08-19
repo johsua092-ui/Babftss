@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users, Inbox } from 'lucide-react';
+import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users, Inbox, Megaphone } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import AnnouncementPanel from './AnnouncementPanel';
 
 const API_URL = '/api/ai-chat';
 
@@ -143,6 +144,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showAnnounce, setShowAnnounce] = useState(false);
   const [focusTarget, setFocusTarget] = useState(false);
   const [focusAmount, setFocusAmount] = useState(false);
 
@@ -518,8 +520,30 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
                 </div>
               )}
             </div>
+
+            {/* Announcement */}
+            <div style={{ borderTop: '1px solid #1e293b', paddingTop: 8, marginTop: 4 }}>
+              <div style={{ ...s.label, color: '#fbbf24', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Megaphone size={12} /> Announcement
+              </div>
+              <button
+                style={{
+                  width: '100%', padding: '10px', borderRadius: 10, cursor: 'pointer',
+                  backgroundColor: '#1a1000', border: '1px solid #92400e',
+                  color: '#fbbf24', fontFamily: 'Inter,sans-serif', fontSize: 12, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'all 0.2s',
+                }}
+                onClick={() => setShowAnnounce(true)}
+              >
+                <Megaphone size={14} />
+                Buat Announcement
+              </button>
+            </div>
           </div>
         )}
+
+        {showAnnounce && <AnnouncementPanel onClose={() => setShowAnnounce(false)} />}
 
         {/* Divider */}
         <div style={s.divider} />

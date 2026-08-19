@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Inbox, Mail, MailOpen, CheckCheck, Coins, ArrowDownToLine, RefreshCw } from 'lucide-react';
+import { X, Inbox, Mail, MailOpen, CheckCheck, Coins, ArrowDownToLine, RefreshCw, Megaphone } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
@@ -224,12 +224,19 @@ export default function InboxPanel({ onClose }) {
             <div style={s.msgHeader}>
               <div style={s.msgTitle(!msg.read)}>
                 {!msg.read ? <Mail size={13} color="#60a5fa" /> : <MailOpen size={13} />}
-                {msg.type === 'transfer_in' ? 'Transfer Masuk' : msg.type === 'admin_grant' ? 'Grant Admin' : 'Pesan'}
+                {msg.type === 'transfer_in' ? 'Transfer Masuk' : msg.type === 'admin_grant' ? 'Grant Admin' : msg.type === 'announcement' ? 'Announcement' : 'Pesan'}
               </div>
               <span style={s.msgTime}>{formatTime(msg.createdAt)}</span>
             </div>
 
-            {(msg.type === 'transfer_in' || msg.type === 'admin_grant') && (
+            {msg.type === 'announcement' ? (
+              <div style={{ padding: '6px 8px', borderRadius: 6, backgroundColor: '#1a1000', border: '1px solid #92400e', fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#fbbf24', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Megaphone size={12} /> {msg.note || 'Announcement'}
+                </div>
+                {msg.announcementBody && <div style={{ color: '#94a3b8', fontSize: 11 }}>{msg.announcementBody}</div>}
+              </div>
+            ) : (msg.type === 'transfer_in' || msg.type === 'admin_grant') ? (
               <div style={s.msgAmount}>
                 <ArrowDownToLine size={14} color={msg.type === 'admin_grant' ? '#fbbf24' : '#4ade80'} />
                 <Coins size={14} />
@@ -245,7 +252,7 @@ export default function InboxPanel({ onClose }) {
                   </span>
                 )}
               </div>
-            )}
+            ) : null}
 
             {msg.fromName && (
               <div style={{ ...s.msgBody, color: '#60a5fa', fontSize: 11 }}>
@@ -253,7 +260,7 @@ export default function InboxPanel({ onClose }) {
               </div>
             )}
 
-            {msg.note && (
+            {msg.type !== 'announcement' && msg.note && (
               <div style={s.msgBody}>&ldquo;{msg.note}&rdquo;</div>
             )}
           </div>
@@ -262,8 +269,8 @@ export default function InboxPanel({ onClose }) {
 
       {/* Footer */}
       <div style={s.footer}>
-        <Coins size={12} color="#fbbf24" />
-        Transfer tax: 5% — Penerima dapat 95% dari jumlah transfer
+        <Inbox size={12} color="#60a5fa" />
+        Inbox — transfer, grant, &amp; announcement masuk
       </div>
     </div>
   );
