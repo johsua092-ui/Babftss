@@ -1035,14 +1035,14 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
               position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)',
               zIndex: 10, pointerEvents: 'none',
               animation: 'cp-blink 1.2s ease-in-out infinite',
-              color: '#fff', fontSize: 22, fontWeight: 900,
+              color: '#fff', fontSize: 48, fontWeight: 900,
               textShadow: '0 0 6px rgba(0,0,0,0.8)',
             }}>‹</div>
             <div style={{
               position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
               zIndex: 10, pointerEvents: 'none',
               animation: 'cp-blink 1.2s ease-in-out infinite',
-              color: '#fff', fontSize: 22, fontWeight: 900,
+              color: '#fff', fontSize: 48, fontWeight: 900,
               textShadow: '0 0 6px rgba(0,0,0,0.8)',
             }}>›</div>
           </>
@@ -8279,14 +8279,14 @@ export default function LogicGatesSimulator({ setPage }) {
                 position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)',
                 zIndex: 10, pointerEvents: 'none', opacity: 0.6,
                 animation: 'cp-blink 1.2s ease-in-out infinite',
-                color: '#fff', fontSize: 22, fontWeight: 900,
+                color: '#fff', fontSize: 48, fontWeight: 900,
                 textShadow: '0 0 6px rgba(0,0,0,0.8)',
               }}>‹</div>
               <div style={{
                 position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
                 zIndex: 10, pointerEvents: 'none', opacity: 0.6,
                 animation: 'cp-blink 1.2s ease-in-out infinite',
-                color: '#fff', fontSize: 22, fontWeight: 900,
+                color: '#fff', fontSize: 48, fontWeight: 900,
                 textShadow: '0 0 6px rgba(0,0,0,0.8)',
               }}>›</div>
             </>
