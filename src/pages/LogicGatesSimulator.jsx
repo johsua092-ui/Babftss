@@ -1058,7 +1058,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
           onChange={setDraftHex}
           onPickColor={() => onPickFromWorkspace(draftHex)}
         />
-        <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center', position: isMobile ? 'sticky' : 'static', bottom: isMobile ? 0 : 'auto', background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'transparent', padding: isMobile ? '8px 0' : 0, zIndex: 5 }}>
           <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
             flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 700,
             background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
@@ -1071,7 +1071,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
           <button onClick={onCancel} style={{
             flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 600,
             background: '#1e293b', border: '1px solid #475569',
-            borderRadius: 4, color: '#94a3b8', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+            borderRadius: 4, color: '#FFFFFF', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
           }}>Cancel</button>
         </div>
       </div>
@@ -8319,8 +8319,8 @@ export default function LogicGatesSimulator({ setPage }) {
             }}
           />
 
-          {/* Action buttons: Confirm | Cancel — directly below */}
-          <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+          {/* Action buttons: Confirm | Cancel — sticky at bottom on mobile */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 2, position: isMobile ? 'sticky' : 'static', bottom: isMobile ? 0 : 'auto', background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'transparent', padding: isMobile ? '8px 0' : 0, zIndex: 5 }}>
             <button
               onClick={() => {
                 const hex = colorPicker.hex;
@@ -8369,7 +8369,7 @@ export default function LogicGatesSimulator({ setPage }) {
                 setColorPicker(null);
                 setStatus('Color change cancelled');
               }}
-              style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#1e293b', border: '1px solid #475569', borderRadius: 4, color: '#94a3b8', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600, background: '#1e293b', border: '1px solid #475569', borderRadius: 4, color: '#FFFFFF', cursor: 'pointer' }}
             >Cancel</button>
           </div>
         </div>

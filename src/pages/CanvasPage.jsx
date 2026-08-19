@@ -480,8 +480,8 @@ function DrawTab({ token }) {
                                 }
                             }}
                         />
-                        {/* Buttons directly below */}
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        {/* Buttons directly below — sticky on mobile */}
+                        <div style={{ display: 'flex', gap: 6, position: (typeof window !== 'undefined' && window.innerWidth < 768) ? 'sticky' : 'static', bottom: (typeof window !== 'undefined' && window.innerWidth < 768) ? 0 : 'auto', background: (typeof window !== 'undefined' && window.innerWidth < 768) ? 'rgba(100, 116, 139, 0.97)' : 'transparent', padding: (typeof window !== 'undefined' && window.innerWidth < 768) ? '8px 0' : 0, zIndex: 5 }}>
                             <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); toast.success('Warna berhasil diubah!', { description: customColorPicker.hex.toUpperCase() }); }} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
@@ -494,7 +494,7 @@ function DrawTab({ token }) {
                             <button onClick={() => setCustomColorPicker(null)} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
                                 background: '#1e293b', border: '1px solid #475569',
-                                borderRadius: 4, color: '#94a3b8', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
+                                borderRadius: 4, color: '#FFFFFF', cursor: 'pointer', fontFamily: 'Inter,sans-serif',
                             }}>
                                 Cancel
                             </button>
