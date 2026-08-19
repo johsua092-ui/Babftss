@@ -1642,9 +1642,13 @@ export default function LogicGatesSimulator({ setPage }) {
               const localM = localMeta?.[slot.slotId];
               const defaultColors = { 'save-slot-1': '#3b82f6', 'save-slot-2': '#8b5cf6', 'save-slot-3': '#ec4899' };
               const localIsCustom = localM && (localM.name || localM.description || (localM.color && localM.color !== defaultColors[slot.slotId]));
+              // Strip auto-generated "Slot N" names from backend — let placeholder
+              // show position-based number (Slot 1/2/3...) instead of stale stored name
+              const backendName = match.name || '';
+              const isAutoName = /^Slot \d+$/.test(backendName);
               return {
                 ...slot,
-                name: localIsCustom ? (localM.name || '') : (match.name || ''),
+                name: localIsCustom ? (localM.name || '') : (isAutoName ? '' : backendName),
                 description: localIsCustom ? (localM.description || '') : (match.data?.description || ''),
                 color: localIsCustom ? (localM.color || slot.color) : (match.data?.color || slot.color),
                 // ─── LAYER 5: DEEP-CLONE circuit data on load ───
@@ -6793,12 +6797,12 @@ export default function LogicGatesSimulator({ setPage }) {
                 {/* Title text — its own row, centered ABOVE gold/search */}
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <div style={{
-                    fontSize: isMobile ? 18 : 26, fontWeight: 900, color: '#f0f4f8',
+                    fontSize: isMobile ? 24 : 34, fontWeight: 900, color: '#f0f4f8',
                     fontFamily: '"Inter", sans-serif', letterSpacing: 1,
                     textShadow: '0 2px 4px rgba(0,0,0,0.4)',
                   }}>SAVE PROGRESS</div>
                   <div style={{
-                    fontSize: isMobile ? 10 : 12, color: '#FFFFFF', marginTop: 4,
+                    fontSize: isMobile ? 13 : 16, color: '#FFFFFF', marginTop: 6,
                     fontFamily: '"Inter", sans-serif',
                   }}>Simpan & muat rangkaianmu ke cartridge slot</div>
                 </div>
