@@ -3084,3 +3084,72 @@ const cc = {
 ### Verifikasi
 - `npx vite build` sukses 0 error.
 - Git pushed: `a9b450a` (5-layer protection), `4d2d086` (ironclad backend safeguards)
+
+---
+
+## Bagian 48 — Fitur Baru: Menu Marketplace + Aturan Mutlak Guest-Guard (19 Aug 2026)
+
+### Konteks & Keputusan
+User minta tambah 1 menu baru bernama **Marketplace**, diposisikan **tepat di atas Canvas** di halaman menu utama. Menu ini:
+1. Punya ikon keranjang (pakai `ShoppingCart` dari `lucide-react`, sesuai aturan icon-over-emoji Bagian 7 instruction.md).
+2. Saat diklik user yang sudah login → diarahkan ke halaman baru `MarketplacePage` (page key: `marketplace`).
+3. Saat diklik guest → **DITOLAK** dengan banner merah yang sudah ada: "Harap sign in dahulu sebelum menggunakan fitur ini" (via `showGuestAnnouncement()`).
+
+### Aturan Mutlak & Absolute — Marketplace Guest-Guard
+**ATURAN MUTLAK, TIDAK BISA DIOVERRIDE:**
+- **Hanya user yang sudah login** yang bisa masuk ke halaman Marketplace (`page === "marketplace"`).
+- **Guest** tidak boleh masuk ke halaman Marketplace dengan cara apapun (klik tombol, manual setPage, direct URL, dll).
+- Jika guest mengklik tombol Marketplace di menu, sistem WAJIB menampilkan banner peringatan: **"Harap sign in dahulu sebelum menggunakan fitur ini"** (sudah ada via `showGuestAnnouncement()`).
+- Pattern implementasi: sama persis dengan Canvas dan Logic Gates Simulator — tombol guest tampil redup (opacity 0.5), border merah `rgba(239,68,68,0.3)`, label tambahan `LOGIN REQUIRED`.
+- Implementasi tombol Marketplace: `onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}`.
+- **JANGAN pernah** menambahkan backdoor atau jalan pintas yang memungkinkan guest mengakses halaman Marketplace. Routing case `{page === "marketplace" && ...}` hanya boleh dirender; guest tidak akan pernah mencapai state `page === "marketplace"` karena tombolnya mengembalikan mereka ke banner.
+
+### Spesifikasi Design Tombol Menu Marketplace
+Mengikuti style baku tombol menu (sama seperti Canvas, Shapes, Logic Gates, Gears, Linkages):
+- `width: 100%, padding: 16px 20px, borderRadius: 14, backgroundColor: #0e1420` (panel).
+- **Warna accent Marketplace: rose/pink** — distinct dari yang sudah ada:
+  - Border (logged in): `1px solid rgba(251,113,133,0.38)`
+  - Glow (logged in): `0 0 18px rgba(251,113,133,0.22)`
+  - Icon container bg (logged in): `rgba(251,113,133,0.18)`
+  - Label & icon color (logged in): `#fb7185`
+  - Pemetaan warna menu setelah perubahan:
+    - Marketplace: rose `#fb7185` (BARU, posisi 1)
+    - Canvas: purple `#a78bfa` (posisi 2, sebelumnya 1)
+    - Shapes: teal `#2dd4bf` (posisi 3)
+    - Logic Gates: blue `#60a5fa` (posisi 4)
+    - Gears: orange `#fb923c` (posisi 5)
+    - Linkages: indigo `#818cf8` (posisi 6)
+- Hover: `scale(1.02)` (sama dengan tombol menu lain).
+
+### Halaman `MarketplacePage` (DUMMY, akan diganti nanti)
+**Status: DUMMY — bukan final.** User eksplisit bilang "untuk sekarang kamu bisa isi dengan dummy teks dan dummy design yang nanti akan diganti (terserah apa)". Jadi:
+- File: `src/pages/MarketplacePage.jsx` (baru).
+- Layout saat ini (semua dummy, siap diganti):
+  - Header: title "MARKETPLACE" (gradient rose), tombol Back, tombol Keranjang (dengan badge jumlah item yang di-add).
+  - Search bar (input teks, berfungsi sebagai filter nama produk dummy).
+  - Category tabs: `Semua | Logic Gates | Canvas | Gears | Linkages | Tools` (berfungsi sebagai filter kategori).
+  - Grid produk: 12 dummy product card (gradient placeholder image, nama, rating, sales count, harga coins, tombol "Add").
+  - Tombol "Add" → increment cart count + toast sukses.
+  - Tombol Keranjang → toast "Keranjang masih dalam pengembangan" ( belum ada checkout flow).
+  - Disclaimer box di bawah: tegaskan bahwa tampilan ini masih dummy.
+- Style mengikuti design system (bg #181b24, panel #0e1420, border #1e293b, Orbitron heading + Inter body).
+- Menggunakan `toast` dari `sonner` untuk notifikasi.
+- Menggunakan icons dari `lucide-react` (`ShoppingCart, Search, Star, Plus, Filter, ArrowLeft`) — tidak ada emoji.
+
+### File yang Diubah/Dibuat
+1. **BARU**: `src/pages/MarketplacePage.jsx` — halaman marketplace dummy.
+2. **EDIT**: `src/App.jsx`:
+   - Tambah `ShoppingCart` ke import lucide-react (line 4).
+   - Tambah lazy import `MarketplacePage` (line 25).
+   - Tambah tombol Marketplace DI ATAS Canvas di menu utama (line 220-227), dengan guest-guard pattern sama seperti Canvas.
+   - Tambah routing case `{page === "marketplace" && ...}` (line 200-202), menggunakan wrapper yang sama dengan halaman content lain (padding 32px 20px 48px, flex center).
+
+### Catatan untuk Developer Selanjutnya
+- **JANGAN** ubah aturan guest-guard Marketplace jadi "boleh diakses guest" tanpa persetujuan user eksplisit. Ini aturan absolute.
+- Saat integrasi backend Marketplace sungguhan tiba, ganti `DUMMY_PRODUCTS` dengan fetch API ke endpoint marketplace (backend belum dibuat — koordinasi dengan tim backend).
+- Sistem cart saat ini hanya state lokal React (`cartCount`). Saat backend siap, perlu:
+  - Persist cart per-user (Supabase), sinkron saat login.
+  - Checkout flow (pembayaran, konversi coins, dll).
+  - Authorization check di sisi backend (jangan trust client-side guard saja).
+- Search & category filter saat ini client-side saja. Kalau produk tumbuh banyak, pertimbangkan server-side filtering dengan pagination.
+- Tidak ada perubahan di `instruction.md` atau `design.md` — aturan guest-guard Marketplace dianggap turunan dari pola yang sudah ada (Canvas, Logic Gates Simulator), tidak butuh entry baru di dokumen aturan tetap. Kalau user mau naikkan ke aturan permanent di instruction.md, dilakukan terpisah.

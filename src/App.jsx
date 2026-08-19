@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw, PenTool } from 'lucide-react';
+import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw, PenTool, ShoppingCart } from 'lucide-react';
 import GearIcon from './components/GearIcon';
 import LinkageIcon from './components/LinkageIcon';
 import ShapesIcon from './components/ShapesIcon';
@@ -22,6 +22,7 @@ const LinkagesPage = lazy(() => import('./pages/LinkagesPage'));
 const AIHelperPanel = lazy(() => import('./components/AIHelperPanel'));
 const LogicGatesSimulator = lazy(() => import('./pages/LogicGatesSimulator'));
 const CanvasPage = lazy(() => import('./pages/CanvasPage'));
+const MarketplacePage = lazy(() => import('./pages/MarketplacePage'));
 
 const pageFallback = (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px 0', color: '#475569', fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
@@ -196,6 +197,9 @@ export default function App() {
                     >START LEARNING</button>
                 </div>
             </motion.div>}
+            {page === "marketplace" && <motion.div key="marketplace" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ padding: "32px 20px 48px", display: "flex", justifyContent: "center" }}>
+                <Suspense fallback={pageFallback}><MarketplacePage setPage={setPage} /></Suspense>
+            </motion.div>}
             {page === "canvas" && <motion.div key="canvas" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
                 <Suspense fallback={pageFallback}><CanvasPage setPage={setPage} /></Suspense>
             </motion.div>}
@@ -216,6 +220,14 @@ export default function App() {
                         <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
                     </picture>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
+                        {/* Marketplace — ATURAN MUTLAK: guest tidak bisa akses. Hanya user login.
+                            Pattern sama dengan Canvas: guest lihat tombol redup + label LOGIN REQUIRED,
+                            klik → banner peringatan "Harap sign in dahulu sebelum menggunakan fitur ini". */}
+                        <button onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}
+                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: user ? "1px solid rgba(251,113,133,0.38)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: user ? "0 0 18px rgba(251,113,133,0.22)" : "none", transition: "all 0.2s", opacity: user ? 1 : 0.5 }}
+                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
+                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
+                        ><div style={{ backgroundColor: user ? "rgba(251,113,133,0.18)" : "rgba(239,68,68,0.12)", padding: 10, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><ShoppingCart size={22} color={user ? "#fb7185" : "#ef4444"} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: user ? "#fb7185" : "#ef4444" }}>Marketplace</span>{!user && <span style={{ fontFamily: "Inter,sans-serif", fontSize: 10, fontWeight: 600, color: "#ef4444", marginLeft: 6, opacity: 0.8, letterSpacing: 0.5 }}>LOGIN REQUIRED</span>}</button>
                         <button onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
                             style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: user ? "1px solid rgba(139,92,246,0.38)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: user ? "0 0 18px rgba(139,92,246,0.22)" : "none", transition: "all 0.2s", opacity: user ? 1 : 0.5 }}
                             onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
