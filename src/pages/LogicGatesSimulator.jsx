@@ -1047,7 +1047,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
         overflowX: 'auto',
         overscrollBehavior: 'contain',
         WebkitOverflowScrolling: 'touch',
-        maxWidth: isMobile ? 'calc(100vw - 80px)' : undefined,
+        maxWidth: isMobile ? 'calc(100vw - 20px)' : undefined,
         boxSizing: 'border-box',
       }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
@@ -8291,7 +8291,7 @@ export default function LogicGatesSimulator({ setPage }) {
             overflowX: 'auto',
             overscrollBehavior: 'contain',
             WebkitOverflowScrolling: 'touch',
-            maxWidth: isMobile ? 'calc(100vw - 80px)' : undefined,
+            maxWidth: isMobile ? 'calc(100vw - 20px)' : undefined,
             boxSizing: 'border-box',
           }}
           onClick={e => e.stopPropagation()}
