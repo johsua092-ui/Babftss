@@ -231,6 +231,7 @@ export default function App() {
                             onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}
                             accent="#fb7185"
                             dark="#9f1239"
+                            deepest="#4c0519"
                             locked={!user}
                         />
                         <MenuButton3D
@@ -239,6 +240,7 @@ export default function App() {
                             onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
                             accent="#a78bfa"
                             dark="#5b21b6"
+                            deepest="#2e1065"
                             locked={!user}
                         />
                         <MenuButton3D
@@ -247,6 +249,7 @@ export default function App() {
                             onClick={() => setPage("shapes")}
                             accent="#2dd4bf"
                             dark="#0f766e"
+                            deepest="#042f2e"
                         />
                         <MenuButton3D
                             icon={<Cpu size={22} color="#fff" />}
@@ -254,6 +257,7 @@ export default function App() {
                             onClick={() => setPage("logic-gates")}
                             accent="#60a5fa"
                             dark="#1d4ed8"
+                            deepest="#172554"
                         />
                         <MenuButton3D
                             icon={<GearIcon icon="spur" color="#fff" size={22} />}
@@ -261,6 +265,7 @@ export default function App() {
                             onClick={() => setPage("gears")}
                             accent="#fb923c"
                             dark="#c2410c"
+                            deepest="#431407"
                         />
                         <MenuButton3D
                             icon={<LinkageIcon icon="fourbar" color="#fff" size={22} />}
@@ -268,6 +273,7 @@ export default function App() {
                             onClick={() => setPage("linkages")}
                             accent="#818cf8"
                             dark="#4338ca"
+                            deepest="#1e1b4b"
                         />
                     </div>
                 </div>
