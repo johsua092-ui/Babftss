@@ -123,10 +123,14 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
   useEffect(() => {
     if (!drag) return;
     const onMove = (e) => handlePos(e.clientY);
+    const onTouchMove = (e) => { if (e.touches[0]) { e.preventDefault(); handlePos(e.touches[0].clientY); } };
     const onUp = () => setDrag(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+    window.addEventListener('touchcancel', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onTouchMove); window.removeEventListener('touchend', onUp); window.removeEventListener('touchcancel', onUp); };
   }, [drag, handlePos]);
 
   return (
@@ -146,7 +150,7 @@ function VSlider({ gradient, value, maxVal, onChange, label, inputVal, onInputCh
           ref={ref}
           onMouseDown={e => { e.preventDefault(); setDrag(true); handlePos(e.clientY); }}
           onTouchStart={e => { e.preventDefault(); setDrag(true); handlePos(e.touches[0].clientY); }}
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', touchAction: 'none' }}
         />
       </div>
     </div>
@@ -216,10 +220,14 @@ function HSlider({ color, value, onChange, label }) {
   useEffect(() => {
     if (!drag) return;
     const onMove = (e) => handlePos(e.clientX);
+    const onTouchMove = (e) => { if (e.touches[0]) { e.preventDefault(); handlePos(e.touches[0].clientX); } };
     const onUp = () => setDrag(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+    window.addEventListener('touchcancel', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onTouchMove); window.removeEventListener('touchend', onUp); window.removeEventListener('touchcancel', onUp); };
   }, [drag, handlePos]);
 
   return (
@@ -238,7 +246,7 @@ function HSlider({ color, value, onChange, label }) {
         ref={ref}
         onMouseDown={e => { e.preventDefault(); setDrag(true); handlePos(e.clientX); }}
         onTouchStart={e => { e.preventDefault(); setDrag(true); handlePos(e.touches[0].clientX); }}
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'pointer', touchAction: 'none' }}
       />
     </div>
   );
@@ -337,10 +345,14 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e) => handleWheelPos(e.clientX, e.clientY);
+    const onTouchMove = (e) => { if (e.touches[0]) { e.preventDefault(); handleWheelPos(e.touches[0].clientX, e.touches[0].clientY); } };
     const onUp = () => setDragging(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+    window.addEventListener('touchcancel', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onTouchMove); window.removeEventListener('touchend', onUp); window.removeEventListener('touchcancel', onUp); };
   }, [dragging, handleWheelPos]);
 
   // ── HSV slider handlers ──
@@ -386,7 +398,7 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
           ref={wheelRef}
           onMouseDown={e => { e.preventDefault(); setDragging(true); handleWheelPos(e.clientX, e.clientY); }}
           onTouchStart={e => { e.preventDefault(); setDragging(true); handleWheelPos(e.touches[0].clientX, e.touches[0].clientY); }}
-          style={{ cursor: 'crosshair', borderRadius: '50%', flexShrink: 0 }}
+          style={{ cursor: 'crosshair', borderRadius: '50%', flexShrink: 0, touchAction: 'none' }}
         />
         {/* HSV vertical sliders */}
         <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
