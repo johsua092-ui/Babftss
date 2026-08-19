@@ -429,6 +429,25 @@ function DrawTab({ token }) {
             {/* Custom Color Picker with Confirm */}
             {customColorPicker && (
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                    {/* Mobile scroll arrows — FIXED on overlay */}
+                    {typeof window !== 'undefined' && window.innerWidth < 768 && (
+                        <>
+                            <div style={{
+                                position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
+                                zIndex: 51, pointerEvents: 'none',
+                                animation: 'cp-blink 1.2s ease-in-out infinite',
+                                color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                                textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+                            }}>‹</div>
+                            <div style={{
+                                position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                                zIndex: 51, pointerEvents: 'none',
+                                animation: 'cp-blink 1.2s ease-in-out infinite',
+                                color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                                textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+                            }}>›</div>
+                        </>
+                    )}
                     <div style={{
                         padding: 8, borderRadius: 8,
                         backgroundColor: typeof window !== 'undefined' && window.innerWidth < 768 ? 'rgba(100, 116, 139, 0.97)' : 'rgba(15, 23, 42, 0.98)',
@@ -437,29 +456,11 @@ function DrawTab({ token }) {
                         maxHeight: 'calc(100dvh - 32px)',
                         overflowY: 'auto',
                         overflowX: 'auto',
-                        maxWidth: typeof window !== 'undefined' && window.innerWidth < 768 ? 'calc(100vw - 32px)' : undefined,
+                        overscrollBehavior: 'contain',
+                        WebkitOverflowScrolling: 'touch',
+                        maxWidth: typeof window !== 'undefined' && window.innerWidth < 768 ? 'calc(100vw - 80px)' : undefined,
                         boxSizing: 'border-box',
-                        position: 'relative',
                     }}>
-                        {/* Mobile scroll arrows — blinking */}
-                        {typeof window !== 'undefined' && window.innerWidth < 768 && (
-                            <>
-                                <div style={{
-                                    position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)',
-                                    zIndex: 10, pointerEvents: 'none',
-                                    animation: 'cp-blink 1.2s ease-in-out infinite',
-                                    color: '#fff', fontSize: 48, fontWeight: 900,
-                                    textShadow: '0 0 6px rgba(0,0,0,0.8)',
-                                }}>‹</div>
-                                <div style={{
-                                    position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-                                    zIndex: 10, pointerEvents: 'none',
-                                    animation: 'cp-blink 1.2s ease-in-out infinite',
-                                    color: '#fff', fontSize: 48, fontWeight: 900,
-                                    textShadow: '0 0 6px rgba(0,0,0,0.8)',
-                                }}>›</div>
-                            </>
-                        )}
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif', textAlign: 'center' }}>Custom Color</div>
                         <ColorWheelPicker
                             hex={customColorPicker.hex}

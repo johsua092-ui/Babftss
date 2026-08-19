@@ -1015,6 +1015,25 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
       background: 'rgba(0,0,0,0.7)',
       padding: 16,
     }} onClick={onCancel}>
+      {/* Mobile scroll arrows — FIXED on overlay, outside modal */}
+      {isMobile && (
+        <>
+          <div style={{
+            position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
+            zIndex: 1004, pointerEvents: 'none',
+            animation: 'cp-blink 1.2s ease-in-out infinite',
+            color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+            textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+          }}>‹</div>
+          <div style={{
+            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+            zIndex: 1004, pointerEvents: 'none',
+            animation: 'cp-blink 1.2s ease-in-out infinite',
+            color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+            textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+          }}>›</div>
+        </>
+      )}
       <div onClick={e => e.stopPropagation()} style={{
         background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
         borderRadius: 16, padding: 16,
@@ -1024,29 +1043,11 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
         maxHeight: 'calc(100dvh - 32px)',
         overflowY: 'auto',
         overflowX: 'auto',
-        maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        maxWidth: isMobile ? 'calc(100vw - 80px)' : undefined,
         boxSizing: 'border-box',
-        position: 'relative',
       }}>
-        {/* Mobile scroll arrows — blinking */}
-        {isMobile && (
-          <>
-            <div style={{
-              position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)',
-              zIndex: 10, pointerEvents: 'none',
-              animation: 'cp-blink 1.2s ease-in-out infinite',
-              color: '#fff', fontSize: 48, fontWeight: 900,
-              textShadow: '0 0 6px rgba(0,0,0,0.8)',
-            }}>‹</div>
-            <div style={{
-              position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-              zIndex: 10, pointerEvents: 'none',
-              animation: 'cp-blink 1.2s ease-in-out infinite',
-              color: '#fff', fontSize: 48, fontWeight: 900,
-              textShadow: '0 0 6px rgba(0,0,0,0.8)',
-            }}>›</div>
-          </>
-        )}
         <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
           Slot {slotIndex + 1} Color
         </div>
@@ -8252,6 +8253,25 @@ export default function LogicGatesSimulator({ setPage }) {
           }}
           onClick={() => setColorPicker(null)}
         >
+          {/* Mobile scroll arrows — FIXED on screen, outside modal */}
+          {isMobile && (
+            <>
+              <div style={{
+                position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 1001, pointerEvents: 'none',
+                animation: 'cp-blink 1.2s ease-in-out infinite',
+                color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+              }}>‹</div>
+              <div style={{
+                position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 1001, pointerEvents: 'none',
+                animation: 'cp-blink 1.2s ease-in-out infinite',
+                color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+              }}>›</div>
+            </>
+          )}
         <div
           style={{
             background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'rgba(15, 23, 42, 0.98)',
@@ -8264,33 +8284,15 @@ export default function LogicGatesSimulator({ setPage }) {
             maxHeight: 'calc(100dvh - 32px)',
             overflowY: 'auto',
             overflowX: 'auto',
-            maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            maxWidth: isMobile ? 'calc(100vw - 80px)' : undefined,
             boxSizing: 'border-box',
-            position: 'relative',
           }}
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
           onTouchStart={e => e.stopPropagation()}
         >
-          {/* Mobile scroll arrows — blinking animation */}
-          {isMobile && (
-            <>
-              <div style={{
-                position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)',
-                zIndex: 10, pointerEvents: 'none', opacity: 0.6,
-                animation: 'cp-blink 1.2s ease-in-out infinite',
-                color: '#fff', fontSize: 48, fontWeight: 900,
-                textShadow: '0 0 6px rgba(0,0,0,0.8)',
-              }}>‹</div>
-              <div style={{
-                position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-                zIndex: 10, pointerEvents: 'none', opacity: 0.6,
-                animation: 'cp-blink 1.2s ease-in-out infinite',
-                color: '#fff', fontSize: 48, fontWeight: 900,
-                textShadow: '0 0 6px rgba(0,0,0,0.8)',
-              }}>›</div>
-            </>
-          )}
           <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', textAlign: 'center' }}>
             {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
           </div>
