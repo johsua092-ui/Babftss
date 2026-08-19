@@ -5,6 +5,7 @@ import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, Rota
 import GearIcon from './components/GearIcon';
 import LinkageIcon from './components/LinkageIcon';
 import ShapesIcon from './components/ShapesIcon';
+import MenuButton3D from './components/MenuButton3D';
 import LoginModal from './components/LoginModal';
 import AIHelperButton from './components/AIHelperButton';
 import { useAuth } from './contexts/AuthContext';
@@ -220,39 +221,60 @@ export default function App() {
                         <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
                     </picture>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
-                        {/* Marketplace — ATURAN MUTLAK: guest tidak bisa akses. Hanya user login.
-                            Pattern sama dengan Canvas: guest lihat tombol redup + label LOGIN REQUIRED,
-                            klik → banner peringatan "Harap sign in dahulu sebelum menggunakan fitur ini". */}
-                        <button onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: user ? "1px solid rgba(251,113,133,0.38)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: user ? "0 0 18px rgba(251,113,133,0.22)" : "none", transition: "all 0.2s", opacity: user ? 1 : 0.5 }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: user ? "rgba(251,113,133,0.18)" : "rgba(239,68,68,0.12)", padding: 10, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><ShoppingCart size={22} color={user ? "#fb7185" : "#ef4444"} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: user ? "#fb7185" : "#ef4444" }}>Marketplace</span>{!user && <span style={{ fontFamily: "Inter,sans-serif", fontSize: 10, fontWeight: 600, color: "#ef4444", marginLeft: 6, opacity: 0.8, letterSpacing: 0.5 }}>LOGIN REQUIRED</span>}</button>
-                        <button onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: user ? "1px solid rgba(139,92,246,0.38)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: user ? "0 0 18px rgba(139,92,246,0.22)" : "none", transition: "all 0.2s", opacity: user ? 1 : 0.5 }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: user ? "rgba(139,92,246,0.18)" : "rgba(239,68,68,0.12)", padding: 10, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><PenTool size={22} color={user ? "#a78bfa" : "#ef4444"} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: user ? "#a78bfa" : "#ef4444" }}>Canvas</span>{!user && <span style={{ fontFamily: "Inter,sans-serif", fontSize: 10, fontWeight: 600, color: "#ef4444", marginLeft: 6, opacity: 0.8, letterSpacing: 0.5 }}>LOGIN REQUIRED</span>}</button>
-                        <button onClick={() => setPage("shapes")}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(45,212,191,0.38)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(45,212,191,0.22)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: "rgba(45,212,191,0.18)", padding: 10, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><ShapesIcon size={22} color="#2dd4bf" /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#2dd4bf" }}>Shapes</span></button>
-                        <button onClick={() => setPage("logic-gates")}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(59,130,246,0.35)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(59,130,246,0.25)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: "rgba(59,130,246,0.18)", padding: 10, borderRadius: 10, color: "#60a5fa", flexShrink: 0 }}><Cpu size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#60a5fa" }}>Logic Gates</span></button>
-                        <button onClick={() => setPage("gears")}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(251,146,60,0.38)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(251,146,60,0.22)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: "rgba(251,146,60,0.18)", padding: 10, borderRadius: 10, flexShrink: 0 }}><GearIcon icon="spur" color="#fb923c" size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#fb923c" }}>Gears</span></button>
-                        <button onClick={() => setPage("linkages")}
-                            style={{ width: "100%", padding: "16px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(99,102,241,0.38)", display: "flex", alignItems: "center", gap: 14, color: "#fff", boxShadow: "0 0 18px rgba(99,102,241,0.22)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "scale(1.02)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "scale(1)"}
-                        ><div style={{ backgroundColor: "rgba(99,102,241,0.18)", padding: 10, borderRadius: 10, flexShrink: 0 }}><LinkageIcon icon="fourbar" color="#818cf8" size={22} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: "#818cf8" }}>Linkages Mechanic</span></button>
+                        {/* 6 tombol menu utama — pakai komponen MenuButton3D (efek 3D slab).
+                            ATURAN: tiap tombol tetap pakai accent color sendiri + icon sendiri.
+                            Marketplace & Canvas: guest-guard (locked=!user) — guest klik → banner merah.
+                            Shapes, Logic Gates, Gears, Linkages: bebas diakses siapapun. */}
+                        <MenuButton3D
+                            icon={<ShoppingCart size={22} color="#fff" />}
+                            label="Marketplace"
+                            onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}
+                            accent="#fb7185"
+                            dark="#9f1239"
+                            deepest="#4c0519"
+                            locked={!user}
+                        />
+                        <MenuButton3D
+                            icon={<PenTool size={22} color="#fff" />}
+                            label="Canvas"
+                            onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
+                            accent="#a78bfa"
+                            dark="#5b21b6"
+                            deepest="#2e1065"
+                            locked={!user}
+                        />
+                        <MenuButton3D
+                            icon={<ShapesIcon size={22} color="#fff" />}
+                            label="Shapes"
+                            onClick={() => setPage("shapes")}
+                            accent="#2dd4bf"
+                            dark="#0f766e"
+                            deepest="#042f2e"
+                        />
+                        <MenuButton3D
+                            icon={<Cpu size={22} color="#fff" />}
+                            label="Logic Gates"
+                            onClick={() => setPage("logic-gates")}
+                            accent="#60a5fa"
+                            dark="#1d4ed8"
+                            deepest="#172554"
+                        />
+                        <MenuButton3D
+                            icon={<GearIcon icon="spur" color="#fff" size={22} />}
+                            label="Gears"
+                            onClick={() => setPage("gears")}
+                            accent="#fb923c"
+                            dark="#c2410c"
+                            deepest="#431407"
+                        />
+                        <MenuButton3D
+                            icon={<LinkageIcon icon="fourbar" color="#fff" size={22} />}
+                            label="Linkages Mechanic"
+                            onClick={() => setPage("linkages")}
+                            accent="#818cf8"
+                            dark="#4338ca"
+                            deepest="#1e1b4b"
+                        />
                     </div>
                 </div>
             </motion.div>}

@@ -3153,3 +3153,85 @@ Mengikuti style baku tombol menu (sama seperti Canvas, Shapes, Logic Gates, Gear
   - Authorization check di sisi backend (jangan trust client-side guard saja).
 - Search & category filter saat ini client-side saja. Kalau produk tumbuh banyak, pertimbangkan server-side filtering dengan pagination.
 - Tidak ada perubahan di `instruction.md` atau `design.md` — aturan guest-guard Marketplace dianggap turunan dari pola yang sudah ada (Canvas, Logic Gates Simulator), tidak butuh entry baru di dokumen aturan tetap. Kalau user mau naikkan ke aturan permanent di instruction.md, dilakukan terpisah.
+
+---
+
+## Bagian 49 — Redesign 3D Slab Button untuk 6 Tombol Menu Utama (19 Aug 2026)
+
+### Konteks & Referensi Visual
+User kirim gambar referensi (pasted_image_1787124512149.png — tombol 3D hijau lime dengan bottom dark green "lip", thick dark border, inner bevel highlight putih, glossy/plastic feel). User minta:
+1. 6 tombol menu utama (Marketplace, Canvas, Shapes, Logic Gates, Gears, Linkages Mechanic) dirubah pakai **style 3D slab** seperti gambar referensi.
+2. **Warna tetap pakai accent color masing-masing** (rose, purple, teal, blue, orange, indigo).
+3. **Icon tetap pakai logo masing-masing** (ShoppingCart, PenTool, ShapesIcon, Cpu, GearIcon, LinkageIcon).
+4. Efek 3D = bright face + bottom dark "lip" + thick dark border + inner bevel highlight + glossy material feel.
+
+### Solusi: Komponen Reusable `MenuButton3D`
+Daripada duplikasi style 6x, dibuat komponen reusable: `src/components/MenuButton3D.jsx`. Tiap tombol tinggal pass props:
+- `icon` (React node) — ikon tombol, warna putih untuk kontras dengan bright face
+- `label` (string) — judul tombol
+- `onClick` (function)
+- `accent` (hex) — bright face color (e.g. `#fb7185` untuk Marketplace rose)
+- `dark` (hex) — medium-dark color untuk bottom slab + inner bottom shadow (e.g. `#9f1239`)
+- `deepest` (hex) — paling gelap untuk border (e.g. `#4c0519`)
+- `locked` (boolean, default false) — guest-lock state
+
+### Efek 3D — Detail Implementasi CSS
+Box-shadow pakai 4 layer (dari belakang ke depan):
+1. `0 6px 0 ${dark}` — **bottom slab/lip** = offset 6px ke bawah tanpa blur, warna medium-dark. Inilah yang bikin "3D extrusion" effect.
+2. `0 8px 14px rgba(0,0,0,0.45)` — **ambient drop shadow** = offset 8px blur 14px, bikin tombol "melayang" di atas background.
+3. `inset 0 2px 0 rgba(255,255,255,0.4)` — **top inner highlight** = garis putih tipis di atas dalam, simulasikan light source dari atas + glossy/plastic material.
+4. `inset 0 -2px 0 ${dark}` — **bottom inner shadow** = garis gelap tipis di bawah dalam, tambahan depth.
+
+Plus:
+- `border: 3px solid ${deepest}` — border tebal warna paling gelap.
+- `borderRadius: 18` — squircle rounded.
+- `padding: 16px 20px` — sama dengan tombol lama (preserve layout).
+
+### Interaksi Dinamis (state via React useState)
+- **Default** (unlocked, tidak hover): slab height 6px, ambient offset 8px blur 14px.
+- **Hover** (unlocked): slab height **8px** (lebih tinggi = makin "terangkat"), ambient offset 10px blur 18px, `translateY(-2px)` — tombol naik sedikit.
+- **Pressed** (mouse down): slab height **2px** (makin tipis = "ketekan"), ambient offset 2px blur 4px, `translateY(4px)` — tombol turun, simulasi physical press.
+- Transition: `transform 0.1s ease, box-shadow 0.1s ease` — cepat & responsif (bukan 0.2s yang lambat seperti tombol lama).
+
+### Locked State (Guest-Guard)
+- `backgroundColor: #1a1f2e` (abu-abu gelap, BUKAN accent color) — guest lihat tombol "mati".
+- `border: 3px solid #3f1d1d` (merah gelap).
+- `opacity: 0.55` — redup.
+- Icon container bg: `rgba(239,68,68,0.15)` (merah transparan).
+- Label color: `#ef4444` (merah).
+- Icon color: `#ef4444` (merah, di-override di call site saat locked — lihat App.jsx line 229).
+- Badge `LOGIN REQUIRED` auto-render di kanan label.
+- No box-shadow (no 3D effect saat locked — sinyal visual "tidak interaktif").
+- Hover/pressed state tidak aktif saat locked.
+
+### Pemetaan Warna 6 Tombol (accent / dark / deepest)
+| Tombol | accent (bright) | dark (slab) | deepest (border) | Status |
+|---|---|---|---|---|
+| Marketplace | `#fb7185` rose | `#9f1239` | `#4c0519` | locked=!user |
+| Canvas | `#a78bfa` purple | `#5b21b6` | `#2e1065` | locked=!user |
+| Shapes | `#2dd4bf` teal | `#0f766e` | `#042f2e` | open |
+| Logic Gates | `#60a5fa` blue | `#1d4ed8` | `#172554` | open |
+| Gears | `#fb923c` orange | `#c2410c` | `#431407` | open |
+| Linkages Mechanic | `#818cf8` indigo | `#4338ca` | `#1e1b4b` | open |
+
+### File yang Dibuat/Diubah
+1. **BARU**: `src/components/MenuButton3D.jsx` — komponen reusable (~140 lines).
+2. **EDIT**: `src/App.jsx`:
+   - Import `MenuButton3D` (line 8).
+   - Replace 6 tombol inline `<button>` jadi `<MenuButton3D>` calls (line 222-278).
+   - Code jadi lebih bersih: dari ~30 line per tombol jadi ~9 line per tombol.
+   - Total `src/App.jsx` line count turun dari 328 → 312 line.
+
+### Aturan untuk Pengembangan Lanjutan
+1. **JANGAN** ubah style 3D tombol menu utama tanpa persetujuan user eksplisit. Ini design pilihan user berdasarkan referensi gambar.
+2. **JANGAN** tambah tombol menu baru dengan style berbeda — pakai `MenuButton3D` untuk konsistensi.
+3. Kalau ada tombol menu baru di masa depan, definisikan 3 warna (accent/dark/deepest) yang konsisten dengan roset/purple/teal/blue/orange/indigo palette yang sudah ada.
+4. Efek 3D slab ini **KHUSUS menu utama** — jangan diterapkan ke tombol lain di halaman dalam (basic-logic-gates, logic-gates-circuit, gears page, dll) tanpa persetujuan user. Halaman dalam tetap pakai style flat/glow yang sudah ada sesuai `design.md`.
+5. Komponen `MenuButton3D` bisa di-reuse kalau ada menu baru, tapi call site-nya WAJIB pass 3 warna turunan (accent/dark/deepest) — jangan hardcoded di dalam komponen.
+6. Icon di call site WAJIB pass `color="#fff"` (atau `#ef4444` saat locked) — jangan pakai accent color lagi karena bg tombol sekarang bright, accent color bakal invisible di bright face.
+
+### Verifikasi
+- `npx vite build` sukses 0 error (9.46s).
+- Bundle `index-C31fWZyy.js` 582 KB (turun ~3 KB dari 585 KB sebelumnya karena eliminasi inline style duplikat).
+- Tidak ada warning baru di build.
+- Guest-guard pattern (Marketplace & Canvas) tetap berfungsi: locked state = redup + merah + badge LOGIN REQUIRED, klik → banner merah "Harap sign in dahulu...".
