@@ -454,25 +454,29 @@ function DrawTab({ token }) {
                         border: '1px solid #475569', display: 'flex', flexDirection: 'column', gap: 6,
                         boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                         maxHeight: 'calc(100dvh - 32px)',
-                        overflowY: 'auto',
-                        overflowX: 'auto',
-                        overscrollBehavior: 'contain',
-                        WebkitOverflowScrolling: 'touch',
                         maxWidth: typeof window !== 'undefined' && window.innerWidth < 768 ? 'calc(100vw - 20px)' : undefined,
                         boxSizing: 'border-box',
                     }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif', textAlign: 'center' }}>Custom Color</div>
-                        <ColorWheelPicker
-                            hex={customColorPicker.hex}
-                            onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
-                            onPickColor={() => {
-                                const saved = { ...customColorPicker };
-                                setCustomColorPicker(null);
-                                if (window.EyeDropper) {
-                                    const dropper = new window.EyeDropper();
-                                    dropper.open().then(result => {
-                                        setCustomColorPicker({ ...saved, hex: result.sRGBHex });
-                                    }).catch(() => {
+                        {/* Scrollable area */}
+                        <div style={{
+                            overflowY: 'auto',
+                            overflowX: 'auto',
+                            overscrollBehavior: 'contain',
+                            WebkitOverflowScrolling: 'touch',
+                            flex: 1, minHeight: 0,
+                        }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif', textAlign: 'center' }}>Custom Color</div>
+                            <ColorWheelPicker
+                                hex={customColorPicker.hex}
+                                onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+                                onPickColor={() => {
+                                    const saved = { ...customColorPicker };
+                                    setCustomColorPicker(null);
+                                    if (window.EyeDropper) {
+                                        const dropper = new window.EyeDropper();
+                                        dropper.open().then(result => {
+                                            setCustomColorPicker({ ...saved, hex: result.sRGBHex });
+                                        }).catch(() => {
                                         setCustomColorPicker(saved);
                                     });
                                 } else {
@@ -480,8 +484,9 @@ function DrawTab({ token }) {
                                 }
                             }}
                         />
-                        {/* Buttons directly below — sticky on mobile */}
-                        <div style={{ display: 'flex', gap: 6, position: (typeof window !== 'undefined' && window.innerWidth < 768) ? 'sticky' : 'static', bottom: (typeof window !== 'undefined' && window.innerWidth < 768) ? 0 : 'auto', background: (typeof window !== 'undefined' && window.innerWidth < 768) ? 'rgba(100, 116, 139, 0.97)' : 'transparent', padding: (typeof window !== 'undefined' && window.innerWidth < 768) ? '8px 0' : 0, zIndex: 5 }}>
+                        </div>
+                        {/* Buttons — OUTSIDE scrollable area, stays fixed */}
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                             <button onClick={() => { setColor(customColorPicker.hex); setTool('pen'); setCustomColorPicker(null); toast.success('Warna berhasil diubah!', { description: customColorPicker.hex.toUpperCase() }); }} style={{
                                 flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
                                 background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',

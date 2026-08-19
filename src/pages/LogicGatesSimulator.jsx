@@ -1043,22 +1043,28 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
         boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column', gap: 10, alignItems: isMobile ? 'flex-start' : 'center',
         maxHeight: 'calc(100dvh - 32px)',
-        overflowY: 'auto',
-        overflowX: 'auto',
-        overscrollBehavior: 'contain',
-        WebkitOverflowScrolling: 'touch',
         maxWidth: isMobile ? 'calc(100vw - 20px)' : undefined,
         boxSizing: 'border-box',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
-          Slot {slotIndex + 1} Color
+        {/* Scrollable area */}
+        <div style={{
+          overflowY: 'auto',
+          overflowX: 'auto',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+          flex: 1, minHeight: 0, alignSelf: 'stretch',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
+            Slot {slotIndex + 1} Color
+          </div>
+          <ColorWheelPicker
+            hex={draftHex}
+            onChange={setDraftHex}
+            onPickColor={() => onPickFromWorkspace(draftHex)}
+          />
         </div>
-        <ColorWheelPicker
-          hex={draftHex}
-          onChange={setDraftHex}
-          onPickColor={() => onPickFromWorkspace(draftHex)}
-        />
-        <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center', position: isMobile ? 'sticky' : 'static', bottom: isMobile ? 0 : 'auto', background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'transparent', padding: isMobile ? '8px 0' : 0, zIndex: 5 }}>
+        {/* Buttons — OUTSIDE scrollable area, fixed at bottom */}
+        <div style={{ display: 'flex', gap: 6, width: '100%', justifyContent: 'center', flexShrink: 0, alignSelf: 'stretch' }}>
           <button onClick={() => onConfirm(slotIndex, draftHex)} style={{
             flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 700,
             background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
@@ -8287,10 +8293,6 @@ export default function LogicGatesSimulator({ setPage }) {
             fontFamily: '"Inter", sans-serif',
             display: 'flex', flexDirection: 'column', gap: 6,
             maxHeight: 'calc(100dvh - 32px)',
-            overflowY: 'auto',
-            overflowX: 'auto',
-            overscrollBehavior: 'contain',
-            WebkitOverflowScrolling: 'touch',
             maxWidth: isMobile ? 'calc(100vw - 20px)' : undefined,
             boxSizing: 'border-box',
           }}
@@ -8298,29 +8300,38 @@ export default function LogicGatesSimulator({ setPage }) {
           onMouseDown={e => e.stopPropagation()}
           onTouchStart={e => e.stopPropagation()}
         >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', textAlign: 'center' }}>
-            {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
+          {/* Scrollable area — contains title + color picker */}
+          <div style={{
+            overflowY: 'auto',
+            overflowX: 'auto',
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            flex: 1, minHeight: 0,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', textAlign: 'center' }}>
+              {colorPicker.targetType === 'comp' ? 'Component Color' : 'Wire Color'}
+            </div>
+
+            {/* Classic color wheel picker — fully self-contained */}
+            <ColorWheelPicker
+              hex={colorPicker.hex}
+              onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+              onPickColor={() => {
+                // Save current picker state, close modal, enter pick-from-workspace mode
+                const savedPicker = { ...colorPicker };
+                setColorPicker(null);
+                setPickFromWorkspace(savedPicker);
+                // Apply custom eyedropper cursor (shared with slot picker)
+                const cursorUrl = getEyedropperCursorUrl();
+                const canvas = document.querySelector('canvas');
+                if (canvas) canvas.style.cursor = `url('${cursorUrl}') 6 26, crosshair`;
+                setStatus('Click a component or wire to pick its color');
+              }}
+            />
           </div>
 
-          {/* Classic color wheel picker — fully self-contained */}
-          <ColorWheelPicker
-            hex={colorPicker.hex}
-            onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
-            onPickColor={() => {
-              // Save current picker state, close modal, enter pick-from-workspace mode
-              const savedPicker = { ...colorPicker };
-              setColorPicker(null);
-              setPickFromWorkspace(savedPicker);
-              // Apply custom eyedropper cursor (shared with slot picker)
-              const cursorUrl = getEyedropperCursorUrl();
-              const canvas = document.querySelector('canvas');
-              if (canvas) canvas.style.cursor = `url('${cursorUrl}') 6 26, crosshair`;
-              setStatus('Click a component or wire to pick its color');
-            }}
-          />
-
-          {/* Action buttons: Confirm | Cancel — sticky at bottom on mobile */}
-          <div style={{ display: 'flex', gap: 6, marginTop: 2, position: isMobile ? 'sticky' : 'static', bottom: isMobile ? 0 : 'auto', background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'transparent', padding: isMobile ? '8px 0' : 0, zIndex: 5 }}>
+          {/* Action buttons: Confirm | Cancel — OUTSIDE scrollable area, stays fixed */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 2, flexShrink: 0 }}>
             <button
               onClick={() => {
                 const hex = colorPicker.hex;
