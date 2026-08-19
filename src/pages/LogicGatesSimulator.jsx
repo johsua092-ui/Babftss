@@ -1041,7 +1041,7 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
         borderRadius: 16, padding: 16,
         border: '2px solid #334155',
         boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-        display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+        display: 'flex', flexDirection: 'column', gap: 10, alignItems: isMobile ? 'flex-start' : 'center',
         maxHeight: 'calc(100dvh - 32px)',
         overflowY: 'auto',
         overflowX: 'auto',
