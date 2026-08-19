@@ -6918,7 +6918,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           }
                         }}
                         style={{
-                        minWidth: isMobile ? undefined : 180,
+                        minWidth: isMobile ? 0 : 180,
                         maxWidth: isMobile ? undefined : 280,
                         position: 'relative',
                         borderRadius: 14,
@@ -7246,7 +7246,7 @@ export default function LogicGatesSimulator({ setPage }) {
                     }
                     return (
                       <div style={{
-                        minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
+                        minWidth: isMobile ? 0 : 180, maxWidth: isMobile ? undefined : 280,
                         position: 'relative', borderRadius: 14, overflow: 'hidden',
                         background: `linear-gradient(180deg, ${asCc.light} 0%, ${asCc.body} 30%, ${asCc.body} 70%, ${asCc.dark} 100%)`,
                         boxShadow: `4px 4px 0 ${asCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
@@ -7370,7 +7370,7 @@ export default function LogicGatesSimulator({ setPage }) {
                       <div
                         onClick={() => { if (user) setBuySlotConfirm(true); else setSaveStatus({ message: 'Harap login terlebih dahulu!', type: 'error' }); }}
                         style={{
-                          minWidth: isMobile ? undefined : 180, maxWidth: isMobile ? undefined : 280,
+                          minWidth: isMobile ? 0 : 180, maxWidth: isMobile ? undefined : 280,
                           position: 'relative', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
                           background: `linear-gradient(180deg, ${bsCc.light} 0%, ${bsCc.body} 30%, ${bsCc.body} 70%, ${bsCc.dark} 100%)`,
                           boxShadow: `4px 4px 0 ${bsCc.dark}, 0 8px 24px rgba(0,0,0,0.5)`,
