@@ -328,7 +328,7 @@ export default async function handler(req, res) {
         const result = await buyAITime(uid, packageId);
         return res.status(200).json({ message: "Berhasil membeli waktu AI", remainingMinutes: result.remainingMinutes, goldBalance: result.goldBalance });
       } catch (e) {
-        if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold tidak cukup", gold: await getGoldBalance(uid) });
+        if (e.statusCode === 402) return res.status(402).json({ error: "Gold tidak cukup", gold: await getGoldBalance(uid) });
         if (e.message.startsWith("cooldown")) return res.status(429).json({ error: "Tunggu 3 detik sebelum beli lagi" });
         if (e.message === "invalid package") return res.status(400).json({ error: "Paket tidak valid" });
         throw e;
@@ -399,7 +399,7 @@ export default async function handler(req, res) {
         console.log("[ai-chat] transfer member: inboxResult=%j", result.inboxResult);
         return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result });
       } catch (e) {
-        if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
+        if (e.statusCode === 402) return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
         if (e.message === "recipient not found") return res.status(404).json({ error: "User tujuan tidak ditemukan" });
         throw e;
       }
@@ -469,7 +469,7 @@ export default async function handler(req, res) {
         await writeAuditLog({ actorUid: uid, actorEmail: user.email || null, action: "deduct", targetUid: resolvedUid, targetEmail: targetEmail || null, amount: -amount, meta: { note: note || null, newBalance: result }, ip: (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || null, userAgent: req.headers["user-agent"] || null });
         return res.status(200).json({ message: `Berhasil tarik ${amount} gold`, uid: resolvedUid, amount, newBalance: result });
       } catch (e) {
-        if (e.message === "insufficient gold") return res.status(402).json({ error: "Saldo member kurang", gold: await getGoldBalance(resolvedUid) });
+        if (e.statusCode === 402) return res.status(402).json({ error: "Saldo member kurang", gold: await getGoldBalance(resolvedUid) });
         console.error("[ai-chat] deduct-gold error:", e?.message || e);
         return res.status(500).json({ error: "Deduct gagal: " + (e?.message || "unknown error") });
       }
@@ -495,7 +495,7 @@ export default async function handler(req, res) {
         const result = await deductGold(uid, deductAmount, "buy_slot", { reason: "Buy circuit save slot" });
         return res.status(200).json({ message: `Berhasil beli slot seharga ${deductAmount} gold`, amount: deductAmount, newBalance: result });
       } catch (e) {
-        if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold tidak cukup!", gold: await getGoldBalance(uid) });
+        if (e.statusCode === 402) return res.status(402).json({ error: "Gold tidak cukup!", gold: await getGoldBalance(uid) });
         console.error("[ai-chat] buy-slot error:", e?.message || e);
         return res.status(500).json({ error: "Buy slot gagal: " + (e?.message || "unknown error") });
       }
@@ -616,6 +616,9 @@ export default async function handler(req, res) {
         }
         if (timerCheck.reason === "timer_expired") {
           return res.status(403).json({ error: "Waktu AI sudah habis. Beli paket baru untuk lanjut.", code: "TIMER_EXPIRED", gold: status.gold });
+        }
+        if (timerCheck.reason === "no_time") {
+          return res.status(403).json({ error: "Belum punya waktu AI. Beli paket untuk lanjut.", code: "NO_TIME", remainingMinutes: 0, gold: status.gold });
         }
         return res.status(403).json({ error: "Akses AI ditolak", code: "NO_ACCESS" });
       }
