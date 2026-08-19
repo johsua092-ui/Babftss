@@ -1007,11 +1007,13 @@ function DragGhost({ type, x, y }) {
 /* ── Slot Color Picker Modal (with draft + Confirm/Cancel) ── */
 function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFromWorkspace }) {
   const [draftHex, setDraftHex] = useState(slot._draftHex || slot.color);
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1003,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'rgba(0,0,0,0.7)',
+      padding: 16,
     }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{
         background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
@@ -1019,6 +1021,10 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
         border: '2px solid #334155',
         boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+        maxHeight: 'calc(100dvh - 32px)',
+        overflowY: 'auto',
+        maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
+        boxSizing: 'border-box',
       }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', fontFamily: 'Inter,sans-serif' }}>
           Slot {slotIndex + 1} Color
@@ -8234,6 +8240,10 @@ export default function LogicGatesSimulator({ setPage }) {
             boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
             fontFamily: '"Inter", sans-serif',
             display: 'flex', flexDirection: 'column', gap: 6,
+            maxHeight: 'calc(100dvh - 32px)',
+            overflowY: 'auto',
+            maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
+            boxSizing: 'border-box',
           }}
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
