@@ -241,8 +241,11 @@ export default async function handler(req, res) {
     try {
       const user = await authenticateRequest(req);
       if (!user) return res.status(401).json({ error: "Login required" });
+      // Ensure user has a Turso row before any cart/checkout operation
+      await ensureUserDoc(user.sub, user.email, user.name);
       const body = req.body || {};
       const email = user.email || null;
+      const admin = isAdmin(user);
 
       if (action === "mp_add") {
         const productId = body.productId;
@@ -271,7 +274,6 @@ export default async function handler(req, res) {
       if (action === "mp_checkout") {
         const cart = await getCart(user.sub);
         if (cart.items.length === 0) return res.status(400).json({ error: "Cart is empty" });
-        const admin = isAdmin(user);
         if (!admin) {
           const userGold = await getUserGold(user.sub);
           if (!userGold.exists) return res.status(404).json({ error: "User not found" });

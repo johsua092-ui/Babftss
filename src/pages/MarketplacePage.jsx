@@ -32,20 +32,27 @@ export default function MarketplacePage({ setPage }) {
 
     const loadProducts = useCallback(async () => {
         setLoading(true);
-        const { ok, data } = await apiCall('products');
-        if (ok && Array.isArray(data.products)) {
-            setProducts(data.products);
-        } else {
-            toast.error('Gagal memuat produk');
+        try {
+            const { ok, data } = await apiCall('products');
+            if (ok && Array.isArray(data.products)) {
+                setProducts(data.products);
+            } else {
+                toast.error('Gagal memuat produk');
+            }
+        } catch (e) {
+            toast.error('Gagal menghubungi server');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }, [apiCall]);
 
     const loadCartCount = useCallback(async () => {
-        const { ok, data } = await apiCall('count');
-        if (ok && typeof data.count === 'number') {
-            setCartCount(data.count);
-        }
+        try {
+            const { ok, data } = await apiCall('count');
+            if (ok && typeof data.count === 'number') {
+                setCartCount(data.count);
+            }
+        } catch (_) { /* silent */ }
     }, [apiCall]);
 
     useEffect(() => {
