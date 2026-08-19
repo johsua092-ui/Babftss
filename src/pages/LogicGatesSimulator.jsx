@@ -1011,9 +1011,11 @@ function SlotColorPickerModal({ slotIndex, slot, onConfirm, onCancel, onPickFrom
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1003,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: isMobile ? 'flex-start' : 'center',
       background: 'rgba(0,0,0,0.7)',
-      padding: 16,
+      padding: isMobile ? '16px 0 16px 16px' : 16,
     }} onClick={onCancel}>
       {/* Mobile scroll arrows — FIXED on overlay, outside modal */}
       {isMobile && (
@@ -8249,7 +8251,10 @@ export default function LogicGatesSimulator({ setPage }) {
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             zIndex: 1000,
             backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isMobile ? 'flex-start' : 'center',
+            paddingLeft: isMobile ? 16 : 0,
           }}
           onClick={() => setColorPicker(null)}
         >

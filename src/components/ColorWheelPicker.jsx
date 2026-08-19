@@ -376,6 +376,8 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
       padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
       boxShadow: 'inset 1px 1px 0 #4a5d75, inset -1px -1px 0 #4a5d75',
       fontFamily: 'Arial,sans-serif',
+      width: 'max-content',
+      boxSizing: 'content-box',
     }}>
       {/* Top row: Wheel + HSV sliders */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
