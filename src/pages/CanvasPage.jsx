@@ -521,10 +521,10 @@ function DrawTab({ token }) {
                 </div>
             )}
             {/* Canvas */}
-            <div ref={containerRef} style={{ flex: 1, position: 'relative', backgroundColor: '#05080f', overflow: 'hidden' }}>
+            <div ref={containerRef} style={{ flex: 1, position: 'relative', backgroundColor: '#05080f', overflow: 'hidden', overscrollBehavior: 'none', touchAction: 'none' }}>
                 {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontFamily: 'Inter,sans-serif', fontSize: 13 }}>Loading...</div>}
                 <canvas ref={canvasRef}
-                    style={{ width: '100%', height: '100%', display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
+                    style={{ width: '100%', height: '100%', display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair', touchAction: 'none' }}
                     onMouseDown={patchedStartDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
                     onTouchStart={patchedStartDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
                 />

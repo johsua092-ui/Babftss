@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Prevent mobile pull-to-refresh globally */
+html, body {
+  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
+}
+
 @keyframes pulse-glow {
   0%, to {
     box-shadow: 0 0 15px -3px #4ade8099, 0 0 6px -2px #4ade8066;

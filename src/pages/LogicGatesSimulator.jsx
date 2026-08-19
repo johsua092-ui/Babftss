@@ -1237,6 +1237,13 @@ export default function LogicGatesSimulator({ setPage }) {
   const [saveConfirm, setSaveConfirm] = useState(null); // { slotIndex, action: 'save'|'load' }
   const [saveStatus, setSaveStatus] = useState(null); // { message, type: 'success'|'error' }
 
+  // Auto-dismiss saveStatus after 3 seconds
+  useEffect(() => {
+    if (!saveStatus) return;
+    const t = setTimeout(() => setSaveStatus(null), 3000);
+    return () => clearTimeout(t);
+  }, [saveStatus]);
+
   /* ── Slot Lock state (localStorage) ── */
   const LOCK_KEY = 'circuit_slot_locks';
   const getStoredLocksMap = () => { try { const v = JSON.parse(localStorage.getItem(LOCK_KEY)); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}; } catch { return {}; } };
@@ -6810,18 +6817,44 @@ export default function LogicGatesSimulator({ setPage }) {
 
 
 
-                {/* Status message */}
+                {/* Slot notification overlay — covers slot grid, auto-dismiss 3s */}
                 {saveStatus && (
                   <div style={{
-                    padding: '8px 16px', borderRadius: 12, fontSize: 13, fontWeight: 700, textAlign: 'center',
-                    background: saveStatus.type === 'success'
-                      ? 'linear-gradient(180deg, rgba(107,199,77,0.3) 0%, rgba(107,199,77,0.15) 100%)'
-                      : 'linear-gradient(180deg, rgba(239,68,68,0.3) 0%, rgba(239,68,68,0.15) 100%)',
-                    color: saveStatus.type === 'success' ? '#a5e88a' : '#f87171',
-                    border: `2px solid ${saveStatus.type === 'success' ? '#6bc74d' : '#ef4444'}55`,
-                    boxShadow: `0 2px 8px ${saveStatus.type === 'success' ? 'rgba(107,199,77,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                    position: 'absolute', left: 8, right: 8, top: 120, zIndex: 200,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    pointerEvents: 'none',
+                    animation: 'swapOverlayFadeIn 0.3s ease-out',
                   }}>
-                    {saveStatus.message}
+                    <div style={{
+                      padding: '16px 24px', borderRadius: 16,
+                      background: saveStatus.type === 'success'
+                        ? 'linear-gradient(180deg, #1e3a5f 0%, #162d4a 100%)'
+                        : 'linear-gradient(180deg, #3a1a1a 0%, #2a1010 100%)',
+                      border: `3px solid ${saveStatus.type === 'success' ? '#6bc74d' : '#ef4444'}`,
+                      boxShadow: `0 0 0 2px #0f1f33, 0 0 40px ${saveStatus.type === 'success' ? 'rgba(107,199,77,0.3)' : 'rgba(239,68,68,0.3)'}, 0 20px 60px rgba(0,0,0,0.6)`,
+                      display: 'flex', alignItems: 'center', gap: 12, maxWidth: 360,
+                    }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '50%',
+                        background: saveStatus.type === 'success'
+                          ? 'linear-gradient(180deg, #76d746 0%, #6bc74d 50%, #55a838 100%)'
+                          : 'linear-gradient(180deg, #f87171 0%, #ef4444 50%, #dc2626 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: `0 4px 16px ${saveStatus.type === 'success' ? 'rgba(107,199,77,0.4)' : 'rgba(239,68,68,0.4)'}`,
+                        flexShrink: 0,
+                      }}>
+                        {saveStatus.type === 'success'
+                          ? <Check size={22} color="#fff" strokeWidth={3} />
+                          : <AlertTriangle size={22} color="#fff" strokeWidth={2.5} />}
+                      </div>
+                      <div style={{
+                        fontSize: 14, fontWeight: 800, color: '#f0f4f8',
+                        fontFamily: '"Inter", sans-serif', lineHeight: 1.4,
+                        textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                      }}>
+                        {saveStatus.message}
+                      </div>
+                    </div>
                   </div>
                 )}
 
