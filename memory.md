@@ -3447,3 +3447,141 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 - Tidak ada inisiatif di luar scope. FITUR 4 poin 2 (tombol di dalam `paintConfirm` popup) di-skip sesuai izin opsional di prompt kerja — alasan dicatat di atas.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 47 — 3D Block Simulator: Copy Sistem Paint dari LogicGatesSimulator 2D (21 Aug 2026)
+
+**Task ID:** 47
+**Agent:** main (Super Z)
+**Task:** Copy-paste sistem paint dari `src/pages/LogicGatesSimulator.jsx` (2D) ke `src/pages/BlockSimulator3D.jsx` (3D). Hanya copy, tanpa menyentuh sistem lain (gizmo, place, delete, clone, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx).
+
+### Latar belakang
+User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & klik blok → muncul modal overlay full-screen (bukan popup kecil) berisi `ColorWheelPicker` + tombol Pick Color (eyedropper) / Confirm / Cancel. Sistem lama (`paintConfirm` popup kecil dengan preview Before/After) dihapus, diganti dengan sistem 2D yang lebih lengkap.
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — copy sistem paint dari 2D, +249/-114 baris.
+
+### File yang DIBACA (referensi, TIDAK diubah)
+- `src/pages/LogicGatesSimulator.jsx` baris 1945-1954 (state), 1945-2020 (refs + eyedropper cursor helper), 3581-3629 (marching ants di render), 4192-4259 (PC mousedown paint mode), 4886-4945 (mobile touch paint mode), 8296-8430 (modal colorPicker JSX).
+- `src/components/ColorWheelPicker.jsx` — props `hex`, `onChange`, `onPickColor` (opsional).
+- `src/index.css` baris 258 — `@keyframes cp-blink` sudah ada di global CSS (dipakai mobile scroll arrows).
+
+### Perubahan
+
+**1. State baru (copy dari 2D):**
+- `colorPicker` (object atau null): `{ targetType: 'block', targetId, hex, originalHex }` — saat non-null, modal overlay muncul.
+- `pickFromWorkspace` (object atau null): saved colorPicker state saat user masuk mode eyedropper.
+- `colorPickerRef`, `pickFromWorkspaceRef` — sync refs supaya event handler baca value terbaru.
+- `dashOffsetRef` — counter animasi marching ants.
+- `rafRef` — handle rAF loop.
+- `useEffect` sync refs + `useEffect` rAF loop (start hanya saat `colorPicker || pickFromWorkspace` aktif → hemat CPU saat idle).
+
+**2. HAPUS sistem lama (yang konflik dengan 2D):**
+- HAPUS `paintConfirm` state & `setPaintConfirm` (0 occurrence tersisa setelah edit — verified).
+- HAPUS popup `paintConfirm` lama (popup kecil dengan preview Before/After + tombol Confirm/Cancel inline).
+- HAPUS auto-trigger `paintConfirm` dari klik swatch di palet warna.
+- HAPUS auto-trigger `paintConfirm` dari tombol Confirm di modal `showColorWheel` (Place tool).
+
+**3. Palet warna: tampil hanya saat `tool === 'place'` (sebelumnya `tool === 'place' || tool === 'color'`):**
+- Konsisten dengan 2D: saat Paint mode, user pilih warna lewat modal colorPicker (bukan palet).
+- Klik swatch saat tool='place' hanya `setCurrentColor` (untuk blok baru yang akan di-place).
+- Klik swatch tidak lagi sentuh blok existing (kalau mau ganti warna blok existing, pakai Paint tool → klik blok → modal colorPicker).
+
+**4. `onMouseDown` tool='color' (sistem baru):**
+- Prioritas tertinggi: cek `pickFromWorkspaceRef.current` duluan (mode eyedropper).
+  - Klik blok → `setColorPicker({...savedPicker, hex: hit.color})`, clear pickFromWorkspace, reset cursor.
+  - Empty click → balik ke modal dengan hex lama, clear pickFromWorkspace, reset cursor.
+- Klik blok → `setColorPicker({ targetType:'block', targetId:hit.id, hex:hit.color, originalHex:hit.color })`, return.
+- Empty click → `setColorPicker(null)` (tutup modal kalau kebuka), deselect.
+
+**5. `render()` — tambah marching ants:**
+- Saat `cpInfo = colorPickerRef.current || pickFromWorkspaceRef.current` & `targetType === 'block'`:
+  - Cari target block di `s.blocks` berdasarkan `targetId`.
+  - Hitung bounding box 2D dari `getBlockCorners(targetBlock).map(project)` (min/max x & y di layar).
+  - Gambar dashed rect (`setLineDash([8, 5])`, `lineDashOffset = -dashOffsetRef.current`) dengan `strokeStyle = targetBlock.color`, `shadowColor = targetBlock.color`, `shadowBlur = 6`, `pad = 6`.
+- Animasi jalan via rAF loop (increment `dashOffsetRef` tiap frame, re-render).
+
+**6. Modal `colorPicker` overlay full-screen ala 2D:**
+- Overlay: `position: fixed, inset: 0, zIndex: 1000, backgroundColor: rgba(0,0,0,0.5)`, flex center (mobile: `justifyContent: 'flex-start', paddingLeft: 16`).
+- Mobile scroll arrows ‹ › di kiri/kanan (`animation: 'cp-blink 1.2s ease-in-out infinite'`, `pointerEvents: 'none'`, fontSize 72, textShadow) — supaya user bisa scroll horizontal `ColorWheelPicker` di mobile.
+- Click overlay luar → Cancel (revert originalHex ke blok, close modal).
+- Modal card: `background: rgba(15,23,42,0.98)` desktop / `rgba(100,116,139,0.97)` mobile, `border: 1px solid #475569`, `borderRadius: 8`, `padding: 8`, `boxShadow: 0 8px 24px rgba(0,0,0,0.6)`, maxHeight `calc(100dvh - 32px)`, mobile maxWidth `calc(100vw - 20px)`.
+- Scrollable area: `overflowY: auto, overflowX: auto, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch'`.
+- Title: "Block Color" (fontSize 12 bold center — ganti dari "Component Color"/"Wire Color" di 2D karena 3D cuma punya blok).
+- `<ColorWheelPicker hex={colorPicker.hex} onChange={...} onPickColor={...} />` — component shared dengan 2D.
+- `onChange` → `setColorPicker(cp => cp ? {...cp, hex: newHex} : cp)` — update hex di state internal modal (BELUM apply ke blok, baru di Confirm).
+- `onPickColor` → save current picker state, close modal, set pickFromWorkspace, set canvas cursor ke `crosshair` (alternatif simpel dari eyedropper cursor 2D yang canvas-based 48x48 — skip untuk simplicity, crosshair cukup jelas UX-nya).
+- Tombol Confirm (hijau gradient `linear-gradient(135deg, #059669, #10b981)`, border `#34d399`, icon `Check`) → apply `colorPicker.hex` ke `targetBlock.color`, render, close modal.
+- Tombol Cancel (abu-abu `#1e293b`, border `#475569`, icon `X`) → revert `originalHex` ke blok, close modal.
+
+**7. `isMobile` const:**
+- Tambah `const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;` di component body (sebelum return JSX) — sama persis dengan 2D.
+
+**8. Help Panel update:**
+- Tambah info: "Paint: klik blok → modal color picker (wheel + slider + Pick Color)".
+- Tambah italic note: "Pick Color = eyedropper (klik blok lain → ambil warnanya)".
+
+### Cara Kerja Sistem Paint (PC & Mobile)
+
+**PC (mouse):**
+1. User klik tombol Paint di toolbar → tool='color'.
+2. User klik blok di kanvas → muncul modal overlay full-screen berisi ColorWheelPicker.
+3. User pilih warna di wheel / slider / input hex → hex tersimpan di `colorPicker.hex` (BELUM apply ke blok).
+4. (Opsional) User klik tombol "Pick Color" → modal tutup, cursor jadi crosshair.
+   - User klik blok lain → ambil warnanya → balik ke modal dengan hex baru.
+   - User klik empty → batal, balik ke modal dengan hex lama.
+5. User klik Confirm → apply hex ke blok, modal tutup.
+6. (Atau) User klik Cancel / klik overlay luar → revert originalHex, modal tutup tanpa perubahan.
+
+**Mobile (touch):**
+- Sama dengan PC, beda hanya styling modal (bg `rgba(100,116,139,0.97)`, justifyContent `flex-start`, paddingLeft 16, maxWidth `calc(100vw - 20px)`).
+- Mobile scroll arrows ‹ › muncul di kiri/kanan layar supaya user bisa scroll horizontal ColorWheelPicker yang overflow.
+- Touch event di modal card di-stopPropagation supaya tidak trigger event handler canvas di bawahnya.
+
+**Marching ants (visual indikator):**
+- Selama modal colorPicker terbuka (atau pickFromWorkspace aktif), dashed rect animasi berputar di sekitar blok target di kanvas. Border pakai warna blok tsb supaya jelas identitasnya. rAF loop jalan hanya saat modal aktif (hemat CPU saat idle).
+
+### Yang TIDAK diubah (sesuai scope "hanya copy")
+- 3D engine (`project`, `rotY`/`rotX`/`rotZ`, painter's algorithm, backface cull, `hitTest` sort depth, `getGridPos`, `snap`).
+- Gizmo Move/Rotate/Scale (Bagian 2) — TIDAK disentuh.
+- Orbit kamera, zoom wheel, ghost/preview block (Bagian 43).
+- `runPlace`, `getPlacementY`, hover tracking.
+- Tombol "Pilih Warna Lain" + modal `showColorWheel` untuk Place tool (Bagian 2) — TIDAK disentuh, masih utuh.
+- `src/App.jsx`, `src/components/ColorWheelPicker.jsx`, `src/pages/LogicGatesSimulator.jsx`, file lain — TIDAK disentuh.
+- File backend/auth apapun — TIDAK disentuh (lihat `instruction.md` Bagian 5).
+
+### Verifikasi
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.04s`. BlockSimulator3D chunk: 26.84 KB (gzip 8.12 KB — naik dari 24.77 KB karena tambah modal colorPicker + marching ants render + rAF loop).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+249/-114 baris). Tidak ada file lain tersenggol.
+3. ✅ **Code verification** — grep konfirmasi:
+   - `paintConfirm` & `setPaintConfirm`: 0 occurrence (terhapus penuh).
+   - State baru `colorPicker`, `pickFromWorkspace`, refs, `dashOffsetRef`, `rafRef`: semua ada.
+   - rAF loop untuk marching ants: ada di useEffect.
+   - Marching ants di render() (`cpInfo`, `dashOffsetRef`): ada.
+   - Handler eyedropper (`pickFromWorkspaceRef.current`) di onMouseDown: ada.
+   - Modal colorPicker overlay full-screen (`Block Color` title, `onPickColor`, `pickFromWorkspace`): ada.
+4. ⚠️ **Verifikasi live di browser** BELUM dilakukan (environment CLI tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Buka menu Shapes → 3D Block Simulator → tool Paint.
+   - Klik blok → modal full-screen muncul dengan ColorWheelPicker + tombol Pick Color/Confirm/Cancel.
+   - Marching ants (dashed rect animasi) berputar di sekitar blok yang lagi di-paint.
+   - Pilih warna di wheel → preview hex update di modal (BELUM apply ke blok).
+   - Klik Confirm → blok berubah warna, modal tutup.
+   - Klik Cancel / klik luar → revert, modal tutup tanpa perubahan.
+   - Klik Pick Color → modal tutup, cursor crosshair. Klik blok lain → ambil warnanya → balik ke modal dengan hex baru.
+   - Mobile: styling modal berubah (bg abu-abu, scroll arrows ‹ › muncul), touch event tidak bocor ke canvas.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim): copy sistem paint dari LogicGatesSimulator 2D (modal overlay + eyedropper + marching ants)`.
+- **Commit hash AKTUAL: `a8aca00`** (full: `a8aca00...` — pendek cukup untuk identifikasi).
+- Token push perlu dikirim user.
+- Branch: `main`, 1 commit ahead of `origin/main`.
+
+### Stage Summary
+- Sistem paint di `BlockSimulator3D.jsx` sekarang identik dengan `LogicGatesSimulator` (2D): modal overlay full-screen, ColorWheelPicker, tombol Pick Color (eyedropper) / Confirm / Cancel, marching ants animasi di sekitar blok target.
+- Sistem lama (`paintConfirm` popup kecil + auto-trigger dari klik swatch & showColorWheel Confirm) dihapus penuh.
+- Palet warna sekarang tampil hanya saat tool='place' (konsisten dengan 2D — saat Paint mode, user pilih warna lewat modal, bukan palet).
+- Build sukses 0 error, scope terjaga (1 file saja, +249/-114 baris).
+- Tidak menyentuh sistem lain (gizmo, place, delete, clone, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx).
+- Commit lokal siap di-push setelah token dari user diterima.
+

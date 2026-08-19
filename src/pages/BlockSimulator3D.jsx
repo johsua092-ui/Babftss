@@ -45,9 +45,41 @@ export default function BlockSimulator3D({ setPage }) {
   const [blockCount, setBlockCount] = useState(0);
   const [selectedInfo, setSelectedInfo] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [paintConfirm, setPaintConfirm] = useState(null);  // { block, newColor, originalColor, x, y } or null
   const [showColorWheel, setShowColorWheel] = useState(false);
   const [colorWheelDraft, setColorWheelDraft] = useState(currentColor);
+
+  // ── SISTEM PAINT (copy dari LogicGatesSimulator 2D) ──
+  // colorPicker: object atau null. Saat non-null, modal overlay full-screen muncul
+  //   berisi ColorWheelPicker + tombol Pick Color / Confirm / Cancel.
+  //   Shape: { targetType: 'block', targetId, hex, originalHex }
+  // pickFromWorkspace: saved colorPicker state saat user masuk mode eyedropper
+  //   (klik "Pick Color" di modal). Klik blok lain di kanvas → ambil warnanya → balik ke modal.
+  const [colorPicker, setColorPicker] = useState(null);
+  const [pickFromWorkspace, setPickFromWorkspace] = useState(null);
+  const colorPickerRef = useRef(null);
+  const pickFromWorkspaceRef = useRef(null);
+  const dashOffsetRef = useRef(0);
+  const rafRef = useRef(null);
+  useEffect(() => { colorPickerRef.current = colorPicker; }, [colorPicker]);
+  useEffect(() => { pickFromWorkspaceRef.current = pickFromWorkspace; }, [pickFromWorkspace]);
+
+  // rAF loop untuk marching ants animation. Start hanya saat colorPicker atau pickFromWorkspace aktif
+  // (supaya tidak boros CPU saat idle). Setiap frame: increment dashOffset + re-render.
+  useEffect(() => {
+    if (!colorPicker && !pickFromWorkspace) {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      return;
+    }
+    const tick = () => {
+      dashOffsetRef.current = (dashOffsetRef.current + 0.5) % 13; // 8+5 = 13 (match dash pattern [8,5])
+      render();
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  }, [colorPicker, pickFromWorkspace, render]);
 
   const stateRef = useRef({
     blocks: [],
@@ -260,6 +292,36 @@ export default function BlockSimulator3D({ setPage }) {
       });
       ctx.setLineDash([]);
       ctx.restore();
+    }
+
+    // ── Marching ants around block being painted (colorPicker open OR pickFromWorkspace active) ──
+    // Copy dari LogicGatesSimulator 2D: dashed rect animasi di sekitar blok target,
+    // border pakai warna blok tsb supaya jelas identitasnya. Animasi dashOffset terus maju.
+    const cpInfo = colorPickerRef.current || pickFromWorkspaceRef.current;
+    if (cpInfo && cpInfo.targetType === 'block') {
+      const targetBlock = s.blocks.find(b => b.id === cpInfo.targetId);
+      if (targetBlock) {
+        // Gambar bounding box blok (axis-aligned di world, sebelum rotasi — pakai corners).
+        const corners = getBlockCorners(targetBlock).map(project);
+        // Cari min/max x & y di layar
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of corners) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+        const pad = 6;
+        ctx.save();
+        ctx.setLineDash([8, 5]);
+        ctx.lineDashOffset = -dashOffsetRef.current;
+        ctx.strokeStyle = targetBlock.color;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = targetBlock.color;
+        ctx.shadowBlur = 6;
+        ctx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+        ctx.restore();
+      }
     }
 
     // Gizmo 3-axis handles — digambar HANYA kalau ada blok terpilih & tool = move/rotate/scale.
@@ -532,6 +594,26 @@ export default function BlockSimulator3D({ setPage }) {
 
       if (e.button !== 0) return; // hanya klik-kiri yang lanjut ke logic tool di bawah
 
+      // ── PICK FROM WORKSPACE MODE (eyedropper): prioritas tertinggi, dicek SEBELUM tool lain ──
+      // Copy dari LogicGatesSimulator 2D: user klik "Pick Color" di modal → modal tutup,
+      // cursor jadi crosshair. Klik blok lain di kanvas → ambil warnanya → balik ke modal
+      // colorPicker dengan hex baru. Klik empty → batal, balik ke modal dengan hex lama.
+      if (pickFromWorkspaceRef.current) {
+        const savedPicker = pickFromWorkspaceRef.current;
+        const hit = hitTest(mx, my);
+        if (hit) {
+          setColorPicker({ ...savedPicker, hex: hit.color });
+          setPickFromWorkspace(null);
+          canvas.style.cursor = 'grab';
+        } else {
+          // Empty click → batal pick, balik ke modal dengan hex lama.
+          setColorPicker(savedPicker);
+          setPickFromWorkspace(null);
+          canvas.style.cursor = 'grab';
+        }
+        return;
+      }
+
       if (tool === 'place') {
         runPlace(mx, my);
         return;
@@ -600,22 +682,26 @@ export default function BlockSimulator3D({ setPage }) {
           s.selected = nb;
           updateUISelection(nb);
         } else if (tool === 'color') {
-          // Show confirmation popup instead of instantly applying color.
-          // User must click ✓ Confirm to apply, or Cancel to revert.
-          const originalColor = hit.color;
-          hit.color = currentColor;  // Apply temporarily for preview
-          render();
-          setPaintConfirm({
-            block: hit,
-            newColor: currentColor,
-            originalColor: originalColor,
-            x: mx,
-            y: my,
+          // ── PAINT TOOL (copy dari LogicGatesSimulator 2D) ──
+          // Klik blok → buka modal colorPicker overlay full-screen berisi ColorWheelPicker.
+          // User pilih warna di wheel → hex disimpan di state colorPicker.hex (BELUM apply ke blok).
+          // Tombol "Pick Color" → masuk mode eyedropper (pickFromWorkspace).
+          // Tombol Confirm → apply colorPicker.hex ke blok, close modal.
+          // Tombol Cancel → revert ke originalHex (tidak ada perubahan), close modal.
+          const currentHex = hit.color;
+          setColorPicker({
+            targetType: 'block',
+            targetId: hit.id,
+            hex: currentHex,
+            originalHex: currentHex,
           });
+          return;
         }
       } else {
         s.selected = null;
         updateUISelection(null);
+        // Empty click saat Paint mode → tutup colorPicker kalau kebuka (konsisten dengan 2D).
+        if (colorPickerRef.current) setColorPicker(null);
       }
       render();
     };
@@ -739,6 +825,7 @@ export default function BlockSimulator3D({ setPage }) {
   }, []);
 
   /* ---------- Styles ---------- */
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   const panelBg = '#0e1420';
   const panelBorder = '#1e293b';
   const textSecondary = '#94a3b8';
@@ -890,8 +977,9 @@ export default function BlockSimulator3D({ setPage }) {
           })}
         </div>
 
-        {/* Color Palette */}
-        {(tool === 'place' || tool === 'color') && (
+        {/* Color Palette — tampil HANYA saat tool='place' (konsisten dengan 2D:
+            saat Paint mode, user pilih warna lewat modal colorPicker, bukan palet). */}
+        {tool === 'place' && (
           <div style={{
             position: 'absolute', top: 16, right: 16,
             display: 'flex', flexDirection: 'column', gap: 6,
@@ -909,11 +997,6 @@ export default function BlockSimulator3D({ setPage }) {
             }}>
               Colors
             </div>
-            {tool === 'color' && (
-              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 4, fontStyle: 'italic' }}>
-                Click block, then confirm
-              </div>
-            )}
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(4, 30px)', gap: 6,
             }}>
@@ -921,21 +1004,9 @@ export default function BlockSimulator3D({ setPage }) {
                 <div
                   key={c}
                   onClick={() => {
+                    // Klik swatch hanya set currentColor (untuk Place tool — warna blok baru).
+                    // Tidak sentuh blok existing (kalau mau ganti warna blok existing, pakai Paint tool).
                     setCurrentColor(c);
-                    const s = stateRef.current;
-                    if (s.selected && tool === 'color') {
-                      // Show confirmation popup instead of instantly applying.
-                      const originalColor = s.selected.color;
-                      s.selected.color = c;  // Apply temporarily for preview
-                      render();
-                      setPaintConfirm({
-                        block: s.selected,
-                        newColor: c,
-                        originalColor: originalColor,
-                        x: 140,  // Near the palette (approx position)
-                        y: 80,
-                      });
-                    }
                   }}
                   style={{
                     width: 30, height: 30, borderRadius: 8,
@@ -1033,88 +1104,163 @@ export default function BlockSimulator3D({ setPage }) {
               Tool Move/Rotate/Scale: klik blok dulu → muncul 3 handle → drag salah satu
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(148,163,184,0.15)' }}>
+              <Paintbrush size={12} /> <strong>Paint</strong>: klik blok → modal color picker (wheel + slider + Pick Color)
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontStyle: 'italic', color: '#64748b', fontSize: 11 }}>
+              Pick Color = eyedropper (klik blok lain → ambil warnanya)
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(148,163,184,0.15)' }}>
               <span style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 10 }}>⌨</span>
               <strong>P / M / R / S / C / K / X</strong> = Switch tools
             </span>
           </div>
         )}
 
-        {/* Paint Confirm Popup — muncul saat user klik block di Paint mode.
-            User harus klik ✓ Confirm untuk menerapkan warna, atau Cancel untuk revert. */}
-        {paintConfirm && (
+        {/* ── Color Picker (Paint tool) — copy dari LogicGatesSimulator 2D ──
+            Classic Windows-style: Color wheel + HSV sliders + RGB sliders + preview.
+            Confirm/Pick Color/Cancel buttons directly below.
+            State: colorPicker = { targetType: 'block', targetId, hex, originalHex } */}
+        {colorPicker && (
           <div
             style={{
-              position: 'absolute',
-              left: Math.min(paintConfirm.x, (containerRef.current?.clientWidth || 800) - 200),
-              top: Math.min(paintConfirm.y + 10, (containerRef.current?.clientHeight || 600) - 80),
-              background: 'rgba(15, 23, 42, 0.98)',
-              border: '1px solid #475569',
-              borderRadius: 10,
-              padding: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
               zIndex: 1000,
-              fontFamily: '"Inter", sans-serif',
-              minWidth: 180,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isMobile ? 'flex-start' : 'center',
+              paddingLeft: isMobile ? 16 : 0,
+            }}
+            onClick={() => {
+              // Click overlay luar → cancel (revert originalHex ke blok, close modal).
+              const s = stateRef.current;
+              const tgt = s.blocks.find(b => b.id === colorPicker.targetId);
+              if (tgt) {
+                tgt.color = colorPicker.originalHex;
+                render();
+              }
+              setColorPicker(null);
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', marginBottom: 8, textAlign: 'center' }}>
-              Apply this color?
-            </div>
-            {/* Color preview */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            {/* Mobile scroll arrows — FIXED on screen, outside modal (supaya user bisa scroll
+                horizontal ColorWheelPicker di mobile yang overflow). */}
+            {isMobile && (
+              <>
                 <div style={{
-                  width: 28, height: 28, borderRadius: 6,
-                  background: paintConfirm.originalColor,
-                  border: '2px solid #334155',
-                  opacity: 0.5,
-                }} />
-                <span style={{ fontSize: 9, color: '#64748b' }}>Before</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
+                  zIndex: 1001, pointerEvents: 'none',
+                  animation: 'cp-blink 1.2s ease-in-out infinite',
+                  color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+                }}>‹</div>
                 <div style={{
-                  width: 28, height: 28, borderRadius: 6,
-                  background: paintConfirm.newColor,
-                  border: '2px solid #34d399',
-                  boxShadow: `0 0 8px ${paintConfirm.newColor}66`,
-                }} />
-                <span style={{ fontSize: 9, color: '#34d399' }}>After</span>
+                  position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                  zIndex: 1001, pointerEvents: 'none',
+                  animation: 'cp-blink 1.2s ease-in-out infinite',
+                  color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+                }}>›</div>
+              </>
+            )}
+            <div
+              style={{
+                background: isMobile ? 'rgba(100, 116, 139, 0.97)' : 'rgba(15, 23, 42, 0.98)',
+                border: '1px solid #475569',
+                borderRadius: 8,
+                padding: 8,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                fontFamily: '"Inter", sans-serif',
+                display: 'flex', flexDirection: 'column', gap: 6,
+                maxHeight: 'calc(100dvh - 32px)',
+                maxWidth: isMobile ? 'calc(100vw - 20px)' : undefined,
+                boxSizing: 'border-box',
+              }}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              onTouchStart={e => e.stopPropagation()}
+            >
+              {/* Scrollable area — contains title + color picker */}
+              <div style={{
+                overflowY: 'auto',
+                overflowX: 'auto',
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+                flex: 1, minHeight: 0,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', textAlign: 'center' }}>
+                  Block Color
+                </div>
+
+                {/* Classic color wheel picker — fully self-contained (component shared dengan 2D). */}
+                <ColorWheelPicker
+                  hex={colorPicker.hex}
+                  onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+                  onPickColor={() => {
+                    // Save current picker state, close modal, enter pick-from-workspace mode (eyedropper).
+                    const savedPicker = { ...colorPicker };
+                    setColorPicker(null);
+                    setPickFromWorkspace(savedPicker);
+                    // Pakai crosshair cursor di canvas (alternatif simpel dari eyedropper cursor 2D).
+                    const canvas = canvasRef.current;
+                    if (canvas) canvas.style.cursor = 'crosshair';
+                  }}
+                />
               </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => {
-                  // Confirm — color already applied as preview, just close.
-                  setPaintConfirm(null);
-                }}
-                style={{
-                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
-                  background: 'linear-gradient(135deg, #059669, #10b981)',
-                  border: '1px solid #34d399', borderRadius: 6,
-                  color: '#fff', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                }}
-              >
-                <Check size={12} strokeWidth={2.5} />
-                Confirm
-              </button>
-              <button
-                onClick={() => {
-                  // Cancel — revert to original color.
-                  paintConfirm.block.color = paintConfirm.originalColor;
-                  render();
-                  setPaintConfirm(null);
-                }}
-                style={{
-                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
-                  background: '#1e293b', border: '1px solid #475569',
-                  borderRadius: 6, color: '#94a3b8', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                }}
-              >
-                <X size={12} />
-                Cancel
-              </button>
+
+              {/* Action buttons: Confirm | Cancel — OUTSIDE scrollable area, stays fixed */}
+              <div style={{ display: 'flex', gap: 6, marginTop: 2, flexShrink: 0 }}>
+                <button
+                  onClick={() => {
+                    // Confirm — apply colorPicker.hex ke blok target, close modal.
+                    const hex = colorPicker.hex;
+                    const tgtId = colorPicker.targetId;
+                    const s = stateRef.current;
+                    const tgt = s.blocks.find(b => b.id === tgtId);
+                    if (tgt) {
+                      tgt.color = hex;
+                      render();
+                    }
+                    // Update selectedInfo juga supaya UI sinkron (kalau blok target = s.selected).
+                    if (s.selected && s.selected.id === tgtId) {
+                      updateUISelection(s.selected);
+                    }
+                    setColorPicker(null);
+                  }}
+                  style={{
+                    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
+                    background: 'linear-gradient(135deg, #059669, #10b981)', border: '1px solid #34d399',
+                    borderRadius: 4, color: '#ffffff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  }}
+                >
+                  <Check size={12} strokeWidth={2.5} />
+                  Confirm
+                </button>
+                <button
+                  onClick={() => {
+                    // Cancel — revert originalHex ke blok (tidak ada perubahan), close modal.
+                    const origHex = colorPicker.originalHex;
+                    const tgtId = colorPicker.targetId;
+                    const s = stateRef.current;
+                    const tgt = s.blocks.find(b => b.id === tgtId);
+                    if (tgt) {
+                      tgt.color = origHex;
+                      render();
+                    }
+                    setColorPicker(null);
+                  }}
+                  style={{
+                    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
+                    background: '#1e293b', border: '1px solid #475569',
+                    borderRadius: 4, color: '#FFFFFF', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+                  }}
+                >
+                  <X size={12} />
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1165,21 +1311,10 @@ export default function BlockSimulator3D({ setPage }) {
               }}>
                 <button
                   onClick={() => {
+                    // Confirm — hanya set currentColor (untuk Place tool — warna blok baru).
+                    // Tidak sentuh blok existing. Untuk ganti warna blok existing, pakai Paint tool.
                     setCurrentColor(colorWheelDraft);
                     setShowColorWheel(false);
-                    // Kalau tool=color & ada blok terpilih, tampilkan paintConfirm seperti klik swatch biasa.
-                    const s = stateRef.current;
-                    if (s.selected && tool === 'color') {
-                      const originalColor = (paintConfirm && paintConfirm.originalColor) || s.selected.color;
-                      s.selected.color = colorWheelDraft;
-                      render();
-                      setPaintConfirm({
-                        block: s.selected,
-                        newColor: colorWheelDraft,
-                        originalColor: originalColor,
-                        x: 140, y: 80,
-                      });
-                    }
                   }}
                   style={{
                     flex: 1, padding: '5px 16px', fontSize: 11, fontWeight: 700,
