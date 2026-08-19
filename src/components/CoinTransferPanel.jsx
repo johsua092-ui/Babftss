@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users, Inbox, Megaphone } from 'lucide-react';
+import { X, Send, ArrowRightLeft, Coins, AlertTriangle, History, ChevronDown, ChevronUp, Shield, Users, Inbox, Megaphone, CheckCircle2, XCircle, Loader2, ArrowDown, ArrowUp, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AnnouncementPanel from './AnnouncementPanel';
 
@@ -367,9 +367,9 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
           {targetEmail.includes('@') && (
             <div style={{ marginTop: 4, fontSize: 11, fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: 4,
               color: lookupStatus === 'found' ? '#4ade80' : lookupStatus === 'not_found' ? '#f87171' : lookupStatus === 'searching' ? '#fbbf24' : '#64748b' }}>
-              {lookupStatus === 'searching' && '🔄 Mencari...'}
-              {lookupStatus === 'found' && `✅ ${targetName}`}
-              {lookupStatus === 'not_found' && '❌ User ga ketemu (belum pernah login)'}
+              {lookupStatus === 'searching' && <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Mencari...</>}
+              {lookupStatus === 'found' && <><CheckCircle2 size={12} /> {targetName}</>}
+              {lookupStatus === 'not_found' && <><XCircle size={12} /> User ga ketemu (belum pernah login)</>}
             </div>
           )}
         </div>
@@ -405,11 +405,11 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
           {validAmount && (
             <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'Inter,sans-serif', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
               {isAdmin ? (
-                <span style={{ color: '#4ade80' }}>🛡️ Tax-free (admin)</span>
+                <span style={{ color: '#4ade80', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Shield size={12} /> Tax-free (admin)</span>
               ) : (
                 <>
-                  <span style={{ color: '#fbbf24' }}>💰 Tax 5%: {Math.ceil(parsedAmount * 0.05)} gold</span>
-                  <span>→ Penerima dapat: <strong style={{ color: '#4ade80' }}>{parsedAmount - Math.ceil(parsedAmount * 0.05)}</strong></span>
+                  <span style={{ color: '#fbbf24', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Coins size={12} /> Tax 5%: {Math.ceil(parsedAmount * 0.05)} gold</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ArrowRight size={12} /> Penerima dapat: <strong style={{ color: '#4ade80' }}>{parsedAmount - Math.ceil(parsedAmount * 0.05)}</strong></span>
                 </>
               )}
             </div>
@@ -446,7 +446,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
             {success.tax === 0 && success.receiveAmount && ' (tax-free)'}
             {success.targetUid && ` ke ${targetName || success.targetUid.slice(0, 12) + '...'}`}
             {success.fromBalance !== undefined && ` — Saldo: ${success.fromBalance}`}
-            {success.targetNewBalance !== undefined && ` → Tujuan: ${success.targetNewBalance}`}
+            {success.targetNewBalance !== undefined && (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}><ArrowRight size={11} /> Tujuan: <strong style={{ color: '#4ade80' }}>{success.targetNewBalance}</strong></span>)}
           </div>
         )}
 
@@ -515,7 +515,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
                 <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8,
                   backgroundColor: '#0f2a1a', border: '1px solid #16a34a',
                   fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#4ade80', lineHeight: 1.4 }}>
-                  ✅ <strong>{bulkResult.count}</strong> member dapat <strong>{parsedAmount}</strong> gold
+                  <CheckCircle2 size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <strong>{bulkResult.count}</strong> member dapat <strong>{parsedAmount}</strong> gold
                   (total: <strong>{bulkResult.totalGranted}</strong>)
                 </div>
               )}
@@ -570,7 +570,7 @@ export default function CoinTransferPanel({ onClose, currentGold, isAdmin }) {
               return (
                 <div key={i} style={s.historyItem}>
                   <div style={s.historyType(isIn)}>
-                    {isIn ? '↓ Masuk' : '↑ Keluar'}
+                    {isIn ? <><ArrowDown size={12} style={{ verticalAlign: 'middle' }} /> Masuk</> : <><ArrowUp size={12} style={{ verticalAlign: 'middle' }} /> Keluar</>}
                     <Coins size={12} style={{ color: '#fbbf24' }} />
                     {Math.abs(h.amount)} gold
                   </div>

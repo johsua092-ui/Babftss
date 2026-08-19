@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Users, Shield, Coins, Send, History, RefreshCw, AlertTriangle, Search, Infinity as InfinityIcon } from 'lucide-react';
+import { X, Users, Shield, Coins, Send, History, RefreshCw, AlertTriangle, Search, Infinity as InfinityIcon, ArrowDown, ArrowUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const API_URL = '/api/ai-chat';
@@ -354,8 +354,8 @@ export default function AdminCoinPanel({ onClose }) {
                 const isIn = h.type === 'transfer_in' || h.type === 'admin_grant';
                 return (
                   <div key={i} style={{ padding: '6px 10px', borderRadius: 6, backgroundColor: '#111827', border: '1px solid #1e293b', fontSize: 11 }}>
-                    <span style={{ color: isIn ? '#4ade80' : '#f87171', fontWeight: 600 }}>
-                      {isIn ? '↓' : '↑'} {h.type}
+                    <span style={{ color: isIn ? '#4ade80' : '#f87171', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {isIn ? <ArrowDown size={11} /> : <ArrowUp size={11} />} {h.type}
                     </span>
                     {' '}<span style={{ color: '#fbbf24', fontWeight: 700 }}>{Math.abs(h.amount)}</span>
                     <span style={{ color: '#64748b' }}> gold</span>
