@@ -6790,8 +6790,8 @@ export default function LogicGatesSimulator({ setPage }) {
                 {/* Cartridge Save Slots — max 3 per row, wrap to next row */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-                  gap: 14,
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: isMobile ? 8 : 14,
                 }}>
                   {saveSlots.map((slot, idx) => {
                     // Search filter: match by name or description (case-insensitive)
