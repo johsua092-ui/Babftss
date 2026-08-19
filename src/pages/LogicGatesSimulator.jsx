@@ -7256,7 +7256,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           margin: '14px 12px 8px', padding: '10px 10px 8px', borderRadius: 8,
                           background: asCc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
-                          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', justifyContent: 'center',
                           minHeight: 127,
                         }}>
                           {/* Title: AUTO SAVE with sync icon */}
@@ -7384,7 +7384,7 @@ export default function LogicGatesSimulator({ setPage }) {
                           margin: '14px 12px 8px', padding: '10px 10px 8px', borderRadius: 8,
                           background: bsCc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
-                          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+                          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', justifyContent: 'center',
                           minHeight: 127,
                         }}>
                           {/* Title: BUY SLOT with plus icon */}
