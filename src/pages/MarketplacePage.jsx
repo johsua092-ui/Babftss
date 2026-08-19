@@ -21,7 +21,7 @@ export default function MarketplacePage({ setPage }) {
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
         if (body) headers['Content-Type'] = 'application/json';
-        let url = `/api/marketplace?action=${action}`;
+        let url = `/api/ai-chat?action=mp_${action}`;
         const res = await fetch(url, {
             method, headers,
             body: body ? JSON.stringify(body) : undefined,

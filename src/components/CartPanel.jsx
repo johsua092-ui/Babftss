@@ -3,7 +3,7 @@ import { X, ShoppingCart, Trash2, Minus, Plus, Loader2, CheckCircle2, Package } 
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_URL = '/api/marketplace';
+const API_URL = '/api/ai-chat';
 
 export default function CartPanel({ onClose, onCheckoutSuccess }) {
     const { user, getIdToken } = useAuth();
@@ -18,7 +18,7 @@ export default function CartPanel({ onClose, onCheckoutSuccess }) {
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
         if (body) headers['Content-Type'] = 'application/json';
-        let url = `${API_URL}?action=${action}`;
+        let url = `${API_URL}?action=mp_${action}`;
         const res = await fetch(url, {
             method,
             headers,

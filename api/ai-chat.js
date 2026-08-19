@@ -2,6 +2,7 @@ import { applyCors, applySecurityHeaders, checkRateLimit, validateStr, authentic
 import { askAI } from "../lib/ai-client.js";
 import { getPackages, buyAITime, activateTimer, checkAITimerAccess, getFullAIStatus, getGoldBalance, addGold, deductGold, transferGold, getRecentTransfers, lookupUserByEmail, getAllUsers, bulkGrantAll, bulkDeductAll, ensureUserDoc, getTransferTax, getReceiveAmount, getInbox, getUnreadInboxCount, markInboxRead, markAllInboxRead, writeInboxMessage, createAnnouncement, getAnnouncements, editAnnouncement, deleteAnnouncement } from "../lib/gold-system.js";
 import { getAnalyticsStats, getTopicUsage, logChatTopic } from "../lib/analytics-api.js";
+import { getProducts, getCart, getCartCount, addToCart, updateCartQuantity, removeFromCart, clearCart, checkout, getOrders, getUserGold, deductGoldForCheckout } from "../lib/marketplace.js";
 
 export default async function handler(req, res) {
   applyCors(req, res, "GET, POST, OPTIONS");
@@ -183,10 +184,119 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "Internal server error" });
       }
     }
+    // ─── Marketplace GET endpoints (mp_*) ───
+    if (action === "mp_products") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const category = req.query?.category || "Semua";
+        const products = await getProducts(category);
+        return res.status(200).json({ products });
+      } catch (e) {
+        console.error("[ai-chat] mp_products error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    if (action === "mp_cart") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const cart = await getCart(user.sub);
+        return res.status(200).json(cart);
+      } catch (e) {
+        console.error("[ai-chat] mp_cart error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    if (action === "mp_count") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const count = await getCartCount(user.sub);
+        return res.status(200).json({ count });
+      } catch (e) {
+        console.error("[ai-chat] mp_count error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+    if (action === "mp_orders") {
+      try {
+        const user = await authenticateRequest(req);
+        if (!user) return res.status(401).json({ error: "Login required" });
+        const orders = await getOrders(user.sub, 30);
+        return res.status(200).json({ orders });
+      } catch (e) {
+        console.error("[ai-chat] mp_orders error:", e?.message || e);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    }
     return res.status(200).json({ status: "ok" });
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  // ─── Marketplace POST endpoints (mp_*) — dipisah dari AI chat flow ───
+  // Auth marketplace tidak butuh ensureUserDoc (user bisa langsung pakai cart).
+  if (action && action.startsWith("mp_")) {
+    try {
+      const user = await authenticateRequest(req);
+      if (!user) return res.status(401).json({ error: "Login required" });
+      const body = req.body || {};
+      const email = user.email || null;
+
+      if (action === "mp_add") {
+        const productId = body.productId;
+        const quantity = Math.max(1, Math.min(99, parseInt(body.quantity, 10) || 1));
+        if (!productId) return res.status(400).json({ error: "productId required" });
+        const r = await addToCart(user.sub, productId, quantity);
+        return res.status(200).json(r);
+      }
+      if (action === "mp_update") {
+        const cartItemId = parseInt(body.cartItemId, 10);
+        const quantity = Math.max(0, Math.min(99, parseInt(body.quantity, 10)));
+        if (!cartItemId || Number.isNaN(quantity)) return res.status(400).json({ error: "cartItemId and quantity required" });
+        const r = await updateCartQuantity(user.sub, cartItemId, quantity);
+        return res.status(200).json(r);
+      }
+      if (action === "mp_remove") {
+        const cartItemId = parseInt(body.cartItemId, 10);
+        if (!cartItemId) return res.status(400).json({ error: "cartItemId required" });
+        const r = await removeFromCart(user.sub, cartItemId);
+        return res.status(200).json(r);
+      }
+      if (action === "mp_clear") {
+        const r = await clearCart(user.sub);
+        return res.status(200).json(r);
+      }
+      if (action === "mp_checkout") {
+        const cart = await getCart(user.sub);
+        if (cart.items.length === 0) return res.status(400).json({ error: "Cart is empty" });
+        const userGold = await getUserGold(user.sub);
+        if (!userGold.exists) return res.status(404).json({ error: "User not found" });
+        if (userGold.gold < cart.totalGold) {
+          return res.status(402).json({ error: `Insufficient gold (need ${cart.totalGold}, have ${userGold.gold})` });
+        }
+        await deductGoldForCheckout(user.sub, cart.totalGold, {
+          itemCount: cart.items.length,
+          totalGold: cart.totalGold,
+        });
+        const result = await checkout(user.sub, email);
+        return res.status(200).json({
+          ok: true,
+          orderId: result.orderId,
+          totalGold: result.totalGold,
+          itemCount: result.itemCount,
+          message: `Checkout berhasil! ${result.itemCount} item, ${result.totalGold} gold terpakai.`,
+        });
+      }
+      return res.status(400).json({ error: "Unknown marketplace action" });
+    } catch (e) {
+      const status = e.statusCode || 500;
+      console.error("[ai-chat] mp_* error:", e?.message || e);
+      if (status === 402) return res.status(402).json({ error: e.message });
+      return res.status(500).json({ error: e?.message || "Internal server error" });
+    }
+  }
 
   try {
     const user = await authenticateRequest(req);
