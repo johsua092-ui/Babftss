@@ -3433,11 +3433,11 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 
 ### Catatan untuk task berikutnya (push commit)
 - Commit lokal dibuat dengan pesan: `feat(3d-block-sim): gizmo 3-axis ala Roblox + Paint port ColorWheelPicker (Bagian 2)`.
-- **Commit hash AKTUAL: `0edd04d`** (full: `0edd04d48599bd65ab4089c8d352f86ad02e2064`).
+- **Commit hash AKTUAL (final, setelah amend): `fe42010`** (full: `fe420108bc6ab569dbd3f7f572807da73f20469d`).
 - Token push perlu dikirim user. Token TIDAK akan disimpan permanen di `.git/config` — pakai `git push https://<TOKEN>@github.com/...` (URL sementara via env var, tidak lewat `git remote set-url`).
 - Branch: `main`, 2 commit ahead of `origin/main`:
   1. `4d14933` — docs memory update Bagian 45 (dari task push Bagian 1, belum di-push karena user belum kasih token saat itu).
-  2. `0edd04d` — feat Bagian 2 (4 fitur gizmo + paint).
+  2. `fe42010` — feat Bagian 2 (4 fitur gizmo + paint). Sebelum amend sempat `0edd04d`, tapi hash final setelah memory.md di-amend = `fe42010`.
 - Saat task push dijalankan, kedua commit ini WAJIB di-push bersama-sama (push biasa, fast-forward).
 
 ### Stage Summary
