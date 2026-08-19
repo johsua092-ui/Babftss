@@ -6953,19 +6953,19 @@ export default function LogicGatesSimulator({ setPage }) {
 
                         {/* Label/screen area — recessed dark cavity */}
                         <div style={{
-                          margin: '14px 12px 8px',
-                          padding: '10px 10px 8px',
+                          margin: isMobile ? '10px 8px 6px' : '14px 12px 8px',
+                          padding: isMobile ? '6px 6px 5px' : '10px 10px 8px',
                           borderRadius: 8,
                           background: cc.dark,
                           boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05)',
-                          display: 'flex', flexDirection: 'column', gap: 6,
+                          display: 'flex', flexDirection: 'column', gap: isMobile ? 4 : 6,
                         }}>
                           {/* Color picker + name row */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6 }}>
                             <div
                               onClick={() => { if (moveSlotId !== null) return; setSlotColorEdit({ slotIndex: idx }); }}
                               style={{
-                                width: 24, height: 24, borderRadius: 6, cursor: moveSlotId !== null ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: moveSlotId !== null ? 0.4 : 1,
+                                width: isMobile ? 18 : 24, height: isMobile ? 18 : 24, borderRadius: 6, cursor: moveSlotId !== null ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: moveSlotId !== null ? 0.4 : 1,
                                 background: 'conic-gradient(from 0deg, #00ffff, #00ff00, #ffff00, #ff0000, #ff00ff, #0000ff, #00ffff)',
                                 border: '2px solid rgba(255,255,255,0.2)',
                                 boxShadow: '0 0 6px rgba(255,255,255,0.15), inset 0 1px 0 rgba(255,255,255,0.25)',
@@ -6981,7 +6981,7 @@ export default function LogicGatesSimulator({ setPage }) {
                               readOnly={moveSlotId !== null}
                               style={{
                                 flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
-                                borderRadius: 6, padding: '4px 8px', color: '#e8eef4', fontSize: 13, fontWeight: 700,
+                                borderRadius: 6, padding: isMobile ? '3px 5px' : '4px 8px', color: '#e8eef4', fontSize: isMobile ? 10 : 13, fontWeight: 700,
                                 fontFamily: '"Inter", sans-serif', outline: 'none', minWidth: 0, opacity: moveSlotId !== null ? 0.4 : 1,
                               }}
                             />
@@ -6991,22 +6991,22 @@ export default function LogicGatesSimulator({ setPage }) {
                             className="slot-desc-scroll"
                             value={slot.description}
                             onChange={e => { if (moveSlotId !== null) return; setSaveSlots(prev => prev.map((s, i) => i === idx ? { ...s, description: e.target.value } : s)); }}
-                            placeholder="Deskripsi..." maxLength={200} rows={3}
+                            placeholder="Deskripsi..." maxLength={200} rows={isMobile ? 2 : 3}
                             readOnly={moveSlotId !== null}
                             style={{
                               background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-                              borderRadius: 6, padding: '3px 8px', color: '#8aa4c0', fontSize: 11,
+                              borderRadius: 6, padding: isMobile ? '2px 5px' : '3px 8px', color: '#8aa4c0', fontSize: isMobile ? 9 : 11,
                               fontFamily: '"Inter", sans-serif', outline: 'none', width: '100%', boxSizing: 'border-box',
                               resize: 'none', lineHeight: 1.4, opacity: moveSlotId !== null ? 0.4 : 1,
                             }}
                           />
                           {/* Info line */}
-                          <div style={{ fontSize: 10, color: '#5a7a9a', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                          <div style={{ fontSize: isMobile ? 8 : 10, color: '#5a7a9a', display: 'flex', flexWrap: 'wrap', gap: isMobile ? 3 : 6, alignItems: 'center' }}>
                             {hasData ? (
                               <>
                                 <span style={{ color: '#8aa4c0' }}>{compCount} comp</span>
                                 <span>{wireCount} wire</span>
-                                {dateStr && <span style={{ fontSize: 9 }}>{dateStr}</span>}
+                                {dateStr && <span style={{ fontSize: isMobile ? 7 : 9 }}>{dateStr}</span>}
                               </>
                             ) : (
                               <span style={{ fontStyle: 'italic', color: '#4a6a8a' }}>Kosong</span>
@@ -7023,15 +7023,15 @@ export default function LogicGatesSimulator({ setPage }) {
 
                         {/* Gold contact pins at bottom — left/right with MOVE button in center */}
                         <div style={{
-                          margin: '8px 8px 0', padding: '6px 6px', borderRadius: '4px 4px 0 0',
+                          margin: isMobile ? '6px 6px 0' : '8px 8px 0', padding: isMobile ? '4px 4px' : '6px 6px', borderRadius: '4px 4px 0 0',
                           background: 'linear-gradient(180deg, #d4af37 0%, #c5a028 50%, #a08020 100%)',
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)', gap: 6,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3)', gap: isMobile ? 3 : 6,
                         }}>
                           {/* Left pins — pushed inward with margin */}
-                          <div style={{ display: 'flex', gap: 3, marginLeft: 6 }}>
+                          <div style={{ display: 'flex', gap: isMobile ? 2 : 3, marginLeft: isMobile ? 4 : 6 }}>
                             {[0, 1, 2].map(pi => (
-                              <div key={pi} style={{ width: 7, height: 9, borderRadius: 2,
+                              <div key={pi} style={{ width: isMobile ? 5 : 7, height: isMobile ? 7 : 9, borderRadius: 2,
                                 background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
                             ))}
@@ -7045,14 +7045,14 @@ export default function LogicGatesSimulator({ setPage }) {
                             }}
                             style={{
                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                              padding: '4px 12px', borderRadius: 10,
+                              padding: isMobile ? '3px 7px' : '4px 12px', borderRadius: 10,
                               cursor: (moveSlotId !== null && moveSlotId !== slot.slotId) ? 'not-allowed' : 'pointer',
                               background: moveSlotId === slot.slotId
                                 ? 'linear-gradient(180deg, #5573e8 0%, #3d5bd9 50%, #3550c4 100%)'
                                 : 'linear-gradient(180deg, #5573e8 0%, #3d5bd9 50%, #3550c4 100%)',
                               border: '1px solid #2a4bb8',
                               color: '#ffffff',
-                              fontSize: 11, fontWeight: 700, fontFamily: '"Inter", sans-serif',
+                              fontSize: isMobile ? 9 : 11, fontWeight: 700, fontFamily: '"Inter", sans-serif',
                               letterSpacing: 0.3, whiteSpace: 'nowrap',
                               boxShadow: moveSlotId === slot.slotId
                                 ? '0 0 12px rgba(85,115,232,0.8), inset 0 1px 0 rgba(255,255,255,0.25)'
@@ -7063,13 +7063,13 @@ export default function LogicGatesSimulator({ setPage }) {
                               opacity: (moveSlotId !== null && moveSlotId !== slot.slotId) ? 0.4 : 1,
                             }}
                           >
-                            <Move size={13} />
+                            <Move size={isMobile ? 10 : 13} />
                             <span>Move</span>
                           </button>
                           {/* Right pins — pushed inward with margin */}
-                          <div style={{ display: 'flex', gap: 3, marginRight: 6 }}>
+                          <div style={{ display: 'flex', gap: isMobile ? 2 : 3, marginRight: isMobile ? 4 : 6 }}>
                             {[0, 1, 2].map(pi => (
-                              <div key={pi} style={{ width: 7, height: 9, borderRadius: 2,
+                              <div key={pi} style={{ width: isMobile ? 5 : 7, height: isMobile ? 7 : 9, borderRadius: 2,
                                 background: 'linear-gradient(180deg, #b8960e 0%, #8a6e18 100%)',
                                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3)' }} />
                             ))}
@@ -7077,7 +7077,7 @@ export default function LogicGatesSimulator({ setPage }) {
                         </div>
 
                         {/* Action buttons area */}
-                        <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ padding: isMobile ? '6px 8px 8px' : '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: isMobile ? 5 : 8 }}>
                           {/* Lock + History row */}
                           <div style={{ display: 'flex', gap: 6 }}>
                             {/* Lock button */}
