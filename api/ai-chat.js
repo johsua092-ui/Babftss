@@ -93,8 +93,10 @@ export default async function handler(req, res) {
         if (!user) return res.status(401).json({ error: "Login required" });
         await ensureUserDoc(user.sub, user.email, user.name);
         const limit = Math.min(parseInt(req.query?.limit || "20", 10), 50);
+        console.log("[ai-chat] inbox query uid=%s email=%s limit=%d", user.sub?.slice(0, 12), user.email, limit);
         const messages = await getInbox(user.sub, limit);
         const unreadCount = await getUnreadInboxCount(user.sub);
+        console.log("[ai-chat] inbox result uid=%s msgs=%d unread=%d", user.sub?.slice(0, 12), messages.length, unreadCount);
         return res.status(200).json({ messages, unreadCount });
       } catch (e) {
         console.error("[ai-chat] inbox error:", e?.message || e);
@@ -240,8 +242,10 @@ export default async function handler(req, res) {
         const found = await lookupUserByEmail(targetEmail);
         if (!found) return res.status(404).json({ error: "User dengan email tersebut tidak ditemukan" });
         resolvedUid = found.uid;
+        console.log("[ai-chat] transfer: resolved email=%s to uid=%s (via lookupUserByEmail)", targetEmail, resolvedUid?.slice(0, 12));
       }
 
+      console.log("[ai-chat] transfer: from=%s to=%s amount=%d admin=%s", uid?.slice(0, 12), resolvedUid?.slice(0, 12), amount, admin);
       if (!resolvedUid || typeof resolvedUid !== "string" || resolvedUid.trim().length < 5) return res.status(400).json({ error: "targetUid atau targetEmail wajib diisi" });
       if (!amount || typeof amount !== "number" || amount < 1 || amount > 1000) return res.status(400).json({ error: "Amount wajib 1-1000 gold" });
       if (resolvedUid === uid) return res.status(400).json({ error: "Nggak bisa transfer ke diri sendiri" });
@@ -250,12 +254,14 @@ export default async function handler(req, res) {
         const nb = await addGold(resolvedUid, amount, "admin_grant", { grantedBy: uid, note: note || null });
         // Write inbox message for recipient
         const inboxResult = await writeInboxMessage({ uid: resolvedUid, fromUid: uid, fromEmail: user.email || null, fromName: (user.name || 'Admin'), type: "admin_grant", amount, tax: 0, note: note || null });
+        console.log("[ai-chat] transfer admin: inboxResult=%j", inboxResult);
         return res.status(200).json({ message: "Gold dikirim (admin grant, tax-free)", transferId: `admin_${Date.now()}`, targetUid: resolvedUid, amount, tax: 0, receiveAmount: amount, targetNewBalance: nb, inbox: inboxResult });
       }
       try {
         const tax = getTransferTax(amount);
         const receiveAmount = getReceiveAmount(amount);
         const result = await transferGold(uid, resolvedUid, amount, { note: note || null, fromEmail: user.email || null, fromName: user.name || null });
+        console.log("[ai-chat] transfer member: inboxResult=%j", result.inboxResult);
         return res.status(200).json({ message: `Transfer berhasil! Penerima dapat ${receiveAmount} gold (tax: ${tax})`, ...result });
       } catch (e) {
         if (e.message === "insufficient gold") return res.status(402).json({ error: "Gold kamu kurang!", gold: await getGoldBalance(uid), needed: amount });
