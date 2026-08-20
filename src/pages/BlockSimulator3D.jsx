@@ -63,24 +63,6 @@ export default function BlockSimulator3D({ setPage }) {
   useEffect(() => { colorPickerRef.current = colorPicker; }, [colorPicker]);
   useEffect(() => { pickFromWorkspaceRef.current = pickFromWorkspace; }, [pickFromWorkspace]);
 
-  // rAF loop untuk marching ants animation. Start hanya saat colorPicker atau pickFromWorkspace aktif
-  // (supaya tidak boros CPU saat idle). Setiap frame: increment dashOffset + re-render.
-  useEffect(() => {
-    if (!colorPicker && !pickFromWorkspace) {
-      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-      return;
-    }
-    const tick = () => {
-      dashOffsetRef.current = (dashOffsetRef.current + 0.5) % 13; // 8+5 = 13 (match dash pattern [8,5])
-      render();
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-    };
-  }, [colorPicker, pickFromWorkspace, render]);
-
   const stateRef = useRef({
     blocks: [],
     selected: null,
@@ -386,6 +368,28 @@ export default function BlockSimulator3D({ setPage }) {
       ctx.restore();
     }
   }, [project, tool]);
+
+  // rAF loop untuk marching ants animation. Start hanya saat colorPicker atau pickFromWorkspace aktif
+  // (supaya tidak boros CPU saat idle). Setiap frame: increment dashOffset + re-render.
+  // WAJIB ditaruh SETELAH render di-declare (di atas) supaya tidak kena Temporal Dead Zone
+  // (useEffect dependency array baca `render` saat component render pertama kali — kalau
+  // useEffect ini di-define sebelum `const render = useCallback(...)`, JS engine bakal throw
+  // "Cannot access 'render' before initialization" & crash halaman jadi blank putih).
+  useEffect(() => {
+    if (!colorPicker && !pickFromWorkspace) {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      return;
+    }
+    const tick = () => {
+      dashOffsetRef.current = (dashOffsetRef.current + 0.5) % 13; // 8+5 = 13 (match dash pattern [8,5])
+      render();
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  }, [colorPicker, pickFromWorkspace, render]);
 
   /* ---------- Resize ---------- */
   useEffect(() => {
