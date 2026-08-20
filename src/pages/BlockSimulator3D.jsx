@@ -755,30 +755,26 @@ export default function BlockSimulator3D({ setPage }) {
       if (s.isPanning) {
         // PAN CAMERA: klik-kiri tahan + drag = geser posisi kamera (cam.target) sepanjang bidang layar.
         // Rumus: konversi screen delta (dx, dy) ke world delta sepanjang arah right & up kamera.
-        //   - Arah "right" di world = rotY(1,0,0, -yaw) → lalu rotX(...) — alias inverse camera rotation applied ke (1,0,0).
-        //   - Arah "up" di world = rotY(0,1,0, -yaw) → lalu rotX(...) — alias inverse camera rotation applied ke (0,1,0).
-        //   - Skala: cam.dist / focalLength supaya pan proporsional dengan jarak kamera (zoom out = pan lebih cepat).
-        //   - dx positive (drag kanan) = camera geser KANAN (target ke kanan) — natural, drag ikut mouse.
-        //   - dy positive (drag bawah) = camera geser BAWAH (target ke bawah) — natural, drag ikut mouse.
+        //   - right_world = inverse camera rotation applied to (1,0,0)
+        //     = rotY(-yaw, rotX(-pitch, (1,0,0))) = rotY(-yaw, (1,0,0)) = (cos(yaw), 0, -sin(yaw))
+        //   - up_world    = inverse camera rotation applied to (0,1,0)
+        //     = rotY(-yaw, rotX(-pitch, (0,1,0))) = rotY(-yaw, (0, cos(pitch), -sin(pitch)))
+        //     = (-sin(pitch)*sin(yaw), cos(pitch), -sin(pitch)*cos(yaw))
+        //   - Skala pan proporsional ke cam.dist (zoom out = pan cepat).
+        //   - dx PLUS: drag kanan (dx>0) → camera geser KANAN (target + dx*right) — natural scrolling.
+        //   - dy MINUS: drag bawah (dy>0) → camera geser BAWAH (target - dy*up, karena up = arah atas).
         const dx = mx - s.dragStart.x, dy = my - s.dragStart.y;
-        // Hitung right & up vector di world space:
-        //   right = inverse(rotX(rotY(yaw, pitch))) applied ke (1,0,0)
-        //   up    = inverse(rotX(rotY(yaw, pitch))) applied ke (0,1,0)
-        // Cara kompak: apply rotY & rotX ke (1,0,0) & (0,1,0) PERSIS seperti di project() (tanpa inverse).
-        //   Lalu normalize ke 2D plane (X & Z di world, Y=0) supaya pan tetap horizontal di grid.
-        //   Tapi ini cuma ideal kalau pitch nyaris top-down. Untuk general case, gunakan full 3D right/up.
-        // Simplifikasi: right & up pakai rotasi forward (sama seperti project), drag world sepanjang vector tsb.
         const cy = Math.cos(s.cam.yaw), sy = Math.sin(s.cam.yaw);
         const cp = Math.cos(s.cam.pitch), sp = Math.sin(s.cam.pitch);
-        // right world = (cos(yaw), 0, sin(yaw)) — proyeksi (1,0,0) lewat rotY, ignore rotX untuk arah horizontal
-        // up world    = (-sin(yaw)*sin(pitch), cos(pitch), -cos(yaw)*sin(pitch)) — proyeksi (0,1,0) lewat rotY+rotX
-        const rightX = cy, rightY = 0, rightZ = sy;
-        const upX = -sy * sp, upY = cp, upZ = -cy * sp;
-        // Skala pan: proporsional ke cam.dist (zoom out = pan cepat). 0.01 = konstanta tuning.
+        // right_world — PERHATIKAN TANDA: rightZ = -sy (BUKAN sy, pernah bug sebelumnya).
+        const rightX = cy, rightY = 0, rightZ = -sy;
+        // up_world
+        const upX = -sp * sy, upY = cp, upZ = -sp * cy;
         const panScale = s.cam.dist * 0.0015;
-        const targetX = s.panStart.target.x - dx * panScale * rightX + dy * panScale * upX;
-        const targetY = s.panStart.target.y - dx * panScale * rightY + dy * panScale * upY;
-        const targetZ = s.panStart.target.z - dx * panScale * rightZ + dy * panScale * upZ;
+        // Natural scrolling: drag kanan = camera kanan, drag bawah = camera bawah.
+        const targetX = s.panStart.target.x + dx * panScale * rightX - dy * panScale * upX;
+        const targetY = s.panStart.target.y + dx * panScale * rightY - dy * panScale * upY;
+        const targetZ = s.panStart.target.z + dx * panScale * rightZ - dy * panScale * upZ;
         s.cam.target = new Vec3(targetX, targetY, targetZ);
         render();
         return;
