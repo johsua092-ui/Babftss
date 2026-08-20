@@ -7,12 +7,32 @@ import LinkageIcon from './components/LinkageIcon';
 import ShapesIcon from './components/ShapesIcon';
 import MenuButton3D from './components/MenuButton3D';
 import LoginModal from './components/LoginModal';
+import NotFoundPage from './components/NotFoundPage';
 import AIHelperButton from './components/AIHelperButton';
 import { useAuth } from './contexts/AuthContext';
 import { trackVisit } from './lib/tracker';
 import { useProgressSync } from './hooks/useProgressSync';
 
 const ShapesPage = lazy(() => import('./pages/ShapesPage'));
+
+// Daftar page yang dikenal oleh router state-based ini.
+// Kalau `page` tidak ada di daftar ini, App.jsx merender <NotFoundPage /> (404).
+const KNOWN_PAGES = new Set([
+    'welcome',
+    'marketplace',
+    'canvas',
+    'shapes',
+    'shapes-calculator',
+    'block-simulator-3d',
+    'menu',
+    'logic-gates',
+    'basic-logic-gates',
+    'logic-gates-circuit',
+    'circuit-generator',
+    'gears',
+    'linkages',
+    'logic-gates-simulator',
+]);
 const ShapesCalculator = lazy(() => import('./pages/ShapesCalculator'));
 const BlockSimulator3D = lazy(() => import('./pages/BlockSimulator3D'));
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
@@ -329,6 +349,15 @@ export default function App() {
             {page === "logic-gates-simulator" && <motion.div key="logic-gates-simulator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
                 <Suspense fallback={pageFallback}><LogicGatesSimulator setPage={setPage} /></Suspense>
             </motion.div>}
+            {/* ── catch-all 404 ──
+                Dirender ketika `page` tidak cocok dengan halaman yang dikenal.
+                Contoh: data progress korup, deep-link ke page lama yang sudah dihapus,
+                atau setPage dipanggil dengan nilai tak dikenal. */}
+            {!KNOWN_PAGES.has(page) && (
+                <motion.div key="not-found" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh" }}>
+                    <NotFoundPage setPage={setPage} />
+                </motion.div>
+            )}
         </AnimatePresence>
         </main>
         {!helperOpen && <AIHelperButton onClick={() => setHelperOpen(true)} />}

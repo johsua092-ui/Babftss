@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Cpu, LogIn, Mail, Lock, UserPlus,
-  Loader2, Eye, EyeOff,
-} from "lucide-react";
-import { loginWithGoogle, loginWithEmail, registerWithEmail } from "../lib/firebase";
+import { Cpu, LogIn, Loader2 } from "lucide-react";
+import { loginWithGoogle } from "../lib/firebase";
 
+/**
+ * LoginPage — OAuth-only (Google).
+ *
+ * Catatan: form email/password dihapus sesuai permintaan user.
+ * Karena Firebase email/password auth wajib butuh email, kita hapus
+ * form seluruhnya, bukan hanya input email-nya saja.
+ */
 const c = {
   pageBg:    "#181b24",
   cardBg:    "#0e1420",
@@ -29,15 +33,8 @@ const card = {
 };
 
 export default function LoginPage() {
-  const [mode, setMode] = useState("signin");  // signin | register
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const reset = () => { setError(""); setEmail(""); setPassword(""); };
-  const switchMode = (m) => { setMode(m); reset(); };
 
   const handleGoogle = async () => {
     setError(""); setLoading(true);
@@ -48,22 +45,6 @@ export default function LoginPage() {
     }
     finally { setLoading(false); }
   };
-
-  const handleEmail = async (e) => {
-    e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError("Please fill in all fields."); return;
-    }
-    setError(""); setLoading(true);
-    try {
-      if (mode === "register") await registerWithEmail(email, password);
-      else await loginWithEmail(email, password);
-    } catch (err) {
-      setError(err.message || "Something went wrong.");
-    } finally { setLoading(false); }
-  };
-
-  const isSignin = mode === "signin";
 
   return (
     <div style={{
@@ -98,88 +79,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* ── sign-in / register tabs ── */}
-        <div style={{
-          display: "flex", width: "100%", gap: 0,
-          borderBottom: `1px solid ${c.cardBorder}`,
-        }}>
-          {[
-            ["signin",   "Sign In"],
-            ["register", "Create Account"],
-          ].map(([key, label]) => (
-            <button key={key} onClick={() => switchMode(key)} style={{
-              flex: 1, padding: "10px 0", border: "none", cursor: "pointer",
-              fontSize: 13, fontWeight: 700, fontFamily: "inherit",
-              color: mode === key ? c.text : c.muted,
-              background: "transparent",
-              borderBottom: `2px solid ${mode === key ? c.accent : "transparent"}`,
-              transition: "all 0.2s",
-            }}>{label}</button>
-          ))}
-        </div>
-
-        {/* ── form ── */}
-        <form onSubmit={handleEmail} style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            backgroundColor: c.inputBg, border: `1px solid ${c.inputBorder}`,
-            borderRadius: 12, padding: "0 14px",
-          }}>
-            <Mail size={15} color={c.muted} style={{ flexShrink: 0 }} />
-            <input
-              type="email" placeholder="Email address" value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{
-                flex: 1, background: "none", border: "none", outline: "none",
-                padding: "13px 0", fontSize: 14, color: c.text, fontFamily: "inherit",
-              }}
-            />
-          </div>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            backgroundColor: c.inputBg, border: `1px solid ${c.inputBorder}`,
-            borderRadius: 12, padding: "0 14px",
-          }}>
-            <Lock size={15} color={c.muted} style={{ flexShrink: 0 }} />
-            <input
-              type={showPw ? "text" : "password"} placeholder="Password" value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                flex: 1, background: "none", border: "none", outline: "none",
-                padding: "13px 0", fontSize: 14, color: c.text, fontFamily: "inherit",
-              }}
-            />
-            <button type="button" onClick={() => setShowPw(!showPw)}
-              style={{ background: "none", border: "none", color: c.muted, cursor: "pointer", padding: 0, display: "flex" }}>
-              {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-
-          {/* submit */}
-          <button type="submit" disabled={loading} style={{
-            width: "100%", padding: "13px 0", borderRadius: 12, border: "none",
-            cursor: loading ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700,
-            fontFamily: "inherit", color: "#fff", backgroundColor: c.accent,
-            opacity: loading ? 0.55 : 1, display: "flex", alignItems: "center",
-            justifyContent: "center", gap: 9, transition: "opacity 0.2s",
-          }}>
-            {loading
-              ? <Loader2 size={17} style={{ animation: "spin 1s linear infinite" }} />
-              : (isSignin ? <LogIn size={17} /> : <UserPlus size={17} />)}
-            {isSignin ? "Sign In" : "Create Account"}
-          </button>
-        </form>
-
-        {/* ── divider ── */}
-        <div style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 10,
-          color: "#334155", fontSize: 11, fontWeight: 600,
-        }}>
-          <div style={{ flex: 1, height: 1, backgroundColor: c.cardBorder }} />
-          OR
-          <div style={{ flex: 1, height: 1, backgroundColor: c.cardBorder }} />
-        </div>
-
         {/* ── Google ── */}
         <button onClick={handleGoogle} disabled={loading} style={{
           width: "100%", padding: "13px 0", borderRadius: 12,
@@ -209,25 +108,14 @@ export default function LoginPage() {
           >{error}</motion.div>
         )}
 
-        {/* ── footer switch ── */}
-        <p style={{ color: c.muted, fontSize: 12, margin: 0, textAlign: "center" }}>
-          {isSignin ? (
-            <>Don't have an account?{' '}
-              <button onClick={() => switchMode("register")} style={{
-                background: "none", border: "none", color: c.accent,
-                cursor: "pointer", fontFamily: "inherit", fontSize: 12,
-                fontWeight: 700, padding: 0,
-              }}>Create one</button>
-            </>
-          ) : (
-            <>Already have an account?{' '}
-              <button onClick={() => switchMode("signin")} style={{
-                background: "none", border: "none", color: c.accent,
-                cursor: "pointer", fontFamily: "inherit", fontSize: 12,
-                fontWeight: 700, padding: 0,
-              }}>Sign in</button>
-            </>
-          )}
+        {/* ── info ── */}
+        <p style={{ color: c.muted, fontSize: 12, margin: 0, textAlign: "center", lineHeight: 1.5 }}>
+          Simpan progress belajarmu dan lanjutkan kapan saja.
+        </p>
+
+        {/* ── subtle hint ── */}
+        <p style={{ color: "#475569", fontSize: 11, margin: 0, textAlign: "center", lineHeight: 1.5, display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+          <LogIn size={12} /> Login via akun Google kamu
         </p>
       </motion.div>
     </div>

@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Chrome, Github, Mail, Eye, EyeOff } from 'lucide-react';
+import { X, Chrome, Github } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
+/**
+ * LoginModal — OAuth-only (Google + GitHub).
+ *
+ * Catatan: form email/password dihapus sesuai permintaan user.
+ * Karena Firebase email/password auth wajib butuh email, kita hapus
+ * form seluruhnya, bukan hanya input email-nya saja.
+ */
 export default function LoginModal({ isOpen, onClose }) {
-  const { loginWithGoogle, loginWithGitHub, loginWithEmail, registerWithEmail } = useAuth();
-  const [mode, setMode] = useState('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const { loginWithGoogle, loginWithGitHub } = useAuth();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -20,36 +23,13 @@ export default function LoginModal({ isOpen, onClose }) {
       onClose();
     } catch (e) {
       if (e.code === 'auth/popup-closed-by-user') {
+        // user batal, jangan tampilkan error
       } else {
         setError(e.message || `Gagal login dengan ${name}`);
       }
     } finally {
       setBusy(false);
     }
-  };
-
-  const handleEmail = async (e) => {
-    e.preventDefault();
-    if (!email || !password) { setError('Email dan password wajib diisi'); return; }
-    setBusy(true);
-    setError('');
-    try {
-      if (mode === 'register') {
-        await registerWithEmail(email, password);
-      } else {
-        await loginWithEmail(email, password);
-      }
-      onClose();
-    } catch (e) {
-      setError(e.message || 'Gagal login');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const switchMode = () => {
-    setMode(m => m === 'login' ? 'register' : 'login');
-    setError('');
   };
 
   return (
@@ -84,6 +64,7 @@ export default function LoginModal({ isOpen, onClose }) {
             <button
               onClick={onClose}
               disabled={busy}
+              aria-label="Tutup"
               style={{
                 position: 'absolute', top: 14, right: 14,
                 background: 'none', border: 'none', cursor: 'pointer',
@@ -102,7 +83,7 @@ export default function LoginModal({ isOpen, onClose }) {
               fontFamily: 'Orbitron,sans-serif', fontWeight: 800,
               fontSize: 14, color: '#64748b', margin: '0 0 12px',
             }}>
-              {mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+              SIGN IN
             </h2>
             <p style={{
               fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#64748b',
@@ -155,95 +136,14 @@ export default function LoginModal({ isOpen, onClose }) {
               >
                 <Github size={20} /> Sign in with GitHub
               </button>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
-                <div style={{ flex: 1, height: 1, backgroundColor: '#1e293b' }} />
-                <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#475569' }}>OR</span>
-                <div style={{ flex: 1, height: 1, backgroundColor: '#1e293b' }} />
-              </div>
-
-              <form onSubmit={handleEmail} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="Email address"
-                  disabled={busy}
-                  style={{
-                    width: '100%', padding: '11px 14px', borderRadius: 8,
-                    backgroundColor: '#0b1120', border: '1px solid #1e293b',
-                    fontFamily: 'Inter,sans-serif', fontSize: 13, color: '#e2e8f0',
-                    outline: 'none',
-                    transition: 'border-color 0.2s',
-                  }}
-                  onFocus={e => e.currentTarget.style.borderColor = '#4ade80'}
-                  onBlur={e => e.currentTarget.style.borderColor = '#1e293b'}
-                />
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPw ? 'text' : 'password'}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="Password"
-                    disabled={busy}
-                    style={{
-                      width: '100%', padding: '11px 40px 11px 14px', borderRadius: 8,
-                      backgroundColor: '#0b1120', border: '1px solid #1e293b',
-                      fontFamily: 'Inter,sans-serif', fontSize: 13, color: '#e2e8f0',
-                      outline: 'none',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={e => e.currentTarget.style.borderColor = '#4ade80'}
-                    onBlur={e => e.currentTarget.style.borderColor = '#1e293b'}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPw(s => !s)}
-                    style={{
-                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: '#475569', padding: 2,
-                    }}
-                  >
-                    {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  style={{
-                    width: '100%', padding: '12px 16px', borderRadius: 10,
-                    backgroundColor: '#22c55e', border: 'none',
-                    cursor: busy ? 'not-allowed' : 'pointer',
-                    fontFamily: 'Orbitron,sans-serif', fontWeight: 700, fontSize: 13,
-                    color: '#052e16', letterSpacing: 1,
-                    opacity: busy ? 0.6 : 1,
-                    transition: 'transform 0.15s',
-                  }}
-                  onMouseEnter={e => { if (!busy) e.currentTarget.style.transform = 'scale(1.01)'; }}
-                  onMouseLeave={e => { if (!busy) e.currentTarget.style.transform = 'scale(1)'; }}
-                >
-                  {busy ? 'PLEASE WAIT...' : mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
-                </button>
-              </form>
             </div>
 
             <p style={{
-              textAlign: 'center', marginTop: 14,
-              fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#64748b',
+              textAlign: 'center', marginTop: 16,
+              fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#475569',
+              lineHeight: 1.5,
             }}>
-              {mode === 'login' ? "Belum punya akun?" : 'Sudah punya akun?'}{' '}
-              <button
-                onClick={switchMode}
-                disabled={busy}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#4ade80', fontFamily: 'Inter,sans-serif', fontSize: 12,
-                  fontWeight: 600, textDecoration: 'underline',
-                }}
-              >
-                {mode === 'login' ? 'Daftar di sini' : 'Login di sini'}
-              </button>
+              Dengan masuk, kamu menyetujui penyimpanan progress belajar di akun kamu.
             </p>
           </motion.div>
         </motion.div>
