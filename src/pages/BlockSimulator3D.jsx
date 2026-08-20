@@ -717,7 +717,12 @@ export default function BlockSimulator3D({ setPage }) {
 
       if (s.isOrbiting) {
         const dx = mx - s.dragStart.x, dy = my - s.dragStart.y;
-        s.cam.yaw = s.camStart.yaw + dx * 0.007;
+        // YAW: MINUS — drag kanan → yaw turun → world gerak ke kiri → camera orbit ke kanan (kanan natural).
+        // PITCH: PLUS — drag atas → pitch turun → world gerak ke bawah → camera orbit ke atas (atas natural).
+        // (Bagian 1 sempat flip dua-duanya ke PLUS, tapi ternyata cuma pitch yang benar — yaw jadi terbalik.
+        //  Fix Bagian 47: balik yaw ke MINUS, biarkan pitch PLUS. Sesuai instruksi prompt Bagian 1:
+        //  "kalau cuma satu sumbu yang masih kebalik, balik tanda MINUS itu HANYA untuk sumbu yang masih salah".)
+        s.cam.yaw = s.camStart.yaw - dx * 0.007;
         s.cam.pitch = Math.max(-1.45, Math.min(1.45, s.camStart.pitch + dy * 0.007));
         render();
         return;
