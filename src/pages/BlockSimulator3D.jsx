@@ -72,10 +72,12 @@ export default function BlockSimulator3D({ setPage }) {
     // look upside-down / reversed compared to standard 3D editors.
     cam: { yaw: -0.75, pitch: -0.55, dist: 22, target: new Vec3(0, 0, 0) },
     isOrbiting: false,
+    isPanning: false,      // Pan Camera: klik-kiri drag di empty space = geser posisi kamera (target)
     isTransforming: false,
     dragAxis: null,        // 'x' | 'y' | 'z' | null — sumbu yang sedang di-grab saat gizmo Move/Rotate/Scale aktif
     dragStart: null,
-    camStart: null,
+    camStart: null,        // simpan yaw/pitch awal saat mulai orbit
+    panStart: null,        // simpan cam.target awal saat mulai pan
     transformStart: null,
     blockStart: null,      // { pos, rot, size } — snapshot awal blok saat mulai drag (untuk reference drag)
     hoverGrid: null,   // posisi grid (Vec3) tempat ghost block akan digambar, null = tidak ada ghost
@@ -657,7 +659,7 @@ export default function BlockSimulator3D({ setPage }) {
             return;
           }
         }
-        // Klik TIDAK kena handle → jalankan hitTest blok biasa (pilih blok baru / deselect).
+        // Klik TIDAK kena handle → jalankan hitTest blok biasa (pilih blok baru / deselect / pan).
         const hit = hitTest(mx, my);
         if (hit) {
           s.selected = hit;
@@ -669,13 +671,15 @@ export default function BlockSimulator3D({ setPage }) {
             size: hit.size.clone(),
           };
           updateUISelection(hit);
+          render();
         } else {
-          s.selected = null;
-          s.dragAxis = null;
-          s.isTransforming = false;
-          updateUISelection(null);
+          // Empty click → mulai PAN CAMERA (geser posisi kamera, bukan deselect).
+          // Deselect tetap jalan di klik-kiri biasa (click tanpa drag) → di onMouseUp cek delta drag.
+          s.isPanning = true;
+          s.dragStart = { x: mx, y: my };
+          s.panStart = { target: s.cam.target.clone() };
+          canvas.style.cursor = 'grabbing';
         }
-        render();
         return;
       }
 
@@ -716,10 +720,16 @@ export default function BlockSimulator3D({ setPage }) {
           return;
         }
       } else {
-        s.selected = null;
-        updateUISelection(null);
-        // Empty click saat Paint mode → tutup colorPicker kalau kebuka (konsisten dengan 2D).
+        // Empty click → PAN CAMERA (klik-kiri tahan + drag di area kosong = geser posisi kamera).
+        // Saat user cuma klik (tanpa drag signifikan), di onMouseUp akan jadi deselect (click = klik kosong).
+        // Behavior pan hanya aktif kalau user benar-benar drag — lihat onMouseUp.
+        // Untuk tool=color: tutup colorPicker kalau kebuka, LALU mulai pan.
         if (colorPickerRef.current) setColorPicker(null);
+        s.isPanning = true;
+        s.dragStart = { x: mx, y: my };
+        s.panStart = { target: s.cam.target.clone() };
+        // Jangan deselect dulu — tunggu onMouseUp buat bedakan click vs drag.
+        canvas.style.cursor = 'grabbing';
       }
       render();
     };
@@ -738,6 +748,38 @@ export default function BlockSimulator3D({ setPage }) {
         //  "kalau cuma satu sumbu yang masih kebalik, balik tanda MINUS itu HANYA untuk sumbu yang masih salah".)
         s.cam.yaw = s.camStart.yaw - dx * 0.007;
         s.cam.pitch = Math.max(-1.45, Math.min(1.45, s.camStart.pitch + dy * 0.007));
+        render();
+        return;
+      }
+
+      if (s.isPanning) {
+        // PAN CAMERA: klik-kiri tahan + drag = geser posisi kamera (cam.target) sepanjang bidang layar.
+        // Rumus: konversi screen delta (dx, dy) ke world delta sepanjang arah right & up kamera.
+        //   - Arah "right" di world = rotY(1,0,0, -yaw) → lalu rotX(...) — alias inverse camera rotation applied ke (1,0,0).
+        //   - Arah "up" di world = rotY(0,1,0, -yaw) → lalu rotX(...) — alias inverse camera rotation applied ke (0,1,0).
+        //   - Skala: cam.dist / focalLength supaya pan proporsional dengan jarak kamera (zoom out = pan lebih cepat).
+        //   - dx positive (drag kanan) = camera geser KANAN (target ke kanan) — natural, drag ikut mouse.
+        //   - dy positive (drag bawah) = camera geser BAWAH (target ke bawah) — natural, drag ikut mouse.
+        const dx = mx - s.dragStart.x, dy = my - s.dragStart.y;
+        // Hitung right & up vector di world space:
+        //   right = inverse(rotX(rotY(yaw, pitch))) applied ke (1,0,0)
+        //   up    = inverse(rotX(rotY(yaw, pitch))) applied ke (0,1,0)
+        // Cara kompak: apply rotY & rotX ke (1,0,0) & (0,1,0) PERSIS seperti di project() (tanpa inverse).
+        //   Lalu normalize ke 2D plane (X & Z di world, Y=0) supaya pan tetap horizontal di grid.
+        //   Tapi ini cuma ideal kalau pitch nyaris top-down. Untuk general case, gunakan full 3D right/up.
+        // Simplifikasi: right & up pakai rotasi forward (sama seperti project), drag world sepanjang vector tsb.
+        const cy = Math.cos(s.cam.yaw), sy = Math.sin(s.cam.yaw);
+        const cp = Math.cos(s.cam.pitch), sp = Math.sin(s.cam.pitch);
+        // right world = (cos(yaw), 0, sin(yaw)) — proyeksi (1,0,0) lewat rotY, ignore rotX untuk arah horizontal
+        // up world    = (-sin(yaw)*sin(pitch), cos(pitch), -cos(yaw)*sin(pitch)) — proyeksi (0,1,0) lewat rotY+rotX
+        const rightX = cy, rightY = 0, rightZ = sy;
+        const upX = -sy * sp, upY = cp, upZ = -cy * sp;
+        // Skala pan: proporsional ke cam.dist (zoom out = pan cepat). 0.01 = konstanta tuning.
+        const panScale = s.cam.dist * 0.0015;
+        const targetX = s.panStart.target.x - dx * panScale * rightX + dy * panScale * upX;
+        const targetY = s.panStart.target.y - dx * panScale * rightY + dy * panScale * upY;
+        const targetZ = s.panStart.target.z - dx * panScale * rightZ + dy * panScale * upZ;
+        s.cam.target = new Vec3(targetX, targetY, targetZ);
         render();
         return;
       }
@@ -807,9 +849,23 @@ export default function BlockSimulator3D({ setPage }) {
       }
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (e) => {
       const s = stateRef.current;
+      // Kalau barusan PAN tapi drag-nya sangat kecil (click, bukan drag) → anggap deselect.
+      // Threshold 4px supaya klik biasa tidak salah anggap drag. Drag < 4px = click = deselect.
+      if (s.isPanning && s.dragStart) {
+        const rect = canvas.getBoundingClientRect();
+        const dx = (e.clientX - rect.left) - s.dragStart.x;
+        const dy = (e.clientY - rect.top) - s.dragStart.y;
+        if (Math.hypot(dx, dy) < 4) {
+          // Click tanpa drag = deselect (klik kosong biasa).
+          s.selected = null;
+          updateUISelection(null);
+          render();
+        }
+      }
       s.isOrbiting = false;
+      s.isPanning = false;
       s.isTransforming = false;
       s.dragAxis = null;
       canvas.style.cursor = 'grab';
@@ -1121,6 +1177,9 @@ export default function BlockSimulator3D({ setPage }) {
             <strong style={{ color: '#e2e8f0' }}>Controls</strong><br/>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <Hand size={12} /> <strong>Right-Click Drag</strong> = Orbit camera
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Move size={12} /> <strong>Left-Click Drag</strong> (empty space) = Pan camera
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <MousePointer2 size={12} /> <strong>Scroll</strong> = Zoom
