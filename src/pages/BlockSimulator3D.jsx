@@ -349,9 +349,42 @@ export default function BlockSimulator3D({ setPage }) {
         ctx.stroke();
 
         // Handle di ujung — bentuknya beda per tool biar jelas visual:
-        //  - Move/Scale: lingkaran padat (target klik jelas, 7px radius)
+        //  - Move: kepala panah (segitiga sama kaki mengarah ke ujung) — Tahap 1/3 gizmo panah
+        //  - Scale: lingkaran padat (target klik jelas, 7px radius) — TETAP seperti sebelumnya
         //  - Rotate: lingkaran outline + busur kecil di dalam (biar kelihatan "nggulir")
-        if (tool === 'move' || tool === 'scale') {
+        if (tool === 'move') {
+          // Kepala panah: segitiga sama kaki, mengarah dari centerScreen ke tipScreen.
+          // Hitung unit vector arah panah (dari center ke tip), lalu vektor tegak lurus
+          // untuk lebar alas segitiga. Pakai centerScreen yang sudah ada di scope (JANGAN
+          // deklarasi baru/hitung ulang).
+          const dx = tipScreen.x - centerScreen.x;
+          const dy = tipScreen.y - centerScreen.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const ux = dx / len, uy = dy / len;       // unit vector arah panah
+          const px = -uy, py = ux;                   // unit vector tegak lurus (buat lebar alas segitiga)
+          const headLen = 14;   // panjang kepala panah dari ujung ke alas
+          const headWidth = 7;  // setengah lebar alas segitiga
+
+          const tip = { x: tipScreen.x, y: tipScreen.y };
+          const baseCenter = { x: tipScreen.x - ux * headLen, y: tipScreen.y - uy * headLen };
+          const baseL = { x: baseCenter.x + px * headWidth, y: baseCenter.y + py * headWidth };
+          const baseR = { x: baseCenter.x - px * headWidth, y: baseCenter.y - py * headWidth };
+
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(tip.x, tip.y);
+          ctx.lineTo(baseL.x, baseL.y);
+          ctx.lineTo(baseR.x, baseR.y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.shadowBlur = 0;
+          ctx.stroke();
+        } else if (tool === 'scale') {
+          // Scale TETAP lingkaran solid — behavior visual lama dipertahankan, JANGAN diubah.
+          // (Dipisah dari Move biar gampang dibedakan secara visual: Move = panah, Scale = lingkaran,
+          //  Rotate = lingkaran outline + busur.)
           ctx.fillStyle = color;
           ctx.beginPath();
           ctx.arc(tipScreen.x, tipScreen.y, 7, 0, Math.PI * 2);

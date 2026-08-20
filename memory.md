@@ -3675,3 +3675,77 @@ const newSize = Math.max(step, Math.round(rawSize / step) * step);
 - Behavior lama (gizmo 6-axis, sisi berlawanan diam, sign untuk handle -axis) preserved.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 49 — 3D Block Simulator: Gizmo Move Bentuk Panah (Tahap 1/3) (21 Aug 2026)
+
+**Task ID:** 49
+**Agent:** main (Super Z)
+**Task:** Pisahkan render handle Move (sekarang jadi bentuk panah — segitiga mengarah ke ujung) dari Scale (tetap lingkaran solid). Murni visual, TIDAK ubah logika drag/hit-test sama sekali. Sesuai `PROMPT_KERJA_3DBlockSim_GizmoPanah_Tahap1.md`.
+
+### Latar belakang
+Tahap 1 dari 3 rencana besar gizmo profesional. Tahap 2 (banyak jenis primitif) & Tahap 3 (split-screen dual camera) = prompt terpisah nanti, JANGAN dikerjakan di sini. Referensi: screenshot software 3D profesional, dianalisis user — BUKAN aset/kode apapun disalin, murni referensi visual gizmo standar.
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — +35/-2 baris.
+
+### Perubahan
+
+**Sebelum:** Move & Scale pakai kondisi yang sama — lingkaran solid 7px.
+```js
+if (tool === 'move' || tool === 'scale') {
+  ctx.fillStyle = color;
+  ctx.arc(tipScreen.x, tipScreen.y, 7, ...);
+  ctx.fill();
+  // ... outline putih
+}
+```
+
+**Sesudah:** Pisahkan jadi 2 kondisi — Move pakai kepala panah segitiga, Scale TETAP lingkaran.
+```js
+if (tool === 'move') {
+  // Kepala panah: segitiga sama kaki mengarah dari centerScreen ke tipScreen.
+  const dx = tipScreen.x - centerScreen.x;
+  const dy = tipScreen.y - centerScreen.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;       // unit vector arah panah
+  const px = -uy, py = ux;                   // unit vector tegak lurus (lebar alas)
+  const headLen = 14;   // panjang kepala panah dari ujung ke alas
+  const headWidth = 7;  // setengah lebar alas segitiga
+  // ... 3 titik segitiga: tip, baseL, baseR → fill + stroke putih 1px
+} else if (tool === 'scale') {
+  // Scale TETAP lingkaran solid 7px — TIDAK diubah
+} else if (tool === 'rotate') {
+  // Rotate TETAP lingkaran outline + busur — TIDAK diubah
+}
+```
+
+### Yang TIDAK diubah (sesuai scope "murni visual")
+- **Hit-test (`hitHandle`)** — TIDAK disentuh. Radius klik tetap berdasarkan `tipScreen` (ujung handle), posisi tip tidak berubah. Kepala panah walau bentuk segitiga, titik "tip" logical tetap sama → target klik tetap presisi.
+- **`dragAxisDelta`** — TIDAK disentuh.
+- **Posisi handle (`getHandleOffset`, `b.pos.add(vec)`)** — TIDAK disentuh.
+- **Logic drag di `onMouseMove`** — TIDAK disentuh.
+- **Rotate** — TIDAK disentuh (lingkaran outline + busur).
+- **Scale** — TIDAK disentuh (lingkaran solid).
+- **Sisi -axis (handle `neg: true`)** — kepala panah otomatis mengarah ke arah yang benar juga, karena dihitung dari `centerScreen` ke `tipScreen` masing-masing, bukan hardcode arah. Tidak butuh logika tambahan khusus.
+- **`centerScreen` variabel** — di-reuse apa adanya dari scope yang sama (sudah dipakai buat gambar garis `moveTo(centerScreen.x, centerScreen.y)` di atas kode ini). Tidak deklarasi baru/hitung ulang.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.27s`. BlockSimulator3D chunk: 29.34 KB (gzip 8.85 KB — naik tipis dari 28.99 KB karena tambah logika segitiga kepala panah).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah (+35/-2 baris). Tidak ada file lain tersenggol.
+3. ⚠️ **Verifikasi manual visual** BELUM dilakukan (env CLI tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Tool **Move**: handle sekarang tampil sebagai **panah** (garis + kepala segitiga mengarah keluar dari pusat blok ke ujung handle). Untuk handle -axis (merah/hijau/biru opacity 0.55), kepala panah otomatis mengarah ke arah berlawanan juga (ke arah -X/-Y/-Z).
+   - Tool **Scale**: TETAP lingkaran solid seperti sebelumnya (tidak berubah).
+   - Tool **Rotate**: TETAP lingkaran outline + busur (tidak berubah).
+4. ✅ **Drag tetap berfungsi normal** — logika drag TIDAK diubah sama sekali. Hit-test tetap pakai `tipScreen` (posisi ujung tidak berubah, cuma bentuk visualnya). Verifikasi logic-confirmed via code reading: `hitHandle` di line 461-481 TIDAK diubah, masih pakai `Math.hypot(p.x - mx, p.y - my) < 14` berdasarkan `project(block.pos.add(vec))` — sama persis seperti sebelum Tahap 1.
+5. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 49.
+6. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+7. ✅ **STOP setelah ini** — Tahap 2 (primitif) & Tahap 3 (dual camera) = prompt terpisah nanti.
+
+### Stage Summary
+- Tool Move sekarang tampil sebagai panah (gaya software 3D profesional), Scale tetap lingkaran, Rotate tetap outline+busur — visual ketiga tool sekarang gampang dibedakan.
+- Logika drag & hit-test TIDAK diubah sama sekali — behavior functional sama persis seperti sebelum Tahap 1.
+- Build sukses 0 error, scope terjaga (1 file saja, +35/-2 baris).
+- Commit lokal siap di-push.
+
