@@ -4236,3 +4236,110 @@ Voxel yang DIPUTAR (Poin F di Bagian 53) individual berputar sedikit beda arah m
 - Verifikasi visual live TUNGGU user — verify di Vercel setelah push, generate Sphere & Cone untuk konfirmasi celah hilang.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 55 — 3D Block Simulator: Dual Camera View (Tahap 3/3 — TASK TERAKHIR) (21 Aug 2026)
+
+**Task ID:** 55
+**Agent:** main (Super Z)
+**Task:** Implementasi Dual Camera View — viewport KEDUA (Camera B) di kanan, viewer pasif (orbit+zoom only, tanpa tools). Sesuai `PROMPT_KERJA_3DBlockSim_DualCamera_Tahap3.md`. Ini task TERAKHIR dari rencana besar 3-tahap (gizmo panah → shape generator → dual camera).
+
+### Arsitektur — SISTEM TERPISAH SEPENUHNYA (bukan reuse)
+Camera B dibuat sebagai SISTEM TERPISAH dari Camera A yang sudah ada. Bukan refactor `project()`/`render()`/`hitTest()`/`getGridPos()` supaya "generic multi-camera" — itu berisiko tinggi merusak Camera A yang sudah stabil & matang (banyak fitur numpuk di situ: paint, gizmo 6-axis, scale step, panah, pan camera, orbit, zoom, ghost preview, marching ants, shape generator, face culling).
+
+Sebagai gantinya, buat sistem Camera B sendiri:
+- `rotYb`/`rotXb`/`rotZb` — duplikat ringan rotasi (bukan reuse rotY/rotX/rotZ yang ada di scope component).
+- `projectB(p)` — duplikat ringan project() dengan focalLength 700 (sama persis dengan Camera A).
+- `getBlockCornersB(b)` — duplikat ringan getBlockCorners().
+- `renderB()` — versi ringan render(): background gradient + grid + blocks (TANPA gizmo/ghost/handle/marching-ants/face-culling). Cuma backface cull sederhana.
+- `resizeB()` — ResizeObserver sendiri.
+- Orbit mouse handlers sendiri (onDown/onMove/onUp/onWheel/onCtx).
+
+Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" sistem yang sudah ada.
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — semua perubahan.
+
+### Perubahan
+
+**1. State & refs baru:**
+- `const [dualView, setDualView] = useState(false);` — toggle Camera B.
+- `canvasBRef`, `containerBRef` (useRef) — refs untuk canvas & container Camera B.
+- Field baru di `stateRef.current`:
+  - `camB: { yaw: 0.75, pitch: -0.55, dist: 22, target: new Vec3(0,0,0) }` — yaw=+0.75 (mirror dari cam A yang yaw=-0.75) supaya user langsung lihat sudut berbeda saat Dual View dinyalakan.
+  - `isOrbitingB`, `dragStartB`, `camStartB` — state orbit Camera B.
+
+**2. JSX Main Canvas Area di-refactor:**
+- Sebelum: `<div ref={containerRef} style={{flex:1, position:'relative', overflow:'hidden'}}>` (langsung).
+- Sesudah: dibungkus dalam `<div style={{flex:1, display:'flex', position:'relative', overflow:'hidden'}}>` (flex row wrapper) — container Camera A + container Camera B jadi sibling di dalam wrapper.
+- Container Camera A TETAP UTUH — cuma dibungkus 1 level lebih dalam, isi TIDAK diubah.
+- Container Camera B muncul hanya saat `dualView=true`:
+  - `borderLeft: '2px solid #334155'` — visual divider antara Camera A & B.
+  - Canvas Camera B dengan cursor 'grab'.
+  - Label "Camera B (view only)" di pojok kiri atas (pointerEvents none, supaya tidak ganggu drag).
+
+**3. Tombol "Dual View" di toolbar:**
+- Posisi: di bawah daftar tombol TOOLS, dengan divider tipis (borderTop).
+- Style: saat aktif (`dualView=true`) → bg gradient biru (`linear-gradient(135deg,#0ea5e9,#38bdf8)`), text dark. Saat off → bg transparent, text light.
+- Icon: `Box` (dari lucide-react yang sudah di-import sebelumnya).
+- Title attribute: tooltip penjelasan singkat.
+
+**4. useEffect Camera B (dependency `[dualView]`):**
+- Early return kalau `dualView=false` (cleanup otomatis via return undefined).
+- Set up refs (canvas, container), buat fungsi lokal rotYb/rotXb/rotZb, projectB, getBlockCornersB, renderB, resizeB.
+- Daftarkan mouse handlers (onDown/onMove/onUp/onWheel/onCtx) untuk orbit-only behavior.
+- `setInterval(renderB, 200)` — re-render tiap 200ms (5fps) buat sinkron visual dari `s.blocks` (mutable ref, bukan React state reaktif). 5fps cukup buat viewer pasif, hemat resource.
+- Cleanup di return: disconnect ResizeObserver, removeEventListener semua, clearInterval.
+
+**5. Catatan soal `setInterval(renderB, 200)`:**
+- WAJAR & disengaja (bukan solusi malas). `s.blocks` itu mutable ref (bukan React state reaktif), Camera B gak akan otomatis tahu kapan ada blok baru/berubah dari Camera A kecuali di-render ulang berkala.
+- 5fps cukup buat viewer pasif (gak perlu real-time responsif kayak Camera A yang di-render tiap event mouse).
+- Jauh lebih hemat resource daripada `requestAnimationFrame` terus-menerus.
+
+### Yang TIDAK diubah (KRITIS — Camera A harus utuh)
+- ✅ `project()` Camera A — TIDAK diubah 1 baris pun.
+- ✅ `render()` Camera A — TIDAK diubah.
+- ✅ `hitTest()`, `getGridPos()`, `getBlockCorners()` Camera A — TIDAK diubah.
+- ✅ `runPlace`, `runGenerate`, semua tool handlers Camera A — TIDAK diubah.
+- ✅ ResizeObserver Camera A (sudah ada) — TIDAK diubah. Otomatis re-trigger saat container Camera A menyempit karena flex row terbagi 2 saat Dual View aktif. Tidak perlu kode tambahan.
+- ✅ Sistem paint, gizmo 6-axis, scale step, panah handle, pan camera, orbit camera, zoom wheel, ghost/preview block, marching ants, face culling — semua TIDAK diubah.
+- ✅ App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, file backend/auth.
+- ✅ Tool lain (Place/Move/Rotate/Scale/Paint/Clone/Delete/Generate/Clear) tetap jalan di Camera A.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.77s`. BlockSimulator3D chunk: 46.90 KB (gzip 13.29 KB — naik dari 42.22 KB karena tambah sistem Camera B: projectB, getBlockCornersB, renderB, resizeB, orbit handlers, useEffect).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+3. ✅ **Verifikasi Camera A TIDAK BERUBAH SAMA SEKALI** — code reading check:
+   - `project` (line 467), `getBlockCorners` (line 484), `render` (line 509), `hitTest` (line 1132), `getGridPos` (line 1163), `runPlace` (line 1228), `runGenerate` (line 1256) — semua tetap di lokasi yang sama, tidak ada satu baris pun diubah.
+   - 16 reference ke `s.camB`/`canvasBRef`/`containerBRef` — semua di dalam useEffect Camera B yang isolated (dependency array hanya `[dualView]`).
+4. ⚠️ **Verifikasi toggle Dual View** — BELUM dilakukan di env CLI (tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Klik tombol "Dual View" di toolbar → Camera B muncul di kanan, Camera A otomatis menyempit (via ResizeObserver yang sudah ada).
+   - Klik lagi → Camera B hilang, Camera A otomatis melebar.
+5. ⚠️ **Verifikasi Camera B behavior** — TUNGGU user:
+   - Drag di Camera B → orbit (kamera B independen, TIDAK mempengaruhi Camera A).
+   - Scroll di Camera B → zoom (independen).
+   - Blok yang sama muncul di kedua kamera (sinkron dari `s.blocks`).
+   - TIDAK ada gizmo/tool aktif di Camera B.
+   - Klik di Camera B TIDAK mempengaruhi seleksi/blok di Camera A.
+   - Edit blok di Camera A (Place/Move/Rotate/dst) → Camera B otomatis update (5fps, 200ms delay wajar untuk viewer pasif).
+6. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 55. Jelaskan arsitektur (sistem terpisah, alasan duplikasi kode disengaja demi keamanan Camera A).
+7. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+8. ✅ **Task TERAKHIR dari rencana 3-tahap** — setelah ini selesai & terverifikasi, seluruh rencana besar 3D Block Simulator (gizmo panah → shape generator → dual camera) tuntas.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim): Tahap 3/3 — Dual Camera View (Camera B viewer pasif, sistem terpisah)`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- Dual Camera View (Tahap 3/3) selesai — Camera B viewer pasif di kanan, sistem terpisah penuh dari Camera A.
+- Camera A TIDAK diubah 1 baris pun — semua tool (Place/Move/Rotate/Scale/Paint/Delete/Clone/Generate/Clear) tetap jalan identik.
+- Camera B: orbit + zoom only, tanpa tools, real-time sinkron via setInterval 200ms (5fps).
+- Tombol "Dual View" toggle on/off di toolbar.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- Verifikasi matematis tidak diperlukan (Camera B reuse rumus yang sudah terverifikasi — project/getBlockCorners/painter's algorithm/backface cull).
+- Verifikasi visual live TUNGGU user — verify di Vercel setelah push: toggle Dual View, cek Camera B orbit+zoom, blok sinkron, Camera A tetap utuh.
+- Rencana besar 3D Block Simulator (gizmo panah → shape generator → dual camera) TUNTAS setelah task ini.
+- Commit lokal siap di-push setelah token dari user diterima.
+

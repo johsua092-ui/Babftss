@@ -363,6 +363,10 @@ function generateVoxelShape(shapeType, center, params, voxelSize, color) {
 export default function BlockSimulator3D({ setPage }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  // Camera B refs — viewport KEDUA yang muncul saat Dual View aktif. Cuma viewer pasif
+  // (orbit + zoom saja, tanpa tools apapun). Sistem terpisah dari Camera A (prompt kerja Tahap 3).
+  const canvasBRef = useRef(null);
+  const containerBRef = useRef(null);
 
   const [tool, setTool] = useState('place');
   const [currentColor, setCurrentColor] = useState('#3b82f6');
@@ -396,6 +400,12 @@ export default function BlockSimulator3D({ setPage }) {
     if (tool !== 'clear') setConfirmClearAll(false);
   }, [tool]);
 
+  // ── DUAL VIEW (Tahap 3/3) ──
+  // dualView: true → Camera B muncul di kanan (viewer pasif, orbit+zoom only, tanpa tools).
+  // Camera A (yang sudah ada) TETAP UTUH, hanya otomatis menyempit karena flex row terbagi 2.
+  // ResizeObserver di Camera A sudah ada, otomatis re-trigger saat ukuran container berubah.
+  const [dualView, setDualView] = useState(false);
+
   // ── SISTEM PAINT (copy dari LogicGatesSimulator 2D) ──
   // colorPicker: object atau null. Saat non-null, modal overlay full-screen muncul
   //   berisi ColorWheelPicker + tombol Pick Color / Confirm / Cancel.
@@ -426,6 +436,12 @@ export default function BlockSimulator3D({ setPage }) {
     dragStart: null,
     camStart: null,        // simpan yaw/pitch awal saat mulai orbit
     panStart: null,        // simpan cam.target awal saat mulai pan
+    // Camera B state (Tahap 3 — Dual View). camB yaw=+0.75 (mirror dari cam A yang yaw=-0.75)
+    // supaya user langsung lihat sudut berbeda saat Dual View dinyalakan.
+    camB: { yaw: 0.75, pitch: -0.55, dist: 22, target: new Vec3(0, 0, 0) },
+    isOrbitingB: false,
+    dragStartB: null,
+    camStartB: null,
     transformStart: null,
     blockStart: null,      // { pos, rot, size } — snapshot awal blok saat mulai drag (untuk reference drag)
     hoverGrid: null,   // posisi grid (Vec3) tempat ghost block akan digambar, null = tidak ada ghost
@@ -867,6 +883,180 @@ export default function BlockSimulator3D({ setPage }) {
       window.removeEventListener('resize', handleResize);
     };
   }, [render]);
+
+  /* ---------- Camera B (Tahap 3 — Dual View) ----------
+     SISTEM TERPISAH SEPENUHNYA dari Camera A. Bukan reuse fungsi project/render/getBlockCorners
+     yang sudah ada — sengaja duplikat versi ringan supaya Camera B independen & tidak
+     berisiko merusak Camera A yang sudah stabil & matang (banyak fitur numpuk di situ).
+
+     Camera B = viewer PASIF:
+       - Cuma bisa di-orbit (klik-drag) & zoom (scroll wheel).
+       - TIDAK ADA tools apapun — klik di situ cuma buat orbit.
+       - TIDAK ADA gizmo/ghost/handle — cukup background + grid + blok (versi ringan).
+       - Blok yang ditampilkan SAMA PERSIS dengan s.blocks (real-time sinkron via
+         setInterval(renderB, 200) — 5fps cukup buat viewer pasif, hemat resource).
+  */
+  useEffect(() => {
+    if (!dualView) return;
+    const canvas = canvasBRef.current;
+    const container = containerBRef.current;
+    if (!canvas || !container) return;
+    const s = stateRef.current;
+
+    // Rotasi lokal (duplikat ringan dari rotY/rotX/rotZ di scope component — supaya
+    // Camera B benar-benar independen, gak pakai rotY/rotX/rotZ yang ada di scope component).
+    const rotYb = (v, a) => { const c = Math.cos(a), sn = Math.sin(a); return new Vec3(v.x*c - v.z*sn, v.y, v.x*sn + v.z*c); };
+    const rotXb = (v, a) => { const c = Math.cos(a), sn = Math.sin(a); return new Vec3(v.x, v.y*c - v.z*sn, v.y*sn + v.z*c); };
+    const rotZb = (v, a) => { const c = Math.cos(a), sn = Math.sin(a); return new Vec3(v.x*c - v.y*sn, v.x*sn + v.y*c, v.z); };
+
+    let W = 0, H = 0, dpr = 1;
+
+    const projectB = (p) => {
+      let v = p.sub(s.camB.target);
+      v = rotYb(v, s.camB.yaw);
+      v = rotXb(v, s.camB.pitch);
+      const focalLength = 700; // WAJIB sama persis dengan focalLength di project() Camera A
+      const scale = focalLength / Math.max(0.5, v.z + s.camB.dist);
+      return { x: (W/dpr)/2 + v.x*scale, y: (H/dpr)/2 - v.y*scale, z: v.z, scale };
+    };
+
+    // getBlockCornersB: DUPLIKAT RINGAN dari getBlockCorners yang sudah ada — sengaja
+    // dipisah (bukan reuse fungsi Camera A) supaya sistem Camera B benar2 independen.
+    const getBlockCornersB = (b) => {
+      const sz = b.size || new Vec3(1,1,1);
+      const r = b.rot || new Vec3(0,0,0);
+      const corners = [
+        new Vec3(-0.5,-0.5,-0.5), new Vec3(0.5,-0.5,-0.5), new Vec3(0.5,0.5,-0.5), new Vec3(-0.5,0.5,-0.5),
+        new Vec3(-0.5,-0.5,0.5), new Vec3(0.5,-0.5,0.5), new Vec3(0.5,0.5,0.5), new Vec3(-0.5,0.5,0.5),
+      ];
+      return corners.map(v => {
+        let p = new Vec3(v.x*sz.x, v.y*sz.y, v.z*sz.z);
+        p = rotYb(p, r.y); p = rotXb(p, r.x); p = rotZb(p, r.z);
+        return b.pos.add(p);
+      });
+    };
+
+    const renderB = () => {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, W/dpr, H/dpr);
+      const w = W/dpr, h = H/dpr;
+      if (w === 0 || h === 0) return;
+      // Background gradient — sama dengan Camera A (Poin C Bagian 53).
+      const bgGrad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, Math.max(w,h)*0.7);
+      bgGrad.addColorStop(0, '#3a4a63'); bgGrad.addColorStop(1, '#1b2536');
+      ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, w, h);
+
+      // Grid — sama dengan Camera A.
+      ctx.strokeStyle = 'rgba(148,163,184,0.28)'; ctx.lineWidth = 0.5;
+      const N = GRID_SIZE;
+      for (let i = -N; i <= N; i++) {
+        const a = projectB(new Vec3(i*GRID, 0, -N*GRID)), b2 = projectB(new Vec3(i*GRID, 0, N*GRID));
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+        const c = projectB(new Vec3(-N*GRID, 0, i*GRID)), d = projectB(new Vec3(N*GRID, 0, i*GRID));
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
+      }
+
+      // Blocks — painter's algorithm, SAMA POLA seperti render() Camera A tapi versi ringan
+      // (TANPA gizmo/ghost/handle/marching-ants/face-culling, cukup wajah blok saja).
+      // NOTE: face culling (Poin B Bagian 53) TIDAK dipakai di Camera B — biar kode ringan
+      // & cepat. Camera B viewer pasif, performa penting, culling logic kompleks skip.
+      const sorted = s.blocks.map((b) => ({ b, depth: projectB(b.pos).z })).sort((a,b2) => b2.depth - a.depth);
+      sorted.forEach(item => {
+        const b = item.b;
+        const pc = getBlockCornersB(b).map(projectB);
+        const faces = [
+          { idx: [3,2,1,0], shade: 0.58 }, { idx: [4,5,6,7], shade: 0.82 },
+          { idx: [0,1,5,4], shade: 0.42 }, { idx: [7,6,2,3], shade: 1.0 },
+          { idx: [4,7,3,0], shade: 0.72 }, { idx: [1,2,6,5], shade: 0.88 },
+        ];
+        faces.forEach(f => { f.avgZ = f.idx.reduce((sum,i2) => sum + pc[i2].z, 0)/4; });
+        faces.sort((a,b2) => b2.avgZ - a.avgZ);
+        faces.forEach(f => {
+          const pts = f.idx.map(i2 => pc[i2]);
+          // Backface cull sederhana (skip wajah yang menghadap menjauhi kamera).
+          const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y;
+          const bx = pts[2].x - pts[1].x, by = pts[2].y - pts[1].y;
+          if (ax * by - ay * bx < 0) return;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
+          ctx.closePath();
+          ctx.fillStyle = shadeColor(b.color, f.shade); // shadeColor reuse dari scope component (Camera A juga pakai)
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+        });
+      });
+    };
+
+    const resizeB = () => {
+      if (!canvas || !container) return;
+      const rect = container.getBoundingClientRect();
+      dpr = window.devicePixelRatio || 1;
+      W = rect.width * dpr; H = rect.height * dpr;
+      canvas.width = W; canvas.height = H;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderB();
+    };
+    resizeB();
+    const ro = new ResizeObserver(resizeB);
+    ro.observe(container);
+
+    // Orbit-only mouse handlers — TIDAK ADA tool logic sama sekali, cuma orbit + zoom.
+    // Pakai window listener untuk mousemove/mouseup supaya drag tetap jalan walau kursor
+    // keluar canvas B (sama pola dengan Camera A yang juga window listener).
+    const onDown = (e) => {
+      // Hanya tombol kiri (button 0) & kanan (button 2) yang trigger orbit — konsisten dengan Camera A.
+      if (e.button !== 0 && e.button !== 2) return;
+      s.isOrbitingB = true;
+      s.dragStartB = { x: e.clientX, y: e.clientY };
+      s.camStartB = { yaw: s.camB.yaw, pitch: s.camB.pitch };
+      if (canvas) canvas.style.cursor = 'grabbing';
+    };
+    const onMove = (e) => {
+      if (!s.isOrbitingB) return;
+      const dx = e.clientX - s.dragStartB.x, dy = e.clientY - s.dragStartB.y;
+      // Orbit Camera B: yaw PLUS (natural scrolling, sama dengan Camera A yang sudah diperbaiki).
+      s.camB.yaw = s.camStartB.yaw + dx * 0.007;
+      s.camB.pitch = Math.max(-1.45, Math.min(1.45, s.camStartB.pitch + dy * 0.007));
+      renderB();
+    };
+    const onUp = () => {
+      s.isOrbitingB = false;
+      if (canvas) canvas.style.cursor = 'grab';
+    };
+    const onWheel = (e) => {
+      e.preventDefault();
+      s.camB.dist = Math.max(4, Math.min(60, s.camB.dist + e.deltaY * 0.02));
+      renderB();
+    };
+    const onCtx = (e) => { e.preventDefault(); }; // cegah menu klik-kanan bawaan browser
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', onCtx);
+
+    // Render loop ringan: re-render tiap 200ms (5fps) buat sinkron visual dari s.blocks.
+    // s.blocks itu mutable ref (bukan React state reaktif), Camera B gak akan otomatis tahu
+    // kapan ada blok baru/berubah dari Camera A kecuali di-render ulang berkala.
+    // 5fps cukup buat viewer pasif (gak perlu real-time responsif kayak Camera A yang di-render
+    // tiap event mouse), dan jauh lebih hemat resource daripada requestAnimationFrame terus-menerus.
+    const interval = setInterval(renderB, 200);
+
+    return () => {
+      ro.disconnect();
+      canvas.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('contextmenu', onCtx);
+      clearInterval(interval);
+    };
+  }, [dualView]);
 
   /* ---------- Hit Test ---------- */
   const pointInPoly = (x, y, poly) => {
@@ -1541,7 +1731,9 @@ export default function BlockSimulator3D({ setPage }) {
         </div>
       </div>
 
-      {/* Main Canvas Area */}
+      {/* Main Canvas Area — wrapper flex row (Tahap 3): Camera A (containerRef) +
+          Camera B (containerBRef) saat Dual View aktif. */}
+      <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <canvas
           ref={canvasRef}
@@ -1594,6 +1786,30 @@ export default function BlockSimulator3D({ setPage }) {
               </button>
             );
           })}
+
+          {/* ── DUAL VIEW toggle (Tahap 3/3) ──
+              Tombol toggle Camera B — viewer pasif di kanan, orbit+zoom only.
+              Camera A (yang sudah ada) TETAP UTUH, otomatis menyempit saat Dual View aktif
+              (ResizeObserver di Camera A sudah ada, otomatis re-trigger saat ukuran container berubah). */}
+          <button
+            onClick={() => setDualView(v => !v)}
+            title="Toggle Dual View (Camera B viewer pasif di kanan)"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              marginTop: 4, paddingTop: 8,
+              borderTop: '1px solid rgba(148,163,184,0.15)',
+              background: dualView ? 'linear-gradient(135deg,#0ea5e9,#38bdf8)' : 'transparent',
+              color: dualView ? '#0e1420' : '#e2e8f0',
+              border: `1px solid ${dualView ? '#38bdf8' : 'rgba(148,163,184,0.12)'}`,
+              borderRadius: 10, padding: '8px 14px',
+              fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            <Box size={15} />
+            Dual View
+          </button>
 
           {/* Scale Step input — HANYA muncul saat tool='scale'. User bisa ketik angka bebas
               (1, 0.5, 0.1, 0.05, dst) untuk tentukan kelipatan snap saat resize handle. */}
@@ -2223,6 +2439,28 @@ export default function BlockSimulator3D({ setPage }) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── CAMERA B (Tahap 3 — Dual View) ──
+          Viewer pasif: orbit (drag) + zoom (scroll) saja, TANPA tools apapun.
+          Sistem terpisah penuh dari Camera A — pakai refs sendiri (canvasBRef, containerBRef),
+          state camB sendiri, fungsi renderB sendiri (useEffect di bawah).
+          Klik di Camera B TIDAK mempengaruhi seleksi/blok di Camera A.
+          Blok yang ditampilkan SAMA PERSIS dengan s.blocks (real-time sinkron via setInterval 200ms). */}
+      {dualView && (
+        <div ref={containerBRef} style={{
+          flex: 1, position: 'relative', overflow: 'hidden', borderLeft: '2px solid #334155',
+        }}>
+          <canvas ref={canvasBRef} style={{
+            width: '100%', height: '100%', display: 'block', cursor: 'grab',
+          }} />
+          <div style={{
+            position: 'absolute', top: 8, left: 8, fontSize: 11, color: '#94a3b8',
+            fontFamily: 'Inter, sans-serif', background: 'rgba(15,23,42,0.7)',
+            padding: '3px 8px', borderRadius: 6, pointerEvents: 'none',
+          }}>Camera B (view only)</div>
+        </div>
+      )}
       </div>
     </div>
   );
