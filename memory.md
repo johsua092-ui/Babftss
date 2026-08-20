@@ -3585,3 +3585,93 @@ User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & kli
 - Tidak menyentuh sistem lain (gizmo, place, delete, clone, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx).
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 48 — 3D Block Simulator: Fitur "Scale Step" — Snap Resize ke Kelipatan (21 Aug 2026)
+
+**Task ID:** 48
+**Agent:** main (Super Z)
+**Task:** Implementasi fitur "Scale Step" di `src/pages/BlockSimulator3D.jsx` sesuai `PROMPT_KERJA_3DBlockSim_ScaleStep.md`. User bisa ketik angka bebas (1, 0.5, 0.1, 0.05, dst) sebagai kelipatan snap saat drag handle Scale — ukuran hasil selalu kelipatan dari angka itu, bukan desimal bebas.
+
+### Latar belakang
+Terinspirasi dari game building 3D populer (sistem "Scale" mereka, dianalisis dari screenshot user — BUKAN kode/aset apapun yang disalin). User minta kontrol presisi: tentukan sendiri "kelipatan berapa" tiap tarikan handle Scale mengubah ukuran. Sebelumnya resize menghasilkan ukuran desimal bebas dari drag mouse mentah (misal 2.347). Sekarang dengan Scale Step = 2 → hasil selalu 2, 4, 6, 8... Dengan Scale Step = 0.05 → hasil 2.00, 2.05, 2.10...
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — +56/-1 baris.
+
+### Perubahan
+
+**1. State baru:**
+- `scaleStep` (state, default 1) — kelipatan yang dipakai buat snap ukuran blok saat drag handle Scale.
+- `scaleStepRef` (ref, default 1) — sync ref supaya event handler (yang di-register sekali di useEffect) baca nilai TERBARU tanpa perlu re-attach listener tiap kali scaleStep berubah. Pola PERSIS sama dengan `colorPickerRef` & `pickFromWorkspaceRef` yang sudah ada di file ini.
+- `useEffect(() => { scaleStepRef.current = scaleStep; }, [scaleStep]);` — sync ref.
+
+**2. UI input "Scale Step":**
+- Render HANYA saat `tool === 'scale'` (pola mirip color palette yang cuma render saat `tool='place'`).
+- Posisi: di dalam toolbar Tools, di bawah daftar tombol tool, dengan divider tipis (`borderTop: 1px solid rgba(148,163,184,0.15)`) supaya visual terpisah dari tombol-tombol tool di atasnya.
+- Label "Step:" (font Orbitron, uppercase, letterSpacing 1px, 10px, color textSecondary — gaya konsisten dengan label "Tools" di atas).
+- Input `<input type="number" step="0.01" min="0.01" value={scaleStep}>`:
+  - Width 56px, bg #1e293b, border pink (#f472b6 supaya konsisten dengan tema BlockSimulator3D), borderRadius 4, padding 3px 6px, color #e2e8f0, font Inter 12px.
+  - `MozAppearance: 'textfield'` — sembunyikan spinner arrows default browser (biar UI bersih, user ketik manual).
+  - `onChange`: parse value, clamp minimum ke 0.01 kalau input 0/negatif/NaN (bisa bikin Math.round(rawSize/step) jadi NaN/Infinity → size stuck/negatif).
+  - `title` attribute: tooltip penjelasan singkat.
+
+**3. Logic snap di `onMouseMove` tool='scale':**
+
+Kode SEBELUM (size kontinu, tidak di-snap):
+```js
+const newSize = Math.max(0.2, s.blockStart.size[axClean] + effectiveT);
+```
+
+Kode SESUDAH (snap ke kelipatan scaleStep, minimum = step):
+```js
+const rawSize = s.blockStart.size[axClean] + effectiveT;
+const step = scaleStepRef.current || 1; // fallback 1 kalau ref null
+const newSize = Math.max(step, Math.round(rawSize / step) * step);
+```
+
+**Penting — perubahan batas minimum:**
+- SEBELUM: `Math.max(0.2, ...)` — minimum 0.2 (hardcoded).
+- SESUDAH: `Math.max(step, ...)` — minimum = step itu sendiri.
+- Konsisten dengan konsep "kelipatan step": kalau step=2, blok tidak bisa lebih kecil dari 2 (bukan 0.2 — itu melanggar konsep kelipatan). Kalau step=0.05, blok bisa jadi sangat tipis (0.05), sesuai referensi user yang bisa sampai 0.05.
+
+**4. Sisi berlawanan tetap diam (preserved):**
+- Formula kompensasi posisi TIDAK berubah: `pos[axClean] = blockStart.pos[axClean] + sign * actualDelta / 2`.
+- `actualDelta = newSize - blockStart.size[axClean]` — pakai newSize hasil snap (bukan rawSize). Akibatnya, snap juga mempengaruhi posisi pusat blok supaya sisi berlawanan TETAP diam.
+- Verifikasi matematis: 19/19 test lulus di `verify_scale_step.mjs` (TEST 5a-c: step=2, raw=3 → snap=4, sisi -X tetap -1, sisi +X maju dari 1 jadi 3).
+
+**5. Yang TIDAK di-ubah:**
+- Scale Step TIDAK direset saat ganti tool (sesuai instruksi prompt: "biarkan `scaleStep` tetap tersimpan, jangan direset ke 1 — supaya kalau user balik lagi ke Scale, preferensi terakhir mereka tidak hilang").
+- Tidak ada reset otomatis.
+- Behavior lama (gizmo 6-axis, sisi berlawanan diam, sign untuk handle -axis) tetap utuh.
+- Tidak ada fitur baru lain (part fungsional, switch-binding, dst) — sesuai poin 8 checklist: "STOP setelah fitur ini selesai".
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.99s`. BlockSimulator3D chunk: 28.99 KB (gzip 8.71 KB — naik dari 26.84 KB karena tambah UI input + logic snap).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah (+56/-1 baris). Ada 5 file lain dengan mode-changes (0 insertions, 0 deletions — cuma permission bits dari operasi clone) — sesuai instruksi prompt: "JANGAN disentuh/direvert, itu wajar — tim paralel kerja modul lain". Hanya `BlockSimulator3D.jsx` yang di-add ke commit.
+3. ✅ **Logic check manual** (verify_scale_step.mjs, 19/19 test lulus):
+   - Scale Step = 1: raw=2.347 → snap=2; raw=2.6 → snap=3; raw=3.5 → snap=4 (round 0.5 ke atas). ✓
+   - Scale Step = 0.5: raw=2.347 → snap=2.5; raw=2.7 → snap=2.5 (closer to 2.5); raw=2.8 → snap=3.0. ✓
+   - Scale Step = 0.05: raw=2.034 → snap=2.05; raw=0.07 → snap=0.05 (tipis); raw=0.001 → snap=0.05 (min = step); raw=-1 → snap=0.05 (min enforcement, tidak negatif). ✓
+   - Scale Step = 2: raw=0.5 → snap=2 (min = step); raw=1 → snap=2; raw=3 → snap=4 (kelipatan 2); raw=5.9 → snap=6 (round 2.95 ke 3). ✓
+   - Ganti scaleStep saat blok terpilih (belum mulai drag baru) → size blok existing TIDAK berubah tiba-tiba (snap cuma jalan saat onMouseMove drag — bukan retroaktif). ✓ (Logic-confirmed: snap hanya di onMouseMove, tidak ada useEffect yang apply snap ke blok existing saat scaleStep berubah.)
+4. ✅ **Sisi berlawanan tetap diam** — TEST 5a-c: step=2, raw=3 → snap=4, sisi -X tetap -1 (TETAP DIAM), sisi +X maju dari 1 jadi 3 (naik 2 unit, kelipatan step). Behavior lama dari Bagian 2 preserved.
+5. ✅ **Input Scale Step cuma muncul saat tool='scale'** — render kondisional `{tool === 'scale' && (...)}` di dalam toolbar Tools.
+6. ✅ **Update `memory.md`** — entri ini ditambahkan (append, BUKAN overwrite) di Bagian 48.
+7. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+8. ✅ **STOP setelah fitur ini selesai** — tidak tambah fitur lain (part fungsional, switch-binding, dst).
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim): Scale Step — snap resize ke kelipatan yang user tentukan`.
+- Token push perlu dikirim user (token lama `ghp_YVnv...` harusnya sudah di-revoke user — kalau belum, user perlu kirim token baru).
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- Fitur "Scale Step" di `BlockSimulator3D.jsx` sudah dikerjakan sesuai spesifikasi prompt kerja.
+- User bisa ketik angka bebas (1, 0.5, 0.1, 0.05, dst) sebagai kelipatan snap saat resize handle Scale.
+- Build sukses 0 error, scope terjaga (1 file saja, +56/-1 baris).
+- Verifikasi matematis (19/19 test di `verify_scale_step.mjs`) lulus untuk semua edge case: step=1, 0.5, 0.05, 2, plus kompensasi posisi (sisi berlawanan tetap diam) dengan snap.
+- Behavior lama (gizmo 6-axis, sisi berlawanan diam, sign untuk handle -axis) preserved.
+- Commit lokal siap di-push setelah token dari user diterima.
+

@@ -47,6 +47,11 @@ export default function BlockSimulator3D({ setPage }) {
   const [showHelp, setShowHelp] = useState(false);
   const [showColorWheel, setShowColorWheel] = useState(false);
   const [colorWheelDraft, setColorWheelDraft] = useState(currentColor);
+  // Scale Step — kelipatan yang dipakai buat snap ukuran blok saat drag handle Scale.
+  // Default 1 (snap ke integer). User bisa set 0.5, 0.1, 0.05, dst supaya bisa resize presisi.
+  const [scaleStep, setScaleStep] = useState(1);
+  const scaleStepRef = useRef(1);
+  useEffect(() => { scaleStepRef.current = scaleStep; }, [scaleStep]);
 
   // ── SISTEM PAINT (copy dari LogicGatesSimulator 2D) ──
   // colorPicker: object atau null. Saat non-null, modal overlay full-screen muncul
@@ -809,9 +814,20 @@ export default function BlockSimulator3D({ setPage }) {
           //  - Handle -X: drag ke kiri (t negative) → sisi -X maju, sisi +X diam.
           //    effectiveT = t * sign = -t (jadi positive saat drag kiri). pos.x -= actualDelta/2.
           //  sign = -1 untuk handle -axis, +1 untuk handle +axis. Formula kompak untuk kedua kasus.
+          //
+          // SCALE STEP SNAP: ukuran hasil di-snap ke kelipatan terdekat dari scaleStepRef.current
+          //   (bukan langsung state `scaleStep` — supaya event handler baca nilai TERBARU tanpa
+          //   perlu re-attach listener tiap kali scaleStep berubah, ikuti pola ref-sync yang
+          //   SUDAH ADA di file ini untuk colorPicker).
+          //   Contoh: step=2 → hasil selalu kelipatan 2 (2, 4, 6, 8...). step=0.05 → 2.00, 2.05, 2.10...
+          //   Batas minimum = step itu sendiri (Math.max(step, ...) bukan Math.max(0.2, ...))
+          //   supaya blok tidak bisa lebih kecil dari 1 step (kalau step=2, min jadi 2, bukan 0.2 —
+          //   konsisten dengan konsep "kelipatan step").
           const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, axClean);
           const effectiveT = t * sign;
-          const newSize = Math.max(0.2, s.blockStart.size[axClean] + effectiveT);
+          const rawSize = s.blockStart.size[axClean] + effectiveT;
+          const step = scaleStepRef.current || 1; // fallback 1 kalau ref null (seharusnya gak terjadi)
+          const newSize = Math.max(step, Math.round(rawSize / step) * step);
           const actualDelta = newSize - s.blockStart.size[axClean];
           s.selected.size[axClean] = newSize;
           s.selected.pos[axClean] = s.blockStart.pos[axClean] + sign * actualDelta / 2;
@@ -1061,6 +1077,45 @@ export default function BlockSimulator3D({ setPage }) {
               </button>
             );
           })}
+
+          {/* Scale Step input — HANYA muncul saat tool='scale'. User bisa ketik angka bebas
+              (1, 0.5, 0.1, 0.05, dst) untuk tentukan kelipatan snap saat resize handle. */}
+          {tool === 'scale' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              marginTop: 4, paddingTop: 8,
+              borderTop: '1px solid rgba(148,163,184,0.15)',
+            }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: textSecondary,
+                textTransform: 'uppercase', letterSpacing: '1px',
+                fontFamily: 'Orbitron, sans-serif', whiteSpace: 'nowrap',
+              }}>
+                Step:
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={scaleStep}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  // JANGAN biarkan 0/negatif — bisa bikin size stuck/negatif (Math.round(rawSize/step)
+                  // bakal NaN kalau step=0). Clamp minimum ke 0.01.
+                  setScaleStep(Number.isFinite(v) && v > 0 ? v : 0.01);
+                }}
+                style={{
+                  width: 56, background: '#1e293b',
+                  border: `1px solid ${pink}`, borderRadius: 4,
+                  color: '#e2e8f0', fontSize: 12, padding: '3px 6px',
+                  fontFamily: 'Inter, sans-serif', outline: 'none',
+                  // Sembunyikan spinner arrows default (biar UI lebih bersih, user ketik manual).
+                  MozAppearance: 'textfield',
+                }}
+                title="Kelipatan snap saat resize handle Scale. Contoh: 1 = bulat, 0.5 = kelipatan 0.5, 0.05 = presisi tinggi."
+              />
+            </div>
+          )}
         </div>
 
         {/* Color Palette — tampil HANYA saat tool='place' (konsisten dengan 2D:
