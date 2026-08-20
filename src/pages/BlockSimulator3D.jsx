@@ -306,28 +306,36 @@ export default function BlockSimulator3D({ setPage }) {
       }
     }
 
-    // Gizmo 3-axis handles — digambar HANYA kalau ada blok terpilih & tool = move/rotate/scale.
-    // Gaya Roblox Studio: merah=X, hijau=Y, biru=Z. Tiap handle = garis dari pusat blok
-    // + lingkaran di ujung (Move/Scale) atau busur kecil (Rotate — dibedakan biar jelas
-    // visual bahwa Rotate tool aktif, bukan Move). Posisi & radius klik SAMA untuk semua tool.
+    // Gizmo 6-axis handles — digambar HANYA kalau ada blok terpilih & tool = move/rotate/scale.
+    // Gaya Roblox Studio: merah=X, hijau=Y, biru=Z, masing-masing di KEDUA sisi (+ dan -).
+    // Tiap handle = garis dari pusat blok + lingkaran di ujung (Move/Scale) atau busur kecil (Rotate).
+    // Handle +axis = padat (full opacity), handle -axis = outline (sedikit lebih redup) supaya
+    // user bisa bedakan handle mana yang dia klik, tapi keduanya tetap clickable dengan radius sama.
     if (s.selected && (tool === 'move' || tool === 'rotate' || tool === 'scale')) {
       const b = s.selected;
       const off = getHandleOffset(b);
       const centerScreen = project(b.pos);
+      // 6 handle: 3 axes × 2 sisi (+ dan -). Warna sama untuk + dan - (merah/hijau/biru),
+      // dibedakan hanya dari posisi & opacity rendering.
       const axes = [
-        { axis: 'x', vec: new Vec3(off, 0, 0), color: '#ef4444' }, // merah = X
-        { axis: 'y', vec: new Vec3(0, off, 0), color: '#22c55e' }, // hijau = Y
-        { axis: 'z', vec: new Vec3(0, 0, off), color: '#3b82f6' }, // biru = Z
+        { axis: 'x',  vec: new Vec3( off, 0, 0), color: '#ef4444', neg: false }, // merah = +X
+        { axis: 'y',  vec: new Vec3(0,  off, 0), color: '#22c55e', neg: false }, // hijau = +Y
+        { axis: 'z',  vec: new Vec3(0, 0,  off), color: '#3b82f6', neg: false }, // biru = +Z
+        { axis: '-x', vec: new Vec3(-off, 0, 0), color: '#ef4444', neg: true  }, // merah = -X
+        { axis: '-y', vec: new Vec3(0, -off, 0), color: '#22c55e', neg: true  }, // hijau = -Y
+        { axis: '-z', vec: new Vec3(0, 0, -off), color: '#3b82f6', neg: true  }, // biru = -Z
       ];
 
       ctx.save();
-      for (const { axis, vec, color } of axes) {
+      for (const { axis, vec, color, neg } of axes) {
         const tipScreen = project(b.pos.add(vec));
-        // Garis dari pusat blok ke ujung handle
+        // Garis dari pusat blok ke ujung handle. Handle -axis pakai opacity lebih rendah
+        // supaya visual beda dengan handle +axis (mudah dibedakan saat klik).
         ctx.strokeStyle = color;
         ctx.lineWidth = 2.5;
         ctx.shadowColor = color;
         ctx.shadowBlur = 8;
+        ctx.globalAlpha = neg ? 0.55 : 1.0;
         ctx.beginPath();
         ctx.moveTo(centerScreen.x, centerScreen.y);
         ctx.lineTo(tipScreen.x, tipScreen.y);
@@ -364,6 +372,7 @@ export default function BlockSimulator3D({ setPage }) {
           ctx.stroke();
         }
       }
+      ctx.globalAlpha = 1.0;
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -437,32 +446,37 @@ export default function BlockSimulator3D({ setPage }) {
   };
 
   /* ---------- Gizmo Helpers (Move/Rotate/Scale 3-axis ala Roblox Studio) ----------
-     Konsep: tiap blok terpilih punya 3 handle berwarna (merah=X, hijau=Y, biru=Z)
-     yang keluar dari pusat blok. Klik handle → drag sepanjang axis itu saja.
-     Sumbu lain TIDAK ikut berubah — presisi, tidak kena "drag dx/dy mentah" yang
-     arahnya bisa campur dari sudut kamera tertentu. */
+     Konsep: tiap blok terpilih punya 6 handle (3 axes × 2 sisi: +X/-X/+Y/-Y/+Z/-Z)
+     berwarna merah=X, hijau=Y, biru=Z yang keluar dari pusat blok di kedua arah.
+     Klik handle → drag sepanjang axis itu saja. Sumbu lain TIDAK ikut berubah —
+     presisi, tidak kena "drag dx/dy mentah" yang arahnya bisa campur dari sudut kamera tertentu. */
 
-  // Posisi handle 3-axis relatif terhadap pusat blok.
+  // Posisi handle relatif terhadap pusat blok.
   // handleOffset = setengah ukuran blok terbesar + 0.8 (biar handle selalu di luar blok).
   const getHandleOffset = (block) =>
     Math.max(block.size.x, block.size.y, block.size.z) * 0.5 + 0.8;
 
-  // Hit-test handle: cek mana dari 3 sumbu yang posisi layar-nya dekat klik mouse.
+  // Hit-test handle: cek mana dari 6 handle yang posisi layar-nya dekat klik mouse.
   // PRIORITAS LEBIH TINGGI dari hitTest blok biasa — dipanggil duluan saat tool=move/rotate/scale & s.selected != null.
-  // Return: 'x' | 'y' | 'z' | null.
+  // Return: 'x' | 'y' | 'z' | '-x' | '-y' | '-z' | null.
   const hitHandle = (mx, my, block) => {
     if (!block) return null;
     const off = getHandleOffset(block);
     const axes = [
-      { axis: 'x', vec: new Vec3(off, 0, 0) },
-      { axis: 'y', vec: new Vec3(0, off, 0) },
-      { axis: 'z', vec: new Vec3(0, 0, off) },
+      { axis: 'x',  vec: new Vec3(off, 0, 0) },
+      { axis: 'y',  vec: new Vec3(0, off, 0) },
+      { axis: 'z',  vec: new Vec3(0, 0, off) },
+      { axis: '-x', vec: new Vec3(-off, 0, 0) },
+      { axis: '-y', vec: new Vec3(0, -off, 0) },
+      { axis: '-z', vec: new Vec3(0, 0, -off) },
     ];
+    let bestAxis = null, bestDist = 14; // 14px radius klik, cukup toleran buat jari/mouse
     for (const { axis, vec } of axes) {
       const p = project(block.pos.add(vec));
-      if (Math.hypot(p.x - mx, p.y - my) < 14) return axis; // 14px radius klik, cukup toleran buat jari/mouse
+      const d = Math.hypot(p.x - mx, p.y - my);
+      if (d < bestDist) { bestDist = d; bestAxis = axis; }
     }
-    return null;
+    return bestAxis;
   };
 
   // Rumus drag per-axis pakai proyeksi vektor (bukan dx/dy mentah).
@@ -730,28 +744,39 @@ export default function BlockSimulator3D({ setPage }) {
 
       if (s.isTransforming && s.selected && s.blockStart && s.dragAxis) {
         const ax = s.dragAxis;
+        // ax bisa 'x' | 'y' | 'z' | '-x' | '-y' | '-z'. axClean = sumbu tanpa tanda minus.
+        const axClean = ax.startsWith('-') ? ax.slice(1) : ax;
+        const sign = ax.startsWith('-') ? -1 : 1; // sign untuk kompensasi Scale (sisi +axis diam)
         if (tool === 'move') {
           // Move per-axis: drag handle = ubah posisi sepanjang axis itu SAJA.
           // Sumbu lain TIDAK diubah. Pakai dragAxisDelta (proyeksi vektor) supaya
           // akurat dari sudut kamera manapun, bukan dx/dy mentah.
-          const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, ax);
-          s.selected.pos[ax] = snapSingleAxis(s.blockStart.pos[ax] + t);
+          // Drag handle +X ke kanan → t positive → pos.x bertambah (ke kanan).
+          // Drag handle -X ke kiri  → t negative → pos.x berkurang (ke kiri). Behavior identik,
+          // tidak perlu sign — drag delta otomatis mengikuti arah mouse di world space.
+          const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, axClean);
+          s.selected.pos[axClean] = snapSingleAxis(s.blockStart.pos[axClean] + t);
         } else if (tool === 'rotate') {
           // Rotate per-axis. Pola: Y & Z pakai horizontal drag (dx), X pakai vertical (dy).
           // Pola umum di software 3D: putar sumbu yang "menghadap ke layar" pakai drag horizontal,
           // sumbu yang "mendatar ke layar" pakai drag vertical.
-          if (ax === 'y')      s.selected.rot.y = s.blockStart.rot.y + (mx - s.dragStart.x) * 0.008;
-          else if (ax === 'x') s.selected.rot.x = s.blockStart.rot.x + (my - s.dragStart.y) * 0.008;
-          else if (ax === 'z') s.selected.rot.z = s.blockStart.rot.z + (mx - s.dragStart.x) * 0.008;
+          // Handle +axis dan -axis sama-sama memutar sumbu yang sama (cuma asal user drag berbeda).
+          if (axClean === 'y')      s.selected.rot.y = s.blockStart.rot.y + (mx - s.dragStart.x) * 0.008;
+          else if (axClean === 'x') s.selected.rot.x = s.blockStart.rot.x + (my - s.dragStart.y) * 0.008;
+          else if (axClean === 'z') s.selected.rot.z = s.blockStart.rot.z + (mx - s.dragStart.x) * 0.008;
         } else if (tool === 'scale') {
-          // Scale per-axis: tarik handle = sisi +axis maju/mundur, sisi -axis tetap diam.
-          // Sisi berlawanan (sisi -axis) WAJIB tetap diam — dicapai dengan kompensasi posisi
-          // pusat blok setengah dari delta size (supaya sisi -axis tidak ikut geser).
-          const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, ax);
-          const newSize = Math.max(0.2, s.blockStart.size[ax] + t);
-          const actualDelta = newSize - s.blockStart.size[ax];
-          s.selected.size[ax] = newSize;
-          s.selected.pos[ax] = s.blockStart.pos[ax] + actualDelta / 2;
+          // Scale per-axis: tarik handle = sisi handle maju/mundur, sisi BERLAWANAN tetap diam.
+          //  - Handle +X: drag ke kanan (t positive) → sisi +X maju, sisi -X diam.
+          //    pos.x += actualDelta/2 (geser pusat ke kanan, sisi -X tetap di tempat).
+          //  - Handle -X: drag ke kiri (t negative) → sisi -X maju, sisi +X diam.
+          //    effectiveT = t * sign = -t (jadi positive saat drag kiri). pos.x -= actualDelta/2.
+          //  sign = -1 untuk handle -axis, +1 untuk handle +axis. Formula kompak untuk kedua kasus.
+          const t = dragAxisDelta(mx, my, s.dragStart, s.blockStart.pos, axClean);
+          const effectiveT = t * sign;
+          const newSize = Math.max(0.2, s.blockStart.size[axClean] + effectiveT);
+          const actualDelta = newSize - s.blockStart.size[axClean];
+          s.selected.size[axClean] = newSize;
+          s.selected.pos[axClean] = s.blockStart.pos[axClean] + sign * actualDelta / 2;
         }
         updateUISelection(s.selected);
         render();
