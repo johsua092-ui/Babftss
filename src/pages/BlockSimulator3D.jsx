@@ -37,18 +37,31 @@ const TOOLS = [
   { id: 'generate', label: 'Shape',    icon: Shapes,       key: 'g' },
 ];
 
-// ── Polyhedron vertex & face data (hardcode, rumus baku — JANGAN diubah) ──
-// Dipakai oleh generator Tetrahedron/Octahedron/Icosahedron (Tahap 2/3).
-const TETRAHEDRON = {
+// ── SHAPE GENERATOR v2: VOXEL-FILL ──
+// Pendekatan ini MENGGANTIKAN TOTAL sistem panel-rotasi lama (Tahap 2 + hotfix orientasi).
+// Alih-alih panel besar diputar-putar mengikuti permukaan, sekarang isi permukaan bentuk
+// target dengan BANYAK kubus kecil axis-aligned (rot SELALU 0,0,0 — TIDAK ada rotasi).
+// Ukuran kubus = "Voxel Size" yang user tentukan bebas (0.05, 0.1, 0.2, 0.5, 1, 2, dst).
+//
+// Keuntungan: lebih sederhana, hasil visual lebih rapi/konsisten (gaya building game
+// asli yang pakai voxel), user bisa kontrol resolusi bebas lewat Voxel Size.
+//
+// Sistem lama (alignPlateToNormal, solveFullOrientation, generateSphere/Cylinder/Cone/Torus
+// versi panel-rotasi, generateFlatPolyhedron, generateCube, konstanta TETRAHEDRON/OCTAHEDRON/
+// ICOSAHEDRON lama) SUDAH DIHAPUS. Lihat entri memory.md Bagian 52 untuk riwayat lengkap.
+
+// Polyhedron vertex & face data (hardcode, rumus baku — sama dengan Tahap 2 tapi sekarang
+// dipakai untuk computePlanes, bukan langsung jadi panel).
+const TETRAHEDRON_VF = {
   verts: [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]],
   faces: [[0,1,2],[0,3,1],[0,2,3],[1,3,2]],
 };
-const OCTAHEDRON = {
+const OCTAHEDRON_VF = {
   verts: [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],
   faces: [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]],
 };
 const PHI = (1 + Math.sqrt(5)) / 2;
-const ICOSAHEDRON = {
+const ICOSAHEDRON_VF = {
   verts: [
     [-1,PHI,0],[1,PHI,0],[-1,-PHI,0],[1,-PHI,0],
     [0,-1,PHI],[0,1,PHI],[0,-1,-PHI],[0,1,-PHI],
@@ -62,223 +75,192 @@ const ICOSAHEDRON = {
   ],
 };
 
-// ── Rumus orientasi panel — solveFullOrientation ──
-// Menghitung orientasi panel LENGKAP (bukan cuma normal, tapi juga arah tangensial/roll-nya)
-// supaya panel-panel yang bersebelahan konsisten arah hadapnya, tidak saling menyilang.
-// N = normal permukaan (sumbu tipis panel menghadap ke sini).
-// tangentHint = perkiraan arah "keliling" panel di titik itu (tidak perlu presisi/tegak
-//   lurus sempurna terhadap N — fungsi ini otomatis meluruskannya via Gram-Schmidt).
-//
-// Mengembalikan 3 sudut {rx, ry, rz} — sebelumnya alignPlateToNormal cuma 2 sudut (rz=0),
-// tapi itu bikin roll panel acak dan panel-panel saling menyilang. Sekarang rz dihitung
-// supaya arah tangensial panel konsisten dengan tangentHint.
-//
-// Rumus ekstraksi sudut diturunkan dari matriks rotasi gabungan rotZ(rotX(rotY(p)))
-// yang dipakai file ini (getBlockCorners: rotY → rotX → rotZ) — DIVERIFIKASI numerik
-// di ratusan kombinasi sudut untuk Cone/Sphere/Torus, error 1e-16 (nol praktis).
-function solveFullOrientation(N, tangentHint) {
-  const norm = (v) => { const l = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x/l, y: v.y/l, z: v.z/l }; };
-  const dot = (a, b) => a.x*b.x + a.y*b.y + a.z*b.z;
-  const cross = (a, b) => ({ x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x });
-
-  const Nn = norm(N);
-  const d = dot(tangentHint, Nn);
-  const Traw = { x: tangentHint.x - Nn.x*d, y: tangentHint.y - Nn.y*d, z: tangentHint.z - Nn.z*d };
-  const T = norm(Traw);
-  const B = norm(cross(Nn, T));
-
-  const rx = Math.asin(Math.max(-1, Math.min(1, B.z)));
-  const ry = Math.atan2(T.z, Nn.z);
-  const rz = Math.atan2(-B.x, B.y);
-  return { rx, ry, rz };
-}
-
-// Fungsi lama alignPlateToNormal DIPERTAHANKAN untuk dipakai oleh generateFlatPolyhedron
-// (Tetra/Octa/Icosa) — mereka cuma 1 panel per wajah independen, tidak ada masalah
-// "roll tidak konsisten antar tetangga", tidak ada gejala rusak yang dilaporkan.
-// JANGAN diotak-atik di task ini (sesuai instruksi hotfix).
-const alignPlateToNormal = (N) => {
-  const ry = Math.asin(Math.max(-1, Math.min(1, -N.x)));
-  const rx = Math.atan2(-N.y, N.z);
-  return { rx, ry };
-};
-
-// ── Generator per bentuk ──
-// Semua generator return array of block objects {pos, rot, size, color}.
-// Setelah di-generate, dipush ke s.blocks — block jadi blok biasa yang bisa di-edit (Move/Rotate/Scale/Paint/Delete).
-
-// Polyhedron datar (Tetrahedron/Octahedron/Icosahedron) — 1 panel per wajah segitiga.
-function generateFlatPolyhedron(poly, center, targetRadius, thickness, color) {
-  const normVerts = poly.verts.map(v => {
+// Hitung bidang wajah (plane equation: n·p = d) untuk tiap wajah polyhedron.
+// Disekali per klik Generate, bukan per-voxel — biar cepat.
+function computePlanes(vf, targetRadius) {
+  const nv = vf.verts.map(v => {
     const len = Math.hypot(v[0], v[1], v[2]) || 1;
     return { x: v[0]/len*targetRadius, y: v[1]/len*targetRadius, z: v[2]/len*targetRadius };
   });
-  const newBlocks = [];
-  poly.faces.forEach(face => {
-    const pts = face.map(i => normVerts[i]);
-    const cx = pts.reduce((s,p)=>s+p.x,0)/pts.length;
-    const cy = pts.reduce((s,p)=>s+p.y,0)/pts.length;
-    const cz = pts.reduce((s,p)=>s+p.z,0)/pts.length;
-    const nlen = Math.hypot(cx,cy,cz) || 1;
-    const N = { x: cx/nlen, y: cy/nlen, z: cz/nlen };
-    const edge1 = Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y, pts[1].z-pts[0].z);
-    const { rx, ry } = alignPlateToNormal(N);
-    newBlocks.push({
-      pos: new Vec3(center.x + cx, center.y + cy, center.z + cz),
-      rot: new Vec3(rx, ry, 0),
-      size: new Vec3(edge1 * 0.95, edge1 * 0.95, thickness),
-      color,
-    });
+  return vf.faces.map(f => {
+    const [p0, p1, p2] = f.map(i => nv[i]);
+    const v1 = { x: p1.x-p0.x, y: p1.y-p0.y, z: p1.z-p0.z };
+    const v2 = { x: p2.x-p0.x, y: p2.y-p0.y, z: p2.z-p0.z };
+    let n = { x: v1.y*v2.z-v1.z*v2.y, y: v1.z*v2.x-v1.x*v2.z, z: v1.x*v2.y-v1.y*v2.x };
+    const nlen = Math.hypot(n.x, n.y, n.z) || 1;
+    n = { x: n.x/nlen, y: n.y/nlen, z: n.z/nlen };
+    // Pastikan normal mengarah KELUAR (menjauhi origin) — cek dot product dgn titik tengah wajah.
+    const cx = (p0.x+p1.x+p2.x)/3, cy = (p0.y+p1.y+p2.y)/3, cz = (p0.z+p1.z+p2.z)/3;
+    if (n.x*cx + n.y*cy + n.z*cz < 0) { n = { x: -n.x, y: -n.y, z: -n.z }; }
+    const d = n.x*p0.x + n.y*p0.y + n.z*p0.z;
+    return { n, d };
   });
-  return newBlocks;
 }
 
-// Cube — 6 panel (1 per sisi kubus). Trivial tapi dipakai buat completeness.
-function generateCube(center, size, thickness, color) {
-  const half = size / 2;
-  const newBlocks = [];
-  // 6 wajah kubus, normal menghadap ±X/±Y/±Z
-  const faces = [
-    { N: {x:1,y:0,z:0},  pos: {x: half, y: 0, z: 0} },
-    { N: {x:-1,y:0,z:0}, pos: {x:-half, y: 0, z: 0} },
-    { N: {x:0,y:1,z:0},  pos: {x: 0, y: half, z: 0} },
-    { N: {x:0,y:-1,z:0}, pos: {x: 0, y:-half, z: 0} },
-    { N: {x:0,y:0,z:1},  pos: {x: 0, y: 0, z: half} },
-    { N: {x:0,y:0,z:-1}, pos: {x: 0, y: 0, z:-half} },
-  ];
-  faces.forEach(({ N, pos }) => {
-    const { rx, ry } = alignPlateToNormal(N);
-    newBlocks.push({
-      pos: new Vec3(center.x + pos.x, center.y + pos.y, center.z + pos.z),
-      rot: new Vec3(rx, ry, 0),
-      size: new Vec3(size, size, thickness),
-      color,
-    });
-  });
-  return newBlocks;
+// SDF (Signed Distance Field) untuk polyhedron — jarak max ke semua bidang wajah.
+// DIVERIFIKASI numerik: negatif = di dalam, nol = di permukaan, positif = di luar.
+function polySDF(p, planes) {
+  let maxVal = -Infinity;
+  for (const { n, d } of planes) {
+    const val = n.x*p.x + n.y*p.y + n.z*p.z - d;
+    if (val > maxVal) maxVal = val;
+  }
+  return maxVal;
 }
 
-// Sphere — UV-sphere tiling (rings × slices panel kubus).
-function generateSphere(center, radius, segments, thickness, color) {
-  const newBlocks = [];
-  const rings = Math.max(3, Math.floor(segments / 2));
-  const slices = Math.max(3, segments);
-  for (let i = 0; i < rings; i++) {
-    const theta0 = (i / rings) * Math.PI;
-    const theta1 = ((i + 1) / rings) * Math.PI;
-    const thetaMid = (theta0 + theta1) / 2;
-    for (let j = 0; j < slices; j++) {
-      const phiMid = ((j + 0.5) / slices) * Math.PI * 2;
-      const nx = Math.sin(thetaMid) * Math.cos(phiMid);
-      const ny = Math.cos(thetaMid);
-      const nz = Math.sin(thetaMid) * Math.sin(phiMid);
-      const N = { x: nx, y: ny, z: nz };
-      const px = center.x + nx * radius, py = center.y + ny * radius, pz = center.z + nz * radius;
-      const w = (2 * Math.PI * radius * Math.sin(thetaMid)) / slices;
-      const h = (Math.PI * radius) / rings;
-      // solveFullOrientation butuh tangentHint = perkiraan arah "keliling" panel (sepanjang azimuth).
-      // Pakai vektor arah azimuth di bidang XZ: (-sin(phiMid), 0, cos(phiMid)).
-      const tangentHint = { x: -Math.sin(phiMid), y: 0, z: Math.cos(phiMid) };
-      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
-      newBlocks.push({
-        pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, rz),
-        size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
+// Bounding box per bentuk — supaya loop grid 3D cuma iterasi area yang relevan.
+function getBoundingBox(shapeType, params, halfV) {
+  switch (shapeType) {
+    case 'sphere':
+    case 'tetrahedron':
+    case 'octahedron':
+    case 'icosahedron': {
+      const r = params.radius + halfV;
+      return { minX: -r, maxX: r, minY: -r, maxY: r, minZ: -r, maxZ: r };
+    }
+    case 'cylinder':
+    case 'cone': {
+      const r = params.radius + halfV;
+      const h = params.halfHeight + halfV;
+      return { minX: -r, maxX: r, minY: -h, maxY: h, minZ: -r, maxZ: r };
+    }
+    case 'torus': {
+      const r = params.majorRadius + params.minorRadius + halfV;
+      const h = params.minorRadius + halfV;
+      return { minX: -r, maxX: r, minY: -h, maxY: h, minZ: -r, maxZ: r };
+    }
+    default:
+      return { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
+  }
+}
+
+// shellTest per bentuk — return true kalau titik p {x,y,z} (RELATIF ke pusat bentuk)
+// "dekat permukaan" bentuk target. halfV = setengah voxel size (toleransi "dekat").
+function shellTest(shapeType, p, params, halfV) {
+  switch (shapeType) {
+    case 'sphere': {
+      const len = Math.hypot(p.x, p.y, p.z);
+      return Math.abs(len - params.radius) <= halfV;
+    }
+    case 'cylinder': {
+      const radial = Math.hypot(p.x, p.z);
+      const sideWall = Math.abs(radial - params.radius) <= halfV && Math.abs(p.y) <= params.halfHeight + halfV;
+      const capTopBottom = radial <= params.radius + halfV && Math.abs(Math.abs(p.y) - params.halfHeight) <= halfV;
+      return sideWall || capTopBottom;
+    }
+    case 'cone': {
+      const t = Math.max(0, Math.min(1, (p.y + params.halfHeight) / (2 * params.halfHeight)));
+      const rAtY = params.radius * (1 - t);
+      const radial = Math.hypot(p.x, p.z);
+      const sideWall = Math.abs(radial - rAtY) <= halfV && p.y >= -params.halfHeight - halfV && p.y <= params.halfHeight + halfV;
+      const capBottom = radial <= params.radius + halfV && Math.abs(p.y + params.halfHeight) <= halfV;
+      return sideWall || capBottom;
+    }
+    case 'torus': {
+      const d = Math.hypot(p.x, p.z) - params.majorRadius;
+      const distToTube = Math.hypot(d, p.y);
+      return Math.abs(distToTube - params.minorRadius) <= halfV;
+    }
+    case 'tetrahedron':
+    case 'octahedron':
+    case 'icosahedron': {
+      const sdf = polySDF(p, params.planes);
+      return sdf >= -halfV && sdf <= halfV * 0.5;
+    }
+    default:
+      return false;
+  }
+}
+
+// Hitung params per bentuk dari `genSize` (input user) — sesuai instruksi prompt v2:
+//  - Sphere/Tetra/Octa/Icosa: radius = genSize
+//  - Cylinder/Cone: radius = genSize * 0.6, halfHeight = genSize (rasio wajar)
+//  - Torus: majorRadius = genSize, minorRadius = genSize * 0.35
+// Untuk polyhedron, `planes` di-precompute di sini (sekali per Generate, bukan per-voxel).
+function computeShapeParams(shapeType, size) {
+  switch (shapeType) {
+    case 'sphere':
+    case 'tetrahedron':
+    case 'octahedron':
+    case 'icosahedron':
+      // Polyhedron: precompute planes dari data vertex/face + radius
+      if (shapeType === 'tetrahedron') return { radius: size, planes: computePlanes(TETRAHEDRON_VF, size) };
+      if (shapeType === 'octahedron')  return { radius: size, planes: computePlanes(OCTAHEDRON_VF, size) };
+      if (shapeType === 'icosahedron') return { radius: size, planes: computePlanes(ICOSAHEDRON_VF, size) };
+      return { radius: size };
+    case 'cylinder':
+    case 'cone':
+      return { radius: size * 0.6, halfHeight: size };
+    case 'torus':
+      return { majorRadius: size, minorRadius: size * 0.35 };
+    default:
+      return {};
+  }
+}
+
+// Estimasi jumlah titik grid yang akan di-test (volume bbox / voxelSize^3).
+// Dipakai buat pre-check performa — kalau > 500.000 titik, tolak generate dari awal
+// supaya browser gak freeze SEBELUM sempat kena limit 4000 blok.
+function estimateGridPoints(shapeType, params, voxelSize, halfV) {
+  const bbox = getBoundingBox(shapeType, params, halfV);
+  const nx = Math.ceil((bbox.maxX - bbox.minX) / voxelSize);
+  const ny = Math.ceil((bbox.maxY - bbox.minY) / voxelSize);
+  const nz = Math.ceil((bbox.maxZ - bbox.minZ) / voxelSize);
+  return nx * ny * nz;
+}
+
+// Generator utama — loop grid 3D, test tiap titik dengan shellTest, push voxel kalau lolos.
+// Return { blocks, truncated } — truncated=true kalau kena MAX_BLOCKS (4000), hasil DIBUANG
+// (jangan generate setengah-setengah). Cube di-handle khusus: cukup 1 kubus tunggal.
+const VOXEL_MAX_BLOCKS = 4000;
+const VOXEL_MAX_GRID_POINTS = 500000;
+
+function generateVoxelShape(shapeType, center, params, voxelSize, color) {
+  // Cube — special case: 1 kubus tunggal, tidak perlu loop grid.
+  if (shapeType === 'cube') {
+    const sz = params.radius * 2;
+    return {
+      blocks: [{
+        pos: new Vec3(center.x, center.y, center.z),
+        rot: new Vec3(0, 0, 0),
+        size: new Vec3(sz, sz, sz),
         color,
-      });
+      }],
+      truncated: false,
+    };
+  }
+
+  const halfV = voxelSize / 2;
+
+  // Pre-check performa: kalau estimasi titik grid > 500rb, tolak dari awal.
+  // (Test shellTest sendiri murah, tapi loop jutaan iterasi bisa bikin browser freeze
+  // SEBELUM sempat kena limit 4000.)
+  const estPoints = estimateGridPoints(shapeType, params, voxelSize, halfV);
+  if (estPoints > VOXEL_MAX_GRID_POINTS) {
+    return { blocks: [], truncated: true, tooManyGridPoints: true, estPoints };
+  }
+
+  const bbox = getBoundingBox(shapeType, params, halfV);
+  const newBlocks = [];
+
+  for (let x = bbox.minX; x <= bbox.maxX; x += voxelSize) {
+    for (let y = bbox.minY; y <= bbox.maxY; y += voxelSize) {
+      for (let z = bbox.minZ; z <= bbox.maxZ; z += voxelSize) {
+        if (shellTest(shapeType, { x, y, z }, params, halfV)) {
+          newBlocks.push({
+            pos: new Vec3(center.x + x, center.y + y, center.z + z),
+            rot: new Vec3(0, 0, 0), // SELALU 0 — voxel tidak pernah diputar
+            size: new Vec3(voxelSize, voxelSize, voxelSize),
+            color,
+          });
+          if (newBlocks.length > VOXEL_MAX_BLOCKS) {
+            return { blocks: [], truncated: true }; // stop, terlalu banyak — buang hasil
+          }
+        }
+      }
     }
   }
-  return newBlocks;
-}
-
-// Cylinder — DINDING SAMPING SAJA (tanpa tutup atas/bawah, catat sebagai batasan di memory.md).
-function generateCylinder(center, radius, height, segments, thickness, color) {
-  const newBlocks = [];
-  const rows = Math.max(2, Math.floor(segments / 2));
-  for (let row = 0; row < rows; row++) {
-    const yMid = -height/2 + height * (row + 0.5) / rows;
-    for (let j = 0; j < segments; j++) {
-      const phiMid = ((j + 0.5) / segments) * Math.PI * 2;
-      const nx = Math.cos(phiMid), nz = Math.sin(phiMid);
-      const N = { x: nx, y: 0, z: nz };
-      const px = center.x + nx * radius, py = center.y + yMid, pz = center.z + nz * radius;
-      const w = (2 * Math.PI * radius) / segments;
-      const h = height / rows;
-      const tangentHint = { x: -Math.sin(phiMid), y: 0, z: Math.cos(phiMid) };
-      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
-      newBlocks.push({
-        pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, rz),
-        size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
-        color,
-      });
-    }
-  }
-  return newBlocks;
-}
-
-// Cone — DINDING SAMPING MERUNCING KE ATAS (radius linear turun ke 0 di puncak, TANPA tutup bawah).
-function generateCone(center, radius, height, segments, thickness, color) {
-  const newBlocks = [];
-  const rows = Math.max(2, Math.floor(segments / 2));
-  const halfAngle = Math.atan2(radius, height);
-  for (let row = 0; row < rows; row++) {
-    const t = (row + 0.5) / rows;
-    const yMid = -height/2 + height * t;
-    const rMid = radius * (1 - t);
-    for (let j = 0; j < segments; j++) {
-      const phiMid = ((j + 0.5) / segments) * Math.PI * 2;
-      const nx = Math.cos(phiMid) * Math.cos(halfAngle);
-      const ny = Math.sin(halfAngle);
-      const nz = Math.sin(phiMid) * Math.cos(halfAngle);
-      const N = { x: nx, y: ny, z: nz };
-      const px = center.x + Math.cos(phiMid) * rMid, py = center.y + yMid, pz = center.z + Math.sin(phiMid) * rMid;
-      const w = (2 * Math.PI * rMid) / segments;
-      const h = (height / rows) / Math.cos(halfAngle);
-      const tangentHint = { x: -Math.sin(phiMid), y: 0, z: Math.cos(phiMid) };
-      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
-      newBlocks.push({
-        pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, rz),
-        size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
-        color,
-      });
-    }
-  }
-  return newBlocks;
-}
-
-// Torus — donat (major × minor segments panel).
-function generateTorus(center, majorRadius, minorRadius, segments, thickness, color) {
-  const newBlocks = [];
-  const majorSeg = segments;
-  const minorSeg = Math.max(4, Math.floor(segments / 2));
-  for (let i = 0; i < majorSeg; i++) {
-    const u = ((i + 0.5) / majorSeg) * Math.PI * 2;
-    for (let j = 0; j < minorSeg; j++) {
-      const v = ((j + 0.5) / minorSeg) * Math.PI * 2;
-      const nx = Math.cos(v) * Math.cos(u);
-      const ny = Math.sin(v);
-      const nz = Math.cos(v) * Math.sin(u);
-      const N = { x: nx, y: ny, z: nz };
-      const cx = Math.cos(u) * majorRadius, cz = Math.sin(u) * majorRadius;
-      const px = center.x + cx + nx * minorRadius;
-      const py = center.y + ny * minorRadius;
-      const pz = center.z + cz + nz * minorRadius;
-      const w = (2 * Math.PI * minorRadius) / minorSeg;
-      const h = (2 * Math.PI * majorRadius) / majorSeg;
-      // Untuk Torus, variabel azimuth utamanya bernama `u` (bukan phiMid). Pakai u.
-      const tangentHint = { x: -Math.sin(u), y: 0, z: Math.cos(u) };
-      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
-      newBlocks.push({
-        pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, rz),
-        size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
-        color,
-      });
-    }
-  }
-  return newBlocks;
+  return { blocks: newBlocks, truncated: false };
 }
 
 export default function BlockSimulator3D({ setPage }) {
@@ -298,14 +280,15 @@ export default function BlockSimulator3D({ setPage }) {
   const scaleStepRef = useRef(1);
   useEffect(() => { scaleStepRef.current = scaleStep; }, [scaleStep]);
 
-  // ── SHAPE GENERATOR (Tahap 2/3) ──
-  // Saat tool='generate' aktif, panel UI muncul di kanan — user pilih bentuk, size, segments,
-  // thickness, lalu klik Generate. Fungsi generator membuat banyak kubus "panel" yang dipush
-  // ke s.blocks (masing-masing kubus biasa, bisa di-edit individual seperti kubus Place).
+  // ── SHAPE GENERATOR v2: VOXEL-FILL ──
+  // User pilih bentuk + Size + Voxel Size, lalu klik grid untuk generate banyak kubus kecil
+  // axis-aligned (rot 0,0,0 — TIDAK ada rotasi) yang mengisi permukaan bentuk target.
+  // Hasil voxel adalah blok biasa yang bisa di-edit individual (Move/Rotate/Scale/Paint/Delete).
   const [genShape, setGenShape] = useState('sphere');
   const [genSize, setGenSize] = useState(4);
-  const [genSegments, setGenSegments] = useState(10);
-  const [genThickness, setGenThickness] = useState(0.15);
+  const [genVoxelSize, setGenVoxelSize] = useState(0.5);
+  // Pesan status transient — tampil kalau generate di-tolak (MAX_BLOCKS/grid points/etc).
+  const [genStatus, setGenStatus] = useState(null); // { type: 'error'|'warn'|'info', msg: string } | null
 
   // ── SISTEM PAINT (copy dari LogicGatesSimulator 2D) ──
   // colorPicker: object atau null. Saat non-null, modal overlay full-screen muncul
@@ -884,45 +867,57 @@ export default function BlockSimulator3D({ setPage }) {
       render();
     };
 
-    // ── SHAPE GENERATOR ──
-    // Generate banyak kubus "panel" mengikuti permukaan bentuk target (Sphere/Cylinder/Cone/Torus/
-    // Tetrahedron/Octahedron/Icosahedron/Cube). Pakai posisi grid hover (gp) sebagai pusat bentuk,
-    // getPlacementY sebagai Y pusat (supaya bentuk tidak kebenam di lantai, sama seperti Place).
-    // Semua panel kubus yang di-generate adalah BLOK BIASA yang bisa di-edit individual
-    // (Move/Rotate/Scale/Paint/Delete) — karena memang cuma kubus biasa dengan size.z tipis.
+    // ── SHAPE GENERATOR v2: VOXEL-FILL ──
+    // Generate banyak kubus kecil axis-aligned (rot 0,0,0 — TIDAK ada rotasi) yang mengisi
+    // permukaan bentuk target. Pakai posisi grid hover (gp) sebagai pusat bentuk, getPlacementY
+    // sebagai Y pusat (supaya bentuk tidak kebenam di lantai). Hasil voxel = blok biasa.
+    //
+    // Return dari generateVoxelShape: { blocks, truncated, tooManyGridPoints? }.
+    // - truncated=true: kena MAX_BLOCKS (4000) atau tooManyGridPoints. Hasil DIBUANG (jangan
+    //   generate setengah-setengah). Tampilkan pesan error ke user via genStatus.
+    // - truncated=false: hasil valid, push ke s.blocks.
     const runGenerate = (mx, my) => {
       const s = stateRef.current;
       const gp = getGridPos(mx, my);
       if (!gp) return;
       const y = getPlacementY(gp);
       const center = new Vec3(gp.x, y, gp.z);
-      // Clamp segments ke 4-24 (sesuai prompt kerja: di atas 24 browser bisa nge-lag parah).
-      const seg = Math.max(4, Math.min(24, Math.floor(genSegments) || 10));
       const size = Math.max(0.5, genSize);
-      const thickness = Math.max(0.05, genThickness);
+      const voxelSize = Math.max(0.05, genVoxelSize);
       const color = currentColor;
-      let blocks;
-      switch (genShape) {
-        case 'tetrahedron':  blocks = generateFlatPolyhedron(TETRAHEDRON, center, size, thickness, color); break;
-        case 'octahedron':   blocks = generateFlatPolyhedron(OCTAHEDRON, center, size, thickness, color); break;
-        case 'icosahedron':  blocks = generateFlatPolyhedron(ICOSAHEDRON, center, size, thickness, color); break;
-        case 'cube':         blocks = generateCube(center, size * 2, thickness, color); break; // size = half-edge, jadi *2 = full edge
-        case 'sphere':       blocks = generateSphere(center, size, seg, thickness, color); break;
-        case 'cylinder':     blocks = generateCylinder(center, size, size * 2, seg, thickness, color); break; // height = diameter (2× radius)
-        case 'cone':         blocks = generateCone(center, size, size * 2, seg, thickness, color); break; // height = diameter
-        case 'torus':        blocks = generateTorus(center, size, size * 0.35, seg, thickness, color); break; // minorRadius = size * 0.35
-        default: blocks = [];
+      const params = computeShapeParams(genShape, size);
+      const result = generateVoxelShape(genShape, center, params, voxelSize, color);
+      if (result.truncated) {
+        // Generate ditolak — tampilkan pesan ke user, jangan push apa-apa ke s.blocks.
+        if (result.tooManyGridPoints) {
+          setGenStatus({
+            type: 'error',
+            msg: `Voxel Size ${voxelSize} terlalu kecil untuk ukuran ini — estimasi ${Math.round(result.estPoints).toLocaleString()} titik uji (>500rb). Perbesar Voxel Size.`,
+          });
+        } else {
+          setGenStatus({
+            type: 'error',
+            msg: `Terlalu banyak voxel (>4000) — perbesar Voxel Size dulu. (Bentuk: ${genShape}, Size: ${size}, Voxel: ${voxelSize})`,
+          });
+        }
+        render();
+        return;
       }
-      // Assign id ke tiap blok (pola PERSIS seperti runPlace: Date.now() + Math.random() — unik per blok).
+      const blocks = result.blocks;
+      // Assign id ke tiap blok (pola PERSIS seperti runPlace: Date.now() + Math.random()).
       blocks.forEach(b => {
         b.id = Date.now() + Math.random();
         s.blocks.push(b);
       });
-      // Select blok pertama supaya user bisa langsung lihat gizmo muncul di salah satu panel
-      // (kalau mau lihat hasil generate lebih dekat).
+      // Select blok pertama supaya gizmo langsung muncul di salah satu voxel.
       if (blocks.length > 0) s.selected = blocks[0];
       setBlockCount(s.blocks.length);
       if (blocks.length > 0) updateUISelection(blocks[0]);
+      // Pesan sukses dengan jumlah blok.
+      setGenStatus({
+        type: 'info',
+        msg: `Generated ${blocks.length} voxel${blocks.length !== 1 ? 's' : ''} (${genShape}, Voxel ${voxelSize}).`,
+      });
       render();
     };
 
@@ -1248,7 +1243,7 @@ export default function BlockSimulator3D({ setPage }) {
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [tool, currentColor, project, render, genShape, genSize, genSegments, genThickness]);
+  }, [tool, currentColor, project, render, genShape, genSize, genVoxelSize]);
 
   /* ---------- Keyboard Shortcuts ---------- */
   useEffect(() => {
@@ -1453,10 +1448,9 @@ export default function BlockSimulator3D({ setPage }) {
           )}
         </div>
 
-        {/* ── SHAPE GENERATOR PANEL — render HANYA saat tool='generate' ──
-            User pilih bentuk (Tetrahedron/Octahedron/Icosahedron/Cube/Sphere/Cylinder/Cone/Torus),
-            atur Size (radius/setengah tinggi), Segments (resolusi tiling, 4-24), Panel Thickness,
-            lalu KLIK GRID di kanvas = generate bentuk di posisi hover. */}
+        {/* ── SHAPE GENERATOR PANEL v2: VOXEL-FILL — render HANYA saat tool='generate' ──
+            User pilih bentuk + Size + Voxel Size, lalu KLIK GRID di kanvas = generate banyak
+            kubus kecil axis-aligned (rot 0,0,0) yang mengisi permukaan bentuk target. */}
         {tool === 'generate' && (
           <div style={{
             position: 'absolute', top: 16, right: 16,
@@ -1466,7 +1460,7 @@ export default function BlockSimulator3D({ setPage }) {
             border: `1px solid ${panelBorder}`,
             backdropFilter: 'blur(10px)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-            zIndex: 5, minWidth: 200,
+            zIndex: 5, minWidth: 200, maxWidth: 240,
             fontFamily: 'Inter, sans-serif',
           }}>
             <div style={{
@@ -1475,7 +1469,7 @@ export default function BlockSimulator3D({ setPage }) {
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
-              <Shapes size={12} /> Shape Generator
+              <Shapes size={12} /> Shape Generator <span style={{ opacity: 0.6 }}>v2</span>
             </div>
 
             {/* Dropdown pilih bentuk */}
@@ -1483,7 +1477,7 @@ export default function BlockSimulator3D({ setPage }) {
               Shape
               <select
                 value={genShape}
-                onChange={(e) => setGenShape(e.target.value)}
+                onChange={(e) => { setGenShape(e.target.value); setGenStatus(null); }}
                 style={{
                   display: 'block', width: '100%', marginTop: 2,
                   background: '#1e293b', border: `1px solid ${pink}`,
@@ -1491,18 +1485,18 @@ export default function BlockSimulator3D({ setPage }) {
                   fontFamily: 'Inter, sans-serif', outline: 'none',
                 }}
               >
+                <option value="cube">Cube (1 block solid)</option>
+                <option value="sphere">Sphere (voxel shell)</option>
+                <option value="cylinder">Cylinder (side + caps)</option>
+                <option value="cone">Cone (side + bottom cap)</option>
+                <option value="torus">Torus (donut)</option>
                 <option value="tetrahedron">Tetrahedron (4 faces)</option>
                 <option value="octahedron">Octahedron (8 faces)</option>
                 <option value="icosahedron">Icosahedron (20 faces)</option>
-                <option value="cube">Cube (6 faces)</option>
-                <option value="sphere">Sphere (UV-tiling)</option>
-                <option value="cylinder">Cylinder (side only)</option>
-                <option value="cone">Cone (tapered side)</option>
-                <option value="torus">Torus (donut)</option>
               </select>
             </label>
 
-            {/* Size */}
+            {/* Size — radius/halfHeight dasar per bentuk */}
             <label style={{ fontSize: 10, color: textSecondary, fontWeight: 600 }}>
               Size (radius)
               <input
@@ -1511,6 +1505,7 @@ export default function BlockSimulator3D({ setPage }) {
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
                   setGenSize(Number.isFinite(v) && v > 0 ? v : 0.5);
+                  setGenStatus(null);
                 }}
                 style={{
                   display: 'block', width: '100%', marginTop: 2,
@@ -1521,45 +1516,17 @@ export default function BlockSimulator3D({ setPage }) {
               />
             </label>
 
-            {/* Segments — clamp 4-24 */}
+            {/* Voxel Size — input angka bebas (boleh 0.05, 0.1, 0.2, 0.5, 1, 2, dst).
+                Pola styling sama dengan input "Scale Step" yang sudah ada di tool Scale. */}
             <label style={{ fontSize: 10, color: textSecondary, fontWeight: 600 }}>
-              Segments (4-24)
-              <input
-                type="number" step="1" min="4" max="24"
-                value={genSegments}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  setGenSegments(Number.isFinite(v) ? Math.max(4, Math.min(24, v)) : 10);
-                }}
-                style={{
-                  display: 'block', width: '100%', marginTop: 2,
-                  background: '#1e293b', border: `1px solid ${pink}`,
-                  borderRadius: 4, color: '#e2e8f0', fontSize: 12, padding: '3px 6px',
-                  fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box',
-                }}
-              />
-            </label>
-
-            {/* Peringatan kalau segments tinggi */}
-            {genSegments > 16 && (
-              <div style={{
-                fontSize: 10, color: '#fbbf24', fontStyle: 'italic',
-                background: 'rgba(251, 191, 36, 0.08)', padding: '4px 6px',
-                borderRadius: 4, border: '1px solid rgba(251, 191, 36, 0.3)',
-              }}>
-                ⚠ High segments = many blocks, bisa berat
-              </div>
-            )}
-
-            {/* Panel Thickness */}
-            <label style={{ fontSize: 10, color: textSecondary, fontWeight: 600 }}>
-              Panel Thickness
+              Voxel Size
               <input
                 type="number" step="0.05" min="0.05"
-                value={genThickness}
+                value={genVoxelSize}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
-                  setGenThickness(Number.isFinite(v) && v > 0 ? v : 0.05);
+                  setGenVoxelSize(Number.isFinite(v) && v > 0 ? v : 0.05);
+                  setGenStatus(null);
                 }}
                 style={{
                   display: 'block', width: '100%', marginTop: 2,
@@ -1569,6 +1536,35 @@ export default function BlockSimulator3D({ setPage }) {
                 }}
               />
             </label>
+
+            {/* Hint tentang Voxel Size — kecil = detail halus tapi banyak blok */}
+            <div style={{
+              fontSize: 9, color: '#64748b', fontStyle: 'italic',
+              padding: '2px 4px', lineHeight: 1.4,
+            }}>
+              Kecil = detail halus tapi banyak blok (max 4000). Cube abaikan Voxel Size.
+            </div>
+
+            {/* Status message — tampil kalau ada genStatus (error/info).
+                type='error' (merah) kalau generate ditolak (MAX_BLOCKS/grid points).
+                type='info' (hijau) kalau generate sukses. */}
+            {genStatus && (
+              <div style={{
+                fontSize: 10, padding: '5px 7px', borderRadius: 4,
+                background: genStatus.type === 'error' ? 'rgba(239, 68, 68, 0.1)'
+                         : genStatus.type === 'warn' ? 'rgba(251, 191, 36, 0.1)'
+                         : 'rgba(34, 197, 94, 0.1)',
+                border: `1px solid ${genStatus.type === 'error' ? 'rgba(239, 68, 68, 0.4)'
+                                              : genStatus.type === 'warn' ? 'rgba(251, 191, 36, 0.4)'
+                                              : 'rgba(34, 197, 94, 0.4)'}`,
+                color: genStatus.type === 'error' ? '#f87171'
+                     : genStatus.type === 'warn' ? '#fbbf24'
+                     : '#4ade80',
+                lineHeight: 1.4,
+              }}>
+                {genStatus.msg}
+              </div>
+            )}
 
             {/* Instruksi generate — klik grid */}
             <div style={{

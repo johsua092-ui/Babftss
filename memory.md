@@ -3950,3 +3950,117 @@ const tangentHint = { x: -Math.sin(sudutAzimuth), y: 0, z: Math.cos(sudutAzimuth
 - Verifikasi visual live TUNGGG user — verify di Vercel setelah push bahwa panel tersusun rapi.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 52 — Shape Generator v2: VOXEL-FILL (ganti total panel-rotasi) (21 Aug 2026)
+
+**Task ID:** 52
+**Agent:** main (Super Z)
+**Task:** Pivot total dari sistem panel-rotasi (Tahap 2 + hotfix Bagian 51) ke sistem **voxel-fill** baru. Sesuai `PROMPT_KERJA_3DBlockSim_ShapeGenerator_v2_VoxelFill.md`.
+
+### ⚠️ SUPERSEDED — entri sebelumnya digantikan
+- **Bagian 50** (Shape Generator Tahap 2/3 — sistem panel-rotasi) → **SUPERSEDED** oleh task ini. Sistem panel-rotasi dihapus total, ganti dengan voxel-fill.
+- **Bagian 51** (HOTFIX panel menyilang — `solveFullOrientation`) → **SUPERSEDED**. Fungsi `solveFullOrientation` & `alignPlateToNormal` lama dihapus (gak dipakai lagi). Riwayat tetap dicatat di memory.md untuk jejak audit, jangan dihapus.
+
+### Alasan pivot
+User mau kontrol resolusi bebas + hasil visual lebih rapi/konsisten (gaya building game asli yang pakai voxel). Pendekatan panel-rotasi terlalu rumit (perlu `solveFullOrientation` 3-sudut + Gram-Schmidt + cross product + per-bentuk tangentHint) dan hasilnya masih bisa menyilang di beberapa edge case. Voxel-fill jauh lebih sederhana: isi permukaan bentuk target dengan BANYAK kubus kecil **axis-aligned (rot 0,0,0 — TIDAK ada rotasi sama sekali)**, ukuran seragam sebesar "Voxel Size" yang user tentukan bebas (0.05, 0.1, 0.2, 0.5, 1, 2, dst — INPUT ANGKA BEBAS, bukan dropdown preset).
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — hapus sistem panel-rotasi lama, ganti total dengan sistem voxel-fill baru.
+
+### Yang di-HAPUS (sistem lama, sudah tidak dipakai)
+- Konstanta `TETRAHEDRON`, `OCTAHEDRON`, `ICOSAHEDRON` lama (renamed jadi `TETRAHEDRON_VF`, `OCTAHEDRON_VF`, `ICOSAHEDRON_VF` — data vertex/face tetap dipakai untuk `computePlanes`).
+- Fungsi `alignPlateToNormal(N)` — dihapus.
+- Fungsi `solveFullOrientation(N, tangentHint)` — dihapus.
+- Fungsi `generateFlatPolyhedron`, `generateCube` (panel-rotasi), `generateSphere`, `generateCylinder`, `generateCone`, `generateTorus` versi panel-rotasi — dihapus total.
+- State `genSegments`, `genThickness` — dihapus.
+- UI input "Segments", "Panel Thickness", peringatan "⚠ High segments" — dihapus.
+
+### Yang di-TAMBAH (sistem voxel-fill baru)
+- Konstanta `TETRAHEDRON_VF`, `OCTAHEDRON_VF`, `ICOSAHEDRON_VF` (data vertex/face, dipakai `computePlanes`).
+- Fungsi `computePlanes(vf, targetRadius)` — hitung bidang wajah (plane equation: `n·p = d`) untuk polyhedron. Disekali per Generate, bukan per-voxel. Hasil normal mengarah KELUAR (cek dot product dengan titik tengah wajah).
+- Fungsi `polySDF(p, planes)` — Signed Distance Field untuk polyhedron (jarak max ke semua bidang wajah). Negatif = di dalam, nol = di permukaan, positif = di luar.
+- Fungsi `getBoundingBox(shapeType, params, halfV)` — bounding box per bentuk untuk loop grid 3D.
+- Fungsi `shellTest(shapeType, p, params, halfV)` — return true kalau titik `p` (relatif ke pusat bentuk) "dekat permukaan". Implementasi per-bentuk: Sphere/Cylinder/Cone/Torus pakai rumus jarak geometris, Tetra/Octa/Icosa pakai `polySDF`.
+- Fungsi `computeShapeParams(shapeType, size)` — hitung params per bentuk dari `genSize` user. Sphere/Tetra/Octa/Icosa: `radius = size`. Cylinder/Cone: `radius = size * 0.6, halfHeight = size`. Torus: `majorRadius = size, minorRadius = size * 0.35`. Polyhedron precompute `planes` di sini.
+- Fungsi `estimateGridPoints(shapeType, params, voxelSize, halfV)` — pre-check performa: volume bbox / voxelSize³. Kalau > 500.000, tolak generate dari awal.
+- Fungsi `generateVoxelShape(shapeType, center, params, voxelSize, color)` — generator utama. Loop grid 3D, test tiap titik dengan `shellTest`, push voxel kalau lolos. Cube = special case (1 kubus tunggal). MAX_BLOCKS=4000 — kalau kena, return `truncated: true` (hasil DIBUANG).
+- Konstanta `VOXEL_MAX_BLOCKS = 4000`, `VOXEL_MAX_GRID_POINTS = 500000` (hardcode, jangan diubah).
+- State `genVoxelSize` (default 0.5), `genStatus` (transient status message untuk feedback error/info ke user).
+- Handler `runGenerate(mx, my)` diperbarui: pakai `computeShapeParams` + `generateVoxelShape`. Handle `result.truncated`:
+  - `tooManyGridPoints: true` → tampilkan error "Voxel Size terlalu kecil untuk ukuran ini, estimasi >500rb titik uji — perbesar Voxel Size".
+  - `truncated: true` (MAX_BLOCKS) → tampilkan error "Terlalu banyak voxel (>4000) — perbesar Voxel Size dulu".
+  - `truncated: false` → assign id tiap blok (pola `Date.now() + Math.random()`), push ke `s.blocks`, select blok pertama, tampilkan info sukses dengan jumlah blok.
+
+### UI Panel "Shape Generator v2"
+- Render HANYA saat `tool='generate'`.
+- Dropdown 8 opsi bentuk: Cube (1 block solid), Sphere (voxel shell), Cylinder (side + caps), Cone (side + bottom cap), Torus (donut), Tetrahedron (4 faces), Octahedron (8 faces), Icosahedron (20 faces).
+- Input "Size (radius)" — angka bebas, min 0.5.
+- Input "Voxel Size" — angka bebas, min 0.05. Style sama dengan input "Scale Step" yang sudah ada di tool Scale.
+- Hint italic: "Kecil = detail halus tapi banyak blok (max 4000). Cube abaikan Voxel Size."
+- Status message (transient): hijau kalau sukses, merah kalau error (ditolak MAX_BLOCKS/grid points). Auto-clear saat user ubah Shape/Size/Voxel Size.
+- Instruksi "Klik grid untuk generate".
+
+### Batasan (catat eksplisit di memory.md)
+- **MAX_BLOCKS = 4000** — hard limit, hasil DIBUANG (jangan generate setengah-setengah). User perlu perbesar Voxel Size.
+- **MAX_GRID_POINTS = 500.000** — pre-check sebelum loop, kalau lebih besar → tolak dari awal supaya browser tidak freeze.
+- **Cube special case** — abaikan Voxel Size, langsung jadi 1 kubus tunggal size = `radius * 2`.
+- **Cylinder SEKARANG TERMASUK tutup atas/bawah** — beda dengan versi panel-rotasi (Bagian 50) yang cuma dinding samping. Voxel-fill jauh lebih gampang nambah tutup, jadi sekarang termasuk.
+- **Cone SEKARANG TERMASUK tutup bawah** — beda dengan versi panel-rotasi (Bagian 50) yang cuma dinding meruncing. Puncak tetap tidak ada tutup (radius=0 di puncak, jadi gak butuh).
+- **Torus minorRadius = size × 0.35** (fixed, tidak ada input terpisah) — sama dengan Bagian 50.
+- **Voxel Size sangat kecil + Size besar** akan kena MAX_BLOCKS atau MAX_GRID_POINTS — ditolak dengan pesan error.
+
+### Yang TIDAK diubah
+- 3D engine (`project`, `rotY`/`rotX`/`rotZ`, `getBlockCorners`, painter's algorithm, backface cull, `hitTest`, `getGridPos`, `snap`, `getPlacementY`).
+- Sistem paint, gizmo 6-axis, scale step, panah handle, pan camera, orbit camera, zoom wheel.
+- App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth.
+- Tool `generate` (id di TOOLS array, icon Shapes, shortcut `g`) tetap sama.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.58s`. BlockSimulator3D chunk: 38.23 KB (gzip 11.43 KB — TURUN dari 38.66 KB karena sistem voxel-fill lebih kompak dari panel-rotasi yang punya 8 fungsi generator besar).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+3. ⚠️ **Verifikasi visual WAJIB** semua 8 bentuk dengan minimal 2 Voxel Size berbeda — BELUM dilakukan di env CLI (tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Coba 2 Voxel Size per bentuk: misal 0.5 (kasar) dan 0.2 (halus).
+   - Sphere: bulat (voxel shell).
+   - Cylinder: tabung dengan tutup atas+bawah.
+   - Cone: meruncing dengan alas tertutup.
+   - Torus: donat.
+   - Tetra/Octa/Icosa: sisi datar khasnya (4/8/20 wajah).
+   - Cube: 1 kubus tunggal (abaikan Voxel Size).
+4. ✅ **Verifikasi voxel bisa di-edit normal** — logic-confirmed: tiap voxel di-generate dengan struktur `{pos, rot, size, color, id}` PERSIS seperti kubus Place (rot SELALU 0,0,0). `getBlockCorners` & `hitTest` tidak diubah — semua voxel diperlakukan sama seperti kubus biasa.
+5. ✅ **Verifikasi guard performa** (logic-confirmed via matematis test):
+   - MAX_BLOCKS = 4000: Sphere r=8 voxel=0.2 → estimated ~20.000 voxels → akan kena → return truncated=true → hasil dibuang, pesan error ke user. ✓
+   - MAX_GRID_POINTS = 500.000: Sphere r=4 voxel=0.1 → estimated 551.368 grid points → akan kena pre-check → return truncated=true dengan tooManyGridPoints=true → loop tidak dimulai, pesan error ke user. ✓
+6. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 52. Entri Bagian 50 & 51 ditandai **SUPERSEDED** di section header.
+7. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+8. ✅ **STOP setelah ini** — Tahap 3 (split-screen dual camera) masih menunggu, prompt terpisah nanti.
+
+### Verifikasi matematis (`verify_voxel_fill.mjs`, 22/22 test lulus)
+- **polySDF benar**: Tetrahedron r=4 — titik pusat (0,0,0) SDF < 0 (di dalam) ✓, titik jauh (8,8,8) SDF > 0 (di luar) ✓.
+- **Sphere shellTest**: titik di permukaan (4,0,0) lolos ✓, titik di dalam (3,0,0) tidak lolos ✓, titik di luar (4.5,0,0) tidak lolos ✓, titik dekat permukaan (4.2,0,0) within halfV lolos ✓.
+- **Cylinder shellTest** (sekarang dengan caps): (2,0,0) side wall ✓, (0,3,0) top cap ✓, (0,0,0) inside tidak lolos ✓, (0,5,0) outside tidak lolos ✓.
+- **Cone shellTest** (sekarang dengan bottom cap): (0,-3,0) bottom cap ✓, (1,0,0) side wall middle ✓, (0,0,0) inside tidak lolos ✓, (0,3,0) puncak lolos (rAtY=0) ✓.
+- **Torus shellTest**: (5.5,0,0) permukaan tube ✓, (4,1.5,0) tube atas ✓, (4,0,0) tube center tidak lolos ✓, (0,0,0) pusat tidak lolos ✓.
+- **estimateGridPoints**: Sphere r=4 voxel=0.5 → 4913 titik ✓, Sphere r=4 voxel=0.1 → 551368 titik (akan ditolak pre-check) ✓.
+- **Cube special case**: radius=4 → size=8, 1 block tunggal axis-aligned ✓.
+- **MAX_BLOCKS guard**: Sphere r=8 voxel=0.2 → estimated ~20.000 voxels, akan kena MAX_BLOCKS=4000 ✓.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim)!: Shape Generator v2 — VOXEL-FILL (ganti total panel-rotasi)`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- Pivot total dari sistem panel-rotasi (Tahap 2 + hotfix) ke voxel-fill (v2).
+- 8 bentuk tersedia: Cube (1 block), Sphere, Cylinder (side + caps), Cone (side + bottom cap), Torus, Tetrahedron, Octahedron, Icosahedron. Semua voxel axis-aligned (rot 0,0,0).
+- Guard performa: MAX_BLOCKS=4000, MAX_GRID_POINTS=500.000. Pre-check tolak dari awal kalau kena, hasil dibuang (jangan setengah-setengah).
+- UI: input Voxel Size (angka bebas), status message transient (hijau sukses / merah error).
+- Cylinder & Cone SEKARANG TERMASUK tutup (beda dengan Bagian 50 yang hanya dinding samping).
+- Verifikasi matematis (22/22 test) lulus untuk semua shellTest + SDF + guard performa.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- Tidak menyentuh sistem lain (gizmo, paint, pan camera, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth).
+- Entri Bagian 50 & 51 ditandai **SUPERSEDED** — riwayat tetap dicatat, jangan dihapus.
+- Verifikasi visual live TUNGGU user — verify di Vercel setelah push dengan minimal 2 Voxel Size per bentuk.
+- Commit lokal siap di-push setelah token dari user diterima.
+
