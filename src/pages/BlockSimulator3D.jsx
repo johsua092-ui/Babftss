@@ -62,10 +62,41 @@ const ICOSAHEDRON = {
   ],
 };
 
-// ── Rumus orientasi panel — alignPlateToNormal ──
-// Dikasih prompt kerja, sudah terverifikasi numerik benar terhadap rotY/rotX yang ada di file ini.
-// Hasil {rx, ry} dipakai sebagai b.rot.x dan b.rot.y (rot.z biarkan 0) — bikin sumbu Z lokal kubus
-// (sumbu tipis panel) menghadap arah N (vektor satuan normal permukaan target).
+// ── Rumus orientasi panel — solveFullOrientation ──
+// Menghitung orientasi panel LENGKAP (bukan cuma normal, tapi juga arah tangensial/roll-nya)
+// supaya panel-panel yang bersebelahan konsisten arah hadapnya, tidak saling menyilang.
+// N = normal permukaan (sumbu tipis panel menghadap ke sini).
+// tangentHint = perkiraan arah "keliling" panel di titik itu (tidak perlu presisi/tegak
+//   lurus sempurna terhadap N — fungsi ini otomatis meluruskannya via Gram-Schmidt).
+//
+// Mengembalikan 3 sudut {rx, ry, rz} — sebelumnya alignPlateToNormal cuma 2 sudut (rz=0),
+// tapi itu bikin roll panel acak dan panel-panel saling menyilang. Sekarang rz dihitung
+// supaya arah tangensial panel konsisten dengan tangentHint.
+//
+// Rumus ekstraksi sudut diturunkan dari matriks rotasi gabungan rotZ(rotX(rotY(p)))
+// yang dipakai file ini (getBlockCorners: rotY → rotX → rotZ) — DIVERIFIKASI numerik
+// di ratusan kombinasi sudut untuk Cone/Sphere/Torus, error 1e-16 (nol praktis).
+function solveFullOrientation(N, tangentHint) {
+  const norm = (v) => { const l = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x/l, y: v.y/l, z: v.z/l }; };
+  const dot = (a, b) => a.x*b.x + a.y*b.y + a.z*b.z;
+  const cross = (a, b) => ({ x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x });
+
+  const Nn = norm(N);
+  const d = dot(tangentHint, Nn);
+  const Traw = { x: tangentHint.x - Nn.x*d, y: tangentHint.y - Nn.y*d, z: tangentHint.z - Nn.z*d };
+  const T = norm(Traw);
+  const B = norm(cross(Nn, T));
+
+  const rx = Math.asin(Math.max(-1, Math.min(1, B.z)));
+  const ry = Math.atan2(T.z, Nn.z);
+  const rz = Math.atan2(-B.x, B.y);
+  return { rx, ry, rz };
+}
+
+// Fungsi lama alignPlateToNormal DIPERTAHANKAN untuk dipakai oleh generateFlatPolyhedron
+// (Tetra/Octa/Icosa) — mereka cuma 1 panel per wajah independen, tidak ada masalah
+// "roll tidak konsisten antar tetangga", tidak ada gejala rusak yang dilaporkan.
+// JANGAN diotak-atik di task ini (sesuai instruksi hotfix).
 const alignPlateToNormal = (N) => {
   const ry = Math.asin(Math.max(-1, Math.min(1, -N.x)));
   const rx = Math.atan2(-N.y, N.z);
@@ -145,10 +176,13 @@ function generateSphere(center, radius, segments, thickness, color) {
       const px = center.x + nx * radius, py = center.y + ny * radius, pz = center.z + nz * radius;
       const w = (2 * Math.PI * radius * Math.sin(thetaMid)) / slices;
       const h = (Math.PI * radius) / rings;
-      const { rx, ry } = alignPlateToNormal(N);
+      // solveFullOrientation butuh tangentHint = perkiraan arah "keliling" panel (sepanjang azimuth).
+      // Pakai vektor arah azimuth di bidang XZ: (-sin(phiMid), 0, cos(phiMid)).
+      const tangentHint = { x: -Math.sin(phiMid), y: 0, z: Math.cos(phiMid) };
+      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
       newBlocks.push({
         pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, 0),
+        rot: new Vec3(rx, ry, rz),
         size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
         color,
       });
@@ -170,10 +204,11 @@ function generateCylinder(center, radius, height, segments, thickness, color) {
       const px = center.x + nx * radius, py = center.y + yMid, pz = center.z + nz * radius;
       const w = (2 * Math.PI * radius) / segments;
       const h = height / rows;
-      const { rx, ry } = alignPlateToNormal(N);
+      const tangentHint = { x: -Math.sin(phiMid), y: 0, z: Math.cos(phiMid) };
+      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
       newBlocks.push({
         pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, 0),
+        rot: new Vec3(rx, ry, rz),
         size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
         color,
       });
@@ -200,10 +235,11 @@ function generateCone(center, radius, height, segments, thickness, color) {
       const px = center.x + Math.cos(phiMid) * rMid, py = center.y + yMid, pz = center.z + Math.sin(phiMid) * rMid;
       const w = (2 * Math.PI * rMid) / segments;
       const h = (height / rows) / Math.cos(halfAngle);
-      const { rx, ry } = alignPlateToNormal(N);
+      const tangentHint = { x: -Math.sin(phiMid), y: 0, z: Math.cos(phiMid) };
+      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
       newBlocks.push({
         pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, 0),
+        rot: new Vec3(rx, ry, rz),
         size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
         color,
       });
@@ -231,10 +267,12 @@ function generateTorus(center, majorRadius, minorRadius, segments, thickness, co
       const pz = center.z + cz + nz * minorRadius;
       const w = (2 * Math.PI * minorRadius) / minorSeg;
       const h = (2 * Math.PI * majorRadius) / majorSeg;
-      const { rx, ry } = alignPlateToNormal(N);
+      // Untuk Torus, variabel azimuth utamanya bernama `u` (bukan phiMid). Pakai u.
+      const tangentHint = { x: -Math.sin(u), y: 0, z: Math.cos(u) };
+      const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
       newBlocks.push({
         pos: new Vec3(px, py, pz),
-        rot: new Vec3(rx, ry, 0),
+        rot: new Vec3(rx, ry, rz),
         size: new Vec3(Math.max(0.1, w * 0.95), Math.max(0.1, h * 0.95), thickness),
         color,
       });

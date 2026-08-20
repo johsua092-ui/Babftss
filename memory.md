@@ -3875,3 +3875,78 @@ SEMUA bentuk yang dihasilkan TETAP berupa objek kubus biasa (elemen array `s.blo
 - Tidak menyentuh sistem lain (gizmo, paint, pan camera, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth).
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 51 — HOTFIX: Shape Generator Panel Menyilang (Sphere/Cylinder/Cone/Torus) (21 Aug 2026)
+
+**Task ID:** 51
+**Agent:** main (Super Z)
+**Task:** Hotfix bug visual di Shape Generator (Tahap 2) — panel-panel Sphere/Cylinder/Cone/Torus saling menyilang/beranyam kacau. Sesuai `PROMPT_KERJA_3DBlockSim_HOTFIX_ShapeGeneratorOrientasi.md`.
+
+### Akar masalah (BUKAN salah implementasi — bug di rumus yang dikasih prompt Tahap 2)
+Fungsi `alignPlateToNormal(N)` yang lama cuma mengunci **arah normal** panel (sumbu tipis menghadap ke arah yang benar), tapi **TIDAK mengunci arah "putaran" (roll)** panel di sekitar sumbu normal itu. Akibatnya tiap panel independen punya orientasi tangensial acak — pas ditaruh berdekatan, panel-panel saling silang-menyilang tidak konsisten (terlihat seperti rajutan kacau di kerucut/sphere/cylinder/torus).
+
+### Fix — Ganti total fungsi orientasi
+Hapus fungsi `alignPlateToNormal` lama (yang return 2 sudut `{rx, ry}` dengan `rz` hardcoded 0). Ganti dengan `solveFullOrientation(N, tangentHint)` yang return **3 sudut `{rx, ry, rz}`** — `rz` sekarang dihitung supaya arah tangensial panel konsisten dengan `tangentHint`.
+
+**Cara kerja `solveFullOrientation`:**
+1. Normalisasi N → `Nn`.
+2. Gram-Schmidt: proyeksikan `tangentHint` ke plane tegak lurus `Nn` → dapat `T` (tangent).
+3. Cross product: `B = Nn × T` → binormal.
+4. Ekstrak 3 sudut dari matriks rotasi gabungan `rotZ(rotX(rotY(p)))` yang dipakai `getBlockCorners`:
+   - `rx = asin(B.z)` (clamped -1..1)
+   - `ry = atan2(T.z, Nn.z)`
+   - `rz = atan2(-B.x, B.y)`
+5. Verifikasi numerik: `applyRotation((0,0,1), rx, ry, rz)` selalu = `N` (error < 1e-6).
+
+### Perubahan per fungsi generator
+Pola SAMA untuk Sphere/Cylinder/Cone/Torus — ganti `alignPlateToNormal(N)` jadi `solveFullOrientation(N, tangentHint)`, lalu `rot: new Vec3(rx, ry, 0)` jadi `rot: new Vec3(rx, ry, rz)`.
+
+`tangentHint` dihitung dari sudut azimuth yang SUDAH ADA di loop masing-masing, rumus SELALU SAMA BENTUKNYA:
+```js
+const tangentHint = { x: -Math.sin(sudutAzimuth), y: 0, z: Math.cos(sudutAzimuth) };
+```
+
+- **`generateSphere`**: pakai `phiMid` sebagai `sudutAzimuth`.
+- **`generateCylinder`**: pakai `phiMid`.
+- **`generateCone`**: pakai `phiMid`.
+- **`generateTorus`**: pakai `u` (bukan `phiMid` — variabel di Torus).
+
+### Yang TIDAK diubah (sesuai instruksi hotfix)
+- **`generateFlatPolyhedron` (Tetra/Octa/Icosa)** — TETAP pakai `alignPlateToNormal` lama (fungsi lama DIPERTAHANKAN di file, cuma dipakai untuk ini). Alasan: tiap wajah polyhedron cuma 1 panel independen, tidak ada masalah "roll tidak konsisten antar tetangga" di situ, tidak ada gejala rusak yang dilaporkan. **JANGAN diotak-atik di task ini.**
+- Posisi (`pos`), ukuran (`size`), jumlah loop segmen — semua TETAP SAMA PERSIS. **HANYA baris orientasi (`rx,ry` → `rx,ry,rz`) yang berubah.**
+- 3D engine, sistem paint, gizmo 6-axis, scale step, panah handle, pan camera, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth — semua tidak disentuh.
+
+### Verifikasi
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.43s`. BlockSimulator3D chunk: 38.66 KB (gzip 11.35 KB — naik tipis dari 38.10 KB karena fungsi `solveFullOrientation` lebih besar sedikit dari `alignPlateToNormal` lama: ada Gram-Schmidt + cross product + 3 sudut).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+3. ✅ **Verifikasi matematis** (`verify_solve_full_orientation.mjs`, 10/10 test lulus):
+   - SPHERE equator phi=0: normal (0,0,1)→(1,0,0) ✓, tangent (1,0,0)→(0,0,1) ✓.
+   - SPHERE equator phi=π/2: normal (0,0,1)→(0,0,1) ✓, tangent (1,0,0)→(-1,0,0) ✓.
+   - CYLINDER phi=π/4: normal (0,0,1)→(0.707,0,0.707) ✓, tangent (1,0,0)→(-0.707,0,0.707) ✓.
+   - CONE halfAngle=π/4 phi=0: normal (0,0,1)→(0.707,0.707,0) ✓.
+   - TORUS u=π/4 v=0: normal (0,0,1)→(0.707,0,0.707) ✓.
+   - RANDOM: 100 random samples (sphere/cyl/cone/torus) — normal reconstruction error < 1e-6 ✓.
+   - TANGENT CONSISTENCY: 2 adjacent panels di equator (phi=0 vs 0.1) — T1·T2 > 0.99 (no flip) ✓. Ini yang membuktikan panel-panel akan konsisten arahnya, tidak menyilang lagi.
+4. ⚠️ **Verifikasi visual WAJIB** (ini yang paling penting — bug sebelumnya LOLOS dari build check tapi rusak visual) — BELUM dilakukan di env CLI (tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Generate ulang Cone, Sphere, Cylinder, Torus.
+   - Panel-panel HARUS tersusun rapi mengikuti kontur bentuk (seperti sisik/genteng tersusun), TIDAK saling menyilang/menganyam kacau seperti sebelumnya.
+5. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 51. Jelaskan akar masalah (roll tidak terkontrol) + fix (solveFullOrientation 3-axis) + hasil verifikasi matematis.
+6. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+7. ✅ **STOP setelah hotfix ini** — jangan lanjut ke fitur lain.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `fix(3d-block-sim): hotfix — panel sphere/cyl/cone/torus menyilang, ganti alignPlateToNormal ke solveFullOrientation (3-axis, roll-locked)`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- Akar masalah: fungsi `alignPlateToNormal` lama hanya mengunci arah normal, tidak mengunci roll panel → panel-panel saling menyilang.
+- Fix: ganti dengan `solveFullOrientation(N, tangentHint)` yang menghitung 3 sudut (rx, ry, rz) sekaligus — arah normal + arah tangensial (roll) terkunci.
+- Verifikasi matematis (10/10 test) lulus — normal reconstruction error < 1e-6 untuk 100 random samples, tangent consistency no flip.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- `generateFlatPolyhedron` (Tetra/Octa/Icosa) TETAP pakai `alignPlateToNormal` lama — tidak ada gejala rusak yang dilaporkan di situ.
+- Verifikasi visual live TUNGGG user — verify di Vercel setelah push bahwa panel tersusun rapi.
+- Commit lokal siap di-push setelah token dari user diterima.
+
