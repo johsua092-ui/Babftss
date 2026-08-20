@@ -275,6 +275,14 @@ function estimateGridPoints(shapeType, params, voxelSize, halfV) {
 // (jangan generate setengah-setengah). Cube di-handle khusus: cukup 1 kubus tunggal.
 const VOXEL_MAX_BLOCKS = 4000;
 const VOXEL_MAX_GRID_POINTS = 500000;
+// VOXEL_OVERLAP_FACTOR — voxel yang DIPUTAR (Sphere/Cyl/Cone/Torus) diperbesar faktor ini
+// supaya sudut-sudutnya saling tumpang-tindih dengan voxel tetangga & nutup celah yang muncul
+// akibat rotasi individual (setiap voxel berputar sedikit beda arah). Voxel axis-aligned
+// (Cube/Tetra/Octa/Icosa) TIDAK diperbesar — sudah pas presisi grid dari awal, kalau diperbesar
+// malah jadi saling menembus gak wajar.
+// Titik awal 1.6 — boleh disesuaikan kalau visual masih ada celah (naikkan ke 1.8) atau terlalu
+// gempal (turunkan ke 1.4). WAJIB tes visual sebelum fix dianggap selesai.
+const VOXEL_OVERLAP_FACTOR = 1.6;
 
 function generateVoxelShape(shapeType, center, params, voxelSize, color) {
   // Cube — special case: 1 kubus tunggal, tidak perlu loop grid.
@@ -326,10 +334,20 @@ function generateVoxelShape(shapeType, center, params, voxelSize, color) {
             const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
             rot = new Vec3(rx, ry, rz);
           }
+          // HOTFIX VoxelGap: voxel yang DIPUTAR (useRotation true) diperbesar pakai
+          // VOXEL_OVERLAP_FACTOR supaya sudut-sudutnya saling tumpang-tindih & nutup celah
+          // yang muncul akibat rotasi individual (setiap voxel berputar sedikit beda arah).
+          // Voxel axis-aligned (useRotation false) TETAP presisi grid — JANGAN diperbesbar
+          // (kalau diperbesar malah saling menembus gak wajar).
+          // Posisi (pos) TETAP di titik grid asli — cuma size yang berubah, pos di tengah
+          // otomatis bikin voxel "keluar" merata ke segala arah dari titik grid-nya.
+          const voxSize = useRotation
+            ? voxelSize * VOXEL_OVERLAP_FACTOR // voxel lengkung diputar → diperbesar biar tumpang-tindih, nutup celah
+            : voxelSize;                        // voxel axis-aligned (Cube/Tetra/Octa/Icosa) TETAP presisi grid
           newBlocks.push({
             pos: new Vec3(center.x + x, center.y + y, center.z + z),
             rot,
-            size: new Vec3(voxelSize, voxelSize, voxelSize),
+            size: new Vec3(voxSize, voxSize, voxSize),
             color,
           });
           if (newBlocks.length > VOXEL_MAX_BLOCKS) {

@@ -4174,3 +4174,65 @@ Voxel yang DIROTASI (hasil Sphere/Cyl/Cone/Torus Shape Generator) **TIDAK IKUT D
 - Verifikasi visual live TUNGGU user — verify di Vercel setelah push.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 54 — HOTFIX: Celah/Bolong di Voxel Lengkung (Sphere/Cylinder/Cone/Torus) (21 Aug 2026)
+
+**Task ID:** 54
+**Agent:** main (Super Z)
+**Task:** Hotfix celah/bolong gelap di permukaan voxel lengkung (Sphere & Cone terlihat di screenshot user). Sesuai `PROMPT_KERJA_3DBlockSim_HOTFIX_VoxelGap.md`.
+
+### Akar masalah
+Voxel yang DIPUTAR (Poin F di Bagian 53) individual berputar sedikit beda arah mengikuti normal permukaan setempat. Karena `size: new Vec3(voxelSize, voxelSize, voxelSize)` SELALU persis seukuran jarak antar-titik grid, sudut-sudut voxel yang berputar jadi renggang dari voxel tetangga → muncul celah gelap kelihatan background di antaranya. Persis terlihat di screenshot: bola & kerucut bolong-bolong.
+
+### Fix — perbesar voxel yang DIROTASI supaya tumpang-tindih nutup celah
+- Tambah konstanta `VOXEL_OVERLAP_FACTOR = 1.6` dekat `VOXEL_MAX_BLOCKS` (module scope).
+- Di `generateVoxelShape`, sebelum push block, hitung `voxSize`:
+  - `useRotation=true` (Sphere/Cyl/Cone/Torus) → `voxSize = voxelSize * VOXEL_OVERLAP_FACTOR` (1.6× lebih besar).
+  - `useRotation=false` (Cube/Tetra/Octa/Icosa) → `voxSize = voxelSize` (TETAP presisi grid, JANGAN diperbesar).
+- `pos` TETAP di titik grid asli — cuma `size` yang berubah. Memperbesar size sambil posisi tetap di tengah otomatis bikin voxel "keluar" merata ke segala arah dari titik grid-nya.
+
+### Kenapa cuma diperbesar saat `useRotation` true
+- Voxel axis-aligned (Cube/Tetra/Octa/Icosa — TIDAK dirotasi) sudah pas persis di grid tanpa celah dari awal (masalah ini cuma muncul akibat rotasi individual).
+- Kalau voxel axis-aligned juga diperbesar, malah jadi saling menembus/overlap gak perlu — kelihatan kotak-kotak kegedean gak wajar.
+
+### Catatan `VOXEL_OVERLAP_FACTOR` = 1.6
+- Titik awal yang dipilih prompt: 1.6.
+- **Nilai final yang dipakai: 1.6** (tidak disesuaikan karena belum bisa verifikasi visual di env CLI — tunggu user tes di Vercel).
+- Boleh disesuaikan di task future kalau user masih lihat celah (naikkan ke 1.8) atau terlalu gempal (turunkan ke 1.4).
+- **WAJIB tes visual dulu sebelum lapor selesai** — sama seperti pelajaran task-task Shape Generator sebelumnya, build sukses TIDAK berarti hasil visual benar.
+
+### Yang TIDAK diubah
+- 3D engine, sistem paint, gizmo, scale step, panah handle, pan camera, orbit camera, zoom wheel.
+- Face culling (Poin B Bagian 53) — masih jalan, blok axis-aligned tetap di-cull, blok dirotasi tetap tidak di-cull (sudah dicatat sebagai trade-off Poin F).
+- `VOXEL_MAX_BLOCKS = 4000`, `VOXEL_MAX_GRID_POINTS = 500.000` (tetap).
+- App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth.
+- Tool lain (Place/Move/Rotate/Scale/Paint/Clone/Delete/Generate/Clear) tetap jalan.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.11s`. BlockSimulator3D chunk: 42.22 KB (gzip 12.45 KB — naik tipis dari 42.20 KB karena tambah konstanta + sedikit logic).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+3. ⚠️ **Verifikasi visual WAJIB** — BELUM dilakukan di env CLI (tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Generate ulang Sphere & Cone (2 kasus di screenshot).
+   - Celah/bolong gelap HARUS hilang atau MINIMAL jauh berkurang.
+   - Permukaan terlihat menyatu rapat (voxel tumpang-tindih).
+4. ✅ **Verifikasi Cube/Tetra/Octa/Icosa TIDAK berubah** — logic-confirmed: `useRotation=false` untuk 4 bentuk ini → `voxSize = voxelSize` (TETAP presisi grid). Tidak ikut membesar.
+5. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 54. Nilai `VOXEL_OVERLAP_FACTOR` final = 1.6 (belum disesuaikan, tunggu tes visual user).
+6. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+7. ✅ **STOP setelah hotfix ini** — Tahap 3 (dual camera) masih menunggu, prompt terpisah nanti.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `fix(3d-block-sim): hotfix celah voxel lengkung — perbesar voxel diputar 1.6x supaya tumpang-tindih`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- Hotfix celah/bolong gelap di permukaan voxel lengkung (Sphere/Cyl/Cone/Torus).
+- Voxel yang dirotasi diperbesar 1.6× supaya sudutnya tumpang-tindih nutup celah.
+- Voxel axis-aligned (Cube/Tetra/Octa/Icosa) TETAP presisi grid — tidak ikut membesar.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- `VOXEL_OVERLAP_FACTOR = 1.6` — titik awal, boleh disesuaikan kalau tes visual user masih ada celah atau terlalu gempal.
+- Verifikasi visual live TUNGGU user — verify di Vercel setelah push, generate Sphere & Cone untuk konfirmasi celah hilang.
+- Commit lokal siap di-push setelah token dari user diterima.
+
