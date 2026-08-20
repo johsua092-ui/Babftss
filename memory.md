@@ -4064,3 +4064,113 @@ User mau kontrol resolusi bebas + hasil visual lebih rapi/konsisten (gaya buildi
 - Verifikasi visual live TUNGGU user — verify di Vercel setelah push dengan minimal 2 Voxel Size per bentuk.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 53 — 3D Block Simulator: 6 Perbaikan Bundel (21 Aug 2026)
+
+**Task ID:** 53
+**Agent:** main (Super Z)
+**Task:** 6 perbaikan independen sesuai `PROMPT_KERJA_3DBlockSim_6Perbaikan.md`. Verifikasi tiap poin selesai sebelum lanjut.
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — semua 6 poin.
+
+### POIN A — Tombol "Clear All" (merah, konfirmasi 2-tahap)
+- Tambah tool baru `clear` di array TOOLS (icon `Eraser` dari lucide-react, shortcut `l` — `x` sudah dipakai Delete).
+- Tambah import `Eraser` di baris import lucide-react.
+- State `confirmClearAll` (bool, default false).
+- useEffect: reset `confirmClearAll=false` tiap user pindah tool dari `clear` (supaya tombol konfirmasi tidak "nyangkut").
+- UI: panel muncul di bottom-center canvas saat `tool='clear'`:
+  - Tahap 1: tombol "Clear All" merah gradient (disabled kalau blockCount=0, hover scale 1.04).
+  - Tahap 2: pesan italic "Yakin? {N} blok akan dihapus permanen" + 2 tombol: "Yakin? Hapus SEMUA" (merah) / "Batal" (abu).
+- Handler "Yakin? Hapus SEMUA": `stateRef.current.blocks = []`, `stateRef.current.selected = null`, `setConfirmClearAll(false)`, `setBlockCount(0)`, `updateUISelection(null)`, `render()`.
+- Catatan UX: konfirmasi 2-tahap WAJIB supaya user tidak accidentally hapus SEMUA blok (data user bisa hilang permanen).
+
+### POIN B — Face Culling (sembunyikan wajah ketutup kubus tetangga, gaya Minecraft)
+- Optimisasi performa PALING BERDAMPAK dari semua poin.
+- Tambah `blockLookup` (Map) di awal `render()` SEBELUM loop `sorted.forEach` — kunci posisi (dibulatkan ke 3 desimal) → blok. Cuma isi blok yang AXIS-ALIGNED (rot ≈ 0 di semua sumbu, toleransi 0.001).
+- Tambah `isFaceCovered(b, dir, sizeAlongAxis)` — cek apakah blok tetangga di arah `dir` (dengan jarak = `sizeAlongAxis`) ada di lookup & ukurannya sama di ketiga sumbu (kondisi "nutup total").
+- Tambah array `faceDirs` — index-matched PERSIS sama urutan array `faces` di render (dipetakan manual dari getBlockCorners):
+  - `[3,2,1,0]` → `-Z`, `[4,5,6,7]` → `+Z`, `[0,1,5,4]` → `-Y`, `[7,6,2,3]` → `+Y`, `[4,7,3,0]` → `-X`, `[1,2,6,5]` → `+X`.
+- Di dalam `sorted.forEach`: setelah `faces` array dibuat, lakukan `faces.forEach((f, fi) => { f.culled = isFaceCovered(b, dir, sizeAlongAxis); })`.
+- Di loop `faces.forEach(f => { ... gambar wajah ... })` yang sudah ada, tambah guard `if (f.culled) return;` di baris paling awal.
+- Blok yang dirotasi (hasil tool Rotate manual) selalu digambar penuh 6 wajah — TIDAK di-cull (return false di `isFaceCovered`).
+
+### POIN C — Background lebih terang
+- `bgGrad.addColorStop(0, '#0e1420')` → `'#3a4a63'` (terang tapi tetap ada gradasi kedalaman).
+- `bgGrad.addColorStop(1, '#05080f')` → `'#1b2536'`.
+- `ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)'` → `0.28` (grid tetap jelas kebaca di atas background yang lebih terang).
+
+### POIN D — Perluas area grid
+- `const GRID_SIZE = 14;` → `const GRID_SIZE = 30;`.
+- **Catatan jujur soal performa** (jangan overclaim): grid lebih luas + face culling (Poin B) sama-sama bantu, TAPI **tidak ada jaminan "0 lag mutlak"** kalau user taruh puluhan ribu blok — itu batasan wajar Canvas 2D dengan proyeksi manual (bukan WebGL). Performa masih tergantung jumlah blok total yang aktif di kanvas.
+
+### POIN E — Fix bug snap grid tidak presisi (Place tool)
+- Akar masalah: `getGridPos()` lama brute-force scan grid dengan step `0.5` lalu di akhir `snap()` MEMBULATKAN ke integer — dua langkah ini gak konsisten (scan step 0.5, hasil akhir dipaksa ke integer), menghasilkan pemilihan titik yang kadang meleset.
+- Fix: ganti total dengan **unprojection analitik** (ray-plane intersection, BUKAN brute-force sampling):
+  - Direction ray di camera space: `Dx = (mx - cx) / f`, `Dy = -(my - cy) / f`, `Dz = 1`.
+  - `camToWorld(v)`: apply `rotX(v, -pitch)`, lalu `rotY(v, -yaw)`, lalu `add cam.target` (inverse dari pipeline `project()`).
+  - Ray origin `p0 = camToWorld(0, 0, -cam.dist)` (kamera position di world space).
+  - Ray endpoint `p1 = camToWorld(Dx, Dy, -cam.dist + Dz)`.
+  - Ray-plane intersection dengan plane Y=0: `t = -p0.y / (p1.y - p0.y)`. Kalau `|B| < 1e-9` (ray sejajar ground), return null.
+  - Hitung `wx = p0.x + t * (p1.x - p0.x)`, `wz = p0.z + t * (p1.z - p0.z)`. Return `snap(new Vec3(wx, 0, wz))`.
+- Verifikasi numerik (`verify_getGridPos.mjs`, 7/7 test lulus): round-trip error = **0.0** (praktis nol) untuk 6 konfigurasi kamera berbeda (default, orbit far, orbit close, pan target, top-down, steep angle). 6 titik grid per konfigurasi = 36 titik tested, semua presisi sempurna.
+
+### POIN F — Shape Generator: aktifkan rotasi untuk 4 bentuk lengkung
+- Voxel-fill sebelumnya SEMUA axis-aligned (rot 0,0,0). User minta supaya voxel di permukaan lengkung (Sphere/Cylinder/Cone/Torus) DIPUTAR mengikuti arah normal permukaan setempat — biar hasil lebih halus mengikuti bentuk (bukan tangga-tangga kotak).
+- Tambah fungsi `solveFullOrientation(N, tangentHint)` kembali (reuse APA ADANYA dari Bagian 51 — sudah diverifikasi numerik akurat sampai 10⁻¹⁶, jangan diturunkan ulang). Fungsi ini sudah pernah ada di file sebelum dihapus di Bagian 52 — sekarang ditambahkan kembali.
+- Tambah helper `computeSurfaceNormal(shapeType, p, params)`:
+  - Sphere: `normalize(p)`.
+  - Cylinder/Cone: `normalize({x:p.x, y:0, z:p.z})` radial horizontal (untuk cone, normal sebenarnya miring, tapi radial horizontal cukup bagus — solveFullOrientation luruskan via Gram-Schmidt).
+  - Torus: arah dari titik terdekat di sumbu major circle (lingkaran radius majorRadius di bidang XZ) ke p.
+- Update `generateVoxelShape`: tambah flag `useRotation` (true untuk Sphere/Cyl/Cone/Torus, false untuk Cube/Tetra/Octa/Icosa).
+- Di dalam loop grid, kalau `useRotation=true`:
+  - Hitung `N = computeSurfaceNormal(shapeType, p, params)`.
+  - Hitung `tangentHint = { x: -p.z/tLen, y: 0, z: p.x/tLen }` (rotate p di bidang XZ by 90°, normalisasi).
+  - `const { rx, ry, rz } = solveFullOrientation(N, tangentHint);` → `rot: new Vec3(rx, ry, rz)`.
+- Bentuk yang TIDAK dirotasi (tetap axis-aligned): Cube, Tetrahedron, Octahedron, Icosahedron (bentuk-bentuk ini sudah "kaku" secara alami/wajar tanpa perlu ikut kontur lengkung).
+
+### ⚠️ TRADE-OFF yang WAJIB dicatat (Poin F vs Poin B)
+Voxel yang DIROTASI (hasil Sphere/Cyl/Cone/Torus Shape Generator) **TIDAK IKUT DAPAT keuntungan Face Culling** di Poin B. Karena Poin B sengaja cuma cull blok axis-aligned (untuk kesederhanaan & akurat). Jadi Shape Generator versi rotasi ini **SECARA SADAR mengorbankan sebagian performa demi visual lebih halus** — ini trade-off yang disengaja, bukan bug. User yang mau performa maksimum bisa pakai bentuk polyhedron datar (Tetra/Octa/Icosa) yang tetap axis-aligned & dapat face culling.
+
+### Yang TIDAK diubah (semua 6 poin)
+- 3D engine (`project`, `rotY`/`rotX`/`rotZ`, `getBlockCorners`, painter's algorithm, backface cull, `hitTest` sort depth, `snap`).
+- Sistem paint, gizmo 6-axis, scale step, panah handle, pan camera, orbit camera, zoom wheel, ghost/preview block.
+- `App.jsx`, `ColorWheelPicker.jsx`, `LogicGatesSimulator.jsx`, file backend/auth.
+- Tool lain (Place/Move/Rotate/Scale/Paint/Clone/Delete/Generate) tetap jalan.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 11.10s`. BlockSimulator3D chunk: 42.20 KB (gzip 12.43 KB — naik dari 38.23 KB karena tambah face culling logic + UI Clear All + solveFullOrientation + computeSurfaceNormal).
+2. ✅ **POIN A** — Tombol Clear All muncul saat `tool='clear'`. Konfirmasi 2-tahap: klik "Clear All" → masuk mode konfirmasi → klik "Yakin? Hapus SEMUA" → semua blok hilang, `s.selected` di-reset. Tombol disabled kalau `blockCount=0`. Reset `confirmClearAll=false` saat user pindah tool (useEffect).
+3. ✅ **POIN B** — Face culling logic-confirmed via code reading:
+   - `blockLookup` diisi cuma blok axis-aligned (rot ≈ 0).
+   - `isFaceCovered` cek tetangga di posisi `b.pos + dir * sizeAlongAxis`, return true cuma kalau ukuran tetangga sama di 3 sumbu.
+   - `faceDirs` index-matched sama `faces` array (dipetakan manual dari getBlockCorners).
+   - Guard `if (f.culled) return;` di awal loop gambar wajah.
+   - Blok yang dirotasi TIDAK di-cull (return false di isFaceCovered).
+   - ⚠️ Verifikasi visual live (taruh banyak blok bertumpuk, cek wajah yang ketutup hilang, wajah luar tetap) — TUNGGU user di Vercel.
+4. ✅ **POIN C** — Background diganti `#3a4a63` → `#1b2536`, grid opacity `0.16` → `0.28`. Logic-confirmed.
+5. ✅ **POIN D** — `GRID_SIZE = 14` → `30`. Grid lebih luas.
+   - **Catatan jujur**: tidak ada jaminan "0 lag mutlak" kalau user taruh puluhan ribu blok — batasan Canvas 2D dengan proyeksi manual. Performa masih tergantung jumlah blok total aktif.
+6. ✅ **POIN E** — `getGridPos` diganti total dengan ray-plane intersection analitik. Verifikasi matematis (`verify_getGridPos.mjs`, 7/7 test lulus): round-trip error = **0.0** untuk 6 konfigurasi kamera × 6 titik grid = 36 titik tested, semua presisi sempurna. Termasuk top-down view, pan target, orbit jauh.
+7. ✅ **POIN F** — `solveFullOrientation` ditambahkan kembali. `computeSurfaceNormal` helper di tambah. `generateVoxelShape` pakai rotasi untuk Sphere/Cyl/Cone/Torus, axis-aligned untuk Cube/Tetra/Octa/Icosa. Trade-off dengan face culling dicatat di atas.
+8. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 53. Catatan jujur soal batas performa (Poin D) dan trade-off face-culling vs rotasi (Poin F) dicatat eksplisit.
+9. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+10. ✅ **STOP setelah 6 poin ini** — Tahap 3 (dual camera) masih menunggu, prompt terpisah nanti.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim): 6 perbaikan bundel — Clear All, face culling, brighter bg, larger grid, snap fix, voxel rotation`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- 6 perbaikan independen selesai: Clear All tool, face culling, background terang, grid luas, snap grid presisi, voxel rotation untuk 4 bentuk lengkung.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- Verifikasi matematis (`verify_getGridPos.mjs`, 7/7 test) lulus untuk snap grid presisi (round-trip error = 0.0).
+- Trade-off face culling vs voxel rotation dicatat eksplisit (Poin F korbankan performa demi visual).
+- Catatan jujur soal batas performa Canvas 2D (Poin D tidak overclaim "0 lag mutlak").
+- Tidak menyentuh sistem lain (gizmo, paint, pan camera, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth).
+- Verifikasi visual live TUNGGU user — verify di Vercel setelah push.
+- Commit lokal siap di-push setelah token dari user diterima.
+

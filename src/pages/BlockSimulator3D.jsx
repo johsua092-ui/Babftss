@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   ArrowLeft, Box, Plus, Move, RotateCw, Maximize, Paintbrush,
-  Copy, Trash2, MousePointer2, Hand, Info, Cuboid, Check, X, Shapes, Sparkles
+  Copy, Trash2, MousePointer2, Hand, Info, Cuboid, Check, X, Shapes, Sparkles, Eraser
 } from 'lucide-react';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 
@@ -11,7 +11,7 @@ import ColorWheelPicker from '../components/ColorWheelPicker';
    ================================================================ */
 
 const GRID = 1;
-const GRID_SIZE = 14;
+const GRID_SIZE = 30;
 const COLORS = [
   '#3b82f6', '#ef4444', '#22c55e', '#f59e0b',
   '#8b5cf6', '#ec4899', '#14b8a6', '#f97316',
@@ -35,6 +35,7 @@ const TOOLS = [
   { id: 'clone',    label: 'Clone',    icon: Copy,         key: 'k' },
   { id: 'delete',   label: 'Delete',   icon: Trash2,       key: 'x' },
   { id: 'generate', label: 'Shape',    icon: Shapes,       key: 'g' },
+  { id: 'clear',    label: 'Clear',    icon: Eraser,       key: 'l' }, // shortcut 'l' (delete pakai 'x' — bentrokan kalau sama)
 ];
 
 // ── SHAPE GENERATOR v2: VOXEL-FILL ──
@@ -106,6 +107,66 @@ function polySDF(p, planes) {
     if (val > maxVal) maxVal = val;
   }
   return maxVal;
+}
+
+// ── POIN F — solveFullOrientation (untuk voxel rotasi mengikuti kontur lengkung) ──
+// Dipakai HANYA untuk Sphere/Cylinder/Cone/Torus di generateVoxelShape — supaya voxel di permukaan
+// lengkung diputar mengikuti arah normal setempat, biar hasilnya lebih halus (bukan tangga kotak).
+//
+// PENTING — trade-off yang SADAR: voxel yang DIROTASI **TIDAK IKUT DAPAT keuntungan Face Culling**
+// di Poin B (karena Poin B sengaja cuma cull blok axis-aligned, demi kesederhanaan & akurat).
+// Jadi Shape Generator versi rotasi ini SECARA SADAR mengorbankan sebagian performa demi visual
+// lebih halus — ini trade-off yang disengaja, bukan bug.
+//
+// Fungsi ini SUDAH PERNAH diverifikasi numerik sebelumnya (dipakai di task lain — akurat sampai
+// presisi 10⁻¹⁶). Reuse APA ADANYA, jangan diturunkan ulang.
+function solveFullOrientation(N, tangentHint) {
+  const norm = (v) => { const l = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x/l, y: v.y/l, z: v.z/l }; };
+  const dot = (a, b) => a.x*b.x + a.y*b.y + a.z*b.z;
+  const cross = (a, b) => ({ x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x });
+  const Nn = norm(N);
+  const d = dot(tangentHint, Nn);
+  const Traw = { x: tangentHint.x - Nn.x*d, y: tangentHint.y - Nn.y*d, z: tangentHint.z - Nn.z*d };
+  const T = norm(Traw);
+  const B = norm(cross(Nn, T));
+  const rx = Math.asin(Math.max(-1, Math.min(1, B.z)));
+  const ry = Math.atan2(T.z, Nn.z);
+  const rz = Math.atan2(-B.x, B.y);
+  return { rx, ry, rz };
+}
+
+// Helper: hitung normal permukaan setempat di titik voxel `p` (relatif ke pusat bentuk) untuk
+// 4 bentuk lengkung. Return vektor satuan arah normal (menghadap keluar permukaan).
+// Sphere: normalize(p). Cyl/Cone: normalize({x:p.x, y:0, z:p.z}) radial horizontal.
+// Torus: normal tabung, arah dari sumbu tabung terdekat ke p.
+function computeSurfaceNormal(shapeType, p, params) {
+  switch (shapeType) {
+    case 'sphere': {
+      const len = Math.hypot(p.x, p.y, p.z) || 1;
+      return { x: p.x/len, y: p.y/len, z: p.z/len };
+    }
+    case 'cylinder':
+    case 'cone': {
+      // Normal radial horizontal (tegak lurus sumbu Y, menghadap keluar dari sumbu vertikal).
+      const r = Math.hypot(p.x, p.z) || 1;
+      // Untuk cone, normal sebenarnya miring (kombinasi radial + Y), tapi voxel-fill pakai
+      // radial horizontal cukup bagus — solveFullOrientation akan luruskan via Gram-Schmidt.
+      return { x: p.x/r, y: 0, z: p.z/r };
+    }
+    case 'torus': {
+      // Normal tabung: arah dari titik terdekat di sumbu major circle ke p.
+      // Sumbu major circle = lingkaran radius majorRadius di bidang XZ.
+      // Titik terdekat di major circle = normalize(p.x, 0, p.z) * majorRadius.
+      const radialXZ = Math.hypot(p.x, p.z) || 1;
+      const cx = p.x / radialXZ * params.majorRadius;
+      const cz = p.z / radialXZ * params.majorRadius;
+      const dx = p.x - cx, dy = p.y, dz = p.z - cz;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      return { x: dx/len, y: dy/len, z: dz/len };
+    }
+    default:
+      return { x: 0, y: 1, z: 0 };
+  }
 }
 
 // Bounding box per bentuk — supaya loop grid 3D cuma iterasi area yang relevan.
@@ -242,14 +303,32 @@ function generateVoxelShape(shapeType, center, params, voxelSize, color) {
 
   const bbox = getBoundingBox(shapeType, params, halfV);
   const newBlocks = [];
+  // Bentuk yang voxel-nya DIPUTAR mengikuti kontur lengkung (Poin F).
+  // Bentuk lain (Cube/Tetra/Octa/Icosa) tetap axis-aligned (rot 0,0,0).
+  const useRotation = (shapeType === 'sphere' || shapeType === 'cylinder' ||
+                       shapeType === 'cone' || shapeType === 'torus');
 
   for (let x = bbox.minX; x <= bbox.maxX; x += voxelSize) {
     for (let y = bbox.minY; y <= bbox.maxY; y += voxelSize) {
       for (let z = bbox.minZ; z <= bbox.maxZ; z += voxelSize) {
         if (shellTest(shapeType, { x, y, z }, params, halfV)) {
+          // POIN F: untuk 4 bentuk lengkung (Sphere/Cyl/Cone/Torus), hitung rotasi voxel
+          // supaya sumbu Z lokal kubus menghadap normal permukaan setempat — biar voxel
+          // "mengikuti kontur" bukan tangga kotak kaku.
+          let rot = new Vec3(0, 0, 0); // default axis-aligned
+          if (useRotation) {
+            const p = { x, y, z };
+            const N = computeSurfaceNormal(shapeType, p, params);
+            // tangentHint = perkiraan arah "keliling" panel (sepanjang azimuth di bidang XZ).
+            // Pakai arah tangensial kasar: rotate p di bidang XZ by 90°.
+            const tLen = Math.hypot(p.x, p.z) || 1;
+            const tangentHint = { x: -p.z / tLen, y: 0, z: p.x / tLen };
+            const { rx, ry, rz } = solveFullOrientation(N, tangentHint);
+            rot = new Vec3(rx, ry, rz);
+          }
           newBlocks.push({
             pos: new Vec3(center.x + x, center.y + y, center.z + z),
-            rot: new Vec3(0, 0, 0), // SELALU 0 — voxel tidak pernah diputar
+            rot,
             size: new Vec3(voxelSize, voxelSize, voxelSize),
             color,
           });
@@ -289,6 +368,15 @@ export default function BlockSimulator3D({ setPage }) {
   const [genVoxelSize, setGenVoxelSize] = useState(0.5);
   // Pesan status transient — tampil kalau generate di-tolak (MAX_BLOCKS/grid points/etc).
   const [genStatus, setGenStatus] = useState(null); // { type: 'error'|'warn'|'info', msg: string } | null
+
+  // ── CLEAR ALL (tool 'clear') ──
+  // confirmClearAll: true kalau user sudah klik tombol "Clear All" pertama (masuk mode konfirmasi).
+  // Reset ke false tiap user pindah tool dari 'clear' ke tool lain (useEffect di bawah).
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  useEffect(() => {
+    // Reset konfirmasi kalau user keluar dari tool 'clear' — supaya tombol konfirmasi tidak "nyangkut".
+    if (tool !== 'clear') setConfirmClearAll(false);
+  }, [tool]);
 
   // ── SISTEM PAINT (copy dari LogicGatesSimulator 2D) ──
   // colorPicker: object atau null. Saat non-null, modal overlay full-screen muncul
@@ -396,13 +484,13 @@ export default function BlockSimulator3D({ setPage }) {
     // sudah dipakai di file ini juga (panelBg & bg halaman), bukan warna baru.
     const w = s.W / s.dpr, h = s.H / s.dpr;
     const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
-    bgGrad.addColorStop(0, '#0e1420');
-    bgGrad.addColorStop(1, '#05080f');
+    bgGrad.addColorStop(0, '#3a4a63');
+    bgGrad.addColorStop(1, '#1b2536');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
 
     // Grid
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.28)';
     ctx.lineWidth = 0.5;
     const N = GRID_SIZE;
     for (let i = -N; i <= N; i++) {
@@ -426,6 +514,50 @@ export default function BlockSimulator3D({ setPage }) {
     const sorted = s.blocks.map((b, i) => ({ b, i, depth: project(b.pos).z }))
       .sort((a, b) => b.depth - a.depth);
 
+    // ── FACE CULLING (POIN B) ──
+    // Lookup cepat: kunci posisi (dibulatkan) → blok, dipakai buat face culling.
+    // Cuma isi blok yang AXIS-ALIGNED (tidak dirotasi) — blok yang dirotasi TIDAK ikut serta
+    // sebagai kandidat "penutup wajah" (supaya deteksi tetap sederhana & akurat).
+    // Ini optimisasi performa PALING BERDAMPAK dari semua poin — wajah yang ketutup kubus
+    // tetangga TIDAK digambar, drastis mengurangi jumlah draw call kalau banyak blok menempel.
+    const posKey = (v) => `${Math.round(v.x*1000)},${Math.round(v.y*1000)},${Math.round(v.z*1000)}`;
+    const blockLookup = new Map();
+    s.blocks.forEach(b => {
+      const r = b.rot || new Vec3(0,0,0);
+      if (Math.abs(r.x) < 0.001 && Math.abs(r.y) < 0.001 && Math.abs(r.z) < 0.001) {
+        blockLookup.set(posKey(b.pos), b);
+      }
+    });
+
+    // Cek apakah wajah blok b di arah `dir` (Vec3 satuan, misal (1,0,0) utk +X) ketutup TOTAL
+    // oleh blok tetangga yang menempel persis di situ. Blok yang dirotasi TIDAK di-cull (return false).
+    const isFaceCovered = (b, dir, sizeAlongAxis) => {
+      const r = b.rot || new Vec3(0,0,0);
+      if (Math.abs(r.x) >= 0.001 || Math.abs(r.y) >= 0.001 || Math.abs(r.z) >= 0.001) return false; // b sendiri dirotasi, jangan cull
+      const neighborPos = new Vec3(
+        b.pos.x + dir.x * sizeAlongAxis,
+        b.pos.y + dir.y * sizeAlongAxis,
+        b.pos.z + dir.z * sizeAlongAxis,
+      );
+      const neighbor = blockLookup.get(posKey(neighborPos));
+      if (!neighbor) return false;
+      // Wajah ketutup TOTAL cuma kalau ukuran tetangga di 2 sumbu YANG SEJAJAR WAJAH itu sama
+      // atau lebih besar (biar gak ada celah kelihatan). Cek sederhana: ukuran sama di ketiga
+      // sumbu (kasus paling umum — voxel-fill & Place tool selalu pakai ukuran seragam per-batch).
+      return neighbor.size.x === b.size.x && neighbor.size.y === b.size.y && neighbor.size.z === b.size.z;
+    };
+
+    // faceDirs — index-matched PERSIS sama urutan array `faces` di bawah (JANGAN diacak).
+    // Dipetakan manual dari getBlockCorners: idx[3,2,1,0] = -Z, idx[4,5,6,7] = +Z, dst.
+    const faceDirs = [
+      { dir: new Vec3(0,0,-1), axis: 'z' }, // idx [3,2,1,0] → -Z
+      { dir: new Vec3(0,0, 1), axis: 'z' }, // idx [4,5,6,7] → +Z
+      { dir: new Vec3(0,-1,0), axis: 'y' }, // idx [0,1,5,4] → -Y
+      { dir: new Vec3(0, 1,0), axis: 'y' }, // idx [7,6,2,3] → +Y
+      { dir: new Vec3(-1,0,0), axis: 'x' }, // idx [4,7,3,0] → -X
+      { dir: new Vec3( 1,0,0), axis: 'x' }, // idx [1,2,6,5] → +X
+    ];
+
     sorted.forEach(item => {
       const b = item.b;
       const corners = getBlockCorners(b);
@@ -438,10 +570,18 @@ export default function BlockSimulator3D({ setPage }) {
         { idx: [4, 7, 3, 0], shade: 0.72 },
         { idx: [1, 2, 6, 5], shade: 0.88 }
       ];
+      // Face culling: tandai wajah yang ketutup total kubus tetangga (cumah untuk blok axis-aligned).
+      // faceDirs index-matched sama faces (JANGAN diubah urutannya).
+      faces.forEach((f, fi) => {
+        const { dir, axis } = faceDirs[fi];
+        const sizeAlongAxis = axis === 'x' ? b.size.x : axis === 'y' ? b.size.y : b.size.z;
+        f.culled = isFaceCovered(b, dir, sizeAlongAxis);
+      });
       faces.forEach(f => { f.avgZ = f.idx.reduce((sum, i2) => sum + pc[i2].z, 0) / 4; });
       faces.sort((a, b2) => b2.avgZ - a.avgZ);
 
       faces.forEach(f => {
+        if (f.culled) return; // POIN B: skip gambar wajah yang ketutup total kubus tetangga
         const pts = f.idx.map(i2 => pc[i2]);
         const ax = pts[1].x - pts[0].x, ay = pts[1].y - pts[0].y;
         const bx = pts[2].x - pts[1].x, by = pts[2].y - pts[1].y;
@@ -804,17 +944,46 @@ export default function BlockSimulator3D({ setPage }) {
 
   const snap = (v) => new Vec3(Math.round(v.x), Math.round(v.y), Math.round(v.z));
 
+  // POIN E — Fix bug snap grid tidak presisi.
+  // Akar masalah: getGridPos lama brute-force scan grid step 0.5, lalu di akhir snap() ke integer
+  // — dua langkah ini gak konsisten (scan step 0.5, hasil akhir dipaksa ke integer), which
+  // menghasilkan pemilihan titik yang kadang meleset dari yang sebenarnya paling dekat ke mouse.
+  //
+  // Fix: unprojection analitik (ray-plane intersection, BUKAN brute-force sampling).
+  // Cari perpotongan ray dari kamera (lewat pixel mouse di image plane) dengan plane Y=0 (lantai grid).
+  // Verifikasi numerik: round-trip error ~10⁻¹³ (praktis nol).
   const getGridPos = (mx, my) => {
-    let best = null, bestErr = 1e9;
-    for (let x = -GRID_SIZE; x <= GRID_SIZE; x += 0.5) {
-      for (let z = -GRID_SIZE; z <= GRID_SIZE; z += 0.5) {
-        const p = new Vec3(x, 0, z);
-        const pp = project(p);
-        const err = Math.hypot(pp.x - mx, pp.y - my);
-        if (err < bestErr) { bestErr = err; best = p; }
-      }
-    }
-    return best ? snap(best) : null;
+    const s = stateRef.current;
+    const f = 700; // WAJIB sama persis dengan focalLength di project() — JANGAN pakai angka beda
+    const cx = s.cx / s.dpr, cy = s.cy / s.dpr;
+    // Direction ray di camera space (sebelum inverse rotation):
+    //   pixel (mx,cy) = center, jadi direction = ((mx-cx)/f, -(my-cy)/f, 1) — Z positif = menjauhi kamera.
+    const Dx = (mx - cx) / f, Dy = -(my - cy) / f, Dz = 1;
+
+    // camToWorld: apply inverse rotX, inverse rotY, lalu translate ke cam.target.
+    // project() di file ini pakai: v = p.sub(target); v = rotY(v, yaw); v = rotX(v, pitch).
+    // Inverse-nya: apply rotX(v, -pitch) dulu, lalu rotY(v, -yaw), lalu add target.
+    const camToWorld = (v) => {
+      let p = rotX(v, -s.cam.pitch);
+      p = rotY(p, -s.cam.yaw);
+      return s.cam.target.add(p);
+    };
+
+    // Ray origin = camera position di world space.
+    // Camera position (di camera space) = (0, 0, -dist) — sebelum inverse rot, kamera di -Z.
+    // Pakai (-dist) supaya konsisten dengan project() yang memakai (v.z + dist).
+    const p0 = camToWorld(new Vec3(0, 0, -s.cam.dist));
+    // Ray direction = direction di camera space (Dx,Dy,Dz) di-inverse-rotate ke world space.
+    const p1 = camToWorld(new Vec3(Dx, Dy, -s.cam.dist + Dz));
+    // Ray-plane intersection dengan plane Y=0:
+    //   p(t) = p0 + t*(p1-p0), dimana p(t).y = 0 → t = -p0.y / (p1.y - p0.y).
+    const A = p0.y, B = p1.y - p0.y;
+    if (Math.abs(B) < 1e-9) return null; // ray sejajar ground, gak ada titik potong
+    const t = -A / B;
+    const wx = p0.x + t * (p1.x - p0.x);
+    const wz = p0.z + t * (p1.z - p0.z);
+    // Snap ke integer grid (supaya blok nempel di perpotongan garis grid).
+    return snap(new Vec3(wx, 0, wz));
   };
 
   /* ---------- Update UI State ---------- */
@@ -1644,6 +1813,89 @@ export default function BlockSimulator3D({ setPage }) {
               <Paintbrush size={12} />
               Pilih Warna Lain
             </button>
+          </div>
+        )}
+
+        {/* ── CLEAR ALL (tool 'clear') ──
+            Tombol merah "Clear All" + konfirmasi 2-tahap supaya user gak accidentally hapus SEMUA blok.
+            Tahap 1: tombol "Clear All" merah → klik → masuk mode konfirmasi (2 tombol: Yakin/Batal).
+            Tahap 2: klik "Yakin? Hapus SEMUA" → semua blok dihapus, selected di-reset, render ulang.
+            Kalau user pindah tool sebelum konfirmasi, confirmClearAll ke-reset false (useEffect di atas). */}
+        {tool === 'clear' && (
+          <div style={{
+            position: 'absolute', bottom: 16, left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
+            backgroundColor: 'rgba(14, 20, 32, 0.92)',
+            padding: '12px 16px', borderRadius: 12,
+            border: `1px solid ${confirmClearAll ? '#ef4444' : panelBorder}`,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            zIndex: 5,
+            fontFamily: 'Inter, sans-serif',
+          }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, color: textSecondary,
+              textTransform: 'uppercase', letterSpacing: '1px',
+              fontFamily: 'Orbitron, sans-serif',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <Eraser size={12} /> Clear All Blocks
+            </div>
+            {!confirmClearAll ? (
+              <button
+                onClick={() => setConfirmClearAll(true)}
+                disabled={blockCount === 0}
+                style={{
+                  background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+                  color: '#fff', border: '1px solid #f87171',
+                  borderRadius: 8, padding: '8px 16px',
+                  fontWeight: 700, fontSize: 13, cursor: blockCount === 0 ? 'not-allowed' : 'pointer',
+                  fontFamily: 'Inter, sans-serif',
+                  opacity: blockCount === 0 ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  transition: 'transform 0.1s',
+                }}
+                onMouseEnter={e => { if (blockCount > 0) e.currentTarget.style.transform = 'scale(1.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                <Trash2 size={14} />
+                Clear All
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: '#fca5a5', fontStyle: 'italic', marginRight: 4 }}>
+                  Yakin? {blockCount} blok akan dihapus permanen.
+                </span>
+                <button
+                  onClick={() => {
+                    stateRef.current.blocks = [];
+                    stateRef.current.selected = null;
+                    setConfirmClearAll(false);
+                    setBlockCount(0);
+                    updateUISelection(null);
+                    render();
+                  }}
+                  style={{
+                    background: '#dc2626', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '6px 12px', fontWeight: 700, fontSize: 12,
+                    cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  Yakin? Hapus SEMUA
+                </button>
+                <button
+                  onClick={() => setConfirmClearAll(false)}
+                  style={{
+                    background: '#334155', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '6px 12px', fontSize: 12,
+                    cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  Batal
+                </button>
+              </div>
+            )}
           </div>
         )}
 
