@@ -3749,3 +3749,129 @@ if (tool === 'move') {
 - Build sukses 0 error, scope terjaga (1 file saja, +35/-2 baris).
 - Commit lokal siap di-push.
 
+---
+
+## Bagian 50 — 3D Block Simulator: Shape Generator (Tahap 2/3) (21 Aug 2026)
+
+**Task ID:** 50
+**Agent:** main (Super Z)
+**Task:** Implementasi "Shape Generator" — tool baru yang otomatis menghasilkan BANYAK kubus "panel" (masing-masing kubus biasa dengan size.z tipis) mengikuti permukaan bentuk target (Sphere/Cylinder/Cone/Torus/Tetrahedron/Octahedron/Icosahedron/Cube). Sesuai `PROMPT_KERJA_3DBlockSim_ShapeGenerator_Tahap2.md`.
+
+### KONSEP PENTING — BUKAN "PRIMITIF BARU"
+SEMUA bentuk yang dihasilkan TETAP berupa objek kubus biasa (elemen array `s.blocks`, struktur `{pos, rot, size, color, id}` — SAMA PERSIS seperti kubus yang sudah ada). TIDAK ADA geometri baru, TIDAK ADA field `shape` di data block, TIDAK ADA perubahan ke `getBlockCorners`/`render`/`hitTest`. Setelah di-generate, tiap kubus bisa di-Move/Rotate/Scale/Paint/Delete satu-satu seperti kubus biasa.
+
+### File yang diubah (HANYA 1 file)
+- `src/pages/BlockSimulator3D.jsx` — + banyak baris (8 fungsi generator + data polyhedron + UI panel + handler).
+
+### Perubahan
+
+**1. Tool baru di array TOOLS:**
+- `{ id: 'generate', label: 'Shape', icon: Shapes, key: 'g' }` — tambah import `Shapes` & `Sparkles` dari lucide-react.
+- Shortcut keyboard `g`.
+
+**2. Data polyhedron (hardcode, rumus baku — JANGAN diubah):**
+- `TETRAHEDRON` — 4 vertex, 4 face segitiga.
+- `OCTAHEDRON` — 6 vertex, 8 face segitiga.
+- `ICOSAHEDRON` — 12 vertex (PHI = golden ratio), 20 face segitiga.
+- Semua di-define di luar component (module scope) supaya gak di-recreate tiap render.
+
+**3. Rumus `alignPlateToNormal(N)`:**
+- Input: vektor satuan normal permukaan target `{x,y,z}`.
+- Output: `{rx, ry}` untuk dipakai sebagai `b.rot.x` dan `b.rot.y` (rot.z biarkan 0).
+- Bikin sumbu Z lokal kubus (sumbu tipis panel) menghadap arah N.
+- Verifikasi numerik: 7 arah normal (6 axis + 1 random diagonal) lulus — applyRotation((0,0,1), rx, ry) selalu = N target.
+
+**4. Fungsi generator (8 total):**
+- `generateFlatPolyhedron(poly, center, targetRadius, thickness, color)` — Tetrahedron/Octahedron/Icosahedron, 1 panel per wajah segitiga, size = edge × 0.95.
+- `generateCube(center, size, thickness, color)` — 6 panel (1 per sisi kubus), size = `size` (param), normal ±X/±Y/±Z.
+- `generateSphere(center, radius, segments, thickness, color)` — UV-sphere tiling, rings × slices panel. rings = max(3, seg/2), slices = max(3, seg).
+- `generateCylinder(center, radius, height, segments, thickness, color)` — DINDING SAMPING SAJA (tanpa tutup atas/bawah — batasan).
+- `generateCone(center, radius, height, segments, thickness, color)` — DINDING SAMPING MERUNCING KE ATAS (radius linear turun ke 0 di puncak, TANPA tutup bawah — batasan).
+- `generateTorus(center, majorRadius, minorRadius, segments, thickness, color)` — donat, major × minor segments panel.
+
+**5. State baru:**
+- `genShape` (default 'sphere'), `genSize` (default 4), `genSegments` (default 10), `genThickness` (default 0.15).
+
+**6. Handler `runGenerate(mx, my)`:**
+- Pakai `getGridPos` + `getPlacementY` buat dapetin pusat bentuk (sama seperti `runPlace`).
+- Clamp: segments 4-24, size min 0.5, thickness min 0.05.
+- Switch ke fungsi generator sesuai `genShape`.
+- Assign id tiap blok (pola PERSIS seperti runPlace: `Date.now() + Math.random()`).
+- Push semua hasil ke `s.blocks`, select blok pertama, update UI block count, render.
+
+**7. UI Panel "Shape Generator" (render HANYA saat `tool='generate'`):**
+- Posisi: kanan atas (symmetry dengan palette warna di kanan saat `tool='place'`).
+- Dark card style konsisten dengan panel lain di file ini.
+- Dropdown `<select>` 8 opsi bentuk.
+- Input "Size (radius)" — angka bebas, min 0.5.
+- Input "Segments (4-24)" — angka integer, clamp 4-24.
+- Peringatan kuning ⚠ kalau segments > 16 ("High segments = many blocks, bisa berat").
+- Input "Panel Thickness" — angka bebas, min 0.05.
+- Instruksi "Klik grid untuk generate" dengan icon Sparkles.
+
+**8. Help Panel update:**
+- Tambah info: "Shape: klik grid → generate bentuk (sphere/cube/torus/dst)".
+- Tambah note italic: "Atur Shape/Size/Segments di panel kanan → klik grid untuk taruh".
+- Update shortcut list: `P / M / R / S / C / K / X / G` (tambah G).
+
+### Yang TIDAK diubah (sesuai scope)
+- 3D engine (`project`, `rotY`/`rotX`/`rotZ`, `getBlockCorners`, painter's algorithm, backface cull, `hitTest`, `getGridPos`, `snap`, `getPlacementY`).
+- Sistem paint (colorPicker modal, eyedropper, marching ants).
+- Gizmo Move (panah), Scale (lingkaran + Scale Step snap), Rotate (outline+busur).
+- Pan camera (klik-kiri drag di empty space).
+- Orbit kamera (klik-kanan drag), zoom wheel, ghost/preview block (Bagian 43).
+- `src/App.jsx`, `src/components/ColorWheelPicker.jsx`, `src/pages/LogicGatesSimulator.jsx`, file lain.
+- File backend/auth apapun.
+
+### Batasan (WAJIB dicatat di memory.md, sesuai instruksi prompt kerja)
+- **Cylinder TANPA tutup atas/bawah** — cuma dinding samping. User bisa tambah tutup manual lewat tool Place atau dengan beberapa Cube panel.
+- **Cone TANPA tutup bawah** — cuma dinding samping yang meruncing ke atas. Tutup bawah bisa ditambah manual.
+- **Torus minorRadius = size × 0.35** (fixed, tidak ada input terpisah) — kalau user mau presisi, bisa tambah input terpisah di task future (opsional, tidak diimplementasi di sini).
+- **Segments max 24** — di atas itu browser bisa nge-lag parah (Sphere seg=24 = 288 blok, Torus seg=24 = 288 blok).
+- **Polyhedron datar (Tetra/Octa/Icosa) tidak terpengaruh Segments** — mereka hardcode 4/8/20 face (1 panel per face). Segments cuma relevan utk Sphere/Cylinder/Cone/Torus.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 12.05s`. BlockSimulator3D chunk: 38.10 KB (gzip 11.14 KB — naik signifikan dari 29.34 KB karena tambah 8 fungsi generator + data polyhedron + UI panel + handler).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. Ada 5 file lain dengan mode-changes dari clone (lib/auditLog.js, lib/marketplace.js, src/components/CartPanel.jsx, src/components/MenuButton3D.jsx, src/pages/MarketplacePage.jsx) — TIDAK disentuh, hanya mode bits dari operasi git clone, bukan konten.
+3. ⚠️ **Verifikasi visual tiap bentuk** BELUM dilakukan (env CLI tidak ada browser). User perlu verify di preview Vercel setelah push:
+   - Generate tiap dari 8 pilihan, cek visual kasar mendekati target.
+   - Sphere: bulat (UV-sphere).
+   - Cylinder: tabung (tanpa tutup atas/bawah — batasan).
+   - Cone: meruncing ke atas (tanpa tutup bawah — batasan).
+   - Torus: donat.
+   - Tetrahedron: 4 wajah segitiga.
+   - Octahedron: 8 wajah segitiga (bentuk diamond).
+   - Icosahedron: 20 wajah segitiga (mendekati bulat).
+   - Cube: 6 panel sisi.
+4. ✅ **Verifikasi blok hasil generate BISA di-edit normal** — logic-confirmed: tiap blok di-generate dengan struktur `{pos, rot, size, color, id}` PERSIS seperti kubus yang dibuat `runPlace`. Tidak ada field `shape` baru. `getBlockCorners` & `hitTest` tidak diubah — semua blok (termasuk hasil generate) diperlakukan sama.
+5. ⚠️ **Verifikasi performa** — belum di-test live, tapi:
+   - Block count max = 288 (Sphere/Torus/Cylinder seg=24).
+   - Peringatan UI muncul kalau segments > 16.
+   - Clamp segments 4-24 di handler (`runGenerate`).
+6. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 50.
+7. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+8. ✅ **STOP setelah ini** — Tahap 3 (split-screen dual camera) = prompt terpisah nanti.
+
+### Verifikasi matematis (verify_align_plate.mjs, 18/18 test lulus)
+- alignPlateToNormal benar untuk 7 arah normal: ±X, ±Y, ±Z, dan diagonal (1,1,1)/√3.
+- Block count per bentuk verified:
+  - Sphere seg=10 → 50, seg=24 → 288, seg=4 → 12 (rings clamped to 3).
+  - Torus seg=10 → 50, seg=24 → 288.
+  - Cylinder seg=10 → 50, seg=24 → 288.
+  - Tetrahedron → 4, Octahedron → 8, Icosahedron → 20, Cube → 6.
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(3d-block-sim): Tahap 2/3 — Shape Generator (Sphere/Cylinder/Cone/Torus/Tetra/Octa/Icosa/Cube)`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- Shape Generator sudah jalan — user bisa pilih 8 bentuk, atur size/segments/thickness, klik grid untuk generate.
+- Semua blok hasil generate adalah kubus biasa (size.z tipis) yang bisa di-edit individual seperti kubus Place.
+- 2 batasan catat eksplisit: Cylinder tanpa tutup atas/bawah, Cone tanpa tutup bawah.
+- Build sukses 0 error, scope terjaga (1 file saja).
+- Verifikasi matematis (18/18 test) lulus untuk alignPlateToNormal + block count per bentuk.
+- Tidak menyentuh sistem lain (gizmo, paint, pan camera, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx, backend/auth).
+- Commit lokal siap di-push setelah token dari user diterima.
+
