@@ -1096,13 +1096,36 @@ Contoh (`hsl(H, S%, L%)`):
 - Canvas: `hsl(270,70%,68%)` / `hsl(270,75%,42%)` / `hsl(270,75%,30%)`
 - Shapes: `hsl(142,55%,55%)` / `hsl(142,55%,35%)` / `hsl(142,55%,24%)`
 
-### 39.4 Icon — SVG Custom + 2 Gradient Global
+### 39.4 Icon — SVG Custom + 2 Gradient Global + STANDAR UKURAN RESMI
 
 - **Icon** SVG custom per-tombol (BUKAN icon flat lucide/emoji polos). Tiap icon punya struktur multi-path yang membuatnya terlihat "dengan shading".
 - **Shading** memakai 2 gradient yang dideklarasi **SEKALI di root level `App.jsx`** (lihat Bagian 39.5):
   - `url(#menuIconGrad)` — linear gradient putih (1.0 → 0.75 → 0.4 opacity) untuk permukaan datar.
   - `url(#menuSphereGrad)` — radial gradient putih (1.0 → 0.7 → 0.28 opacity) untuk objek bulat (sphere).
 - Detail kecil (stroke gelap `rgba(0,0,0,0.2–0.3)`, highlight putih `rgba(255,255,255,0.55–0.95)`) wajib dipakai untuk depth sense.
+
+#### STANDAR UKURAN ICON (RESMI — WAJIB DIPAKAI SEMUA MENU BUTTON)
+
+> **Ini adalah standar final yang sudah divalidasi user secara visual.**
+> JANGAN diubah kecuali didiskusikan dulu. Nomor di bawah bukan sekadar default
+> yang bisa di-tune — ini **standar resmi**.
+
+| Komponen | Ukuran | Catatan |
+|----------|-------|--------|
+| **Container icon** di `MenuButton3D.jsx` | **56 × 56 px** | Div flex yang membungkus SVG. `flexShrink: 0` supaya tidak kecil saat space sempit. |
+| **SVG render** (`width`/`height` attribute di `<svg>`) | **48 × 48 px** | Pakai nilai literal di tiap `<svg width="48" height="48">` di App.jsx. JANGAN pakai `100%` — harus literal px. |
+| **viewBox** | `0 0 24 24` (kecuali Shapes yang `viewBox="-4 -6 32 34"` untuk padding geometri) | Coordinate system internal SVG. Tidak diubah — yang diubah hanya `width`/`height` render. |
+| **Rasio SVG/container** | **86%** (48/56) | Rasio optimal — icon cukup besar tapi masih ada sedikit padding untuk `drop-shadow(0 1px 2px rgba(0,0,0,0.3))` supaya tidak nabrak tepi. |
+
+**Kenapa 48/56 (bukan 56/56 = 100%)?**
+- Kalau SVG = container (100%), icon akan nabrak tepi container, drop-shadow terpotong, terlihat berantakan.
+- Kalau SVG < 60% container (mis. 24/40 seperti versi awal), icon terlihat kekecilan — banyak white space kosong, sekitar hanya 20-25% lebar tombol (verified via VLM analysis).
+- **48/56 = 86%** adalah sweet spot — icon menempati ~40-50% lebar tombol (sebelumnya hanya 20-25%), proporsional dengan label teks, dan drop-shadow masih punya ruang.
+
+**Aturan implementasi:**
+1. Container di `MenuButton3D.jsx` — hardcoded `width: 56, height: 56` (inline style, bukan prop).
+2. SVG di App.jsx — pakai literal `width="48" height="48"` di tiap elemen `<svg>` (6 icon menu). JANGAN pakai prop `size` di lucide atau `width="100%"`.
+3. Kalau nanti bikin tombol variant `size="sm"` (sub-menu), rasio **TETAP 86%** — mis. container 40×40 → SVG 34×34. Bukan 24×24.
 
 ### 39.5 SVG Gradient Defs — SEKALI di Root, BUKAN per-Komponen
 

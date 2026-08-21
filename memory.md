@@ -4423,3 +4423,66 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
 - Scope terjaga: 4 file disentuh (MenuButton3D.jsx, App.jsx, design.md, memory.md).
   Tidak menyentuh sistem lain (LogicGatesSimulator, BlockSimulator3D, backend, auth, dll).
 - Push normal (NO force push) — sesuai checklist Bagian 6 prompt kerja.
+
+---
+
+## Bagian 57 — STANDAR UKURAN ICON MENU BUTTON (RESMI)
+
+> **Catatan penting:** Ini adalah konfirmasi standar ukuran final yang sudah divalidasi
+> user secara visual. Bukan sekadar default — ini **standar resmi** yang WAJIB dipakai
+> untuk semua menu button ke depan. Detail teknis lihat `design.md` Bagian 39.4 sub-section
+> "STANDAR UKURAN ICON (RESMI)".
+
+### Kronologi Singkat
+1. **Iterasi 1** (Bagian 56, desain final): Container icon `40×40`, SVG render `24×24`.
+   Rasio SVG/container = 60%. Sekilas terlihat OK di teori.
+2. **User lihat hasil render live**: bilang icon kekecilan. Screenshot dianalisis via VLM
+   (glm-5v-turbo) — confirmed icon cuma menempati ~20-25% lebar tombol, banyak white space
+   kosong. VLM rekomendasi: perbesar ke ~40-50% lebar tombol.
+3. **Iterasi 2 (final, resmi)**: Container `56×56`, SVG render `48×48`. Rasio 86%.
+   Sweet spot — icon menempati ~40-50% lebar tombol, proporsional dengan label teks,
+   drop-shadow masih punya ruang, tidak nabrak tepi container.
+4. **User konfirmasi**: "nah itulah standar ukuran sebenarnya! mohon kamu catat ini ke
+   memory md dan design md karena ini penting" — diajukankan jadi standar resmi.
+
+### Nilai Standar (WAJIB DIPAKAI SEMUA MENU BUTTON)
+
+| Komponen | Ukuran |
+|----------|-------|
+| Container icon di `MenuButton3D.jsx` (div flex pembungkus SVG) | **56 × 56 px** (inline style hardcoded) |
+| SVG `width`/`height` attribute di App.jsx (6 icon menu) | **48 × 48 px** (literal, BUKAN `100%`) |
+| viewBox SVG | `0 0 24 24` (kecuali Shapes yang `viewBox="-4 -6 32 34"` untuk padding geometri) |
+| Rasio SVG/container | **86%** (48/56) |
+
+### Kenapa 86% (48/56) — Sweet Spot
+- **100%** (SVG = container): icon nabrak tepi, drop-shadow terpotong, berantakan.
+- **< 60%** (versi awal 24/40): icon kekecilan, cuma 20-25% lebar tombol (verified VLM).
+- **86%** (48/56): icon ~40-50% lebar tombol, proporsional dengan label, drop-shadow
+  masih punya ruang 14% padding.
+
+### Aturan Implementasi
+1. Container di `MenuButton3D.jsx` — hardcoded `width: 56, height: 56` di inline style.
+   TIDAK dijadikan prop — supaya tidak gampang diubah-ubah oleh pemanggil.
+2. SVG di App.jsx — pakai literal `width="48" height="48"` di tiap elemen `<svg>`.
+   JANGAN pakai `size` prop di lucide (tidak kompatibel dengan custom SVG).
+   JANGAN pakai `width="100%"` — harus literal px supaya predictable.
+3. Kalau nanti bikin tombol variant `size="sm"` (sub-menu), rasio **TETAP 86%**.
+   Contoh: container 40×40 → SVG 34×34. Bukan 24×24 (itu akan kekecilan lagi).
+
+### File yang Disentuh
+- `src/components/MenuButton3D.jsx` — 1 baris: container `width: 40, height: 40` → `56, 56`.
+- `src/App.jsx` — 6 occurrences `width="24" height="24"` → `width="48" height="48"`
+  (Marketplace, Canvas, Shapes, Logic Gates, Gears, Linkages).
+- `design.md` — tambah sub-section "STANDAR UKURAN ICON (RESMI)" di Bagian 39.4,
+  lengkap dengan tabel ukuran + justification + aturan implementasi.
+- `memory.md` — entri ini (Bagian 57).
+
+### Stage Summary
+- Icon size **56/48 (container/SVG, rasio 86%)** sekarang jadi standar resmi untuk semua
+  menu button. Bukan default yang bisa di-tune — ini **standar** yang WAJIB dipakai.
+- Verified via VLM analysis (glm-5v-turbo) — sebelumnya icon cuma 20-25% lebar tombol,
+  setelah fix jadi ~40-50% sesuai rekomendasi VLM.
+- User konfirmasi langsung bahwa ini "standar ukuran sebenarnya" — catat permanen di
+  design.md + memory.md supaya tidak hilang / tidak regresi di task berikutnya.
+- Build sukses 0 error. Push normal (NO force push).
+- Commit: `7e12283` (perubahan kode) + commit ini (dokumentasi).
