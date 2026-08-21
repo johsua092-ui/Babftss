@@ -1051,3 +1051,115 @@ Sebelum menambah/update fitur yang menyentuh `saveSlots`, `slot.data`, atau `/ap
 - [ ] Kalau fitur mengubah initial state, pastikan first-render guard masih bekerja
 - [ ] Build sukses (`npx vite build`) sebelum push
 - [ ] Test manual: save → swap → refresh → verify data intact
+
+---
+
+## 39. STANDAR DESAIN MENU BUTTON (DEFAULT GLOBAL)
+
+> **Bagian ini adalah STANDAR PERMANEN untuk semua tombol besar/menu di web ini ke depan.**
+> Setiap tombol baru yang sekelas menu utama WAJIB ikut pola di bawah. Tidak boleh bikin
+> sistem tombol custom baru kecuali didiskusikan dulu. Komponen referensi: `src/components/MenuButton3D.jsx`.
+
+### 39.1 Bentuk & Anatomi
+
+- **Rounded rectangle**, radius 18px, padding `16px 20px 20px 20px` (extra padding bawah supaya tombol terasa "berdiri di atas lip").
+- **Background**: gradient vertikal 2-stop — `top` (lightness tinggi) → `bottom` (lightness sedang). Tidak ada border stroke.
+- **Lip bawah**: solid 6px warna `lip` (lightness rendah, lebih gelap dari `bottom`) — berfungsi sebagai penanda "ketebalan/ketinggian fisik" tombol, seolah tombol itu slab 3D yang berdiri di atas lip.
+- **Tanpa border** (kecuali state `locked` yang pakai border merah tipis `2px solid #3f1d1d`).
+- **Layout**: icon (40×40) kiri → teks (label + subtitle) tengah → badge "LOGIN REQUIRED" kanan (hanya saat `locked`).
+
+### 39.2 Interaksi (3-state physical press simulation)
+
+| State | translateY | lip height | brightness | Ambient shadow |
+|-------|-----------|------------|------------|----------------|
+| **default** | 0px | 6px | 1.0 | blur 20, opacity 0.40 |
+| **hover** (unlocked) | +1px (turun dikit) | 5px (menipis) | 1.06 (terang) | blur 24, opacity 0.42 |
+| **pressed** | +5px (tenggelam) | 1px (hampir habis) | 0.97 (sedikit redup) | blur 6, opacity 0.35 |
+
+Transisi: `transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease`.
+**Efek**: ketika ditekan, tombol seolah "tenggelam" ke lip — lip menipis dari 6px → 1px, ambient blur mengecil, tombol turun. Simulasi tombol fisik yang benar-benar dipencet.
+
+### 39.3 Warna — WAJIB 3 turunan HSL dari 1 hue
+
+Setiap tombol punya 3 properti warna, SEMUA dari hue yang sama, hanya lightness yang beda:
+
+| Prop | Peran | Lightness | Saturation |
+|------|-------|-----------|------------|
+| `top` | bagian atas gradient | TINGGI (60–75%) | TINGGI (70–100%) |
+| `bottom` | bagian bawah gradient | SEDANG (35–55%) | TINGGI (70–100%) |
+| `lip` | bibir bawah solid | RENDAH (24–38%) | TINGGI (70–100%) |
+
+**ATURAN MUTLAK:** Saturation TINGGI di ketiganya (70–100%). JANGAN diturunkan/dicampur abu-abu (saturation < 50%) — itu bikin warna terlihat kusam/faded. Lightness turun drastis dari `top` → `bottom` → `lip` supaya sense depth 3D kelihatan.
+
+Contoh (`hsl(H, S%, L%)`):
+- Marketplace: `hsl(350,85%,68%)` / `hsl(350,80%,45%)` / `hsl(350,80%,32%)`
+- Canvas: `hsl(270,70%,68%)` / `hsl(270,75%,42%)` / `hsl(270,75%,30%)`
+- Shapes: `hsl(142,55%,55%)` / `hsl(142,55%,35%)` / `hsl(142,55%,24%)`
+
+### 39.4 Icon — SVG Custom + 2 Gradient Global
+
+- **Icon** SVG custom per-tombol (BUKAN icon flat lucide/emoji polos). Tiap icon punya struktur multi-path yang membuatnya terlihat "dengan shading".
+- **Shading** memakai 2 gradient yang dideklarasi **SEKALI di root level `App.jsx`** (lihat Bagian 39.5):
+  - `url(#menuIconGrad)` — linear gradient putih (1.0 → 0.75 → 0.4 opacity) untuk permukaan datar.
+  - `url(#menuSphereGrad)` — radial gradient putih (1.0 → 0.7 → 0.28 opacity) untuk objek bulat (sphere).
+- Detail kecil (stroke gelap `rgba(0,0,0,0.2–0.3)`, highlight putih `rgba(255,255,255,0.55–0.95)`) wajib dipakai untuk depth sense.
+
+### 39.5 SVG Gradient Defs — SEKALI di Root, BUKAN per-Komponen
+
+```jsx
+// Ditaruh di root JSX App.jsx, SEKALI SAJA:
+<svg width="0" height="0" style={{ position: 'absolute' }}>
+  <defs>
+    <linearGradient id="menuIconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#ffffff" stopOpacity="1"/>
+      <stop offset="55%" stopColor="#ffffff" stopOpacity="0.75"/>
+      <stop offset="100%" stopColor="#ffffff" stopOpacity="0.4"/>
+    </linearGradient>
+    <radialGradient id="menuSphereGrad" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stopColor="#ffffff" stopOpacity="1"/>
+      <stop offset="55%" stopColor="#ffffff" stopOpacity="0.7"/>
+      <stop offset="100%" stopColor="#ffffff" stopOpacity="0.28"/>
+    </radialGradient>
+  </defs>
+</svg>
+```
+
+**Kenapa sekali di root?** SVG `id` harus unik di seluruh dokumen. Kalau taruh di dalam `MenuButton3D.jsx` (di-render 6x), ada 6 elemen dengan `id="menuIconGrad"` → collision, referensi `url(#menuIconGrad)` jadi tidak konsisten (browser ambil yang pertama, ikon tombol lain bisa salah ambil).
+
+Prefix `menu` (`menuIconGrad` / `menuSphereGrad`) supaya tidak collision dengan SVG lain di app ini yang kebetulan pakai id `iconGrad`/`sphereGrad` polos.
+
+### 39.6 State `locked` (Guest-Guard) — WAJIB DIPERTAHANKAN
+
+Saat `locked=true`:
+- Background: solid `#1a1f2e` (abu gelap, BUKAN gradient).
+- Border: `2px solid #3f1d1d` (merah gelap).
+- Opacity: `0.55` (redup).
+- Label & badge: warna `#ef4444` (merah).
+- Badge "LOGIN REQUIRED" muncul di kanan (font 10px, weight 600, opacity 0.85).
+- **Tidak ada interaksi** — `cursor: pointer` tetap tapi `boxShadow: 'none'`, `transform: translateY(0)`, `filter: 'none'`. Hover/press TIDAK mengubah apa pun.
+- **`onClick` tetap dipanggil** — di komponen pemanggil, `onClick` biasanya cek user state lalu `showGuestAnnouncement()` kalau guest.
+
+Behavior ini WAJIB tidak regresi setiap kali komponen di-rewrite.
+
+### 39.7 Props API — STANDAR WAJIB
+
+```jsx
+<MenuButton3D
+  label="Marketplace"          // wajib
+  subtitle="trade parts & designs"  // opsional, tapi sangat disarankan
+  top="hsl(...)"               // wajib
+  bottom="hsl(...)"            // wajib
+  lip="hsl(...)"               // wajib
+  onClick={handler}            // wajib
+  icon={<svg>...</svg>}        // wajib — pakai url(#menuIconGrad) atau url(#menuSphereGrad)
+  locked={boolean}             // opsional, default false
+/>
+```
+
+### 39.8 Aturan ke Depan
+
+- **SEMUA tombol besar/menu baru** di web ini WAJIB pakai `MenuButton3D` dengan props di atas.
+- **JANGAN** bikin sistem tombol custom baru (alternatif styling, variant, atau komponen sejenis) kecuali didiskusikan dulu dan didokumentasikan di file ini.
+- **JANGAN** gunakan `accent`/`dark`/`deepest` (props lama, sudah deprecated). Pakai `top`/`bottom`/`lip`.
+- **JANGAN** gunakan icon flat lucide polos untuk tombol menu utama — pakai SVG custom dengan shading.
+- Kalau butuh variant (mis. tombol kecil untuk sub-menu), diskusikan dulu — mungkin perlu bikin `MenuButton3D` versi `size="sm"`, bukan komponen baru.

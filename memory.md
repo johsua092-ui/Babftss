@@ -4343,3 +4343,83 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
 - Rencana besar 3D Block Simulator (gizmo panah → shape generator → dual camera) TUNTAS setelah task ini.
 - Commit lokal siap di-push setelah token dari user diterima.
 
+---
+
+## Bagian 56 — REDESIGN MENU BUTTON FINAL → STANDAR DEFAULT GLOBAL
+
+> Task: `PROMPT_KERJA_MenuButton_StandarDesain_Final.md`. Ini hasil akhir iterasi
+> desain panjang (bukan tebakan sekali jadi), sekarang jadi STANDAR DEFAULT untuk
+> seluruh web ini ke depan. Detail spesifikasi lihat `design.md` Bagian 39.
+
+### Ringkas Proses Desain
+- **Awal mula**: tombol menu pakai gaya "3D slab tebal" — `accent` warna solid, `dark`/`deepest`
+  untuk slab/border, thick 3px border, glossy white inner highlight. Tampil terlalu "tebal"
+  dan warna kusam karena campur abu-abu.
+- **Eksplorasi banyak iterasi**: bareng user, coba berbagai kombinasi warna/bentuk/icon.
+  Termasuk percobaan icon lucide flat, icon emoji, icon SVG radial-wedge untuk gear (yang
+  sempat salah bentuk 3x karena radial-wedge tidak menghasilkan teeth kotak yang benar).
+- **Hasil final**:
+  1. **Style**: rounded-gradient-with-lip (BUKAN thick-slab lagi). Gradient 2-stop `top`→`bottom`
+     + lip bawah solid 6px. Tidak ada border stroke (kecuali state `locked`).
+  2. **Interaksi**: 3-state physical press simulation — default (lip 6px) → hover (lip 5px,
+     tombol turun 1px, brightness 1.06) → pressed (lip 1px, turun 5px, brightness 0.97).
+     Simulasi "ditekan hingga tenggelam".
+  3. **Warna**: 3 turunan HSL dari 1 hue (`top` lightness tinggi, `bottom` sedang, `lip`
+     rendah), semua saturation TINGGI 70–100%. JANGAN campur abu-abu.
+  4. **Icon**: 6 SVG custom per-tombol — Marketplace (cart), Canvas (pencil+triangle),
+     Shapes (cylinder+pyramid+cuboid+sphere), Logic Gates (IC chip with pins), Gears
+     (10-tooth true-rectangle gear), Linkages (two pill-shaped links). Shading pakai
+     2 gradient global `url(#menuIconGrad)` (linear) + `url(#menuSphereGrad)` (radial).
+  5. **SVG defs**: dideklarasi SEKALI di root `App.jsx`, BUKAN per-komponen. Alasan:
+     SVG `id` harus unik di dokumen — kalau taruh di MenuButton3D (render 6x), collision.
+     Prefix `menu` untuk hindari collision dengan SVG lain.
+
+### Gear Teeth — 3x Salah Sebelum Benar
+- **Salah 1**: pakai radial-wedge (rotated rectangles radial). Hasilnya teeth lancip/runcing,
+  bukan kotak. Tidak terlihat seperti gear asli.
+- **Salah 2**: pakai pure SVG path approximation dengan curve. Teeth terlihat membulet, tidak
+  square enough.
+- **Salah 3**: pakai alternating z-pattern (zigzag). Bentuk tidak konsisten ukuran teeth.
+- **Fix terakhir (final)**: pakai **true-rectangle-teeth math** — koordinat tiap titik gigi
+  dihitung manual: untuk tiap gigi (5 pasang, total 10 gigi), keluar dari outer radius lalu
+  ke inner radius dengan koordinat cartesian (`cos/sin`), bukan radial transform. Path SVG
+  dihitung sebagai: `M (top-left-outer) L (top-left-outer) L (top-right-outer) L (right-inner)
+  ...` — kombinasi rectangle teeth + arc inner ring + arc outer ring. Hasil: 10 gigi kotak
+  persis, simetris, terlihat sebagai gear asli.
+
+### File yang Disentuh
+- `src/components/MenuButton3D.jsx` — REWRITE TOTAL (props `accent`/`dark`/`deepest` dihapus,
+  ganti `top`/`bottom`/`lip` + `subtitle`). State `locked` DIPERTAHANKAN persis (opacity 0.55,
+  bg `#1a1f2e`, border merah `2px solid #3f1d1d`, badge "LOGIN REQUIRED"). Behavior tidak regresi.
+- `src/App.jsx`:
+  - Tambah blok SVG `<defs>` global di root `<div>` (linearGradient `menuIconGrad` +
+    radialGradient `menuSphereGrad`).
+  - Update 6 pemanggilan `<MenuButton3D>` (Marketplace, Canvas, Shapes, Logic Gates, Gears,
+    Linkages). `onClick` & `locked` tiap tombol **DIPERTAHANKAN PERSIS** seperti sebelumnya —
+    cuma props warna, icon, dan subtitle yang baru.
+  - Hapus import yang tidak dipakai lagi: `ShoppingCart`, `PenTool` (lucide), `GearIcon`,
+    `LinkageIcon`, `ShapesIcon` (custom). `Cpu`, `Network`, `FlaskConical`, `CircuitBoard`,
+    `ArrowLeft`, `User`, `LogOut`, `RotateCcw` tetap dipakai di halaman logic-gates & userBar.
+- `design.md` — tambah Bagian 39 "STANDAR DESAIN MENU BUTTON (DEFAULT GLOBAL)" — 8 sub-section
+  (bentuk, interaksi 3-state, warna HSL, icon SVG, SVG defs sekali di root, state locked,
+  props API, aturan ke depan).
+- `memory.md` — entri ini (Bagian 56).
+
+### Yang DIPERTAHANKAN (Tidak Boleh Regresi)
+- `onClick` 6 tombol: tetap navigasi `setPage(...)`, dengan guard `user ? ... : showGuestAnnouncement()`
+  untuk Marketplace & Canvas.
+- `locked={!user}` untuk Marketplace & Canvas, tidak ada `locked` (default `false`) untuk 4 lainnya.
+- Behavior state `locked` visual: opacity 0.55, bg abu gelap, border merah, badge "LOGIN REQUIRED".
+- Routing & state-based page switching di App.jsx tidak diubah sama sekali.
+
+### Stage Summary
+- Redesign menu button FINAL di-apply ke 6 tombol menu utama.
+- Ini sekarang jadi **STANDAR DEFAULT** buat seluruh web ini — bukan one-off buat 6 tombol.
+- Aturan ke depan: SEMUA tombol besar/menu baru WAJIB pakai `MenuButton3D` dengan props
+  `top`/`bottom`/`lip`/`icon`/`label`/`subtitle`. JANGAN bikin sistem tombol custom baru
+  kecuali didiskusikan dulu (lihat `design.md` Bagian 39.8).
+- Build sukses 0 error (Vite). Lint warning untuk chunk size > 500kB sudah ada sebelumnya
+  (bukan dari task ini).
+- Scope terjaga: 4 file disentuh (MenuButton3D.jsx, App.jsx, design.md, memory.md).
+  Tidak menyentuh sistem lain (LogicGatesSimulator, BlockSimulator3D, backend, auth, dll).
+- Push normal (NO force push) — sesuai checklist Bagian 6 prompt kerja.

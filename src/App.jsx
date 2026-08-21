@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw, PenTool, ShoppingCart } from 'lucide-react';
-import GearIcon from './components/GearIcon';
-import LinkageIcon from './components/LinkageIcon';
-import ShapesIcon from './components/ShapesIcon';
+import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
 import MenuButton3D from './components/MenuButton3D';
 import LoginModal from './components/LoginModal';
 import NotFoundPage from './components/NotFoundPage';
@@ -179,6 +176,28 @@ export default function App() {
 
     return (
         <div style={{ minHeight: '100dvh', backgroundColor: bg, color: '#e2e8f0', overflowX: 'hidden' }}>
+            {/* ── SVG GRADIENT DEFS GLOBAL ──
+                Dideklarasi SEKALI di root level, BUKAN per-komponen MenuButton3D.
+                Alasan: SVG `id` harus unik di seluruh dokumen. Kalau taruh di
+                MenuButton3D.jsx (di-render 6x), akan ada 6 elemen dengan id sama
+                → collision, referensi url(#menuIconGrad) jadi tidak konsisten.
+                Prefix `menu` supaya tidak collision dengan SVG lain di app ini.
+                Icon-icon di MenuButton3D cukup PAKAI url(#menuIconGrad) dan
+                url(#menuSphereGrad), TIDAK perlu deklarasi ulang. */}
+            <svg width="0" height="0" style={{ position: 'absolute' }}>
+                <defs>
+                    <linearGradient id="menuIconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ffffff" stopOpacity="1"/>
+                        <stop offset="55%" stopColor="#ffffff" stopOpacity="0.75"/>
+                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0.4"/>
+                    </linearGradient>
+                    <radialGradient id="menuSphereGrad" cx="35%" cy="30%" r="75%">
+                        <stop offset="0%" stopColor="#ffffff" stopOpacity="1"/>
+                        <stop offset="55%" stopColor="#ffffff" stopOpacity="0.7"/>
+                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0.28"/>
+                    </radialGradient>
+                </defs>
+            </svg>
             <style>{`@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }`}</style>
             <Toaster position="top-center" richColors theme="dark" toastOptions={{ style: { fontFamily: 'Inter,sans-serif', fontSize: 13 } }} />
         {userBar}
@@ -241,59 +260,98 @@ export default function App() {
                         <img width={640} height={357} src="/gate-diagram.jpg" alt="Logic Gates Diagram" style={{ width: "100%", maxWidth: 420, borderRadius: 16, display: "block", margin: "0 auto" }} />
                     </picture>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
-                        {/* 6 tombol menu utama — pakai komponen MenuButton3D (efek 3D slab).
-                            ATURAN: tiap tombol tetap pakai accent color sendiri + icon sendiri.
+                        {/* 6 tombol menu utama — STANDAR DESAIN DEFAULT (lihat design.md →
+                            "Standar Desain Menu Button (Default Global)").
                             Marketplace & Canvas: guest-guard (locked=!user) — guest klik → banner merah.
-                            Shapes, Logic Gates, Gears, Linkages: bebas diakses siapapun. */}
+                            Shapes, Logic Gates, Gears, Linkages: bebas diakses siapapun.
+                            ATURAN: onClick & locked tiap tombol DIPERTAHANKAN PERSIS seperti
+                            sebelumnya — jangan diubah saat rewrite. Yang baru hanya props
+                            warna (top/bottom/lip), icon SVG custom, dan subtitle. */}
                         <MenuButton3D
-                            icon={<ShoppingCart size={22} color="#fff" />}
                             label="Marketplace"
+                            subtitle="trade parts & designs"
+                            top="hsl(350,85%,68%)" bottom="hsl(350,80%,45%)" lip="hsl(350,80%,32%)"
                             onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}
-                            accent="#fb7185"
-                            dark="#9f1239"
-                            deepest="#4c0519"
                             locked={!user}
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+                                    <path d="M3 4h2l1.6 9.6a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L20.5 7H6.2" stroke="url(#menuIconGrad)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <circle cx="9.5" cy="19.5" r="1.4" fill="url(#menuIconGrad)"/>
+                                    <circle cx="17" cy="19.5" r="1.4" fill="url(#menuIconGrad)"/>
+                                    <path d="M8 10.5h9.5" stroke="rgba(0,0,0,0.25)" strokeWidth="1.2" strokeLinecap="round"/>
+                                </svg>
+                            }
                         />
                         <MenuButton3D
-                            icon={<PenTool size={22} color="#fff" />}
                             label="Canvas"
+                            subtitle="free-form sketch"
+                            top="hsl(270,70%,68%)" bottom="hsl(270,75%,42%)" lip="hsl(270,75%,30%)"
                             onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
-                            accent="#a78bfa"
-                            dark="#5b21b6"
-                            deepest="#2e1065"
                             locked={!user}
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+                                    <path d="M15.5 3.5l5 5-11 11-6 1 1-6z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.6"/>
+                                    <path d="M13.5 5.5l5 5" stroke="rgba(0,0,0,0.3)" strokeWidth="1.3" strokeLinecap="round"/>
+                                    <path d="M4.5 19.5l2-5.2 3.2 3.2z" fill="rgba(255,255,255,0.55)"/>
+                                </svg>
+                            }
                         />
                         <MenuButton3D
-                            icon={<ShapesIcon size={22} color="#fff" />}
                             label="Shapes"
+                            subtitle="geometry tools"
+                            top="hsl(142,55%,55%)" bottom="hsl(142,55%,35%)" lip="hsl(142,55%,24%)"
                             onClick={() => setPage("shapes")}
-                            accent="#2dd4bf"
-                            dark="#0f766e"
-                            deepest="#042f2e"
+                            icon={
+                                <svg viewBox="-4 -6 32 34" fill="none" width="24" height="24">
+                                    <g transform="translate(4,3) rotate(45)">
+                                        <rect x="-4" y="-6.6" width="8" height="13.2" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.5"/>
+                                        <ellipse cx="0" cy="-6.6" rx="4" ry="2.1" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.5"/>
+                                        <ellipse cx="0" cy="6.6" rx="4" ry="2.1" fill="rgba(0,0,0,0.25)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.5"/>
+                                    </g>
+                                    <path d="M6 12.5 L-0.3 24 L12.3 24 Z" fill="rgba(255,255,255,0.9)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                    <path d="M18 6.5 L24.3 10 L18 13.5 L11.7 10 Z" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.4" strokeLinejoin="round"/>
+                                    <path d="M11.7 10 L18 13.5 L18 24 L11.7 20.5 Z" fill="rgba(255,255,255,0.55)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.4" strokeLinejoin="round"/>
+                                    <path d="M24.3 10 L18 13.5 L18 24 L24.3 20.5 Z" fill="rgba(255,255,255,0.78)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.4" strokeLinejoin="round"/>
+                                    <circle cx="20.5" cy="0.5" r="5.4" fill="url(#menuSphereGrad)" stroke="rgba(0,0,0,0.18)" strokeWidth="0.6"/>
+                                </svg>
+                            }
                         />
                         <MenuButton3D
-                            icon={<Cpu size={22} color="#fff" />}
                             label="Logic Gates"
+                            subtitle="digital circuits"
+                            top="hsl(217,80%,65%)" bottom="hsl(217,80%,42%)" lip="hsl(217,80%,30%)"
                             onClick={() => setPage("logic-gates")}
-                            accent="#60a5fa"
-                            dark="#1d4ed8"
-                            deepest="#172554"
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.6"/>
+                                    <rect x="9" y="9" width="6" height="6" rx="1" fill="rgba(0,0,0,0.22)"/>
+                                    <path d="M9 3v2.2M15 3v2.2M9 18.8V21M15 18.8V21M3 9h2.2M3 15h2.2M18.8 9H21M18.8 15H21" stroke="rgba(255,255,255,0.8)" strokeWidth="1.4" strokeLinecap="round"/>
+                                </svg>
+                            }
                         />
                         <MenuButton3D
-                            icon={<GearIcon icon="spur" color="#fff" size={22} />}
                             label="Gears"
+                            subtitle="mechanical sim"
+                            top="hsl(38,90%,60%)" bottom="hsl(30,85%,45%)" lip="hsl(30,85%,32%)"
                             onClick={() => setPage("gears")}
-                            accent="#fb923c"
-                            dark="#c2410c"
-                            deepest="#431407"
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+                                    <path d="M 10.70 5.40 L 10.70 2.00 L 13.30 2.00 L 13.30 5.40 A 6.60 6.60 0 0 1 14.83 5.90 L 16.83 3.15 L 18.93 4.67 L 16.93 7.42 A 6.60 6.60 0 0 1 17.88 8.72 L 21.11 7.67 L 21.91 10.15 L 18.68 11.20 A 6.60 6.60 0 0 1 18.68 12.80 L 21.91 13.85 L 21.11 16.33 L 17.88 15.28 A 6.60 6.60 0 0 1 16.93 16.58 L 18.93 19.33 L 16.83 20.85 L 14.83 18.10 A 6.60 6.60 0 0 1 13.30 18.60 L 13.30 22.00 L 10.70 22.00 L 10.70 18.60 A 6.60 6.60 0 0 1 9.17 18.10 L 7.17 20.85 L 5.07 19.33 L 7.07 16.58 A 6.60 6.60 0 0 1 6.12 15.28 L 2.89 16.33 L 2.09 13.85 L 5.32 12.80 A 6.60 6.60 0 0 1 5.32 11.20 L 2.09 10.15 L 2.89 7.67 L 6.12 8.72 A 6.60 6.60 0 0 1 7.07 7.42 L 5.07 4.67 L 7.17 3.15 L 9.17 5.90 A 6.60 6.60 0 0 1 10.70 5.40 Z M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z" fillRule="evenodd" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                </svg>
+                            }
                         />
                         <MenuButton3D
-                            icon={<LinkageIcon icon="fourbar" color="#fff" size={22} />}
-                            label="Linkages Mechanic"
+                            label="Linkages"
+                            subtitle="mechanism study"
+                            top="hsl(235,70%,72%)" bottom="hsl(235,65%,52%)" lip="hsl(235,65%,38%)"
                             onClick={() => setPage("linkages")}
-                            accent="#818cf8"
-                            dark="#4338ca"
-                            deepest="#1e1b4b"
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+                                    <rect x="3" y="8.5" width="9" height="7" rx="3.5" fill="none" stroke="url(#menuIconGrad)" strokeWidth="2.2"/>
+                                    <rect x="12" y="8.5" width="9" height="7" rx="3.5" fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="2.2"/>
+                                    <path d="M10 12h4" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                            }
                         />
                     </div>
                 </div>
