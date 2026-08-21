@@ -72,7 +72,7 @@ export default function MenuButton3D({ icon, label, subtitle, onClick, top, bott
             }}
         >
             <div style={{
-                width: 40, height: 40,
+                width: 56, height: 56,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 filter: locked ? 'none' : 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
                 flexShrink: 0,
