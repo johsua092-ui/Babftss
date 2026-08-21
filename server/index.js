@@ -86,8 +86,6 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Start ────────────────────────────────────────────────────
-import localtunnel from 'localtunnel';
-
 const server = createServer(app);
 
 server.listen(PORT, '0.0.0.0', () => {
@@ -96,24 +94,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[server] Health: http://0.0.0.0:${PORT}/health`);
   console.log(`[server] Endpoints: favorites, my-favorites, ai-chat (includes coin-transfer), leaderboard, progress, profile, circuits, canvas`);
 
-  // ── Public tunnel ──────────────────────────────────────────
-  (async () => {
-    try {
-      const tunnel = await localtunnel({ port: PORT });
-      console.log('');
-      console.log('══════════════════════════════════════════════════');
-      console.log(`  PUBLIC URL: ${tunnel.url}`);
-      console.log(`  Health:     ${tunnel.url}/health`);
-      console.log('  (URL changes on restart — update frontend)');
-      console.log('══════════════════════════════════════════════════');
-      console.log('');
-
-      tunnel.on('close', () => console.log('[tunnel] Closed'));
-      tunnel.on('error', (e) => console.error('[tunnel] Error:', e.message));
-    } catch (e) {
-      console.error('[tunnel] Failed to start:', e.message);
-    }
-  })();
 });
 
 // Graceful shutdown
