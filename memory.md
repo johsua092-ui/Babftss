@@ -4731,3 +4731,79 @@ cuma sekarang di-comment supaya next dev tidak sengaja balikin `hidden`.
   slot. Sekarang sudah fixed, supaya next time ada icon custom-size tidak
   kepotong lagi.
 - Build sukses 0 error, scope terjaga (3 file disentuh), push normal.
+
+---
+
+## Bagian 57 — Standar Desain Menu Button untuk Gears (36) & Linkages (45) (21 Aug 2026)
+
+**Task ID:** 57
+**Agent:** main (Super Z)
+**Task:** Terapkan standar desain MenuButton3D ke 81 item (36 gear + 45 linkage) — data-driven, cukup ubah loop render sekali per halaman. Sesuai `PROMPT_KERJA_Gears_Linkages_StandarDesain.md`.
+
+### File yang diubah (3 file)
+- `src/utils/colorHelper.js` — append 2 fungsi baru (`hexToHue`, `hexToMenuButtonColors`).
+- `src/pages/GearsPage.jsx` — ganti loop render tombol pakai `MenuButton3D`.
+- `src/pages/LinkagesPage.jsx` — ganti loop render tombol pakai `MenuButton3D` (pola sama dengan GearsPage, cuma beda data + komponen icon).
+
+### Yang TIDAK diubah (sesuai scope prompt kerja)
+- `gearData.js` (36 entri), `linkageData.js` (45 entri) — data dipakai APA ADANYA, field `c.color` sudah ada untuk diturunkan jadi palet.
+- `GearIcon.jsx`, `LinkageIcon.jsx` — komponen icon dipakai APA ADANYA, cuma `color` diganti jadi `"#ffffff"` (putih solid) supaya konsisten dengan standar icon putih + background berwarna.
+- Search bar, judul, deskripsi, tombol back — TIDAK DIUBAH SAMA SEKALI.
+- File lain (lib/, CartPanel, MenuButton3D, MarketplacePage, NotFoundPage) — hanya mode-changes dari clone, tidak disentuh.
+
+### Pendekatan data-driven (alasan efisien)
+Ada 81 item total tapi keduanya data-driven — dirender lewat 1 loop `.map()` per halaman. TIDAK PERLU bikin 81 icon/warna manual — cukup ubah loop render-nya SEKALI per halaman, warna diturunkan OTOMATIS dari field `c.color` yang sudah ada di data.
+
+### Perubahan detail
+
+**1. `colorHelper.js` — tambah 2 fungsi:**
+- `hexToHue(hex)` — ekstrak HUE dari warna hex (rumus standar RGB→HSL, cuma ambil komponen H). Fallback biru (hue=210) kalau parsing gagal.
+- `hexToMenuButtonColors(hex)` — konversi 1 warna hex jadi 3-tone palet standar MenuButton3D: `{ accent, dark, deepest }`. Saturation 85% & lightness 64%/42%/28% (FIXED ke nilai yang sudah divalidasi di standar desain) — cuma HUE yang ikut warna asli tiap item data.
+
+**⚠️ Catatan penting — adaptasi props:**
+Prompt kerja menyebut props `top`/`bottom`/`lip`/`subtitle`, tapi implementasi aktual `MenuButton3D.jsx` pakai props `accent`/`dark`/`deepest`/`label`/`icon`/`onClick`/`locked` (tanpa `subtitle`). Fungsi `hexToMenuButtonColors` return key yang match dengan implementasi aktual: `{ accent, dark, deepest }`. Untuk `subtitle` (yang prompt kerja minta pakai `c.desc`), tidak ada slot di MenuButton3D — `label` cuma bisa `c.name`. Subtitle `c.desc` TIDAK ditampilkan di tombol baru (keputusan disengaja, prompt kerja sendiri bilang "boleh dihilangkan" untuk elemen-elemen lama yang tidak ada slot di MenuButton3D standar).
+
+**2. `GearsPage.jsx` — ganti loop render:**
+- Import `MenuButton3D` + `hexToMenuButtonColors` (hapus import `hexToRgbStr` yang tidak dipakai lagi).
+- Loop `.map(c => ...)` sekarang pakai `<MenuButton3D>` dengan:
+  - `key={c.id}`
+  - `label={c.name}`
+  - `accent`/`dark`/`deepest` dari `hexToMenuButtonColors(c.color)` — otomatis berbeda per item sesuai warna asli di data.
+  - `onClick={() => toast.info(`${c.name} masih dalam pengerjaan`)}` — PERSIS sama seperti sebelumnya.
+  - `icon={<div style={{width:44,height:44}}><GearIcon icon={c.icon} color="#ffffff" size={30} /></div>}` — icon putih solid, size 30 di dalam slot 44px.
+- Hapus: badge ID kecil ("01", dst), titik kecil di kanan, deskripsi `c.desc` di bawah nama — semua elemen lama yang tidak ada slot di MenuButton3D standar.
+
+**3. `LinkagesPage.jsx` — pola SAMA PERSIS dengan GearsPage:**
+- Cuma beda: import `LinkageIcon` (bukan GearIcon), data dari `linkageData` (bukan `gearData`).
+- JSX pakai `<LinkageIcon icon={c.icon} color="#ffffff" size={30} />`.
+- Search placeholder "Cari linkage...", judul "LINKAGES", deskripsi halaman — TIDAK DIUBAH.
+
+### Verifikasi (checklist dari prompt kerja)
+
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.66s`. Chunks: GearsPage 8.32 KB (gzip 3.48 KB), LinkagesPage 8.33 KB (gzip 3.46 KB). Naik tipis dari sebelumnya karena tambah import MenuButton3D + logic hexToMenuButtonColors.
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 3 file yang aku sentuh berubah: `colorHelper.js` (+37), `GearsPage.jsx` (+25/-7), `LinkagesPage.jsx` (+25/-7). File lain (NotFoundPage, lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+3. ⚠️ **Verifikasi SEMUA 36 gear & 45 linkage tampil dengan warna BERBEDA-BEDA** — BELUM bisa diverifikasi visual di env CLI. Logic-confirmed: `hexToMenuButtonColors(c.color)` dipanggil per-item di dalam loop `.map(c => ...)`, jadi tiap item otomatis dapat palet sesuai `c.color`-nya. User perlu verify di Vercel: tiap tombol harus kelihatan warna berbeda sesuai data asli (bukan 1 warna rata).
+4. ✅ **Verifikasi `onClick` masih toast "[nama] masih dalam pengerjaan"** — logic-confirmed: `onClick={() => toast.info(`${c.name} masih dalam pengerjaan`)}` PERSIS sama seperti sebelumnya, cuma dipindah ke prop `MenuButton3D`.
+5. ✅ **Verifikasi search/filter masih berfungsi** — logic-confirmed: `filtered` array tetap di-filter dari `query` sebelum `.map()`. Loop render pakai `filtered.map(c => ...)`. Tidak ada perubahan ke logic search/filter.
+6. ⚠️ **Verifikasi icon GearIcon/LinkageIcon kebaca jelas (putih, size 30)** — BELUM bisa diverifikasi visual. Logic-confirmed: `color="#ffffff"` + `size={30}` di dalam slot 44px. GearIcon pakai `drop-shadow(0 0 4px rgba(255,255,255,0.75))` + fill putih — seharusnya jelas terbaca di atas background berwarna. User verify di Vercel.
+7. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 56.
+8. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
+
+### Catatan adaptasi penting (perlu di-tau user)
+- Prompt kerja menyebut props `top`/`bottom`/`lip`/`subtitle` — tapi implementasi aktual `MenuButton3D.jsx` pakai `accent`/`dark`/`deepest` (tanpa `subtitle`). Aku adaptasi: `top`→`accent`, `bottom`→`dark`, `lip`→`deepest`. Untuk `subtitle` (`c.desc`), tidak ada slot di MenuButton3D — di-skip (keputusan disengaja, prompt kerja bilang "boleh dihilangkan" elemen lama yang tidak ada slot).
+- Akibatnya, deskripsi `c.desc` (penjelasan singkat tiap gear/linkage) TIDAK ditampilkan di tombol baru. Kalau user mau tetap tampilkan `c.desc` di suatu tempat (misal tooltip `title` attribute, atau tambah slot subtitle di MenuButton3D), bisa dikerjakan di task terpisah. Aku pilih tidak menambah slot subtitle ke MenuButton3D karena itu di luar scope prompt kerja ini (prompt bilang "JANGAN ubah `GearIcon.jsx`/`LinkageIcon.jsx`" tapi tidak menyebut `MenuButton3D.jsx` — aku pilih tidak menyentuh `MenuButton3D.jsx` supaya tidak ada risiko regression ke 6 tombol menu utama yang sudah pakai komponen itu).
+
+### Catatan untuk task berikutnya (push commit)
+- Commit lokal dibuat dengan pesan: `feat(gears,linkages): standar desain MenuButton3D — 81 item data-driven (36 gear + 45 linkage)`.
+- Token push perlu dikirim user.
+- Branch: `main`, N commit ahead of `origin/main`.
+
+### Stage Summary
+- 81 item (36 gear + 45 linkage) sekarang pakai standar desain MenuButton3D — 1 loop diubah per halaman = otomatis berlaku ke semua item.
+- Warna tombol otomatis diturunkan dari `c.color` asli tiap item (via `hexToMenuButtonColors` → `hexToHue` → HSL dengan hue sama, saturation 85%, lightness 64/42/28%).
+- Icon putih solid (`#ffffff`, size 30 di slot 44px) — konsisten dengan standar icon putih + background berwarna.
+- onClick tetap `toast.info("[nama] masih dalam pengerjaan")` — PERSIS seperti sebelumnya.
+- Search/filter tetap berfungsi.
+- Build sukses 0 error, scope terjaga (3 file saja).
+- Verifikasi visual live TUNGGU user — verify di Vercel: cek warna tiap tombol beda, icon putih terbaca, search masih jalan, onClick masih toast.
+- Commit lokal siap di-push setelah token dari user diterima.
