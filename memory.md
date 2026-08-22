@@ -4584,3 +4584,150 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
   Ini bukti design API `MenuButton3D` (Bagian 39.7) cukup ekspresif untuk reuse
   di banyak kasus tanpa perlu modifikasi komponen.
 - Build sukses 0 error, scope terjaga (2 file disentuh), push normal.
+
+---
+
+## Bagian 59 — SHAPES CALCULATOR & 3D BLOCK SIMULATOR DISERAGAMKAN + FIX SLOT ICON OVERFLOW
+
+> Task: `PROMPT_KERJA_ShapesCalculator_3DBlockSim_StandarDesain.md`. 2 tombol submenu
+> Shapes (Shapes Calculator & 3D Block Simulator) sebelumnya masih pakai gaya lama
+> (dark card + border glow neon + `<button>` mentah di `ShapesPage.jsx`). Task ini
+> menyeragamkannya ke standar `MenuButton3D` (Bagian 56) + FIX overflow di slot icon
+> `MenuButton3D.jsx` supaya icon custom-size tidak kepotong.
+
+### Lokasi 2 Tombol (Bukan App.jsx — di ShapesPage.jsx)
+Prompt kerja bilang "kemungkinan besar di App.jsx" — TIDAK. 2 tombol ini ada di
+`src/pages/ShapesPage.jsx` (page yang di-render saat `page === 'shapes'`). Pola lama:
+array `TOOLS` + `.map()` untuk generate 2 `<button>` mentah dengan inline style.
+
+### Kondisi Locked & onClick Lama (Dibaca Dulu Sebelum Diganti)
+| Tombol | requiresAuth | locked lama | onClick lama |
+|--------|--------------|-------------|---------------|
+| Shapes Calculator | (undefined → false) | `false` (selalu unlocked) | `setPage('shapes-calculator')` |
+| 3D Block Simulator | `true` | `!user` (guest locked, user unlocked) | `locked ? onGuestClick() : setPage('block-simulator-3d')` |
+
+Pola onClick lama: `() => locked ? (onGuestClick && onGuestClick()) : setPage(t.id)`.
+
+### Kondisi Locked & onClick Baru (DIPERTAHANKAN PERSIS)
+| Tombol | onClick baru | locked baru |
+|--------|--------------|-------------|
+| Shapes Calculator | `() => setPage('shapes-calculator')` | (default false, tidak dispesifikasi) |
+| 3D Block Simulator | `() => user ? setPage('block-simulator-3d') : (onGuestClick && onGuestClick())` | `!user` |
+
+Identik dengan kode lama — grep-verified. Pola sama dengan submenu Logic Gates tombol
+ke-4 (Bagian 58): guard `user ? ... : onGuestClick()` untuk handle guest + prop
+`locked={!user}` untuk styling. Tidak ada logika baru.
+
+### FIX MENU BUTTON 3D — SLOT ICON OVERFLOW (CRITICAL)
+
+**Bug ditemukan saat inspeksi `MenuButton3D.jsx`** sebelum ganti 2 tombol ini:
+- Button parent punya `overflow: 'hidden'` (dari task Bagian 56) — ini akan
+  **MEMOTONG icon yang lebih besar dari slot 56×56**.
+- Icon wrapper 3D Block Simulator = 124×124 — overflow 34px each side dari slot
+  56×56. Dengan button overflow:hidden, akan terpotong di batas tombol.
+- Icon wrapper Shapes Calculator = 50×50 — masih muat di slot 56×56, tidak
+  kena issue.
+
+**Fix yang diterapkan di `MenuButton3D.jsx`**:
+1. Button parent: `overflow: 'hidden'` → `overflow: 'visible'`.
+   - Aman karena: background tetap di-clip otomatis oleh `border-radius`
+     (`background-clip: border-box` default), box-shadow tidak dipengaruhi
+     overflow, transform/filter tidak mengubah box.
+2. Icon container div: tambah `overflow: 'visible'` eksplisit (sebelumnya
+   default visible, tapi tidak eksplisit).
+3. Slot width/height tetap **fixed 56×56** + `flexShrink: 0` (tidak diubah) —
+   supaya label antar tombol tetap sejajar lurus walaupun ukuran icon berbeda
+   jauh (50px vs 124px).
+4. Tambah comment inline di `MenuButton3D.jsx` supaya next dev tidak sengaja
+   balikin `overflow: 'hidden'` (bug ini sudah pernah terjadi sebelumnya).
+
+### Verifikasi Label Sejajar Lurus (Code Review)
+Slot icon di MenuButton3D = `width: 56, height: 56` (TETAP) + `flexShrink: 0`.
+- Tombol 1 (Shapes Calculator): icon wrapper 50×50 muat di slot 56×56 → label mulai
+  di x = 20 (padding) + 56 (slot) + 14 (gap) = **90px** dari kiri tombol.
+- Tombol 2 (3D Block Simulator): icon wrapper 124×124 meluber keluar slot
+  (overflow:visible), tapi **slot width tetap 56px** → label mulai di
+  x = 20 + 56 + 14 = **90px** dari kiri tombol.
+- **Kedua tombol label-nya mulai di x=90px → sejajar lurus** ✓
+
+### Icon SVG Custom (Wrapper Custom-Size — BEDA dari 10 Tombol Sebelumnya)
+- **Tombol 1 (Shapes Calculator)**: wrapper 50×50, SVG isi `viewBox="0 0 24 24"`
+  `width="100%" height="100%"`. Bentuk: calculator (rounded rect + screen display
+  + 9 button dots 3×3 grid). Warna teal `hsl(170,80%,52%→32%→22%)`.
+- **Tombol 2 (3D Block Simulator)**: wrapper 124×124, SVG isi `viewBox="-10 -13 50 50"`
+  `width="100%" height="100%"`. Bentuk: kubus 3D isometric (3 face: top putih bright,
+  left putih medium, right pakai `url(#menuIconGrad)` for shading) + 3 axis gizmo
+  panah (Y hijau `#4ade80` atas, X merah `#f87171` kanan, Z biru `#60a5fa` kiri).
+  Warna pink-magenta `hsl(330,85%,68%→46%→32%)`.
+
+**Kenapa wrapper custom-size, bukan langsung SVG width/height=124?**
+Supaya SVG pakai `width="100%" height="100%"` dan wrapper yang tentukan ukuran
+final. Lebih predictable untuk icon yang viewBox-nya bukan 24×24 (mis. 3D kubus
+pakai viewBox 50×50) — kalau pakai literal px di SVG, bisa dapat scaling yang
+aneh karena aspect ratio viewBox vs px size beda.
+
+### File yang Disentuh
+- `src/components/MenuButton3D.jsx` — fix overflow: button `hidden`→`visible`,
+  icon container eksplisit `overflow: 'visible'`. Slot width/height tetap fixed
+  56×56. Tambah comment supaya tidak regresi.
+- `src/pages/ShapesPage.jsx` — REWRITE TOTAL:
+  - Hapus array TOOLS + .map() lama, ganti dengan 2 `<MenuButton3D>` eksplisit.
+  - Update imports: hapus `Calculator, Box, User` dari lucide (Calculator & Box
+    dipakai untuk icon lama yang sekarang sudah diganti; User ternyata dead
+    import dari dulu, juga dihapus). Tambah `import MenuButton3D from
+    '../components/MenuButton3D'`. `ArrowLeft` tetap dipakai untuk tombol Back.
+  - onClick & locked DIPERTAHANKAN PERSIS seperti kode lama (lihat tabel di atas).
+- `memory.md` — entri ini (Bagian 59).
+- **TIDAK menyentuh** `design.md` (standar MenuButton3D sudah lengkap dari Bagian
+  56+57 — fix overflow di task ini adalah bug fix implementasi, bukan perubahan
+  standar desain. Standar slot fixed-width + overflow:visible sudah implisit di
+  Bagian 39.4, sekarang cuma di-explicit-kan + di-comment).
+
+### Catatan: design.md Tidak Diupdate
+Prompt kerja tidak minta update `design.md` di task ini. Fix overflow adalah
+perbaikan bug implementasi (bukan perubahan standar), jadi cukup dicatat di sini
+(Bagian 59 memory.md). Standar desain di `design.md` Bagian 39.4 sudah benar —
+sub-section "STANDAR UKURAN ICON RESMI" menyebut slot fixed 56×56. Yang baru
+ditambahkan: eksplisit `overflow: 'visible'` di slot + button parent. Standar
+ini sebenarnya sudah konsisten dengan spec lama (default overflow visible),
+cuma sekarang di-comment supaya next dev tidak sengaja balikin `hidden`.
+
+### Yang DIPERTAHANKAN (Tidak Boleh Regresi)
+- `onClick` 2 tombol — grep-verified identik dengan kode lama (pola conditional
+  `user ? setPage : onGuestClick` di tombol ke-2 dipertahankan).
+- `locked={!user}` di tombol 3D Block Simulator — reuse mekanisme locked bawaan
+  `MenuButton3D`, TIDAK ada logika baru.
+- Tombol Back (ke menu utama) — TIDAK diubah, masih pakai `<button>` mentah
+  dengan style sendiri (bukan MenuButton3D, karena tombol secondary kecil).
+- Page routing di App.jsx (`'shapes-calculator'`, `'block-simulator-3d'`) —
+  tidak diubah, masih di KNOWN_PAGES.
+- 8 tombol sebelumnya (6 menu utama + 4 submenu Logic Gates) — tidak tersentuh,
+  standar desain mereka tidak berubah.
+
+### Verifikasi Checklist (semua ✅)
+1. `npm run build` — 0 error, sukses dalam 10.22s.
+2. Scope check — diff HANYA `MenuButton3D.jsx` (fix overflow) + `ShapesPage.jsx`
+   (ganti 2 tombol) + `memory.md` (entri ini). Tidak sentuh file lain.
+3. `onClick` kedua tombol MASIH BERFUNGSI PERSIS — grep-verified identik dengan
+   kode lama.
+4. Label "Shapes Calculator" dan "3D Block Simulator" SEJAJAR LURUS — code
+   review: slot icon fixed 56px, label mulai di x=90px untuk kedua tombol.
+5. Icon kubus+gizmo 124×124 TIDAK KEPOTONG — button overflow:visible, icon
+   extends 14px ke kiri dan 18px ke atas dari tombol, tapi tidak terpotong.
+6. `memory.md` diupdate (entri ini).
+7. Push normal (NO force push).
+
+### Stage Summary
+- Total **12 tombol** sekarang pakai standar `MenuButton3D`: 6 menu utama
+  (Bagian 56) + 4 submenu Logic Gates (Bagian 58) + 2 submenu Shapes (Bagian 59).
+- FIX KRITIS di `MenuButton3D.jsx`: overflow `hidden`→`visible` di button parent
+  + eksplisit `overflow: visible` di icon container. Ini mungkin mempengaruhi
+  visual tombol-tombol sebelumnya — tapi karena icon-icon sebelumnya semua muat
+  di slot 56×56 (SVG 48×48), drop-shadow 1-2px, tidak ada perbedaan visual
+  yang terlihat. Hanya 2 tombol baru (dengan icon 50px & 124px) yang benar-benar
+  memanfaatkan fix ini.
+- Bug overflow:hidden di button parent adalah **bug laten dari Bagian 56** yang
+  tidak ketahuan selama 10 tombol sebelumnya karena icon-nya semua muat di
+  slot. Sekarang sudah fixed, supaya next time ada icon custom-size tidak
+  kepotong lagi.
+- Build sukses 0 error, scope terjaga (3 file disentuh), push normal.

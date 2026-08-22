@@ -68,14 +68,23 @@ export default function MenuButton3D({ icon, label, subtitle, onClick, top, bott
                 opacity: locked ? 0.55 : 1,
                 outline: 'none',
                 fontFamily: 'inherit',
-                overflow: 'hidden',
+                // overflow: 'visible' supaya icon custom-size (mis. 124x124 untuk 3D Block
+                // Simulator) TIDAK terpotong di batas tombol. Background tetap di-clip
+                // otomatis oleh border-radius (background-clip: border-box default), jadi
+                // tidak perlu overflow:hidden. Lihat design.md Bagian 39.
+                overflow: 'visible',
             }}
         >
+            {/* Slot icon — FIXED 56x56 (TETAP) + overflow:visible supaya icon yang
+                lebih besar dari slot (mis. 124px) boleh meluber tanpa menggeser
+                posisi label antar tombol. flexShrink:0 supaya tidak kecil saat
+                space sempit. Lihat design.md Bagian 39.4 — STANDAR UKURAN ICON RESMI. */}
             <div style={{
                 width: 56, height: 56,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 filter: locked ? 'none' : 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
                 flexShrink: 0,
+                overflow: 'visible',
             }}>
                 {icon}
             </div>
