@@ -4486,3 +4486,101 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
   design.md + memory.md supaya tidak hilang / tidak regresi di task berikutnya.
 - Build sukses 0 error. Push normal (NO force push).
 - Commit: `7e12283` (perubahan kode) + commit ini (dokumentasi).
+
+---
+
+## Bagian 58 — SUBMENU LOGIC GATES DISERAGAMKAN KE STANDAR MenuButton3D
+
+> Task: `PROMPT_KERJA_SubmenuLogicGates_StandarDesain.md`. Submenu "Logic Gates"
+> (4 tombol) sebelumnya masih pakai gaya lama (dark card + border glow neon +
+> `<button>` mentah). Task ini menyeragamkannya ke standar `MenuButton3D` yang
+> sudah ditetapkan di Bagian 56.
+
+### Konteks
+- Task Bagian 56 sudah menetapkan `MenuButton3D` (rounded + lip + gradient HSL +
+  icon custom shading) sebagai standar desain default untuk seluruh tombol menu.
+- 6 tombol menu utama sudah pakai standar itu. Tapi submenu "Logic Gates" (4 tombol)
+  belum — masih pakai `<button>` mentah dengan inline style lama.
+- Task ini: ganti 4 tombol submenu Logic Gates jadi `<MenuButton3D>`, **pakai
+  persis standar yang sama** (warna HSL top/bottom/lip + SVG icon custom + ukuran
+  icon resmi 48/56 dari Bagian 57).
+
+### 4 Tombol yang Diganti
+| # | Label | onClick (DIPERTAHANKAN) | locked | Warna (top/bottom/lip) |
+|---|-------|-------------------------|--------|------------------------|
+| 1 | 7 Basic Logic Gates | `setPage("basic-logic-gates")` | (default false) | `hsl(217,80%,65%)` / `hsl(217,80%,42%)` / `hsl(217,80%,30%)` |
+| 2 | Logic Gates Circuit | `goToCircuit` (= `setPage("logic-gates-circuit")`) | (default false) | `hsl(280,75%,68%)` / `hsl(280,75%,44%)` / `hsl(280,75%,30%)` |
+| 3 | Circuit Generator | `setPage("circuit-generator")` | (default false) | `hsl(190,85%,55%)` / `hsl(190,85%,35%)` / `hsl(190,85%,24%)` |
+| 4 | Create Logic Gates Simulator | `user ? setPage("logic-gates-simulator") : showGuestAnnouncement()` | `!user` | `hsl(38,92%,60%)` / `hsl(30,88%,42%)` / `hsl(28,88%,30%)` |
+
+### Yang DIPERTAHANKAN PERSIS (Tidak Boleh Regresi)
+- **`onClick` semua 4 tombol** — grep-verified, handler identik dengan kode lama.
+  Khusus tombol ke-4: guard `user ? ... : showGuestAnnouncement()` tetap utuh,
+  jadi guest yang klik tetap munculin banner merah (bukan langsung ke page).
+- **`locked={!user}` di tombol ke-4** — reuse mekanisme locked bawaan `MenuButton3D`
+  (lihat `design.md` Bagian 39.6): saat guest, tombol otomatis tampil abu-abu
+  (#1a1f2e) + border merah tipis + opacity 0.55 + badge "LOGIN REQUIRED" muncul
+  di kanan. Saat login, tombol tampil normal oranye (gradient `hsl(38→30)`).
+  TIDAK dibikin logika locked baru — prop ini cukup, komponen handle sisanya.
+- **`goToCircuit` function** — tetap didefinisikan & dipakai (tidak dihapus).
+
+### Yang DIHAPUS
+- `className="animate-gold-pulse"` di tombol ke-4 — animasi pulse emas lama yang
+  dirancang untuk gaya card lama. Sudah tidak relevan dengan style `MenuButton3D`
+  baru yang punya efek hover/press sendiri (3-state physical press simulation).
+  Definisi CSS `.animate-gold-pulse` di `src/index.css` TIDAK dihapus (mungkin
+  dipakai tempat lain, tidak diperiksa — cukup tidak dipakai di sini).
+- Inline style lama: `backgroundColor: panel`, `border: 1px solid rgba(...)`,
+  `boxShadow: 0 0 18px rgba(...)`, `onMouseEnter`/`onMouseLeave` translateY — semua
+  sudah di-handle internal oleh `MenuButton3D`.
+- **Import lucide yang tidak dipakai lagi**: `Cpu`, `CircuitBoard`, `Network`,
+  `FlaskConical` — verified via grep hanya dipakai di 4 tombol ini. Setelah diganti
+  SVG custom, import-nya dihapus dari `App.jsx`. `ArrowLeft`, `User`, `LogOut`,
+  `RotateCcw` tetap dipakai di userBar & tombol Back — TIDAK dihapus.
+
+### Icon SVG Custom (48×48 — STANDAR RESMI Bagian 57)
+- **Tombol 1 (7 Basic Logic Gates)**: IC chip bentuk persegi dengan inner rect
+  gelap + 8 pin (atas/bawah/kiri/kanan). Sama persis dengan icon "Logic Gates"
+  di menu utama — sengaja, karena ini submenu dari Logic Gates, jadi visual
+  consistency-nya kuat.
+- **Tombol 2 (Logic Gates Circuit)**: PCB board (rounded rect 4×4 dengan rx=3)
+  + trace lines + 2 junction dots. Distinct dari icon utama, sesuai konteks
+  "build & simulate circuits".
+- **Tombol 3 (Circuit Generator)**: 3 nodes (1 atas + 2 bawah) dengan connecting
+  lines — visualisasi tree/binary structure, sesuai konteks "auto-generate layouts".
+- **Tombol 4 (Create Logic Gates Simulator)**: erlenmeyer flask (kimia) dengan
+  liquid surface + 2 bubbles. Warna oranye `hsl(38→30)` supaya menonjol sebagai
+  fitur premium (login-required) di antara 3 tombol lain yang biru/ungu/cyan.
+
+### File yang Disentuh
+- `src/App.jsx` — ganti 4 blok `<button>` mentah jadi `<MenuButton3D>` di dalam
+  `{page === "logic-gates" && ...}`. Hapus 4 import lucide yang tidak dipakai
+  lagi. Scope: HANYA blok submenu logic-gates, tidak sentuh blok lain.
+- `memory.md` — entri ini (Bagian 58).
+- **TIDAK menyentuh** `MenuButton3D.jsx` (sudah benar dari task Bagian 56, tidak
+  perlu diubah), `design.md` (standar sudah lengkap dari Bagian 56+57), file
+  lain di luar scope ini.
+
+### Verifikasi Checklist (semua ✅)
+1. `npm run build` — 0 error, sukses dalam 10.44s.
+2. Scope check — diff HANYA `src/App.jsx` + `memory.md`. Tidak sentuh `MenuButton3D.jsx`
+   atau file lain.
+3. 4 tombol tampil sesuai standar baru (rounded+lip+gradient HSL+icon SVG custom 48×48).
+4. `onClick` ke-4 tombol MASIH BERFUNGSI PERSIS — grep-verified identik dengan kode lama.
+5. Tombol ke-4 tampil mode `locked` (abu-abu + badge LOGIN REQUIRED) saat `user=null`,
+   tampil normal oranye saat login — handled internal oleh `MenuButton3D` via prop
+   `locked={!user}`, TIDAK ada logika baru.
+6. `memory.md` diupdate (entri ini).
+7. Push normal (NO force push) — sesuai checklist prompt kerja.
+
+### Stage Summary
+- Submenu "Logic Gates" sekarang 100% konsisten dengan menu utama — pakai standar
+  `MenuButton3D` yang sama (warna HSL, lip, gradient, icon SVG custom, ukuran resmi
+  48/56 dari Bagian 57).
+- Total 10 tombol di web ini sekarang pakai standar yang sama: 6 menu utama +
+  4 submenu Logic Gates. Standar desain default global mulai konsisten terbukti
+  dipakai di seluruh surface.
+- `locked` state di tombol ke-4 berfungsi via prop tunggal — bukan logika baru.
+  Ini bukti design API `MenuButton3D` (Bagian 39.7) cukup ekspresif untuk reuse
+  di banyak kasus tanpa perlu modifikasi komponen.
+- Build sukses 0 error, scope terjaga (2 file disentuh), push normal.

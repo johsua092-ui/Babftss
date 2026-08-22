@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { Cpu, Network, FlaskConical, CircuitBoard, ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
+import { ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
 import MenuButton3D from './components/MenuButton3D';
 import LoginModal from './components/LoginModal';
 import NotFoundPage from './components/NotFoundPage';
@@ -360,27 +360,68 @@ export default function App() {
                 <div style={{ width: "100%", maxWidth: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: 28, textAlign: "center" }}>
                     <h1 style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 900, fontSize: "clamp(1.8rem,7vw,2.6rem)", background: "linear-gradient(180deg,#4ade80 0%,#16a34a 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.01em", margin: 0 }}>LOGIC GATES</h1>
                     <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 16 }}>
-                        <button onClick={() => setPage("basic-logic-gates")}
-                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(59,130,246,0.35)", display: "flex", alignItems: "center", gap: 16, color: "#fff", boxShadow: "0 0 18px rgba(59,130,246,0.25)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: "rgba(59,130,246,0.18)", padding: 12, borderRadius: 12, color: "#60a5fa", flexShrink: 0 }}><Cpu size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>7 Basic Logic Gates</span></button>
-                        <button onClick={goToCircuit}
-                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(168,85,247,0.35)", display: "flex", alignItems: "center", gap: 16, color: "#fff", boxShadow: "0 0 18px rgba(168,85,247,0.25)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: "rgba(168,85,247,0.18)", padding: 12, borderRadius: 12, color: "#a855f7", flexShrink: 0 }}><CircuitBoard size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Logic Gates Circuit</span></button>
-                        <button onClick={() => setPage("circuit-generator")}
-                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", backgroundColor: panel, border: "1px solid rgba(6,182,212,0.35)", display: "flex", alignItems: "center", gap: 16, color: "#fff", boxShadow: "0 0 18px rgba(6,182,212,0.25)", transition: "all 0.2s" }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: "rgba(6,182,212,0.18)", padding: 12, borderRadius: 12, color: "#06b6d4", flexShrink: 0 }}><Network size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 16, textAlign: "left" }}>Circuit Generator</span></button>
-                        <button onClick={() => user ? setPage("logic-gates-simulator") : showGuestAnnouncement()}
-                            className={user ? "animate-gold-pulse" : undefined}
-                            style={{ width: "100%", padding: "22px 20px", borderRadius: 14, cursor: "pointer", border: user ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: 16, transition: "all 0.2s", backgroundColor: panel, opacity: user ? 1 : 0.5 }}
-                            onMouseEnter={c => c.currentTarget.style.transform = "translateY(-2px)"}
-                            onMouseLeave={c => c.currentTarget.style.transform = "translateY(0)"}
-                        ><div style={{ backgroundColor: user ? "rgba(251,191,36,0.18)" : "rgba(239,68,68,0.12)", padding: 12, borderRadius: 12, color: user ? "#fbbf24" : "#ef4444", flexShrink: 0 }}><FlaskConical size={28} /></div><span style={{ fontFamily: "Orbitron,sans-serif", fontWeight: 700, fontSize: 14, textAlign: "left", color: user ? "#fbbf24" : "#ef4444" }}>Create Logic Gates Simulator</span>{!user && <span style={{ fontFamily: "Inter,sans-serif", fontSize: 10, fontWeight: 600, color: "#ef4444", marginLeft: 6, opacity: 0.8, letterSpacing: 0.5 }}>LOGIN REQUIRED</span>}</button>
+                        {/* 4 tombol submenu Logic Gates — diseragamkan ke standar MenuButton3D
+                            (lihat design.md Bagian 39). onClick & locked DIPERTAHANKAN PERSIS
+                            seperti sebelumnya — termasuk guard user ? ... : showGuestAnnouncement()
+                            di tombol ke-4. Standar ukuran icon: container 56x56, SVG 48x48
+                            (rasio 86%) — lihat design.md Bagian 39.4 "STANDAR UKURAN ICON RESMI". */}
+                        <MenuButton3D
+                            label="7 Basic Logic Gates"
+                            subtitle="AND, OR, NOT, and more"
+                            top="hsl(217,80%,65%)" bottom="hsl(217,80%,42%)" lip="hsl(217,80%,30%)"
+                            onClick={() => setPage("basic-logic-gates")}
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.6"/>
+                                    <rect x="9" y="9" width="6" height="6" rx="1" fill="rgba(0,0,0,0.22)"/>
+                                    <path d="M9 3v2.2M15 3v2.2M9 18.8V21M15 18.8V21M3 9h2.2M3 15h2.2M18.8 9H21M18.8 15H21" stroke="rgba(255,255,255,0.8)" strokeWidth="1.4" strokeLinecap="round"/>
+                                </svg>
+                            }
+                        />
+                        <MenuButton3D
+                            label="Logic Gates Circuit"
+                            subtitle="build & simulate circuits"
+                            top="hsl(280,75%,68%)" bottom="hsl(280,75%,44%)" lip="hsl(280,75%,30%)"
+                            onClick={goToCircuit}
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                    <rect x="4" y="4" width="16" height="16" rx="3" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.6"/>
+                                    <path d="M8 9h3v3H8zM13 9h3M13 12h3M8 15h8" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <circle cx="16.5" cy="9" r="1" fill="rgba(0,0,0,0.35)"/>
+                                    <circle cx="16.5" cy="12" r="1" fill="rgba(0,0,0,0.35)"/>
+                                </svg>
+                            }
+                        />
+                        <MenuButton3D
+                            label="Circuit Generator"
+                            subtitle="auto-generate layouts"
+                            top="hsl(190,85%,55%)" bottom="hsl(190,85%,35%)" lip="hsl(190,85%,24%)"
+                            onClick={() => setPage("circuit-generator")}
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                    <circle cx="12" cy="5" r="2.6" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5"/>
+                                    <circle cx="6" cy="18" r="2.6" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5"/>
+                                    <circle cx="18" cy="18" r="2.6" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.5"/>
+                                    <path d="M12 7.6V11M12 11L6 15.4M12 11L18 15.4" stroke="rgba(0,0,0,0.35)" strokeWidth="1.3" strokeLinecap="round"/>
+                                </svg>
+                            }
+                        />
+                        <MenuButton3D
+                            label="Create Logic Gates Simulator"
+                            subtitle="design your own gate"
+                            top="hsl(38,92%,60%)" bottom="hsl(30,88%,42%)" lip="hsl(28,88%,30%)"
+                            onClick={() => user ? setPage("logic-gates-simulator") : showGuestAnnouncement()}
+                            locked={!user}
+                            icon={
+                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                    <path d="M10 3h4v4.2l4.3 8.4A2 2 0 0 1 16.5 18.5h-9a2 2 0 0 1-1.8-2.9L10 7.2z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.6" strokeLinejoin="round"/>
+                                    <path d="M9 3h6" stroke="rgba(0,0,0,0.3)" strokeWidth="1.4" strokeLinecap="round"/>
+                                    <path d="M7.3 14.5h9.4" stroke="rgba(0,0,0,0.28)" strokeWidth="1" strokeLinecap="round"/>
+                                    <circle cx="10.5" cy="16.3" r="0.7" fill="rgba(255,255,255,0.6)"/>
+                                    <circle cx="13.5" cy="17" r="0.5" fill="rgba(255,255,255,0.6)"/>
+                                </svg>
+                            }
+                        />
                     </div>
                     <button onClick={() => setPage("menu")}
                         style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, backgroundColor: "#0e1420", border: "1px solid #334155", color: "#94a3b8", cursor: "pointer", fontFamily: "Inter,sans-serif", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}
