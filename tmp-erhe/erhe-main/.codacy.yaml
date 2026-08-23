@@ -1,0 +1,14 @@
+---
+engines:
+  cppcheck:
+    language: c++
+exclude_paths:
+  - "build/**"
+  - "src/hidapi/**"
+  - "src/imgui/**"
+  - "src/mikktspace/**"
+  - "src/RectangleBinPack/**"
+  - "src/miniaudio/**"
+  - "src/optional_lite/**"
+  - "src/mango/**"
+  - "src/rapidjson/**"

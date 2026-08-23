@@ -1,0 +1,8 @@
+# wrap.sh is exec'd by the device's /system/bin/sh (HWASan -Phwasan builds); a
+# CRLF in the shebang would break it, so force LF line endings for the bundled
+# Android wrap-script tree regardless of the checkout's core.autocrlf setting.
+android-project/app/hwasan/** text eol=lf
+
+# SDL_SYNC_COMMIT is machine-read (CMake file(STRINGS) and
+# scripts/update_sdl.py); keep it byte-stable LF.
+android-project/SDL_SYNC_COMMIT text eol=lf

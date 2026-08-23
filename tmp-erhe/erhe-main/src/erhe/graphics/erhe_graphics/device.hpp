@@ -1,0 +1,650 @@
+#pragma once
+
+#include "erhe_graphics/buffer.hpp"
+#include "erhe_graphics/ring_buffer_range.hpp"
+#include "erhe_graphics/shader_monitor.hpp"
+#if defined(ERHE_SPIRV)
+#   include "erhe_graphics/spirv_cache.hpp"
+#endif
+#include "erhe_graphics/surface.hpp"
+#include "erhe_graphics/swapchain.hpp"
+#include "erhe_graphics/generated/graphics_config.hpp"
+#include "erhe_frame_pacing/frame_time_recorder.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_utility/debug_label.hpp"
+
+#include <array>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <vector>
+
+namespace erhe::window { class Context_window; }
+
+namespace erhe::graphics {
+
+class Format_properties
+{
+public:
+    bool                 supported{false};
+
+    // These are all texture_2d
+    bool                 color_renderable{false};
+    bool                 depth_renderable{false};
+    bool                 stencil_renderable{false};
+    bool                 filter{false};
+    bool                 framebuffer_blend{false};
+
+    int                  red_size        {0};
+    int                  green_size      {0};
+    int                  blue_size       {0};
+    int                  alpha_size      {0};
+    int                  depth_size      {0};
+    int                  stencil_size    {0};
+    int                  image_texel_size{0};
+
+    std::vector<int>     texture_2d_sample_counts{};
+    int                  texture_2d_array_max_width{0};
+    int                  texture_2d_array_max_height{0};
+    int                  texture_2d_array_max_layers{0};
+
+    // These are all texture_2d
+    std::vector<int64_t> sparse_tile_x_sizes{};
+    std::vector<int64_t> sparse_tile_y_sizes{};
+    std::vector<int64_t> sparse_tile_z_sizes{};
+};
+
+class Blit_command_encoder;
+class Command_buffer;
+class Command_encoder;
+class Compute_command_encoder;
+class Device;
+class Render_command_encoder;
+class Render_pass;
+class Render_pipeline;
+class Render_pipeline_create_info;
+class Ring_buffer;
+class Sampler;
+class Surface;
+class Swapchain;
+class Texture;
+class Vulkan_external_creators;
+
+// Backend-neutral GPU and OS-platform handles needed by external integrations
+// (notably OpenXR) to fill XrGraphicsBinding*KHR structs. Each backend
+// populates only the fields relevant to it; the other fields stay zero.
+// All handles are integer-typed or void* so this header pulls in no Vulkan,
+// WGL or Wayland headers.
+class Native_device_handles
+{
+public:
+    // Vulkan backend
+    uint64_t vk_instance           {0}; // VkInstance
+    uint64_t vk_physical_device    {0}; // VkPhysicalDevice
+    uint64_t vk_device             {0}; // VkDevice
+    uint32_t vk_queue_family_index {0};
+    uint32_t vk_queue_index        {0};
+
+    // OpenGL Win32 backend
+    void*    gl_hdc                {nullptr}; // HDC
+    void*    gl_hglrc              {nullptr}; // HGLRC
+
+    // OpenGL Wayland backend
+    void*    gl_wl_display         {nullptr}; // struct wl_display*
+
+    // OpenGL Xlib backend (currently unused; reserved for future Linux X11 path)
+    void*    gl_xlib_display       {nullptr}; // Display*
+    uint32_t gl_xlib_visualid      {0};
+    void*    gl_glx_fb_config      {nullptr}; // GLXFBConfig
+    void*    gl_glx_drawable       {nullptr}; // GLXDrawable
+    void*    gl_glx_context        {nullptr}; // GLXContext
+};
+
+static constexpr unsigned int format_flag_require_depth     = 0x01u;
+static constexpr unsigned int format_flag_require_stencil   = 0x02u;
+static constexpr unsigned int format_flag_prefer_accuracy   = 0x04u;
+static constexpr unsigned int format_flag_prefer_filterable = 0x08u;
+
+// Image_layout is defined in enums.hpp
+
+// Frame pacing capability tier (doc/frame_pacing_capability_tiers.md,
+// implementation plan P4.2). Resolved once at device init; see
+// Device::get_frame_pacing_tier.
+enum class Frame_pacing_tier : unsigned int {
+    off        = 0, // no pacing (forced off, or no usable method)
+    slop_servo = 1, // tier S: backpressure slop servo, plain FIFO required
+    full       = 2  // tier W: full pacer (present id + wait + timing)
+};
+
+enum class Texture_heap_path : unsigned int {
+    opengl_bindless_textures,   // GL_ARB_bindless_texture: sampler2D(uvec2_handle)
+    opengl_sampler_array,       // OpenGL non-bindless: s_texture[handle.x] array
+    metal_argument_buffer,      // Metal argument buffers
+    vulkan_descriptor_indexing  // Vulkan: erhe_texture_heap[] at set 1 + assigned samplers at set 0
+};
+
+class Device_info
+{
+public:
+    Vendor vendor{Vendor::Unknown};
+
+    // Human-readable backend API identifier for diagnostics and window title.
+    // Example: "OpenGL 4.1 Core", "Vulkan 1.3.0 VK_DRIVER_ID_MOLTENVK",
+    // "Metal (Apple M1)", "Null".
+    std::string api_info;
+
+    int  glsl_version           {0};
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    int  gl_version             {0};
+    bool core_profile           {false};
+    bool compatibility_profile  {false};
+    bool forward_compatible     {false};
+#endif
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    uint32_t vulkan_api_version {0};
+    uint32_t vulkan_driver_id   {0};
+
+    // Reflect VkPhysicalDeviceShaderFloat16Int8Features. Set when
+    // the corresponding feature was advertised by the physical
+    // device and enabled on VkDevice creation.
+    bool     shader_float16     {false};
+    bool     shader_int8        {false};
+
+    // Reflect VkPhysicalDevice16BitStorageFeatures (VK_KHR_16bit_storage,
+    // promoted to Vulkan 1.1). Each bit gates 16-bit types in a particular
+    // SPIR-V storage class.
+    bool     storage_buffer_16bit_access            {false};
+    bool     uniform_and_storage_buffer_16bit_access{false};
+    bool     storage_push_constant_16               {false};
+    bool     storage_input_output_16                {false};
+
+    // Reflect VkPhysicalDeviceMultiviewFeatures (VK_KHR_multiview, promoted
+    // to Vulkan 1.1 core). Set when the corresponding feature was advertised
+    // by the physical device and enabled on VkDevice creation.
+    bool     multiview                              {false};
+    bool     multiview_geometry_shader              {false};
+    bool     multiview_tessellation_shader          {false};
+
+    // Reflect VkPhysicalDeviceMultiviewProperties (Vulkan 1.1 core). Spec
+    // minimum for max_multiview_view_count is 6.
+    uint32_t max_multiview_view_count               {0};
+    uint32_t max_multiview_instance_index           {0};
+
+    // Reflect VkPhysicalDeviceFragmentDensityMapFeaturesEXT
+    // (VK_EXT_fragment_density_map). Drives OpenXR fixed foveated rendering.
+    // True only when the device advertises and enables BOTH fragmentDensityMap
+    // AND fragmentDensityMapNonSubsampledImages: the core (non-subsampled) FFR
+    // path attaches the FDM to non-subsampled runtime swapchain color images,
+    // which requires the non-subsampled feature.
+    bool     fragment_density_map                   {false};
+#endif
+
+    bool use_clip_control            {false};
+    bool use_clip_distance           {true};  // shaderClipDistance / gl_ClipDistance
+    erhe::math::Coordinate_conventions coordinate_conventions;
+    bool use_direct_state_access     {false};
+    bool use_binary_shaders          {false};
+    bool use_integer_polygon_ids     {false};
+    Texture_heap_path texture_heap_path{Texture_heap_path::opengl_sampler_array};
+
+    // Helper queries
+    [[nodiscard]] auto uses_bindless_texture       () const -> bool {
+        return texture_heap_path == Texture_heap_path::opengl_bindless_textures;
+    }
+
+    bool use_sparse_texture          {false};
+    bool use_persistent_buffers      {false};
+    bool use_multi_draw_indirect_core{false};
+    bool use_multi_draw_indirect_arb {false};
+    bool emulate_multi_draw_indirect {false};
+    bool use_compute_shader          {false};
+    bool use_shader_storage_buffers  {false};
+
+    // GPU ray tracing via ray queries: Acceleration_structure creation/builds
+    // and Binding_type::acceleration_structure /
+    // Compute_command_encoder::set_acceleration_structure are functional.
+    // Vulkan sets this when VK_KHR_acceleration_structure + VK_KHR_ray_query
+    // (+ bufferDeviceAddress) were enabled on the device; Metal when
+    // MTL::Device::supportsRaytracing() (ray query GLSL lowers to MSL
+    // intersection_query via SPIRV-Cross); false on GL / Null.
+    bool use_ray_query               {false};
+
+    // The device accepts SPIR-V modules declaring
+    // SPV_KHR_relaxed_extended_instruction, which glslang emits when
+    // NonSemantic.Shader.DebugInfo.100 needs forward references (large
+    // shaders). Vulkan sets this when the
+    // VK_KHR_shader_relaxed_extended_instruction feature was enabled; false
+    // elsewhere. Glslang_shader_stages::link_program falls back to compiling
+    // the affected stage without non-semantic debug info when unsupported -
+    // otherwise vkCreateShaderModule rejects the module
+    // (VK_ERROR_INITIALIZATION_FAILED on AMD).
+    bool shader_relaxed_extended_instruction {false};
+
+    // The device supports ray query but use_ray_query was forced off because
+    // Xcode's GPU frame-capture layer (GPUToolsCapture) is loaded - it
+    // intermittently crashes every acceleration structure command encoder
+    // (Metal only). UI uses this to explain WHY ray tracing features are
+    // unavailable and how to get them back (scheme GPU Frame Capture =
+    // Disabled, or metal.disable_gpu_frame_capture in erhe_graphics.json).
+    bool ray_query_disabled_by_capture_layer{false};
+
+    // VK_KHR_ray_tracing_position_fetch on top of use_ray_query: ray query
+    // shaders can read the committed triangle's object-space vertex positions
+    // (GL_EXT_ray_tracing_position_fetch), and bottom level acceleration
+    // structures are built with the data-access flag. Never true without
+    // use_ray_query. Always false on Metal (SPIRV-Cross has no MSL lowering
+    // for it); consumers must provide a buffer-fetch fallback path.
+    bool use_ray_tracing_position_fetch{false};
+    // VK_EXT_conservative_rasterization present: pipelines may set
+    // Rasterization_state::conservative_enable (ignored elsewhere).
+    bool use_conservative_rasterization{false};
+    bool use_base_instance           {false};
+    bool use_clear_texture           {false};
+    bool use_texture_view            {false};
+    bool use_debug_output            {false}; // GL 4.3 or ARB_debug_output — debug callback
+    bool use_debug_groups            {false}; // GL 4.3 — push/pop debug group (not in ARB_debug_output)
+
+    // The SOLID_WIREFRAME standard-shader variant draws real polygon edges in
+    // the lit fill fragment, which adds several flat varyings at high explicit
+    // locations (v_bary / v_edge_mask / v_wire_color / v_wire_width at
+    // locations 13..16). The macOS OpenGL 4.1 (GLSL 410) Apple GLSL compiler
+    // fails to allocate them and the program will not link ("Implementation
+    // limit of 128 varying components exceeded ... v_edge_mask"). Default true;
+    // the GL backend clears it on 4.1. When false the editor falls back to the
+    // wide-line edge renderer instead of solid wireframe.
+    bool use_solid_wireframe         {true};
+
+    // Driver workarounds. Each flag marks a specific spec-valid construct that a
+    // particular driver mishandles; it is detected at device init (usually by
+    // driver ID) and drives both a WORKAROUND_* shader define (see
+    // shader_stages_create_info.cpp) and matching C++ resource setup. We never
+    // branch shaders on the graphics API itself - only on the concrete
+    // capability/workaround. Policy: doc/shader_workarounds.md.
+    //
+    // Mesa KosmicKrisp (Vulkan-on-Metal) rejects OpImageRead from a storage
+    // image (imageLoad on a `uniform image2D`) at vkCreateComputePipelines with
+    // VK_ERROR_INVALID_SHADER_NV, even though the SPIR-V is valid and the same
+    // driver accepts OpImageWrite. Shaders that need to read such an image must
+    // instead sample it (texelFetch on a sampler2D); the bind group binds the
+    // source as a combined_image_sampler. Emits WORKAROUND_NO_COMPUTE_STORAGE_IMAGE_READ.
+    bool workaround_no_compute_storage_image_read{false};
+
+    // limits
+    int max_compute_workgroup_count[3] = { 1, 1, 1 };
+    int max_compute_workgroup_size [3] = { 1, 1, 1 };
+    int max_compute_work_group_invocations       {1};
+    int max_compute_shared_memory_size           {1};
+    int max_samples                              {0};
+    int max_color_texture_samples                {0};
+    int max_depth_texture_samples                {0};
+    int max_framebuffer_samples                  {0};
+    int max_integer_samples                      {0};
+    int max_vertex_attribs                       {0};
+
+    int max_texture_size                        {64};
+    int max_3d_texture_size                      {0};
+    int max_cube_map_texture_size                {0};
+    int max_texture_buffer_size                  {0};
+    int max_array_texture_layers                 {0};
+    int max_sparse_texture_size                  {0};
+
+    uint32_t max_per_stage_descriptor_samplers   {0};
+    int max_combined_texture_image_units         {0};  // combined across all shader stages
+    int max_uniform_block_size                   {0};
+    int max_shader_storage_buffer_bindings       {0};
+    int max_uniform_buffer_bindings              {0};
+    int max_compute_shader_storage_blocks        {0};
+    int max_compute_uniform_blocks               {0};
+    int max_vertex_shader_storage_blocks         {0};
+    int max_vertex_uniform_blocks                {0};
+    int max_vertex_uniform_vectors               {0};
+    int max_fragment_shader_storage_blocks       {0};
+    int max_fragment_uniform_blocks              {0};
+    int max_fragment_uniform_vectors             {0};
+    int max_geometry_shader_storage_blocks       {0};
+    int max_geometry_uniform_blocks              {0};
+    int max_tess_control_shader_storage_blocks   {0};
+    int max_tess_control_uniform_blocks          {0};
+    int max_tess_evaluation_shader_storage_blocks{0};
+    int max_tess_evaluation_uniform_blocks       {0};
+    float max_texture_max_anisotropy{1.0f};
+
+    std::vector<int> msaa_sample_counts;
+    int max_depth_layers    {4};
+    int max_depth_resolution{64};
+
+    // Depth/stencil MSAA resolve capabilities. Bitmasks built from
+    // Resolve_mode_flag_bit_mask values. Vulkan: filled from
+    // VkPhysicalDeviceDepthStencilResolveProperties. Metal: hardcoded to the
+    // OS-version-fixed support set. GL: sample_zero only.
+    uint32_t supported_depth_resolve_modes      {Resolve_mode_flag_bit_mask::sample_zero};
+    uint32_t supported_stencil_resolve_modes    {Resolve_mode_flag_bit_mask::sample_zero};
+    bool     independent_depth_stencil_resolve  {false}; // arbitrary depth/stencil mode pairs allowed
+    bool     independent_depth_stencil_resolve_none{false}; // either-but-not-both NONE allowed
+
+    // implementation defined
+    unsigned int shader_storage_buffer_offset_alignment{256};
+    unsigned int uniform_buffer_offset_alignment       {256};
+};
+
+// Device-local (VRAM) memory budget snapshot. Vulkan fills this from VMA
+// heap budgets (driver-accurate when VK_EXT_memory_budget is available,
+// VMA's own estimate otherwise); other backends report zeros = unknown.
+// Consumers holding large optional allocations (e.g. the lightmap baker
+// working set) size them against get_remaining() instead of allocating
+// blind and hitting VK_ERROR_OUT_OF_DEVICE_MEMORY.
+class Memory_budget
+{
+public:
+    uint64_t device_local_budget{0}; // bytes the process may use before oversubscribing; 0 = unknown
+    uint64_t device_local_usage {0}; // bytes currently allocated by this process
+
+    [[nodiscard]] auto is_known     () const -> bool     { return device_local_budget > 0; }
+    [[nodiscard]] auto get_remaining() const -> uint64_t { return (device_local_budget > device_local_usage) ? (device_local_budget - device_local_usage) : 0; }
+};
+
+using Shader_error_callback   = std::function<void(const std::string& error_log, const std::string& shader_source, const std::string& callstack)>;
+using Device_message_callback = std::function<void(Message_severity severity, const std::string& message, const std::string& callstack)>;
+using State_dump_callback     = std::function<void(const std::string& state_dump)>;
+using Trace_callback          = std::function<void(const std::string& message)>;
+
+class Frame_state;
+class Frame_begin_info;
+class Frame_end_info;
+
+class Device_impl;
+class Device final
+{
+public:
+    Device(
+        const Surface_create_info&      surface_create_info,
+        const Graphics_config&          graphics_config,
+        Device_message_callback         device_message_callback  = {},
+        const Vulkan_external_creators* vulkan_external_creators = nullptr
+    );
+    Device         (const Device&) = delete;
+    void operator= (const Device&) = delete;
+    Device         (Device&&)      = delete;
+    void operator= (Device&&)      = delete;
+    ~Device() noexcept;
+
+    // Device-frame lifecycle. A frame is bracketed by wait_frame() at the
+    // top and end_frame() at the bottom, with one or more cb submits in
+    // between. All cbs are obtained from get_command_buffer() and
+    // committed via submit_command_buffers(). See notes.md
+    // ("Frame lifecycle") for the full sequence.
+    //
+    //   wait_frame  -- pace the ring on the device's timeline semaphore,
+    //                  recycle the per-(frame_in_flight, thread_slot)
+    //                  command pool of the slot we are about to enter,
+    //                  fire completion handlers.
+    //   begin_frame -- (legacy single-cb shim) open the slot's legacy
+    //                  command buffer for recording. New code should not
+    //                  call this; record into the cb returned from
+    //                  get_command_buffer() instead.
+    //   end_frame   -- ADVANCE THE FRAME INDEX. THAT IS ALL.
+    //                  Does NOT submit any command buffer.
+    //                  Does NOT present any swapchain image.
+    //                  Submission and presentation belong to
+    //                  submit_command_buffers (which presents
+    //                  implicitly when a cb engaged a swapchain via
+    //                  Command_buffer::begin_swapchain). end_frame
+    //                  signals the device timeline at the current
+    //                  frame index, then increments it; the next
+    //                  wait_frame() consumes that timeline value to
+    //                  unblock pool reset.
+    [[nodiscard]] auto wait_frame () -> bool;
+
+    [[nodiscard]] auto begin_frame() -> bool;
+    [[nodiscard]] auto end_frame  () -> bool;
+
+    // Legacy compat overloads. Frame_begin_info / Frame_end_info are
+    // ignored (presentation moved to submit_command_buffers). Kept only
+    // so existing call sites compile while migrating.
+    [[nodiscard]] auto begin_frame(const Frame_begin_info& frame_begin_info) -> bool;
+    [[nodiscard]] auto end_frame  (const Frame_end_info& frame_end_info) -> bool;
+
+    // Blocks until all in-flight device frames complete; flushes pending
+    // completion handlers. For init boundaries, not the steady-state loop.
+    void wait_idle();
+
+    // Drop every cached graphics pipeline that was built against any
+    // previously-compiled shader stages. Backends that key their pipeline
+    // cache on raw shader-module handles (Vulkan) MUST flush the cache
+    // when those shader stages are destroyed -- otherwise drivers that
+    // recycle module handle values cause stale pipelines to be returned
+    // for fresh modules. Backends without that hazard (OpenGL, Metal,
+    // Null) implement this as a no-op. Pipelines are destroyed via the
+    // backend's deferred-destruction queue so in-flight GPU work stays
+    // valid.
+    void clear_render_pipeline_cache();
+
+    // Init-time prewarm. Constructs a Render_pipeline from the supplied
+    // create_info and discards it; on Vulkan the resulting binary is
+    // retained in the driver-level VkPipelineCache (m_pipeline_cache)
+    // because Render_pipeline_impl's constructor calls
+    // vkCreateGraphicsPipelines with that cache. Subsequent constructions
+    // (or set_render_pipeline_state cache misses) with the same shader
+    // modules + pipeline-state tuple skip the IR-optimization step and
+    // complete significantly faster -- this is the dominant cost in the
+    // first-frame budget on tile-based mobile drivers (Adreno on Quest).
+    //
+    // Note: this populates the driver-level binary cache only. The
+    // application-level VkPipeline cache that Render_command_encoder_impl
+    // populates (keyed on the active VkRenderPass pointer) is NOT
+    // populated by this call -- a runtime bind still calls
+    // vkCreateGraphicsPipelines once, but reuses the warmed driver cache.
+    // OpenGL and Null backends are effectively no-ops; Metal participates
+    // only when the backend opts into MTLBinaryArchive, which it does not
+    // today.
+    //
+    // Caller contract: create_info must be well-formed (non-null
+    // shader_stages with valid modules, formats matching a render pass
+    // the runtime will use). Malformed create_infos surface as
+    // Message_severity::error from the backend, which the editor wires
+    // to ERHE_FATAL when validation layers are on -- prewarm is not a
+    // place to probe with speculative inputs.
+    void warmup_render_pipeline(const Render_pipeline_create_info& create_info);
+
+    // Tear down and rebuild the platform surface and its swapchain. Used
+    // on Android when the activity returns from background with a new
+    // ANativeWindow: the existing VkSurfaceKHR is destroyed, a fresh one
+    // is created over the Context_window's current native window, and a
+    // new Swapchain is constructed (its actual VkSwapchainKHR is
+    // initialised lazily on the next wait_frame/init_swapchain pass).
+    // No-op + returns false if there is no surface today or if any step
+    // fails. Caller is expected to be in idle device-frame state.
+    [[nodiscard]] auto recreate_surface_for_new_window() -> bool;
+
+    [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
+
+    void start_frame_capture       ();
+    void end_frame_capture         ();
+
+    // Allocate a fresh Command_buffer from the pool owned by
+    // (current frame-in-flight slot, thread_slot). The returned cb is
+    // in the initial state; the caller must call begin() before
+    // recording. Lifetime is owned by the per-(frame_in_flight,
+    // thread_slot) pool inside the backend Device_impl: the cb stays
+    // valid until the next time the frame-in-flight slot completes a
+    // GPU submit, at which point the pool is reset wholesale.
+    [[nodiscard]] auto get_command_buffer(unsigned int thread_slot) -> Command_buffer&;
+
+    // Submit a list of recorded Command_buffers to the graphics queue.
+    // For each cb the backend collects the wait/signal semaphores and
+    // CPU-side fence waits registered via Command_buffer::wait_for_*
+    // / signal_*, splices them into a single VkSubmitInfo2 (Vulkan)
+    // or equivalent, then submits.
+    //
+    // Implicit present: if any cb engaged a swapchain via
+    // Command_buffer::begin_swapchain, the swapchain's per-slot
+    // present semaphore is signalled by this submit and
+    // vkQueuePresentKHR / swap_buffers / presentDrawable is driven
+    // automatically right after the submit returns. Callers do not
+    // need a separate present step.
+    void submit_command_buffers    (std::span<Command_buffer* const> command_buffers);
+
+    // Submit one recorded Command_buffer and block until its GPU work
+    // completes. Narrow synchronous helper for load-time upload flushing:
+    // unlike wait_idle() it fires no completion handlers and touches no
+    // frame state, so it is safe to call in the middle of a frame while
+    // the frame's own command buffer is still recording. Vulkan waits on
+    // the cb's implicit fence; other backends fall back to a full device
+    // wait after the submit.
+    void submit_command_buffer_and_wait(Command_buffer& command_buffer);
+
+    void add_completion_handler    (std::function<void()> callback);
+    void on_thread_enter           ();
+
+    // Reads the most recently composited frame back to host memory as tightly
+    // packed 8-bit RGBA (out_format = format_8_vec4_srgb). Returns false if the
+    // backend / configuration does not support it, Vulkan only. Headless
+    // (emulated swapchain): synchronous readback. Windowed (real WSI
+    // swapchain): collects a capture previously armed with
+    // request_frame_capture() once a frame has recorded it - arm, render a
+    // frame, then call this. Intended for infrequent diagnostic capture
+    // (e.g. MCP screenshots), not the hot path.
+    [[nodiscard]] auto capture_last_frame(
+        int&                      out_width,
+        int&                      out_height,
+        erhe::dataformat::Format& out_format,
+        std::vector<std::byte>&   out_pixels
+    ) -> bool;
+
+    // Arms a one-shot capture of the next composited frame on the real WSI
+    // swapchain; the copy is recorded by that frame's swapchain render pass
+    // and collected with capture_last_frame() afterwards. Returns false when
+    // no capture path exists (non-Vulkan backend, no surface, or the surface
+    // does not support reading its images back); returns true and is a no-op
+    // when headless (capture_last_frame is already synchronous there).
+    [[nodiscard]] auto request_frame_capture() -> bool;
+
+    [[nodiscard]] auto get_surface                        () -> Surface*;
+    // Presentation pre-rotation the renderer must apply to its final swapchain
+    // pass (Android landscape on a portrait-native panel). identity elsewhere.
+    [[nodiscard]] auto get_surface_transform              () -> Surface_transform;
+    [[nodiscard]] auto get_handle                         (const Texture& texture, const Sampler& sampler) const -> uint64_t;
+    // Creates a tiny 2x2 fallback texture, populated with a debug
+    // pattern. The pixel upload is recorded into init_command_buffer;
+    // the caller must end + submit it (and wait on the GPU) before
+    // the returned texture is sampled.
+    [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
+    [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;
+    [[nodiscard]] auto get_frame_index                    () const -> uint64_t;
+    [[nodiscard]] auto allocate_ring_buffer_entry         (Buffer_target buffer_target, Ring_buffer_usage usage, std::size_t byte_count) -> Ring_buffer_range;
+    [[nodiscard]] auto make_blit_command_encoder          (Command_buffer& command_buffer) -> Blit_command_encoder;
+    [[nodiscard]] auto make_compute_command_encoder       (Command_buffer& command_buffer) -> Compute_command_encoder;
+    [[nodiscard]] auto make_render_command_encoder        (Command_buffer& command_buffer) -> Render_command_encoder;
+    [[nodiscard]] auto create_render_pipeline             (const Render_pipeline_create_info& create_info) -> std::unique_ptr<Render_pipeline>;
+    [[nodiscard]] auto get_format_properties              (erhe::dataformat::Format format) const -> Format_properties;
+
+    // Probe whether a 2D VK_IMAGE_TILING_OPTIMAL image of the given format with
+    // the supplied Image_usage_flag_bit_mask combination can actually be
+    // created on this device. On Vulkan this calls
+    // vkGetPhysicalDeviceImageFormatProperties2; on other backends it returns
+    // true unconditionally (the probe concept is Vulkan-specific). Intended
+    // for diagnosing XR swapchain usage-mask issues where the runtime may
+    // allocate images with more usage bits than the app requests.
+    [[nodiscard]] auto probe_image_format_support         (erhe::dataformat::Format format, uint64_t usage_mask) const -> bool;
+
+    [[nodiscard]] auto get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>;
+                  void sort_depth_stencil_formats         (std::vector<erhe::dataformat::Format>& formats, unsigned int sort_flags, int requested_sample_count) const;
+    [[nodiscard]] auto choose_depth_stencil_format        (const std::vector<erhe::dataformat::Format>& formats) const -> erhe::dataformat::Format;
+    [[nodiscard]] auto choose_depth_stencil_format        (unsigned int sort_flags, int requested_sample_count) const -> erhe::dataformat::Format;
+    [[nodiscard]] auto get_shader_monitor                 () -> Shader_monitor&;
+    [[nodiscard]] auto get_info                           () const -> const Device_info&;
+    [[nodiscard]] auto get_graphics_config                () const -> const Graphics_config&;
+
+    // Current device-local memory budget/usage (see Memory_budget). Cheap
+    // to call every frame; values refresh as allocations come and go.
+    [[nodiscard]] auto get_memory_budget                  () const -> Memory_budget;
+
+    // The single source of truth for the reverse-Z choice. Returns true when
+    // reverse-Z (near=1.0, far=0.0) should be used: the API must natively
+    // support it (native_depth_range == zero_to_one -- Vulkan/Metal always,
+    // OpenGL only with glClipControl) AND the user must not have set
+    // Graphics_config::force_disable_reverse_depth. The value is fixed for the
+    // lifetime of the device; every reverse-depth-dependent decision (pipeline
+    // depth compare op, depth clear value, projection matrices, shadow
+    // comparison samplers, clip_depth_direction) must derive from this query
+    // rather than caching its own copy.
+    [[nodiscard]] auto get_reverse_depth                  () const -> bool;
+    [[nodiscard]] auto get_impl                           () -> Device_impl&;
+    [[nodiscard]] auto get_impl                           () const -> const Device_impl&;
+#if defined(ERHE_SPIRV)
+    [[nodiscard]] auto get_spirv_cache                    () -> Spirv_cache&;
+#endif
+    void               set_shader_error_callback          (Shader_error_callback callback);
+    void               set_state_dump_callback            (State_dump_callback callback);
+    void               set_trace_callback                 (Trace_callback callback);
+    void               shader_error                       (const std::string& error_log, const std::string& shader_source);
+    void               device_message                     (Message_severity severity, const std::string& message);
+    void               state_dump                         (const std::string& dump);
+    void               trace                              (const std::string& message);
+
+    [[nodiscard]] auto get_active_render_pass             () const -> Render_pass*;
+    void               set_active_render_pass             (Render_pass* render_pass);
+
+    // Frame time records (frame pacing step P0.2): per-frame event
+    // timestamps for the frame pacer and profiling tools, backend-neutral
+    // storage filled by the backend and read by the app (observer mode,
+    // step P2.1). Driven from the main/render thread only.
+    [[nodiscard]] auto get_frame_time_recorder            () -> erhe::frame_pacing::Frame_time_recorder&;
+    // Display refresh duration from the swapchain timing query (seconds);
+    // 0.0 while unknown / unsupported. Set by the backend swapchain.
+    void               set_display_refresh_duration_seconds(double seconds);
+    [[nodiscard]] auto get_display_refresh_duration_seconds() const -> double;
+    // Present-wait clamp (frame pacing FR5, implementation plan step P2.2):
+    // block until the frame with the given device frame index has been
+    // displayed, bounded by timeout_ns. Safe to call speculatively: returns
+    // unsupported (immediately) when no present-wait path exists.
+    [[nodiscard]] auto wait_for_displayed_frame             (std::int64_t frame_id, uint64_t timeout_ns) -> Present_wait_result;
+    // Target present time (frame pacing FR3, implementation plan step P2.3):
+    // request that the given frame's present is displayed at target_time
+    // (reference-clock seconds, the Frame_time_recorder clock). Consumed by
+    // the backend at the frame's vkQueuePresentKHR; ignored when present
+    // timing is unavailable or the frame id does not match the presented
+    // frame. 0.0 clears the request. hold_until_seconds is the pacer's
+    // present-request holdback deadline (claim C15 mitigation): the backend
+    // delays vkQueuePresentKHR until this reference-clock time. Computed by
+    // the pacer from the TRACKED grid (deviation 12: the queried
+    // refreshDuration can be grossly wrong); 0.0 = no holdback.
+    void               set_present_target_time              (std::int64_t frame_id, double target_time_seconds, double hold_until_seconds = 0.0);
+    // Resolved frame pacing tier (doc/frame_pacing_capability_tiers.md,
+    // implementation plan P4.2). Resolved once at device init from the
+    // capability probes and the frame_pacing_tier graphics config; the
+    // resolved tier owns the swapchain present mode and image count (tier W
+    // wants fifo_latest_ready + present timing, tier S wants plain FIFO +
+    // minimum image count for backpressure), so it cannot change without a
+    // swapchain-owning restart.
+    [[nodiscard]] auto get_frame_pacing_tier                () const -> Frame_pacing_tier;
+
+    // Returns the underlying GPU and OS-platform handles needed to populate
+    // XrGraphicsBinding*KHR structs. Backend-neutral: Vulkan backend fills
+    // vk_*, OpenGL backend fills gl_* (HDC/HGLRC on Win32, wl_display on
+    // Wayland), other backends return zero-initialized.
+    [[nodiscard]] auto get_native_handles                 () const -> Native_device_handles;
+
+private:
+    Device_message_callback      m_device_message_callback{};
+    std::unique_ptr<Device_impl> m_impl;
+    erhe::frame_pacing::Frame_time_recorder m_frame_time_recorder{};
+    double                       m_display_refresh_duration_seconds{0.0};
+#if defined(ERHE_SPIRV)
+    Spirv_cache                  m_spirv_cache;
+#endif
+    Shader_error_callback        m_shader_error_callback  {};
+    State_dump_callback          m_state_dump_callback    {};
+    Trace_callback               m_trace_callback         {};
+    Render_pass*                 m_active_render_pass     {nullptr};
+};
+
+[[nodiscard]] auto get_depth_clear_value_pointer(bool reverse_depth = true) -> const float *; // reverse_depth ? 0.0f : 1.0f;
+[[nodiscard]] auto get_depth_function(Compare_operation depth_function, bool reverse_depth = true) -> Compare_operation;
+
+
+} // namespace erhe::graphics

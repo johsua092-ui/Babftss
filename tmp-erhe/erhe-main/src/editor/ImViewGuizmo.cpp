@@ -1,0 +1,450 @@
+#include "ImViewGuizmo.h"
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/norm.hpp>
+
+#include "imgui/imgui_internal.h"
+
+#include <array>
+
+namespace ImViewGuizmo {
+
+static constexpr float baseSize = 256.f;
+static constexpr glm::vec3 origin { 0.0f, 0.0f, 0.0f};
+static constexpr glm::vec3 dirXPos{ 1.0f, 0.0f, 0.0f};
+static constexpr glm::vec3 dirXNeg{-1.0f, 0.0f, 0.0f};
+static constexpr glm::vec3 dirYPos{ 0.0f, 1.0f, 0.0f};
+static constexpr glm::vec3 dirYNeg{ 0.0f,-1.0f, 0.0f};
+static constexpr glm::vec3 dirZPos{ 0.0f, 0.0f, 1.0f};
+static constexpr glm::vec3 dirZNeg{ 0.0f, 0.0f,-1.0f};
+static constexpr glm::vec3 axisVectors[3] = {dirXPos, dirYPos, dirZPos};
+struct LookAtOrientation
+{
+	glm::vec3 lookAt;
+	glm::vec3 up;
+};
+#if 0 // Z-Up
+static constexpr glm::vec3 dirUp{0.0f, 0.0f, 1.0f};
+static const std::array<LookAtOrientation, 6> orientations = {
+	LookAtOrientation{dirXNeg, dirZPos},
+	LookAtOrientation{dirXPos, dirZPos},
+	LookAtOrientation{dirYNeg, dirZPos},
+	LookAtOrientation{dirYPos, dirZPos},
+	LookAtOrientation{dirZNeg, dirYPos},
+	LookAtOrientation{dirZPos, dirYPos}
+};
+#endif
+#if 1 // Y-Up
+static constexpr glm::vec3 dirUp{0.0f, 1.0f, 0.0f};
+static const std::array<LookAtOrientation, 6> orientations = {
+	LookAtOrientation{dirXNeg, dirYPos},
+	LookAtOrientation{dirXPos, dirYPos},
+	LookAtOrientation{dirYNeg, dirXPos},
+	LookAtOrientation{dirYPos, dirXPos},
+	LookAtOrientation{dirZNeg, dirYPos},
+	LookAtOrientation{dirZPos, dirYPos}
+};
+#endif
+
+auto Context::IsHoveringGizmo() const -> bool
+{
+	return m_hoveredAxisID != -1;
+}
+
+void Context::Reset()
+{
+	m_hoveredAxisID       = -1;
+	m_isZoomButtonHovered = false;
+	m_isPanButtonHovered  = false;
+	m_activeTool          = TOOL_NONE;
+}
+
+auto Context::IsUsing() const -> bool
+{
+	return m_activeTool != TOOL_NONE;
+}
+
+auto Context::IsOver() const -> bool
+{
+	return (m_hoveredAxisID != -1) || m_isZoomButtonHovered || m_isPanButtonHovered;
+}
+
+// Internal function to reset hover states once per frame
+void Context::BeginFrame()
+{
+	int currentFrame = ImGui::GetFrameCount();
+	if (m_lastFrame != currentFrame) {
+		m_lastFrame           = currentFrame;
+		// Reset hover states, but keep active tool state
+		m_hoveredAxisID       = -1;
+		m_isZoomButtonHovered = false;
+		m_isPanButtonHovered  = false;
+	}
+}
+
+auto Context::get_region() const -> Region
+{
+	if (m_isZoomButtonHovered) {
+		return Region::zoom;
+	}
+	if (m_isPanButtonHovered) {
+		return Region::pan;
+	}
+	if (m_hoveredAxisID == 6) {
+		return Region::center;
+	}
+	if ((m_hoveredAxisID >= 0) && (m_hoveredAxisID <= 5)) {
+		return Region::axis;
+	}
+	return Region::none;
+}
+
+auto Context::get_hovered_axis() const -> int
+{
+	return ((m_hoveredAxisID >= 0) && (m_hoveredAxisID <= 5)) ? m_hoveredAxisID : -1;
+}
+
+void Context::begin_tool(Region region)
+{
+	switch (region) {
+		case Region::center: m_activeTool = TOOL_GIZMO; break;
+		case Region::zoom:   m_activeTool = TOOL_ZOOM;  break;
+		case Region::pan:    m_activeTool = TOOL_PAN;   break;
+		case Region::axis:   // fallthrough - axis handle uses click-snap, not a drag tool
+		case Region::none:   // fallthrough
+		default:             m_activeTool = TOOL_NONE;  break;
+	}
+	m_isAnimating = false;
+}
+
+void Context::end_tool()
+{
+	m_activeTool = TOOL_NONE;
+}
+
+bool Context::drag(glm::vec3& cameraPos, glm::quat& cameraRot, glm::vec2 relative)
+{
+	switch (m_activeTool) {
+		case TOOL_GIZMO: {
+			constexpr float sensitivity = 0.01f;
+			const float     yawAngle      = -relative.x * sensitivity;
+			const float     pitchAngle    = -relative.y * sensitivity;
+			const glm::quat yawRotation   = glm::angleAxis(yawAngle, dirUp);
+			const glm::vec3 rightAxis     = cameraRot * dirXPos;
+			const glm::quat pitchRotation = glm::angleAxis(pitchAngle, rightAxis);
+			const glm::quat totalRotation = yawRotation * pitchRotation;
+			cameraPos = totalRotation * cameraPos;
+			cameraRot = totalRotation * cameraRot;
+			return true;
+		}
+		case TOOL_ZOOM: {
+			constexpr float zoomSpeed = 0.005f;
+			if (relative.y != 0.0f) {
+				const glm::vec3 cameraForward = cameraRot * dirZNeg;
+				cameraPos += cameraForward * -relative.y * zoomSpeed;
+				return true;
+			}
+			return false;
+		}
+		case TOOL_PAN: {
+			constexpr float panSpeed = 0.001f;
+			if ((relative.x != 0.0f) || (relative.y != 0.0f)) {
+				cameraPos += cameraRot * dirXPos * -relative.x * panSpeed; // Inverted horizontal
+				cameraPos += cameraRot * dirYPos *  relative.y * panSpeed; // Natural vertical
+				return true;
+			}
+			return false;
+		}
+		default:
+			return false;
+	}
+}
+
+bool Context::snap(glm::vec3& cameraPos, glm::quat& cameraRot, int axisId, int64_t timeNs, float focusDistance)
+{
+	if ((axisId < 0) || (axisId > 5)) {
+		return false;
+	}
+
+	Style& style = GetStyle();
+
+	const LookAtOrientation& targetOrientation = orientations[axisId];
+	glm::quat targetRotation = glm::quatLookAt(targetOrientation.lookAt, targetOrientation.up);
+	const float rotationDiff = std::abs(glm::dot(glm::normalize(targetRotation), glm::normalize(cameraRot)));
+	if (rotationDiff > 0.999f) {
+		targetRotation = glm::quatLookAt(-targetOrientation.lookAt, targetOrientation.up);
+	}
+	glm::vec3 targetDir      = targetRotation * dirZNeg;
+	glm::vec3 cameraForward  = cameraRot * dirZNeg;
+	glm::vec3 lookAtPosition = cameraPos + cameraForward * focusDistance;
+	glm::vec3 targetPosition = lookAtPosition - focusDistance * targetDir;
+
+	if (style.animateSnap && (style.snapAnimationDurationNs > 0.0)) {
+		bool pos_is_different = glm::length2(cameraPos - targetPosition) > 0.0001f;
+		bool rot_is_different = (1.0f - glm::abs(glm::dot(cameraRot, targetRotation))) > 0.0001f;
+
+		if (pos_is_different || rot_is_different) {
+			m_isAnimating          = true;
+			m_animationStartTimeNs = timeNs;
+			m_startPos             = cameraPos;
+			m_targetPos            = targetPosition;
+			m_lookAtPos            = lookAtPosition;
+			m_focusDistance        = focusDistance;
+			m_startRot             = glm::normalize(cameraRot);
+			m_targetRot            = glm::normalize(targetRotation);
+		}
+		// Camera is moved over subsequent frames by draw_rotate's animation step.
+		return false;
+	}
+
+	cameraRot = targetRotation;
+	cameraPos = targetPosition;
+	return true;
+}
+
+bool Context::draw_rotate(int64_t timeNs, glm::vec3& cameraPos, glm::quat& cameraRot, ImVec2 position)
+{
+	ImGuiIO&    io          = ImGui::GetIO();
+	ImDrawList* drawList    = ImGui::GetWindowDrawList();
+	Style&      style       = GetStyle();
+	bool        wasModified = false;
+
+	// Animation logic
+	if (m_isAnimating) {
+		double elapsedTimeNs = static_cast<double>(timeNs - m_animationStartTimeNs);
+		double t = std::min(1.0, elapsedTimeNs / style.snapAnimationDurationNs);
+		t = 1.0 - (1.0 - t) * (1.0 - t);
+
+		cameraRot = glm::slerp(m_startRot, m_targetRot, static_cast<float>(t));
+		glm::vec3 currentDir = cameraRot * dirZNeg;
+		cameraPos = m_lookAtPos - m_focusDistance * currentDir;
+		wasModified = true;
+
+		if (t >= 1.0) {
+			cameraPos = m_targetPos;
+			cameraRot = m_targetRot;
+			m_isAnimating = false;
+		}
+	}
+
+	const float gizmoDiameter         = baseSize * style.scale;
+	const float scaledCircleRadius    = style.circleRadius * style.scale;
+	const float scaledBigCircleRadius = style.bigCircleRadius * style.scale;
+	const float scaledLineWidth       = style.lineWidth * style.scale;
+	const float scaledHighlightWidth  = style.highlightWidth * style.scale;
+	const float scaledHighlightRadius = (style.circleRadius + 2.0f) * style.scale;
+	const float scaledFontSize        = ImGui::GetFontSize() * style.scale * style.labelSize;
+
+	glm::mat4 worldMatrix           = glm::translate(glm::mat4(1.0f), cameraPos) * glm::mat4_cast(cameraRot);
+	glm::mat4 viewMatrix            = glm::inverse(worldMatrix);
+	glm::mat4 gizmoViewMatrix       = glm::mat4(glm::mat3(viewMatrix));
+	glm::mat4 gizmoProjectionMatrix = glm::ortho(-1.f, 1.f, -1.f, 1.f, -100.0f, 100.0f);
+	glm::mat4 gizmoMvp              = gizmoProjectionMatrix * gizmoViewMatrix;
+
+	std::array<GizmoAxis, 6> axes;
+	for (int i = 0; i < 3; ++i) {
+		axes[i * 2 + 0] = {i * 2 + 0, i, (gizmoViewMatrix * glm::vec4{ axisVectors[i], 0.0f}).z,  axisVectors[i]};
+		axes[i * 2 + 1] = {i * 2 + 1, i, (gizmoViewMatrix * glm::vec4{-axisVectors[i], 0.0f}).z, -axisVectors[i]};
+	}
+
+	std::sort(
+		axes.begin(), axes.end(),
+		[](const GizmoAxis& a, const GizmoAxis& b) {
+			return a.depth < b.depth;
+		}
+	);
+
+	auto worldToScreen = [&](const glm::vec3& worldPos) -> ImVec2 {
+		const glm::vec4 clipPos = gizmoMvp * glm::vec4{worldPos, 1.0f};
+		if (clipPos.w == 0.0f) {
+			return {-FLT_MAX, -FLT_MAX};
+		}
+		const glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
+		return {
+			position.x + ndc.x * (gizmoDiameter / 2.f),
+			position.y - ndc.y * (gizmoDiameter / 2.f)
+		};
+	};
+
+	// Hover detection (read-only; uses the ImGui cursor position for highlighting and
+	// for the region query that erhe::commands reads). Not computed while a tool is
+	// active or while the snap animation is playing.
+	if ((m_activeTool == TOOL_NONE) && !m_isAnimating) {
+		const float halfGizmoSize  = gizmoDiameter / 2.f;
+		ImVec2      mousePos       = io.MousePos;
+		float       distToCenterSq = ImLengthSqr(ImVec2{mousePos.x - position.x, mousePos.y - position.y});
+
+		if (distToCenterSq < (halfGizmoSize + scaledCircleRadius) * (halfGizmoSize + scaledCircleRadius)) {
+			const float minDistanceSq = scaledCircleRadius * scaledCircleRadius;
+			for (const auto& axis : axes) {
+				if (axis.depth < -0.1f) {
+					continue;
+				}
+
+				ImVec2 handlePos = worldToScreen(axis.direction * style.lineLength);
+				if (ImLengthSqr(ImVec2{handlePos.x - mousePos.x, handlePos.y - mousePos.y}) < minDistanceSq) {
+					m_hoveredAxisID = axis.id;
+				}
+			}
+			if (m_hoveredAxisID == -1) {
+				ImVec2 centerPos = worldToScreen(origin);
+				if (ImLengthSqr(ImVec2{centerPos.x - mousePos.x, centerPos.y - mousePos.y}) < scaledBigCircleRadius * scaledBigCircleRadius) {
+					m_hoveredAxisID = 6;
+				}
+			}
+		}
+	}
+
+	if ((m_hoveredAxisID == 6) || (m_activeTool == TOOL_GIZMO)) {
+		drawList->AddCircleFilled(worldToScreen(origin), scaledBigCircleRadius, style.bigCircleColor);
+	}
+
+	for (const auto& [id, axis_index, depth, direction] : axes) {
+		// Color
+		float  factor      = glm::mix(style.fadeFactor, 1.0f, (depth + 1.0f) * 0.5f);
+		ImVec4 baseColor   = ImGui::ColorConvertU32ToFloat4(style.axisColors[axis_index]);
+		ImVec4 fadedColor  = ImVec4{baseColor.x, baseColor.y, baseColor.z, baseColor.w * factor};
+		ImU32  final_color = ImGui::ColorConvertFloat4ToU32(fadedColor);
+
+		// Screen Positions
+		ImVec2 originPos = worldToScreen(origin);
+		ImVec2 handlePos = worldToScreen(direction * style.lineLength);
+
+		// Line stop at circle edge
+		ImVec2 lineDir    = ImVec2{handlePos.x - originPos.x, handlePos.y - originPos.y};
+		float  lineLength = sqrtf(lineDir.x * lineDir.x + lineDir.y * lineDir.y) + 1e-6f; // Avoid division by zero
+		lineDir.x /= lineLength;
+		lineDir.y /= lineLength;
+		ImVec2 lineEndPos = ImVec2{handlePos.x - lineDir.x * scaledCircleRadius, handlePos.y - lineDir.y * scaledCircleRadius};
+
+		// Drawing
+		drawList->AddLine(originPos, lineEndPos, final_color, scaledLineWidth); // Use the new endpoint
+		drawList->AddCircleFilled(handlePos, scaledCircleRadius, final_color); // Circle remains at the original position
+
+		// Highlight
+		if (m_hoveredAxisID == id) {
+			drawList->AddCircle(handlePos, scaledHighlightRadius, style.highlightColor, 0, scaledHighlightWidth);
+		}
+	}
+
+	ImFont* font = ImGui::GetFont();
+	for (const auto& axis : axes) {
+		if (axis.depth < -0.1f) {
+			continue;
+		}
+		ImVec2      textPos  = worldToScreen(axis.direction * style.lineLength);
+		const char* label    = style.axisLabels[axis.axisIndex];
+		const bool  isPos    = (axis.id & 1) == 0;
+		ImVec2      textSize = font->CalcTextSizeA(scaledFontSize, FLT_MAX, 0.f, label);
+		drawList->AddText(font, scaledFontSize,{textPos.x - textSize.x * 0.5f, textPos.y - textSize.y * 0.5f}, isPos ? style.labelColorPos : style.labelColorNeg, label);
+	}
+
+	return wasModified;
+}
+
+void Context::draw_zoom(ImVec2 position)
+{
+	ImGuiIO&    io       = ImGui::GetIO();
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	Style&      style    = GetStyle();
+
+	const float  radius = style.toolButtonRadius * style.scale;
+	const ImVec2 center = ImVec2{position.x + radius, position.y + radius};
+
+	bool isHovered = false;
+	if ((m_activeTool == TOOL_NONE) || (m_activeTool == TOOL_ZOOM)) {
+		if (ImLengthSqr(ImVec2(io.MousePos.x - center.x, io.MousePos.y - center.y)) < radius * radius) {
+			isHovered = true;
+		}
+	}
+
+	m_isZoomButtonHovered = isHovered;
+
+	// Draw
+	ImU32 bgColor = style.toolButtonColor;
+	if ((m_activeTool == TOOL_ZOOM) || isHovered) {
+		bgColor = style.toolButtonHoveredColor;
+	}
+	drawList->AddCircleFilled(center, radius, bgColor);
+
+	const float p         = style.toolButtonInnerPadding * style.scale;
+	const float th        = 2.0f * style.scale;
+	const ImU32 iconColor = style.toolButtonIconColor;
+
+	constexpr float iconScale = 0.5f;
+	// Magnifying glass circle
+	ImVec2 glassCenter = { center.x - (p / 2.0f) * iconScale, center.y - (p / 2.0f) * iconScale };
+	float  glassRadius = (radius - p - 1.f) * iconScale;
+	drawList->AddCircle(glassCenter, glassRadius, iconColor, 0, th);
+
+	// Handle
+	ImVec2 handleStart = { center.x + (radius / 2.0f) * iconScale, center.y + (radius / 2.0f) * iconScale };
+	ImVec2 handleEnd   = { center.x + (radius - p   ) * iconScale, center.y + (radius - p) * iconScale };
+	drawList->AddLine(handleStart, handleEnd, iconColor, th);
+
+	// Plus sign (vertical)
+	ImVec2 plusVertStart = { center.x - (p / 2.0f) * iconScale, center.y - (radius / 2.0f    ) * iconScale };
+	ImVec2 plusVertEnd   = { center.x - (p / 2.0f) * iconScale, center.y + (radius / 2.0f - p) * iconScale };
+	drawList->AddLine(plusVertStart, plusVertEnd, iconColor, th);
+
+	// Plus sign (horizontal)
+	ImVec2 plusHorizStart = { center.x + (-radius / 2.0f + p / 2.0f) * iconScale, center.y - (p / 2.0f) * iconScale };
+	ImVec2 plusHorizEnd   = { center.x + ( radius / 2.0f - p * 1.5f) * iconScale, center.y - (p / 2.0f) * iconScale };
+	drawList->AddLine(plusHorizStart, plusHorizEnd, iconColor, th);
+}
+
+void Context::draw_pan(ImVec2 position)
+{
+	ImGuiIO&    io       = ImGui::GetIO();
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	Style&      style    = GetStyle();
+
+	const float  radius = style.toolButtonRadius * style.scale;
+	const ImVec2 center = ImVec2{position.x + radius, position.y + radius};
+
+	// Interaction Logic
+	bool isHovered = false;
+	if ((m_activeTool == TOOL_NONE) || (m_activeTool == TOOL_PAN)) {
+		if (ImLengthSqr(ImVec2(io.MousePos.x - center.x, io.MousePos.y - center.y)) < radius * radius) {
+			isHovered = true;
+		}
+	}
+	m_isPanButtonHovered = isHovered;
+
+	// Drawing
+
+	// Draw the background circle
+	ImU32 bgColor = style.toolButtonColor;
+	if ((m_activeTool == TOOL_PAN) || isHovered) {
+		bgColor = style.toolButtonHoveredColor;
+	}
+	drawList->AddCircleFilled(center, radius, bgColor);
+
+	// Draw the icon on top of the background
+	const ImU32 iconColor = style.toolButtonIconColor;
+	const float th        = 2.0f * style.scale; // Use scaled thickness for consistency
+
+	// Four-way arrow symbol
+	const float size = radius * 0.5f;
+	const float arm  = size   * 0.25f; // 1/2 gap
+	// Top Arrow (^)
+	const ImVec2 topTip = { center.x, center.y - size };
+	drawList->AddLine({ topTip.x - arm, topTip.y + arm }, topTip, iconColor, th);
+	drawList->AddLine({ topTip.x + arm, topTip.y + arm }, topTip, iconColor, th);
+	// Bottom Arrow (v)
+	const ImVec2 botTip = { center.x, center.y + size };
+	drawList->AddLine({ botTip.x - arm, botTip.y - arm }, botTip, iconColor, th);
+	drawList->AddLine({ botTip.x + arm, botTip.y - arm }, botTip, iconColor, th);
+	// Left Arrow (<)
+	const ImVec2 leftTip = { center.x - size, center.y };
+	drawList->AddLine({ leftTip.x + arm, leftTip.y - arm }, leftTip, iconColor, th);
+	drawList->AddLine({ leftTip.x + arm, leftTip.y + arm }, leftTip, iconColor, th);
+	// Right Arrow (>)
+	const ImVec2 rightTip = { center.x + size, center.y };
+	drawList->AddLine({ rightTip.x - arm, rightTip.y - arm }, rightTip, iconColor, th);
+	drawList->AddLine({ rightTip.x - arm, rightTip.y + arm }, rightTip, iconColor, th);
+}
+
+} // namespace ImViewGuizmo

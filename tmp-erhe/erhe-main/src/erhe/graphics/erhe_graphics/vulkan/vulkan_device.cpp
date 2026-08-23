@@ -1,0 +1,3072 @@
+#include "erhe_graphics/vulkan/vulkan_device.hpp"
+#include "erhe_graphics/vulkan_external_creators.hpp"
+#include "erhe_graphics/vulkan/vulkan_buffer.hpp"
+#include "erhe_graphics/vulkan/vulkan_command_buffer.hpp"
+#include "erhe_graphics/vulkan/vulkan_device_sync_pool.hpp"
+#include "erhe_graphics/vulkan/vulkan_emulated_swapchain.hpp"
+#include "erhe_graphics/vulkan/vulkan_gpu_timer.hpp"
+#include "erhe_graphics/vulkan/vulkan_helpers.hpp"
+#include "erhe_graphics/vulkan/vulkan_render_pass.hpp"
+#include "erhe_graphics/vulkan/vulkan_sampler.hpp"
+#include "erhe_graphics/vulkan/vulkan_surface.hpp"
+#include "erhe_graphics/vulkan/vulkan_swapchain.hpp"
+#include "erhe_graphics/vulkan/vulkan_texture.hpp"
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/swapchain.hpp"
+
+#include "erhe_utility/bit_helpers.hpp"
+#include "erhe_graphics/blit_command_encoder.hpp"
+#include "erhe_graphics/buffer.hpp"
+#include "erhe_graphics/vulkan/vulkan_compute_command_encoder.hpp"
+#include "erhe_graphics/vulkan/vulkan_debug.hpp"
+#include "erhe_graphics/vulkan/vulkan_render_command_encoder.hpp"
+#include "erhe_graphics/draw_indirect.hpp"
+#include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/ring_buffer.hpp"
+#include "erhe_graphics/ring_buffer_client.hpp"
+#include "erhe_graphics/ring_buffer_range.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_utility/align.hpp"
+#include "erhe_window/renderdoc_capture.hpp"
+#include "erhe_window/window.hpp"
+
+#if defined(_WIN32)
+#   ifndef WIN32_LEAN_AND_MEAN
+#       define WIN32_LEAN_AND_MEAN
+#   endif
+#   ifndef NOMINMAX
+#       define NOMINMAX
+#   endif
+#   include <windows.h>
+#endif
+
+#include "volk.h"
+#include "vk_mem_alloc.h"
+
+#if !defined(WIN32)
+#   include <csignal>
+#endif
+
+#include "erhe_graphics/renderdoc_app.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <limits>
+#include <sstream>
+#include <vector>
+
+// https://vulkan.lunarg.com/doc/sdk/1.4.328.1/windows/khronos_validation_layer.html
+
+namespace erhe::graphics {
+
+auto c_str(const Device_frame_state state) -> const char*
+{
+    switch (state) {
+        case Device_frame_state::idle:               return "idle";
+        case Device_frame_state::waited:             return "waited";
+        case Device_frame_state::recording:          return "recording";
+        case Device_frame_state::in_swapchain_frame: return "in_swapchain_frame";
+    }
+    return "?";
+}
+
+void Device_impl::set_state(const Device_frame_state new_state, const char* const site)
+{
+    static_cast<void>(site);
+    ERHE_VULKAN_SYNC_TRACE(
+        "[STATE] {} -> {} (at {}), frame_index={}, slot={}",
+        c_str(m_state), c_str(new_state), site,
+        m_frame_index,
+        m_frame_index % get_number_of_frames_in_flight()
+    );
+    m_state = new_state;
+}
+
+auto Device_impl::get_device_frame_in_flight(size_t index) -> Device_frame_in_flight&
+{
+    ERHE_VERIFY(index < m_device_submit_history.size());
+    return m_device_submit_history[index];
+}
+
+auto Device_impl::get_frame_time_recorder() -> erhe::frame_pacing::Frame_time_recorder&
+{
+    return m_device.get_frame_time_recorder();
+}
+
+auto Device_impl::wait_for_displayed_frame(const std::int64_t frame_id, const uint64_t timeout_ns) -> Present_wait_result
+{
+    if (m_surface == nullptr) {
+        return Present_wait_result::unsupported;
+    }
+    Swapchain* const swapchain = m_surface->get_swapchain();
+    if (swapchain == nullptr) {
+        return Present_wait_result::unsupported; // headless: emulated swapchain, nothing is displayed
+    }
+    return swapchain->get_impl().wait_for_displayed_frame(frame_id, timeout_ns);
+}
+
+void Device_impl::set_present_target_time(const std::int64_t frame_id, const double target_time_seconds, const double hold_until_seconds)
+{
+    m_present_target_frame_id           = frame_id;
+    m_present_target_time_seconds       = target_time_seconds;
+    m_present_target_hold_until_seconds = hold_until_seconds;
+}
+
+auto Device_impl::get_present_target_time(const std::int64_t frame_id) const -> double
+{
+    return (frame_id == m_present_target_frame_id) ? m_present_target_time_seconds : 0.0;
+}
+
+auto Device_impl::get_frame_pacing_tier() const -> Frame_pacing_tier
+{
+    return m_frame_pacing_tier;
+}
+
+auto Device_impl::get_context_window() const -> erhe::window::Context_window*
+{
+    return m_context_window;
+}
+
+void Device_impl::ensure_device_frame_slot(size_t index)
+{
+    // Extracted from Swapchain_impl::setup_frame's device-scope block:
+    // wait on the prior-cycle fence, recycle the fence and command pool,
+    // then install a fresh fence and ensure the command buffer exists.
+    // Same fence flow and same guard (submit_fence != NULL) as setup_frame;
+    // no swapchain primitives touched. See plan: milestone 2.
+    ERHE_VERIFY(index < m_device_submit_history.size());
+    Device_frame_in_flight& df = m_device_submit_history[index];
+    if (df.submit_fence != VK_NULL_HANDLE) {
+        const double fence_wait_begin = erhe::frame_pacing::Frame_time_recorder::now();
+        const VkResult result = vkWaitForFences(m_vulkan_device, 1, &df.submit_fence, true, UINT64_MAX);
+        if (result != VK_SUCCESS) {
+            log_context->critical("vkWaitForFences() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+            report_device_fault("wait_for_frame vkWaitForFences");
+            abort();
+        }
+        if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index))) {
+            record->fence_wait_duration += erhe::frame_pacing::Frame_time_recorder::now() - fence_wait_begin;
+        }
+        m_sync_pool->recycle_fence(df.submit_fence);
+        reset_device_frame_command_pool(index);
+        // The submit fence has signaled, so all command buffers
+        // allocated last cycle from this slot's per-thread pools have
+        // completed on the GPU. Drop the wrapper objects (which release
+        // the VkCommandBuffer handles back to the pool) and reset every
+        // pool wholesale; the TRANSIENT pool flag makes
+        // vkResetCommandPool the cheap path here.
+        auto& thread_pools = m_command_pools[index];
+        for (Per_thread_command_pool& thread_pool : thread_pools) {
+            thread_pool.allocated_command_buffers.clear();
+            if (thread_pool.command_pool != VK_NULL_HANDLE) {
+                const VkResult reset_result = vkResetCommandPool(m_vulkan_device, thread_pool.command_pool, 0);
+                if (reset_result != VK_SUCCESS) {
+                    log_context->critical(
+                        "vkResetCommandPool() failed with {} {}",
+                        static_cast<int32_t>(reset_result), c_str(reset_result)
+                    );
+                    abort();
+                }
+            }
+            // All handles are back in the initial state; hand them out
+            // again from the start of vk_command_buffers.
+            thread_pool.next_handle_index = 0;
+        }
+        df.submit_fence = VK_NULL_HANDLE;
+    }
+    df.submit_fence = m_sync_pool->get_fence();
+    ensure_device_frame_command_buffer(index);
+}
+
+void Device_impl::ensure_device_frame_command_buffer(size_t index)
+{
+    ERHE_VERIFY(index < m_device_submit_history.size());
+    Device_frame_in_flight& device_frame = m_device_submit_history[index];
+    if (device_frame.command_pool != VK_NULL_HANDLE) {
+        return;
+    }
+
+    const VkCommandPoolCreateInfo command_pool_create_info{
+        .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext            = nullptr,
+        .flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = m_present_queue_family_index
+    };
+    VkResult result = vkCreateCommandPool(m_vulkan_device, &command_pool_create_info, nullptr, &device_frame.command_pool);
+    if (result != VK_SUCCESS) {
+        log_context->critical("vkCreateCommandPool() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+        abort();
+    }
+
+    const VkCommandBufferAllocateInfo command_buffer_allocate_info{
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext              = nullptr,
+        .commandPool        = device_frame.command_pool,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1
+    };
+    result = vkAllocateCommandBuffers(m_vulkan_device, &command_buffer_allocate_info, &device_frame.command_buffer);
+    if (result != VK_SUCCESS) {
+        log_context->critical("vkAllocateCommandBuffer() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+        abort();
+    }
+
+    set_debug_label(
+        VK_OBJECT_TYPE_COMMAND_BUFFER,
+        reinterpret_cast<uint64_t>(device_frame.command_buffer),
+        fmt::format("Device frame in flight command buffer {}", index).c_str()
+    );
+}
+
+void Device_impl::reset_device_frame_command_pool(size_t index)
+{
+    ERHE_VERIFY(index < m_device_submit_history.size());
+    Device_frame_in_flight& device_frame = m_device_submit_history[index];
+    if (device_frame.command_pool != VK_NULL_HANDLE) {
+        vkResetCommandPool(m_vulkan_device, device_frame.command_pool, 0);
+    }
+}
+
+Device_impl::~Device_impl() noexcept
+{
+    vkDeviceWaitIdle(m_vulkan_device);
+
+#if defined(ERHE_PROFILE_LIBRARY_TRACY) && defined(TRACY_ENABLE)
+    if (m_tracy_vk_ctx != nullptr) {
+        TracyVkDestroy(m_tracy_vk_ctx);
+        m_tracy_vk_ctx = nullptr;
+    }
+#endif
+
+    if (m_gpu_timer_query_pool != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(m_vulkan_device, m_gpu_timer_query_pool, nullptr);
+        m_gpu_timer_query_pool = VK_NULL_HANDLE;
+    }
+    if (m_frame_bracket_query_pool != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(m_vulkan_device, m_frame_bracket_query_pool, nullptr);
+        m_frame_bracket_query_pool = VK_NULL_HANDLE;
+    }
+
+    for (auto& [hash, pipeline] : m_pipeline_map) {
+        if (pipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(m_vulkan_device, pipeline, nullptr);
+        }
+    }
+    m_pipeline_map.clear();
+    for (auto& [hash, render_pass] : m_compatible_render_pass_map) {
+        if (render_pass != VK_NULL_HANDLE) {
+            vkDestroyRenderPass(m_vulkan_device, render_pass, nullptr);
+        }
+    }
+    m_compatible_render_pass_map.clear();
+    if (m_per_frame_descriptor_pool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(m_vulkan_device, m_per_frame_descriptor_pool, nullptr);
+    }
+    if (m_texture_set_layout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(m_vulkan_device, m_texture_set_layout, nullptr);
+    }
+    if (m_descriptor_set_layout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(m_vulkan_device, m_descriptor_set_layout, nullptr);
+    }
+    if (m_pipeline_cache != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(m_vulkan_device, m_pipeline_cache, nullptr);
+    }
+    // NOTE: This adds completion handlers for destroying related vulkan objects
+    m_surface.reset();
+
+    // Drop the per-thread Command_buffer wrappers before m_sync_pool is
+    // released: each Command_buffer_impl destructor recycles its
+    // implicit fence + semaphore back into the pool. The VkCommandBuffer
+    // handles they reference remain valid because the pools they were
+    // allocated from are destroyed below.
+    for (auto& thread_pools : m_command_pools) {
+        for (Per_thread_command_pool& thread_pool : thread_pools) {
+            thread_pool.allocated_command_buffers.clear();
+        }
+    }
+
+    // Sync pool outlives Swapchain_impl: Swapchain's dtor pushes its final
+    // acquire/present semaphores back into the pool, so the pool must be
+    // destroyed after Swapchain. Still runs before vkDestroyDevice below.
+    m_sync_pool.reset();
+
+    // Destroy ring buffers before running completion handlers -- their destructors
+    // add completion handlers for VMA deallocation
+    m_ring_buffers.clear();
+
+    vkDeviceWaitIdle(m_vulkan_device);
+
+    for (Device_frame_in_flight& device_frame : m_device_submit_history) {
+        if (device_frame.command_pool != VK_NULL_HANDLE) {
+            vkDestroyCommandPool(m_vulkan_device, device_frame.command_pool, nullptr);
+            device_frame.command_pool   = VK_NULL_HANDLE;
+            device_frame.command_buffer = VK_NULL_HANDLE;
+        }
+    }
+
+    // Per-(frame_in_flight, thread_slot) pools. The cb wrappers were
+    // dropped above (so their VkCommandBuffer handles are released back
+    // to the pool); now destroy the pools themselves.
+    for (auto& thread_pools : m_command_pools) {
+        for (Per_thread_command_pool& thread_pool : thread_pools) {
+            if (thread_pool.command_pool != VK_NULL_HANDLE) {
+                vkDestroyCommandPool(m_vulkan_device, thread_pool.command_pool, nullptr);
+                thread_pool.command_pool = VK_NULL_HANDLE;
+            }
+        }
+    }
+
+    for (const Completion_handler& entry : m_completion_handlers) {
+        entry.callback(*this);
+    }
+
+    if (m_vulkan_frame_end_semaphore != VK_NULL_HANDLE) {
+        vkDestroySemaphore(m_vulkan_device, m_vulkan_frame_end_semaphore, nullptr);
+    }
+
+    // Dump live VMA allocations to help diagnose leaks
+    {
+        char* stats_string = nullptr;
+        vmaBuildStatsString(m_vma_allocator, &stats_string, VK_TRUE);
+        if (stats_string != nullptr) {
+            log_context->info("VMA stats before destroy:\n{}", stats_string);
+            vmaFreeStatsString(m_vma_allocator, stats_string);
+        }
+    }
+
+    if (m_vma_device_address_allocator != VK_NULL_HANDLE) {
+        char* stats_string = nullptr;
+        vmaBuildStatsString(m_vma_device_address_allocator, &stats_string, VK_TRUE);
+        if (stats_string != nullptr) {
+            log_context->info("VMA device address allocator stats before destroy:\n{}", stats_string);
+            vmaFreeStatsString(m_vma_device_address_allocator, stats_string);
+        }
+        vmaDestroyAllocator(m_vma_device_address_allocator);
+        m_vma_device_address_allocator = VK_NULL_HANDLE;
+    }
+
+    vmaDestroyAllocator(m_vma_allocator);
+    if (m_vulkan_device != VK_NULL_HANDLE) {
+        vkDestroyDevice(m_vulkan_device, nullptr);
+    }
+    if (m_debug_utils_messenger != VK_NULL_HANDLE) {
+        vkDestroyDebugUtilsMessengerEXT(m_vulkan_instance, m_debug_utils_messenger, nullptr);
+    }
+    vkDestroyInstance(m_vulkan_instance, nullptr);
+    volkFinalize();
+}
+
+auto Device_impl::get_pipeline_cache() const -> VkPipelineCache
+{
+    return m_pipeline_cache;
+}
+
+auto Device_impl::get_descriptor_set_layout() const -> VkDescriptorSetLayout
+{
+    return m_descriptor_set_layout;
+}
+
+auto Device_impl::has_push_descriptor() const -> bool
+{
+    return m_device_extensions.m_VK_KHR_push_descriptor;
+}
+
+auto Device_impl::get_texture_set_layout() const -> VkDescriptorSetLayout
+{
+    return m_texture_set_layout;
+}
+
+auto Device_impl::allocate_descriptor_set() -> VkDescriptorSet
+{
+    if (m_per_frame_descriptor_pool == VK_NULL_HANDLE) {
+        return VK_NULL_HANDLE;
+    }
+
+    const VkDescriptorSetAllocateInfo allocate_info{
+        .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext              = nullptr,
+        .descriptorPool     = m_per_frame_descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &m_descriptor_set_layout
+    };
+
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    VkResult result = vkAllocateDescriptorSets(m_vulkan_device, &allocate_info, &descriptor_set);
+    if (result != VK_SUCCESS) {
+        log_context->warn("vkAllocateDescriptorSets() failed with {}", static_cast<int32_t>(result));
+        return VK_NULL_HANDLE;
+    }
+
+    ++m_desc_alloc_set_count;
+    ERHE_VULKAN_DESC_TRACE("[ALLOC_SET]");
+    return descriptor_set;
+}
+
+void Device_impl::reset_descriptor_pool()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ERHE_VULKAN_DESC_TRACE(
+        "[FRAME_SUMMARY] frame={} push_buf={} push_img={} alloc_set={} heap_binds={} draws={}",
+        m_frame_index,
+        m_desc_push_buf_count,
+        m_desc_push_img_count,
+        m_desc_alloc_set_count,
+        m_desc_heap_bind_count,
+        m_desc_draw_count
+    );
+    m_desc_push_buf_count  = 0;
+    m_desc_push_img_count  = 0;
+    m_desc_alloc_set_count = 0;
+    m_desc_heap_bind_count = 0;
+    m_desc_draw_count      = 0;
+
+    if (m_per_frame_descriptor_pool != VK_NULL_HANDLE) {
+        vkResetDescriptorPool(m_vulkan_device, m_per_frame_descriptor_pool, 0);
+    }
+    ERHE_VULKAN_DESC_TRACE("[POOL_RESET] frame={}", m_frame_index);
+}
+
+auto Device_impl::get_cached_pipeline(const std::size_t hash) -> VkPipeline
+{
+    std::lock_guard<std::mutex> lock{m_pipeline_map_mutex};
+    auto it = m_pipeline_map.find(hash);
+    if (it != m_pipeline_map.end()) {
+        return it->second;
+    }
+    return VK_NULL_HANDLE;
+}
+
+void Device_impl::clear_render_pipeline_cache()
+{
+    // The Vulkan pipeline cache hashes raw VkShaderModule handle values
+    // (see Render_command_encoder_impl::set_render_pipeline_state).
+    // When the upstream shader cache (e.g. Shader_variant_cache) destroys
+    // its modules, the driver may recycle those handle values for new
+    // modules, and a future bind whose hash collides with an old entry
+    // would receive a stale VkPipeline carrying the previous shader code.
+    // Drop every cached pipeline here and let the next bind rebuild
+    // against the fresh modules. Pipelines are queued for destruction
+    // through the per-frame completion handler so any in-flight GPU work
+    // that still references them stays valid.
+    std::vector<VkPipeline> to_destroy;
+    {
+        std::lock_guard<std::mutex> lock{m_pipeline_map_mutex};
+        to_destroy.reserve(m_pipeline_map.size());
+        for (auto& [hash, pipeline] : m_pipeline_map) {
+            if (pipeline != VK_NULL_HANDLE) {
+                to_destroy.push_back(pipeline);
+            }
+        }
+        m_pipeline_map.clear();
+    }
+    for (VkPipeline pipeline : to_destroy) {
+        add_completion_handler([device = m_vulkan_device, pipeline](Device_impl&) {
+            vkDestroyPipeline(device, pipeline, nullptr);
+        });
+    }
+}
+
+auto Device_impl::create_graphics_pipeline(const VkGraphicsPipelineCreateInfo& create_info, const std::size_t hash) -> VkPipeline
+{
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkResult result = vkCreateGraphicsPipelines(m_vulkan_device, m_pipeline_cache, 1, &create_info, nullptr, &pipeline);
+    if (result != VK_SUCCESS) {
+        log_program->error("vkCreateGraphicsPipelines() failed with {}", static_cast<int32_t>(result));
+        return VK_NULL_HANDLE;
+    }
+
+    set_debug_label(VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<uint64_t>(pipeline),
+        fmt::format("Pipeline hash={:016x}", hash).c_str());
+
+    std::lock_guard<std::mutex> lock{m_pipeline_map_mutex};
+    m_pipeline_map[hash] = pipeline;
+    return pipeline;
+}
+
+auto Device_impl::get_or_create_graphics_pipeline(const VkGraphicsPipelineCreateInfo& create_info, const std::size_t hash) -> VkPipeline
+{
+    VkPipeline cached = get_cached_pipeline(hash);
+    if (cached != VK_NULL_HANDLE) {
+        return cached;
+    }
+    return create_graphics_pipeline(create_info, hash);
+}
+
+auto Device_impl::get_or_create_compatible_render_pass(
+    const unsigned int                             color_attachment_count,
+    const std::array<erhe::dataformat::Format, 4>& color_attachment_formats,
+    const erhe::dataformat::Format                 depth_attachment_format,
+    const erhe::dataformat::Format                 stencil_attachment_format,
+    const unsigned int                             sample_count,
+    const uint32_t                                 view_mask,
+    const bool                                     fragment_density_map,
+    VkPipelineStageFlags                           incoming_src_stage,
+    VkAccessFlags                                  incoming_src_access,
+    VkPipelineStageFlags                           incoming_dst_stage,
+    VkAccessFlags                                  incoming_dst_access,
+    VkPipelineStageFlags                           outgoing_src_stage,
+    VkAccessFlags                                  outgoing_src_access,
+    VkPipelineStageFlags                           outgoing_dst_stage,
+    VkAccessFlags                                  outgoing_dst_access
+) -> VkRenderPass
+{
+    // Compute hash from format tuple and dependency masks
+    auto hash_combine = [](std::size_t& seed, std::size_t value) {
+        seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    };
+
+    std::size_t hash = 0;
+    hash_combine(hash, static_cast<std::size_t>(color_attachment_count));
+    for (unsigned int i = 0; i < color_attachment_count; ++i) {
+        hash_combine(hash, static_cast<std::size_t>(color_attachment_formats[i]));
+    }
+    hash_combine(hash, static_cast<std::size_t>(depth_attachment_format));
+    hash_combine(hash, static_cast<std::size_t>(stencil_attachment_format));
+    hash_combine(hash, static_cast<std::size_t>(sample_count));
+    hash_combine(hash, static_cast<std::size_t>(view_mask));
+    hash_combine(hash, static_cast<std::size_t>(fragment_density_map ? 1u : 0u));
+    hash_combine(hash, static_cast<std::size_t>(incoming_src_stage));
+    hash_combine(hash, static_cast<std::size_t>(incoming_src_access));
+    hash_combine(hash, static_cast<std::size_t>(incoming_dst_stage));
+    hash_combine(hash, static_cast<std::size_t>(incoming_dst_access));
+    hash_combine(hash, static_cast<std::size_t>(outgoing_src_stage));
+    hash_combine(hash, static_cast<std::size_t>(outgoing_src_access));
+    hash_combine(hash, static_cast<std::size_t>(outgoing_dst_stage));
+    hash_combine(hash, static_cast<std::size_t>(outgoing_dst_access));
+
+    {
+        std::lock_guard<std::mutex> lock{m_compatible_render_pass_mutex};
+        auto it = m_compatible_render_pass_map.find(hash);
+        if (it != m_compatible_render_pass_map.end()) {
+            return it->second;
+        }
+    }
+
+    // Create a new compatible render pass
+    const VkSampleCountFlagBits vk_sample_count = get_vulkan_sample_count(sample_count);
+
+    std::vector<VkAttachmentDescription2> attachments;
+    std::vector<VkAttachmentReference2>   color_refs;
+
+    // Color attachments
+    for (unsigned int i = 0; i < color_attachment_count; ++i) {
+        VkFormat vk_format = to_vulkan(color_attachment_formats[i]);
+        attachments.push_back(VkAttachmentDescription2{
+            .sType          = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2,
+            .pNext          = nullptr,
+            .flags          = 0,
+            .format         = vk_format,
+            .samples        = vk_sample_count,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        });
+        color_refs.push_back(VkAttachmentReference2{
+            .sType      = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2,
+            .pNext      = nullptr,
+            .attachment = static_cast<uint32_t>(attachments.size() - 1),
+            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT
+        });
+    }
+
+    // Depth/stencil attachment
+    VkAttachmentReference2 depth_ref{
+        .sType      = VK_STRUCTURE_TYPE_ATTACHMENT_REFERENCE_2,
+        .pNext      = nullptr,
+        .attachment = VK_ATTACHMENT_UNUSED,
+        .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT
+    };
+    const bool has_depth   = (depth_attachment_format   != erhe::dataformat::Format::format_undefined);
+    const bool has_stencil = (stencil_attachment_format != erhe::dataformat::Format::format_undefined);
+    if (has_depth || has_stencil) {
+        VkFormat depth_vk_format = has_depth
+            ? to_vulkan(depth_attachment_format)
+            : to_vulkan(stencil_attachment_format);
+        attachments.push_back(VkAttachmentDescription2{
+            .sType          = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2,
+            .pNext          = nullptr,
+            .flags          = 0,
+            .format         = depth_vk_format,
+            .samples        = vk_sample_count,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        });
+        depth_ref.attachment = static_cast<uint32_t>(attachments.size() - 1);
+        depth_ref.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT |
+            (has_stencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0u);
+    }
+
+    // Fragment density map attachment for render-pass compatibility under
+    // VK_EXT_fragment_density_map. The spec requires the pipeline's
+    // compatibility render pass to either both have or both lack an FDM
+    // attachment as the in-use render pass; when both have it, the FDM
+    // attachment descriptions must match in format and sample count, and
+    // both must chain VkRenderPassFragmentDensityMapCreateInfoEXT. Push a
+    // matching FDM attachment that mirrors the in-use render pass at
+    // vulkan_render_pass.cpp -- samples=1, loadOp LOAD, storeOp DONT_CARE,
+    // initial=final=FRAGMENT_DENSITY_MAP_OPTIMAL_EXT, format R8G8_UNORM
+    // (the OpenXR-required FDM format).
+    VkAttachmentReference fdm_attachment_reference{
+        .attachment = VK_ATTACHMENT_UNUSED,
+        .layout     = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT
+    };
+    if (fragment_density_map) {
+        attachments.push_back(VkAttachmentDescription2{
+            .sType          = VK_STRUCTURE_TYPE_ATTACHMENT_DESCRIPTION_2,
+            .pNext          = nullptr,
+            .flags          = 0,
+            .format         = VK_FORMAT_R8G8_UNORM,
+            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT,
+            .finalLayout    = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT
+        });
+        fdm_attachment_reference.attachment = static_cast<uint32_t>(attachments.size() - 1);
+    }
+
+    // Vulkan render-pass compatibility requires the pipeline's compatibility
+    // render pass to have the same subpass viewMask as the in-use render
+    // pass. With viewMask hardcoded to 0, multiview render passes (viewMask
+    // != 0) silently bind a single-view pipeline; the driver replicates only
+    // the clear / load-op to every view layer but draws hit view 0 only.
+    const VkSubpassDescription2 subpass{
+        .sType                   = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_2,
+        .pNext                   = nullptr,
+        .flags                   = 0,
+        .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .viewMask                = view_mask,
+        .inputAttachmentCount    = 0,
+        .pInputAttachments       = nullptr,
+        .colorAttachmentCount    = static_cast<uint32_t>(color_refs.size()),
+        .pColorAttachments       = color_refs.empty() ? nullptr : color_refs.data(),
+        .pResolveAttachments     = nullptr,
+        .pDepthStencilAttachment = (depth_ref.attachment != VK_ATTACHMENT_UNUSED) ? &depth_ref : nullptr,
+        .preserveAttachmentCount = 0,
+        .pPreserveAttachments    = nullptr
+    };
+
+    // Dependencies must match the actual render passes for validation compatibility.
+    // Use caller-provided masks, or derive defaults from attachments.
+    if (incoming_src_stage == 0 && incoming_dst_stage == 0 && outgoing_src_stage == 0 && outgoing_dst_stage == 0) {
+        incoming_src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        incoming_src_access = VK_ACCESS_SHADER_READ_BIT;
+        outgoing_dst_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        outgoing_dst_access = VK_ACCESS_SHADER_READ_BIT;
+        if (color_attachment_count > 0) {
+            incoming_dst_stage  |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            incoming_dst_access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            outgoing_src_stage  |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            outgoing_src_access |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        }
+        if (has_depth || has_stencil) {
+            incoming_dst_stage  |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            incoming_dst_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            outgoing_src_stage  |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            outgoing_src_access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
+    }
+    if (incoming_src_stage == 0) {
+        incoming_src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+    if (incoming_dst_stage == 0) {
+        incoming_dst_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+    if (outgoing_src_stage == 0) {
+        outgoing_src_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    }
+    if (outgoing_dst_stage == 0) {
+        outgoing_dst_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    }
+
+    // The validation layer compares subpass dependency arrays as part of
+    // render-pass compatibility, so the compatibility render pass must use
+    // the exact same canonical dependencies that the in-use render passes
+    // produce. The caller-supplied stage/access masks are intentionally
+    // ignored here and only the structural (has_color / has_depth_stencil)
+    // bits drive the dependencies.
+    static_cast<void>(incoming_src_stage);
+    static_cast<void>(incoming_src_access);
+    static_cast<void>(incoming_dst_stage);
+    static_cast<void>(incoming_dst_access);
+    static_cast<void>(outgoing_src_stage);
+    static_cast<void>(outgoing_src_access);
+    static_cast<void>(outgoing_dst_stage);
+    static_cast<void>(outgoing_dst_access);
+
+    VkSubpassDependency2 canonical_dependencies[2];
+    make_canonical_subpass_dependencies2(color_attachment_count > 0, has_depth || has_stencil, canonical_dependencies);
+
+    // VK_EXT_fragment_density_map: chain the FDM-create-info into pNext when
+    // the in-use render pass does the same. Mirrors vulkan_render_pass.cpp.
+    const VkRenderPassFragmentDensityMapCreateInfoEXT fdm_create_info{
+        .sType                        = VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT,
+        .pNext                        = nullptr,
+        .fragmentDensityMapAttachment = fdm_attachment_reference
+    };
+
+    const VkRenderPassCreateInfo2 render_pass_create_info{
+        .sType                   = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO_2,
+        .pNext                   = fragment_density_map ? &fdm_create_info : nullptr,
+        .flags                   = 0,
+        .attachmentCount         = static_cast<uint32_t>(attachments.size()),
+        .pAttachments            = attachments.empty() ? nullptr : attachments.data(),
+        .subpassCount            = 1,
+        .pSubpasses              = &subpass,
+        .dependencyCount         = 2,
+        .pDependencies           = canonical_dependencies,
+        .correlatedViewMaskCount = 0,
+        .pCorrelatedViewMasks    = nullptr
+    };
+
+    VkRenderPass render_pass = VK_NULL_HANDLE;
+    VkResult result = vkCreateRenderPass2(m_vulkan_device, &render_pass_create_info, nullptr, &render_pass);
+    if (result != VK_SUCCESS) {
+        log_render_pass->error(
+            "vkCreateRenderPass2() for pipeline compatibility failed with {} {}",
+            static_cast<int32_t>(result), c_str(result)
+        );
+        return VK_NULL_HANDLE;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock{m_compatible_render_pass_mutex};
+        m_compatible_render_pass_map[hash] = render_pass;
+    }
+
+    return render_pass;
+}
+
+auto Device_impl::is_ray_tracing_blocked_by_capture_layer(
+    const VkPhysicalDevice vulkan_physical_device,
+    const bool             renderdoc_capture_support
+) -> bool
+{
+#if defined(ERHE_OS_WINDOWS)
+    if (!renderdoc_capture_support) {
+        return false;
+    }
+    VkPhysicalDeviceProperties device_properties{};
+    vkGetPhysicalDeviceProperties(vulkan_physical_device, &device_properties);
+    constexpr uint32_t vendor_id_amd{0x1002u};
+    if (device_properties.vendorID != vendor_id_amd) {
+        return false;
+    }
+    // Only report a block when the device would otherwise have offered ray
+    // tracing, so Device_info::ray_query_disabled_by_capture_layer means
+    // "you lost something" rather than "this GPU never had it".
+    uint32_t device_extension_count{0};
+    if (vkEnumerateDeviceExtensionProperties(vulkan_physical_device, nullptr, &device_extension_count, nullptr) != VK_SUCCESS) {
+        return false;
+    }
+    std::vector<VkExtensionProperties> device_extensions(device_extension_count);
+    if (vkEnumerateDeviceExtensionProperties(vulkan_physical_device, nullptr, &device_extension_count, device_extensions.data()) != VK_SUCCESS) {
+        return false;
+    }
+    for (const VkExtensionProperties& extension : device_extensions) {
+        if (strcmp(extension.extensionName, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0) {
+            return true;
+        }
+    }
+    return false;
+#else
+    static_cast<void>(vulkan_physical_device);
+    static_cast<void>(renderdoc_capture_support);
+    return false;
+#endif
+}
+
+auto Device_impl::choose_physical_device(
+    Surface_impl*             surface_impl,
+    std::vector<const char*>& device_extensions_c_str
+) -> bool
+{
+    VkPhysicalDevice selected_device{VK_NULL_HANDLE};
+
+    if ((m_external_creators != nullptr) && static_cast<bool>(m_external_creators->pick_physical_device)) {
+        log_context->info("Picking Vulkan physical device via external (XR) hook");
+        const VkResult xr_pick_result = m_external_creators->pick_physical_device(m_vulkan_instance, &selected_device);
+        if ((xr_pick_result != VK_SUCCESS) || (selected_device == VK_NULL_HANDLE)) {
+            log_context->critical("External physical device pick failed with {} {}", static_cast<int32_t>(xr_pick_result), c_str(xr_pick_result));
+            return false;
+        }
+    } else {
+        uint32_t physical_device_count{0};
+        VkResult result{VK_SUCCESS};
+        result = vkEnumeratePhysicalDevices(m_vulkan_instance, &physical_device_count, nullptr);
+        if (result != VK_SUCCESS) {
+            log_context->critical("vkEnumeratePhysicalDevices() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+            return false;
+        }
+        std::vector<VkPhysicalDevice> physical_devices(physical_device_count);
+        if (physical_device_count == 0) {
+            log_context->critical("vkEnumeratePhysicalDevices() returned 0 physical devices");
+            return false;
+        }
+        result = vkEnumeratePhysicalDevices(m_vulkan_instance, &physical_device_count, physical_devices.data());
+        if (result != VK_SUCCESS) {
+            log_context->critical("vkEnumeratePhysicalDevices() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+            return false;
+        }
+
+        float best_score = std::numeric_limits<float>::lowest();
+        for (uint32_t physical_device_index = 0; physical_device_index < physical_device_count; ++physical_device_index) {
+            const VkPhysicalDevice physical_device = physical_devices[physical_device_index];
+
+            // Score the device as it will actually be created: if the capture
+            // layer forces ray tracing off for this device, its ray tracing
+            // extensions must not contribute to its score.
+            const bool device_disable_ray_tracing =
+                m_graphics_config.vulkan.disable_ray_tracing ||
+                is_ray_tracing_blocked_by_capture_layer(physical_device, m_graphics_config.renderdoc_capture_support);
+            const float score = get_physical_device_score(physical_device, surface_impl, device_disable_ray_tracing);
+            if (score > best_score) {
+                best_score      = score;
+                selected_device = physical_device;
+            }
+        }
+
+        if (selected_device == VK_NULL_HANDLE) {
+            // Every enumerated device scored 0 (rejected). With a window surface
+            // the usual cause is a missing present-capable queue because the
+            // display is off/asleep/disconnected; the caller logs the headless
+            // recommendation.
+            const bool surface_present_required = (surface_impl != nullptr) && !surface_impl->is_headless();
+            log_context->critical(
+                "choose_physical_device(): none of {} enumerated physical device(s) were usable{}",
+                physical_device_count,
+                surface_present_required ? " (no present-capable queue for the window surface -- display off?)" : ""
+            );
+            return false;
+        }
+    }
+
+    m_vulkan_physical_device = selected_device;
+    const bool queues_ok = query_device_queue_family_indices(
+        m_vulkan_physical_device, surface_impl, &m_graphics_queue_family_index, &m_present_queue_family_index
+    );
+    if (!queues_ok) {
+        return false;
+    }
+
+    m_ray_tracing_blocked_by_capture_layer = is_ray_tracing_blocked_by_capture_layer(
+        m_vulkan_physical_device, m_graphics_config.renderdoc_capture_support
+    );
+    if (m_graphics_config.vulkan.disable_ray_tracing) {
+        log_context->info("GPU ray tracing disabled via erhe_graphics.json vulkan.disable_ray_tracing");
+    }
+    if (m_ray_tracing_blocked_by_capture_layer) {
+        log_context->info(
+            "GPU ray tracing disabled: RenderDoc capture is enabled on an AMD Windows driver, where "
+            "device address memory allocations fault under capture. Disable renderdoc_capture_support "
+            "in erhe_graphics.json to use ray tracing."
+        );
+    }
+    const bool disable_ray_tracing =
+        m_graphics_config.vulkan.disable_ray_tracing ||
+        m_ray_tracing_blocked_by_capture_layer;
+
+    const bool headless = (surface_impl == nullptr) || surface_impl->is_headless();
+    query_device_extensions(m_vulkan_physical_device, m_device_extensions, &device_extensions_c_str, headless, disable_ray_tracing);
+    return true;
+}
+
+auto Device_impl::get_physical_device_score(VkPhysicalDevice vulkan_physical_device, Surface_impl* surface_impl, const bool disable_ray_tracing) -> float
+{
+    VkPhysicalDeviceProperties device_properties{};
+    vkGetPhysicalDeviceProperties(vulkan_physical_device, &device_properties);
+    const float device_type_score = 0.0f;
+    switch (device_properties.deviceType) {
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER:          return 101.0f;
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 102.0f;
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:   return 104.0f;
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:    return 103.0f;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU:            return   0.0f;
+        default: {
+            log_context->warn("Vulkan device type {:4x} not recognized", static_cast<uint32_t>(device_properties.deviceType));
+            return 0.0f; // reject device
+        }
+    }
+
+    const bool queues_ok = query_device_queue_family_indices(vulkan_physical_device, surface_impl, nullptr, nullptr);
+    if (!queues_ok) {
+        return 0.0f; // reject device
+    }
+
+    Device_extensions device_extensions{};
+    const bool headless = (surface_impl == nullptr) || surface_impl->is_headless();
+    const float extension_score = query_device_extensions(vulkan_physical_device, device_extensions, nullptr, headless, disable_ray_tracing);
+
+    return device_type_score + extension_score;
+}
+
+// Check if device meets queue requirements, optionally returns queue family indices
+auto Device_impl::query_device_queue_family_indices(
+    VkPhysicalDevice vulkan_physical_device,
+    Surface_impl*    surface_impl,
+    uint32_t*        graphics_queue_family_index_out,
+    uint32_t*        present_queue_family_index_out
+) -> bool
+{
+    VkSurfaceKHR vulkan_surface{VK_NULL_HANDLE};
+    if (surface_impl != nullptr) {
+        if (!surface_impl->can_use_physical_device(vulkan_physical_device)) {
+            return false;
+        }
+        vulkan_surface = surface_impl->get_vulkan_surface();
+    }
+
+    uint32_t queue_family_count{0};
+    vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device, &queue_family_count, nullptr);
+    if (queue_family_count == 0) {
+        return false;
+    }
+
+    std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(vulkan_physical_device, &queue_family_count, queue_families.data());
+
+    // Require graphics
+    // Require present if surface is used
+    uint32_t graphics_queue_family_index = UINT32_MAX;
+    uint32_t present_queue_family_index  = UINT32_MAX;
+    VkResult result{VK_SUCCESS};
+    for (uint32_t queue_family_index = 0, end = static_cast<uint32_t>(queue_families.size()); queue_family_index < end; ++queue_family_index) {
+        const VkQueueFamilyProperties& queue_family = queue_families[queue_family_index];
+        const bool support_graphics = (queue_family.queueCount > 0) && (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT);
+        const bool support_present = [&]() -> bool
+        {
+            if (vulkan_surface == VK_NULL_HANDLE) {
+                return false;
+            }
+            VkBool32 support{VK_FALSE};
+            result = vkGetPhysicalDeviceSurfaceSupportKHR(vulkan_physical_device, queue_family_index, vulkan_surface, &support);
+            if (result != VK_SUCCESS) {
+                log_context->warn("vkGetPhysicalDeviceSurfaceSupportKHR() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+            }
+            return (result == VK_SUCCESS) && (support == VK_TRUE);
+        }();
+        if (support_graphics && support_present) {
+            graphics_queue_family_index = queue_family_index;
+            present_queue_family_index = queue_family_index;
+            break;
+        }
+        if ((graphics_queue_family_index == UINT32_MAX) && support_graphics) {
+            graphics_queue_family_index = queue_family_index;
+        }
+        if ((present_queue_family_index == UINT32_MAX) && support_present) {
+            present_queue_family_index = queue_family_index;
+        }
+    }
+
+    if (graphics_queue_family_index == UINT32_MAX) {
+        return false;
+    }
+
+    // Only require a graphics queue that also supports present when there is a
+    // real VkSurfaceKHR. Headless (emulated swapchain) is surfaceless, so a
+    // present queue is not needed and present-family stays UINT32_MAX.
+    if (
+        (vulkan_surface != VK_NULL_HANDLE) &&
+        (graphics_queue_family_index != present_queue_family_index)
+    ) {
+        return false;
+    }
+
+    if (graphics_queue_family_index_out != nullptr) {
+        *graphics_queue_family_index_out = graphics_queue_family_index;
+    }
+    if (present_queue_family_index_out != nullptr) {
+        *present_queue_family_index_out = present_queue_family_index;
+    }
+    return true;
+}
+
+// Gathers available recognized extensions and computes score
+auto Device_impl::query_device_extensions(
+    VkPhysicalDevice          vulkan_physical_device,
+    Device_extensions&        device_extensions_out,
+    std::vector<const char*>* device_extensions_c_str,
+    const bool                headless,
+    const bool                disable_ray_tracing
+) -> float
+{
+    float total_score = 0.0f;
+
+    uint32_t device_extension_count{0};
+    VkResult result{VK_SUCCESS};
+    result = vkEnumerateDeviceExtensionProperties(vulkan_physical_device, nullptr, &device_extension_count, nullptr);
+    if (result != VK_SUCCESS) {
+        log_context->critical("vkEnumerateDeviceExtensionProperties() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+        return 0.0f;
+    }
+    std::vector<VkExtensionProperties> device_extensions(device_extension_count);
+    result = vkEnumerateDeviceExtensionProperties(vulkan_physical_device, nullptr, &device_extension_count, device_extensions.data());
+    if (result != VK_SUCCESS) {
+        log_context->critical("vkEnumerateDeviceExtensionProperties() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+        return 0.0f;
+    }
+
+    for (const VkExtensionProperties& extension : device_extensions) {
+        log_debug->info("Vulkan Device Extension: {} spec_version {:08x}", extension.extensionName, extension.specVersion);
+    }
+
+    // Check device extensions
+    auto check_device_extension = [&](const char* name, bool& enable, const float extension_score)
+    {
+        for (const VkExtensionProperties& extension : device_extensions) {
+            if (strcmp(extension.extensionName, name) == 0) {
+                if (device_extensions_c_str != nullptr) {
+                    device_extensions_c_str->push_back(name);
+                    log_debug->info("  Enabling {}", extension.extensionName);
+                    enable = true;
+                    total_score += extension_score;
+                }
+                return;
+            }
+        }
+    };
+
+    // Swapchain / present extensions are surface-dependent: skip them entirely
+    // in headless (surfaceless + emulated swapchain) mode.
+    if (!headless) {
+        check_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME,                      device_extensions_out.m_VK_KHR_swapchain                     , 1.0f);
+        check_device_extension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,        device_extensions_out.m_VK_KHR_swapchain_maintenance1        , 2.0f);
+    }
+    check_device_extension(VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME,             device_extensions_out.m_VK_KHR_load_store_op_none            , 2.0f);
+    check_device_extension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,                device_extensions_out.m_VK_KHR_push_descriptor               , 1.0f);
+    if (!headless) {
+        check_device_extension(VK_KHR_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, device_extensions_out.m_VK_KHR_present_mode_fifo_latest_ready, 3.0f);
+    }
+
+    // VK_EXT_fragment_density_map: backs OpenXR fixed foveated rendering. Enabled
+    // purely on availability; the FFR feature query/enable and the runtime decision
+    // to actually request a foveated swapchain happen later and independently.
+    check_device_extension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME,           device_extensions_out.m_VK_EXT_fragment_density_map          , 2.0f);
+    // VK_EXT_fragment_density_map2: Meta lists this as a required device extension for
+    // native OpenXR FFR on Quest ("Improved latency for reading fragment density maps
+    // on Qualcomm hardware"). We enable it for parity with that requirement; we use no
+    // v2-specific features (subsampled images, deferred subpasses) and therefore do
+    // not chain VkPhysicalDeviceFragmentDensityMap2FeaturesEXT.
+    check_device_extension(VK_EXT_FRAGMENT_DENSITY_MAP_2_EXTENSION_NAME,         device_extensions_out.m_VK_EXT_fragment_density_map2         , 2.0f);
+
+    // GPU ray tracing (ray query in compute). VK_KHR_deferred_host_operations
+    // is a hard dependency of VK_KHR_acceleration_structure and must be
+    // enabled alongside it. The feature structs are queried/enabled in
+    // Device_impl's constructor; Device_info::use_ray_query is set only when
+    // all three extensions AND their features are available.
+    // vulkan.disable_ray_tracing (erhe_graphics.json) skips all of them, so
+    // Device_info::use_ray_query stays false and GPU ray tracing consumers
+    // report unsupported - workaround for broken driver ray tracing
+    // implementations (crashes observed on AMD integrated graphics).
+    if (!disable_ray_tracing) {
+        check_device_extension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,     device_extensions_out.m_VK_KHR_acceleration_structure        , 2.0f);
+        check_device_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME,                  device_extensions_out.m_VK_KHR_ray_query                     , 2.0f);
+        check_device_extension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,   device_extensions_out.m_VK_KHR_deferred_host_operations      , 0.0f);
+        // Optional on top of ray query: lets ray query shaders read the committed
+        // triangle's object-space vertex positions (used for geometric normals
+        // without binding every mesh vertex buffer to the shader).
+        check_device_extension(VK_KHR_RAY_TRACING_POSITION_FETCH_EXTENSION_NAME, device_extensions_out.m_VK_KHR_ray_tracing_position_fetch    , 1.0f);
+    } else {
+        // The reason (config setting or capture layer guard) is logged by
+        // choose_physical_device, which is where the decision is made.
+        log_context->info("Vulkan ray tracing extensions not enabled");
+    }
+    // Conservative rasterization (overestimation) for the lightmap G-buffer
+    // raster (one pass instead of the 9-tap jitter fallback). Properties-only
+    // extension: no feature struct to query/enable; per-pipeline opt-in via
+    // Rasterization_state::conservative_enable.
+    check_device_extension(VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME,     device_extensions_out.m_VK_EXT_conservative_rasterization    , 1.0f);
+    // Driver-accurate device-local heap budgets via vmaGetHeapBudgets()
+    // (VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT). Without it VMA falls
+    // back to its own allocation bookkeeping, so this is an accuracy
+    // upgrade, not a hard dependency; Device::get_memory_budget() works
+    // either way.
+    check_device_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,                  device_extensions_out.m_VK_EXT_memory_budget                 , 1.0f);
+
+    // VK_KHR_portability_subset must be enabled whenever the physical device
+    // advertises it (Vulkan spec VUID-VkDeviceCreateInfo-pProperties-04451).
+    // MoltenVK always does, because it is a portability implementation.
+    // Using the literal name keeps us independent of vulkan_beta.h /
+    // VK_ENABLE_BETA_EXTENSIONS gating of VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME.
+    check_device_extension("VK_KHR_portability_subset",                          device_extensions_out.m_VK_KHR_portability_subset            , 0.0f);
+
+    if (!device_extensions_out.m_VK_KHR_load_store_op_none) {
+        check_device_extension(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME,             device_extensions_out.m_VK_EXT_load_store_op_none            , 2.0f);
+    }
+    if (!headless && !device_extensions_out.m_VK_KHR_swapchain_maintenance1) {
+        check_device_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,        device_extensions_out.m_VK_EXT_swapchain_maintenance1        , 2.0f);
+    }
+    if (!headless && !device_extensions_out.m_VK_KHR_present_mode_fifo_latest_ready) {
+        check_device_extension(VK_EXT_PRESENT_MODE_FIFO_LATEST_READY_EXTENSION_NAME, device_extensions_out.m_VK_EXT_present_mode_fifo_latest_ready, 3.0f);
+    }
+
+    // Frame pacing capability probes (doc/frame_pacing_capability_tiers.md,
+    // implementation plan step P0.1). Present id/wait and present timing are
+    // surface-dependent; calibrated timestamps is not.
+    if (!headless) {
+        check_device_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME,     device_extensions_out.m_VK_KHR_present_id,     1.0f);
+        check_device_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME,   device_extensions_out.m_VK_KHR_present_wait,   1.0f);
+        check_device_extension(VK_KHR_PRESENT_ID_2_EXTENSION_NAME,   device_extensions_out.m_VK_KHR_present_id2,    1.0f);
+        check_device_extension(VK_KHR_PRESENT_WAIT_2_EXTENSION_NAME, device_extensions_out.m_VK_KHR_present_wait2,  1.0f);
+        check_device_extension(VK_EXT_PRESENT_TIMING_EXTENSION_NAME, device_extensions_out.m_VK_EXT_present_timing, 3.0f);
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+        // Exclusive fullscreen (Window_configuration::exclusive_fullscreen):
+        // bypasses DWM composition; useful for frame pacing testing.
+        check_device_extension(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME, device_extensions_out.m_VK_EXT_full_screen_exclusive, 1.0f);
+#endif
+    }
+    check_device_extension(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, device_extensions_out.m_VK_KHR_calibrated_timestamps, 1.0f);
+    if (!device_extensions_out.m_VK_KHR_calibrated_timestamps) {
+        check_device_extension(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME, device_extensions_out.m_VK_EXT_calibrated_timestamps, 1.0f);
+    }
+    // Non-semantic shader debug info (NonSemantic.Shader.DebugInfo.100, which
+    // glslang emits for source-level shader debugging) can contain forward
+    // references via OpExtInstWithForwardRefsKHR; consuming such SPIR-V
+    // requires the shaderRelaxedExtendedInstruction feature
+    // (VUID-RuntimeSpirv-shaderRelaxedExtendedInstruction-10773).
+    check_device_extension(VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME, device_extensions_out.m_VK_KHR_shader_relaxed_extended_instruction, 0.0f);
+
+    // Device fault reporting: on VK_ERROR_DEVICE_LOST the driver can hand
+    // back a description of what killed the device (fault type, the offending
+    // GPU virtual address, vendor fault codes) instead of leaving us with a
+    // bare result code. Diagnostics only, so score 0.0f - it must never
+    // influence which physical device we pick.
+    // VK_KHR_device_fault is the newer extension with a different entry point
+    // (vkGetDeviceFaultReportsKHR, multiple reports per call); VK_EXT_device_fault
+    // (vkGetDeviceFaultInfoEXT, one report) is what shipping drivers actually
+    // expose today, so we probe for it whenever the KHR one is absent.
+    check_device_extension(VK_KHR_DEVICE_FAULT_EXTENSION_NAME, device_extensions_out.m_VK_KHR_device_fault, 0.0f);
+    if (!device_extensions_out.m_VK_KHR_device_fault) {
+        check_device_extension(VK_EXT_DEVICE_FAULT_EXTENSION_NAME, device_extensions_out.m_VK_EXT_device_fault, 0.0f);
+    }
+    return total_score;
+}
+
+auto Device_impl::get_device() -> Device&
+{
+    return m_device;
+}
+
+auto Device_impl::get_surface() -> Surface*
+{
+    return m_surface.get();
+}
+
+auto Device_impl::capture_last_frame(
+    int&                      out_width,
+    int&                      out_height,
+    erhe::dataformat::Format& out_format,
+    std::vector<std::byte>&   out_pixels
+) -> bool
+{
+    if (m_surface == nullptr) {
+        return false;
+    }
+    uint32_t width  = 0;
+    uint32_t height = 0;
+    Emulated_swapchain_impl* const emulated = m_surface->get_impl().get_emulated_swapchain();
+    if (emulated != nullptr) {
+        // Headless: synchronous readback of the last composited frame.
+        if (!emulated->read_back_last_frame(width, height, out_pixels)) {
+            return false;
+        }
+    } else {
+        // Windowed: collect a previously armed capture (request_frame_capture);
+        // a presented WSI image cannot be read directly.
+        Swapchain* const swapchain = m_surface->get_impl().get_swapchain();
+        if (swapchain == nullptr) {
+            return false;
+        }
+        if (!swapchain->get_impl().read_back_capture(width, height, out_pixels)) {
+            return false;
+        }
+    }
+    out_width  = static_cast<int>(width);
+    out_height = static_cast<int>(height);
+    out_format = erhe::dataformat::Format::format_8_vec4_srgb;
+    return true;
+}
+
+auto Device_impl::request_frame_capture() -> bool
+{
+    if (m_surface == nullptr) {
+        return false;
+    }
+    if (m_surface->get_impl().get_emulated_swapchain() != nullptr) {
+        // Headless capture is synchronous; nothing to arm.
+        return true;
+    }
+    Swapchain* const swapchain = m_surface->get_impl().get_swapchain();
+    if (swapchain == nullptr) {
+        return false;
+    }
+    Swapchain_impl& swapchain_impl = swapchain->get_impl();
+    if (!swapchain_impl.is_capture_supported()) {
+        return false;
+    }
+    swapchain_impl.request_capture();
+    return true;
+}
+
+auto Device_impl::get_native_handles() const -> Native_device_handles
+{
+    Native_device_handles handles{};
+    handles.vk_instance           = reinterpret_cast<uint64_t>(m_vulkan_instance);
+    handles.vk_physical_device    = reinterpret_cast<uint64_t>(m_vulkan_physical_device);
+    handles.vk_device             = reinterpret_cast<uint64_t>(m_vulkan_device);
+    handles.vk_queue_family_index = m_graphics_queue_family_index;
+    handles.vk_queue_index        = 0;
+    return handles;
+}
+
+auto Device_impl::get_vulkan_instance() -> VkInstance
+{
+    return m_vulkan_instance;
+}
+
+auto Device_impl::get_vulkan_physical_device() -> VkPhysicalDevice
+{
+    return m_vulkan_physical_device;
+}
+
+auto Device_impl::get_vulkan_device() -> VkDevice
+{
+    return m_vulkan_device;
+}
+
+auto Device_impl::get_graphics_queue_family_index() const -> uint32_t
+{
+    return m_graphics_queue_family_index;
+}
+
+auto Device_impl::get_present_queue_family_index () const -> uint32_t
+{
+    return m_present_queue_family_index;
+}
+
+auto Device_impl::get_graphics_queue() const -> VkQueue
+{
+    return m_vulkan_graphics_queue;
+}
+
+auto Device_impl::get_present_queue() const -> VkQueue
+{
+    return m_vulkan_present_queue;
+}
+
+auto Device_impl::get_capabilities() const -> const Capabilities&
+{
+    return m_capabilities;
+}
+
+auto Device_impl::has_device_fault_report() const -> bool
+{
+    return m_device_fault_report_khr || m_device_fault_report_ext;
+}
+
+auto Device_impl::get_device_extensions() const -> const Device_extensions&
+{
+    return m_device_extensions;
+}
+
+auto Device_impl::get_driver_properties() const -> const VkPhysicalDeviceDriverProperties&
+{
+    return m_driver_properties;
+}
+
+auto Device_impl::get_portability_subset_features() const -> const VkPhysicalDevicePortabilitySubsetFeaturesKHR&
+{
+    return m_portability_subset_features;
+}
+
+auto Device_impl::get_portability_subset_properties() const -> const VkPhysicalDevicePortabilitySubsetPropertiesKHR&
+{
+    return m_portability_subset_properties;
+}
+
+auto Device_impl::get_acceleration_structure_properties() const -> const VkPhysicalDeviceAccelerationStructurePropertiesKHR&
+{
+    return m_acceleration_structure_properties;
+}
+
+auto Device_impl::get_memory_type(uint32_t memory_type_index) const -> const VkMemoryType&
+{
+    return m_memory_properties.memoryProperties.memoryTypes[memory_type_index];
+}
+
+auto Device_impl::get_memory_heap(uint32_t memory_heap_index) const -> const VkMemoryHeap&
+{
+    return m_memory_properties.memoryProperties.memoryHeaps[memory_heap_index];
+}
+
+auto Device_impl::get_handle(const Texture& texture, const Sampler& sampler) const -> uint64_t
+{
+    // TODO Implement bindless texture handles via descriptor indexing
+    static_cast<void>(texture);
+    static_cast<void>(sampler);
+    return 0;
+}
+
+auto Device_impl::create_dummy_texture(Command_buffer& init_command_buffer, const erhe::dataformat::Format format) -> std::shared_ptr<Texture>
+{
+    // TODO Move function to Device instead of Device_impl?
+    const Texture_create_info create_info{
+        .device      = m_device,
+        .usage_mask  = Image_usage_flag_bit_mask::sampled | Image_usage_flag_bit_mask::transfer_dst,
+        .type        = Texture_type::texture_2d,
+        .pixelformat = format,
+        .width       = 2,
+        .height      = 2,
+        .debug_label = "dummy"
+    };
+
+    auto texture = std::make_shared<Texture>(m_device, create_info);
+
+    const std::size_t bytes_per_pixel   = erhe::dataformat::get_format_size_bytes(format);
+    const std::size_t width             = 2;
+    const std::size_t height            = 2;
+    const std::size_t src_bytes_per_row = width * bytes_per_pixel;
+    const std::size_t byte_count        = height * src_bytes_per_row;
+
+    // Fill with a simple pattern -- content doesn't matter much for a dummy texture
+    std::vector<uint8_t> dummy_pixels(byte_count, 0);
+    for (std::size_t y = 0; y < height; ++y) {
+        for (std::size_t x = 0; x < width; ++x) {
+            std::size_t offset = (y * width + x) * bytes_per_pixel;
+            // Fill first 4 bytes with a visible pattern, rest with 0
+            std::size_t fill = std::min(bytes_per_pixel, std::size_t{4});
+            const uint8_t pattern[4] = {
+                static_cast<uint8_t>(((x + y) & 1) ? 0xee : 0xcc),
+                0x11,
+                static_cast<uint8_t>(((x + y) & 1) ? 0xdd : 0xbb),
+                0xff
+            };
+            memcpy(&dummy_pixels[offset], pattern, fill);
+        }
+    }
+
+    // Record the pixel upload into the caller-supplied init cb.
+    // Caller is responsible for ending + submitting + waiting before
+    // the texture is sampled.
+    init_command_buffer.upload_to_texture(
+        *texture.get(),
+        0,                              // level
+        0, 0,                           // x, y
+        static_cast<int>(width),
+        static_cast<int>(height),
+        format,
+        dummy_pixels.data(),
+        static_cast<int>(src_bytes_per_row)
+    );
+
+    return texture;
+}
+
+auto Device_impl::get_shader_monitor() -> Shader_monitor&
+{
+    return m_shader_monitor;
+}
+
+auto Device_impl::get_info() const -> const Device_info&
+{
+    return m_info;
+}
+
+auto Device_impl::get_graphics_config() const -> const Graphics_config&
+{
+    return m_graphics_config;
+}
+
+auto Device_impl::get_allocator() -> VmaAllocator&
+{
+    return m_vma_allocator;
+}
+
+auto Device_impl::get_allocator_for_buffer_usage(const Buffer_usage usage) -> VmaAllocator&
+{
+    if (
+        erhe::utility::test_bit_set(usage, Buffer_usage::shader_device_address) &&
+        (m_vma_device_address_allocator != VK_NULL_HANDLE)
+    ) {
+        return m_vma_device_address_allocator;
+    }
+    return m_vma_allocator;
+}
+
+auto Device_impl::get_buffer_alignment(const Buffer_target target) -> std::size_t
+{
+    switch (target) {
+        case Buffer_target::storage: {
+            return m_info.shader_storage_buffer_offset_alignment;
+        }
+
+        case Buffer_target::uniform: {
+            return m_info.uniform_buffer_offset_alignment;
+        }
+
+        case Buffer_target::draw_indirect: {
+            // TODO Consider Draw_primitives_indirect_command
+            return sizeof(Draw_indexed_primitives_indirect_command);
+        }
+        default: {
+            return 64; // TODO
+        }
+    }
+}
+
+void Device_impl::submit_command_buffers(std::span<Command_buffer* const> command_buffers)
+{
+    ERHE_PROFILE_SCOPE("submit_command_buffers");
+
+    if (command_buffers.empty()) {
+        return;
+    }
+
+    // CPU-side wait phase: any wait_for_cpu(other) registered on the
+    // cbs in this batch is converted into a vkWaitForFences before the
+    // submit is enqueued. Done up front so a batched submit never
+    // partially blocks.
+    for (Command_buffer* command_buffer : command_buffers) {
+        ERHE_VERIFY(command_buffer != nullptr);
+        command_buffer->get_impl().pre_submit_wait();
+    }
+
+    Vulkan_submit_info submit_info_aggregate;
+    submit_info_aggregate.command_buffers.reserve(command_buffers.size());
+    for (Command_buffer* command_buffer : command_buffers) {
+        command_buffer->get_impl().collect_synchronization(submit_info_aggregate);
+    }
+
+    const VkSubmitInfo2 submit_info{
+        .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .pNext                    = nullptr,
+        .flags                    = 0,
+        .waitSemaphoreInfoCount   = static_cast<uint32_t>(submit_info_aggregate.wait_semaphores.size()),
+        .pWaitSemaphoreInfos      = submit_info_aggregate.wait_semaphores.data(),
+        .commandBufferInfoCount   = static_cast<uint32_t>(submit_info_aggregate.command_buffers.size()),
+        .pCommandBufferInfos      = submit_info_aggregate.command_buffers.data(),
+        .signalSemaphoreInfoCount = static_cast<uint32_t>(submit_info_aggregate.signal_semaphores.size()),
+        .pSignalSemaphoreInfos    = submit_info_aggregate.signal_semaphores.data(),
+    };
+
+    // Bridge: Swapchain_impl::setup_frame still allocates and waits on
+    // Device_frame_in_flight::submit_fence to gate its own per-slot
+    // bookkeeping (acquire-semaphore recycle, swapchain_garbage cleanup).
+    // The fence used to be signaled by the legacy end_frame submit; that
+    // branch is gone, so when a cb engaged the swapchain we attach the
+    // slot fence to this submit. Goes away with the legacy
+    // setup_frame/submit_fence path.
+    VkFence submit_fence = submit_info_aggregate.fence;
+    if (!submit_info_aggregate.swapchains_to_present.empty() && (submit_fence == VK_NULL_HANDLE)) {
+        const size_t slot = static_cast<size_t>(get_frame_in_flight_index());
+        submit_fence = m_device_submit_history[slot].submit_fence;
+    }
+
+    ERHE_VULKAN_TRACE(
+        "submit_command_buffers: vkQueueSubmit2 cb_count={} wait_sem_count={} signal_sem_count={} fence=0x{:x} swapchains_to_present={}",
+        submit_info_aggregate.command_buffers.size(),
+        submit_info_aggregate.wait_semaphores.size(),
+        submit_info_aggregate.signal_semaphores.size(),
+        reinterpret_cast<std::uintptr_t>(submit_fence),
+        submit_info_aggregate.swapchains_to_present.size()
+    );
+    if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index))) {
+        record->submit_time = erhe::frame_pacing::Frame_time_recorder::now();
+    }
+    const VkResult result = vkQueueSubmit2(m_vulkan_graphics_queue, 1, &submit_info, submit_fence);
+    if (result != VK_SUCCESS) {
+        log_context->critical(
+            "vkQueueSubmit2() in submit_command_buffers failed with {} {}",
+            static_cast<int32_t>(result), c_str(result)
+        );
+        report_device_fault("submit_command_buffers vkQueueSubmit2");
+        abort();
+    }
+
+    // Implicit present: any cb that engaged a swapchain via
+    // begin_swapchain has already had the swapchain's present_semaphore
+    // routed into the signal list above. Now drive vkQueuePresentKHR
+    // on each so callers don't have to manage a separate present step.
+    //
+    // Present-request holdback (frame pacing claim C15): the presentation
+    // engine on the development machine accepts but does not honor target
+    // present times (doc/frame_pacing_present_timing_driver_report.md), so
+    // an image that is ready early displays a refresh period before its
+    // target. Delaying the REQUEST until one period before the target makes
+    // the earliest feasible vsync BE the target. The GPU work is already
+    // submitted above - only the present is delayed - and the wait is
+    // stamped as an involuntary wait (excluded from CPU service time).
+    if (!submit_info_aggregate.swapchains_to_present.empty()) {
+        const double target_seconds = get_present_target_time(static_cast<std::int64_t>(m_frame_index));
+        // The holdback deadline comes from the pacer (decision.hold_until):
+        // it is derived from the TRACKED grid period, because the queried
+        // refreshDuration can be grossly wrong (4.2% measured after an
+        // app-driven fullscreen mode set, driver report issue #2) - a
+        // holdback interval derived from it can release the request before
+        // the previous vblank's deadline, defeating the mitigation.
+        const double release_time = (m_present_target_frame_id == static_cast<std::int64_t>(m_frame_index))
+            ? m_present_target_hold_until_seconds
+            : 0.0;
+        if ((target_seconds > 0.0) && (release_time > 0.0) && get_graphics_config().frame_pacing_present_holdback) {
+            double wait_seconds = release_time - erhe::frame_pacing::Frame_time_recorder::now();
+            // Runaway sanity cap only (in the spirit of the release-gate
+            // and clamp caps). A LEGITIMATE hold spans up to ~N*T of the
+            // DISPLAY period: a frame whose chain finishes early at a high
+            // cadence waits budget-minus-service here (~120 ms at 23.976 Hz
+            // N=3). The previous 1.5-refresh-period cap silently truncated
+            // those holds, re-admitting one-to-four-slot-early displays at
+            // 120 Hz N=6 under a high-variance workload (540 capped holds
+            // observed live; the visible-duration oscillation).
+            constexpr double s_max_holdback_wait_s = 0.2;
+            if (wait_seconds > s_max_holdback_wait_s) {
+                log_context->warn(
+                    "present holdback capped: frame {} release {:.1f} ms ahead",
+                    m_frame_index, wait_seconds * 1000.0
+                );
+                wait_seconds = s_max_holdback_wait_s;
+            }
+            if (wait_seconds > 0.0) {
+                erhe::frame_pacing::Frame_time_record* const record =
+                    m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index));
+                if (record != nullptr) {
+                    record->present_holdback_begin = erhe::frame_pacing::Frame_time_recorder::now();
+                }
+                m_present_holdback_timer.wait_for(wait_seconds);
+                if (record != nullptr) {
+                    record->present_holdback_end = erhe::frame_pacing::Frame_time_recorder::now();
+                }
+            }
+        }
+        if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index))) {
+            record->present_request_time = erhe::frame_pacing::Frame_time_recorder::now();
+        }
+    }
+    for (Swapchain_impl* swapchain : submit_info_aggregate.swapchains_to_present) {
+        ERHE_VERIFY(swapchain != nullptr);
+        const bool present_ok = swapchain->present();
+        ERHE_VULKAN_TRACE("submit_command_buffers: implicit present ok={}", present_ok);
+        static_cast<void>(present_ok);
+    }
+    if (!submit_info_aggregate.swapchains_to_present.empty()) {
+        // FIFO backpressure can block inside vkQueuePresentKHR; the span
+        // present_request..present_return is an involuntary wait excluded
+        // from the CPU service time (doc/frame_pacing_inputs.md 3.2).
+        if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index))) {
+            record->present_return_time = erhe::frame_pacing::Frame_time_recorder::now();
+        }
+    }
+}
+
+void Device_impl::submit_command_buffer_and_wait(Command_buffer& command_buffer)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // Attach the cb's own implicit fence to its submit (signal_cpu(other)
+    // routes other's fence into VkSubmitInfo2; self works the same way),
+    // submit, then block on that fence only. Unlike wait_idle() this fires
+    // no completion handlers and touches no frame state, so it is safe
+    // mid-frame while the frame's own command buffer is still recording.
+    command_buffer.signal_cpu(command_buffer);
+    Command_buffer* command_buffers[] = { &command_buffer };
+    submit_command_buffers(std::span<Command_buffer* const>{command_buffers});
+
+    const VkFence fence = command_buffer.get_impl().get_implicit_fence();
+    ERHE_VERIFY(fence != VK_NULL_HANDLE);
+    const VkResult wait_result = vkWaitForFences(m_vulkan_device, 1, &fence, VK_TRUE, UINT64_MAX);
+    if (wait_result != VK_SUCCESS) {
+        log_context->critical(
+            "vkWaitForFences() in submit_command_buffer_and_wait failed with {} {}",
+            static_cast<int32_t>(wait_result), c_str(wait_result)
+        );
+        report_device_fault("submit_command_buffer_and_wait vkWaitForFences");
+        abort();
+    }
+    // Leave the fence unsignaled for the rest of its pool cycle (the sync
+    // pool also resets on recycle; this just keeps the state unambiguous).
+    const VkResult reset_result = vkResetFences(m_vulkan_device, 1, &fence);
+    if (reset_result != VK_SUCCESS) {
+        log_context->error(
+            "vkResetFences() in submit_command_buffer_and_wait failed with {} {}",
+            static_cast<int32_t>(reset_result), c_str(reset_result)
+        );
+    }
+}
+
+void Device_impl::add_completion_handler(std::function<void(Device_impl&)> callback)
+{
+    m_completion_handlers.emplace_back(m_frame_index, std::move(callback));
+}
+
+void Device_impl::on_thread_enter()
+{
+}
+
+void Device_impl::frame_completed(const uint64_t completed_frame)
+{
+    for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
+        ring_buffer->frame_completed(completed_frame);
+    }
+
+    // Reclaim ring buffers that have sat idle (no in-flight GPU work, all
+    // space free) for a while, keeping one warm buffer per usage class so
+    // steady state does not thrash. Without this the pool only ever grows:
+    // a load spike that momentarily filled every buffer leaves its spill
+    // buffers alive for the process lifetime. Destruction is deferred-safe
+    // (~Buffer_impl frees the VMA allocation via a completion handler).
+    {
+        constexpr uint64_t idle_frame_threshold = 16;
+        bool warm_kept[4] = { false, false, false, false };
+        std::size_t reclaimed_byte_count = 0;
+        std::size_t reclaimed_count      = 0;
+        auto keep = [&](const std::unique_ptr<Ring_buffer>& ring_buffer) -> bool {
+            if (!ring_buffer->is_idle()) {
+                return true;
+            }
+            const std::size_t usage_index = static_cast<std::size_t>(ring_buffer->get_ring_buffer_usage());
+            if ((usage_index < 4) && !warm_kept[usage_index]) {
+                warm_kept[usage_index] = true;
+                return true;
+            }
+            if (completed_frame < ring_buffer->get_last_used_frame() + idle_frame_threshold) {
+                return true;
+            }
+            reclaimed_byte_count += ring_buffer->get_capacity_byte_count();
+            ++reclaimed_count;
+            return false;
+        };
+        auto i = std::remove_if(
+            m_ring_buffers.begin(),
+            m_ring_buffers.end(),
+            [&keep](const std::unique_ptr<Ring_buffer>& ring_buffer) { return !keep(ring_buffer); }
+        );
+        if (i != m_ring_buffers.end()) {
+            m_ring_buffers.erase(i, m_ring_buffers.end());
+            log_buffer->info(
+                "Ring buffer pool: reclaimed {} idle buffer(s), {} bytes; {} buffer(s) remain",
+                reclaimed_count, reclaimed_byte_count, m_ring_buffers.size()
+            );
+        }
+    }
+    for (const Completion_handler& entry : m_completion_handlers) {
+        if (entry.frame_number == completed_frame) {
+            entry.callback(*this);
+        }
+    }
+    auto i = std::remove_if(
+        m_completion_handlers.begin(),
+        m_completion_handlers.end(),
+        [completed_frame](Completion_handler& entry) { return entry.frame_number == completed_frame; }
+    );
+    if (i != m_completion_handlers.end()) {
+        m_completion_handlers.erase(i, m_completion_handlers.end());
+    }
+}
+
+auto Device_impl::wait_frame() -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ERHE_VERIFY(m_state == Device_frame_state::idle);
+
+    // CPU slot begin (frame pacing data requirements): wait_frame is the
+    // first per-frame device call on the app's frame path.
+    m_device.get_frame_time_recorder().begin_frame(static_cast<std::int64_t>(m_frame_index)).cpu_slot_begin =
+        erhe::frame_pacing::Frame_time_recorder::now();
+
+    // GPU frame bracket (step P0.3): refresh calibration, harvest completed
+    // brackets non-blocking, and host-reset this frame's query pair.
+    update_gpu_calibration();
+    poll_frame_bracket_results();
+    if (m_frame_bracket_query_pool != VK_NULL_HANDLE) {
+        ERHE_PROFILE_SCOPE("vkResetQueryPool");
+        const std::size_t bracket_slot = static_cast<std::size_t>(m_frame_index % s_frame_bracket_ring);
+        vkResetQueryPool(
+            m_vulkan_device,
+            m_frame_bracket_query_pool,
+            static_cast<uint32_t>(bracket_slot * 2u),
+            2
+        );
+        m_frame_bracket_frame_id[bracket_slot] = static_cast<std::int64_t>(m_frame_index);
+        m_frame_bracket_begun = false;
+        m_frame_bracket_ended = false;
+    }
+
+    // Per-(frame_in_flight, thread) command pool reset, gated on the
+    // device's timeline semaphore. update_frame_completion (called from
+    // end_frame) signals m_vulkan_frame_end_semaphore at value
+    // m_frame_index right before incrementing, so once the GPU reaches
+    // value F-N the previous use of the slot we're about to enter
+    // (frame F-N, slot S = F % N) has fully retired and its cbs +
+    // implicit fences/semaphores can be recycled.
+    //
+    // For the first N frames the slot has never been used so nothing
+    // needs waiting on; for F > N we wait until the timeline reports
+    // F-N before clearing. The clear destroys each
+    // Command_buffer wrapper, which in turn recycles its implicit
+    // VkSemaphore / VkFence back to Device_sync_pool.
+    const size_t   slot = static_cast<size_t>(get_frame_in_flight_index());
+    const uint64_t N    = get_number_of_frames_in_flight();
+    if (m_frame_index > N) {
+        ERHE_PROFILE_SCOPE("wait_frame: vkWaitSemaphores");
+        const uint64_t wait_value = m_frame_index - N;
+        const VkSemaphoreWaitInfo wait_info{
+            .sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+            .pNext          = nullptr,
+            .flags          = 0,
+            .semaphoreCount = 1,
+            .pSemaphores    = &m_vulkan_frame_end_semaphore,
+            .pValues        = &wait_value,
+        };
+        const double semaphore_wait_begin = erhe::frame_pacing::Frame_time_recorder::now();
+        const VkResult result = vkWaitSemaphores(m_vulkan_device, &wait_info, UINT64_MAX);
+        if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index))) {
+            record->fence_wait_duration += erhe::frame_pacing::Frame_time_recorder::now() - semaphore_wait_begin;
+        }
+        if (result != VK_SUCCESS) {
+            log_context->critical(
+                "vkWaitSemaphores() in wait_frame failed with {} {}",
+                static_cast<int32_t>(result), c_str(result)
+            );
+            abort();
+        }
+    }
+
+    auto& thread_pools = m_command_pools[slot];
+    for (Per_thread_command_pool& thread_pool : thread_pools) {
+        thread_pool.allocated_command_buffers.clear();
+        if (thread_pool.command_pool != VK_NULL_HANDLE) {
+            ERHE_PROFILE_SCOPE("wait_frame: vkResetCommandPool");
+            const VkResult reset_result = vkResetCommandPool(m_vulkan_device, thread_pool.command_pool, 0);
+            if (reset_result != VK_SUCCESS) {
+                log_context->critical(
+                    "vkResetCommandPool() in wait_frame failed with {} {}",
+                    static_cast<int32_t>(reset_result), c_str(reset_result)
+                );
+                abort();
+            }
+        }
+        // All handles are back in the initial state; hand them out
+        // again from the start of vk_command_buffers.
+        thread_pool.next_handle_index = 0;
+    }
+
+    // Read GPU timer results from the slice we are about to reuse. The
+    // timeline-semaphore wait above has already guaranteed that this
+    // slice's previous frame has finished on the GPU, so query results
+    // are available. After reading, mark this slice for reset by the
+    // first cb of the new frame; the slice is then refilled with this
+    // frame's begin/end timestamps.
+    if (m_gpu_timers_supported && (m_gpu_timer_query_pool != VK_NULL_HANDLE)) {
+        // Snapshot the fired bitmap and check whether any timer wrote in
+        // this slice the previous time it was used. If none, skip the
+        // vkGetQueryPoolResults call entirely -- not just for performance
+        // but because the slice may still be in the "never reset" state on
+        // the first frame, where reading is undefined.
+        std::array<bool, s_max_gpu_timers> fired_snapshot{};
+        bool any_fired = false;
+        {
+            const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+            std::array<bool, s_max_gpu_timers>& fired = m_gpu_timer_fired[slot];
+            for (std::size_t i = 0; i < s_max_gpu_timers; ++i) {
+                fired_snapshot[i] = fired[i];
+                if (fired[i]) {
+                    any_fired  = true;
+                    fired[i]   = false;
+                }
+            }
+        }
+
+        if (any_fired) {
+            ERHE_PROFILE_SCOPE("vkGetQueryPoolResults");
+            const std::size_t slice_size = s_max_gpu_timers * 2;
+            const std::size_t slice_base = slot * slice_size;
+
+            // Two uint64_t per query: timestamp + availability. Reuses a
+            // single buffer, sized for the whole slice.
+            std::array<uint64_t, s_max_gpu_timers * 2 * 2> results{};
+            const VkResult get_result = vkGetQueryPoolResults(
+                m_vulkan_device,
+                m_gpu_timer_query_pool,
+                static_cast<uint32_t>(slice_base),
+                static_cast<uint32_t>(slice_size),
+                sizeof(uint64_t) * 2 * slice_size,
+                results.data(),
+                sizeof(uint64_t) * 2,
+                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
+            );
+            if ((get_result == VK_SUCCESS) || (get_result == VK_NOT_READY)) {
+                for (std::size_t i = 0; i < s_max_gpu_timers; ++i) {
+                    if (!fired_snapshot[i]) {
+                        continue;
+                    }
+                    const uint64_t begin_ts    = results[(2 * i + 0) * 2 + 0];
+                    const uint64_t begin_avail = results[(2 * i + 0) * 2 + 1];
+                    const uint64_t end_ts      = results[(2 * i + 1) * 2 + 0];
+                    const uint64_t end_avail   = results[(2 * i + 1) * 2 + 1];
+                    if ((begin_avail == 0) || (end_avail == 0)) {
+                        continue;
+                    }
+                    Gpu_timer_impl* timer = nullptr;
+                    {
+                        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+                        timer = m_gpu_timer_by_index[i];
+                    }
+                    if (timer == nullptr) {
+                        continue;
+                    }
+                    const uint64_t delta_ticks =
+                        ((end_ts & m_gpu_timer_valid_mask) - (begin_ts & m_gpu_timer_valid_mask))
+                        & m_gpu_timer_valid_mask;
+                    const double   delta_ns    = static_cast<double>(delta_ticks) * m_gpu_timer_timestamp_period;
+                    timer->store_last_result_ns(static_cast<uint64_t>(delta_ns));
+                }
+            }
+        }
+
+        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+        m_gpu_timer_reset_pending[slot] = true;
+    }
+
+    set_state(Device_frame_state::waited, "wait_frame");
+    return true;
+}
+
+
+auto Device_impl::begin_frame() -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ERHE_VERIFY(m_state == Device_frame_state::waited);
+    ERHE_VULKAN_SYNC_TRACE("[FRAME_BEGIN] frame_index={}", m_frame_index);
+
+    // CPU slot begin fallback for callers that skip wait_frame; the normal
+    // frame path opened the record there (do not wipe its wait stamps).
+    if (m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index)) == nullptr) {
+        m_device.get_frame_time_recorder().begin_frame(static_cast<std::int64_t>(m_frame_index)).cpu_slot_begin =
+            erhe::frame_pacing::Frame_time_recorder::now();
+    }
+
+    // Open a device frame for recording with no swapchain involvement.
+    // Reset the per-frame descriptor pool, open the slot's primary
+    // command buffer for recording, and flip state. The caller may then
+    // nest a swapchain frame via begin_swapchain_frame.
+    reset_descriptor_pool();
+    m_had_swapchain_frame = false;
+
+    // Open the slot's device command buffer. The slot must have been
+    // primed exactly once before begin_frame: either by
+    // Swapchain_impl::setup_frame (called from wait_swapchain_frame), or
+    // by Device_impl::prime_device_frame_slot (the no-swapchain path used
+    // for init and OpenXR ticks). Both routes call
+    // ensure_device_frame_command_buffer for the same slot the device
+    // will index here, so df.command_buffer is always non-null at this
+    // point. The assert catches future regressions of the slot-priming
+    // contract immediately, instead of letting cb=NULL propagate into
+    // get_device_frame_command_buffer warnings tens of upload sites later.
+    const size_t slot = static_cast<size_t>(get_frame_in_flight_index());
+    Device_frame_in_flight& df = m_device_submit_history[slot];
+    ERHE_VERIFY(df.command_buffer != VK_NULL_HANDLE);
+    const VkCommandBufferBeginInfo begin_info{
+        .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext            = nullptr,
+        .flags            = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = nullptr
+    };
+
+    {
+        ERHE_PROFILE_SCOPE("vkBeginCommandBuffer");
+
+        const VkResult result = vkBeginCommandBuffer(df.command_buffer, &begin_info);
+        if (result != VK_SUCCESS) {
+            log_context->critical(
+                "vkBeginCommandBuffer() failed with {} {}",
+                static_cast<int32_t>(result), c_str(result)
+            );
+            abort();
+        }
+    }
+
+    set_state(Device_frame_state::recording, "begin_frame");
+    return true;
+}
+
+auto Device_impl::begin_frame(const Frame_begin_info& frame_begin_info) -> bool
+{
+    // Legacy compat: used to combine device-frame open with the
+    // swapchain-frame open. begin_swapchain_frame moved to
+    // Command_buffer::begin_swapchain, so the swapchain side is no
+    // longer engaged here -- callers wanting the swapchain part must
+    // call command_buffer.begin_swapchain(...) explicitly. This body
+    // keeps compiling so hello_swap can iterate to the new pattern.
+    static_cast<void>(frame_begin_info);
+    return begin_frame();
+}
+
+auto Device_impl::end_frame() -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // CONTRACT: end_frame advances the frame index. That is its ONLY job.
+    //
+    // It does not submit any command buffer, it does not present any
+    // swapchain image, and it does not touch any GPU resource other
+    // than the device-owned timeline semaphore that update_frame_completion
+    // signals. Callers must have already submitted every cb they
+    // recorded via Device::submit_command_buffers (which presents
+    // implicitly when a cb engaged a swapchain via begin_swapchain).
+    //
+    // Mechanics: update_frame_completion() submits an empty
+    // vkQueueSubmit2 that signals m_vulkan_frame_end_semaphore at the
+    // current m_frame_index, then increments m_frame_index. The next
+    // wait_frame() consults the timeline semaphore at value
+    // (m_frame_index - N) to gate per-(frame_in_flight, thread_slot)
+    // command-pool reset.
+    ERHE_VERIFY(
+        (m_state == Device_frame_state::in_swapchain_frame) ||
+        (m_state == Device_frame_state::recording) ||
+        (m_state == Device_frame_state::waited)
+    );
+
+    m_had_swapchain_frame = false;
+    if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(static_cast<std::int64_t>(m_frame_index))) {
+        record->cpu_slot_end = erhe::frame_pacing::Frame_time_recorder::now();
+    }
+    if (m_frame_index == 240) {
+        // One-shot sanity line for the frame time records (P0.2 acceptance).
+        const erhe::frame_pacing::Frame_time_record* sample = m_device.get_frame_time_recorder().find(238);
+        if (sample != nullptr) {
+            log_debug->info(
+                "frame time record sample (frame 238): cpu_slot_span={:.3f} ms cpu_service={:.3f} ms fence_wait={:.3f} ms acquire={:.3f} ms submit={} present_request={} gpu_span={:.3f} ms gpu_end_to_present={:.3f} ms",
+                sample->cpu_slot_span() * 1000.0,
+                sample->cpu_service_time() * 1000.0,
+                sample->fence_wait_duration * 1000.0,
+                (sample->acquire_end > sample->acquire_begin) ? (sample->acquire_end - sample->acquire_begin) * 1000.0 : 0.0,
+                sample->submit_time > 0.0,
+                sample->present_request_time > 0.0,
+                (sample->gpu_frame_end > sample->gpu_frame_begin) ? (sample->gpu_frame_end - sample->gpu_frame_begin) * 1000.0 : 0.0,
+                ((sample->achieved_present_time > 0.0) && (sample->gpu_frame_end > 0.0)) ? (sample->achieved_present_time - sample->gpu_frame_end) * 1000.0 : 0.0
+            );
+        }
+    }
+    update_frame_completion();
+
+    ERHE_VULKAN_SYNC_TRACE("[FRAME_END] frame_index={}", m_frame_index);
+    set_state(Device_frame_state::idle, "end_frame");
+    return true;
+}
+
+auto Device_impl::end_frame(const Frame_end_info& frame_end_info) -> bool
+{
+    // Legacy compat overload. The Frame_end_info argument used to carry
+    // the predicted-display-time / present-mode hints into
+    // Swapchain_impl::end_frame, but presentation has moved into
+    // Device::submit_command_buffers (driven by Command_buffer::begin_swapchain).
+    // The argument is now ignored; both overloads have identical
+    // behaviour: advance frame index. This overload is kept only so
+    // existing call sites compile while they migrate to the no-args form.
+    static_cast<void>(frame_end_info);
+    return end_frame();
+}
+
+
+auto Device_impl::recreate_surface_for_new_window() -> bool
+{
+    if (!m_surface) {
+        log_context->warn("Device_impl::recreate_surface_for_new_window(): no surface");
+        return false;
+    }
+    return m_surface->get_impl().recreate_for_new_window();
+}
+
+void Device_impl::wait_idle()
+{
+    const VkResult result = vkDeviceWaitIdle(m_vulkan_device);
+    if (result != VK_SUCCESS) {
+        log_context->error(
+            "vkDeviceWaitIdle() failed with {} {}",
+            static_cast<int32_t>(result), c_str(result)
+        );
+        report_device_fault("wait_idle vkDeviceWaitIdle");
+    }
+
+    // Every frame submitted so far is guaranteed complete on the GPU.
+    // Drive frame_completed() up to the last submitted frame so ring
+    // buffers recycle and completion handlers fire.
+    //
+    // m_frame_index is the next frame to be submitted; frames strictly
+    // less than m_frame_index have already called update_frame_completion()
+    // (which does ++m_frame_index). update_frame_completion() also advances
+    // m_latest_completed_frame as the GPU timeline semaphore reports
+    // completion; here we just force-complete everything up to the latest
+    // submitted.
+    if (m_frame_index > 0) {
+        const uint64_t last_submitted = m_frame_index - 1;
+        for (; m_latest_completed_frame <= last_submitted; ++m_latest_completed_frame) {
+            frame_completed(m_latest_completed_frame);
+        }
+    }
+
+    // Anything left in m_completion_handlers is for a frame that never
+    // submitted - drain it too so staging buffers etc. are released.
+    for (const Completion_handler& entry : m_completion_handlers) {
+        entry.callback(*this);
+    }
+    m_completion_handlers.clear();
+}
+
+auto Device_impl::is_in_swapchain_frame() const -> bool
+{
+    return m_state == Device_frame_state::in_swapchain_frame;
+}
+
+void Device_impl::update_frame_completion()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    VkResult result = VK_SUCCESS;
+
+    const VkSemaphoreSubmitInfo signal_semaphore_info{
+        .sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .pNext       = nullptr,
+        .semaphore   = m_vulkan_frame_end_semaphore,
+        .value       = m_frame_index,
+        .stageMask   = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .deviceIndex = 0,
+    };
+    const VkSubmitInfo2 submit_info{
+        .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .pNext                    = nullptr,
+        .flags                    = 0,
+        .waitSemaphoreInfoCount   = 0,
+        .pWaitSemaphoreInfos      = nullptr,
+        .commandBufferInfoCount   = 0,
+        .pCommandBufferInfos      = nullptr,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos    = &signal_semaphore_info,
+    };
+    ERHE_VULKAN_TRACE("vkQueueSubmit2() end of frame timeline semaphore @ frame index = {}", m_frame_index);
+    {
+        ERHE_PROFILE_SCOPE("vkQueueSubmit2");
+        result = vkQueueSubmit2(m_vulkan_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+        if (result != VK_SUCCESS) {
+            log_context->critical("vkQueueSubmit2() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+            report_device_fault("end_frame vkQueueSubmit2");
+            abort();
+        }
+    }
+
+    ++m_frame_index;
+    ERHE_VULKAN_SYNC_TRACE(
+        "[FRAME_INDEX] advanced to {} (slot now {})",
+        m_frame_index,
+        m_frame_index % get_number_of_frames_in_flight()
+    );
+
+    uint64_t latest_completed_frame{0};
+    {
+        ERHE_PROFILE_SCOPE("vkGetSemaphoreCounterValue");
+        result = vkGetSemaphoreCounterValue(m_vulkan_device, m_vulkan_frame_end_semaphore, &latest_completed_frame);
+    }
+    if (result != VK_SUCCESS) {
+        log_context->error("vkGetSemaphoreCounterValue() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+    } else {
+        for (; m_latest_completed_frame <= latest_completed_frame; ++m_latest_completed_frame) {
+            // log_context->trace("GPU has completed frame index = {}", m_latest_completed_frame);
+            frame_completed(m_latest_completed_frame);
+        }
+    }
+}
+
+auto Device_impl::allocate_ring_buffer_entry(
+    Buffer_target     buffer_target,
+    Ring_buffer_usage ring_buffer_usage,
+    std::size_t       byte_count
+) -> Ring_buffer_range
+{
+    ERHE_PROFILE_FUNCTION();
+
+    m_need_sync = true;
+    const std::size_t required_alignment = erhe::utility::next_power_of_two_16bit(get_buffer_alignment(buffer_target));
+    std::size_t alignment_byte_count_without_wrap{0};
+    std::size_t available_byte_count_without_wrap{0};
+    std::size_t available_byte_count_with_wrap{0};
+
+    // Pass 1: Do we have buffer that can be used without a wrap?
+    for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
+        if (!ring_buffer->match(ring_buffer_usage)) {
+            continue;
+        }
+        ring_buffer->get_size_available_for_write(
+            required_alignment,
+            alignment_byte_count_without_wrap,
+            available_byte_count_without_wrap,
+            available_byte_count_with_wrap
+        );
+        if (available_byte_count_without_wrap >= byte_count) {
+            return ring_buffer->acquire(required_alignment, ring_buffer_usage, byte_count);
+        }
+    }
+
+    // Pass 2: Do we have buffer that can be used with a wrap?
+    for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
+        if (!ring_buffer->match(ring_buffer_usage)) {
+            continue;
+        }
+        ring_buffer->get_size_available_for_write(
+            required_alignment,
+            alignment_byte_count_without_wrap,
+            available_byte_count_without_wrap,
+            available_byte_count_with_wrap
+        );
+        if (available_byte_count_with_wrap >= byte_count) {
+            return ring_buffer->acquire(required_alignment, ring_buffer_usage, byte_count);
+        }
+    }
+
+    // No existing usable buffer found, create new buffer. The first buffer
+    // of a usage class gets 4x headroom; SPILL buffers (created because
+    // every existing buffer was momentarily full of in-flight ranges) are
+    // sized to the request only - the 4x multiplier on spills is what
+    // turned a load's 16 MiB staging acquisitions into a pile of 64 MiB
+    // buffers. Spills are reclaimed once idle (see frame_completed).
+    std::size_t existing_count      = 0;
+    std::size_t existing_byte_count = 0;
+    std::size_t total_byte_count    = 0;
+    for (const std::unique_ptr<Ring_buffer>& ring_buffer : m_ring_buffers) {
+        total_byte_count += ring_buffer->get_capacity_byte_count();
+        if (ring_buffer->match(ring_buffer_usage)) {
+            ++existing_count;
+            existing_byte_count += ring_buffer->get_capacity_byte_count();
+        }
+    }
+    const bool is_spill = (existing_count > 0);
+    Ring_buffer_create_info create_info{
+        .size              = std::max(m_min_buffer_size, is_spill ? byte_count : 4 * byte_count),
+        .ring_buffer_usage = ring_buffer_usage,
+        .debug_label       = "Ring_buffer"
+    };
+    m_ring_buffers.push_back(std::make_unique<Ring_buffer>(m_device, create_info));
+    log_buffer->info(
+        "Ring buffer pool: created {} byte buffer (usage {}, request {} bytes); now {} buffer(s), {} bytes total",
+        create_info.size,
+        static_cast<unsigned int>(ring_buffer_usage),
+        byte_count,
+        m_ring_buffers.size(),
+        total_byte_count + create_info.size
+    );
+    if (existing_count >= 8) {
+        log_buffer->warn(
+            "Ring buffer pool: {} buffers ({} bytes) for one usage class - "
+            "acquisitions are outpacing frame completion (missing upload flushes?)",
+            existing_count + 1,
+            existing_byte_count + create_info.size
+        );
+    }
+    return m_ring_buffers.back()->acquire(required_alignment, ring_buffer_usage, byte_count);
+}
+
+auto Device_impl::get_format_properties(erhe::dataformat::Format format) const -> Format_properties
+{
+    //ERHE_FATAL("Not implemented");
+    const VkFormat vulkan_format = to_vulkan(format);
+    VkFormatProperties2 vulkan_properties{
+        .sType            = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+        .pNext            = nullptr,
+        .formatProperties = {}
+    };
+    vkGetPhysicalDeviceFormatProperties2(m_vulkan_physical_device, vulkan_format, &vulkan_properties);
+    //const VkFormatFeatureFlags supported =
+    //    VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+    using namespace erhe::utility;
+    const uint32_t features = vulkan_properties.formatProperties.optimalTilingFeatures;
+
+    Format_properties result{
+        .supported          = erhe::utility::test_bit_set(features, static_cast<uint32_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)),
+        .color_renderable   = erhe::utility::test_bit_set(features, static_cast<uint32_t>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)),
+        .depth_renderable   = erhe::utility::test_bit_set(features, static_cast<uint32_t>(VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) && (erhe::dataformat::get_depth_size_bits(format) > 0),
+        .stencil_renderable = erhe::utility::test_bit_set(features, static_cast<uint32_t>(VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) && (erhe::dataformat::get_stencil_size_bits(format) > 0),
+        .filter             = erhe::utility::test_bit_set(features, static_cast<uint32_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)),
+        .framebuffer_blend  = erhe::utility::test_bit_set(features, static_cast<uint32_t>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT)),
+        .red_size           = static_cast<int>(erhe::dataformat::get_red_size_bits    (format)),
+        .green_size         = static_cast<int>(erhe::dataformat::get_green_size_bits  (format)),
+        .blue_size          = static_cast<int>(erhe::dataformat::get_blue_size_bits   (format)),
+        .alpha_size         = static_cast<int>(erhe::dataformat::get_alpha_size_bits  (format)),
+        .depth_size         = static_cast<int>(erhe::dataformat::get_depth_size_bits  (format)),
+        .stencil_size       = static_cast<int>(erhe::dataformat::get_stencil_size_bits(format))
+    };
+
+    // Query image format properties for 2D array limits and sample counts.
+    // Only probe with vkGetPhysicalDeviceImageFormatProperties2 if the format
+    // actually supports the requested usage according to the format features
+    // we just queried -- otherwise the call returns VK_ERROR_FORMAT_NOT_SUPPORTED
+    // and the validation layer flags it as a best-practices error.
+    const bool is_depth = erhe::dataformat::get_depth_size_bits(format) > 0;
+    const VkImageUsageFlags usage = is_depth
+        ? (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)
+        : (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+
+    const bool attachment_supported = is_depth
+        ? (result.depth_renderable || result.stencil_renderable)
+        : result.color_renderable;
+    if (!result.supported || !attachment_supported) {
+        return result;
+    }
+
+    const VkPhysicalDeviceImageFormatInfo2 image_format_info{
+        .sType  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+        .pNext  = nullptr,
+        .format = vulkan_format,
+        .type   = VK_IMAGE_TYPE_2D,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage  = usage,
+        .flags  = 0
+    };
+
+    VkImageFormatProperties2 image_format_properties{
+        .sType             = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
+        .pNext             = nullptr,
+        .imageFormatProperties = {}
+    };
+
+    VkResult image_result = vkGetPhysicalDeviceImageFormatProperties2(
+        m_vulkan_physical_device, &image_format_info, &image_format_properties
+    );
+    if (image_result == VK_SUCCESS) {
+        const VkImageFormatProperties& p = image_format_properties.imageFormatProperties;
+        result.texture_2d_array_max_width  = static_cast<int>(p.maxExtent.width);
+        result.texture_2d_array_max_height = static_cast<int>(p.maxExtent.height);
+        result.texture_2d_array_max_layers = static_cast<int>(p.maxArrayLayers);
+
+        for (int bit = 0; bit < 7; ++bit) {
+            if (p.sampleCounts & (1u << bit)) {
+                result.texture_2d_sample_counts.push_back(1 << bit);
+            }
+        }
+    }
+
+    return result;
+}
+
+auto Device_impl::probe_image_format_support(
+    const erhe::dataformat::Format format,
+    const uint64_t                 usage_mask
+) const -> bool
+{
+    const VkFormat          vk_format = to_vulkan(format);
+    const VkImageUsageFlags vk_usage  = get_vulkan_image_usage_flags(usage_mask);
+    if ((vk_format == VK_FORMAT_UNDEFINED) || (vk_usage == 0)) {
+        return false;
+    }
+
+    const VkPhysicalDeviceImageFormatInfo2 image_format_info{
+        .sType  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+        .pNext  = nullptr,
+        .format = vk_format,
+        .type   = VK_IMAGE_TYPE_2D,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage  = vk_usage,
+        .flags  = 0
+    };
+
+    VkImageFormatProperties2 image_format_properties{
+        .sType                 = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
+        .pNext                 = nullptr,
+        .imageFormatProperties = {}
+    };
+
+    const VkResult image_result = vkGetPhysicalDeviceImageFormatProperties2(
+        m_vulkan_physical_device, &image_format_info, &image_format_properties
+    );
+    return image_result == VK_SUCCESS;
+}
+
+auto Device_impl::get_memory_budget() const -> Memory_budget
+{
+    Memory_budget result{};
+    if (m_vma_allocator == nullptr) {
+        return result;
+    }
+    const VkPhysicalDeviceMemoryProperties* memory_properties{nullptr};
+    vmaGetMemoryProperties(m_vma_allocator, &memory_properties);
+    if (memory_properties == nullptr) {
+        return result;
+    }
+    std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+    vmaGetHeapBudgets(m_vma_allocator, budgets.data());
+    // The device-address allocator (ray tracing buffers) draws from the same
+    // heaps, so its usage has to be added in or the reported figure would
+    // under-count. budget is the driver's per-heap ceiling and is reported
+    // identically by both allocators, so only usage accumulates.
+    std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> device_address_budgets{};
+    if (m_vma_device_address_allocator != VK_NULL_HANDLE) {
+        vmaGetHeapBudgets(m_vma_device_address_allocator, device_address_budgets.data());
+    }
+    for (uint32_t heap = 0; heap < memory_properties->memoryHeapCount; ++heap) {
+        if ((memory_properties->memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) {
+            continue;
+        }
+        result.device_local_budget += budgets[heap].budget;
+        result.device_local_usage  += budgets[heap].usage;
+        result.device_local_usage  += device_address_budgets[heap].usage;
+    }
+    return result;
+}
+
+auto Device_impl::get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>
+{
+    std::vector<erhe::dataformat::Format> result;
+    // Query common depth/stencil formats for support
+    const std::vector<erhe::dataformat::Format> candidates = {
+        erhe::dataformat::Format::format_d32_sfloat,
+        erhe::dataformat::Format::format_d32_sfloat_s8_uint,
+        erhe::dataformat::Format::format_d24_unorm_s8_uint,
+        erhe::dataformat::Format::format_d16_unorm,
+    };
+    for (erhe::dataformat::Format candidate : candidates) {
+        Format_properties properties = get_format_properties(candidate);
+        if (properties.depth_renderable || properties.stencil_renderable) {
+            result.push_back(candidate);
+        }
+    }
+    return result;
+}
+
+void Device_impl::sort_depth_stencil_formats(std::vector<erhe::dataformat::Format>& formats, unsigned int sort_flags, int requested_sample_count) const
+{
+    // Simple sort: prefer depth+stencil over depth-only, prefer higher precision
+    static_cast<void>(sort_flags);
+    static_cast<void>(requested_sample_count);
+    std::sort(formats.begin(), formats.end(), [](erhe::dataformat::Format a, erhe::dataformat::Format b) {
+        int a_depth   = static_cast<int>(erhe::dataformat::get_depth_size_bits(a));
+        int b_depth   = static_cast<int>(erhe::dataformat::get_depth_size_bits(b));
+        int a_stencil = static_cast<int>(erhe::dataformat::get_stencil_size_bits(a));
+        int b_stencil = static_cast<int>(erhe::dataformat::get_stencil_size_bits(b));
+        int a_score   = a_depth + a_stencil;
+        int b_score   = b_depth + b_stencil;
+        return a_score > b_score;
+    });
+}
+
+auto Device_impl::choose_depth_stencil_format(const std::vector<erhe::dataformat::Format>& formats) const -> erhe::dataformat::Format
+{
+    if (formats.empty()) {
+        return erhe::dataformat::Format::format_d32_sfloat;
+    }
+    return formats.front();
+}
+
+auto Device_impl::choose_depth_stencil_format(unsigned int sort_flags, int requested_sample_count) const -> erhe::dataformat::Format
+{
+    std::vector<erhe::dataformat::Format> formats = get_supported_depth_stencil_formats();
+    sort_depth_stencil_formats(formats, sort_flags, requested_sample_count);
+    return choose_depth_stencil_format(formats);
+}
+
+void Device_impl::start_frame_capture()
+{
+    RENDERDOC_API_1_7_0* api = static_cast<RENDERDOC_API_1_7_0*>(erhe::window::get_renderdoc_api());
+    if (api == nullptr) {
+        return;
+    }
+    RENDERDOC_DevicePointer device = RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(m_vulkan_instance);
+    api->StartFrameCapture(device, nullptr);
+    log_context->info("RenderDoc: StartFrameCapture()");
+}
+
+void Device_impl::end_frame_capture()
+{
+    RENDERDOC_API_1_7_0* api = static_cast<RENDERDOC_API_1_7_0*>(erhe::window::get_renderdoc_api());
+    if (api == nullptr) {
+        return;
+    }
+    RENDERDOC_DevicePointer device = RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(m_vulkan_instance);
+    uint32_t result = api->EndFrameCapture(device, nullptr);
+    if (result == 0) {
+        log_context->warn("RenderDoc: EndFrameCapture() failed");
+        return;
+    }
+    if (api->IsTargetControlConnected()) {
+        api->ShowReplayUI();
+    } else {
+        api->LaunchReplayUI(1, nullptr);
+    }
+}
+
+auto Device_impl::make_blit_command_encoder(Command_buffer& command_buffer) -> Blit_command_encoder
+{
+    return Blit_command_encoder{m_device, command_buffer};
+}
+
+auto Device_impl::make_compute_command_encoder(Command_buffer& command_buffer) -> Compute_command_encoder
+{
+    return Compute_command_encoder{m_device, command_buffer};
+}
+
+auto Device_impl::make_render_command_encoder(Command_buffer& command_buffer) -> Render_command_encoder
+{
+    return Render_command_encoder{m_device, command_buffer};
+}
+
+void Device_impl::set_debug_label(const VkObjectType object_type, const uint64_t object_handle, const char* label)
+{
+    if (!m_instance_extensions.m_VK_EXT_debug_utils) {
+        return;
+    }
+    const VkDebugUtilsObjectNameInfoEXT name_info{
+        .sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .pNext        = nullptr,
+        .objectType   = object_type,
+        .objectHandle = object_handle,
+        .pObjectName  = label
+    };
+    VkResult result = vkSetDebugUtilsObjectNameEXT(m_vulkan_device, &name_info);
+    if (result != VK_SUCCESS) {
+        log_debug->warn(
+            "vkSetDebugUtilsObjectNameEXT() failed with {} {}",
+            static_cast<int32_t>(result),
+            c_str(result)
+        );
+    }
+}
+
+void Device_impl::set_debug_label(const VkObjectType object_type, const uint64_t object_handle, const std::string& label)
+{
+    set_debug_label(object_type, object_handle, label.c_str());
+}
+
+// Active render pass tracking
+Device_impl* Device_impl::s_device_impl{nullptr};
+
+auto Device_impl::get_device_impl() -> Device_impl*
+{
+    return s_device_impl;
+}
+
+auto Device_impl::get_sync_pool() -> Device_sync_pool&
+{
+    return *m_sync_pool;
+}
+
+auto Device_impl::get_command_buffer(unsigned int thread_slot) -> Command_buffer&
+{
+    ERHE_VERIFY(thread_slot < s_number_of_thread_slots);
+    const size_t frame_slot = static_cast<size_t>(get_frame_in_flight_index());
+    Per_thread_command_pool& pool = m_command_pools[frame_slot][thread_slot];
+    ERHE_VERIFY(pool.command_pool != VK_NULL_HANDLE);
+
+    // Reuse a handle recycled by the slot's vkResetCommandPool() when one
+    // is available; allocate (and label) a new one only when this cycle
+    // needs more cbs than any previous cycle of this pool. Allocating a
+    // fresh handle every frame would accumulate cbs in the pool forever:
+    // pool reset returns cbs to the initial state but never frees them.
+    VkCommandBuffer vk_command_buffer{VK_NULL_HANDLE};
+    const std::size_t handle_index = pool.next_handle_index;
+    if (handle_index < pool.vk_command_buffers.size()) {
+        vk_command_buffer = pool.vk_command_buffers[handle_index];
+    } else {
+        const VkCommandBufferAllocateInfo allocate_info{
+            .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .pNext              = nullptr,
+            .commandPool        = pool.command_pool,
+            .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1
+        };
+        const VkResult result = vkAllocateCommandBuffers(m_vulkan_device, &allocate_info, &vk_command_buffer);
+        if (result != VK_SUCCESS) {
+            log_context->critical(
+                "vkAllocateCommandBuffers() failed with {} {}",
+                static_cast<int32_t>(result), c_str(result)
+            );
+            abort();
+        }
+        set_debug_label(
+            VK_OBJECT_TYPE_COMMAND_BUFFER,
+            reinterpret_cast<uint64_t>(vk_command_buffer),
+            fmt::format("Device cb (frame_slot={}, thread_slot={}, handle_index={})", frame_slot, thread_slot, handle_index).c_str()
+        );
+        pool.vk_command_buffers.push_back(vk_command_buffer);
+    }
+    ++pool.next_handle_index;
+
+    auto label = erhe::utility::Debug_label{
+        fmt::format("Device cb (frame_slot={}, thread_slot={}, handle_index={})", frame_slot, thread_slot, handle_index)
+    };
+
+    auto command_buffer = std::make_unique<Command_buffer>(m_device, label);
+    command_buffer->get_impl().set_vulkan_command_buffer(vk_command_buffer);
+
+    // Implicit per-cb sync primitives, owned for the lifetime of the
+    // wrapper (until the per-thread pool is reset on the next frame
+    // cycle). Recycled in Command_buffer_impl::~Command_buffer_impl.
+    const VkSemaphore implicit_semaphore = m_sync_pool->get_semaphore();
+    const VkFence     implicit_fence     = m_sync_pool->get_fence();
+    set_debug_label(
+        VK_OBJECT_TYPE_SEMAPHORE,
+        reinterpret_cast<uint64_t>(implicit_semaphore),
+        fmt::format("Cb implicit semaphore (frame_slot={}, thread_slot={})", frame_slot, thread_slot).c_str()
+    );
+    set_debug_label(
+        VK_OBJECT_TYPE_FENCE,
+        reinterpret_cast<uint64_t>(implicit_fence),
+        fmt::format("Cb implicit fence (frame_slot={}, thread_slot={})", frame_slot, thread_slot).c_str()
+    );
+    command_buffer->get_impl().set_implicit_sync(implicit_semaphore, implicit_fence);
+
+    pool.allocated_command_buffers.push_back(std::move(command_buffer));
+    return *pool.allocated_command_buffers.back();
+}
+
+auto Device_impl::get_active_render_pass() const -> VkRenderPass
+{
+    if (m_active_render_pass != nullptr) {
+        return m_active_render_pass->m_render_pass;
+    }
+    return VK_NULL_HANDLE;
+}
+
+auto Device_impl::get_active_render_pass_impl() const -> Render_pass_impl*
+{
+    return m_active_render_pass;
+}
+
+void Device_impl::set_active_render_pass_impl(Render_pass_impl* render_pass_impl)
+{
+    m_active_render_pass = render_pass_impl;
+}
+
+auto Device_impl::get_number_of_frames_in_flight() const -> size_t
+{
+    return s_number_of_frames_in_flight;
+}
+
+auto Device_impl::get_frame_index() const -> uint64_t
+{
+    return m_frame_index;
+}
+
+auto Device_impl::get_frame_in_flight_index() const -> uint64_t
+{
+    return m_frame_index % get_number_of_frames_in_flight();
+}
+
+auto Device_impl::is_frame_completed(const uint64_t frame) const -> bool
+{
+    // m_latest_completed_frame is one past the last frame the GPU has
+    // retired: both advancing loops (update_frame_completion() and
+    // wait_for_idle()) leave it at completed + 1.
+    return frame < m_latest_completed_frame;
+}
+
+auto Device_impl::are_gpu_timers_supported() const -> bool
+{
+    return m_gpu_timers_supported;
+}
+
+auto Device_impl::get_gpu_timer_timestamp_period() const -> double
+{
+    return m_gpu_timer_timestamp_period;
+}
+
+auto Device_impl::allocate_gpu_timer_slot(Gpu_timer_impl* timer) -> int
+{
+    const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+    for (std::size_t i = 0; i < s_max_gpu_timers; ++i) {
+        if (!m_gpu_timer_slot_used[i]) {
+            m_gpu_timer_slot_used[i] = true;
+            m_gpu_timer_by_index[i]  = timer;
+            return static_cast<int>(i);
+        }
+    }
+    log_context->warn(
+        "GPU timer slot pool exhausted (limit {}); subsequent timer is inert",
+        s_max_gpu_timers
+    );
+    return -1;
+}
+
+void Device_impl::release_gpu_timer_slot(int slot)
+{
+    if (slot < 0) {
+        return;
+    }
+    const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+    const std::size_t index = static_cast<std::size_t>(slot);
+    if (index >= s_max_gpu_timers) {
+        return;
+    }
+    m_gpu_timer_slot_used[index] = false;
+    m_gpu_timer_by_index[index]  = nullptr;
+    for (std::array<bool, s_max_gpu_timers>& fired : m_gpu_timer_fired) {
+        fired[index] = false;
+    }
+}
+
+void Device_impl::record_gpu_timer_begin_query(VkCommandBuffer cb, int slot)
+{
+    if ((slot < 0) || !m_gpu_timers_supported || (m_gpu_timer_query_pool == VK_NULL_HANDLE)) {
+        return;
+    }
+    const std::size_t in_flight = static_cast<std::size_t>(get_frame_in_flight_index());
+    const std::size_t index     = static_cast<std::size_t>(slot);
+    const std::size_t slice_size = s_max_gpu_timers * 2;
+    const std::size_t query_idx  = in_flight * slice_size + index * 2;
+    {
+        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+        m_gpu_timer_fired[in_flight][index] = true;
+    }
+    vkCmdWriteTimestamp(
+        cb,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        m_gpu_timer_query_pool,
+        static_cast<uint32_t>(query_idx)
+    );
+}
+
+void Device_impl::record_gpu_timer_end_query(VkCommandBuffer cb, int slot)
+{
+    if ((slot < 0) || !m_gpu_timers_supported || (m_gpu_timer_query_pool == VK_NULL_HANDLE)) {
+        return;
+    }
+    const std::size_t in_flight = static_cast<std::size_t>(get_frame_in_flight_index());
+    const std::size_t index     = static_cast<std::size_t>(slot);
+    const std::size_t slice_size = s_max_gpu_timers * 2;
+    const std::size_t query_idx  = in_flight * slice_size + index * 2 + 1;
+    vkCmdWriteTimestamp(
+        cb,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        m_gpu_timer_query_pool,
+        static_cast<uint32_t>(query_idx)
+    );
+}
+
+namespace {
+
+// Ticks per second of a host time domain's own units: QPC ticks for
+// VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR, nanoseconds for the
+// monotonic clock domains.
+[[nodiscard]] auto host_time_domain_ticks_per_second(const VkTimeDomainKHR domain) -> double
+{
+#if defined(_WIN32)
+    if (domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR) {
+        static const double s_frequency = []() {
+            LARGE_INTEGER frequency{};
+            QueryPerformanceFrequency(&frequency);
+            return static_cast<double>(frequency.QuadPart);
+        }();
+        return s_frequency;
+    }
+#else
+    static_cast<void>(domain);
+#endif
+    return 1e9;
+}
+
+// Reads the host clock backing a Vulkan host time domain, in that domain's
+// own units. False for VK_TIME_DOMAIN_DEVICE_KHR (the GPU clock, readable
+// only through vkGetCalibratedTimestamps) and for any host domain this
+// platform cannot read directly - such a domain is unusable for us even
+// when the driver advertises it, since the calibration exists to tie GPU
+// time to the reference clock.
+[[nodiscard]] auto read_host_time_domain(const VkTimeDomainKHR domain, uint64_t& out_value) -> bool
+{
+#if defined(_WIN32)
+    if (domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR) {
+        LARGE_INTEGER counter{};
+        QueryPerformanceCounter(&counter);
+        out_value = static_cast<uint64_t>(counter.QuadPart);
+        return true;
+    }
+    return false;
+#else
+    clockid_t clock_id{};
+    switch (domain) {
+        case VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR:     clock_id = CLOCK_MONOTONIC;     break;
+        case VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR: clock_id = CLOCK_MONOTONIC_RAW; break;
+        default: return false;
+    }
+    timespec time_spec{};
+    if (clock_gettime(clock_id, &time_spec) != 0) {
+        return false;
+    }
+    out_value = (static_cast<uint64_t>(time_spec.tv_sec) * 1000000000ull) + static_cast<uint64_t>(time_spec.tv_nsec);
+    return true;
+#endif
+}
+
+// Offset that maps a host time domain onto the reference clock of
+// Frame_time_recorder::now(): reference_seconds - domain_seconds. Sampled a
+// few times as (reference, domain, reference); the sample with the tightest
+// reference bracket wins and the domain read is placed at its midpoint.
+[[nodiscard]] auto measure_host_time_domain_offset(
+    const VkTimeDomainKHR domain,
+    const double          ticks_per_second,
+    double&               out_offset_seconds
+) -> bool
+{
+    bool   measured           = false;
+    double best_bracket       = std::numeric_limits<double>::max();
+    for (int i = 0; i < 4; ++i) {
+        const double reference_before = erhe::frame_pacing::Frame_time_recorder::now();
+        uint64_t     domain_value     = 0;
+        if (!read_host_time_domain(domain, domain_value)) {
+            return false;
+        }
+        const double reference_after = erhe::frame_pacing::Frame_time_recorder::now();
+        const double bracket         = reference_after - reference_before;
+        if (bracket < best_bracket) {
+            best_bracket       = bracket;
+            out_offset_seconds = (0.5 * (reference_before + reference_after)) - (static_cast<double>(domain_value) / ticks_per_second);
+            measured           = true;
+        }
+    }
+    return measured;
+}
+
+[[nodiscard]] auto c_str(const VkTimeDomainKHR domain) -> const char*
+{
+    switch (domain) {
+        case VK_TIME_DOMAIN_DEVICE_KHR:                    return "DEVICE";
+        case VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR:           return "CLOCK_MONOTONIC";
+        case VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR:       return "CLOCK_MONOTONIC_RAW";
+        case VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR: return "QUERY_PERFORMANCE_COUNTER";
+        case VK_TIME_DOMAIN_PRESENT_STAGE_LOCAL_EXT:       return "PRESENT_STAGE_LOCAL";
+        case VK_TIME_DOMAIN_SWAPCHAIN_LOCAL_EXT:           return "SWAPCHAIN_LOCAL";
+        default:                                           return "?";
+    }
+}
+
+} // anonymous namespace
+
+void Device_impl::select_calibrated_host_time_domain()
+{
+    m_host_time_domains.clear();
+    m_calibrated_host_time_domain    = VK_TIME_DOMAIN_DEVICE_KHR;
+    m_host_time_domain_offsets_valid = false;
+    if (!m_device_extensions.m_VK_KHR_calibrated_timestamps && !m_device_extensions.m_VK_EXT_calibrated_timestamps) {
+        return;
+    }
+    const PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR get_time_domains =
+        (vkGetPhysicalDeviceCalibrateableTimeDomainsKHR != nullptr)
+            ? vkGetPhysicalDeviceCalibrateableTimeDomainsKHR
+            : vkGetPhysicalDeviceCalibrateableTimeDomainsEXT;
+    if (get_time_domains == nullptr) {
+        log_context->warn("vkGetPhysicalDeviceCalibrateableTimeDomains() is not available; calibrated timestamps disabled");
+        return;
+    }
+    uint32_t domain_count = 0;
+    VkResult result = get_time_domains(m_vulkan_physical_device, &domain_count, nullptr);
+    if ((result != VK_SUCCESS) || (domain_count == 0)) {
+        log_context->warn(
+            "vkGetPhysicalDeviceCalibrateableTimeDomains() gave {} domains ({} {}); calibrated timestamps disabled",
+            domain_count, static_cast<int32_t>(result), c_str(result)
+        );
+        return;
+    }
+    std::vector<VkTimeDomainKHR> domains(domain_count);
+    result = get_time_domains(m_vulkan_physical_device, &domain_count, domains.data());
+    if (result != VK_SUCCESS) {
+        log_context->warn(
+            "vkGetPhysicalDeviceCalibrateableTimeDomains() failed with {} {}; calibrated timestamps disabled",
+            static_cast<int32_t>(result), c_str(result)
+        );
+        return;
+    }
+    domains.resize(domain_count);
+
+    bool has_device_domain = false;
+    for (const VkTimeDomainKHR domain : domains) {
+        if (domain == VK_TIME_DOMAIN_DEVICE_KHR) {
+            has_device_domain = true;
+            continue;
+        }
+        const double ticks_per_second = host_time_domain_ticks_per_second(domain);
+        double       offset_seconds   = 0.0;
+        if (!measure_host_time_domain_offset(domain, ticks_per_second, offset_seconds)) {
+            log_context->info("Calibrated time domain {} ({}) is not readable on this platform", c_str(domain), static_cast<int32_t>(domain));
+            continue;
+        }
+        m_host_time_domains.push_back(Host_time_domain{
+            .domain           = domain,
+            .ticks_per_second = ticks_per_second,
+            .offset_seconds   = offset_seconds
+        });
+    }
+    m_host_time_domain_offsets_valid = true;
+
+    // Preference order: the clock the reference clock (steady_clock) is
+    // actually built on comes first, so the offset is zero and calibrated
+    // values need no correction; the other readable domains follow.
+#if defined(_WIN32)
+    static constexpr VkTimeDomainKHR preferred_domains[] = {
+        VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR
+    };
+#elif defined(__APPLE__)
+    static constexpr VkTimeDomainKHR preferred_domains[] = {
+        VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR,
+        VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR
+    };
+#else
+    static constexpr VkTimeDomainKHR preferred_domains[] = {
+        VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR,
+        VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR
+    };
+#endif
+    for (const VkTimeDomainKHR preferred : preferred_domains) {
+        if (is_host_time_domain(preferred)) {
+            m_calibrated_host_time_domain = preferred;
+            break;
+        }
+    }
+    if ((m_calibrated_host_time_domain == VK_TIME_DOMAIN_DEVICE_KHR) && !m_host_time_domains.empty()) {
+        m_calibrated_host_time_domain = m_host_time_domains.front().domain;
+    }
+    if (!has_device_domain) {
+        // Without the device domain there is no GPU/host pair to calibrate.
+        log_context->warn("Calibrated timestamps: no VK_TIME_DOMAIN_DEVICE_KHR; calibrated timestamps disabled");
+        m_calibrated_host_time_domain = VK_TIME_DOMAIN_DEVICE_KHR;
+    }
+    log_context->info("Calibrated time domains: {} advertised, host domain = {}", domain_count, c_str(m_calibrated_host_time_domain));
+    for (const Host_time_domain& entry : m_host_time_domains) {
+        log_context->info(
+            "  host time domain {} ({}): offset to reference clock = {} s",
+            c_str(entry.domain), static_cast<int32_t>(entry.domain), entry.offset_seconds
+        );
+    }
+}
+
+auto Device_impl::get_calibrated_host_time_domain() const -> VkTimeDomainKHR
+{
+    return m_calibrated_host_time_domain;
+}
+
+auto Device_impl::is_host_time_domain(const VkTimeDomainKHR domain) const -> bool
+{
+    for (const Host_time_domain& entry : m_host_time_domains) {
+        if (entry.domain == domain) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Device_impl::refresh_host_time_domain_offsets()
+{
+    if (m_host_time_domains.empty()) {
+        return;
+    }
+    if (m_host_time_domain_offsets_valid && ((m_frame_index - m_host_time_domain_offset_frame) < 120)) {
+        return;
+    }
+    for (Host_time_domain& entry : m_host_time_domains) {
+        double offset_seconds = 0.0;
+        if (measure_host_time_domain_offset(entry.domain, entry.ticks_per_second, offset_seconds)) {
+            entry.offset_seconds = offset_seconds;
+        }
+    }
+    m_host_time_domain_offset_frame  = m_frame_index;
+    m_host_time_domain_offsets_valid = true;
+}
+
+void Device_impl::update_gpu_calibration()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    refresh_host_time_domain_offsets();
+    if (!m_capabilities.m_calibrated_timestamps || !m_gpu_timers_supported) {
+        return;
+    }
+    if (m_gpu_calibration_valid && ((m_frame_index - m_gpu_calibration_frame) < 120)) {
+        return;
+    }
+    const PFN_vkGetCalibratedTimestampsKHR get_calibrated_timestamps =
+        (vkGetCalibratedTimestampsKHR != nullptr) ? vkGetCalibratedTimestampsKHR : vkGetCalibratedTimestampsEXT;
+    if (get_calibrated_timestamps == nullptr) {
+        return;
+    }
+    const VkTimeDomainKHR host_domain = m_calibrated_host_time_domain;
+    if (host_domain == VK_TIME_DOMAIN_DEVICE_KHR) {
+        return;
+    }
+    const VkCalibratedTimestampInfoKHR infos[2] = {
+        {
+            .sType      = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR,
+            .pNext      = nullptr,
+            .timeDomain = VK_TIME_DOMAIN_DEVICE_KHR
+        },
+        {
+            .sType      = VK_STRUCTURE_TYPE_CALIBRATED_TIMESTAMP_INFO_KHR,
+            .pNext      = nullptr,
+            .timeDomain = host_domain
+        }
+    };
+    uint64_t timestamps[2] = {0, 0};
+    uint64_t max_deviation = 0;
+    const VkResult result = get_calibrated_timestamps(m_vulkan_device, 2, infos, timestamps, &max_deviation);
+    if (result != VK_SUCCESS) {
+        log_context->warn("vkGetCalibratedTimestamps() failed with {} {}", static_cast<int32_t>(result), c_str(result));
+        return;
+    }
+    m_gpu_calibration_device_ticks = timestamps[0];
+    m_gpu_calibration_host_seconds = host_calibrated_value_to_seconds(timestamps[1]);
+    m_gpu_calibration_frame        = m_frame_index;
+    m_gpu_calibration_valid        = true;
+}
+
+auto Device_impl::gpu_ticks_to_reference_seconds(const uint64_t ticks) const -> double
+{
+    const double delta_ticks = static_cast<double>(
+        static_cast<int64_t>(ticks - m_gpu_calibration_device_ticks)
+    );
+    return m_gpu_calibration_host_seconds + (delta_ticks * m_gpu_timer_timestamp_period * 1e-9);
+}
+
+auto Device_impl::host_domain_value_to_seconds(const VkTimeDomainKHR domain, const uint64_t value) const -> double
+{
+    for (const Host_time_domain& entry : m_host_time_domains) {
+        if (entry.domain == domain) {
+            return (static_cast<double>(value) / entry.ticks_per_second) + entry.offset_seconds;
+        }
+    }
+    return 0.0;
+}
+
+auto Device_impl::reference_seconds_to_host_domain_value(const VkTimeDomainKHR domain, const double seconds) const -> uint64_t
+{
+    for (const Host_time_domain& entry : m_host_time_domains) {
+        if (entry.domain == domain) {
+            const double domain_seconds = seconds - entry.offset_seconds;
+            if (domain_seconds <= 0.0) {
+                return 0;
+            }
+            return static_cast<uint64_t>(domain_seconds * entry.ticks_per_second);
+        }
+    }
+    return 0;
+}
+
+auto Device_impl::host_calibrated_value_to_seconds(const uint64_t value) const -> double
+{
+    return host_domain_value_to_seconds(m_calibrated_host_time_domain, value);
+}
+
+auto Device_impl::reference_seconds_to_host_calibrated_value(const double seconds) const -> uint64_t
+{
+    return reference_seconds_to_host_domain_value(m_calibrated_host_time_domain, seconds);
+}
+
+void Device_impl::record_frame_bracket_begin(VkCommandBuffer cb)
+{
+    if ((m_frame_bracket_query_pool == VK_NULL_HANDLE) || m_frame_bracket_begun) {
+        return;
+    }
+    const uint32_t base = static_cast<uint32_t>(2u * (m_frame_index % s_frame_bracket_ring));
+    // Bottom-of-pipe begin: fires when previously submitted work has drained,
+    // i.e. when the GPU actually becomes free to start this frame (execution
+    // span, not queued span). See doc/frame_pacing_inputs.md section 3.3.
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_frame_bracket_query_pool, base);
+    m_frame_bracket_begun = true;
+}
+
+void Device_impl::record_frame_bracket_end(VkCommandBuffer cb)
+{
+    if ((m_frame_bracket_query_pool == VK_NULL_HANDLE) || !m_frame_bracket_begun || m_frame_bracket_ended) {
+        return;
+    }
+    const uint32_t base = static_cast<uint32_t>(2u * (m_frame_index % s_frame_bracket_ring));
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_frame_bracket_query_pool, base + 1u);
+    m_frame_bracket_ended = true;
+}
+
+void Device_impl::poll_frame_bracket_results()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    if ((m_frame_bracket_query_pool == VK_NULL_HANDLE) || !m_gpu_calibration_valid) {
+        return;
+    }
+    for (std::size_t slot = 0; slot < s_frame_bracket_ring; ++slot) {
+        const std::int64_t frame_id = m_frame_bracket_frame_id[slot];
+        if ((frame_id < 0) || (frame_id == static_cast<std::int64_t>(m_frame_index))) {
+            continue;
+        }
+        uint64_t data[4] = {0, 0, 0, 0}; // (value, availability) x 2
+        const VkResult result = vkGetQueryPoolResults(
+            m_vulkan_device,
+            m_frame_bracket_query_pool,
+            static_cast<uint32_t>(slot * 2u),
+            2,
+            sizeof(data),
+            data,
+            2u * sizeof(uint64_t),
+            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT
+        );
+        if ((result != VK_SUCCESS) && (result != VK_NOT_READY)) {
+            continue;
+        }
+        if ((data[1] == 0) || (data[3] == 0)) {
+            continue; // not yet available - poll again next frame
+        }
+        const uint64_t begin_ticks = data[0] & m_gpu_timer_valid_mask;
+        const uint64_t end_ticks   = data[2] & m_gpu_timer_valid_mask;
+        if (erhe::frame_pacing::Frame_time_record* record = m_device.get_frame_time_recorder().find(frame_id)) {
+            record->gpu_frame_begin = gpu_ticks_to_reference_seconds(begin_ticks);
+            record->gpu_frame_end   = gpu_ticks_to_reference_seconds(end_ticks);
+        }
+        m_frame_bracket_frame_id[slot] = -1;
+    }
+}
+
+void Device_impl::maybe_reset_gpu_timer_slice(VkCommandBuffer cb)
+{
+    if (!m_gpu_timers_supported || (m_gpu_timer_query_pool == VK_NULL_HANDLE)) {
+        return;
+    }
+    const std::size_t in_flight = static_cast<std::size_t>(get_frame_in_flight_index());
+    bool need_reset = false;
+    {
+        const std::lock_guard<std::mutex> lock{m_gpu_timer_mutex};
+        if (m_gpu_timer_reset_pending[in_flight]) {
+            m_gpu_timer_reset_pending[in_flight] = false;
+            need_reset = true;
+        }
+    }
+    if (!need_reset) {
+        return;
+    }
+    const std::size_t slice_size = s_max_gpu_timers * 2;
+    const std::size_t slice_base = in_flight * slice_size;
+    vkCmdResetQueryPool(
+        cb,
+        m_gpu_timer_query_pool,
+        static_cast<uint32_t>(slice_base),
+        static_cast<uint32_t>(slice_size)
+    );
+
+#if defined(ERHE_PROFILE_LIBRARY_TRACY) && defined(TRACY_ENABLE)
+    // Tracy GPU collect rides the same once-per-frame, first-cb-of-the-frame,
+    // outside-any-render-pass point as the query-pool reset above. It operates
+    // on Tracy's own internal query pool, so it does not conflict with the
+    // erhe GPU-timer reset.
+    if (m_tracy_vk_ctx != nullptr) {
+        TracyVkCollect(m_tracy_vk_ctx, cb);
+    }
+#endif
+}
+
+} // namespace erhe::graphics

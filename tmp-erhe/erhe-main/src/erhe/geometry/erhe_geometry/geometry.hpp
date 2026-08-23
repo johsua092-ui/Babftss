@@ -1,0 +1,962 @@
+#pragma once
+
+#include "erhe_math/aabb.hpp"
+
+#include <geogram/mesh/mesh.h>
+
+#include <glm/glm.hpp>
+
+#include <array>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <tuple>
+
+namespace spdlog {
+    class logger;
+}
+
+namespace GEO {
+    typedef Matrix<4, GEO::Numeric::float32> mat4f;
+
+    inline float det(const mat4f& M) {
+        return det4x4(
+            M(0,0), M(0,1), M(0,2), M(0,3),
+            M(1,0), M(1,1), M(1,2), M(1,3),
+            M(2,0), M(2,1), M(2,2), M(2,3),
+            M(3,0), M(3,1), M(3,2), M(3,3)
+        );
+    }
+
+    inline mat4f create_scaling_matrix(float s) {
+        mat4f result;
+        result.load_identity();
+        result(0,0) = s;
+        result(1,1) = s;
+        result(2,2) = s;
+        return result;
+    }
+
+}
+
+namespace erhe::geometry {
+
+// Geogram is not safe to call concurrently from multiple threads: its own
+// tracker (BrunoLevy/geogram#68, open) lists global static state in CVT /
+// (HL)BFGS optimizers and cites "Delaunay on two meshes in parallel" as
+// unsupported, and its Windows thread-pool manager corrupts thread-id
+// assignment when parallel_for is entered from two threads at once
+// (process_win.cpp static threadCounter_; observed as GEO::Geom::colocate()
+// old2new corruption). Every erhe entry point that reaches a geogram
+// *algorithm* (parallel_for users, Delaunay, mesh_repair, CVT, xatlas via
+// process(), colocate via mesh_from_triangle_soup, make_convex_hull, the
+// geometry-operation implementations) must hold this lock. Pure per-mesh
+// element/attribute construction (create_vertices, facets.connect, attribute
+// binds) is mesh-local and does not need it. Recursive so the choke points
+// can nest (a geometry operation that calls Geometry::process()). Geogram
+// still parallelizes each call internally across cores, so serializing the
+// outer calls costs little throughput.
+[[nodiscard]] auto geogram_lock() -> std::recursive_mutex&;
+
+enum class Transform_mode : unsigned int {
+    none = 0,                              // texture coordinates, colors, ...
+    mat_mul_vec3_one,                      // position vectors
+    mat_mul_vec3_zero,                     // transform using vec4(v, 0.0)
+    normalize_mat_mul_vec3_zero,           // transform using vec4(v, 0.0), normalize
+    normalize_mat_mul_vec3_zero_and_float, // tangent and bitangent with extra float that is not to be transformed
+    normal_mat_mul_vec3_zero,              // normal - transform using normal matrix
+    normalize_normal_mat_mul_vec3_zero     // normal - transform using normal matrix, then normalize
+};
+
+enum class Interpolation_mode : unsigned int {
+    none = 0,
+    linear,                // standard linear interpolation
+    normalized,            // linear interpolation then normalize
+    normalized_vec3_float, // linear interpolation then normalize for .xyz, linear for .w
+};
+
+class Attribute_descriptor
+{
+public:
+    Attribute_descriptor(
+        int                usage_index,
+        const std::string& name,
+        Transform_mode     transform_mode,
+        Interpolation_mode interpolation_mode
+    );
+
+    int                usage_index       {0};
+    std::string        name              {};
+    Transform_mode     transform_mode    {Transform_mode::none};
+    Interpolation_mode interpolation_mode{Interpolation_mode::none};
+    std::string        present_name      {};
+};
+
+class Mesh_info
+{
+public:
+    std::size_t facet_count                {0};
+    std::size_t corner_count               {0};
+    std::size_t triangle_count             {0};
+    std::size_t edge_count                 {0};
+    std::size_t vertex_count_corners       {0};
+    std::size_t vertex_count_centroids     {0};
+    std::size_t index_count_fill_triangles {0};
+    std::size_t index_count_edge_lines     {0};
+    std::size_t index_count_corner_points  {0};
+    std::size_t index_count_centroid_points{0};
+
+    void trace(const std::shared_ptr<spdlog::logger>& log) const;
+};
+
+class Mesh_serials
+{
+public:
+    uint64_t serial                     {1};
+    uint64_t edges                      {0};
+    uint64_t facet_normals              {0};
+    uint64_t facet_centroids            {0};
+    uint64_t facet_tangents             {0};
+    uint64_t facet_bitangents           {0};
+    uint64_t facet_texture_coordinates  {0};
+    uint64_t vertex_normals             {0};
+    uint64_t vertex_tangents            {0}; // never generated
+    uint64_t vertex_bitangents          {0}; // never generated
+    uint64_t vertex_texture_coordinates {0}; // never generated
+    uint64_t vertex_smooth_normals      {0};
+    uint64_t corner_normals             {0};
+    uint64_t corner_tangents            {0};
+    uint64_t corner_bitangents          {0};
+    uint64_t corner_texture_coordinates {0};
+};
+
+// Standard glTF attributes
+static constexpr const char* c_normal          = "normal"         ;
+static constexpr const char* c_tangent         = "tangent"        ;
+static constexpr const char* c_bitangent       = "bitangent"      ;
+static constexpr const char* c_texcoord_0      = "texcoord_0"     ;
+static constexpr const char* c_texcoord_1      = "texcoord_1"     ;
+static constexpr const char* c_texcoord_2      = "texcoord_2"     ; // lightmap UVs (see doc/lightmap_baking_plan.md)
+static constexpr const char* c_color_0         = "color_0"        ;
+static constexpr const char* c_color_1         = "color_1"        ;
+static constexpr const char* c_joint_indices_0 = "joint_indices_0";
+static constexpr const char* c_joint_indices_1 = "joint_indices_1";
+static constexpr const char* c_joint_weights_0 = "joint_weights_0";
+static constexpr const char* c_joint_weights_1 = "joint_weights_1";
+
+// Extra attributes used by erhe
+static constexpr const char* c_valency_edge_count = "valency_edge_count"; // vertex valency and edge count (per vertex)
+static constexpr const char* c_id                 = "id"                ; // unique color for identifying facet
+static constexpr const char* c_normal_smooth      = "normal_smooth"     ; // vertex normal always averaged from facets
+static constexpr const char* c_centroid           = "centroid"          ; // centroid position for facet
+static constexpr const char* c_aniso_control      = "aniso_control"     ; // controls anisotropy amount
+static constexpr const char* c_edge_sharpness     = "edge_sharpness"    ; // semi-sharp crease sharpness (per edge); absent or 0 = smooth, +inf = infinitely sharp
+
+// Anisotropy control:
+// X is used to modulate anisotropy level:
+//   0.0 -- Anisotropic
+//   1.0 -- Isotropic when approaching texcoord (0, 0)
+// Y is used for tangent space selection/control:
+//   0.0 -- Use geometry T and B (from vertex attribute
+//   1.0 -- Use T and B derived from texcoord - circular brushed metal effect
+
+class Attribute_descriptors
+{
+public:
+    static inline const Attribute_descriptor s_normal         { 0, c_normal         , Transform_mode::normalize_normal_mat_mul_vec3_zero,    Interpolation_mode::normalized };
+    static inline const Attribute_descriptor s_tangent        { 0, c_tangent        , Transform_mode::normalize_mat_mul_vec3_zero_and_float, Interpolation_mode::normalized_vec3_float };
+    static inline const Attribute_descriptor s_bitangent      { 0, c_bitangent      , Transform_mode::normalize_mat_mul_vec3_zero,           Interpolation_mode::normalized_vec3_float };
+    static inline const Attribute_descriptor s_texcoord_0     { 0, c_texcoord_0     , Transform_mode::none,                                  Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_texcoord_1     { 1, c_texcoord_1     , Transform_mode::none,                                  Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_texcoord_2     { 2, c_texcoord_2     , Transform_mode::none,                                  Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_color_0        { 0, c_color_0        , Transform_mode::none,                                  Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_color_1        { 1, c_color_1        , Transform_mode::none,                                  Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_joint_indices_0{ 0, c_joint_indices_0, Transform_mode::none,                                  Interpolation_mode::none };
+    static inline const Attribute_descriptor s_joint_indices_1{ 1, c_joint_indices_1, Transform_mode::none,                                  Interpolation_mode::none };
+    static inline const Attribute_descriptor s_joint_weights_0{ 0, c_joint_weights_0, Transform_mode::none,                                  Interpolation_mode::none };
+    static inline const Attribute_descriptor s_joint_weights_1{ 1, c_joint_weights_1, Transform_mode::none,                                  Interpolation_mode::none };
+
+    static inline const Attribute_descriptor s_valency_edge_count{ 0, c_valency_edge_count, Transform_mode::none,                               Interpolation_mode::none };
+    static inline const Attribute_descriptor s_id                { 0, c_id                , Transform_mode::none,                               Interpolation_mode::none };
+    static inline const Attribute_descriptor s_normal_smooth     { 0, c_normal_smooth     , Transform_mode::normalize_normal_mat_mul_vec3_zero, Interpolation_mode::normalized };
+    static inline const Attribute_descriptor s_centroid          { 0, c_centroid          , Transform_mode::mat_mul_vec3_one,                   Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_aniso_control     { 0, c_aniso_control     , Transform_mode::none,                               Interpolation_mode::linear };
+    static inline const Attribute_descriptor s_edge_sharpness    { 0, c_edge_sharpness    , Transform_mode::none,                               Interpolation_mode::none };
+
+    static void init  ();
+    static void insert(const Attribute_descriptor& descriptor);
+    static auto get   (int usage_index, const char* name) -> const Attribute_descriptor*;
+
+private:
+    static std::vector<Attribute_descriptor> s_descriptors;
+};
+
+template <typename T>
+class Attribute_present
+{
+public:
+    Attribute_present(GEO::AttributesManager& attributes_manager, const Attribute_descriptor& descriptor)
+        : descriptor{descriptor}
+        , attribute {attributes_manager, descriptor.name.c_str()}
+        , present   {attributes_manager, descriptor.present_name}
+    {
+    }
+
+    void unbind()
+    {
+        if (attribute.is_bound()) {
+            attribute.unbind();
+        }
+        if (present.is_bound()) {
+            present.unbind();
+        }
+    }
+
+    void bind(GEO::AttributesManager& attributes_manager)
+    {
+        if (!attribute.is_bound()) {
+            attribute.bind(attributes_manager, descriptor.name);
+        }
+        if (!present.is_bound()) {
+            present.bind(attributes_manager, descriptor.present_name);
+        }
+    }
+
+    void clear()
+    {
+        present.fill(false);
+    }
+    void fill(T value)
+    {
+        attribute.fill(value);
+        present.fill(true);
+    }
+    void set(GEO::index_t key, const T value)
+    {
+        attribute[key] = value;
+        present[key] = true;
+    }
+    void unset(GEO::index_t key)
+    {
+        if (key < present.size()) {
+            present[key] = false;
+        }
+    }
+    [[nodiscard]] auto has(GEO::index_t key) const
+    {
+        if ((key >= present.size()) || (key >= attribute.size())) {
+            return false;
+        }
+        bool result = present[key];
+        return result;
+    }
+    [[nodiscard]] auto get(GEO::index_t key) const -> T
+    {
+        geo_assert(present[key]);
+        return attribute[key];
+    }
+    [[nodiscard]] auto try_get(GEO::index_t key) const -> std::optional<T>
+    {
+        if ((key >= present.size()) || (key >= attribute.size())) {
+            return std::optional<T>{};
+        }
+        return present[key] ? attribute[key] : std::optional<T>{};
+    }
+
+    const Attribute_descriptor& descriptor;
+    GEO::Attribute<T>           attribute;
+    GEO::Attribute<bool>        present;
+};
+
+class Mesh_attributes
+{
+public:
+    explicit Mesh_attributes(const GEO::Mesh& mesh);
+    ~Mesh_attributes() noexcept;
+
+    void unbind();
+    void bind();
+
+    const GEO::Mesh& m_mesh;
+    Attribute_present<GEO::vec3f> facet_id                 ;
+    Attribute_present<GEO::vec3f> facet_centroid           ;
+    Attribute_present<GEO::vec3f> facet_normal             ;
+    Attribute_present<GEO::vec4f> facet_tangent            ;
+    Attribute_present<GEO::vec3f> facet_bitangent          ;
+    Attribute_present<GEO::vec4f> facet_color_0            ;
+    Attribute_present<GEO::vec4f> facet_color_1            ;
+    Attribute_present<GEO::vec2f> facet_aniso_control      ;
+    Attribute_present<GEO::vec3f> vertex_normal            ;
+    Attribute_present<GEO::vec3f> vertex_normal_smooth     ;
+    Attribute_present<GEO::vec2f> vertex_texcoord_0        ;
+    Attribute_present<GEO::vec2f> vertex_texcoord_1        ;
+    Attribute_present<GEO::vec2f> vertex_texcoord_2        ;
+    Attribute_present<GEO::vec4f> vertex_tangent           ;
+    Attribute_present<GEO::vec3f> vertex_bitangent         ;
+    Attribute_present<GEO::vec4f> vertex_color_0           ;
+    Attribute_present<GEO::vec4f> vertex_color_1           ;
+    Attribute_present<GEO::vec4u> vertex_joint_indices_0   ;
+    Attribute_present<GEO::vec4u> vertex_joint_indices_1   ;
+    Attribute_present<GEO::vec4f> vertex_joint_weights_0   ;
+    Attribute_present<GEO::vec4f> vertex_joint_weights_1   ;
+    Attribute_present<GEO::vec2f> vertex_aniso_control     ;
+    Attribute_present<GEO::vec2i> vertex_valency_edge_count;
+    Attribute_present<GEO::vec3f> corner_normal            ;
+    Attribute_present<GEO::vec2f> corner_texcoord_0        ;
+    Attribute_present<GEO::vec2f> corner_texcoord_1        ;
+    Attribute_present<GEO::vec2f> corner_texcoord_2        ;
+    Attribute_present<GEO::vec4f> corner_tangent           ;
+    Attribute_present<GEO::vec3f> corner_bitangent         ;
+    Attribute_present<GEO::vec4f> corner_color_0           ;
+    Attribute_present<GEO::vec4f> corner_color_1           ;
+    Attribute_present<GEO::vec2f> corner_aniso_control     ;
+    Attribute_present<float>      edge_sharpness           ; // first (and so far only) edge-domain attribute
+    inline auto facet_color         (size_t i) -> Attribute_present<GEO::vec4f>& { return (i == 0) ? facet_color_0          : facet_color_1         ; }
+    inline auto vertex_texcoord     (size_t i) -> Attribute_present<GEO::vec2f>& { return (i == 0) ? vertex_texcoord_0      : (i == 1) ? vertex_texcoord_1 : vertex_texcoord_2; }
+    inline auto vertex_color        (size_t i) -> Attribute_present<GEO::vec4f>& { return (i == 0) ? vertex_color_0         : vertex_color_1        ; }
+    inline auto vertex_joint_indices(size_t i) -> Attribute_present<GEO::vec4u>& { return (i == 0) ? vertex_joint_indices_0 : vertex_joint_indices_1; }
+    inline auto vertex_joint_weights(size_t i) -> Attribute_present<GEO::vec4f>& { return (i == 0) ? vertex_joint_weights_0 : vertex_joint_weights_1; }
+    inline auto corner_texcoord     (size_t i) -> Attribute_present<GEO::vec2f>& { return (i == 0) ? corner_texcoord_0      : (i == 1) ? corner_texcoord_1 : corner_texcoord_2; }
+    inline auto corner_color        (size_t i) -> Attribute_present<GEO::vec4f>& { return (i == 0) ? corner_color_0         : corner_color_1        ; }
+};
+
+[[nodiscard]] auto count_mesh_facet_triangles(const GEO::Mesh& mesh) -> std::size_t;
+[[nodiscard]] auto get_mesh_info             (const GEO::Mesh& mesh) -> Mesh_info;
+
+// Result of validate_mesh_structure(). See doc/intermittent_main_loop_hang.md.
+enum class Mesh_structure_error {
+    none,                   // mesh is structurally sane
+    absurd_counts,          // facets/vertices/corners count is implausibly large
+    bad_facet_corner_count, // a facet's corner count is < 3 or implausibly large
+    corner_sum_mismatch     // sum of per-facet corner counts != facet_corners.nb()
+};
+
+[[nodiscard]] auto c_str(Mesh_structure_error error) -> const char*;
+
+// Cheap structural sanity check for a GEO::Mesh. Detects the intermittent
+// parallel-init corruption (a facet whose corner range is wrong, or absurd
+// counts) BEFORE any unbounded per-facet walk can spin on it. The count bound
+// is checked first so an absurd facet count cannot make the check itself spin.
+// Pure (no logging) so callers can format their own context; see
+// doc/intermittent_main_loop_hang.md.
+class Mesh_structure_check
+{
+public:
+    [[nodiscard]] auto ok() const -> bool { return error == Mesh_structure_error::none; }
+
+    Mesh_structure_error error                  {Mesh_structure_error::none};
+    GEO::index_t         facet_count            {0};
+    GEO::index_t         vertex_count           {0};
+    GEO::index_t         corner_count           {0};
+    GEO::index_t         bad_facet              {GEO::NO_INDEX}; // set for bad_facet_corner_count
+    GEO::index_t         bad_facet_corner_count {0};             // set for bad_facet_corner_count
+    std::uint64_t        corner_sum             {0};            // set for corner_sum_mismatch
+};
+
+[[nodiscard]] auto validate_mesh_structure(const GEO::Mesh& mesh) -> Mesh_structure_check;
+
+void transform_mesh(
+    const GEO::Mesh&       source_mesh,
+    const Mesh_attributes& source_attributes,
+    GEO::Mesh&             destination_mesh,
+    Mesh_attributes&       destination_attributes,
+    const GEO::mat4f&      transform
+);
+// Parameters for compute_mesh_tangents(). Bundled into a struct (rather than a
+// positional list of booleans) so call sites read self-documentingly. Aggregate -
+// use designated initializers:
+//   compute_mesh_tangents(mesh, {.orthonormalize = true, .texcoord_usage_index = 0});
+class Compute_tangents_parameters
+{
+public:
+    bool orthonormalize{false};
+    bool make_facets_flat{false};
+
+    // Corner/vertex texcoord slot (0 or 1) the tangent generation reads UVs from.
+    std::size_t texcoord_usage_index{0};
+};
+
+void compute_facet_normals                   (GEO::Mesh& mesh, Mesh_attributes& attributes);
+void compute_facet_centroids                 (GEO::Mesh& mesh, Mesh_attributes& attributes);
+void compute_mesh_vertex_normal_smooth       (GEO::Mesh& mesh, Mesh_attributes& attributes);
+auto compute_mesh_tangents                   (GEO::Mesh& mesh, const Compute_tangents_parameters& parameters) -> bool;
+void generate_mesh_facet_texture_coordinates (GEO::Mesh& mesh, GEO::index_t facet, Mesh_attributes& attributes, std::size_t usage_index = 1);
+void generate_mesh_facet_texture_coordinates (GEO::Mesh& mesh, Mesh_attributes& attributes, std::size_t usage_index = 1);
+
+[[nodiscard]] inline auto min_axis(const GEO::vec3f v) -> GEO::vec3f
+{
+    return
+        (std::abs(v.x) <= std::abs(v.y)) && (std::abs(v.x) <= std::abs(v.z)) ? GEO::vec3f{1.0f, 0.0f, 0.0f} :
+        (std::abs(v.y) <= std::abs(v.x)) && (std::abs(v.y) <= std::abs(v.z)) ? GEO::vec3f{0.0f, 1.0f, 0.0f} :
+                                                                               GEO::vec3f{0.0f, 0.0f, 1.0f};
+}
+
+[[nodiscard]] inline auto max_axis_index(const GEO::vec3 v) -> GEO::index_t
+{
+    return 
+        (std::abs(v.x) >= std::abs(v.y)) && (std::abs(v.x) >= std::abs(v.z)) ? 0 :
+        (std::abs(v.y) >= std::abs(v.x)) && (std::abs(v.y) >= std::abs(v.z)) ? 1 :
+                                                                               2;
+}
+
+[[nodiscard]] auto inline safe_normalize_cross(const GEO::vec3f& lhs, const GEO::vec3f& rhs) -> GEO::vec3f
+{
+    const float d = GEO::dot(lhs, rhs);
+    if (std::abs(d) > 0.999f) {
+        return min_axis(lhs);
+    }
+
+    const GEO::vec3f c0 = GEO::cross(lhs, rhs);
+    if (GEO::length(c0) < std::numeric_limits<float>::epsilon()) {
+        return min_axis(lhs);
+    }
+    return GEO::normalize(c0);
+}
+
+[[nodiscard]] inline auto project(const GEO::vec3f& a, const GEO::vec3f& b) -> const GEO::vec3f
+{
+	return GEO::dot(a, b) / GEO::dot(b, b) * b;
+}
+
+inline void gram_schmidt(const GEO::vec3f& a, const GEO::vec3f& b, const GEO::vec3f& c, GEO::vec3f& out_a, GEO::vec3f& out_b, GEO::vec3f& out_c)
+{
+    out_a = a;
+    out_b = b - project(b, a);
+    out_c = c - project(c, out_b) - project(c, out_a);
+    out_a = GEO::normalize(out_a);
+    out_b = GEO::normalize(out_b);
+    out_c = GEO::normalize(out_c);
+}
+
+[[nodiscard]] inline auto vec3_from_index(const GEO::index_t i) -> GEO::vec3f
+{
+    const GEO::index_t r = (i >> 16u) & 0xffu;
+    const GEO::index_t g = (i >>  8u) & 0xffu;
+    const GEO::index_t b = (i >>  0u) & 0xffu;
+
+    return GEO::vec3f{
+        r / 255.0f,
+        g / 255.0f,
+        b / 255.0f
+    };
+}
+
+[[nodiscard]] inline auto to_geo_vec3f(glm::vec3 v) -> GEO::vec3f
+{
+    return GEO::vec3f{v.x, v.y, v.z};
+}
+
+[[nodiscard]] inline auto to_geo_vec3(glm::vec3 v) -> GEO::vec3
+{
+    return GEO::vec3{v.x, v.y, v.z};
+}
+
+[[nodiscard]] inline auto to_geo_vec3i(glm::ivec3 v) -> GEO::vec3i
+{
+    return GEO::vec3i{v.x, v.y, v.z};
+}
+
+[[nodiscard]] inline auto to_glm_vec4(GEO::vec4f v) -> glm::vec4
+{
+    return glm::vec4{v.x, v.y, v.z, v.w};
+}
+
+[[nodiscard]] inline auto to_glm_vec3(GEO::vec3f v) -> glm::vec3
+{
+    return glm::vec3{v.x, v.y, v.z};
+}
+
+[[nodiscard]] inline auto to_glm_vec3(GEO::vec3 v) -> glm::vec3
+{
+    return glm::vec3{v.x, v.y, v.z};
+}
+
+[[nodiscard]] inline auto to_geo_vec4(GEO::vec4f v) -> glm::vec4
+{
+    return glm::vec4{v.x, v.y, v.z, v.w};
+}
+
+// GEO::mat4::operator() (index_t i, index_t j)  i = row, j = column
+// glm::mat4::operator[i] i = column
+[[nodiscard]] inline auto to_geo_mat4(const glm::mat4& m) -> GEO::mat4
+{
+    glm::vec4 column_0 = m[0];
+    glm::vec4 column_1 = m[1];
+    glm::vec4 column_2 = m[2];
+    glm::vec4 column_3 = m[3];
+    return GEO::mat4{
+        { column_0[0], column_1[0], column_2[0], column_3[0] },
+        { column_0[1], column_1[1], column_2[1], column_3[1] },
+        { column_0[2], column_1[2], column_2[2], column_3[2] },
+        { column_0[3], column_1[3], column_2[3], column_3[3] }
+    };
+}
+
+[[nodiscard]] inline auto to_geo_mat4f(const glm::mat4& m) -> GEO::mat4f
+{
+    glm::vec4 column_0 = m[0];
+    glm::vec4 column_1 = m[1];
+    glm::vec4 column_2 = m[2];
+    glm::vec4 column_3 = m[3];
+    return GEO::mat4f{
+        { column_0[0], column_1[0], column_2[0], column_3[0] },
+        { column_0[1], column_1[1], column_2[1], column_3[1] },
+        { column_0[2], column_1[2], column_2[2], column_3[2] },
+        { column_0[3], column_1[3], column_2[3], column_3[3] }
+    };
+}
+
+[[nodiscard]] inline auto to_glm_mat4(const GEO::mat4& m) -> glm::mat4
+{
+    glm::vec4 column_0{m(0, 0), m(1, 0), m(2, 0), m(3, 0)};
+    glm::vec4 column_1{m(0, 1), m(1, 1), m(2, 1), m(3, 1)};
+    glm::vec4 column_2{m(0, 2), m(1, 2), m(2, 2), m(3, 2)};
+    glm::vec4 column_3{m(0, 3), m(1, 3), m(2, 3), m(3, 3)};
+    return glm::mat4{column_0, column_1, column_2, column_3};
+}
+
+[[nodiscard]] inline auto to_glm_mat4(const GEO::mat4f& m) -> glm::mat4
+{
+    glm::vec4 column_0{m(0, 0), m(1, 0), m(2, 0), m(3, 0)};
+    glm::vec4 column_1{m(0, 1), m(1, 1), m(2, 1), m(3, 1)};
+    glm::vec4 column_2{m(0, 2), m(1, 2), m(2, 2), m(3, 2)};
+    glm::vec4 column_3{m(0, 3), m(1, 3), m(2, 3), m(3, 3)};
+    return glm::mat4{column_0, column_1, column_2, column_3};
+}
+
+[[nodiscard]] auto make_convex_hull(const GEO::Mesh& source, GEO::Mesh& destination) -> bool;
+
+template <typename T>
+inline void interpolate_attribute(
+    const Attribute_present<T>&                                     source_,
+    Attribute_present<T>&                                           destination_,
+    const std::vector<std::vector<std::pair<float, GEO::index_t>>>& key_dst_to_src,
+    const std::vector<float>*                                       precomputed_sum_weights = nullptr
+)
+{
+    const GEO::Attribute<T>&    source              = source_.attribute;
+    const GEO::Attribute<bool>& source_present      = source_.present;
+    const Attribute_descriptor& source_descriptor   = source_.descriptor;
+    GEO::Attribute<T>&          destination         = destination_.attribute;
+    GEO::Attribute<bool>&       destination_present = destination_.present;
+
+    if (source_descriptor.interpolation_mode == Interpolation_mode::none) {
+        return;
+    }
+
+    // One pass over source presence classifies the channel: a channel with
+    // no present values is skipped outright (the per-destination pass below
+    // could only ever hit sum_weights == 0 and write nothing - most channels
+    // of a typical mesh are empty); a fully present channel can use the
+    // caller's precomputed per-destination weight sums and skip the
+    // per-source presence checks, because presence-filtered sums equal the
+    // full sums exactly (same additions in the same order, bit-identical).
+    bool fully_present = true;
+    {
+        const GEO::index_t source_size   = static_cast<GEO::index_t>(source_present.size());
+        GEO::index_t       present_count = 0;
+        for (GEO::index_t key = 0; key < source_size; ++key) {
+            if (source_present[key]) {
+                ++present_count;
+            }
+        }
+        if (present_count == 0) {
+            return;
+        }
+        fully_present = (present_count == source_size);
+    }
+    const bool use_precomputed_sums = fully_present && (precomputed_sum_weights != nullptr);
+
+    for (GEO::index_t dst_key = 0, end = static_cast<GEO::index_t>(key_dst_to_src.size()); dst_key < end; ++dst_key) {
+        const std::vector<std::pair<float, GEO::index_t>>& src_keys = key_dst_to_src[dst_key];
+        float sum_weights{0.0f};
+        if (use_precomputed_sums) {
+            sum_weights = (*precomputed_sum_weights)[dst_key];
+        } else {
+            for (auto j : src_keys) {
+                const GEO::index_t src_key = j.second;
+                if (!source_present[src_key]) {
+                    continue;
+                }
+                sum_weights += j.first;
+            }
+        }
+
+        if (sum_weights == 0.0f) {
+            continue;
+        }
+
+        // Value-initialize (empty braces): GEO::vecng's std::initializer_list
+        // constructor only assigns the listed components, so "T dst_value{0}"
+        // would leave .y/.z (and .w) uninitialized. "T dst_value{}" invokes the
+        // default constructor, which zeroes every component.
+        T dst_value{};
+
+        if constexpr (!std::is_same_v<T, GEO::vec4u>) { // std::is_same_v<T::value_type, Numeric::uint32> ?
+            for (auto j : src_keys) {
+                const GEO::index_t src_key = j.second;
+                if (!use_precomputed_sums && !source_present[src_key]) {
+                    continue;
+                }
+
+                const float weight    = j.first;
+                const T     src_value = source[src_key];
+                dst_value += static_cast<T>((weight / sum_weights) * static_cast<T>(src_value));
+            }
+        }
+
+        constexpr bool is_vec3 = std::is_same_v<T, GEO::vec3> || std::is_same_v<T, GEO::vec3f>; // T::dim == 3 ?
+        if constexpr (is_vec3) {
+            if (source_descriptor.interpolation_mode == Interpolation_mode::normalized) {
+                dst_value = GEO::normalize(dst_value);
+            }
+        }
+
+        constexpr bool is_vec4 = std::is_same_v<T, GEO::vec4> || std::is_same_v<T, GEO::vec4f>; // T::dim == 4 ?
+        if constexpr (is_vec4) {
+            if (source_descriptor.interpolation_mode == Interpolation_mode::normalized_vec3_float) {
+                using T_vec3       = GEO::vecng<3, typename T::value_type>;
+                using value_type   = T::value_type;
+                const value_type x = dst_value[0];
+                const value_type y = dst_value[1];
+                const value_type z = dst_value[2];
+                const T_vec3 vec3_value{x, y, z};
+                const T_vec3 vec3_normalized = GEO::normalize(vec3_value);
+                dst_value = T{vec3_normalized.x, vec3_normalized.y, vec3_normalized.z, dst_value.w};
+            }
+        }
+
+        destination[dst_key] = dst_value;
+        destination_present[dst_key] = true;
+    }
+}
+
+template <typename T>
+inline void copy_attribute(const Attribute_present<T>& source, Attribute_present<T>& destination)
+{
+    destination.attribute.copy(source.attribute);
+    destination.present.copy(source.present);
+}
+
+template <typename T> struct attribute_transform_traits             { static const bool is_transformable = false; };
+template <>           struct attribute_transform_traits<GEO::vec2f> { static const bool is_transformable = true;  };
+template <>           struct attribute_transform_traits<GEO::vec3f> { static const bool is_transformable = true;  };
+template <>           struct attribute_transform_traits<GEO::vec4f> { static const bool is_transformable = true;  };
+template <>           struct attribute_transform_traits<GEO::vec2u> { static const bool is_transformable = false; };
+template <>           struct attribute_transform_traits<GEO::vec3u> { static const bool is_transformable = false; };
+template <>           struct attribute_transform_traits<GEO::vec4u> { static const bool is_transformable = false; };
+template <>           struct attribute_transform_traits<GEO::vec2i> { static const bool is_transformable = false; };
+template <>           struct attribute_transform_traits<GEO::vec3i> { static const bool is_transformable = false; };
+template <>           struct attribute_transform_traits<GEO::vec4i> { static const bool is_transformable = false; };
+
+static inline auto apply_transform(const GEO::mat4f& transform, const float value, const float w) -> float
+{
+    const GEO::vec4f result4 = transform * GEO::vec4f{value, 0.0f, 0.0f, w};
+    return result4.x;
+}
+
+static inline auto apply_transform(const GEO::mat4f& transform, const GEO::vec2f value, const float w) -> GEO::vec2f
+{
+    const GEO::vec4f result4 = transform * GEO::vec4f{value.x, value.y, 0.0f, w};
+    return GEO::vec2f{result4.x, result4.y};
+}
+
+static inline auto apply_transform(const GEO::mat4f& transform, const GEO::vec3f value, const float w) -> GEO::vec3f
+{
+    const GEO::vec4f result4 = transform * GEO::vec4f{value.x, value.y, value.z, w};
+    return GEO::vec3f{result4.x, result4.y, result4.z};
+}
+
+static inline auto apply_transform(const GEO::mat4f& transform, const GEO::vec4f value, float) -> GEO::vec4f
+{
+    return transform * value;
+}
+
+template <typename T>
+inline void transform_attribute(
+    const Attribute_present<T>& source_,
+    Attribute_present<T>&       destination_,
+    const GEO::mat4f&           transform
+) 
+{
+    const GEO::Attribute<T>&    source              = source_.attribute;
+    const GEO::Attribute<bool>& source_present      = source_.present;
+    const Attribute_descriptor& source_descriptor   = source_.descriptor;
+    GEO::Attribute<T>&          destination         = destination_.attribute;
+    GEO::Attribute<bool>&       destination_present = destination_.present;
+
+    // TODO use adjugate for normal_transform
+    GEO::mat4f inverse;
+    transform.compute_inverse(inverse);
+    const GEO::mat4f normal_transform = inverse.transpose();
+
+    if constexpr(attribute_transform_traits<T>::is_transformable) switch (source_descriptor.transform_mode) {
+        //using enum Transform_mode;
+        default:
+        case Transform_mode::none: {
+            if (&source_ != &destination_) {
+                destination.copy(source);
+                destination_present.copy(source_present);
+            }
+            break;
+        }
+
+        case Transform_mode::mat_mul_vec3_one: {
+            for (GEO::index_t key = 0, end = source.size(); key < end; ++key) {
+                destination_present[key] = source_present[key];
+                if (source_present[key]) {
+                    destination[key] = apply_transform(transform, source[key], 1.0f);
+                }
+            }
+            break;
+        }
+
+        case Transform_mode::mat_mul_vec3_zero: {
+            for (GEO::index_t key = 0, end = source.size(); key < end; ++key) {
+                destination_present[key] = source_present[key];
+                if (source_present[key]) {
+                    destination[key] = apply_transform(transform, source[key], 0.0f);
+                }
+            }
+            break;
+        }
+
+        case Transform_mode::normalize_mat_mul_vec3_zero: {
+            for (GEO::index_t key = 0, end = source.size(); key < end; ++key) {
+                destination_present[key] = source_present[key];
+                if (source_present[key]) {
+                    destination[key] = GEO::normalize(apply_transform(transform, source[key], 0.0f));
+                }
+            }
+            break;
+        }
+
+        case Transform_mode::normalize_mat_mul_vec3_zero_and_float: {
+            if constexpr (std::is_same_v<T, GEO::vec4f>) {
+                for (GEO::index_t key = 0, end = source.size(); key < end; ++key) {
+                    destination_present[key] = source_present[key];
+                    if (source_present[key]) {
+                        const GEO::vec4f source_value4 = source[key];
+                        const GEO::vec3f source_value3{source_value4.x, source_value4.y, source_value4.z};
+                        const GEO::vec3f transformed = apply_transform(transform, source_value3, 0.0f);
+                        const GEO::vec3f normalized  = GEO::normalize(transformed);
+                        destination[key] = GEO::vec4f{normalized.x, normalized.y, normalized.z, source_value4.w};
+                    }
+                }
+            } else {
+                geo_assert(false);
+            }
+            break;
+        }
+
+        case Transform_mode::normal_mat_mul_vec3_zero: {
+            for (GEO::index_t key = 0, end = source.size(); key < end; ++key) {
+                destination_present[key] = source_present[key];
+                if (source_present[key]) {
+                    destination[key] = apply_transform(normal_transform, source[key], 0.0f);
+                }
+            }
+            break;
+        }
+
+        case Transform_mode::normalize_normal_mat_mul_vec3_zero: {
+            for (GEO::index_t key = 0, end = source.size(); key < end; ++key) {
+                destination_present[key] = source_present[key];
+                if (source_present[key]) {
+                    const T source_value = source[key];
+                    const T transformed  = apply_transform(normal_transform, source_value, 0.0f);
+                    const T normalized   = GEO::normalize(transformed);
+                    destination[key] = normalized;
+                }
+            }
+            break;
+        }
+    } else {
+        if (&source_ != &destination_) {
+            destination.copy(source);
+            destination_present.copy(source_present);
+        }
+    }
+}
+
+void copy_attributes(const Mesh_attributes& source, Mesh_attributes& destination);
+void transform_mesh(const GEO::Mesh& source_mesh, GEO::Mesh& destination_mesh, const GEO::mat4f& transform);
+void transform_mesh(GEO::Mesh& mesh, const GEO::mat4f& transform);
+
+using pos_scalar = float;
+using pos_vec3 = GEO::vec3f;
+static constexpr bool pos_float = true;
+
+void set_point (GEO::MeshVertices& mesh_vertices, GEO::index_t vertex, GEO::vec3 p);
+void set_pointf(GEO::MeshVertices& mesh_vertices, GEO::index_t vertex, GEO::vec3f p);
+auto get_point (const GEO::MeshVertices& mesh_vertices, GEO::index_t vertex) -> GEO::vec3;
+auto get_pointf(const GEO::MeshVertices& mesh_vertices, GEO::index_t vertex) -> GEO::vec3f;
+
+auto mesh_facet_normalf(const GEO::Mesh& M, GEO::index_t f) -> GEO::vec3f;
+auto mesh_facet_centerf(const GEO::Mesh& M, GEO::index_t f) -> GEO::vec3f;
+
+// Parameters for Geometry::process(). Bundled into a struct (rather than a
+// growing positional argument list) so new processing options can be added
+// without touching every call site. Aggregate - use designated initializers:
+//   geometry.process({.flags = Geometry::process_flag_connect | ...});
+class Geometry_process_parameters
+{
+public:
+    uint64_t flags{0};
+
+    // Used by process_flag_generate_atlas_texture_coordinates: dihedral angle
+    // threshold, in degrees. Mesh edges whose dihedral angle exceeds this become
+    // UV chart boundaries. A small value (~1 degree) puts every face in its own
+    // chart (per-face atlas); Geogram's default is 45.
+    float atlas_hard_angle_threshold{45.0f};
+
+    // Corner texcoord slot the atlas writes into.
+    std::size_t atlas_texcoord_usage_index{0};
+
+    // Used by process_flag_generate_facet_texture_coordinates: corner texcoord slot
+    // the per-facet planar texture coordinates are written into.
+    std::size_t facet_texcoord_usage_index{1};
+
+    // Used by process_flag_generate_tangents / process_flag_generate_tangents_ortho:
+    // corner/vertex texcoord slot the tangent generation reads UVs from.
+    std::size_t tangent_texcoord_usage_index{0};
+};
+
+class Geometry
+{
+public:
+    Geometry();
+    explicit Geometry(std::string_view name);
+
+    [[nodiscard]] auto get_name          () const -> const std::string&;
+    [[nodiscard]] auto get_mesh          () -> GEO::Mesh&;
+    [[nodiscard]] auto get_mesh          () const -> const GEO::Mesh&;
+    [[nodiscard]] auto get_vertex_corners(GEO::index_t vertex) const -> const std::vector<GEO::index_t>&;
+    [[nodiscard]] auto get_vertex_edges  (GEO::index_t vertex) const -> const std::vector<GEO::index_t>&;
+    [[nodiscard]] auto get_corner_facet  (GEO::index_t corner) const -> GEO::index_t;
+    [[nodiscard]] auto get_edge_facets   (GEO::index_t edge) const -> const std::vector<GEO::index_t>&;
+    [[nodiscard]] auto get_edge          (GEO::index_t v0, GEO::index_t v1) const -> GEO::index_t;
+
+    // Semi-sharp crease sharpness accessors (see doc/subdivision_crease_edges.md).
+    // Both resolve the edge from the canonical vertex pair; get returns 0.0f
+    // (smooth) for absent values or nonexistent edges, set is a no-op for a
+    // nonexistent edge. Requires build_edges() to have run.
+    [[nodiscard]] auto get_edge_sharpness  (GEO::index_t v0, GEO::index_t v1) const -> float;
+    void               set_edge_sharpness  (GEO::index_t v0, GEO::index_t v1, float sharpness);
+    void               clear_edge_sharpness(GEO::index_t v0, GEO::index_t v1); // back to absent (smooth)
+    [[nodiscard]] auto get_attributes    () -> Mesh_attributes&;
+    [[nodiscard]] auto get_attributes    () const -> const Mesh_attributes&;
+    [[nodiscard]] auto get_aabb          (const glm::mat4& transform) const -> erhe::math::Aabb;
+    [[nodiscard]] auto get_aabb          () const -> erhe::math::Aabb;
+
+    void merge_with_transform(const Geometry& src, const GEO::mat4f& transform);
+    void copy_with_transform(const Geometry& source, const GEO::mat4f& transform);
+
+    void set_name(std::string_view name);
+
+    static constexpr uint64_t process_flag_connect                            = (1u << 0u);
+    static constexpr uint64_t process_flag_build_edges                        = (1u << 1u);
+    static constexpr uint64_t process_flag_compute_facet_centroids            = (1u << 2u);
+    static constexpr uint64_t process_flag_compute_smooth_vertex_normals      = (1u << 3u);
+    static constexpr uint64_t process_flag_generate_facet_texture_coordinates = (1u << 4u);
+    static constexpr uint64_t process_flag_debug_trace                        = (1u << 5u);
+    static constexpr uint64_t process_flag_merge_coplanar_neighbors           = (1u << 6u);
+    static constexpr uint64_t process_flag_generate_tangents                  = (1u << 7u);
+    static constexpr uint64_t process_flag_generate_tangents_ortho            = (1u << 8u);
+    static constexpr uint64_t process_flag_generate_atlas_texture_coordinates = (1u << 9u);
+
+    void process(const Geometry_process_parameters& parameters);
+    void generate_mesh_facet_texture_coordinates(std::size_t usage_index = 1);
+    void build_edges();
+    void update_connectivity();
+    void merge_coplanar_neighbors();
+
+    // Returns empty string if mesh is valid, or a description of the first problem found.
+    [[nodiscard]] auto validate() const -> std::string;
+
+    // Removes degenerate facets and fixes invalid vertex data.
+    // Returns a list of warnings describing what was fixed (empty if nothing needed fixing).
+    auto sanitize() -> std::vector<std::string>;
+
+    void debug_trace() const;
+
+    struct Debug_text
+    {
+        GEO::index_t reference_vertex;
+        GEO::index_t reference_facet;
+        glm::vec3 position;
+        uint32_t color;
+        std::string text;
+    };
+    struct Debug_vertex
+    {
+        glm::vec3 position;
+        glm::vec4 color;
+        float width;
+    };
+    struct Debug_line
+    {
+        GEO::index_t reference_vertex;
+        GEO::index_t reference_facet;
+        std::array<Debug_vertex, 2> vertices;
+    };
+
+    void clear_debug();
+    void add_debug_text(GEO::index_t reference_vertex, GEO::index_t reference_facet, glm::vec3 position, uint32_t color, std::string_view text) const;
+    void add_debug_line(GEO::index_t reference_vertex, GEO::index_t reference_facet, glm::vec3 p0, glm::vec3 p1, glm::vec4 color, float width) const;
+    void access_debug_entries(std::function<void(std::vector<Debug_text>& debug_texts, std::vector<Debug_line>& debug_lines)> op);
+
+private:
+    class Edge_collapse_context
+    {
+    public:
+        inline auto is_edge_facet(GEO::index_t facet) -> bool {
+            return std::find(edge_facets.begin(), edge_facets.end(), facet) != edge_facets.end();
+        };
+        inline auto is_started(GEO::index_t facet) -> bool {
+            return std::find(facets_to_delete.begin(), facets_to_delete.end(), facet) != facets_to_delete.end();
+        };
+
+        GEO::index_t                     edge;
+        GEO::index_t                     v0;
+        GEO::index_t                     v1;
+        GEO::vector<GEO::index_t>&       facets_to_delete;
+        std::vector<GEO::index_t>        merged_face_corners{};
+        const std::vector<GEO::index_t>& edge_facets;
+    };
+    void collect_corners_from_facet(Edge_collapse_context& edge_collapse_context, GEO::index_t facet, std::optional<GEO::index_t> trigger_vertex);
+
+    GEO::Mesh                              m_mesh;
+    Mesh_attributes                        m_attributes;
+    std::string                            m_name;
+    std::vector<std::vector<GEO::index_t>> m_vertex_to_corners;
+    std::vector<GEO::index_t>              m_corner_to_facet;
+    std::vector<std::vector<GEO::index_t>> m_edge_to_facets;
+    std::vector<std::vector<GEO::index_t>> m_vertex_to_edges;
+
+    struct Edge_hash
+    {
+        std::size_t operator()(const std::pair<GEO::index_t, GEO::index_t>& edge) const
+        {
+            return
+                std::hash<GEO::index_t>()(edge.first) ^
+                std::hash<GEO::index_t>()(edge.second ^ 0xcafecafe);
+        }
+    };
+
+    std::unordered_map<std::pair<GEO::index_t, GEO::index_t>, GEO::index_t, Edge_hash> m_vertex_pair_to_edge;
+
+    // build_edges() scratch preserving edge sharpness values across the edge
+    // store rebuild: (lo vertex, hi vertex, sharpness). Cleared (capacity
+    // kept) at the start of every build_edges() call.
+    std::vector<std::tuple<GEO::index_t, GEO::index_t, float>> m_edge_sharpness_scratch;
+
+    mutable std::vector<Debug_text> m_debug_texts;
+    mutable std::vector<Debug_line> m_debug_lines;
+};
+
+void transform(const Geometry& source, Geometry& destination, const GEO::mat4f& transform);
+
+}

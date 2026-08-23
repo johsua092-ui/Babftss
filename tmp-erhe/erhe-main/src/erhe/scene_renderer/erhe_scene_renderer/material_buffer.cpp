@@ -1,0 +1,247 @@
+// #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+
+#include "erhe_scene_renderer/material_buffer.hpp"
+#include "erhe_scene_renderer/buffer_binding_points.hpp"
+#include "erhe_renderer/renderer_config.hpp"
+
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/sampler.hpp"
+#include "erhe_graphics/span.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_graphics/texture_heap.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_scene_renderer/scene_renderer_log.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_verify/verify.hpp"
+
+namespace erhe::scene_renderer {
+
+Material_interface::Material_interface(erhe::graphics::Device& graphics_device, const int max_material_count)
+    : material_block{
+        graphics_device,
+        {
+            .name          = "material",
+            .binding_point = material_buffer_binding_point,
+            .type          = graphics_device.get_info().use_shader_storage_buffers
+                ? erhe::graphics::Shader_resource::Type::shader_storage_block
+                : erhe::graphics::Shader_resource::Type::uniform_block,
+            .readonly      = true
+        }
+    }
+    , material_struct{graphics_device, "Material"}
+    , offsets        {
+        .roughness                  = material_struct.add_vec2 ("roughness"                 )->get_offset_in_parent(),
+        .metallic                   = material_struct.add_float("metallic"                  )->get_offset_in_parent(),
+        .reflectance                = material_struct.add_float("reflectance"               )->get_offset_in_parent(),
+
+        .base_color                 = material_struct.add_vec4 ("base_color"                )->get_offset_in_parent(),
+        .emissive                   = material_struct.add_vec4 ("emissive"                  )->get_offset_in_parent(),
+
+        .base_color_texture         = material_struct.add_uvec2("base_color_texture"        )->get_offset_in_parent(),
+        .metallic_roughness_texture = material_struct.add_uvec2("metallic_roughness_texture")->get_offset_in_parent(),
+
+        .normal_texture             = material_struct.add_uvec2("normal_texture"            )->get_offset_in_parent(),
+        .occlusion_texture          = material_struct.add_uvec2("occlusion_texture"         )->get_offset_in_parent(),
+
+        .emissive_texture           = material_struct.add_uvec2("emissive_texture"          )->get_offset_in_parent(),
+        .opacity                    = material_struct.add_float("opacity"                   )->get_offset_in_parent(),
+        .normal_texture_scale       = material_struct.add_float("normal_texture_scale"      )->get_offset_in_parent(),
+        .alpha_cutoff               = material_struct.add_float("alpha_cutoff"              )->get_offset_in_parent(),
+
+        .base_color_rotation_scale         = material_struct.add_vec4("base_color_rotation_scale"        )->get_offset_in_parent(),
+        .metallic_roughness_rotation_scale = material_struct.add_vec4("metallic_roughness_rotation_scale")->get_offset_in_parent(),
+        .normal_rotation_scale             = material_struct.add_vec4("normal_rotation_scale"            )->get_offset_in_parent(),
+        .occlusion_rotation_scale          = material_struct.add_vec4("occlusion_rotation_scale"         )->get_offset_in_parent(),
+        .emissive_rotation_scale           = material_struct.add_vec4("emissive_rotation_scale"          )->get_offset_in_parent(),
+        .base_color_offset                 = material_struct.add_vec2("base_color_offset"                )->get_offset_in_parent(),
+        .metallic_roughness_offset         = material_struct.add_vec2("metallic_roughness_offset"        )->get_offset_in_parent(),
+        .normal_offset                     = material_struct.add_vec2("normal_offset"                    )->get_offset_in_parent(),
+        .occlusion_offset                  = material_struct.add_vec2("occlusion_offset"                 )->get_offset_in_parent(),
+        .emissive_offset                   = material_struct.add_vec2("emissive_offset"                  )->get_offset_in_parent(),
+
+        .occlusion_texture_strength = material_struct.add_float("occlusion_texture_strength")->get_offset_in_parent(),
+
+        // occlusion_texture_strength leaves the struct at a vec2-aligned
+        // tail; ior + transmission + bxdf_model fill it to the next
+        // 16-byte boundary.
+        .ior                        = material_struct.add_float("ior"                       )->get_offset_in_parent(),
+        .transmission               = material_struct.add_float("transmission"              )->get_offset_in_parent(),
+        .bxdf_model                 = material_struct.add_uint ("bxdf_model"                )->get_offset_in_parent(),
+    }
+    , max_material_count{static_cast<std::size_t>(max_material_count)}
+{
+    std::optional<std::size_t> array_size;
+    if (graphics_device.get_info().use_shader_storage_buffers) {
+        array_size = erhe::graphics::Shader_resource::unsized_array;
+    } else {
+        const std::size_t struct_size  = material_struct.get_size_bytes();
+        const std::size_t element_size = ((struct_size + 15u) / 16u) * 16u; // std140 array element alignment
+        const std::size_t ubo_max     = static_cast<std::size_t>(graphics_device.get_info().max_uniform_block_size) / element_size;
+        this->max_material_count = std::min(this->max_material_count, ubo_max);
+        array_size = this->max_material_count;
+    }
+    material_block.add_struct("materials", &material_struct, array_size);
+}
+
+Material_buffer::Material_buffer(erhe::graphics::Device& graphics_device, Material_interface& material_interface)
+    : Ring_buffer_client{
+        graphics_device,
+        material_interface.material_block.get_binding_target(),
+        "Material_buffer",
+        material_interface.material_block.get_binding_point()
+    }
+    , m_graphics_device {graphics_device}
+    , m_material_interface{material_interface}
+    , m_nearest_sampler{
+        graphics_device,
+        erhe::graphics::Sampler_create_info{
+            .min_filter  = erhe::graphics::Filter::nearest,
+            .mag_filter  = erhe::graphics::Filter::nearest,
+            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
+            .debug_label = "Material_buffer nearest"
+        }
+    }
+    , m_linear_sampler{
+        graphics_device,
+        erhe::graphics::Sampler_create_info{
+            .min_filter  = erhe::graphics::Filter::linear,
+            .mag_filter  = erhe::graphics::Filter::linear,
+            .mipmap_mode = erhe::graphics::Sampler_mipmap_mode::nearest,
+            .debug_label = "Material_buffer linear"
+        }
+    }
+{
+}
+
+auto Material_buffer::update(
+    erhe::graphics::Texture_heap&                                      texture_heap,
+    const std::span<const std::shared_ptr<erhe::primitive::Material>>& materials
+) -> erhe::graphics::Ring_buffer_range
+{
+    ERHE_PROFILE_FUNCTION();
+
+    if (materials.empty()) {
+        return {};
+    }
+
+    // SPDLOG_LOGGER_TRACE(
+    //     log_material_buffer,
+    //     "materials.size() = {}, write_offset = {}",
+    //     materials.size(),
+    //     m_writer.write_offset
+    // );
+
+    const auto        entry_size     = m_material_interface.material_struct.get_size_bytes();
+    const auto&       offsets        = m_material_interface.offsets;
+    const std::size_t max_byte_count = materials.size() * entry_size;
+
+    // See note in joint_buffer.cpp: clamp acquire to the block's reported
+    // size so MoltenVK's Metal argument validation passes when the ring's
+    // tail fragment is smaller than the MSL struct footprint.
+    const std::size_t acquire_byte_count = std::max(max_byte_count, m_material_interface.material_block.get_size_bytes());
+
+    erhe::graphics::Ring_buffer_range buffer_range = acquire(erhe::graphics::Ring_buffer_usage::CPU_write, acquire_byte_count);
+    std::span<std::byte>              gpu_data     = buffer_range.get_span();
+    std::size_t                       write_offset = 0;
+
+    class Texture_sampler_data
+    {
+    public:
+        uint64_t shader_handle;
+        float    rotation_scale[4];
+        float    offset[2];
+    };
+
+    uint32_t material_index = 0;
+    for (const auto& material : materials) {
+        ERHE_VERIFY(material);
+        memset(reinterpret_cast<uint8_t*>(gpu_data.data()) + write_offset, 0, entry_size);
+        using erhe::graphics::as_span;
+        using erhe::graphics::write;
+
+        auto get_texture_sampler_shader_handle = [this, &texture_heap](const erhe::primitive::Material_texture_sampler& data) -> Texture_sampler_data
+        {
+            const float     c = std::cos(data.rotation);
+            const float     s = std::sin(data.rotation);
+            const glm::mat2 rotation{c, s, -s, c};
+            const glm::mat2 scale{data.scale.x, 0.0f, 0.0f, data.scale.y};
+            const glm::mat2 m = rotation * scale;
+            Texture_sampler_data result{
+                .shader_handle  = 0, // This will silence clang warning, value is set set below
+                .rotation_scale = { m[0][0], m[0][1], m[1][0], m[1][1] }, // Packing order: c0r0, c0r1, c1r0, c1r1
+                .offset         = { data.offset.x, data.offset.y }
+            };
+            // The slot's texture reference resolves to a live texture every
+            // frame: a plain Texture returns itself, an editor Graph_texture
+            // returns its most recently baked output.
+            const erhe::graphics::Texture* texture =
+                data.texture_reference ? data.texture_reference->get_referenced_texture() : nullptr;
+            if (texture != nullptr) {
+                const erhe::graphics::Sampler* sampler = data.sampler ? data.sampler.get() : &m_linear_sampler;
+                result.shader_handle = texture_heap.allocate(texture, sampler);
+                ERHE_VERIFY(result.shader_handle != erhe::graphics::invalid_texture_handle);
+            } else {
+                result.shader_handle = erhe::graphics::invalid_texture_handle;
+            }
+            return result;
+        };
+
+        const erhe::primitive::Material_data&             material_data             = material->data;
+        const erhe::primitive::Material_texture_samplers& material_texture_samplers = material_data.texture_samplers;
+        const Texture_sampler_data base_color         = get_texture_sampler_shader_handle(material_texture_samplers.base_color);
+        const Texture_sampler_data metallic_roughness = get_texture_sampler_shader_handle(material_texture_samplers.metallic_roughness);
+        const Texture_sampler_data normal             = get_texture_sampler_shader_handle(material_texture_samplers.normal);
+        const Texture_sampler_data occlusion          = get_texture_sampler_shader_handle(material_texture_samplers.occlusion);
+        const Texture_sampler_data emissive           = get_texture_sampler_shader_handle(material_texture_samplers.emissive);
+
+        material->material_buffer_index = material_index;
+
+        write(gpu_data, write_offset + offsets.roughness  ,                as_span(material_data.roughness  ));
+        write(gpu_data, write_offset + offsets.metallic   ,                as_span(material_data.metallic   ));
+        write(gpu_data, write_offset + offsets.reflectance,                as_span(material_data.reflectance));
+
+        write(gpu_data, write_offset + offsets.base_color ,                as_span(material_data.base_color ));
+        write(gpu_data, write_offset + offsets.emissive   ,                as_span(material_data.emissive   ));
+
+        write(gpu_data, write_offset + offsets.base_color_texture,         as_span(base_color.shader_handle));
+        write(gpu_data, write_offset + offsets.metallic_roughness_texture, as_span(metallic_roughness.shader_handle));
+
+        write(gpu_data, write_offset + offsets.normal_texture,             as_span(normal.shader_handle));
+        write(gpu_data, write_offset + offsets.occlusion_texture,          as_span(occlusion.shader_handle));
+
+        write(gpu_data, write_offset + offsets.emissive_texture,           as_span(emissive.shader_handle));
+        write(gpu_data, write_offset + offsets.opacity,                    as_span(material_data.opacity    ));
+        write(gpu_data, write_offset + offsets.normal_texture_scale,       as_span(material_data.normal_texture_scale));
+        write(gpu_data, write_offset + offsets.alpha_cutoff,               as_span(material_data.alpha_cutoff));
+
+        write(gpu_data, write_offset + offsets.base_color_rotation_scale,         as_span(base_color        .rotation_scale)); // uvec4
+        write(gpu_data, write_offset + offsets.metallic_roughness_rotation_scale, as_span(metallic_roughness.rotation_scale)); // uvec4
+        write(gpu_data, write_offset + offsets.normal_rotation_scale,             as_span(normal            .rotation_scale)); // uvec4
+        write(gpu_data, write_offset + offsets.occlusion_rotation_scale,          as_span(occlusion         .rotation_scale)); // uvec4
+        write(gpu_data, write_offset + offsets.emissive_rotation_scale,           as_span(emissive          .rotation_scale)); // uvec4
+
+        write(gpu_data, write_offset + offsets.base_color_offset,                 as_span(base_color        .offset));         // uvec2
+        write(gpu_data, write_offset + offsets.metallic_roughness_offset,         as_span(metallic_roughness.offset));         // uvec2
+
+        write(gpu_data, write_offset + offsets.normal_offset,                     as_span(normal            .offset));         // uvec2
+        write(gpu_data, write_offset + offsets.occlusion_offset,                  as_span(occlusion         .offset));         // uvec2
+
+        write(gpu_data, write_offset + offsets.emissive_offset,                   as_span(emissive          .offset));         // uvec2
+        write(gpu_data, write_offset + offsets.occlusion_texture_strength,        as_span(material_data.occlusion_texture_strength));
+        write(gpu_data, write_offset + offsets.ior,                               as_span(material_data.ior));
+        write(gpu_data, write_offset + offsets.transmission,                      as_span(material_data.transmission));
+        const uint32_t bxdf_model = static_cast<uint32_t>(material_data.bxdf_model);
+        write(gpu_data, write_offset + offsets.bxdf_model,                        as_span(bxdf_model));
+
+        write_offset += entry_size;
+        ++material_index;
+    }
+    buffer_range.bytes_written(write_offset);
+    buffer_range.close();
+
+    // SPDLOG_LOGGER_TRACE(log_material_buffer, "wrote {} entries to material buffer", material_index);
+
+    return buffer_range;
+}
+
+} // namespace erhe::scene_renderer

@@ -1,0 +1,224 @@
+// #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+
+#include "content_library/brdf_slice.hpp"
+
+#include "app_context.hpp"
+#include "app_message_bus.hpp"
+#include "assets/asset_manager.hpp"
+#include "editor_log.hpp"
+#include "renderers/programs.hpp"
+#include "scene/scene_root.hpp"
+
+#include "erhe_primitive/material.hpp"
+
+#include "erhe_imgui/imgui_renderer.hpp"
+#include "erhe_rendergraph/rendergraph.hpp"
+#include "erhe_rendergraph/texture_rendergraph_node.hpp"
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_scene_renderer/forward_renderer.hpp"
+#include "erhe_profile/profile.hpp"
+
+#include <imgui/imgui.h>
+
+namespace editor {
+
+Brdf_slice_rendergraph_node::Brdf_slice_rendergraph_node(
+    erhe::rendergraph::Rendergraph&         rendergraph,
+    erhe::scene_renderer::Forward_renderer& forward_renderer,
+    Brdf_slice&                             brdf_slice,
+    Programs&                               /*programs*/
+)
+    : erhe::rendergraph::Texture_rendergraph_node{
+        erhe::rendergraph::Texture_rendergraph_node_create_info{
+            .rendergraph          = rendergraph,
+            .debug_label          = erhe::utility::Debug_label{"Brdf_slice_rendergraph_node"},
+            .output_key           = erhe::rendergraph::Rendergraph_node_key::texture_for_gui,
+            .color_format         = erhe::dataformat::Format::format_16_vec4_float,
+            .depth_stencil_format = erhe::dataformat::Format::format_undefined
+        }
+    }
+    , m_forward_renderer  {forward_renderer}
+    , m_brdf_slice        {brdf_slice}
+    , m_empty_vertex_input{rendergraph.get_graphics_device(), erhe::graphics::Vertex_input_state_data{}}
+    , m_render_pipeline_state{
+        rendergraph.get_graphics_device(),
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Brdf_slice"},
+            .input_assembly = erhe::graphics::Input_assembly_state::triangle,
+            .rasterization  = erhe::graphics::Rasterization_state::cull_mode_none,
+            .depth_stencil  = erhe::graphics::Depth_stencil_state::depth_test_disabled_stencil_test_disabled
+        }
+    }
+{
+}
+
+void Brdf_slice_rendergraph_node::set_material(const std::shared_ptr<erhe::primitive::Material>& material)
+{
+    m_material = material;
+}
+
+auto Brdf_slice_rendergraph_node::get_material() const -> erhe::primitive::Material*
+{
+    return m_material.get();
+}
+
+// Implements erhe::rendergraph::Rendergraph_node
+void Brdf_slice_rendergraph_node::execute_rendergraph_node(erhe::graphics::Command_buffer& command_buffer)
+{
+    SPDLOG_LOGGER_TRACE(log_render, "Brdf_slice_rendergraph_node::execute_rendergraph_node()");
+
+    if (m_render_target.get_render_pass() == nullptr) {
+        // Likely because output ImGui window has no viewport size yet.
+        return;
+    }
+
+    if (!m_material) {
+        return;
+    }
+
+    ERHE_PROFILE_FUNCTION();
+
+    erhe::graphics::Render_pass* render_pass = m_render_target.get_render_pass();
+    erhe::graphics::Scoped_render_pass scoped_render_pass{*render_pass, command_buffer};
+    erhe::graphics::Scoped_debug_group pass_scope{
+        command_buffer,
+        "Brdf_slice_rendergraph_node::execute_rendergraph_node()"
+    };
+    erhe::scene_renderer::Light_projections light_projections;
+    light_projections.brdf_phi          = m_brdf_slice.phi;
+    light_projections.brdf_incident_phi = m_brdf_slice.incident_phi;
+    light_projections.brdf_material     = m_material;
+
+    erhe::math::Viewport viewport{
+        .x      = 0,
+        .y      = 0,
+        .width  = m_area_size,
+        .height = m_area_size
+    };
+
+    erhe::graphics::Render_command_encoder render_encoder = m_rendergraph.get_graphics_device().make_render_command_encoder(command_buffer);
+
+            //.shader_stages  = programs.brdf_slice.shader_stages(),
+            //.vertex_input   = &m_empty_vertex_input,
+
+    m_forward_renderer.draw_primitives(
+        erhe::scene_renderer::Forward_renderer::Primitive_render_parameters{
+            .base = erhe::scene_renderer::Forward_renderer::Base_render_parameters{
+                .render_encoder    = render_encoder,
+                .viewport          = viewport,
+                //.index_type      = erhe::dataformat::Format::format_32_scalar_uint, // Note: Indices are not used by render_fullscreen()
+                .light_projections = &light_projections,
+                .materials         = std::span<const std::shared_ptr<erhe::primitive::Material>>(&m_material, 1),
+                .debug_label       = "Brdf_slice_rendergraph_node::execute_rendergraph_node()"
+            },
+            .vertex_count         = 3, // full screen quad using vertices generated by vertex shader
+            .base_render_pipeline = m_render_pipeline_state
+        },
+        nullptr
+    );
+
+    SPDLOG_LOGGER_TRACE(log_render, "Depth_visualization_window::render() - done");
+}
+
+void Brdf_slice_rendergraph_node::set_area_size(const int size)
+{
+    m_area_size = size;
+    m_render_target.update(size, size, nullptr);
+}
+
+Brdf_slice::Brdf_slice(
+    erhe::rendergraph::Rendergraph&         rendergraph,
+    erhe::scene_renderer::Forward_renderer& forward_renderer,
+    App_context&                            app_context,
+    App_message_bus&                        app_message_bus,
+    Programs&                               programs
+)
+    : m_rendergraph{rendergraph}
+    , m_context    {app_context}
+    , m_node{
+        std::make_shared<Brdf_slice_rendergraph_node>(rendergraph, forward_renderer, *this, programs)
+    }
+{
+    m_close_scene_subscription = app_message_bus.close_scene.subscribe(
+        [this](Close_scene_message& message) {
+            on_close_scene(static_cast<erhe::Item_host*>(message.scene_root.get()));
+        }
+    );
+    m_items_removed_subscription = app_message_bus.items_removed.subscribe(
+        [this](Items_removed_message& message) {
+            on_items_removed(*message.removed.get());
+        }
+    );
+}
+
+void Brdf_slice::on_items_removed(const Removed_items& removed)
+{
+    erhe::primitive::Material* const material = m_node ? m_node->get_material() : nullptr;
+    if ((material != nullptr) && removed.lookup.contains(material)) {
+        m_node->set_material({});
+    }
+}
+
+void Brdf_slice::on_close_scene(erhe::Item_host* const closing_host)
+{
+    // R5.6: materials are not hosted; ask the manager whether the closing
+    // scene's container record defines this one.
+    erhe::primitive::Material* const material = m_node ? m_node->get_material() : nullptr;
+    if ((material != nullptr) && (m_context.asset_manager != nullptr) && m_context.asset_manager->is_hosted_or_defined_by(*material, closing_host)) {
+        m_node->set_material({});
+    }
+}
+
+auto Brdf_slice::get_node() const -> Brdf_slice_rendergraph_node*
+{
+    return m_node.get();
+}
+
+void Brdf_slice::show_brdf_slice(int area_size)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    const auto* material = m_node->get_material();
+    if (material == nullptr) {
+        return;
+    }
+
+    ImGui::SliderFloat("Phi",          &phi,          0.0f, 1.57f);
+    ImGui::SliderFloat("Incident Phi", &incident_phi, 0.0f, 1.57f);
+
+    m_node->set_enabled(true);
+    m_node->set_area_size(area_size);
+
+    const auto& texture = m_node->get_producer_output_texture(erhe::rendergraph::Rendergraph_node_key::texture_for_gui);
+    if (!texture) {
+        log_render->warn("Brdf_slice has no output render graph node");
+        return;
+    }
+
+    const int texture_width  = texture->get_width();
+    const int texture_height = texture->get_height();
+
+    if (
+        (texture_width  > 0) &&
+        (texture_height > 0) &&
+        (area_size      > 0)
+    ) {
+        m_context.imgui_renderer->image(
+            erhe::imgui::Draw_texture_parameters{
+                .texture_reference = std::static_pointer_cast<erhe::graphics::Texture_reference>(texture),
+                .width             = area_size,
+                .height            = area_size,
+                .filter            = erhe::graphics::Filter::nearest,
+                .mipmap_mode       = erhe::graphics::Sampler_mipmap_mode::not_mipmapped,
+                .debug_label       = "Brdf_slice::show_brdf_slice"
+            }
+        );
+    }
+}
+
+}

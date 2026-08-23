@@ -1,0 +1,365 @@
+#pragma once
+
+#include "app_message.hpp"
+#include "scene/generated/scene_settings.hpp"
+
+#include "erhe_message_bus/message_bus.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_scene/scene_host.hpp"
+#include "erhe_scene_renderer/light_set.hpp"
+#include "scene/draw_list_scene_dependencies.hpp"
+
+#include <deque>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <vector>
+
+class btCollisionShape;
+struct Physics_config; // erhe_codegen generated, global namespace
+
+namespace erhe {
+    class Item_base;
+}
+namespace erhe::geometry {
+    class Geometry;
+}
+namespace erhe::graphics {
+    class Buffer;
+    class Buffer_transfer_queue;
+    class Vertex_format;
+}
+namespace erhe::imgui {
+    class Imgui_renderer;
+    class Imgui_windows;
+}
+namespace erhe::physics {
+    class IWorld;
+    class Trigger_event;
+}
+namespace erhe::primitive {
+    class Material;
+    class Buffer_mesh;
+    class Primitive;
+}
+namespace erhe::raytrace {
+    class IScene;
+}
+namespace erhe::scene_renderer {
+    class Draw_list_scene;
+}
+namespace erhe::scene {
+    using Layer_id = uint64_t;
+    class Camera;
+    class Layout;
+    class Light;
+    class Light_layer;
+    class Mesh;
+    class Mesh_layer;
+    class Mesh_raytrace;
+    class Message_bus;
+    class Node;
+    class Scene;
+}
+
+namespace editor {
+
+class Content_library;
+class App_context;
+class App_message_bus;
+class App_scenes;
+class App_settings;
+class Item_tree_window;
+class Node_joint;
+class Node_physics;
+class Raytrace_primitive;
+class Rendertarget_mesh;
+class Scene_root;
+class Scene_view;
+class Viewport_scene_view;
+
+class Mesh_layer_id
+{
+public:
+    static constexpr erhe::scene::Layer_id brush        = 0;
+    static constexpr erhe::scene::Layer_id content      = 1;
+    static constexpr erhe::scene::Layer_id sky          = 2;
+    static constexpr erhe::scene::Layer_id controller   = 3;
+    static constexpr erhe::scene::Layer_id tool         = 4;
+    static constexpr erhe::scene::Layer_id rendertarget = 5;
+    static constexpr erhe::scene::Layer_id bone         = 6;
+};
+
+class Scene_layers
+{
+public:
+    Scene_layers();
+
+    void add_layers_to_scene(erhe::scene::Scene& scene);
+
+    [[nodiscard]] auto brush       () const -> erhe::scene::Mesh_layer*;
+    [[nodiscard]] auto content     () const -> erhe::scene::Mesh_layer*;
+    [[nodiscard]] auto controller  () const -> erhe::scene::Mesh_layer*;
+    [[nodiscard]] auto tool        () const -> erhe::scene::Mesh_layer*;
+    [[nodiscard]] auto rendertarget() const -> erhe::scene::Mesh_layer*;
+    // Editor-generated bone pick/display proxies (see Item_flags::bone_proxy).
+    // A separate layer so they can be rendered, id-rendered and raytraced as a
+    // group without ever being mistaken for scene content.
+    [[nodiscard]] auto bone        () const -> erhe::scene::Mesh_layer*;
+    [[nodiscard]] auto light       () const -> erhe::scene::Light_layer*;
+    [[nodiscard]] auto mesh_layers () const -> std::array<erhe::scene::Mesh_layer*, 6>;
+
+private:
+    std::shared_ptr<erhe::scene::Mesh_layer>  m_content;
+    std::shared_ptr<erhe::scene::Mesh_layer>  m_controller;
+    std::shared_ptr<erhe::scene::Mesh_layer>  m_tool;
+    std::shared_ptr<erhe::scene::Mesh_layer>  m_brush;
+    std::shared_ptr<erhe::scene::Mesh_layer>  m_rendertarget;
+    std::shared_ptr<erhe::scene::Mesh_layer>  m_bone;
+    std::shared_ptr<erhe::scene::Light_layer> m_light;
+};
+
+class Scene_root
+    : public std::enable_shared_from_this<Scene_root>
+    , public erhe::scene::Scene_host
+{
+public:
+    // draw_list_dependencies: non-null and valid -> this scene root owns a
+    // Draw_list_scene and its content renders through persistent draw lists
+    // (doc/draw_list_renderer_requirements.md); null -> no Draw_list_scene,
+    // Forward_renderer / Shadow_renderer fallback for every pass (R1b).
+    Scene_root(
+        App_message_bus*                        app_message_bus,
+        const std::shared_ptr<Content_library>& content_library,
+        std::string_view                        name,
+        bool                                    enable_physics,
+        const Draw_list_scene_dependencies*     draw_list_dependencies
+    );
+    ~Scene_root() noexcept override;
+
+    // Implements erhe::Item_host
+    auto get_host_name() const -> const char* override;
+
+    // Public API
+    auto make_browser_window(
+        erhe::imgui::Imgui_renderer& imgui_renderer,
+        erhe::imgui::Imgui_windows&  imgui_windows,
+        App_context&                 context,
+        App_settings&                app_settings
+    ) -> std::shared_ptr<Item_tree_window>;
+    void remove_browser_window();
+
+    void register_to_editor_scenes    (App_scenes& app_scenes);
+    void unregister_from_editor_scenes(App_scenes& app_scenes);
+    // Clears this scene_root's registration state without touching the
+    // App_scenes registry. Called by ~App_scenes while it tears down its
+    // own list, so that the later ~Scene_root does not try to unregister
+    // from a registry that has already released it.
+    void detach_from_editor_scenes    (App_scenes& app_scenes);
+
+    void register_node    (const std::shared_ptr<erhe::scene::Node>&   node)   override;
+    void unregister_node  (const std::shared_ptr<erhe::scene::Node>&   node)   override;
+    void register_camera  (const std::shared_ptr<erhe::scene::Camera>& camera) override;
+    void unregister_camera(const std::shared_ptr<erhe::scene::Camera>& camera) override;
+    void register_mesh    (const std::shared_ptr<erhe::scene::Mesh>&   mesh)   override;
+    void unregister_mesh  (const std::shared_ptr<erhe::scene::Mesh>&   mesh)   override;
+    void register_skin    (const std::shared_ptr<erhe::scene::Skin>&   skin)   override;
+    void unregister_skin  (const std::shared_ptr<erhe::scene::Skin>&   skin)   override;
+    void register_light   (const std::shared_ptr<erhe::scene::Light>&  light)  override;
+    void unregister_light (const std::shared_ptr<erhe::scene::Light>&  light)  override;
+    void register_layout  (const std::shared_ptr<erhe::scene::Layout>& layout) override;
+    void unregister_layout(const std::shared_ptr<erhe::scene::Layout>& layout) override;
+    void on_mesh_primitives_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh) override;
+    void on_mesh_material_changed  (const std::shared_ptr<erhe::scene::Mesh>& mesh) override;
+    void on_mesh_flags_changed     (const std::shared_ptr<erhe::scene::Mesh>& mesh, uint64_t old_flag_bits, uint64_t new_flag_bits) override;
+    void on_mesh_transform_changed     (const std::shared_ptr<erhe::scene::Mesh>& mesh) override;
+    void on_mesh_primitive_data_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh) override;
+    void on_light_changed          (const std::shared_ptr<erhe::scene::Light>& light) override;
+
+    // The scene's resolved light set (which lights are shaded / shadow-mapped,
+    // in light UBO slot order). Invalidated by the light hooks (register /
+    // unregister / on_light_changed); renderers call
+    // get_light_set().resolve(layers().light()->lights, limits) before use,
+    // which recomputes only when invalidated or the limits changed.
+    [[nodiscard]] auto get_light_set() -> erhe::scene_renderer::Light_set&;
+
+    // Draw lists (doc/draw_list_renderer_plan.md). get_draw_list_scene()
+    // is null for scene roots constructed without dependencies.
+    [[nodiscard]] auto get_draw_list_scene() -> erhe::scene_renderer::Draw_list_scene*;
+    // Main thread, once per frame before any rendering of this scene:
+    // applies queued register / unregister / flag changes under
+    // item_host_mutex. No-op without a Draw_list_scene.
+    void flush_draw_lists();
+    auto get_hosted_scene () -> erhe::scene::Scene* override;
+
+    void begin_mesh_rt_update(const std::shared_ptr<erhe::scene::Mesh>& mesh);
+    void end_mesh_rt_update  (const std::shared_ptr<erhe::scene::Mesh>& mesh);
+
+    void register_node_physics  (const std::shared_ptr<Node_physics>& node_physics);
+    void unregister_node_physics(const std::shared_ptr<Node_physics>& node_physics);
+
+    // Node_joint bookkeeping. All attached joints stay registered; a joint
+    // without a live constraint is pending. register_node_physics() retries
+    // pending joints after adding the new rigid body to the world, and
+    // unregister_node_physics() tears down constraints referencing the
+    // departing body (returning those joints to the pending state).
+    void register_node_joint    (const std::shared_ptr<Node_joint>& node_joint);
+    void unregister_node_joint  (const std::shared_ptr<Node_joint>& node_joint);
+
+    void before_physics_simulation_steps     ();
+    void update_physics_simulation_fixed_step(double dt, const Physics_config& physics);
+    void after_physics_simulation_steps      ();
+
+    // Item_flags::no_transform_update means "the physics simulation currently
+    // drives this node's world transform". That is only true while this
+    // scene's simulation is stepping: pausing the simulation leaves awake
+    // bodies active forever (no deactivation events fire), which used to
+    // strand the flag on their nodes so hierarchy edits no longer propagated
+    // to them. App_scenes calls this every frame with the scene's resolved
+    // physics gate; edges clear the flag from every body-driven node (pause)
+    // or restore it on awake dynamic bodies (resume).
+    void set_physics_simulation_running(bool running);
+
+    [[nodiscard]] auto layers            () -> Scene_layers&;
+    [[nodiscard]] auto layers            () const -> const Scene_layers&;
+    [[nodiscard]] auto has_physics_world () const -> bool;
+    [[nodiscard]] auto get_physics_world () -> erhe::physics::IWorld&;
+
+    // Bounded log of recent sensor (trigger) overlap events, appended by the
+    // physics world trigger callbacks at the end of update_fixed_step() and
+    // shown in the Physics window. Lines are preformatted at event time;
+    // the counter keeps counting after old lines fall out of the log.
+    [[nodiscard]] auto get_trigger_event_log  () const -> const std::deque<std::string>&;
+    [[nodiscard]] auto get_trigger_event_count() const -> uint64_t;
+    void clear_trigger_event_log();
+    [[nodiscard]] auto get_raytrace_scene() -> erhe::raytrace::IScene&;
+    [[nodiscard]] auto get_scene         () -> erhe::scene::Scene&;
+    [[nodiscard]] auto get_scene         () const -> const erhe::scene::Scene&;
+    // Stable shared_ptr to the Scene item, used to make the Scene selectable and
+    // to show it as the top row of the Hierarchy window (issue #240).
+    [[nodiscard]] auto get_scene_item    () -> std::shared_ptr<erhe::scene::Scene>;
+    [[nodiscard]] auto get_name          () const -> const std::string&;
+
+    // Canonical path of the glTF file the scene was opened/loaded from
+    // (Scene_open_operation, open_scene_gltf), or last saved to; empty for
+    // scenes not yet associated with a file. Save Scene writes back here
+    // without confirmation and reloads every prefab instance when the file
+    // is a loaded prefab source.
+    [[nodiscard]] auto get_source_path   () const -> const std::filesystem::path&;
+    void set_source_path(const std::filesystem::path& path);
+
+    // Definition-vs-reference classification for an asset-typed item
+    // entering this scene's content library (asset-manager plan, R5
+    // sub-plan resolution 2): true = definition (owning entry), false =
+    // reference entry (owned elsewhere). Pre-flip the decision derives
+    // from item hosting; the R5.6 single-loader flip re-implements
+    // exactly this predicate on the Asset_manager (defining container ==
+    // this scene's record). Deliberately the ONE site that changes at
+    // the flip - do not inline host comparisons for this purpose.
+    [[nodiscard]] auto is_asset_definition(const erhe::Item_base& item) const -> bool;
+
+    // Per-scene setting overrides (issue #239). Each field is an optional; a
+    // disengaged optional means "use the editor-global default". Effective values
+    // are resolved by the helpers in scene/scene_settings_resolve.hpp.
+    [[nodiscard]] auto get_scene_settings()       -> Scene_settings&;
+    [[nodiscard]] auto get_scene_settings() const -> const Scene_settings&;
+
+    // Persistent scene identity (Scene_settings::scene_id, saved with the
+    // scene): creation timestamp + random suffix, generated lazily here for
+    // scenes that lack one (from-scratch scenes and pre-scene_id files
+    // alike - no back-compat kept). Side data (the lightmap tile set
+    // manifest) is stamped with it and rejected on mismatch, so a scratch
+    // scene never adopts another scene's untitled.lightmap set.
+    [[nodiscard]] auto get_scene_id() -> const std::string&;
+
+    void imgui();
+
+    auto camera_combo(const char* label, erhe::scene::Camera*& camera, bool nullptr_option = false) const -> bool;
+    auto camera_combo(const char* label, std::shared_ptr<erhe::scene::Camera>& selected_camera, bool nullptr_option = false) const -> bool;
+    auto camera_combo(const char* label, std::weak_ptr<erhe::scene::Camera>& selected_camera, bool nullptr_option = false) const -> bool;
+
+    [[nodiscard]] auto get_content_library() const -> std::shared_ptr<Content_library>;
+
+    void update_pointer_for_rendertarget_meshes(Scene_view* scene_view);
+    void sanity_check();
+
+private:
+    void add_trigger_event(bool enter, const erhe::physics::Trigger_event& event);
+
+    [[nodiscard]] auto get_node_rt_mask(erhe::scene::Node* node) -> uint32_t;
+    // Returns the raytrace IInstance mask for a mesh. Skinned meshes get
+    // the Raytrace_node_mask::skinned bit in lieu of the role bits the
+    // node would otherwise contribute, so picking-tool rays (which use
+    // role bits) skip them and the ID renderer handles them instead. See
+    // Raytrace_node_mask::skinned.
+    [[nodiscard]] auto get_mesh_rt_mask(erhe::scene::Mesh* mesh) -> uint32_t;
+
+    erhe::message_bus::Subscription<Selection_message> m_selection_subscription;
+
+    // Live longest
+    mutable ERHE_PROFILE_MUTEX(std::mutex, m_mutex);
+    ERHE_PROFILE_MUTEX        (std::mutex, m_rendertarget_meshes_mutex);
+
+    // Publisher for Skin_registered_message; nullptr for scenes that do not
+    // take part in editor messaging (previews, the tool scene).
+    App_message_bus*                                m_app_message_bus{nullptr};
+    App_scenes*                                     m_app_scenes{nullptr};
+    std::shared_ptr<Content_library>                m_content_library;
+    std::filesystem::path                           m_source_path;
+    bool                                            m_is_registered{false};
+
+    // Applies wind forces to wind-receptive dynamic bodies; called once per
+    // fixed step from update_physics_simulation_fixed_step() before the world
+    // steps (Jolt clears accumulated forces after every step).
+    void apply_wind_forces(float dt, const Physics_config& physics);
+
+    // Must live longer than m_scene for example
+    bool                                            m_node_physics_sorted{false};
+    bool                                            m_physics_simulation_running{true};
+    double                                          m_wind_time{0.0};
+    std::vector<std::shared_ptr<Node_physics>>      m_node_physics;
+    std::vector<std::shared_ptr<Node_joint>>        m_node_joints;
+    std::vector<std::shared_ptr<Rendertarget_mesh>> m_rendertarget_meshes;
+
+    std::vector<std::shared_ptr<erhe::Item_base>>   m_physics_disabled_nodes;
+
+    std::unique_ptr<erhe::physics::IWorld>          m_physics_world;
+    std::unique_ptr<erhe::raytrace::IScene>         m_raytrace_scene;
+    // Declared after m_raytrace_scene: the draw list scene keeps registered
+    // meshes alive, and ~Mesh may detach from m_raytrace_scene, so it must be
+    // destroyed first (also reset explicitly at the top of ~Scene_root).
+    std::unique_ptr<erhe::scene_renderer::Draw_list_scene> m_draw_list_scene;
+    erhe::scene_renderer::Light_set                        m_light_set;
+
+    static constexpr std::size_t s_max_trigger_event_log_entries = 100;
+    std::deque<std::string>                         m_trigger_event_log;
+    uint64_t                                        m_trigger_event_counter{0};
+
+    std::shared_ptr<erhe::scene::Scene>             m_scene;
+    Scene_layers                                    m_layers;
+    Scene_settings                                  m_scene_settings;
+
+    std::shared_ptr<Item_tree_window>               m_node_tree_window;
+};
+
+// Cameras offered for user camera selection (the "Scene and Camera" dialog
+// combos, default camera picks for new viewport views, persisted-selection
+// restore): cameras authored directly in the scene. Cameras that arrived
+// embedded in content -- inside a sealed prefab instance or under a glTF
+// import wrapper (Item_flags::import_root) -- are skipped, so a scene full of
+// instanced or imported assets does not offer every asset's cameras. When the
+// scene has no authoring cameras at all (e.g. a scene opened directly from a
+// glTF file, where every camera lives under the import wrapper), all cameras
+// are offered instead so such scenes remain viewable.
+[[nodiscard]] auto get_selectable_cameras(const erhe::scene::Scene& scene) -> std::vector<std::shared_ptr<erhe::scene::Camera>>;
+
+// Resolves the Scene_root hosting the given item: a content-library item's
+// Item_host is its owning scene (scene items resolve through their scene the
+// same way). Returns null when the item is not hosted by a scene - not in
+// any library, or a shared prefab template resource (reference entries are
+// deliberately non-hosted).
+[[nodiscard]] auto get_hosting_scene_root(const erhe::Item_base* item) -> std::shared_ptr<Scene_root>;
+
+}

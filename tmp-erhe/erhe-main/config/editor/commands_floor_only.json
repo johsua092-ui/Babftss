@@ -1,0 +1,51 @@
+{
+    "commands": [
+        {
+            "name": "scene.create",
+            "args": {
+                "name": "Floor Only Scene"
+            }
+        },
+        {
+            "name": "scene.add_cameras",
+            "args": {
+                "_version": 2,
+                "camera_exposure": 1,
+                "shadow_range": 30,
+                "camera_distance": 4,
+                "camera_elevation": 1.3,
+                "z_near": 0.03,
+                "z_far": 500.0
+            }
+        },
+        {
+            "name": "scene.add_lights",
+            "args": {
+                "_version": 2,
+                "directional_light_intensity": 4,
+                "directional_light_radius": 30,
+                "directional_light_height": 1.572,
+                "directional_light_shadow_count": 1,
+                "directional_light_no_shadow_count": 0,
+                "spot_light_intensity": 500,
+                "spot_light_radius": 10,
+                "spot_light_height": 5,
+                "spot_light_shadow_count": 0,
+                "spot_light_no_shadow_count": 0,
+                "point_light_intensity": 150,
+                "point_light_radius": 15,
+                "point_light_height": 8,
+                "point_light_shadow_count": 0,
+                "point_light_no_shadow_count": 0
+            }
+        },
+        {
+            "name": "scene.add_room",
+            "args": {
+                "floor": true,
+                "floor_size": 32,
+                "floor_height": 1
+            }
+        }
+    ]
+}

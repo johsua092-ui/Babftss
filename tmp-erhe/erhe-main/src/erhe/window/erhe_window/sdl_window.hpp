@@ -1,0 +1,215 @@
+#pragma once
+
+#include "erhe_window/window_event_handler.hpp"
+#include "erhe_window/window_configuration.hpp"
+
+#include <glm/glm.hpp>
+
+#include <atomic>
+#include <functional>
+#include <string>
+#include <thread>
+#include <vector>
+
+#if defined(ERHE_OS_WINDOWS)
+#   ifndef _CRT_SECURE_NO_WARNINGS
+#       define _CRT_SECURE_NO_WARNINGS
+#   endif
+#   ifndef WIN32_LEAN_AND_MEAN
+#       define WIN32_LEAN_AND_MEAN
+#   endif
+#   define VC_EXTRALEAN
+#   ifndef STRICT
+#       define STRICT
+#   endif
+#   ifndef NOMINMAX
+#       define NOMINMAX
+#   endif
+#   include <windows.h>
+#endif
+
+#if defined(ERHE_OS_LINUX)
+struct wl_display;
+#endif
+
+namespace erhe::window {
+
+// Values -1 .. 10 mirror ImGuiMouseCursor_ (imgui.h) so ImGui::GetMouseCursor()
+// can be cast directly (see Window_imgui_host); Crosshair is an erhe extension.
+using Mouse_cursor = signed int;
+constexpr Mouse_cursor Mouse_cursor_None       = -1;
+constexpr Mouse_cursor Mouse_cursor_Arrow      =  0;
+constexpr Mouse_cursor Mouse_cursor_TextInput  =  1;   // When hovering over InputText, etc.
+constexpr Mouse_cursor Mouse_cursor_ResizeAll  =  2;   // (Unused by Dear ImGui functions)
+constexpr Mouse_cursor Mouse_cursor_ResizeNS   =  3;   // When hovering over an horizontal border
+constexpr Mouse_cursor Mouse_cursor_ResizeEW   =  4;   // When hovering over a vertical border or a column
+constexpr Mouse_cursor Mouse_cursor_ResizeNESW =  5;   // When hovering over the bottom-left corner of a window
+constexpr Mouse_cursor Mouse_cursor_ResizeNWSE =  6;   // When hovering over the bottom-right corner of a window
+constexpr Mouse_cursor Mouse_cursor_Hand       =  7;   // (Unused by Dear ImGui functions. Use for e.g. hyperlinks)
+constexpr Mouse_cursor Mouse_cursor_Wait       =  8;   // When waiting for something to process/load.
+constexpr Mouse_cursor Mouse_cursor_Progress   =  9;   // When waiting for something to process/load, but application is still interactive.
+constexpr Mouse_cursor Mouse_cursor_NotAllowed = 10;   // When hovering something with disallowed interaction. Usually a crossed circle.
+constexpr Mouse_cursor Mouse_cursor_Crosshair  = 11;   // Crosshair cursor
+constexpr Mouse_cursor Mouse_cursor_COUNT      = 12;
+
+typedef void (*SDL_FunctionPointer)(void);
+
+class Context_window
+{
+public:
+    explicit Context_window(const Window_configuration& configuration);
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    explicit Context_window(Context_window* share);
+#endif
+    virtual ~Context_window() noexcept;
+
+    [[nodiscard]] auto get_window_configuration() const -> const Window_configuration&;
+    [[nodiscard]] auto get_width               () const -> int;
+    [[nodiscard]] auto get_height              () const -> int;
+    [[nodiscard]] auto get_cursor_relative_hold() const -> bool;
+    [[nodiscard]] auto get_sdl_window          () const -> void* { return m_sdl_window; }
+    [[nodiscard]] auto get_input_events        () -> std::vector<Input_event>&;
+
+    void register_redraw_callback(std::function<void()> callback);
+
+    auto open                             (const Window_configuration& configuration) -> bool;
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    void make_current                     () const;
+    void clear_current                    () const;
+    auto delay_before_swap                (float seconds) const -> bool;
+    void swap_buffers                     () const;
+    void set_swap_interval                (int interval);
+#endif
+    void poll_events                      (float wait_time = 0.0f);
+    void get_cursor_position              (float& xpos, float& ypos);
+    void get_cursor_relative_hold_position(float& xpos, float& ypos);
+    void set_title                        (const std::string& title);
+    void set_visible                      (bool visible);
+    void set_cursor                       (Mouse_cursor cursor);
+    void set_cursor_relative_hold         (bool relative_hold_enabled);
+    void set_text_input_area              (int x, int y, int w, int h);
+    void start_text_input                 ();
+    void stop_text_input                  ();
+    void handle_key_event                 (int64_t timestamp, int key, int scancode, bool pressed, int modifiers);
+    void handle_text_event                (int64_t timestamp, const char* utf8_text);
+    void handle_mouse_button_event        (int64_t timestamp, int button, bool pressed);
+    void handle_mouse_wheel_event         (int64_t timestamp, float x, float y);
+    void handle_mouse_move                (int64_t timestamp, float x, float y, float dx, float dy);
+    void handle_controller_axis_event     (int64_t timestamp, int device, int axis, int value);
+    void handle_controller_button_event   (int64_t timestamp, int device, int button, bool pressed);
+    void handle_window_resize_event       (int64_t timestamp, int width, int height);
+    void handle_window_scale_event        (int64_t timestamp);
+    void handle_window_refresh_event      (int64_t timestamp);
+    void handle_window_close_event        (int64_t timestamp);
+    void handle_window_focus_event        (int64_t timestamp, bool focused);
+    void handle_cursor_enter_event        (int64_t timestamp, bool entered);
+
+    void set_input_event_synthesizer_callback(std::function<void(Context_window& context_window)> callback);
+    void inject_input_event                  (const Input_event& event);
+
+    [[nodiscard]] auto get_modifier_mask () const -> Key_modifier_mask;
+    [[nodiscard]] auto get_device_pointer() const -> void*; // This would be an ID3D11Device, HGLRC/GLXContext, ID3D12Device, etc
+    [[nodiscard]] auto get_window_handle () const -> void*; // This would be an HWND, GLXDrawable, etc
+    [[nodiscard]] auto get_scale_factor  () const -> float;
+    [[nodiscard]] auto get_pixel_density () const -> float;
+
+#if defined(ERHE_OS_WINDOWS)
+    [[nodiscard]] auto get_hwnd() const -> HWND;
+    [[nodiscard]] auto get_hglrc() const -> HGLRC;
+#endif
+#if defined(ERHE_OS_LINUX)
+    [[nodiscard]] auto get_wl_display() const -> struct wl_display*;
+#endif
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    [[nodiscard]] auto get_required_vulkan_instance_extensions() -> const std::vector<std::string>&;
+    [[nodiscard]] auto create_vulkan_surface(void* vulkan_instance) -> void*;
+    [[nodiscard]] auto has_vulkan_surface() const -> bool;
+#endif
+
+    [[nodiscard]] auto sdl_event_filter(void* event) -> bool;
+
+    // Lifecycle state set from the SDL event-watch thread on Android
+    // (suspend/resume, render-device-reset). Read by the main render loop.
+    [[nodiscard]] auto is_paused              () const -> bool;
+    [[nodiscard]] auto consume_swapchain_dirty() -> bool;
+
+    // Window activity state, queried from SDL_GetWindowFlags() each call so it
+    // is always authoritative and self-healing (no event bookkeeping). Used by
+    // the main loop to render at a reduced frequency when the window is idle.
+    [[nodiscard]] auto is_focused   () const -> bool; // has keyboard input focus
+    [[nodiscard]] auto is_minimized () const -> bool;
+    [[nodiscard]] auto is_occluded  () const -> bool; // fully covered by other windows
+    [[nodiscard]] auto is_hidden    () const -> bool;
+    [[nodiscard]] auto is_visible   () const -> bool; // !minimized && !occluded && !hidden
+    [[nodiscard]] auto is_fullscreen() const -> bool;
+    // OS session (desktop) locked - presents cannot reach the display while
+    // locked, so the main loop pauses presentation deliberately instead of
+    // reacting to present errors. Windows: throttled WTSQuerySessionInformation
+    // poll (authoritative and self-healing like the SDL_GetWindowFlags queries
+    // above, and covers launching while already locked, which
+    // WM_WTSSESSION_CHANGE bookkeeping would miss). Other platforms: false.
+    [[nodiscard]] auto is_session_locked() const -> bool;
+    // Current display mode refresh rate in Hz for the display the window is
+    // on; 0.0 when unknown. Fallback refresh source for frame pacing tier S
+    // (P4.2), where present timing (and its refreshDuration query) is off.
+    [[nodiscard]] auto get_display_refresh_rate() const -> float;
+
+private:
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    void get_extensions();
+#endif
+
+    // Dispatch a single SDL_Event (passed as void* to keep SDL out of this
+    // public header). Shared by the timed-wait and poll paths in poll_events().
+    void handle_sdl_event(void* sdl_event);
+
+    struct Joystick_info
+    {
+        std::vector<float>     axis_values;
+        std::vector<bool>      button_values;
+    };
+
+    void*                      m_sdl_window                    {nullptr};
+    void*                      m_sdl_gl_context                {nullptr};
+    Mouse_cursor               m_current_mouse_cursor          {Mouse_cursor_Arrow};
+    void*                      m_mouse_cursors[Mouse_cursor_COUNT]{}; // SDL_Cursor*, created for the primary window
+    bool                       m_is_mouse_relative_hold_enabled{false};
+    bool                       m_is_window_visible             {false};
+    bool                       m_mouse_inside_window           {false};
+    bool                       m_use_raw_mouse                 {false};
+    Window_configuration       m_configuration;
+    float                      m_pixel_density             {1.0f};
+    float                      m_last_mouse_x             {0.0f};
+    float                      m_last_mouse_y             {0.0f};
+    float                      m_mouse_relative_hold_xpos{0.0f};
+    float                      m_mouse_relative_hold_ypos{0.0f};
+    float                      m_mouse_virtual_xpos      {0.0f};
+    float                      m_mouse_virtual_ypos      {0.0f};
+    unsigned int               m_key_modifiers{0};
+    std::atomic<bool>          m_joystick_scan_done{false};
+    std::vector<Joystick_info> m_joystick_info;
+    int                        m_input_event_queue_write{0};
+    std::vector<Input_event>   m_input_events[2];
+    std::thread                m_joystick_scan_task;
+    std::function<void(Context_window& context_window)> m_input_event_synthesizer_callback;
+    std::function<void()>      m_redraw_callback;
+
+    // Set by sdl_event_filter from the watch thread; read on the main
+    // thread between frames. Atomic primitives only, not lock-free
+    // structures, so this stays within the project's mutex-only rule.
+    std::atomic<bool>          m_paused           {false};
+    std::atomic<bool>          m_swapchain_dirty  {false};
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    SDL_FunctionPointer m_NV_delay_before_swap{nullptr};
+#endif
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    std::vector<std::string> m_required_instance_extensions;
+#endif
+
+    static int s_window_count;
+};
+
+} // namespace erhe::window

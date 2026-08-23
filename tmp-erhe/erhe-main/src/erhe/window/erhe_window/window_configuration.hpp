@@ -1,0 +1,53 @@
+#pragma once
+
+#include <glm/glm.hpp>
+
+#include <string>
+
+namespace erhe::window {
+
+class Context_window;
+
+class Window_configuration
+{
+public:
+    int             color_bit_depth         {8};
+    bool            use_depth               {false};
+    bool            use_stencil             {false};
+    int             msaa_sample_count       {0};
+    int             swap_interval           {1};
+
+    bool            show                    {true};
+    bool            fullscreen              {false};
+    // Request exclusive fullscreen (Windows Vulkan,
+    // VK_EXT_full_screen_exclusive, application controlled). Only
+    // meaningful when fullscreen is also true; consumers must ignore it
+    // otherwise. Falls back to normal (borderless) fullscreen when the
+    // extension is unavailable.
+    bool            exclusive_fullscreen    {false};
+    // Requested display refresh rate in Hz for fullscreen (0 = keep the
+    // desktop default). The closest available fullscreen mode at the
+    // desktop resolution is selected; only meaningful when fullscreen is
+    // true.
+    float           refreshrate             {0.0f};
+    bool            framebuffer_transparency{false};
+    bool            high_pixel_density      {false};
+    bool            enable_joystick         {true};
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    bool            use_finish              {false};
+    int             gl_major                {4};
+# if defined(ERHE_OS_MACOS)
+    int             gl_minor                {1};
+# else
+    int             gl_minor                {6};
+# endif
+    Context_window* share                   {nullptr};
+#endif
+    glm::ivec2      size                    {1920, 1080};
+    std::string     title                   {};
+    int             initial_clear           {3};
+    bool            initialize_frame_capture{false};
+    std::string     renderdoc_library_path_override{};
+};
+
+} // namespace erhe::window

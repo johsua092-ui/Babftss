@@ -1,0 +1,62 @@
+#pragma once
+
+#include "erhe_scene_renderer/camera_buffer.hpp"
+#include "erhe_scene_renderer/light_buffer.hpp"
+#include "erhe_scene_renderer/primitive_buffer.hpp"
+
+#include "erhe_graphics/render_pipeline.hpp"
+
+namespace erhe::graphics {
+    class Command_buffer;
+    class Device;
+    class Render_command_encoder;
+    class Render_pass;
+    class Shader_stages;
+}
+namespace erhe::scene { class Camera; }
+namespace erhe::math  { class Viewport; }
+
+namespace erhe::scene_renderer {
+
+class Program_interface;
+class Light_projections;
+
+class Texel_renderer
+{
+public:
+    Texel_renderer(
+        erhe::graphics::Device&         graphics_device,
+        erhe::graphics::Command_buffer& init_command_buffer,
+        Program_interface&              program_interface
+    );
+    // Defined out-of-line in the .cpp so the std::unique_ptr<Texture_heap>
+    // member is destroyed where Texture_heap is a complete type (it is only
+    // forward-declared here).
+    ~Texel_renderer();
+
+    // Public API
+    class Render_parameters
+    {
+    public:
+        erhe::graphics::Render_command_encoder&                     render_encoder;
+        const erhe::graphics::Shader_stages*                        shader_stages    {nullptr};
+        const erhe::graphics::Render_pass&                          render_pass;
+        const erhe::scene::Camera*                                  camera           {nullptr};
+        const Light_projections*                                    light_projections{nullptr};
+        erhe::math::Viewport                                        viewport;
+    };
+
+    void render(const Render_parameters& parameters);
+
+private:
+    erhe::graphics::Device&                       m_graphics_device;
+    Program_interface&                            m_program_interface;
+    erhe::graphics::Base_render_pipeline          m_pipeline;
+    Camera_buffer                                 m_camera_buffer;
+    Light_buffer                                  m_light_buffer;
+    erhe::graphics::Sampler                       m_fallback_sampler;
+    std::shared_ptr<erhe::graphics::Texture>      m_dummy_texture;
+    std::unique_ptr<erhe::graphics::Texture_heap> m_texture_heap;
+};
+
+} // erhe::scene_renderer

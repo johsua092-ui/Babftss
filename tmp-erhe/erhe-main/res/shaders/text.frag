@@ -1,0 +1,35 @@
+layout(location = 0) in vec2 v_texcoord;
+layout(location = 1) in vec4 v_color;
+
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
+layout(location = 2) flat in uvec2 v_texture;
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+layout(location = 2) flat in uint v_texture_index;
+#endif
+
+// layout(location =  3) flat in uint  v_vertex_id;
+// layout(location =  4) flat in uint  v_glyph_index;
+// layout(location =  5) flat in uint  v_quad_corner;
+// layout(location =  6) flat in uint  v_vertex_index;
+// layout(location =  7) flat in uvec4 v_data;
+// layout(location =  8) flat in int   v_x;
+// layout(location =  9) flat in int   v_y;
+// layout(location = 10) flat in vec2  v_zw;
+
+void main(void)
+{
+#if defined(ERHE_TEXTURE_HEAP_OPENGL_BINDLESS)
+    sampler2D s_texture = sampler2D(v_texture);
+    vec2  c       = texture(s_texture, v_texcoord).rg;
+#elif defined(ERHE_TEXTURE_HEAP_VULKAN_DESCRIPTOR_INDEXING)
+    vec2  c       = texture(erhe_texture_heap[v_texture_index], v_texcoord).rg;
+#else
+    vec2  c       = texture(s_texture, v_texcoord).rg;
+#endif
+    float inside  = c.r;
+    float outline = c.g;
+    float alpha   = max(inside, outline);
+    vec3  color   = v_color.a * v_color.rgb * inside;
+
+    out_color = vec4(color, v_color.a * alpha);
+}

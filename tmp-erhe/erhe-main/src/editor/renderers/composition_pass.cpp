@@ -1,0 +1,476 @@
+#include "renderers/composition_pass.hpp"
+
+#include "app_context.hpp"
+#include "app_rendering.hpp"
+#include "app_settings.hpp"
+#include "config/generated/editor_settings_config.hpp"
+#include "content_library/content_library.hpp"
+#include "editor_log.hpp"
+#include "erhe_scene_renderer/content_wide_line_renderer.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "renderers/programs.hpp"
+#include "renderers/render_context.hpp"
+#include "renderers/render_style.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/scene_view.hpp"
+#include "time.hpp"
+
+#include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_verify/verify.hpp"
+#include "erhe_imgui/windows/pipelines.hpp"
+#include "erhe_item/item.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_scene/camera.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene_renderer/draw_list_scene.hpp"
+#include "erhe_scene_renderer/forward_renderer.hpp"
+
+#include <imgui/imgui.h>
+
+#include <chrono>
+
+namespace editor {
+
+Composition_pass::Composition_pass(const Composition_pass&)            = default;
+Composition_pass& Composition_pass::operator=(const Composition_pass&) = default;
+Composition_pass::~Composition_pass() noexcept                         = default;
+
+Composition_pass::Composition_pass(const std::string_view name)
+    : Item{name}
+{
+}
+
+auto mix(float x, float y, float a) -> float
+{
+    return x * (1.0f - a) + y * a;
+}
+
+auto triangle_wave(float t, float p) -> float
+{
+    return 2.0f * std::abs(2.0f * (t / p - std::floor(t / p + 0.5f))) - 1.0f;
+}
+
+auto c_str(const Composition_pass_result result) -> const char*
+{
+    switch (result) {
+        case Composition_pass_result::never_rendered:          return "never_rendered";
+        case Composition_pass_result::disabled:                return "disabled";
+        case Composition_pass_result::is_enabled_false:        return "is_enabled_false";
+        case Composition_pass_result::no_scene_root:           return "no_scene_root";
+        case Composition_pass_result::primitive_mode_disabled: return "primitive_mode_disabled";
+        case Composition_pass_result::no_mesh_layers:          return "no_mesh_layers";
+        case Composition_pass_result::submitted:               return "submitted";
+        case Composition_pass_result::submitted_draw_lists:    return "submitted_draw_lists";
+        default:                                               return "?";
+    }
+}
+
+void Composition_pass::render(const Render_context& context)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // CPU timing of the whole render() (P4 measurement); the scope guard
+    // records on every return path.
+    class Cpu_timer_scope
+    {
+    public:
+        explicit Cpu_timer_scope(Composition_pass& pass)
+            : m_pass {pass}
+            , m_start{std::chrono::steady_clock::now()}
+        {
+        }
+        ~Cpu_timer_scope() noexcept
+        {
+            const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+            const double us = std::chrono::duration<double, std::micro>(end - m_start).count();
+            m_pass.m_last_cpu_time_us   = us;
+            m_pass.m_total_cpu_time_us += us;
+            ++m_pass.m_render_call_count;
+        }
+    private:
+        Composition_pass&                     m_pass;
+        std::chrono::steady_clock::time_point m_start;
+    };
+    const Cpu_timer_scope cpu_timer_scope{*this};
+
+    m_last_scene_view_name       = context.scene_view.get_settings_key();
+    m_last_mesh_count            = 0;
+    m_last_draw_list_entry_count = 0;
+
+    if (!data.enabled) {
+        m_last_result = Composition_pass_result::disabled;
+        return;
+    }
+
+    // Render-time activation predicate (e.g. the selection stencil-mask pass is
+    // active only when selection polygon fill is disabled).
+    if (data.is_enabled && !data.is_enabled(context)) {
+        m_last_result = Composition_pass_result::is_enabled_false;
+        return;
+    }
+
+    // NOTE This overrides settings in App_rendering::App_rendering()
+    // TODO This is a bit hacky, route this better.
+    if (context.app_context.app_rendering->selection_outline) {
+        // Selection outline appearance is editor-global (Selection_outline_style),
+        // shared by all scene views; edited in the Settings window.
+        const Selection_outline_style& outline = context.app_context.editor_settings->selection_outline;
+        const int64_t t0_ns  = context.app_context.time->get_host_system_time_ns();
+        const double  t0     = static_cast<double>(t0_ns) / 1'000'000'000.0;
+        const float   period = 1.0f / outline.selection_highlight_frequency;
+        const float   t1     = static_cast<float>(::fmod(t0, period));
+        const float   t2     = static_cast<float>(0.5f + triangle_wave(t1, period) * 0.5f);
+        context.app_context.app_rendering->selection_outline->data.primitive_settings = erhe::scene_renderer::Primitive_interface_settings{
+            .color_source    = erhe::scene_renderer::Primitive_color_source::constant_color,
+            .constant_color0 = glm::mix(
+                outline.selection_highlight_low,
+                outline.selection_highlight_high,
+                t2
+            ),
+            .constant_color1 = glm::vec4{0.2f, 0.5, 1.0f, 1.0f},
+            .size_source     = erhe::scene_renderer::Primitive_size_source::constant_size,
+            .constant_size   = mix(
+                outline.selection_highlight_width_low,
+                outline.selection_highlight_width_high,
+                t2
+            )
+        };
+    }
+
+    const auto scene_root = data.override_scene_root 
+        ? data.override_scene_root 
+        : context.scene_view.get_scene_root();
+    if (!scene_root) {
+        log_composer->error("Missing scene root - cannot render");
+        m_last_result = Composition_pass_result::no_scene_root;
+        return;
+    }
+
+    const Render_style_data* render_style = data.get_render_style
+        ? &data.get_render_style(context)
+        : nullptr;
+
+    const auto& material_library = scene_root->get_content_library()->materials;
+
+    // TODO: Keep this vector in content library and update when needed.
+    //       Make content library item host for content library nodes.
+    const std::vector<std::shared_ptr<erhe::primitive::Material>>& materials = material_library->get_all<erhe::primitive::Material>();
+
+    using namespace erhe::primitive;
+
+    if (
+        (render_style != nullptr) &&
+        !is_primitive_mode_enabled(*render_style, data.primitive_mode)
+    ) {
+        // log_composer->trace("primitive mode is not enabled - skipping");
+        m_last_result = Composition_pass_result::primitive_mode_disabled;
+        return;
+    }
+
+    //if (render_style.polygon_offset_enable) {
+    //    gl::enable(gl::Enable_cap::polygon_offset_fill);
+    //    gl::polygon_offset_clamp(render_style.polygon_offset_factor,
+    //                             render_style.polygon_offset_units,
+    //                             render_style.polygon_offset_clamp);
+    //}
+
+    //if (context.override_shader_stages != nullptr) {
+    //    renderpass.pipeline.data.shader_stages = context.override_shader_stages;
+    //}
+
+    // Tool / rendertarget overlay passes ignore camera exposure (issue #230).
+    const float exposure = (!data.ignore_exposure && (context.camera != nullptr))
+        ? context.camera->get_exposure()
+        : 1.0f;
+
+    if (data.mesh_layers.empty()) {
+        // log_composer->debug("render_fullscreen");
+        context.app_context.forward_renderer->draw_primitives(
+            erhe::scene_renderer::Forward_renderer::Primitive_render_parameters{
+                .base = erhe::scene_renderer::Forward_renderer::Base_render_parameters{
+                    .render_encoder    = *context.encoder,
+                    .render_pass       = context.render_pass,
+                    .viewport          = context.viewport,
+                    .views             = context.views,
+                    .exposure          = exposure,
+                    .light_projections = nullptr,
+                    .skins             = {},
+                    .materials         = {},
+                    .shader_key_boolean_mask_force_enable  = data.shader_key_force_enable_mask,
+                    .shader_key_boolean_mask_force_disable = data.shader_key_force_disable_mask,
+                    .reverse_depth     = context.scene_view.get_reverse_depth(),
+                    .depth_range       = context.scene_view.get_depth_range(),
+                    .conventions       = context.scene_view.get_conventions(),
+                    .grid_parameters   = data.grid_parameters,
+                    .sky_parameters    = data.sky_parameters,
+                    .debug_label       = get_debug_label().string_view()
+                },
+                .vertex_count         = data.non_mesh_vertex_count,
+                .base_render_pipeline = *data.base_render_pipelines.front(), // TODO
+                //.primitive_mode         = this->primitive_mode,
+                //.primitive_settings     = 
+                //    primitive_settings.has_value()
+                //        ? primitive_settings.value()
+                //        : (render_style != nullptr)
+                //            ? get_primitive_settings(*render_style, this->primitive_mode)
+                //            : erhe::scene_renderer::Primitive_interface_settings{},
+                .shader_stages = data.shader_stages
+            },
+            nullptr
+        );
+    } else {
+        erhe::scene::Scene* scene = scene_root->get_hosted_scene();
+        m_mesh_spans.clear();
+        for (const auto id : data.mesh_layers) {
+            const auto mesh_layer = scene->get_mesh_layer_by_id(id);
+            if (mesh_layer) {
+                m_mesh_spans.push_back(mesh_layer->meshes);
+                // log_composer->trace("adding mesh layer {} with {} meshes", mesh_layer->name, mesh_layer->meshes.size());
+            } else {
+                log_composer->warn("mesh layer not found for id {}", id);
+            }
+        }
+        if (m_mesh_spans.empty()) {
+            m_last_result = Composition_pass_result::no_mesh_layers;
+            return;
+        }
+        for (const auto& span : m_mesh_spans) {
+            m_last_mesh_count += span.size();
+        }
+
+        // log_composer->trace("calling render with {} render pipelines", data.base_render_pipelines.size());
+
+        // Edge-line composition passes go through Content_wide_line_renderer
+        // (both the compute backend on devices with compute shaders and the
+        // geometry-shader backend without). Meshes were already added and
+        // any compute pre-pass dispatched in viewport_scene_view.cpp /
+        // headset_view.cpp before the render pass began.
+        erhe::scene_renderer::Content_wide_line_renderer* content_wide_line_renderer = context.app_context.content_wide_line_renderer;
+        if (
+            (data.primitive_mode == erhe::primitive::Primitive_mode::edge_lines) &&
+            (content_wide_line_renderer != nullptr) &&
+            content_wide_line_renderer->is_enabled()
+        ) {
+            ERHE_VERIFY(context.render_pass != nullptr);
+            const bool multiview = (context.views.size() >= 2);
+            for (auto* base_render_pipeline : data.base_render_pipelines) {
+                content_wide_line_renderer->render(
+                    *context.encoder,
+                    *base_render_pipeline,
+                    &erhe::graphics::Color_blend_state::color_blend_premultiplied, // TODO configurable?
+                    data.content_wide_line_group,
+                    multiview
+                );
+            }
+        } else {
+            // ID-buffer edge-line method: when active (Viewport_scene_view set
+            // the face-ID buffer on the context) and this is a capable lit
+            // content fill pass, force-enable the EDGE_LINES_FROM_ID variant, hand
+            // the fill the face-ID buffer + the matching per-primitive base
+            // provider, and source the edge-line color from this pass's appearance
+            // (edge_lines mode), so the selected / not-selected split colors fall
+            // out of the separate fill passes.
+            const bool apply_edge_id = (context.edge_id_texture != nullptr) && data.edge_lines_from_id_capable;
+
+            uint32_t force_enable_mask = data.shader_key_force_enable_mask;
+            erhe::scene_renderer::Primitive_interface_settings primitive_settings =
+                data.primitive_settings.has_value()
+                    ? data.primitive_settings.value()
+                    : data.get_appearance
+                        ? get_primitive_settings(data.get_appearance(context), data.primitive_mode)
+                        : erhe::scene_renderer::Primitive_interface_settings{};
+            const erhe::graphics::Texture* edge_id_texture = nullptr;
+            glm::vec4                      edge_line_color {0.0f, 0.0f, 0.0f, 1.0f};
+            float                          edge_line_width {1.0f};
+            if (apply_edge_id) {
+                force_enable_mask |= erhe::scene_renderer::make_shader_bool_mask(erhe::scene_renderer::Shader_bool::EDGE_LINES_FROM_ID);
+                primitive_settings.face_id_base_provider = context.face_id_base_provider;
+                edge_id_texture = context.edge_id_texture;
+                if (data.get_appearance) {
+                    edge_line_color = get_primitive_settings(data.get_appearance(context), erhe::primitive::Primitive_mode::edge_lines).constant_color0;
+                }
+            }
+            // Corner-cap overlay pass: source the cap's edge-line color AND width
+            // from the edge_lines appearance (matching the wide-line ribbon) and
+            // forward both to the camera UBO. No face-ID texture is involved.
+            if (data.edge_lines_corner_cap && data.get_appearance) {
+                const erhe::scene_renderer::Primitive_interface_settings edge_settings =
+                    get_primitive_settings(data.get_appearance(context), erhe::primitive::Primitive_mode::edge_lines);
+                edge_line_color = edge_settings.constant_color0;
+                edge_line_width = edge_settings.constant_size;
+            }
+
+            // Weight_display's active joint for the joint_weight_ramp debug
+            // mode. Locked into a local so the node outlives the render call
+            // below, which takes it as a raw pointer.
+            const std::shared_ptr<erhe::scene::Node> debug_target_joint =
+                context.app_context.app_rendering->debug_target_joint.lock();
+
+            // Draw-list path (doc/draw_list_renderer_requirements.md, plan
+            // phase 3/5): route to the scene's persistent draw lists when the
+            // gate is on and this pass is fully expressible with them -
+            // polygon fill, no shader debug, no shader / blend overrides, no
+            // forced shader bits (the ID-buffer edge method forces
+            // EDGE_LINES_FROM_ID -> fallback while active, Q9), and a plain
+            // opaque / translucent / allow_all blending policy. Everything
+            // else stays on Forward_renderer::render().
+            erhe::scene_renderer::Draw_list_scene* draw_list_scene = scene_root->get_draw_list_scene();
+            const erhe::scene_renderer::Shader_debug effective_shader_debug = data.shader_debug_override.has_value()
+                ? data.shader_debug_override.value()
+                : context.shader_debug;
+            const bool draw_lists_eligible =
+                (context.app_context.editor_settings != nullptr) &&
+                context.app_context.editor_settings->use_draw_lists &&
+                (draw_list_scene != nullptr) &&
+                (data.primitive_mode == erhe::primitive::Primitive_mode::polygon_fill) &&
+                (effective_shader_debug == erhe::scene_renderer::Shader_debug::none) &&
+                (data.shader_stages == nullptr) &&
+                (data.color_blend_override == nullptr) &&
+                (force_enable_mask == 0u) &&
+                (data.shader_key_force_disable_mask == 0u) &&
+                !apply_edge_id &&
+                (
+                    (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::opaque_primitives_only) ||
+                    (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::translucent_primitives_only) ||
+                    (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::allow_all)
+                );
+            if (draw_lists_eligible) {
+                const erhe::scene_renderer::Draw_blending_selection blending =
+                    (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::opaque_primitives_only     ) ? erhe::scene_renderer::Draw_blending_selection::opaque_only :
+                    (data.blending_mode_policy == erhe::scene_renderer::Blending_mode_policy::translucent_primitives_only) ? erhe::scene_renderer::Draw_blending_selection::translucent_only :
+                                                                                                                             erhe::scene_renderer::Draw_blending_selection::both;
+                const erhe::scene_renderer::Draw_statistics statistics = context.app_context.forward_renderer->render_draw_lists(
+                    erhe::scene_renderer::Forward_renderer::Draw_list_render_parameters{
+                        .base = erhe::scene_renderer::Forward_renderer::Base_render_parameters{
+                            .render_encoder    = *context.encoder,
+                            .render_pass       = context.render_pass,
+                            .viewport          = context.viewport,
+                            .views             = context.views,
+                            .exposure          = exposure,
+                            .ambient_light     = glm::vec3{scene->ambient_light},
+                            .light_projections = context.scene_view.get_light_projections(),
+                            .skins             = scene->get_skins(),
+                            .materials         = materials,
+                            .shader_key_boolean_mask_force_enable  = 0u,
+                            .shader_key_boolean_mask_force_disable = 0u,
+                            .reverse_depth     = context.scene_view.get_reverse_depth(),
+                            .depth_range       = context.scene_view.get_depth_range(),
+                            .conventions       = context.scene_view.get_conventions(),
+                            .edge_id_texture   = nullptr,
+                            .edge_line_color   = edge_line_color,
+                            .edge_line_width   = edge_line_width,
+                            .debug_label       = get_name(),
+                        },
+                        .draw_list_scene       = *draw_list_scene,
+                        .base_render_pipelines = data.base_render_pipelines,
+                        .layers                = data.mesh_layers,
+                        .blending              = blending,
+                        .primitive_settings    = primitive_settings,
+                        .filter                = data.filter,
+                        .shadow_filter         = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_filter),
+                        .shadow_bias           = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_bias),
+                        .shadow_technique      = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_technique),
+                        .shadow_depth_bits     = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_depth_bits),
+                        .debug_joint_indices   = context.app_context.app_rendering->debug_joint_indices,
+                        .debug_joint_colors    = context.app_context.app_rendering->debug_joint_colors,
+                        .debug_target_joint    = debug_target_joint.get(),
+                        .color_blend_override  = nullptr,
+                    }
+                );
+                m_last_draw_list_entry_count = statistics.entry_count;
+                m_last_result = Composition_pass_result::submitted_draw_lists;
+                return;
+            }
+
+            // log_draw->trace("Render pass {} filter = {}", get_name(), filter.describe());
+            context.app_context.forward_renderer->render(
+                erhe::scene_renderer::Forward_renderer::Render_parameters{
+                    .base = erhe::scene_renderer::Forward_renderer::Base_render_parameters{
+                        .render_encoder    = *context.encoder,
+                        .render_pass       = context.render_pass,
+                        .viewport          = context.viewport,
+                        .views             = context.views,
+                        .exposure          = exposure,
+                        .ambient_light     = glm::vec3{scene->ambient_light},
+                        .light_projections = context.scene_view.get_light_projections(),
+                        .skins             = scene->get_skins(),
+                        .materials         = materials,
+                        .shader_key_boolean_mask_force_enable  = force_enable_mask,
+                        .shader_key_boolean_mask_force_disable = data.shader_key_force_disable_mask,
+                        .reverse_depth     = context.scene_view.get_reverse_depth(),
+                        .depth_range       = context.scene_view.get_depth_range(),
+                        .conventions       = context.scene_view.get_conventions(),
+                        .edge_id_texture   = edge_id_texture,
+                        .edge_line_color   = edge_line_color,
+                        .edge_line_width   = edge_line_width,
+                        .debug_label       = get_name(),
+                    },
+                    .mesh_spans             = m_mesh_spans,
+                    .base_render_pipelines  = data.base_render_pipelines,
+                    .blending_mode_policy   = data.blending_mode_policy,
+                    .primitive_mode         = data.primitive_mode,
+                    .primitive_settings     = primitive_settings,
+                    .filter                 = data.filter,
+                    .shader_debug           = data.shader_debug_override.has_value()
+                        ? data.shader_debug_override.value()
+                        : context.shader_debug,
+                    // Shader Debug override visualization applies to content meshes only; brush,
+                    // tool, controller and rendertarget meshes (no content flag) render normally.
+                    // A pass that forces its own variant supplies its own filter instead.
+                    .shader_debug_filter    = data.shader_debug_override.has_value()
+                        ? data.shader_debug_override_filter
+                        : erhe::Item_filter{ .require_all_bits_set = erhe::Item_flags::content },
+                    .shadow_filter          = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_filter),
+                    .shadow_bias            = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_bias),
+                    .shadow_technique       = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_technique),
+                    .shadow_depth_bits      = static_cast<uint32_t>(context.app_context.app_settings->graphics.current_graphics_preset.shadow_depth_bits),
+                    .debug_joint_indices    = context.app_context.app_rendering->debug_joint_indices,
+                    .debug_joint_colors     = context.app_context.app_rendering->debug_joint_colors,
+                    .debug_target_joint     = debug_target_joint.get(),
+                    .shader_stages_override = data.shader_stages,
+                    .color_blend_override   = data.color_blend_override,
+                }
+            );
+        }
+    }
+
+    m_last_result = Composition_pass_result::submitted;
+}
+
+void Composition_pass::imgui()
+{
+    ImGui::Checkbox("Enabled", &data.enabled);
+    if (ImGui::TreeNodeEx("Pipeline passes", ImGuiTreeNodeFlags_Framed)) {
+        int pipeline_pass_index = 0;
+        for (erhe::graphics::Base_render_pipeline* base_render_pipeline : data.base_render_pipelines) {
+            ImGui::PushID(pipeline_pass_index++);
+            erhe::imgui::pipeline_imgui(*base_render_pipeline);
+            ImGui::PopID();
+        }
+        ImGui::TreePop();
+    }   
+    ImGui::Text("Primitive Mode: %s", erhe::primitive::c_str(data.primitive_mode));
+
+    if (ImGui::TreeNodeEx("Filter", ImGuiTreeNodeFlags_Framed)) {
+        std::string require_all_bits_set           = erhe::Item_flags::to_string(data.filter.require_all_bits_set          );
+        std::string require_at_least_one_bit_set   = erhe::Item_flags::to_string(data.filter.require_at_least_one_bit_set  );
+        std::string require_all_bits_clear         = erhe::Item_flags::to_string(data.filter.require_all_bits_clear        );
+        std::string require_at_least_one_bit_clear = erhe::Item_flags::to_string(data.filter.require_at_least_one_bit_clear);
+        ImGui::Text("require_all_bits_set = %s",           require_all_bits_set.c_str());
+        ImGui::Text("require_at_least_one_bit_set = %s",   require_at_least_one_bit_set.c_str());
+        ImGui::Text("require_all_bits_clear = %s",         require_all_bits_clear.c_str());
+        ImGui::Text("require_at_least_one_bit_clear = %s", require_at_least_one_bit_clear.c_str());
+        ImGui::TreePop();
+    }
+    ImGui::Text("Primitive Mode: %s", erhe::primitive::c_str(data.primitive_mode));
+
+    //ImGui::Checkbox("Allow shader stages override", &allow_shader_stages_override);
+    //if (primitive_settings.has_value()) {
+    //    //static void render_style_ui(Render_style_data& render_style);
+    //}
+}
+
+}

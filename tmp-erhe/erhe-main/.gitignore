@@ -1,0 +1,99 @@
+# Ignore local AI agent state (settings, sessions, plans, ...) but
+# track project-scoped skills and commands so the team gets them with the repo.
+.agents/*
+!.agents/skills/
+!.agents/commands/
+# Keep legacy client-local state private too.
+.claude/*
+claude.sh
+.idea/*
+!.idea/runConfigurations
+!.idea/runConfigurations/**
+.vs
+.vscode/compile_commands.json
+.clangd
+.mcp.json
+.lsai/
+build_ninja_win_vulkan
+build_ninja_win_vulkan_release
+build_ninja_win_clang
+erhe_cmake_profiling.json
+**/__pycache__/
+*.pyc
+*.pyo
+src/editor/user.ini
+src/editor/erhe_init_graph.dot
+src/editor/cache/bvh/*
+src/editor/cache/tinybvh/*
+src/editor/windows/IconsMaterialDesignIcons.h
+src/editor/res/fonts/materialdesignicons-webfont.ttf
+src/editor/res/fonts/materialdesignicons.css
+!src/editor/cache/bvh/keep
+!src/editor/cache/tinybvh/keep
+build
+build_ninja
+build_ninja_linux
+build_ninja_linux_vulkan
+build_ninja_osx
+build_ninja_windows
+build_vs2022_opengl
+build_vs2026_opengl
+build_vs2026_opengl_no_tracy
+build_vs2026_opengl_asan
+build_vs2026_vulkan
+build_vs2026_vulkan_asan
+build_vs2026_vulkan_headless
+build_vs2026_vulkan_headless_asan
+build_test_geometry
+build_android_soak
+build_test_raytrace_bvh
+build_test_raytrace_embree
+build_test_raytrace_none
+build_test_raytrace_tinybvh
+build_vs2026_headless
+build_tests_asan
+build_tests
+build_opengl
+build_xcode_metal
+build_xcode_metal_asan
+build_xcode_opengl
+build_xcode_opengl_asan
+build_xcode_vulkan
+build_xcode_vulkan_minimal
+build_xcode_vulkan_asan
+cmake-build-*
+vscode-cmake-*
+logs/*
+cache/*
+spirv_cache/*
+log.txt
+releases
+erhe_cmake_dependencies.dot*
+.cpm_cache
+CMakeUserPresets.json
+
+# Per-executable runtime artifacts
+src/editor/logs/
+src/editor/spirv_cache/
+src/example/logs/
+src/example/spirv_cache/
+src/hextiles/logs/
+src/hextiles/spirv_cache/
+src/rendering_test/logs/
+src/rendering_test/spirv_cache/
+
+# Android (Gradle + CMake externalNativeBuild) artifacts
+android-project/.gradle/
+android-project/build/
+android-project/app/build/
+android-project/app/.cxx/
+# Validation layer .so fetched by `-Pvulkan_validation=1` build (see app/build.gradle).
+android-project/app/libs/
+android-project/local.properties
+
+# ImGui window layout state; the default layout is built procedurally
+# (src/editor/editor_default_layout.cpp) when this file is absent.
+config/editor/desktop_window_imgui_host_imgui.ini
+
+# Per-machine memory bank state (see memory-bank/README.md Machine-Scope Rule)
+memory-bank/local/

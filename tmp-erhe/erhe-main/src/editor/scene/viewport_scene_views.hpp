@@ -1,0 +1,210 @@
+#pragma once
+
+#include "erhe_rendergraph/rendergraph_node.hpp"
+#include "erhe_commands/command.hpp"
+#include "app_message.hpp"
+#include "erhe_message_bus/message_bus.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_scene/camera.hpp"
+
+#include <memory>
+#include <mutex>
+
+namespace erhe::imgui {
+    class Imgui_host;
+    class Imgui_windows;
+    class Imgui_renderer;
+}
+namespace erhe::scene_renderer {
+    class Shadow_renderer;
+}
+
+struct Viewport_config_data;
+
+struct Graphics_preset_entry;
+
+namespace editor {
+
+class App_context;
+class App_message_bus;
+class App_rendering;
+class App_settings;
+class Post_processing;
+class Post_processing_node;
+class Viewport_overlay_node;
+class Scene_root;
+class Scene_views;
+class Tools;
+class Viewport_config_window;
+class Viewport_scene_view;
+class Viewport_window;
+
+class Open_new_viewport_scene_view_command : public erhe::commands::Command
+{
+public:
+    Open_new_viewport_scene_view_command(erhe::commands::Commands& commands, App_context& context);
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+
+// Manages set of Viewport_scene_view instances
+//
+// All Viewport_scene_view instances should be created using Scene_views.
+// Keeps track of the Viewport_scene_view that is currently under pointer
+// (mouse cursor).
+class Scene_views : erhe::commands::Command_host
+{
+public:
+    Scene_views(const Viewport_config_data& viewport_config_data, erhe::commands::Commands& commands, App_context& context, App_message_bus& app_message_bus);
+    ~Scene_views() noexcept;
+
+    // Public API
+
+    [[nodiscard]] auto get_viewport_config_data() const -> const Viewport_config_data& { return m_viewport_config_data; }
+
+    auto create_viewport_scene_view(
+        const Viewport_config_data&                           viewport_config_data,
+        erhe::graphics::Device&                               graphics_device,
+        erhe::rendergraph::Rendergraph&                       rendergraph,
+        erhe::imgui::Imgui_windows&                           imgui_windows,
+        App_rendering&                                        app_rendering,
+        App_settings&                                         app_settings,
+        Post_processing&                                      post_processing,
+        Tools&                                                tools,
+        std::string_view                                      name,
+        const std::shared_ptr<Scene_root>&                    scene_root,
+        const std::shared_ptr<erhe::scene::Camera>&           camera,
+        int                                                   msaa_sample_count,
+        std::shared_ptr<erhe::rendergraph::Rendergraph_node>& out_rendergraph_output_node,
+        bool                                                  enable_post_processing = true
+    ) -> std::shared_ptr<Viewport_scene_view>;
+
+    // window_slot 0 picks the lowest free slot; a positive slot is used as
+    // given (callers restoring persisted windows pass the recorded slot).
+    auto create_viewport_window(
+        erhe::imgui::Imgui_renderer&                                imgui_renderer,
+        erhe::imgui::Imgui_windows&                                 imgui_windows,
+        const std::shared_ptr<Viewport_scene_view>&                 viewport_scene_view,
+        const std::shared_ptr<erhe::rendergraph::Rendergraph_node>& rendergraph_output_node,
+        std::string_view                                            name,
+        int                                                         window_slot = 0
+    ) -> std::shared_ptr<Viewport_window>;
+
+    // Recreate the viewport windows recorded open in the persisted window
+    // state (what was open when the previous run last saved), regardless of
+    // scene state: viewport windows exist independent of scenes, showing
+    // nothing until a scene binds into them (see
+    // try_repurpose_empty_viewport_window). Slots already in use (e.g. the
+    // startup script's scene created its viewport) are left alone.
+    void restore_persistent_viewport_windows();
+
+    // Unbind every viewport scene view showing the given scene (closing it):
+    // clears the scene root and the camera reference (which would otherwise
+    // keep the closed scene's content alive). The viewport windows stay open,
+    // now empty, and persist through the window-state save.
+    void unbind_views_from_scene(const std::shared_ptr<Scene_root>& scene_root);
+
+    // Issue #265 follow-up: opening a viewport for a scene first repurposes an
+    // existing viewport window that shows no scene (e.g. the always-present
+    // empty first viewport), binding the scene and camera to its live scene
+    // view instead of creating a new window. Returns the repurposed window,
+    // or null when every existing viewport already shows a scene. A null
+    // camera picks one the same way open_new_viewport_scene_view does (a
+    // selected camera in the scene, else the scene's first selectable one).
+    auto try_repurpose_empty_viewport_window(
+        const std::shared_ptr<Scene_root>&          scene_root,
+        const std::shared_ptr<erhe::scene::Camera>& camera = {}
+    ) -> std::shared_ptr<Viewport_window>;
+
+    void open_new_viewport_scene_view_node();
+    // Issue #252: open a new viewport window bound to a specific scene (the
+    // scene "Open Editor" entry), instead of cloning the current view.
+    void open_new_viewport_scene_view_node(const std::shared_ptr<Scene_root>& scene_root);
+
+    // Tear-down API for Scene_builder_viewport_resources_operation::undo.
+    // Removes the viewport (and its matching post_processing_node, if
+    // any) from the tracked collections; once the caller releases its
+    // own shared_ptr the destructors fire and the rendergraph nodes
+    // unregister themselves. destroy_viewport_scene_view also clears
+    // any cached hover / last references that still point at the
+    // viewport so the dangling raw pointer in those weak_ptrs is
+    // cleaned up cleanly.
+    void destroy_viewport_scene_view(
+        const std::shared_ptr<Viewport_scene_view>&  viewport_scene_view,
+        const std::shared_ptr<Post_processing_node>& post_processing_node
+    );
+    void destroy_viewport_window(const std::shared_ptr<Viewport_window>& viewport_window);
+
+    void erase(Viewport_scene_view* viewport_scene_view);
+
+    auto open_new_viewport_scene_view(
+        std::shared_ptr<erhe::rendergraph::Rendergraph_node>& out_rendergraph_output_node,
+        const std::shared_ptr<Scene_root>&                    scene_root = {}
+    ) -> std::shared_ptr<Viewport_scene_view>;
+
+    void update_pointer(erhe::imgui::Imgui_host* imgui_host);
+
+    void update_hover_info(erhe::imgui::Imgui_host* imgui_host);
+
+    void update_transforms();
+
+    void debug_imgui();
+
+    // Returns the Viewport_scene_view instance which is currently under pointer (mouse cursor).
+    [[nodiscard]] auto hover_scene_view() -> std::shared_ptr<Viewport_scene_view>;
+    [[nodiscard]] auto last_scene_view () -> std::shared_ptr<Viewport_scene_view>;
+
+    // True while the given viewport holds the mouse-drag pointer capture (a drag that
+    // started inside it is in progress). Used to keep the viewport "hovered" so the drag
+    // keeps tracking the cursor even after it leaves the viewport rect.
+    [[nodiscard]] auto owns_pointer_capture(const Viewport_scene_view* scene_view) const -> bool;
+    [[nodiscard]] auto get_post_processing_nodes() const -> const std::vector<std::shared_ptr<Post_processing_node>>&;
+    [[nodiscard]] auto get_viewport_windows() const -> const std::vector<std::shared_ptr<Viewport_window>>&;
+    // All live viewport scene views. Used by the Visual Style shadow-mode <->
+    // Lightmap window render-with-lightmaps mirror (Viewport_config_window).
+    [[nodiscard]] auto get_viewport_scene_views() const -> const std::vector<std::shared_ptr<Viewport_scene_view>>&;
+
+private:
+    // Camera to show when binding a scene to a viewport: a selected camera
+    // living in the scene, else the scene's first selectable camera, else null.
+    [[nodiscard]] auto choose_camera_for_scene(const std::shared_ptr<Scene_root>& scene_root) const -> std::shared_ptr<erhe::scene::Camera>;
+
+    void handle_graphics_settings_changed(Graphics_preset_entry* graphics_preset);
+
+    // Bring a viewport window showing the newly active scene to the front
+    // (select its dock tab), so the active scene is also the scene shown.
+    // No-op when a viewport window of that scene is already focused (the
+    // activation then came from focusing that window).
+    void handle_active_scene_changed(const std::shared_ptr<Scene_root>& scene_root);
+
+    void update_pointer_from_imgui_viewport_windows(erhe::imgui::Imgui_host* imgui_host);
+
+    erhe::message_bus::Subscription<Graphics_settings_message>    m_graphics_settings_subscription;
+    erhe::message_bus::Subscription<Active_scene_changed_message> m_active_scene_subscription;
+    App_context&                m_app_context;
+    const Viewport_config_data& m_viewport_config_data;
+
+    // Commands
+    Open_new_viewport_scene_view_command m_open_new_viewport_scene_view_command;
+
+    ERHE_PROFILE_MUTEX(std::mutex,                      m_mutex);
+    std::vector<std::shared_ptr<Viewport_window>>       m_viewport_windows;
+    std::vector<std::shared_ptr<Viewport_scene_view>>   m_viewport_scene_views;
+    std::vector<std::shared_ptr<Post_processing_node>>  m_post_processing_nodes;
+    // Overlay nodes for post-processing viewports (issue #230). One per viewport
+    // that has post-processing enabled; owns the after-post-processing overlay
+    // rendergraph node.
+    std::vector<std::shared_ptr<Viewport_overlay_node>> m_overlay_nodes;
+    std::vector<std::weak_ptr<Viewport_scene_view>>     m_hover_stack;
+    std::shared_ptr<Viewport_scene_view>                m_hover_scene_view;
+    std::weak_ptr<Viewport_scene_view>                  m_last_scene_view;
+
+    // Viewport that owns the pointer while a mouse-drag command is active. Empty when no
+    // drag is in progress. weak_ptr so it self-expires if the viewport is destroyed.
+    std::weak_ptr<Viewport_scene_view>                  m_pointer_capture_scene_view;
+};
+
+}

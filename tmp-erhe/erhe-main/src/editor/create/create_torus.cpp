@@ -1,0 +1,96 @@
+#include "create/create_torus.hpp"
+
+#include "brushes/brush.hpp"
+#include "create/create_preview_settings.hpp"
+#include "renderers/render_context.hpp"
+
+#include "erhe_geometry/geometry.hpp"
+#include "erhe_geometry/shapes/torus.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_renderer/primitive_renderer.hpp"
+#include "erhe_scene/node.hpp"
+
+#include <imgui/imgui.h>
+
+using erhe::geometry::to_geo_mat4f;
+using erhe::geometry::transform;
+
+namespace editor {
+
+Create_torus::~Create_torus() noexcept = default;
+
+void Create_torus::render_preview(const Create_preview_settings& preview_settings)
+{
+    const Render_context& render_context = preview_settings.render_context;
+    const auto* camera_node = render_context.get_camera_node();
+    if (camera_node == nullptr) {
+        return;
+    }
+
+    erhe::renderer::Primitive_renderer line_renderer = get_line_renderer(preview_settings);
+    line_renderer.add_torus(
+        preview_settings.transform,
+        preview_settings.major_color,
+        preview_settings.minor_color,
+        preview_settings.major_thickness,
+        preview_settings.minor_thickness,
+        m_parameters.major_radius,
+        m_parameters.minor_radius,
+        m_use_debug_camera
+            ? m_debug_camera
+            : glm::vec3{camera_node->position_in_world()},
+        preview_settings.ideal_shape ? std::max(20, m_parameters.major_steps) : m_parameters.major_steps,
+        preview_settings.ideal_shape ? std::max(10, m_parameters.minor_steps) : m_parameters.minor_steps,
+        m_epsilon
+    );
+}
+
+void Create_torus::imgui()
+{
+    ImGui::Text("Torus Parameters");
+
+    ImGui::SliderFloat("Major Radius", &m_parameters.major_radius, 0.0f, 3.0f);
+    ImGui::SliderFloat("Minor Radius", &m_parameters.minor_radius, 0.0f, m_parameters.major_radius);
+    ImGui::SliderInt  ("Major Steps",  &m_parameters.major_steps,  3, 40);
+    ImGui::SliderInt  ("Minor Steps",  &m_parameters.minor_steps,  3, 40);
+
+    ImGui::Separator();
+
+    ImGui::Checkbox    ("Use Debug Camera", &m_use_debug_camera);
+    ImGui::SliderFloat3("Debug Camera",     &m_debug_camera.x, -4.0f, 4.0f);
+    ImGui::SliderFloat ("Epsilon",          &m_epsilon,         0.0f, 1.0f);
+}
+
+auto Create_torus::create(Brush_data& brush_create_info) const -> std::shared_ptr<Brush>
+{
+    return create_brush(brush_create_info, m_parameters);
+}
+
+auto Create_torus::create_brush(Brush_data& brush_create_info, const Torus_parameters& parameters) -> std::shared_ptr<Brush>
+{
+    std::shared_ptr<erhe::geometry::Geometry> geometry = std::make_shared<erhe::geometry::Geometry>("torus");
+    brush_create_info.geometry = geometry;
+    erhe::geometry::shapes::make_torus(
+        geometry->get_mesh(),
+        parameters.major_radius,
+        parameters.minor_radius,
+        parameters.major_steps,
+        parameters.minor_steps
+    );
+
+    transform(*geometry.get(), *geometry.get(), to_geo_mat4f(erhe::math::mat4_swap_yz));
+
+    geometry->process(
+        {
+            .flags =
+                erhe::geometry::Geometry::process_flag_connect |
+                erhe::geometry::Geometry::process_flag_build_edges
+        }
+    );
+
+    brush_create_info.normal_style = erhe::primitive::Normal_style::point_normals;
+    std::shared_ptr<Brush> brush = std::make_shared<Brush>(brush_create_info);
+    return brush;
+}
+
+}

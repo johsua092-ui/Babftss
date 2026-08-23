@@ -1,0 +1,721 @@
+#pragma once
+
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/enums.hpp"
+#include "erhe_graphics/shader_monitor.hpp"
+#include "erhe_dataformat/dataformat.hpp"
+#include "erhe_frame_pacing/frame_time_recorder.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_time/sleep.hpp"
+
+#include "volk.h"
+// vma forward declaration
+VK_DEFINE_HANDLE(VmaAllocator)
+
+#include <array>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <vector>
+
+namespace erhe::graphics {
+
+class Command_buffer;
+class Command_buffer_impl;
+class Gpu_timer_impl;
+
+class Instance_layers
+{
+public:
+    bool m_VK_LAYER_AMD_switchable_graphics {false};
+    bool m_VK_LAYER_OBS_HOOK                {false};
+    bool m_VK_LAYER_RENDERDOC_Capture       {false};
+    bool m_VK_LAYER_LUNARG_api_dump         {false};
+    bool m_VK_LAYER_LUNARG_gfxreconstruct   {false};
+    bool m_VK_LAYER_KHRONOS_synchronization2{false};
+    bool m_VK_LAYER_KHRONOS_validation      {false};
+    bool m_VK_LAYER_LUNARG_monitor          {false};
+    bool m_VK_LAYER_LUNARG_screenshot       {false};
+    bool m_VK_LAYER_KHRONOS_profiles        {false};
+    bool m_VK_LAYER_KHRONOS_shader_object   {false};
+    bool m_VK_LAYER_LUNARG_crash_diagnostic {false};
+};
+class Instance_extensions
+{
+public:
+    bool m_VK_KHR_get_physical_device_properties2{false};
+    bool m_VK_KHR_get_surface_capabilities2      {false};
+    bool m_VK_KHR_surface                        {false};
+    bool m_VK_KHR_surface_maintenance1           {false};
+    bool m_VK_EXT_surface_maintenance1           {false};
+    bool m_VK_KHR_win32_surface                  {false};
+    bool m_VK_EXT_debug_report                   {false};
+    bool m_VK_EXT_debug_utils                    {false};
+    bool m_VK_EXT_swapchain_colorspace           {false};
+};
+class Device_extensions
+{
+public:
+    bool m_VK_KHR_swapchain                     {false};
+    bool m_VK_EXT_swapchain_maintenance1        {false};
+    bool m_VK_KHR_swapchain_maintenance1        {false};
+    bool m_VK_KHR_present_mode_fifo_latest_ready{false};
+    bool m_VK_EXT_present_mode_fifo_latest_ready{false};
+    bool m_VK_KHR_present_id                    {false};
+    bool m_VK_KHR_present_wait                  {false};
+    bool m_VK_KHR_present_id2                   {false};
+    bool m_VK_KHR_shader_relaxed_extended_instruction{false};
+    bool m_VK_KHR_present_wait2                 {false};
+    bool m_VK_EXT_present_timing                {false};
+    bool m_VK_EXT_full_screen_exclusive         {false};
+    bool m_VK_KHR_calibrated_timestamps         {false};
+    bool m_VK_EXT_calibrated_timestamps         {false};
+    bool m_VK_EXT_device_address_binding_report {false};
+    bool m_VK_KHR_load_store_op_none            {false};
+    bool m_VK_EXT_load_store_op_none            {false};
+    bool m_VK_KHR_push_descriptor               {false};
+    bool m_VK_KHR_portability_subset            {false};
+    bool m_VK_EXT_fragment_density_map          {false};
+    bool m_VK_EXT_fragment_density_map2         {false};
+    bool m_VK_KHR_acceleration_structure        {false};
+    bool m_VK_KHR_ray_query                     {false};
+    bool m_VK_KHR_deferred_host_operations      {false};
+    bool m_VK_KHR_ray_tracing_position_fetch    {false};
+    bool m_VK_EXT_conservative_rasterization    {false};
+    bool m_VK_EXT_memory_budget                 {false};
+    bool m_VK_KHR_device_fault                  {false};
+    bool m_VK_EXT_device_fault                  {false};
+};
+class Capabilities
+{
+public:
+    bool m_present_mode_fifo_latest_ready{false};
+    bool m_surface_capabilities2         {false};
+    bool m_surface_maintenance1          {false};
+    bool m_swapchain_maintenance1        {false};
+
+    // Frame pacing capabilities (doc/frame_pacing_capability_tiers.md).
+    // Feature-confirmed, not merely extension-present.
+    bool m_present_id           {false};
+    bool m_present_wait         {false};
+    bool m_present_timing       {false};
+    // Device features for the FR3 target-time request modes (step P2.3).
+    // The surface can still veto either mode per swapchain
+    // (VkPresentTimingSurfaceCapabilitiesEXT, see Swapchain_impl).
+    bool m_present_at_absolute_time{false};
+    bool m_present_at_relative_time{false};
+    bool m_calibrated_timestamps{false};
+    // Tier W: all of the above available; the frame pacer may run.
+    // Anything less is off mode (FR6: no middle tier).
+    bool m_frame_pacing_tier_w  {false};
+};
+
+class Frame_begin_info;
+class Frame_end_info;
+class Device_sync_pool;
+class Render_pass_impl;
+class Ring_buffer;
+class Surface_impl;
+class Swapchain;
+
+class Device_frame_in_flight
+{
+public:
+    VkFence         submit_fence  {VK_NULL_HANDLE};
+    // Legacy single-pool fields used by the existing begin_frame/end_frame
+    // single-cb-per-frame path. To be removed once that path is migrated
+    // off Device_frame_in_flight onto the new per-thread pool model.
+    VkCommandPool   command_pool  {VK_NULL_HANDLE};
+    VkCommandBuffer command_buffer{VK_NULL_HANDLE};
+};
+
+// One Vulkan VkCommandPool plus the list of Command_buffer instances
+// allocated from it. Owned by Device_impl (one Per_thread_command_pool
+// per (frame_in_flight, thread_slot) pair). The pool is created with
+// VK_COMMAND_POOL_CREATE_TRANSIENT_BIT and reset wholesale when the
+// owning frame-in-flight slot's previous use has retired on the GPU.
+//
+// VkCommandBuffer handles are reused across cycles: vkResetCommandPool()
+// returns every allocated cb to the initial state but keeps it owned by
+// the pool, so allocating a fresh handle each frame would grow the pool
+// without bound (handles are never freed on reset; the driver also keeps
+// each live cb's backing command-stream/upload buffers). vk_command_buffers
+// holds the handles allocated so far; next_handle_index counts how many
+// have been handed out in the current cycle and is reset to 0 together
+// with the pool.
+class Per_thread_command_pool
+{
+public:
+    VkCommandPool                                command_pool{VK_NULL_HANDLE};
+    std::vector<std::unique_ptr<Command_buffer>> allocated_command_buffers;
+    std::vector<VkCommandBuffer>                 vk_command_buffers;
+    std::size_t                                  next_handle_index{0};
+};
+
+// Device-frame lifecycle state (OpenXR-style three phases, plus an
+// optional nested swapchain-frame layer). Device_impl transitions through
+// these as wait_frame/begin_frame/begin_swapchain_frame/... are called.
+//
+//   idle               --wait_frame()--------> waited
+//   waited             --begin_frame(info)---> in_swapchain_frame (compat: combined)
+//   waited             --begin_frame()-------> recording          (future: device-only)
+//   recording          --begin_swapchain_frame--> in_swapchain_frame
+//   in_swapchain_frame --end_swapchain_frame----> recording
+//   recording          --end_frame()---------> idle               (future)
+//   in_swapchain_frame --end_frame(info)-----> idle               (compat: combined)
+enum class Device_frame_state : uint8_t
+{
+    idle,
+    waited,
+    recording,
+    in_swapchain_frame
+};
+
+[[nodiscard]] auto c_str(Device_frame_state state) -> const char*;
+
+class Device;
+class Device_impl final
+{
+public:
+    Device_impl(
+        Device&                         device,
+        const Surface_create_info&      surface_create_info,
+        const Graphics_config&          graphics_config,
+        const Vulkan_external_creators* vulkan_external_creators = nullptr
+    );
+    Device_impl   (const Device_impl&) = delete;
+    void operator=(const Device_impl&) = delete;
+    Device_impl   (Device_impl&&)      = delete;
+    void operator=(Device_impl&&)      = delete;
+    ~Device_impl  () noexcept;
+
+    [[nodiscard]] auto wait_frame () -> bool;
+    [[nodiscard]] auto begin_frame() -> bool;
+    [[nodiscard]] auto end_frame  () -> bool;
+    [[nodiscard]] auto begin_frame(const Frame_begin_info& frame_begin_info) -> bool;
+    [[nodiscard]] auto end_frame  (const Frame_end_info& frame_end_info) -> bool;
+
+    void               wait_idle            ();
+    void               clear_render_pipeline_cache();
+    [[nodiscard]] auto recreate_surface_for_new_window() -> bool;
+    [[nodiscard]] auto is_in_swapchain_frame() const -> bool;
+
+    // Transitional: Command_buffer_impl took over wait_for_swapchain /
+    // begin_swapchain / end_swapchain (was wait/begin/end_swapchain_frame
+    // here). It still needs to flip m_had_swapchain_frame so the legacy
+    // end_frame submit branch picks the swapchain path. Goes away with
+    // the legacy single-cb-per-frame path.
+    friend class Command_buffer_impl;
+
+    void start_frame_capture();
+    void end_frame_capture  ();
+
+    // Active render pass tracking
+    [[nodiscard]] static auto get_device_impl            () -> Device_impl*;
+    // Allocate a fresh primary VkCommandBuffer from the pool owned by
+    // (current_frame_in_flight_slot, thread_slot), wrap it in a new
+    // Command_buffer that lives in the pool, and return that
+    // Command_buffer by reference. The returned cb is in the initial
+    // state -- the caller must call begin() on it before recording. Its
+    // lifetime is tied to the pool: vkResetCommandPool runs when the
+    // frame-in-flight slot's submit fence reports completion, freeing
+    // every cb that was allocated from the pool that cycle.
+    [[nodiscard]] auto get_command_buffer                (unsigned int thread_slot) -> Command_buffer&;
+
+    [[nodiscard]] auto get_active_render_pass            () const -> VkRenderPass;
+    [[nodiscard]] auto get_active_render_pass_impl       () const -> Render_pass_impl*;
+                  void set_active_render_pass_impl       (Render_pass_impl* render_pass_impl);
+
+    void submit_command_buffers   (std::span<Command_buffer* const> command_buffers);
+    void submit_command_buffer_and_wait(Command_buffer& command_buffer);
+    void add_completion_handler   (std::function<void(Device_impl&)> callback);
+    void on_thread_enter          ();
+
+    [[nodiscard]] auto get_handle                         (const Texture& texture, const Sampler& sampler) const -> uint64_t;
+    [[nodiscard]] auto create_dummy_texture               (Command_buffer& init_command_buffer, const erhe::dataformat::Format format) -> std::shared_ptr<Texture>;
+    [[nodiscard]] auto get_buffer_alignment               (Buffer_target target) -> std::size_t;
+    [[nodiscard]] auto allocate_ring_buffer_entry         (Buffer_target buffer_target, Ring_buffer_usage usage, std::size_t byte_count) -> Ring_buffer_range;
+    [[nodiscard]] auto make_blit_command_encoder          (Command_buffer& command_buffer) -> Blit_command_encoder;
+    [[nodiscard]] auto make_compute_command_encoder       (Command_buffer& command_buffer) -> Compute_command_encoder;
+    [[nodiscard]] auto make_render_command_encoder        (Command_buffer& command_buffer) -> Render_command_encoder;
+    [[nodiscard]] auto get_format_properties              (erhe::dataformat::Format format) const -> Format_properties;
+    [[nodiscard]] auto probe_image_format_support         (erhe::dataformat::Format format, uint64_t usage_mask) const -> bool;
+    [[nodiscard]] auto get_supported_depth_stencil_formats() const -> std::vector<erhe::dataformat::Format>;
+                  void sort_depth_stencil_formats         (std::vector<erhe::dataformat::Format>& formats, unsigned int sort_flags, int requested_sample_count) const;
+    [[nodiscard]] auto choose_depth_stencil_format        (const std::vector<erhe::dataformat::Format>& formats) const -> erhe::dataformat::Format;
+    [[nodiscard]] auto choose_depth_stencil_format        (unsigned int sort_flags, int requested_sample_count) const -> erhe::dataformat::Format;
+    [[nodiscard]] auto get_shader_monitor                 () -> Shader_monitor&;
+    [[nodiscard]] auto get_info                           () const -> const Device_info&;
+    [[nodiscard]] auto get_graphics_config                () const -> const Graphics_config&;
+    [[nodiscard]] auto get_memory_budget                  () const -> Memory_budget;
+    [[nodiscard]] auto get_allocator                      () -> VmaAllocator&;
+    // Allocator to use for a buffer with the given usage. Buffers that carry
+    // Buffer_usage::shader_device_address must come from an allocator created
+    // with VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT; everything else
+    // must not, because that flag is allocator-wide - VMA stamps
+    // VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT onto every block it allocates
+    // (vk_mem_alloc.h, canContainBufferWithDeviceAddress), which would request
+    // device addresses for texture and plain-buffer memory that never needs
+    // one. Falls back to the main allocator when the device-address allocator
+    // does not exist (ray tracing disabled: no such buffer can be created).
+    [[nodiscard]] auto get_allocator_for_buffer_usage     (Buffer_usage usage) -> VmaAllocator&;
+    [[nodiscard]] auto get_context_window                 () const -> erhe::window::Context_window*;
+
+    void set_debug_label(VkObjectType object_type, uint64_t object_handle, const char* label);
+    void set_debug_label(VkObjectType object_type, uint64_t object_handle, const std::string& label);
+
+    [[nodiscard]] auto get_sync_pool() -> Device_sync_pool&;
+
+    // Frame time records (implementation plan step P0.2): storage lives on
+    // the backend-neutral Device; this forwards for backend-internal sites.
+    [[nodiscard]] auto get_frame_time_recorder() -> erhe::frame_pacing::Frame_time_recorder&;
+
+    // Present-wait clamp (frame pacing FR5, step P2.2): routed to the
+    // window surface's swapchain; unsupported when headless / no swapchain.
+    [[nodiscard]] auto wait_for_displayed_frame(std::int64_t frame_id, uint64_t timeout_ns) -> Present_wait_result;
+
+    // Target present time (frame pacing FR3, step P2.3): stored here, read
+    // by Swapchain_impl::present_image for the matching frame id. Reference-
+    // clock seconds; 0.0 = no request.
+    void               set_present_target_time(std::int64_t frame_id, double target_time_seconds, double hold_until_seconds);
+    [[nodiscard]] auto get_present_target_time(std::int64_t frame_id) const -> double;
+
+    // Resolved frame pacing tier (P4.2): capability probes + the
+    // frame_pacing_tier graphics config, resolved in the constructor BEFORE
+    // the surface picks its present mode (the tier owns that decision).
+    [[nodiscard]] auto get_frame_pacing_tier() const -> Frame_pacing_tier;
+
+    // GPU timer infrastructure. Backed by a single shared VkQueryPool sized
+    // for s_max_gpu_timers timestamps per frame in flight. Slots are
+    // allocated by Gpu_timer_impl and freed in its dtor; results are
+    // retrieved in wait_frame after the fence wait guarantees the slice has
+    // completed on the GPU. See vulkan_gpu_timer.cpp for details.
+    static constexpr std::size_t s_max_gpu_timers = 128;
+    [[nodiscard]] auto allocate_gpu_timer_slot       (Gpu_timer_impl* timer) -> int;
+                  void release_gpu_timer_slot       (int slot);
+                  void record_gpu_timer_begin_query (VkCommandBuffer cb, int slot);
+                  void record_gpu_timer_end_query   (VkCommandBuffer cb, int slot);
+                  void maybe_reset_gpu_timer_slice  (VkCommandBuffer cb);
+    [[nodiscard]] auto get_gpu_timer_timestamp_period() const -> double;
+    [[nodiscard]] auto are_gpu_timers_supported      () const -> bool;
+
+    // Frame-spanning GPU timestamp bracket (implementation plan step P0.3):
+    // one begin/end timestamp pair per frame, host-reset in wait_frame,
+    // polled non-blocking every frame, calibrated into the reference clock.
+    // The bracket covers the frame's FIRST command buffer (begin at its
+    // vkBeginCommandBuffer, end at its vkEndCommandBuffer); the editor
+    // records one primary cb per frame, so this is the whole frame span.
+    // Multi-cb frames cover only the first cb - refine when that matters.
+    void               record_frame_bracket_begin   (VkCommandBuffer cb);
+    void               record_frame_bracket_end     (VkCommandBuffer cb);
+    void               poll_frame_bracket_results   ();
+    void               update_gpu_calibration       ();
+    [[nodiscard]] auto gpu_ticks_to_reference_seconds(uint64_t ticks) const -> double;
+
+    // Calibrated host time domains (VK_KHR_calibrated_timestamps). Which host
+    // domains a driver offers is driver-specific - MoltenVK and KosmicKrisp
+    // offer CLOCK_MONOTONIC_RAW but NOT CLOCK_MONOTONIC - so the domain is
+    // picked from what the device advertises, never assumed by platform.
+    // select_calibrated_host_time_domain() runs during device init, before
+    // the calibrated timestamps capability is resolved.
+    void               select_calibrated_host_time_domain();
+    // The host domain paired with VK_TIME_DOMAIN_DEVICE_KHR in every
+    // calibration call; VK_TIME_DOMAIN_DEVICE_KHR itself means "no usable
+    // host domain", which turns the calibrated timestamps capability off.
+    [[nodiscard]] auto get_calibrated_host_time_domain() const -> VkTimeDomainKHR;
+    // True for a host domain this device advertises and this platform can
+    // read, i.e. one host_domain_value_to_seconds() can convert.
+    [[nodiscard]] auto is_host_time_domain(VkTimeDomainKHR domain) const -> bool;
+    // Converts a value in the given host time domain (QPC ticks for
+    // QUERY_PERFORMANCE_COUNTER, nanoseconds for the monotonic domains) to
+    // reference-clock seconds; 0.0 for a domain that is not a usable host
+    // domain. Used for present-timing feedback (step P0.4).
+    [[nodiscard]] auto host_domain_value_to_seconds(VkTimeDomainKHR domain, uint64_t value) const -> double;
+    // Inverse: reference-clock seconds to a value in the given host domain;
+    // 0 for a domain that is not a usable host domain. Used for the FR3
+    // absolute target present time (step P2.3).
+    [[nodiscard]] auto reference_seconds_to_host_domain_value(VkTimeDomainKHR domain, double seconds) const -> uint64_t;
+    // Same conversions for the selected calibrated host domain.
+    [[nodiscard]] auto host_calibrated_value_to_seconds(uint64_t value) const -> double;
+    [[nodiscard]] auto reference_seconds_to_host_calibrated_value(double seconds) const -> uint64_t;
+
+    [[nodiscard]] auto get_device                       () -> Device&;
+    [[nodiscard]] auto get_surface                      () -> Surface*;
+    // Reads the most recently composited frame to host memory as tightly
+    // packed 8-bit RGBA. Headless (emulated swapchain): synchronous readback.
+    // Windowed (real WSI swapchain): returns a previously armed capture
+    // (request_frame_capture) once a frame has recorded it; returns false
+    // when nothing has been captured yet.
+    [[nodiscard]] auto capture_last_frame               (int& out_width, int& out_height, erhe::dataformat::Format& out_format, std::vector<std::byte>& out_pixels) -> bool;
+    // Arms a one-shot capture of the next composited frame on the real WSI
+    // swapchain (collected by capture_last_frame on a later call). Returns
+    // false when no capture path exists (no surface, or the surface did not
+    // grant TRANSFER_SRC usage); true and a no-op when headless (emulated
+    // swapchain capture is synchronous).
+    [[nodiscard]] auto request_frame_capture            () -> bool;
+    [[nodiscard]] auto get_native_handles               () const -> Native_device_handles;
+    [[nodiscard]] auto get_vulkan_instance              () -> VkInstance;
+    [[nodiscard]] auto get_vulkan_physical_device       () -> VkPhysicalDevice;
+    [[nodiscard]] auto get_vulkan_device                () -> VkDevice;
+    [[nodiscard]] auto get_graphics_queue_family_index  () const -> uint32_t;
+    [[nodiscard]] auto get_present_queue_family_index   () const -> uint32_t;
+    [[nodiscard]] auto get_graphics_queue               () const -> VkQueue;
+    [[nodiscard]] auto get_present_queue                () const -> VkQueue;
+#if defined(ERHE_PROFILE_LIBRARY_TRACY) && defined(TRACY_ENABLE)
+    // Tracy Vulkan GPU profiling context (created in vulkan_device_init.cpp,
+    // null until then / when GPU timestamps are unsupported). Used by
+    // erhe::graphics::Scoped_gpu_zone to open TracyVkZone scopes.
+    [[nodiscard]] auto get_tracy_vk_ctx                 () const -> TracyVkCtx { return m_tracy_vk_ctx; }
+#endif
+    [[nodiscard]] auto get_capabilities                 () const -> const Capabilities&;
+    [[nodiscard]] auto get_device_extensions            () const -> const Device_extensions&;
+    // VK_KHR_device_fault / VK_EXT_device_fault crash diagnostics. True only
+    // when the extension was enabled AND its deviceFault feature is on, i.e.
+    // when report_device_fault() can actually produce a report.
+    [[nodiscard]] auto has_device_fault_report          () const -> bool;
+    // Retrieve and log the driver's fault report(s) for a lost device. Safe
+    // (and a cheap no-op) to call when the extension is unavailable or when
+    // the driver has no fault to report; call it from every site that
+    // observes VK_ERROR_DEVICE_LOST, before aborting. Defined in
+    // vulkan_device_debug.cpp.
+    void report_device_fault(const char* site);
+    [[nodiscard]] auto get_driver_properties            () const -> const VkPhysicalDeviceDriverProperties&;
+    [[nodiscard]] auto get_portability_subset_features  () const -> const VkPhysicalDevicePortabilitySubsetFeaturesKHR&;
+    [[nodiscard]] auto get_portability_subset_properties() const -> const VkPhysicalDevicePortabilitySubsetPropertiesKHR&;
+    [[nodiscard]] auto get_acceleration_structure_properties() const -> const VkPhysicalDeviceAccelerationStructurePropertiesKHR&;
+    [[nodiscard]] auto get_memory_type                  (uint32_t memory_type_index) const -> const VkMemoryType&;
+    [[nodiscard]] auto get_memory_heap                  (uint32_t memory_heap_index) const -> const VkMemoryHeap&;
+    [[nodiscard]] auto get_pipeline_cache               () const -> VkPipelineCache;
+    [[nodiscard]] auto get_descriptor_set_layout        () const -> VkDescriptorSetLayout;
+    [[nodiscard]] auto has_push_descriptor              () const -> bool;
+    [[nodiscard]] auto get_texture_set_layout           () const -> VkDescriptorSetLayout;
+    [[nodiscard]] auto get_cached_pipeline              (std::size_t hash) -> VkPipeline;
+    [[nodiscard]] auto create_graphics_pipeline         (const VkGraphicsPipelineCreateInfo& create_info, std::size_t hash) -> VkPipeline;
+    [[nodiscard]] auto get_or_create_graphics_pipeline  (const VkGraphicsPipelineCreateInfo& create_info, std::size_t hash) -> VkPipeline;
+    [[nodiscard]] auto get_or_create_compatible_render_pass(
+        unsigned int                                   color_attachment_count,
+        const std::array<erhe::dataformat::Format, 4>& color_attachment_formats,
+        erhe::dataformat::Format                       depth_attachment_format,
+        erhe::dataformat::Format                       stencil_attachment_format,
+        unsigned int                                   sample_count,
+        uint32_t                                       view_mask,
+        bool                                           fragment_density_map,
+        VkPipelineStageFlags                           incoming_src_stage  = 0,
+        VkAccessFlags                                  incoming_src_access = 0,
+        VkPipelineStageFlags                           incoming_dst_stage  = 0,
+        VkAccessFlags                                  incoming_dst_access = 0,
+        VkPipelineStageFlags                           outgoing_src_stage  = 0,
+        VkAccessFlags                                  outgoing_src_access = 0,
+        VkPipelineStageFlags                           outgoing_dst_stage  = 0,
+        VkAccessFlags                                  outgoing_dst_access = 0
+    ) -> VkRenderPass;
+    [[nodiscard]] auto allocate_descriptor_set          () -> VkDescriptorSet;
+    void               reset_descriptor_pool            ();
+
+    [[nodiscard]] auto debug_report_callback(
+        VkDebugReportFlagsEXT      flags,
+        VkDebugReportObjectTypeEXT object_type,
+        uint64_t                   object,
+        size_t                     location,
+        int32_t                    message_code,
+        const char*                layer_prefix,
+        const char*                message
+    ) -> VkBool32;
+
+    [[nodiscard]] auto debug_utils_messenger_callback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT      message_severity,
+        VkDebugUtilsMessageTypeFlagsEXT             message_types,
+        const VkDebugUtilsMessengerCallbackDataEXT* callback_data
+    ) -> VkBool32;
+
+    [[nodiscard]] auto get_number_of_frames_in_flight() const -> size_t;
+    [[nodiscard]] auto get_frame_index               () const -> uint64_t;
+    [[nodiscard]] auto get_frame_in_flight_index     () const -> uint64_t;
+
+    // True when the GPU has fully retired all work submitted for the given
+    // frame index -- resources last referenced by that frame's command
+    // buffers can be safely reused or destroyed.
+    [[nodiscard]] auto is_frame_completed            (uint64_t frame) const -> bool;
+
+    // Per-frame-in-flight submission resources used by Swapchain_impl. Device_impl
+    // owns the command pools and their command buffers; the submit_fence slot is
+    // filled/recycled by Swapchain_impl (it owns the fence pool).
+    [[nodiscard]] auto get_device_frame_in_flight        (size_t index) -> Device_frame_in_flight&;
+    void               ensure_device_frame_command_buffer(size_t index);
+    void               reset_device_frame_command_pool   (size_t index);
+    void               ensure_device_frame_slot          (size_t index);
+
+    // Per-frame descriptor operation counters (for trace logging).
+    // Public so Render_command_encoder_impl and Texture_heap_impl
+    // can increment them without friend declarations.
+    uint32_t m_desc_push_buf_count  {0};
+    uint32_t m_desc_push_img_count  {0};
+    uint32_t m_desc_alloc_set_count {0};
+    uint32_t m_desc_heap_bind_count {0};
+    uint32_t m_desc_draw_count      {0};
+
+private:
+    static constexpr size_t       s_number_of_frames_in_flight = 2;
+    static constexpr unsigned int s_number_of_thread_slots     = 8;
+
+    void update_frame_completion();
+
+    // Single point of truth for transitioning m_state. Every assignment
+    // to m_state goes through here so that one trace site captures all
+    // transitions along with frame_index and slot -- critical for
+    // diagnosing frame-lifecycle / slot-desync bugs. The site parameter
+    // is a short literal naming the caller (e.g. "wait_frame",
+    // "begin_frame", "end_frame"); it shows up in the trace and makes
+    // the log skimmable.
+    void set_state(Device_frame_state new_state, const char* site);
+
+    // True when this physical device would support GPU ray tracing but it
+    // must be left disabled because RenderDoc capture is active.
+    //
+    // Narrowly scoped to the configuration where it was actually measured:
+    // AMD on Windows. With RenderDoc's capture layer loaded, that driver
+    // faults on a wild GPU virtual address (a single unmapped 4 KiB page in
+    // the device-address range, reported as an Invalid Read or Invalid Write
+    // by VK_EXT_device_fault) shortly after a texture-heavy load. Bisected to
+    // VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT on allocations: enabling the
+    // bufferDeviceAddress feature alone is harmless, and the ray tracing
+    // extensions alone are harmless, but allocating device-address memory is
+    // not. erhe cannot avoid that flag and still build acceleration
+    // structures - vkCmdBuildAccelerationStructuresKHR consumes device
+    // addresses for scratch, geometry and instance data, and
+    // VUID-vkBindBufferMemory-bufferDeviceAddress-03339 then requires the
+    // backing memory to carry the flag.
+    //
+    // AMD on Linux and NVIDIA on Windows were both verified unaffected, so
+    // this deliberately does not fire for them. The Metal backend has the
+    // same shape of workaround for acceleration structure encoders crashing
+    // inside GPUToolsCapture (metal_device.cpp), and reports it through the
+    // same Device_info::ray_query_disabled_by_capture_layer flag.
+    [[nodiscard]] static auto is_ray_tracing_blocked_by_capture_layer(
+        VkPhysicalDevice vulkan_physical_device,
+        bool             renderdoc_capture_support
+    ) -> bool;
+    [[nodiscard]] static auto get_physical_device_score(VkPhysicalDevice vulkan_physical_device, Surface_impl* surface_impl, bool disable_ray_tracing) -> float;
+    [[nodiscard]] static auto query_device_queue_family_indices(
+        VkPhysicalDevice vulkan_physical_device,
+        Surface_impl*    surface_impl,
+        uint32_t*        graphics_queue_family_index,
+        uint32_t*        present_queue_family_index
+    ) -> bool;
+    static auto query_device_extensions(
+        VkPhysicalDevice          vulkan_physical_device,
+        Device_extensions&        device_extensions_out,
+        std::vector<const char*>* device_extensions_c_str,
+        bool                      headless,
+        bool                      disable_ray_tracing
+    ) -> float;
+    [[nodiscard]] auto choose_physical_device(Surface_impl* surface_impl, std::vector<const char*>& device_extensions_c_str) -> bool;
+
+    void frame_completed(uint64_t frame);
+
+    erhe::window::Context_window* m_context_window{nullptr};
+    Device&                       m_device;
+    Graphics_config               m_graphics_config;
+    Shader_monitor                m_shader_monitor;
+    Device_info                   m_info;
+    class Completion_handler
+    {
+    public:
+        uint64_t                          frame_number;
+        std::function<void(Device_impl&)> callback;
+    };
+    std::vector<Completion_handler> m_completion_handlers;
+
+    std::unique_ptr<Device_sync_pool>          m_sync_pool;
+
+    VkInstance               m_vulkan_instance            {VK_NULL_HANDLE};
+    VkPhysicalDevice         m_vulkan_physical_device     {VK_NULL_HANDLE};
+    VkDevice                 m_vulkan_device              {VK_NULL_HANDLE};
+    VmaAllocator             m_vma_allocator              {VK_NULL_HANDLE};
+    // Second allocator, created only when ray tracing is enabled, carrying
+    // VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT. Used exclusively for
+    // buffers with Buffer_usage::shader_device_address. See
+    // get_allocator_for_buffer_usage().
+    VmaAllocator             m_vma_device_address_allocator{VK_NULL_HANDLE};
+
+    // Set during physical device selection; drives
+    // Device_info::ray_query_disabled_by_capture_layer so the editor can tell
+    // the user why ray tracing is unavailable.
+    bool                     m_ray_tracing_blocked_by_capture_layer{false};
+    VkDebugReportCallbackEXT m_debug_report_callback      {VK_NULL_HANDLE};
+    VkDebugUtilsMessengerEXT m_debug_utils_messenger      {VK_NULL_HANDLE};
+    std::unique_ptr<Surface> m_surface                    {};
+    VkQueue                  m_vulkan_graphics_queue      {VK_NULL_HANDLE};
+    VkQueue                  m_vulkan_present_queue       {VK_NULL_HANDLE};
+    uint32_t                 m_graphics_queue_family_index{0};
+    uint32_t                 m_present_queue_family_index {0};
+
+    // Per-frame-in-flight submission resources consumed by Swapchain_impl.
+    // Device_impl owns the VkCommandPool + VkCommandBuffer; Swapchain_impl
+    // populates/recycles submit_fence from its own fence pool.
+    std::array<Device_frame_in_flight, s_number_of_frames_in_flight> m_device_submit_history{};
+
+    // [frame_in_flight_slot][thread_slot] command pools + their
+    // currently-allocated Command_buffers. Pools are created once at
+    // Device_impl construction with VK_COMMAND_POOL_CREATE_TRANSIENT_BIT
+    // and torn down at destruction. Each frame the per-slot pools are
+    // wholesale-reset (vkResetCommandPool + clear the
+    // allocated_command_buffers vector) once the slot's submit fence
+    // reports GPU completion.
+    std::array<
+        std::array<Per_thread_command_pool, s_number_of_thread_slots>,
+        s_number_of_frames_in_flight
+    > m_command_pools{};
+
+    VkSemaphore              m_vulkan_frame_end_semaphore {VK_NULL_HANDLE};
+    uint64_t                 m_latest_completed_frame     {0}; // GPU
+    uint64_t                 m_frame_index                {1}; // CPU
+
+    // Target present time request (frame pacing FR3, step P2.3) plus the
+    // pacer-computed present-request holdback deadline (claim C15; derived
+    // from the tracked grid, deviation 12).
+    std::int64_t             m_present_target_frame_id    {-1};
+    double                   m_present_target_time_seconds{0.0};
+    double                   m_present_target_hold_until_seconds{0.0};
+    // Present-request holdback timer (claim C15 mitigation).
+    erhe::time::Waitable_timer m_present_holdback_timer;
+
+    // Current device-frame lifecycle state. Drives the assertions in
+    // wait_frame / begin_frame / begin_swapchain_frame / end_swapchain_frame
+    // / end_frame and backs is_in_device_frame / is_in_swapchain_frame.
+    Device_frame_state       m_state{Device_frame_state::idle};
+    // Set by Command_buffer_impl::begin_swapchain on success. Originally
+    // read by the legacy end_frame() submit branch to pick
+    // Swapchain_impl::end_frame; that branch is gone now (presentation
+    // moved to submit_command_buffers). Kept as a debug breadcrumb and
+    // cleared at end_frame() so the next frame starts fresh.
+    bool                     m_had_swapchain_frame{false};
+
+public:
+    // Serializes recording into the active device frame command buffer
+    // across worker threads (init taskflow etc). Only the in-frame paths
+    // of upload_to_buffer / upload_to_texture / clear_texture /
+    // transition_texture_layout and the Blit_command_encoder recording
+    // scope need to hold this. At steady-state rendering the tick runs
+    // single-threaded so the lock is uncontested.
+    std::mutex m_recording_mutex;
+
+private:
+
+
+    void report_device_fault_khr();
+    void report_device_fault_ext();
+
+    // Device fault reporting (VK_KHR_device_fault preferred,
+    // VK_EXT_device_fault fallback for the drivers that only ship the EXT).
+    // Set at device creation from the extension probe plus the queried
+    // deviceFault feature; read by report_device_fault().
+    bool                     m_device_fault_report_khr{false};
+    bool                     m_device_fault_report_ext{false};
+
+    Instance_layers          m_instance_layers    {};
+    Instance_extensions      m_instance_extensions{};
+    Device_extensions        m_device_extensions  {};
+    Capabilities             m_capabilities       {};
+    Frame_pacing_tier        m_frame_pacing_tier  {Frame_pacing_tier::off};
+
+    VkPhysicalDeviceDriverProperties               m_driver_properties{};
+    VkPhysicalDeviceDepthStencilResolveProperties  m_depth_stencil_resolve_properties{};
+    VkPhysicalDeviceMemoryProperties2              m_memory_properties{};
+    // Portability subset features/properties as queried from the physical
+    // device. When VK_KHR_portability_subset is NOT advertised we treat the
+    // device as fully featured: every feature flag is forced to VK_TRUE and
+    // properties are set to values that impose no extra constraints. Vulkan
+    // backend classes can therefore consult these structs unconditionally
+    // instead of repeating the extension check at every call site.
+    VkPhysicalDevicePortabilitySubsetFeaturesKHR   m_portability_subset_features{};
+    VkPhysicalDevicePortabilitySubsetPropertiesKHR m_portability_subset_properties{};
+
+    // Acceleration structure limits. Chained into the properties2 query only
+    // when VK_KHR_acceleration_structure is advertised; otherwise stays at
+    // conservative defaults so call sites can read it unconditionally.
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR m_acceleration_structure_properties{};
+
+    // Pipeline infrastructure
+    VkPipelineCache                               m_pipeline_cache           {VK_NULL_HANDLE};
+    VkDescriptorSetLayout                         m_descriptor_set_layout    {VK_NULL_HANDLE};
+    VkDescriptorSetLayout                         m_texture_set_layout       {VK_NULL_HANDLE};
+    VkDescriptorPool                              m_per_frame_descriptor_pool{VK_NULL_HANDLE};
+    std::mutex                                    m_pipeline_map_mutex;
+    std::unordered_map<std::size_t, VkPipeline>   m_pipeline_map;
+    std::mutex                                    m_compatible_render_pass_mutex;
+    std::unordered_map<std::size_t, VkRenderPass> m_compatible_render_pass_map;
+
+    // For ring buffer:
+    bool                                      m_need_sync{false};
+    std::vector<std::unique_ptr<Ring_buffer>> m_ring_buffers;
+    std::size_t                               m_min_buffer_size = 2 * 1024 * 1024; // TODO
+
+    // GPU timers. m_gpu_timer_query_pool is sized for
+    // s_max_gpu_timers * 2 * s_number_of_frames_in_flight queries, laid out
+    // as [slice 0 | slice 1] where each slice has 2 queries per timer
+    // (begin, end). m_gpu_timer_mutex serializes free-list and
+    // fired-bitmap mutations from any thread that touches a Gpu_timer
+    // (ctor/dtor, write_begin/write_end, wait_frame result-read).
+    VkQueryPool m_gpu_timer_query_pool      {VK_NULL_HANDLE};
+
+    // Frame-spanning GPU timestamp bracket state (step P0.3).
+    static constexpr std::size_t s_frame_bracket_ring = 16;
+    VkQueryPool  m_frame_bracket_query_pool{VK_NULL_HANDLE};
+    std::array<std::int64_t, s_frame_bracket_ring> m_frame_bracket_frame_id{};
+    bool         m_frame_bracket_begun{false};
+    bool         m_frame_bracket_ended{false};
+    bool         m_host_query_reset   {false};
+    bool         m_gpu_calibration_valid       {false};
+    double       m_gpu_calibration_host_seconds{0.0};
+    uint64_t     m_gpu_calibration_device_ticks{0};
+    uint64_t     m_gpu_calibration_frame       {0};
+
+    // Host time domains this device advertises and this platform can read
+    // (select_calibrated_host_time_domain). offset_seconds maps the domain
+    // onto the reference clock (Frame_time_recorder::now()) and is NOT zero
+    // in general: on macOS libc++ steady_clock is CLOCK_MONOTONIC_RAW while
+    // CLOCK_MONOTONIC also counts time spent asleep; on Linux steady_clock
+    // is CLOCK_MONOTONIC and the raw clock is the odd one out. Offsets are
+    // re-measured with the GPU calibration, since the gap between two
+    // monotonic clocks moves whenever the system sleeps.
+    struct Host_time_domain
+    {
+        VkTimeDomainKHR domain          {VK_TIME_DOMAIN_DEVICE_KHR};
+        double          ticks_per_second{1.0};
+        double          offset_seconds  {0.0};
+    };
+    void refresh_host_time_domain_offsets();
+    std::vector<Host_time_domain> m_host_time_domains;
+    VkTimeDomainKHR m_calibrated_host_time_domain{VK_TIME_DOMAIN_DEVICE_KHR};
+    uint64_t        m_host_time_domain_offset_frame{0};
+    bool            m_host_time_domain_offsets_valid{false};
+    double      m_gpu_timer_timestamp_period{0.0};
+    uint64_t    m_gpu_timer_valid_mask      {0};
+    bool        m_gpu_timers_supported      {false};
+    std::mutex  m_gpu_timer_mutex;
+    std::array<Gpu_timer_impl*,       s_max_gpu_timers> m_gpu_timer_by_index{};
+    std::array<bool,                  s_max_gpu_timers> m_gpu_timer_slot_used{};
+    std::array<std::array<bool, s_max_gpu_timers>, s_number_of_frames_in_flight> m_gpu_timer_fired{};
+    std::array<bool, s_number_of_frames_in_flight>                              m_gpu_timer_reset_pending{};
+
+#if defined(ERHE_PROFILE_LIBRARY_TRACY) && defined(TRACY_ENABLE)
+    // Tracy Vulkan GPU profiling context, created in vulkan_device_init.cpp
+    // when GPU timestamps are supported and destroyed in ~Device_impl. The
+    // per-frame TracyVkCollect is issued from maybe_reset_gpu_timer_slice.
+    TracyVkCtx  m_tracy_vk_ctx{nullptr};
+#endif
+
+    // Active render pass tracking
+    static Device_impl*  s_device_impl;
+    Render_pass_impl*    m_active_render_pass{nullptr};
+
+    // Optional hooks used when erhe::xr wraps Vulkan creation via
+    // XR_KHR_vulkan_enable2. Stored as a raw pointer; lifetime is managed by
+    // the caller (typically erhe::xr::Headset) and must outlive Device_impl
+    // construction.
+    const Vulkan_external_creators* m_external_creators{nullptr};
+};
+
+} // namespace erhe::graphics

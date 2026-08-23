@@ -1,0 +1,103 @@
+#pragma once
+
+#include "erhe_math/math_util.hpp"
+#include "erhe_math/viewport.hpp"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+
+namespace erhe::scene {
+
+class Transform;
+
+class Projection
+{
+public:
+    enum class Type : unsigned int {
+        other = 0,            // Projection is done by shader in unusual way - hemispherical for example
+        perspective_horizontal,
+        perspective_vertical,
+        perspective,          // Uses both horizontal and vertical fov and ignores aspect ratio
+        perspective_xr,
+        orthogonal_horizontal,
+        orthogonal_vertical,
+        orthogonal,           // Uses both horizontal and vertical size and ignores aspect ratio, O-centered
+        orthogonal_rectangle, // Like above, not O-centered, uses X and Y as corner
+        generic_frustum       // Generic frustum
+    };
+
+    static constexpr const char* c_type_strings[] = {
+        "Other",
+        "Perspective Horizontal",
+        "Perspective Vertical",
+        "Perspective",
+        "Perspective XR",
+        "Orthogonal Horizontal",
+        "Orthogonal Vertical",
+        "Orthogonal",
+        "Orthogonal Rectangle",
+        "Generic Frustum"
+    };
+
+    [[nodiscard]] auto clip_from_node_transform(
+        erhe::math::Viewport                      viewport,
+        bool                                      reverse_depth,
+        erhe::math::Depth_range                   depth_range,
+        const erhe::math::Coordinate_conventions& conventions = erhe::math::Coordinate_conventions{}
+    ) const -> Transform;
+
+    [[nodiscard]] auto get_projection_matrix(
+        float                                     viewport_aspect_ratio,
+        bool                                      reverse_depth,
+        erhe::math::Depth_range                   depth_range,
+        const erhe::math::Coordinate_conventions& conventions = erhe::math::Coordinate_conventions{}
+    ) const -> glm::mat4;
+
+    class Fov_sides
+    {
+    public:
+        Fov_sides(const float left, const float right, const float up, const float down)
+            : left {left}
+            , right{right}
+            , up   {up}
+            , down {down}
+        {
+        }
+
+        float left;
+        float right;
+        float up;
+        float down;
+    };
+
+    [[nodiscard]] auto get_fov_sides(erhe::math::Viewport viewport) const -> Fov_sides;
+    [[nodiscard]] auto get_scale() const -> float;
+
+    Type  projection_type{Type::perspective_vertical};
+    float z_near         { 0.03f};
+    float z_far          {64.0};
+
+    // Far plane at infinity, for the perspective projection types only (glTF
+    // makes camera.perspective.zfar optional and the reference implementation
+    // treats an absent zfar as Infinity). z_far stays a finite, meaningful
+    // number while this is set: it is the depth hint the rest of the editor
+    // works from (shadow range fitting, the transform tool's gizmo distance,
+    // the properties slider), and only the projection matrix goes to infinity.
+    bool  infinite_z_far {false};
+    float fov_x          { glm::pi<float>() / 4.0f};
+    float fov_y          { glm::pi<float>() / 4.0f};
+    float fov_left       {-glm::pi<float>() / 4.0f};
+    float fov_right      { glm::pi<float>() / 4.0f};
+    float fov_up         { glm::pi<float>() / 4.0f};
+    float fov_down       {-glm::pi<float>() / 4.0f};
+    float ortho_left     {-0.5f};
+    float ortho_width    { 1.0f};
+    float ortho_bottom   {-0.5f};
+    float ortho_height   { 1.0f};
+    float frustum_left   {-0.5f};
+    float frustum_right  { 0.5f};
+    float frustum_bottom {-0.5f};
+    float frustum_top    { 0.5f};
+};
+
+} // namespace erhe::scene

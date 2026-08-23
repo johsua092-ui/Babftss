@@ -1,0 +1,78 @@
+#pragma once
+
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_utility/debug_label.hpp"
+
+#include "volk.h"
+
+#include <optional>
+#include <thread>
+#include <vector>
+
+namespace erhe::graphics {
+
+class Device_impl;
+class Emulated_swapchain_impl;
+
+class Render_pass_impl final
+{
+public:
+    Render_pass_impl (Device& device, const Render_pass_descriptor& render_pass_descriptor);
+    ~Render_pass_impl() noexcept;
+    Render_pass_impl (const Render_pass_impl&) = delete;
+    void operator=   (const Render_pass_impl&) = delete;
+    Render_pass_impl (Render_pass_impl&&)      = delete;
+    void operator=   (Render_pass_impl&&)      = delete;
+
+    void create      ();
+    void reset       ();
+    auto check_status() const -> bool;
+
+    [[nodiscard]] auto get_render_target_width   () const -> int;
+    [[nodiscard]] auto get_render_target_height  () const -> int;
+    [[nodiscard]] auto get_sample_count          () const -> unsigned int;
+    [[nodiscard]] auto get_color_attachment_count() const -> unsigned int;
+    [[nodiscard]] auto get_swapchain             () const -> Swapchain*;
+    [[nodiscard]] auto get_debug_label           () const -> erhe::utility::Debug_label;
+    [[nodiscard]] auto get_command_buffer        () const -> VkCommandBuffer;
+    [[nodiscard]] auto get_render_pass           () const -> VkRenderPass;
+
+    // For Render_command_encoder
+    void start_render_pass(Command_buffer& command_buffer, Render_pass* render_pass_before, Render_pass* render_pass_after);
+    void end_render_pass  (Command_buffer& command_buffer, Render_pass* render_pass_after);
+
+private:
+    friend class Device_impl;
+
+    Device&                                          m_device;
+    Swapchain*                                       m_swapchain{nullptr};
+    // Headless (surfaceless) swapchain target, resolved from
+    // Render_pass_descriptor::surface when m_swapchain is null. Non-owning.
+    Emulated_swapchain_impl*                         m_emulated_swapchain{nullptr};
+    std::array<Render_pass_attachment_descriptor, 4> m_color_attachments;
+    Render_pass_attachment_descriptor                m_depth_attachment;
+    Render_pass_attachment_descriptor                m_stencil_attachment;
+    int                                              m_render_target_width{0};
+    int                                              m_render_target_height{0};
+    uint32_t                                         m_view_mask{0};
+    // Fragment density map attachment (fixed foveated rendering), or nullptr.
+    // Non-owning; the texture is owned by the OpenXR Swapchain. Deliberately
+    // kept out of m_color_attachments/m_depth_attachment so it is excluded from
+    // the layout-transition and barrier machinery.
+    const Texture*                                   m_fragment_density_map_texture{nullptr};
+    erhe::utility::Debug_label                       m_debug_label;
+    erhe::utility::Debug_label                       m_debug_group_name;
+    bool                                             m_uses_multisample_resolve{false};
+    bool                                             m_is_active{false};
+
+    Device_impl&              m_device_impl;
+    VkRenderPass              m_render_pass   {VK_NULL_HANDLE};
+    VkFramebuffer             m_framebuffer   {VK_NULL_HANDLE};
+    VkCommandBuffer           m_command_buffer{VK_NULL_HANDLE};
+    VkRenderPassBeginInfo     m_begin_info{};
+    std::vector<VkClearValue> m_clear_values;
+    bool                      m_any_load_op_clear{false};
+};
+
+} // namespace erhe::graphics

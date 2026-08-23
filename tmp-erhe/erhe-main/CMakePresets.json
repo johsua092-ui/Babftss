@@ -1,0 +1,119 @@
+{
+    "version": 10,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 31,
+        "patch": 6
+    },
+    "configurePresets": [
+        {
+            "hidden":    true,
+            "name":      "Base",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS":   "ON",
+                "ERHE_FONT_RASTERIZATION_LIBRARY": "freetype",
+                "ERHE_GLTF_LIBRARY":               "fastgltf",
+                "ERHE_GUI_LIBRARY":                "imgui",
+                "ERHE_PHYSICS_LIBRARY":            "jolt",
+                "ERHE_PROFILE_LIBRARY":            "tracy",
+                "ERHE_RAYTRACE_LIBRARY":           "bvh",
+                "ERHE_SPIRV":                      "OFF",
+                "ERHE_SVG_LIBRARY":                "plutosvg",
+                "ERHE_TEXT_LAYOUT_LIBRARY":        "harfbuzz",
+                "ERHE_USE_PRECOMPILED_HEADERS":    "OFF",
+                "ERHE_VOXEL_LIBRARY":              "openvdb",
+                "ERHE_WINDOW_LIBRARY":             "sdl",
+                "ERHE_XR_LIBRARY":                 "openxr"
+            }
+        },
+        {
+            "name":     "OpenGL",
+            "hidden":   true,
+            "inherits": "Base",
+            "cacheVariables": {
+                "ERHE_GRAPHICS_API": "opengl",
+                "ERHE_SPIRV":        "OFF"
+            }
+        },
+        {
+            "name":     "OpenGL_Debug",
+            "inherits": "OpenGL",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name":     "OpenGL_Release",
+            "inherits": "OpenGL",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name":     "OpenGL_ASAN_Debug",
+            "inherits": "OpenGL_Debug",
+            "cacheVariables": {
+                "ERHE_USE_ASAN":    "ON"
+            }
+        },
+        {
+            "name":     "OpenGL_ASAN_Release",
+            "inherits": "OpenGL_Release",
+            "cacheVariables": {
+                "ERHE_USE_ASAN":    "ON"
+            }
+        },
+        {
+            "name":     "Vulkan",
+            "hidden":   true,
+            "inherits": "Base",
+            "cacheVariables": {
+                "ERHE_GRAPHICS_API": "vulkan",
+                "ERHE_SPIRV":        "ON"
+            }
+        },
+        {
+            "name":     "Vulkan_Debug",
+            "inherits": "Vulkan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE":  "Debug"
+            }
+        },
+        {
+            "name": "Vulkan_Release",
+            "inherits": "Vulkan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE":  "Release"
+            }
+        },
+        {
+            "name":     "Metal",
+            "hidden":   true,
+            "inherits": "Base",
+            "cacheVariables": {
+                "ERHE_GRAPHICS_API": "metal",
+                "ERHE_SPIRV":        "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs":  "${hostSystemName}",
+                "rhs":  "Darwin"
+            }
+        },
+        {
+            "name":     "Metal_Debug",
+            "inherits": "Metal",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE":  "Debug"
+            }
+        },
+        {
+            "name":     "Metal_Release",
+            "inherits": "Metal",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE":  "Release"
+            }
+        }
+    ]
+}

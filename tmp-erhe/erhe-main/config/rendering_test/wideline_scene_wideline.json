@@ -1,0 +1,11 @@
+{
+  "cols": 3,
+  "rows": 1,
+  "cells": [
+    "stencil_wide_line", "cube_with_edge_lines", "stencil_wide_line"
+  ],
+  "fullscreen_cell_col": -1,
+  "fullscreen_cell_row": -1,
+  "replicate_cell_col": -1,
+  "replicate_cell_row": -1
+}

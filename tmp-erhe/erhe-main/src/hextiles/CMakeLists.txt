@@ -1,0 +1,161 @@
+message(STATUS "Configuring executable 'hextiles'.")
+set(_target "hextiles")
+add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${PROJECT_SOURCE_DIR}" FILES
+    config/hextiles/erhe_graphics.json
+    config/hextiles/logging.json
+    config/hextiles/window.json
+
+    res/hextiles/shaders/line.vert
+    res/hextiles/shaders/line.geom
+    res/hextiles/shaders/line.frag
+    res/hextiles/shaders/text.vert
+    res/hextiles/shaders/text.frag
+    res/hextiles/shaders/textured.vert
+    res/hextiles/shaders/textured.frag
+    res/hextiles/shaders/tile.vert
+    res/hextiles/shaders/tile.frag
+)
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+    hextiles.cpp
+    hextiles.hpp
+    coordinate.cpp
+    coordinate.hpp
+    file_util.cpp
+    file_util.hpp
+    hextiles_log.cpp
+    hextiles_log.hpp
+    hextiles_settings.cpp
+    hextiles_settings.hpp
+    game/game.cpp
+    game/game.hpp
+    game/player.cpp
+    game/player.hpp
+    game/unit.hpp
+    main.cpp
+    map.cpp
+    map.hpp
+    map_window.cpp
+    map_window.hpp
+    menu_window.cpp
+    menu_window.hpp
+    new_game_window.cpp
+    new_game_window.hpp
+    pixel_lookup.cpp
+    pixel_lookup.hpp
+    stream.cpp
+    stream.hpp
+    terrain_type.cpp
+    terrain_type.hpp
+    texture_util.cpp
+    texture_util.hpp
+    tile_renderer.cpp
+    tile_renderer.hpp
+    tile_shape.cpp
+    tile_shape.hpp
+    tiles.cpp
+    tiles.hpp
+    unit_type.cpp
+    unit_type.hpp
+    types.cpp
+    types.hpp
+    rendering.cpp
+    rendering.hpp
+    map_editor/map_editor.cpp
+    map_editor/map_editor.hpp
+    map_editor/map_tool_window.cpp
+    map_editor/map_tool_window.hpp
+    map_editor/terrain_palette_window.cpp
+    map_editor/terrain_palette_window.hpp
+    map_generator/biome.cpp
+    map_generator/biome.hpp
+    map_generator/fbm_noise.cpp
+    map_generator/fbm_noise.hpp
+    map_generator/map_generator.cpp
+    map_generator/map_generator.hpp
+    map_generator/terrain_variation.cpp
+    map_generator/terrain_variation.hpp
+    map_generator/variations.cpp
+    map_generator/variations.hpp
+    type_editors/terrain_editor_window.cpp
+    type_editors/terrain_editor_window.hpp
+    type_editors/terrain_replacement_rule_editor_window.cpp
+    type_editors/terrain_replacement_rule_editor_window.hpp
+    type_editors/terrain_group_editor_window.cpp
+    type_editors/terrain_group_editor_window.hpp
+    type_editors/type_editor.cpp
+    type_editors/type_editor.hpp
+    type_editors/unit_editor_window.cpp
+    type_editors/unit_editor_window.hpp
+)
+
+# Graphics_config serialize/deserialize must compile here (same target as
+# other simdjson users) to avoid ABI mismatch from differing arch flags.
+set(_gfx_gen "${CMAKE_BINARY_DIR}/src/erhe/graphics/erhe_graphics/generated")
+set(_gfx_ser_sources
+    ${_gfx_gen}/graphics_config_serialization.hpp
+    ${_gfx_gen}/graphics_config.cpp
+    ${_gfx_gen}/opengl_config_serialization.hpp
+    ${_gfx_gen}/opengl_config.cpp
+    ${_gfx_gen}/vulkan_config_serialization.hpp
+    ${_gfx_gen}/vulkan_config.cpp
+    ${_gfx_gen}/metal_config_serialization.hpp
+    ${_gfx_gen}/metal_config.cpp
+)
+erhe_codegen_source_settings(${_gfx_ser_sources})
+target_sources(${_target} PRIVATE ${_gfx_ser_sources})
+source_group("codegen generated/graphics" FILES ${_gfx_ser_sources})
+
+if (ERHE_GRAPHICS_API_OPENGL)
+    target_link_libraries(${_target} PRIVATE erhe::gl)
+endif ()
+
+if (ERHE_USE_MIMALLOC)
+    target_link_libraries(${_target} PUBLIC mimalloc-static)
+endif ()
+
+target_link_libraries(
+    ${_target}
+    PRIVATE
+        etl::etl
+        erhe::codegen
+        erhe::commands
+        erhe::file
+        erhe::geometry
+        erhe::graphics
+        erhe::imgui
+        erhe::log
+        erhe::net
+        erhe::profile
+        erhe::renderer
+        erhe::rendergraph
+        erhe::ui
+        erhe::utility
+        erhe::verify
+        erhe::window
+        imgui
+        nlohmann_json::nlohmann_json
+)
+
+if (${ERHE_SVG_LIBRARY} STREQUAL "plutosvg")
+    target_link_libraries(${_target} PRIVATE plutosvg)
+endif ()
+
+if (${ERHE_AUDIO_LIBRARY} STREQUAL "miniaudio")
+    target_link_libraries(${_target} PRIVATE miniaudio)
+endif ()
+
+target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+set_target_properties(
+    ${_target} PROPERTIES
+    CXX_STANDARD          20
+    CXX_STANDARD_REQUIRED YES
+    CXX_EXTENSIONS        NO
+)
+
+erhe_target_settings(${_target} "erhe-executables")

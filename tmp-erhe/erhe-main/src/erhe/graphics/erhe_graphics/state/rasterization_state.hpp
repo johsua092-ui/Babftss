@@ -1,0 +1,79 @@
+#pragma once
+
+#include "erhe_graphics/enums.hpp"
+
+#include <cstddef>
+
+namespace erhe::graphics {
+
+class Rasterization_state
+{
+public:
+    // rasterizer_discard_enable
+    // depth bias
+    // line width
+
+    bool                 depth_clamp_enable  {false};
+    bool                 face_cull_enable    {true};
+    Cull_face_mode       cull_face_mode      {Cull_face_mode::back};
+    Front_face_direction front_face_direction{Front_face_direction::ccw};
+    Polygon_mode         polygon_mode        {Polygon_mode::fill};
+    // not implementing separate front and back polygon modes for now
+
+    // Conservative rasterization, overestimation mode: every texel a
+    // primitive touches generates a fragment. Vulkan-only, opt-in per
+    // pipeline, honoured only when the device exposes
+    // VK_EXT_conservative_rasterization (Device_info::
+    // use_conservative_rasterization) - silently ignored otherwise and on
+    // GL/Metal. Used by the lightmap G-buffer raster.
+    bool                 conservative_enable {false};
+
+    // When true the pipeline enables rasterizer depth bias (polygon offset);
+    // the constant / slope / clamp magnitudes are dynamic state set per pass
+    // via Render_command_encoder::set_depth_bias(). Off (false) means no bias
+    // regardless of any set_depth_bias() call.
+    bool                 depth_bias_enable   {false};
+
+    // Returns a copy with front_face_direction inverted (CCW<->CW).
+    // Use when projection Y-flip reverses apparent triangle winding.
+    [[nodiscard]] auto with_winding_flip() const -> Rasterization_state;
+
+    // Returns a copy with face culling turned off, keeping every other piece
+    // of state. Used for glTF's material.doubleSided (Material_data::
+    // double_sided), where both faces of a surface must be rendered.
+    [[nodiscard]] auto with_face_culling_disabled() const -> Rasterization_state;
+
+    // Returns with_face_culling_disabled() when condition is true, otherwise
+    // returns *this.
+    [[nodiscard]] auto with_face_culling_disabled_if(bool condition) const -> Rasterization_state;
+
+    // Returns a copy with depth_bias_enable set (the pipeline then honours
+    // Render_command_encoder::set_depth_bias()).
+    [[nodiscard]] auto with_depth_bias() const -> Rasterization_state;
+
+    // Returns with_winding_flip() when condition is true, otherwise returns *this.
+    // Typical usage: state.with_winding_flip_if(conventions.clip_space_y_flip == Clip_space_y_flip::enabled)
+    [[nodiscard]] auto with_winding_flip_if(bool condition) const -> Rasterization_state;
+
+    static Rasterization_state cull_mode_none_depth_clamp;
+    static Rasterization_state cull_mode_front_ccw_depth_clamp;
+    static Rasterization_state cull_mode_back_ccw_depth_clamp;
+    static Rasterization_state cull_mode_none;
+    static Rasterization_state cull_mode_front_cw;
+    static Rasterization_state cull_mode_front_ccw;
+    static Rasterization_state cull_mode_back_cw;
+    static Rasterization_state cull_mode_back_ccw;
+    static Rasterization_state cull_mode_front_and_back;
+};
+
+class Rasterization_state_hash
+{
+public:
+    [[nodiscard]] auto operator()( const Rasterization_state& rasterization_state) noexcept -> std::size_t;
+};
+
+[[nodiscard]] auto operator==(const Rasterization_state& lhs, const Rasterization_state& rhs) noexcept -> bool;
+[[nodiscard]] auto operator!=(const Rasterization_state& lhs, const Rasterization_state& rhs) noexcept -> bool;
+
+
+} // namespace erhe::graphics

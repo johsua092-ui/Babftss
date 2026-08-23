@@ -1,0 +1,232 @@
+#include "operations/item_insert_remove_operation.hpp"
+#include "operations/item_parent_change_operation.hpp"
+#include "erhe_item/item_host.hpp"
+
+#include "app_context.hpp"
+#include "assets/asset_manager.hpp"
+#include "editor_log.hpp"
+#include "tools/selection_tool.hpp"
+
+#include "erhe_primitive/material.hpp"
+#include "erhe_scene/mesh.hpp"
+
+#include <sstream>
+
+namespace editor {
+
+namespace {
+
+// Announces the subtree that is leaving the scene, so editor parts drop their
+// cached references to it (doc/import-undo-reference-clearing.md). Scene nodes
+// have no editor-level detach hook, so the removing operation reports them.
+//
+// Must be called with the subtree in its final shape - immediately around the
+// set_parent() that orphans it. In Mode::remove, execute() first promotes the
+// non-bone-proxy children to the grandparent, so a walk taken any earlier
+// would announce nodes that are still in the scene and make every subscriber
+// drop a live node.
+void note_subtree_removed(App_context& context, const std::shared_ptr<erhe::Hierarchy>& item)
+{
+    if ((context.asset_manager == nullptr) || !item) {
+        return;
+    }
+    context.asset_manager->note_item_detached(item);
+    for (const std::shared_ptr<erhe::Hierarchy>& child : item->get_children()) {
+        note_subtree_removed(context, child);
+    }
+    const auto node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+    if (node) {
+        for (const auto& attachment : node->get_attachments()) {
+            context.asset_manager->note_item_detached(attachment);
+        }
+    }
+}
+
+} // anonymous namespace
+
+auto c_str(Item_insert_remove_operation::Mode mode) -> const char*
+{
+    switch (mode) {
+        //using enum Mode;
+        case Item_insert_remove_operation::Mode::insert: return "Item_insert";
+        case Item_insert_remove_operation::Mode::remove: return "Item_remove";
+        default: return "?";
+    }
+}
+
+Item_insert_remove_operation::Item_insert_remove_operation(const Parameters& parameters)
+    : m_mode{parameters.mode}
+{
+    auto& selection = *parameters.context.selection;
+    m_item                   = parameters.item,
+    m_selection_before       = selection.get_selected_items();
+    m_index_in_parent_insert = parameters.index_in_parent;
+
+    if (parameters.mode == Mode::insert) {
+        m_selection_after = selection.get_selected_items();
+        m_after_parent    = parameters.parent;
+    }
+
+    if (parameters.mode == Mode::remove) {
+        m_after_parent = std::shared_ptr<erhe::scene::Node>{};
+
+        const auto& children = parameters.item->get_children();
+        const auto parent = parameters.item->get_parent().lock();
+        for (const auto& child : children) {
+            // Editor-generated bone proxies are not content and must not be
+            // recorded: Bone_visualization detaches them when their skin
+            // unregisters, so a recorded parent change would replay against a
+            // proxy that is no longer where the record says (undo's parent
+            // VERIFY), and undo would resurrect a proxy next to the fresh one
+            // the re-registered skin creates. Selection::delete_items skips
+            // them the same way.
+            if ((child->get_flag_bits() & erhe::Item_flags::bone_proxy) != 0) {
+                continue;
+            }
+            m_parent_changes.push_back(
+                std::make_shared<Item_parent_change_operation>(
+                    parent,
+                    child,
+                    std::shared_ptr<erhe::Hierarchy>{},
+                    std::shared_ptr<erhe::Hierarchy>{}
+                )
+            );
+        }
+
+        log_operations->trace("selection size = {}", m_selection_after.size());
+    }
+
+    ERHE_VERIFY(m_item);
+    bool before_parent = m_before_parent.operator bool();
+    bool after_parent  = m_after_parent.operator bool();
+    const erhe::Hierarchy* parent = before_parent ? m_before_parent.get() : m_after_parent.get();
+    std::stringstream ss;
+    bool first = true;
+    for (const std::shared_ptr<Item_parent_change_operation>& op : m_parent_changes) {
+        if (!first) {
+            ss << ", ";
+        }
+        ss << op->describe();
+    }
+
+    set_description(
+        fmt::format(
+            "[{}] {} {}, {}{}, {} parent changes: {}",
+            get_serial(),
+            c_str(m_mode),
+            m_item->get_name(),
+            before_parent ? "before parent = " : after_parent ? "after parent = " : "no parent",
+            (parent != nullptr) ? parent->get_name() : "",
+            m_parent_changes.size(),
+            ss.str()
+        )
+    );
+}
+
+void Item_insert_remove_operation::execute(App_context& context)
+{
+    log_operations->trace("Op Execute {}", describe());
+
+    erhe::Item_host_lock_guard scene_lock{m_item.get()};
+
+    if (m_mode == Mode::remove) {
+        m_before_parent = m_item->get_parent().lock();
+        m_index_in_parent = m_item->get_index_in_parent();
+
+        const auto& children = m_item->get_children();
+        m_parent_changes.clear();
+        for (const auto& child : children) {
+            // See the constructor: bone proxies are never recorded.
+            if ((child->get_flag_bits() & erhe::Item_flags::bone_proxy) != 0) {
+                continue;
+            }
+            log_operations->trace("  child -> parent {}", child->get_name(), m_before_parent->get_name());
+            m_parent_changes.push_back(
+                std::make_shared<Item_parent_change_operation>(
+                    m_before_parent,
+                    child,
+                    std::shared_ptr<erhe::Hierarchy>{},
+                    std::shared_ptr<erhe::Hierarchy>{}
+                )
+            );
+        }
+    } else {
+        m_index_in_parent = m_index_in_parent_insert;
+    }
+
+    for (auto& child_parent_change : m_parent_changes) {
+        child_parent_change->execute(context);
+    }
+
+    if (m_mode == Mode::remove) {
+        // The children have been promoted; what is left under m_item is what
+        // actually leaves the scene.
+        note_subtree_removed(context, m_item);
+    }
+
+    m_item->set_parent(m_after_parent, m_index_in_parent);
+
+    context.selection->set_selection(m_selection_after);
+}
+
+void Item_insert_remove_operation::undo(App_context& context)
+{
+    log_operations->trace("Op Undo {}", describe());
+
+    erhe::Item_host_lock_guard scene_lock{m_item.get()};
+
+    if (m_mode == Mode::remove) {
+        m_after_parent = m_item->get_parent().lock();
+    }
+    if (m_mode == Mode::insert) {
+        // Undoing an insert removes the item: announce the subtree as it
+        // stands now. m_parent_changes is empty for an insert, so the shape
+        // does not change under the loop below.
+        note_subtree_removed(context, m_item);
+    }
+
+    m_item->set_parent(m_before_parent, m_index_in_parent);
+
+    for (auto i = rbegin(m_parent_changes), end = rend(m_parent_changes); i < end; ++i) {
+        auto& child_parent_change = *i;
+        child_parent_change->undo(context);
+    }
+
+    context.selection->set_selection(m_selection_before);
+}
+
+namespace {
+
+void collect_subtree_mesh_materials(const std::shared_ptr<erhe::Hierarchy>& hierarchy, std::unordered_set<const erhe::Item_base*>& out_items)
+{
+    if (!hierarchy) {
+        return;
+    }
+    const std::shared_ptr<erhe::scene::Node> node = std::dynamic_pointer_cast<erhe::scene::Node>(hierarchy);
+    if (node) {
+        for (const std::shared_ptr<erhe::scene::Node_attachment>& attachment : node->get_attachments()) {
+            const std::shared_ptr<erhe::scene::Mesh> mesh = std::dynamic_pointer_cast<erhe::scene::Mesh>(attachment);
+            if (!mesh) {
+                continue;
+            }
+            for (const erhe::scene::Mesh_primitive& primitive : mesh->get_primitives()) {
+                if (primitive.material) {
+                    out_items.insert(primitive.material.get());
+                }
+            }
+        }
+    }
+    for (const std::shared_ptr<erhe::Hierarchy>& child : hierarchy->get_children()) {
+        collect_subtree_mesh_materials(child, out_items);
+    }
+}
+
+}
+
+void Item_insert_remove_operation::collect_item_references(std::unordered_set<const erhe::Item_base*>& out_items) const
+{
+    collect_subtree_mesh_materials(m_item, out_items);
+}
+
+}
+

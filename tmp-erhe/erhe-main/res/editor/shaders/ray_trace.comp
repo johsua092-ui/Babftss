@@ -1,0 +1,183 @@
+#include "erhe_camera_view.glsl"
+#include "erhe_bxdf.glsl"
+#include "erhe_light.glsl"
+#include "erhe_texture.glsl"
+
+// Material-aware GPU ray tracing (issue #233, milestone 2). One primary ray
+// per output pixel against the scene top level acceleration structure. Hits
+// fetch interpolated vertex attributes (smooth normal, texcoord, color) from
+// the mesh memory pools via buffer device addresses stored in per-instance
+// records, look up the hit material in the shared material buffer, and shade
+// with the isotropic BRDF against the scene lights (runtime counts from the
+// light buffer) with ray traced shadows. Transmissive materials
+// (material.transmission > 0) run a bounded refraction loop with a traced
+// single-bounce reflection at each interface; total internal reflection
+// continues the main path along the reflected direction.
+//
+// The camera / material / light / instance-record blocks and the output
+// storage image (i_out) are declared by the bind group layout + interface
+// blocks; the acceleration structure binding number and the stream-1
+// attribute offsets (in uints, derived from the Mesh_memory vertex format)
+// come in through ERHE_* defines so they stay in sync with the C++ side.
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = ERHE_TLAS_BINDING) uniform accelerationStructureEXT s_tlas;
+
+#include "erhe_ray_hit.glsl"
+
+vec3 background_color(vec3 direction)
+{
+    return vec3(0.05, 0.05, 0.08);
+}
+
+// Whitted branching state. A full binary tree of depth D is 2^D rays, so
+// three separate caps bound the cost: the per-path depth
+// (ray_trace_control.max_bounces transmissive interactions along one
+// branch's history; the C++ side clamps it to the compile-time
+// ERHE_RT_MAX_BOUNCES stack bound), a per-pixel traced-ray budget
+// (ray_trace_control.max_rays; LIFO order with the refraction pushed last,
+// so the visually dominant transmission chain is spent first when the
+// budget runs out), and a throughput cutoff that drops negligible
+// branches. DFS over a depth-capped binary tree keeps at most depth+1
+// entries live, so c_max_stack = ERHE_RT_MAX_BOUNCES + 2 can never
+// overflow (the push guards protect regardless).
+const int   c_max_stack         = ERHE_RT_MAX_BOUNCES + 2;
+const float c_throughput_cutoff = 0.005;
+
+struct Pending_ray {
+    vec3  origin;
+    vec3  direction;
+    float t_max;
+    vec3  throughput;
+    uint  depth;      // transmissive interface interactions so far
+};
+
+// Display transform: the raster viewport stores exposed LINEAR color in a
+// float16 target and post-processing applies tonemap_log (compose.frag) -
+// still linear - before the shared present path encodes for the swapchain.
+// Match it: exposed linear color -> the same tonemap_log, stored linearly
+// in the rgba8 output (no manual sRGB encode; the display path handles it
+// like every other viewport texture). Bloom is not replicated.
+vec3 tonemap_log(vec3 x)
+{
+    float D_max       =  1.0;
+    float D_min       =  0.0;
+    float tau         =  1.0;
+    float small_value =  0.5 / 65536.0;
+    float Y_in        =  0.2126 * x.r + 0.7152 * x.g + 0.0722 * x.b; // bt.709
+    float Y_max       =  1.5;
+    float Y_min       =  0.0;
+    float nominator   = log(Y_in  + tau) - log(Y_min + tau);
+    float denominator = log(Y_max + tau) - log(Y_min + tau);
+    float Y_out       = (D_max - D_min) * (nominator / denominator) + D_min;
+    float scale       = Y_out / max(Y_in, small_value);
+    return x * scale;
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size  = imageSize(i_out);
+    if ((pixel.x >= size.x) || (pixel.y >= size.y)) {
+        return;
+    }
+
+    // NDC at the pixel center. world_from_clip unprojects with NDC y up
+    // (verified against the rendered scene: without the flip the output is
+    // upside down), so pixel row 0 (top) maps to NDC y +1.
+    vec2 uv  = (vec2(pixel) + vec2(0.5)) / vec2(size);
+    vec2 ndc = vec2((uv.x * 2.0) - 1.0, 1.0 - (uv.y * 2.0));
+
+    // Reconstruct the world-space ray through this pixel: unproject the
+    // far-plane point (depth convention aware) and start from the camera
+    // position (same mechanism as sky_atmosphere.vert).
+    highp mat4  world_from_clip = camera.cameras[c_view_index].world_from_clip;
+    highp float far_clip_z      = (camera.cameras[c_view_index].clip_depth_direction < 0.0) ? 0.0 : 1.0;
+    highp vec4  world_far       = world_from_clip * vec4(ndc, far_clip_z, 1.0);
+    highp vec3  world_far_pos   = world_far.xyz / world_far.w;
+    highp vec3  camera_origin   = vec3(
+        camera.cameras[c_view_index].world_from_node[3][0],
+        camera.cameras[c_view_index].world_from_node[3][1],
+        camera.cameras[c_view_index].world_from_node[3][2]
+    );
+    highp vec3  to_far          = world_far_pos - camera_origin;
+    highp float primary_t_max   = length(to_far);
+
+    vec3 color = vec3(0.0);
+
+    // Iterative Whitted-style tracing with an explicit ray stack (ray
+    // queries cannot recurse). Every transmissive interface BRANCHES: the
+    // reflection is pushed with the Fresnel weight and the refraction with
+    // (1 - Fresnel) times the glass tint, and each branch may branch again
+    // up to ERHE_RT_MAX_BOUNCES interface interactions along its history.
+    // Total internal reflection pushes the reflection only.
+    Pending_ray stack[c_max_stack];
+    int         stack_size = 0;
+
+    stack[stack_size++] = Pending_ray(camera_origin, to_far / primary_t_max, primary_t_max, vec3(1.0), 0u);
+
+    for (int rays_traced = 0; (stack_size > 0) && (rays_traced < int(ray_trace_control.max_rays)); ++rays_traced) {
+        Pending_ray ray = stack[--stack_size];
+
+        Hit_surface surface;
+        if (!trace_closest(ray.origin, ray.direction, ray.t_max, surface)) {
+            color += ray.throughput * background_color(ray.direction);
+            continue;
+        }
+
+        Material m = material.materials[surface.material_index];
+        if ((m.transmission <= 0.0) || (ray.depth >= ray_trace_control.max_bounces)) {
+            // Opaque hit, or the branch's depth budget is spent: shade as
+            // opaque so every branch terminates with a contribution.
+            color += ray.throughput * shade_surface(surface, -ray.direction);
+            continue;
+        }
+
+        // Transmissive interface. Normals face the incoming ray; backface
+        // means the ray is exiting the volume.
+        bool  entering  = !surface.backface;
+        float eta       = entering ? (1.0 / m.ior) : m.ior;
+        vec3  N         = surface.shading_normal;
+        float cos_i     = clamp(dot(-ray.direction, N), 0.0, 1.0);
+        vec3  refracted = refract(ray.direction, N, eta);
+        vec3  reflected = reflect(ray.direction, N);
+        bool  tir       = dot(refracted, refracted) < 1e-6;
+
+        float f0_sqrt = (m.ior - 1.0) / (m.ior + 1.0);
+        float f0      = f0_sqrt * f0_sqrt;
+        float fresnel = tir ? 1.0 : (f0 + (1.0 - f0) * pow(1.0 - cos_i, 5.0));
+
+        // Reflection branch (the whole path on total internal reflection).
+        // Pushed first so the refraction ends on top of the LIFO stack.
+        vec3 reflect_throughput = ray.throughput * fresnel;
+        if ((max(reflect_throughput.r, max(reflect_throughput.g, reflect_throughput.b)) > c_throughput_cutoff) && (stack_size < c_max_stack)) {
+            stack[stack_size++] = Pending_ray(
+                surface.position + surface.geometric_normal * c_ray_offset,
+                reflected,
+                c_t_far,
+                reflect_throughput,
+                ray.depth + 1u
+            );
+        }
+
+        if (!tir) {
+            // Refraction branch, tinted by the glass color.
+            vec3 glass_tint          = mix(vec3(1.0), surface_base_color(surface, m), m.transmission);
+            vec3 refract_throughput = ray.throughput * (1.0 - fresnel) * glass_tint;
+            if ((max(refract_throughput.r, max(refract_throughput.g, refract_throughput.b)) > c_throughput_cutoff) && (stack_size < c_max_stack)) {
+                stack[stack_size++] = Pending_ray(
+                    surface.position - surface.geometric_normal * c_ray_offset,
+                    refracted,
+                    c_t_far,
+                    refract_throughput,
+                    ray.depth + 1u
+                );
+            }
+        }
+    }
+
+    float exposure = camera.cameras[c_view_index].exposure;
+    vec3  display  = tonemap_log(max(vec3(0.0), color * exposure));
+    imageStore(i_out, pixel, vec4(display, 1.0));
+}

@@ -1,0 +1,55 @@
+#pragma once
+
+#if _MSC_VER && !defined(__clang__)
+
+#if defined(_WIN32)
+#   ifndef _CRT_SECURE_NO_WARNINGS
+#       define _CRT_SECURE_NO_WARNINGS
+#   endif
+#   ifndef WIN32_LEAN_AND_MEAN
+#       define WIN32_LEAN_AND_MEAN
+#   endif
+#   define VC_EXTRALEAN
+#   ifndef STRICT
+#       define STRICT
+#   endif
+#   ifndef NOMINMAX
+#       define NOMINMAX       // Macros min(a,b) and max(a,b)
+#   endif
+#   include <windows.h>
+#endif
+
+#include <cstdio>
+#include <cstdlib>
+#include <source_location>
+#include <string>
+
+#define ERHE_FATAL(format, ...) do { printf("%s:%u " format "\n", std::source_location::current().file_name(), std::source_location::current().line(), ##__VA_ARGS__); erhe_dump_callstack(); DebugBreak(); abort(); } while (1)
+#define ERHE_VERIFY(expression) do { if (!(expression)) { ERHE_FATAL("assert %s failed in %s", #expression, __func__); } } while (0)
+
+#elif defined(__ANDROID__)
+
+#include <android/log.h>
+#include <cstdlib>
+#include <string>
+
+// On Android, app processes have stdout/stderr connected to /dev/null, so
+// printf/fprintf messages are silently lost. Route the fatal message
+// through liblog so it appears in `adb logcat` under tag "erhe" before the
+// trap/abort.
+#define ERHE_FATAL(format, ...) do { __android_log_print(ANDROID_LOG_FATAL, "erhe", "%s:%d " format, __FILE__, __LINE__, ##__VA_ARGS__); erhe_dump_callstack(); __builtin_trap(); __builtin_unreachable(); abort(); } while (1)
+#define ERHE_VERIFY(expression) do { if (!(expression)) { ERHE_FATAL("assert %s failed in %s", #expression, __func__); } } while (0)
+
+#else
+
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+
+#define ERHE_FATAL(format, ...) do { printf("%s:%d " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); erhe_dump_callstack(); __builtin_trap(); __builtin_unreachable(); abort(); } while (1)
+#define ERHE_VERIFY(expression) do { if (!(expression)) { ERHE_FATAL("assert %s failed in %s", #expression, __func__); } } while (0)
+
+#endif
+
+void erhe_dump_callstack();
+auto erhe_get_callstack() -> std::string;

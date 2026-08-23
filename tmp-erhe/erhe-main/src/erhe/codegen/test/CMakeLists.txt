@@ -1,0 +1,50 @@
+set(_target "erhe_codegen_test")
+set(_codegen_out "${CMAKE_CURRENT_BINARY_DIR}/codegen")
+
+add_executable(${_target})
+
+erhe_target_sources_grouped(
+    ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+    test_migration.cpp
+    test_omit_defaults.cpp
+    test_version_upgrade.cpp
+)
+
+# Generated sources (listed explicitly so CMake knows about them)
+set(_generated_sources
+    ${_codegen_out}/settings.hpp
+    ${_codegen_out}/settings_serialization.hpp
+    ${_codegen_out}/settings.cpp
+    ${_codegen_out}/demo_params.hpp
+    ${_codegen_out}/demo_params_serialization.hpp
+    ${_codegen_out}/demo_params.cpp
+    ${_codegen_out}/demo_slot.hpp
+    ${_codegen_out}/demo_slot_serialization.hpp
+    ${_codegen_out}/demo_slot.cpp
+)
+erhe_codegen_source_settings(${_generated_sources})
+target_sources(${_target} PRIVATE ${_generated_sources})
+
+target_include_directories(${_target}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${_codegen_out}
+)
+
+target_link_libraries(${_target}
+    PRIVATE
+        erhe::codegen
+)
+
+erhe_target_settings(${_target} "erhe")
+
+# Wire up code generation
+set(_test_defs "${CMAKE_CURRENT_SOURCE_DIR}/definitions")
+# OUTPUTS: see erhe_codegen_generate.cmake - declaring the generated files as
+# custom-command outputs makes ninja recompile dependents in the same build.
+erhe_codegen_generate(
+    TARGET          ${_target}
+    DEFINITIONS_DIR "${_test_defs}"
+    OUTPUT_DIR      "${_codegen_out}"
+    OUTPUTS         ${_generated_sources}
+)

@@ -1,0 +1,117 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name":    "CMake Launch/Debug Target GBD",
+            "type":    "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "cwd":     "${workspaceFolder}"
+        },
+        {
+            "name":    "CMake Launch/Debug Target GBD software GL",
+            "type":    "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "cwd":     "${workspaceFolder}",
+            "environment": [ {"name": "LIBGL_ALWAYS_SOFTWARE", "value": "1"}]
+        },
+        {
+            "name":    "CMake Launch/Debug Target LLDB",
+            "type":    "lldb",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "cwd":     "${workspaceFolder}"
+        },
+        {
+            "name":    "CMake Launch/Debug Target LLDB software GL",
+            "type":    "lldb",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "cwd":     "${workspaceFolder}",
+            "env":     {
+                "LIBGL_ALWAYS_SOFTWARE": "1",
+                "MESA_DEBUG": "verbose",
+                "LIBGL_DEBUG": "verbose",
+                "MESA_LOG_FILE": "mesa_log.txt"
+            }
+        },
+        {
+            "name":    "CMake Launch/Debug Target VisualStudio",
+            "type":    "cppvsdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "cwd":     "${workspaceFolder}"
+        },
+        {
+            "name":    "Python: erhe/gl",
+            "type":    "python",
+            "request": "launch",
+            "program": "${file}",
+            "args":    ["${workspaceFolder}/build/src/erhe/gl"],
+            "console": "integratedTerminal",
+        },
+        {
+            "name":    "Client GDB",
+            "type":    "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/editor/net-test",
+            "cwd":     "${workspaceFolder}/src/editor",
+            "args": [
+                "--client",
+                "--connect-address", "127.0.0.1",
+                "--connect-port",    "34567"
+            ],
+        },
+        {
+            "name":    "Client LLDB",
+            "type":    "lldb",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "program": "${workspaceFolder}/src/editor/net-test",
+            "cwd":     "${workspaceFolder}/src/editor",
+            "args": [
+                "--client",
+                "--connect-address", "127.0.0.1",
+                "--connect-port",    "34567"
+            ],
+        },
+        {
+            "name":    "Server GDB",
+            "type":    "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/editor/net-test",
+            "cwd":     "${workspaceFolder}/src/editor",
+            "args": [
+                "--server",
+                "--listen-address", "0.0.0.0",
+                "--listen-port",    "34567"
+            ],
+        },
+        {
+            "name":    "Server LLDB",
+            "type":    "lldb",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "program": "${workspaceFolder}/src/editor/net-test",
+            "cwd":     "${workspaceFolder}/src/editor",
+            "args": [
+                "--server",
+                "--listen-address", "0.0.0.0",
+                "--listen-port",    "34567"
+            ],
+        }
+    ],
+    "compounds": [
+        {
+            "name":           "Server/Client GDB",
+            "configurations": [ "Server GDB", "Client GDB" ],
+            "stopAll":        true
+        },
+        {
+            "name":           "Server/Client LLDB",
+            "configurations": [ "Server LLDB", "Client LLDB" ],
+            "stopAll":        true
+        }
+    ]
+}

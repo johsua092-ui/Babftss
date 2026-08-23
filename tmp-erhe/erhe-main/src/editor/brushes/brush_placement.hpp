@@ -1,0 +1,42 @@
+#pragma once
+
+#include "erhe_scene/node_attachment.hpp"
+
+#include <geogram/mesh/mesh.h>
+
+#include <memory>
+
+namespace erhe::scene { class Node; }
+
+namespace editor {
+
+class Brush;
+
+class Brush_placement : public erhe::Item<erhe::Item_base, erhe::scene::Node_attachment, Brush_placement, erhe::Item_kind::not_clonable>{
+public:
+    Brush_placement(const std::shared_ptr<Brush>& brush, GEO::index_t facet, GEO::index_t corner);
+    Brush_placement(const Brush_placement&);
+    Brush_placement& operator=(const Brush_placement&);
+    ~Brush_placement() noexcept override;
+
+    Brush_placement();
+
+    static constexpr std::string_view static_type_name{"Brush_placement"};
+    [[nodiscard]] static constexpr auto get_static_type() -> uint64_t { return erhe::Item_type::node_attachment | erhe::Item_type::brush_placement; }
+
+    // TODO Consider if Brush_placement is clonable or not
+    auto clone() const -> std::shared_ptr<erhe::Item_base> override;
+
+    // Public API
+    [[nodiscard]] auto get_brush () const -> std::shared_ptr<Brush>;
+    [[nodiscard]] auto get_facet () const -> GEO::index_t;
+    [[nodiscard]] auto get_corner() const -> GEO::index_t;
+    void set_corner(GEO::index_t corner);
+
+private:
+    std::shared_ptr<Brush> m_brush;
+    GEO::index_t           m_facet;
+    GEO::index_t           m_corner;
+};
+
+}

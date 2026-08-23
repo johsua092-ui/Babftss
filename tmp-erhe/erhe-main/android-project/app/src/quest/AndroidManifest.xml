@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Quest devices report headtracking. Declaring it required marks the
+         APK as VR for the Horizon Store. -->
+    <uses-feature android:name="android.hardware.vr.headtracking"
+                  android:version="1"
+                  android:required="true" />
+
+    <!-- Camera passthrough (XR_FB_passthrough): the Quest OpenXR runtime
+         hides the extension from xrEnumerateInstanceExtensionProperties
+         unless this uses-feature is declared (the runtime logs the missing
+         string under the OpenXR_Properties tag). Not required: the editor
+         falls back to a plain VR init screen without it. -->
+    <uses-feature android:name="com.oculus.feature.PASSTHROUGH"
+                  android:required="false" />
+
+    <!-- Controller render models (XR_FB_render_model): like passthrough
+         above, the runtime hides the extension from extension enumeration
+         unless BOTH the uses-feature AND the uses-permission are declared
+         (the runtime logs each missing string separately under the
+         OpenXR_Properties tag). Not required: the editor falls back to the
+         torus placeholder controller mesh without it. -->
+    <uses-feature android:name="com.oculus.feature.RENDER_MODEL"
+                  android:required="false" />
+    <uses-permission android:name="com.oculus.permission.RENDER_MODEL" />
+
+    <!-- OpenXR loader broker permissions. Source of truth: the merge
+         manifest shipped by KhronosGroup/OpenXR-SDK-Source at
+         src/loader/AndroidManifest.xml.in (CPM-fetched). We are not
+         consuming the prebuilt Khronos AAR, so these entries are inlined
+         here by hand. -->
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR" />
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
+
+    <!-- Boundary visibility suppression (XR_META_boundary_visibility):
+         like passthrough above, the runtime hides the extension unless
+         this permission is declared. -->
+    <uses-permission android:name="com.oculus.permission.BOUNDARY_VISIBILITY" />
+
+    <!-- Android 11+ package visibility: the loader queries for the
+         OpenXR runtime broker and any installed runtimes / api layers. -->
+    <queries>
+        <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
+        <intent>
+            <action android:name="org.khronos.openxr.OpenXRRuntimeService" />
+        </intent>
+        <intent>
+            <action android:name="org.khronos.openxr.OpenXRApiLayerService" />
+        </intent>
+    </queries>
+
+    <application>
+        <!-- Whitelist Meta hardware models eligible to install this APK. -->
+        <meta-data android:name="com.oculus.supportedDevices"
+                   android:value="quest3|quest3s|quest2|questpro" />
+
+        <!-- Override the activity element from the shared main manifest.
+             Horizon's launcher only treats an app as immersive-VR when
+             MAIN+LAUNCHER+com.oculus.intent.category.VR all appear on the
+             SAME <intent-filter> element. Since manifest merger does not
+             fold categories from a flavor overlay into an inherited
+             intent-filter, we replace the activity wholesale here. The
+             attributes mirror main's ErheActivity element. The
+             USB_DEVICE_ATTACHED intent-filter is preserved. The
+             IMMERSIVE_HMD category is included alongside the Meta VR
+             category for forward compatibility with Khronos OpenXR
+             launchers. -->
+        <activity android:name="org.libsdl.app.ErheActivity"
+                  android:label="@string/app_name"
+                  android:alwaysRetainTaskState="true"
+                  android:launchMode="singleTop"
+                  android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+                  android:preferMinimalPostProcessing="true"
+                  android:exported="true"
+                  tools:node="replace">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

@@ -1,0 +1,15 @@
+{
+  "cols": 2,
+  "rows": 5,
+  "cells": [
+    "cube_with_edge_lines",  "rtt",
+    "texture_heap_2",        "texture_heap_3",
+    "separate_samplers_2",   "separate_samplers_3",
+    "msaa_depth",            "stencil_polygon",
+    "empty",                 "stencil_wide_line"
+  ],
+  "fullscreen_cell_col": -1,
+  "fullscreen_cell_row": -1,
+  "replicate_cell_col": -1,
+  "replicate_cell_row": -1
+}

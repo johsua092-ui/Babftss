@@ -1,0 +1,1666 @@
+// Mcp_server graph tools (geometry graph, graph textures / meshes, texture graph).
+// Split out of mcp_server.cpp; shares helpers via mcp_server_shared.hpp.
+
+#include "mcp/mcp_server.hpp"
+#include "mcp/mcp_server_shared.hpp"
+
+#include "app_context.hpp"
+#include "app_scenes.hpp"
+#include "content_library/content_library.hpp"
+#include "geometry_graph/geometry_graph.hpp"
+#include "geometry_graph/geometry_graph_mesh.hpp"
+#include "geometry_graph/geometry_graph_node.hpp"
+#include "geometry_graph/geometry_graph_operations.hpp"
+#include "geometry_graph/geometry_graph_window.hpp"
+#include "geometry_graph/graph_mesh.hpp"
+#include "graph/node_properties.hpp"
+#include "graph_editor/graph_link_routing.hpp"
+#include "operations/item_insert_remove_operation.hpp"
+#include "operations/operation_stack.hpp"
+#include "scene/scene_root.hpp"
+#include "texture_graph/graph_texture.hpp"
+#include "texture_graph/texture_graph.hpp"
+#include "texture_graph/texture_graph_compose.hpp"
+#include "texture_graph/texture_graph_node.hpp"
+#include "texture_graph/texture_graph_window.hpp"
+#include "texture_graph/texture_payload.hpp"
+#include "texture_graph/texture_renderer.hpp"
+#include "texture_graph/nodes/texture_material_output_node.hpp"
+#include "texture_graph/nodes/texture_node_descriptors.hpp"
+#include "windows/editor_windows.hpp"
+
+#include "erhe_geometry/geometry.hpp"
+#include "erhe_graph/link.hpp"
+#include "erhe_graph/pin.hpp"
+#include "erhe_graphics/image_writer.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_imgui/imgui_node_editor.h"
+#include "erhe_math/math_util.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_texgen/composer.hpp"
+#include "erhe_texgen/shader_code.hpp"
+
+#include <glm/glm.hpp>
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <span>
+#include <string>
+#include <system_error>
+#include <variant>
+#include <vector>
+
+#if defined(ERHE_VOXEL_LIBRARY_OPENVDB)
+#   include "erhe_voxel/voxel.hpp"
+#endif
+
+namespace editor {
+
+using namespace mcp_server_detail;
+
+namespace {
+
+[[nodiscard]] auto geometry_graph_pin_json(const erhe::graph::Pin& pin) -> json
+{
+    return json{
+        {"slot",        pin.get_slot()},
+        {"key",         pin.get_key()},
+        {"name",        std::string{pin.get_name()}},
+        {"link_count",  pin.get_links().size()}
+    };
+}
+
+// Summary of a pin payload: type tag plus the stats that matter for
+// scripted verification (vertex / facet counts, point / instance counts,
+// scalar values).
+[[nodiscard]] auto geometry_payload_json(const Geometry_payload& payload) -> json
+{
+    const std::shared_ptr<erhe::geometry::Geometry> geometry = payload.get_geometry();
+    if (geometry) {
+        const GEO::Mesh& mesh = geometry->get_mesh();
+        return json{{"type", "geometry"}, {"vertex_count", mesh.vertices.nb()}, {"facet_count", mesh.facets.nb()}};
+    }
+    const std::shared_ptr<Point_cloud> points = payload.get_points();
+    if (points) {
+        return json{{"type", "points"}, {"point_count", points->positions.size()}};
+    }
+    const std::shared_ptr<Geometry_instances> instances = payload.get_instances();
+    if (instances) {
+        return json{{"type", "instances"}, {"instance_count", instances->instance_count()}};
+    }
+    if (std::holds_alternative<float>(payload.value)) {
+        return json{{"type", "float"}, {"value", payload.get_float()}};
+    }
+    if (std::holds_alternative<int>(payload.value)) {
+        return json{{"type", "int"}, {"value", payload.get_int()}};
+    }
+    if (std::holds_alternative<bool>(payload.value)) {
+        return json{{"type", "bool"}, {"value", payload.get_bool()}};
+    }
+    if (std::holds_alternative<glm::vec3>(payload.value)) {
+        const glm::vec3 v = payload.get_vec3();
+        return json{{"type", "vec3"}, {"value", {v.x, v.y, v.z}}};
+    }
+#if defined(ERHE_VOXEL_LIBRARY_OPENVDB)
+    const std::shared_ptr<erhe::voxel::Grid> sdf = payload.get_sdf();
+    if (sdf) {
+        return json{
+            {"type",               "sdf"},
+            {"active_voxel_count", sdf->get_active_voxel_count()},
+            {"voxel_size",         sdf->get_voxel_size()}
+        };
+    }
+#endif
+    if (!payload.has_value()) {
+        return json{{"type", "empty"}};
+    }
+    return json{{"type", "other"}};
+}
+
+[[nodiscard]] auto geometry_graph_node_json(const Geometry_graph_node& node) -> json
+{
+    json inputs  = json::array();
+    json outputs = json::array();
+    for (const erhe::graph::Pin& pin : node.get_input_pins()) {
+        inputs.push_back(geometry_graph_pin_json(pin));
+    }
+    json output_payloads = json::array();
+    std::size_t output_slot = 0;
+    for (const erhe::graph::Pin& pin : node.get_output_pins()) {
+        outputs.push_back(geometry_graph_pin_json(pin));
+        output_payloads.push_back(geometry_payload_json(node.get_output(output_slot)));
+        ++output_slot;
+    }
+    json parameters = json::object();
+    node.write_parameters(parameters);
+    json result{
+        {"id",              node.get_id()},
+        {"name",            node.get_name()},
+        {"parameters",      parameters},
+        {"inputs",          inputs},
+        {"outputs",         outputs},
+        {"output_payloads", output_payloads}
+    };
+    // Canvas position now lives on the node (shared by every editor window,
+    // persisted with the graph).
+    if (node.has_canvas_position()) {
+        result["position"] = {node.get_canvas_x(), node.get_canvas_y()};
+    }
+    return result;
+}
+
+[[nodiscard]] auto find_geometry_graph_node(
+    const std::vector<std::shared_ptr<Geometry_graph_node>>& nodes,
+    const std::size_t                                        id
+) -> Geometry_graph_node*
+{
+    for (const std::shared_ptr<Geometry_graph_node>& node : nodes) {
+        if (node->get_id() == id) {
+            return node.get();
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] auto parse_node_edge(const json& value, int& out_edge) -> bool
+{
+    if (value.is_string()) {
+        const std::string name = value.get<std::string>();
+        if (name == "left") {
+            out_edge = Node_edge::left;
+            return true;
+        }
+        if (name == "right") {
+            out_edge = Node_edge::right;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Shared implementation of the *_graph_set_node_layout tools: applies the
+// optional layout arguments (canvas position, ui scale, pin edges) to a
+// graph editor node and reports the resulting layout.
+[[nodiscard]] auto apply_node_layout(Graph_editor_window_base& window, Graph_editor_node& node, const json& args) -> std::string
+{
+    if (args.contains("position")) {
+        if (!args["position"].is_array() || (args["position"].size() != 2)) {
+            return make_error_content("'position' must be an array of two numbers");
+        }
+        const float x = args["position"][0].get<float>();
+        const float y = args["position"][1].get<float>();
+        window.set_node_position(node, ImVec2{x, y});
+    }
+    if (args.contains("width") || args.contains("height")) {
+        if (args.contains("width") && !args["width"].is_number()) {
+            return make_error_content("'width' must be a number (canvas units; 0 = automatic)");
+        }
+        if (args.contains("height") && !args["height"].is_number()) {
+            return make_error_content("'height' must be a number (canvas units; 0 = automatic)");
+        }
+        const float width  = args.contains("width")  ? args["width"].get<float>()  : node.get_ui_width();
+        const float height = args.contains("height") ? args["height"].get<float>() : node.get_ui_height();
+        node.set_ui_size(width, height);
+    }
+    if (args.contains("pin_label_width")) {
+        if (!args["pin_label_width"].is_number()) {
+            return make_error_content("'pin_label_width' must be a number (canvas units)");
+        }
+        node.set_pin_label_width(args["pin_label_width"].get<float>());
+    }
+    int edge = 0;
+    if (args.contains("input_edge")) {
+        if (!parse_node_edge(args["input_edge"], edge)) {
+            return make_error_content("'input_edge' must be \"left\" or \"right\"");
+        }
+        node.set_input_pin_edge(edge);
+    }
+    if (args.contains("output_edge")) {
+        if (!parse_node_edge(args["output_edge"], edge)) {
+            return make_error_content("'output_edge' must be \"left\" or \"right\"");
+        }
+        node.set_output_pin_edge(edge);
+    }
+    const ImVec2 position = window.get_node_position(node);
+    json result;
+    result["node_id"]     = node.get_id();
+    result["position"]    = json::array({position.x, position.y});
+    result["width"]           = node.get_ui_width();  // 0 = automatic
+    result["height"]          = node.get_ui_height(); // 0 = automatic
+    result["pin_label_width"] = node.get_pin_label_width();
+    result["input_edge"]  = (node.get_input_pin_edge()  == Node_edge::right) ? "right" : "left";
+    result["output_edge"] = (node.get_output_pin_edge() == Node_edge::right) ? "right" : "left";
+    return make_json_content(result).dump();
+}
+
+} // anonymous namespace
+
+auto Mcp_server::query_geometry_graph(const json& args) -> std::string
+{
+    static_cast<void>(args);
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+
+    // Evaluation runs in the background; block until every graph is fully
+    // evaluated so the reported payloads reflect every mutation issued
+    // before this query (mutation tools return without waiting).
+    window->wait_for_idle_evaluation();
+
+    // Which graph the geometry_graph_* tools currently target (the
+    // selected Graph_mesh asset; none selected = empty state).
+    const std::shared_ptr<Graph_mesh>& graph_mesh = window->get_current_graph_mesh();
+    if (!graph_mesh) {
+        json result;
+        result["selected"] = false;
+        result["nodes"]    = json::array();
+        result["links"]    = json::array();
+        return make_json_content(result).dump();
+    }
+
+    json nodes = json::array();
+    for (const std::shared_ptr<Geometry_graph_node>& node : window->get_nodes()) {
+        nodes.push_back(geometry_graph_node_json(*node.get()));
+    }
+
+    json links = json::array();
+    for (const std::unique_ptr<erhe::graph::Link>& link : graph_mesh->graph().get_links()) {
+        json link_json{
+            {"source_node_id", link->get_source()->get_owner_node()->get_id()},
+            {"source_slot",    link->get_source()->get_slot()},
+            {"sink_node_id",   link->get_sink()->get_owner_node()->get_id()},
+            {"sink_slot",      link->get_sink()->get_slot()}
+        };
+        // Wire routing mid points, [x, y] pairs or pen-tool tangent objects
+        // (see geometry_graph_set_link_mid_points / graph_link_routing.hpp).
+        // Read from the MODEL (erhe::graph::Link) - the shared, serialized
+        // authority every window canvas syncs against.
+        json mid_points = link_routing_to_json(*link);
+        if (!mid_points.empty()) {
+            link_json["mid_points"] = std::move(mid_points);
+        }
+        // Per-link curve shape (see geometry_graph_set_link_curve); omitted
+        // at the all-zero default.
+        const erhe::graph::Link_curve_params& curve = link->get_curve_params();
+        if ((curve.tension != 0.0f) || (curve.continuity != 0.0f) || (curve.bias != 0.0f)) {
+            link_json["curve"] = {curve.tension, curve.continuity, curve.bias};
+        }
+        links.push_back(link_json);
+    }
+
+    json result;
+    result["selected"]        = true;
+    result["nodes"]           = nodes;
+    result["links"]           = links;
+    result["graph_mesh_name"] = graph_mesh->get_name();
+    result["graph_mesh_id"]   = graph_mesh->get_id();
+    result["display_node_id"] = graph_mesh->graph().get_display_node_id();
+    result["ghost_node_id"]   = graph_mesh->graph().get_ghost_node_id();
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_set_geometry_graph_target(const json& args) -> std::string
+{
+    // Issue #252: point the Geometry Graph window at a named Graph_mesh asset
+    // (or clear its target with an empty / omitted name). This is the explicit
+    // replacement for the old "select the asset to edit it" idiom - the window
+    // no longer follows the global selection.
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::string name = args.value("graph_mesh", "");
+    if (name.empty()) {
+        window->set_target(std::shared_ptr<Graph_mesh>{});
+        return make_json_content({{"target_cleared", true}}).dump();
+    }
+    const std::string scene_name = args.value("scene_name", "");
+    std::shared_ptr<Graph_mesh> found;
+    const auto search = [&found, &name](Scene_root& scene_root) {
+        if (found) {
+            return;
+        }
+        const std::shared_ptr<Content_library> library = scene_root.get_content_library();
+        if (library) {
+            found = find_library_item<Graph_mesh>(library->graph_meshes, name);
+        }
+    };
+    if (!scene_name.empty()) {
+        Scene_root* sr = find_scene(scene_name);
+        if (sr == nullptr) {
+            return make_error_content("Scene not found: " + scene_name);
+        }
+        search(*sr);
+    } else if (m_context.app_scenes != nullptr) {
+        for (const std::shared_ptr<Scene_root>& sr : m_context.app_scenes->get_scene_roots()) {
+            search(*sr);
+        }
+    }
+    if (!found) {
+        return make_error_content("Graph mesh not found: " + name);
+    }
+    window->set_target(found);
+    return make_json_content({{"target", name}, {"id", found->get_id()}}).dump();
+}
+
+auto Mcp_server::action_geometry_graph_add_node(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    if (!window->get_current_graph_mesh()) {
+        return make_error_content("No target Graph Mesh - create one (create_graph_mesh) or set the target (set_geometry_graph_target) first");
+    }
+    const std::string type_name = args.value("type", "");
+    Geometry_graph_node* node = window->add_node_of_type(type_name);
+    if (node == nullptr) {
+        return make_error_content("Unknown geometry graph node type: " + type_name);
+    }
+    // Structural MCP edits schedule the shared DAG auto layout: scripted
+    // graph construction never places nodes, so without this the canvas
+    // ends up a spawn-grid pile. Applied deferred, once the window has
+    // drawn every node with a stable measured size.
+    window->request_automatic_layout();
+    return make_json_content(geometry_graph_node_json(*node)).dump();
+}
+
+auto Mcp_server::action_geometry_graph_remove_node(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Geometry_graph_node* node = find_geometry_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    window->remove_node(std::dynamic_pointer_cast<Geometry_graph_node>(node->node_from_this()));
+    window->request_automatic_layout();
+
+    json result;
+    result["removed"] = true;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_parameter(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Geometry_graph_node* node = find_geometry_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    if (!args.contains("parameters") || !args["parameters"].is_object()) {
+        return make_error_content("Missing 'parameters' object");
+    }
+    window->set_node_parameters(
+        std::dynamic_pointer_cast<Geometry_graph_node>(node->node_from_this()),
+        args["parameters"]
+    );
+    return make_json_content(geometry_graph_node_json(*node)).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_display_flags(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::shared_ptr<Graph_mesh> graph_mesh = window->get_current_graph_mesh();
+    if (!graph_mesh) {
+        return make_error_content("No target Graph Mesh - create one (create_graph_mesh) or set the target (set_geometry_graph_target) first");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Geometry_graph_node* node = find_geometry_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    if (node->is_scene_output()) {
+        return make_error_content("Cannot set display/ghost flags on an output node");
+    }
+    const bool has_display = args.contains("display") && args["display"].is_boolean();
+    const bool has_ghost   = args.contains("ghost")   && args["ghost"].is_boolean();
+    if (!has_display && !has_ghost) {
+        return make_error_content("Provide 'display' and/or 'ghost' (bool)");
+    }
+
+    Geometry_graph&   graph          = graph_mesh->graph();
+    const std::size_t before_display = graph.get_display_node_id();
+    const std::size_t before_ghost   = graph.get_ghost_node_id();
+    std::size_t       after_display  = before_display;
+    std::size_t       after_ghost    = before_ghost;
+    if (has_display) {
+        // true: this node becomes the display node; false: clears the flag
+        // only when this node holds it (another holder is left alone).
+        after_display = args["display"].get<bool>() ? node_id : ((before_display == node_id) ? 0 : before_display);
+    }
+    if (has_ghost) {
+        after_ghost = args["ghost"].get<bool>() ? node_id : ((before_ghost == node_id) ? 0 : before_ghost);
+    }
+    if ((after_display != before_display) || (after_ghost != before_ghost)) {
+        m_context.operation_stack->execute_now(
+            std::make_shared<Geometry_graph_display_designation_operation>(
+                graph_mesh, node->get_name(), before_display, before_ghost, after_display, after_ghost
+            )
+        );
+    }
+
+    json result;
+    result["display_node_id"] = after_display;
+    result["ghost_node_id"]   = after_ghost;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_node_previews(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    // Editor-global setting now (Editor_settings_config::graph_node_previews,
+    // persistent, on by default); enabling re-evaluates every graph.
+    const bool enabled = args.value("enabled", true);
+    window->set_node_previews_enabled(enabled);
+    json result;
+    result["node_previews_enabled"] = enabled;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_connect(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t source_node_id = args.value("source_node_id", std::size_t{0});
+    const std::size_t source_slot    = args.value("source_slot",    std::size_t{0});
+    const std::size_t sink_node_id   = args.value("sink_node_id",   std::size_t{0});
+    const std::size_t sink_slot      = args.value("sink_slot",      std::size_t{0});
+
+    Geometry_graph_node* source_node = find_geometry_graph_node(window->get_nodes(), source_node_id);
+    Geometry_graph_node* sink_node   = find_geometry_graph_node(window->get_nodes(), sink_node_id);
+    if (source_node == nullptr) {
+        return make_error_content("Source node not found");
+    }
+    if (sink_node == nullptr) {
+        return make_error_content("Sink node not found");
+    }
+    if (source_slot >= source_node->get_output_pins().size()) {
+        return make_error_content("Source slot out of range");
+    }
+    if (sink_slot >= sink_node->get_input_pins().size()) {
+        return make_error_content("Sink slot out of range");
+    }
+    erhe::graph::Pin* source_pin = &source_node->get_output_pins().at(source_slot);
+    erhe::graph::Pin* sink_pin   = &sink_node->get_input_pins().at(sink_slot);
+    const bool connected = window->connect(source_pin, sink_pin);
+    if (!connected) {
+        return make_error_content("Connect failed (pin key mismatch, or the link would create a cycle)");
+    }
+    window->request_automatic_layout();
+
+    json result;
+    result["connected"] = true;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_disconnect(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t source_node_id = args.value("source_node_id", std::size_t{0});
+    const std::size_t source_slot    = args.value("source_slot",    std::size_t{0});
+    const std::size_t sink_node_id   = args.value("sink_node_id",   std::size_t{0});
+    const std::size_t sink_slot      = args.value("sink_slot",      std::size_t{0});
+
+    Geometry_graph_node* source_node = find_geometry_graph_node(window->get_nodes(), source_node_id);
+    Geometry_graph_node* sink_node   = find_geometry_graph_node(window->get_nodes(), sink_node_id);
+    if ((source_node == nullptr) || (sink_node == nullptr)) {
+        return make_error_content("Node not found");
+    }
+    if ((source_slot >= source_node->get_output_pins().size()) || (sink_slot >= sink_node->get_input_pins().size())) {
+        return make_error_content("Pin slot out of range");
+    }
+    window->disconnect(&source_node->get_output_pins().at(source_slot), &sink_node->get_input_pins().at(sink_slot));
+    window->request_automatic_layout();
+
+    json result;
+    result["disconnected"] = true;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_link_mid_points(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t source_node_id = args.value("source_node_id", std::size_t{0});
+    const std::size_t source_slot    = args.value("source_slot",    std::size_t{0});
+    const std::size_t sink_node_id   = args.value("sink_node_id",   std::size_t{0});
+    const std::size_t sink_slot      = args.value("sink_slot",      std::size_t{0});
+
+    Geometry_graph_node* source_node = find_geometry_graph_node(window->get_nodes(), source_node_id);
+    Geometry_graph_node* sink_node   = find_geometry_graph_node(window->get_nodes(), sink_node_id);
+    if ((source_node == nullptr) || (sink_node == nullptr)) {
+        return make_error_content("Node not found");
+    }
+    if ((source_slot >= source_node->get_output_pins().size()) || (sink_slot >= sink_node->get_input_pins().size())) {
+        return make_error_content("Pin slot out of range");
+    }
+    erhe::graph::Pin* source_pin = &source_node->get_output_pins().at(source_slot);
+    erhe::graph::Pin* sink_pin   = &sink_node->get_input_pins().at(sink_slot);
+    erhe::graph::Link* graph_link = nullptr;
+    for (erhe::graph::Link* link : sink_pin->get_links()) {
+        if (link->get_source() == source_pin) {
+            graph_link = link;
+            break;
+        }
+    }
+    if (graph_link == nullptr) {
+        return make_error_content("No link between the given pins");
+    }
+
+    const json mid_points_json = args.value("mid_points", json::array());
+    // Write the MODEL (erhe::graph::Link); every window canvas adopts it on
+    // its next sync pass - works with the window hidden, and the routing is
+    // serialized with the graph.
+    const bool applied = link_routing_from_json(*graph_link, mid_points_json);
+    if (!applied) {
+        return make_error_content("'mid_points' entries must be [x, y] pairs or {pos, mode, in, out} objects (see graph_link_routing.hpp)");
+    }
+    // Make the routing observable in the next capture_screenshot.
+    window->request_window_focus();
+
+    json result;
+    result["mid_point_count"] = mid_points_json.size();
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_link_curve(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t source_node_id = args.value("source_node_id", std::size_t{0});
+    const std::size_t source_slot    = args.value("source_slot",    std::size_t{0});
+    const std::size_t sink_node_id   = args.value("sink_node_id",   std::size_t{0});
+    const std::size_t sink_slot      = args.value("sink_slot",      std::size_t{0});
+
+    Geometry_graph_node* source_node = find_geometry_graph_node(window->get_nodes(), source_node_id);
+    Geometry_graph_node* sink_node   = find_geometry_graph_node(window->get_nodes(), sink_node_id);
+    if ((source_node == nullptr) || (sink_node == nullptr)) {
+        return make_error_content("Node not found");
+    }
+    if ((source_slot >= source_node->get_output_pins().size()) || (sink_slot >= sink_node->get_input_pins().size())) {
+        return make_error_content("Pin slot out of range");
+    }
+    erhe::graph::Pin* source_pin = &source_node->get_output_pins().at(source_slot);
+    erhe::graph::Pin* sink_pin   = &sink_node->get_input_pins().at(sink_slot);
+    erhe::graph::Link* graph_link = nullptr;
+    for (erhe::graph::Link* link : sink_pin->get_links()) {
+        if (link->get_source() == source_pin) {
+            graph_link = link;
+            break;
+        }
+    }
+    if (graph_link == nullptr) {
+        return make_error_content("No link between the given pins");
+    }
+
+    // Write the MODEL (erhe::graph::Link), clamped like the canvas clamps;
+    // every window canvas adopts it on its next sync pass.
+    const erhe::graph::Link_curve_params curve_params{
+        .tension    = std::clamp(args.value("tension",    0.0f), -1.0f, 1.0f),
+        .continuity = std::clamp(args.value("continuity", 0.0f), -1.0f, 1.0f),
+        .bias       = std::clamp(args.value("bias",       0.0f), -1.0f, 1.0f)
+    };
+    graph_link->set_curve_params(curve_params);
+    // Make the curve change observable in the next capture_screenshot.
+    window->request_window_focus();
+
+    // Echo back the applied (clamped) values.
+    json result;
+    result["tension"]    = curve_params.tension;
+    result["continuity"] = curve_params.continuity;
+    result["bias"]       = curve_params.bias;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_view(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const float zoom = args.value("zoom", 1.0f);
+    if (!(zoom > 0.0f)) {
+        return make_error_content("'zoom' must be > 0");
+    }
+    // Shows the window and sets the node editor zoom immediately. The new zoom
+    // takes effect on the next rendered frame; capture a screenshot afterwards.
+    window->set_node_editor_zoom(zoom);
+
+    json result;
+    result["zoom"] = zoom;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_texture_graph_add_all(const json&) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    if (!window->get_target()) {
+        return make_error_content("No target Graph Texture (create_graph_texture first)");
+    }
+    // Same path as the canvas background context menu's "Add all": one node of
+    // every palette type, one compound undo entry, grid-laid once the canvas
+    // has measured them (so the positions settle a few frames later).
+    const std::size_t before = window->get_nodes().size();
+    window->add_all_palette_nodes();
+
+    json result;
+    result["added"] = window->get_nodes().size() - before;
+    result["total"] = window->get_nodes().size();
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_texture_graph_set_view(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const float zoom = args.value("zoom", 1.0f);
+    if (!(zoom > 0.0f)) {
+        return make_error_content("'zoom' must be > 0");
+    }
+    // Shows the window and sets the node editor zoom immediately. The new zoom
+    // takes effect on the next rendered frame; capture a screenshot afterwards.
+    window->set_node_editor_zoom(zoom);
+
+    json result;
+    result["zoom"] = zoom;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_select_nodes(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    std::vector<std::size_t> node_ids;
+    if (args.contains("node_ids") && args["node_ids"].is_array()) {
+        for (const json& value : args["node_ids"]) {
+            if (!value.is_number()) {
+                return make_error_content("'node_ids' entries must be node ids (integers)");
+            }
+            const std::size_t node_id = value.get<std::size_t>();
+            if (find_geometry_graph_node(window->get_nodes(), node_id) == nullptr) {
+                return make_error_content("Node not found: " + std::to_string(node_id));
+            }
+            node_ids.push_back(node_id);
+        }
+    }
+    window->select_canvas_nodes(node_ids);
+
+    // Optional canvas link selection (a selected link shows its pen-tool
+    // tangent dots and a Node Properties section). The link is identified by
+    // its endpoint pins, like geometry_graph_set_link_mid_points.
+    std::size_t selected_link_count = 0;
+    if (args.contains("link") && args["link"].is_object()) {
+        const json&       link_args      = args["link"];
+        const std::size_t source_node_id = link_args.value("source_node_id", std::size_t{0});
+        const std::size_t source_slot    = link_args.value("source_slot",    std::size_t{0});
+        const std::size_t sink_node_id   = link_args.value("sink_node_id",   std::size_t{0});
+        const std::size_t sink_slot      = link_args.value("sink_slot",      std::size_t{0});
+        Geometry_graph_node* source_node = find_geometry_graph_node(window->get_nodes(), source_node_id);
+        Geometry_graph_node* sink_node   = find_geometry_graph_node(window->get_nodes(), sink_node_id);
+        if ((source_node == nullptr) || (sink_node == nullptr)) {
+            return make_error_content("Link node not found");
+        }
+        if ((source_slot >= source_node->get_output_pins().size()) || (sink_slot >= sink_node->get_input_pins().size())) {
+            return make_error_content("Link pin slot out of range");
+        }
+        erhe::graph::Pin* source_pin = &source_node->get_output_pins().at(source_slot);
+        erhe::graph::Pin* sink_pin   = &sink_node->get_input_pins().at(sink_slot);
+        erhe::graph::Link* graph_link = nullptr;
+        for (erhe::graph::Link* link : sink_pin->get_links()) {
+            if (link->get_source() == source_pin) {
+                graph_link = link;
+                break;
+            }
+        }
+        if (graph_link == nullptr) {
+            return make_error_content("No link between the given pins");
+        }
+        window->get_node_editor()->SelectLink(ax::NodeEditor::LinkId{graph_link}, !node_ids.empty());
+        selected_link_count = 1;
+    }
+
+    // Make the result observable in a screenshot: the canvas showing the
+    // selection (focus raises the window's tab when it is docked behind
+    // another) and the Node Properties window showing the selected nodes /
+    // link (focus, not just show: its tab is docked behind Transform in the
+    // default layout).
+    window->request_window_focus();
+    if (m_context.node_properties_window != nullptr) {
+        m_context.node_properties_window->request_window_focus();
+    }
+    json result;
+    result["selected_count"]      = node_ids.size();
+    result["selected_link_count"] = selected_link_count;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_geometry_graph_set_node_layout(const json& args) -> std::string
+{
+    Geometry_graph_window* window = m_context.geometry_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Geometry graph window not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Geometry_graph_node* node = find_geometry_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    return apply_node_layout(*window, *node, args);
+}
+
+namespace {
+
+[[nodiscard]] auto texture_pin_value_type_name(const std::size_t key) -> const char*
+{
+    switch (key) {
+        case Texture_pin_key::grayscale: return "f";
+        case Texture_pin_key::rgb:       return "rgb";
+        case Texture_pin_key::rgba:      return "rgba";
+        default:                         return "unknown";
+    }
+}
+
+[[nodiscard]] auto find_texture_graph_node(
+    const std::vector<std::shared_ptr<Texture_graph_node>>& nodes,
+    const std::size_t                                       id
+) -> Texture_graph_node*
+{
+    for (const std::shared_ptr<Texture_graph_node>& node : nodes) {
+        if (node->get_id() == id) {
+            return node.get();
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] auto texture_input_pin_json(const erhe::graph::Pin& pin) -> json
+{
+    json j{
+        {"slot",       pin.get_slot()},
+        {"key",        pin.get_key()},
+        {"value_type", texture_pin_value_type_name(pin.get_key())},
+        {"name",       std::string{pin.get_name()}},
+        {"connected",  !pin.get_links().empty()}
+    };
+    const std::vector<erhe::graph::Link*>& links = pin.get_links();
+    if (!links.empty()) {
+        // MVP inputs take a single link; report the last connected source.
+        erhe::graph::Pin* source_pin = links.back()->get_source();
+        j["source_node_id"] = source_pin->get_owner_node()->get_id();
+        j["source_slot"]    = source_pin->get_slot();
+    }
+    return j;
+}
+
+[[nodiscard]] auto texture_output_pin_json(const erhe::graph::Pin& pin) -> json
+{
+    return json{
+        {"slot",       pin.get_slot()},
+        {"key",        pin.get_key()},
+        {"value_type", texture_pin_value_type_name(pin.get_key())},
+        {"name",       std::string{pin.get_name()}},
+        {"link_count", pin.get_links().size()}
+    };
+}
+
+// Builds the compose DAG for exporting a node's output. A descriptor-driven node
+// composes its own output slot; a sink node without a descriptor (the Output
+// node) composes the highest-channel connected input's source subtree, matching
+// how the Output node bakes its result.
+[[nodiscard]] auto build_texture_export_dag(Texture_graph_node& node, const std::size_t output_slot) -> Texture_compose_dag
+{
+    if (node.descriptor() != nullptr) {
+        return build_texture_compose_dag(node, output_slot);
+    }
+    const std::size_t input_count = node.get_input_pins().size();
+    for (std::size_t i = input_count; i-- > 0; ) {
+        const Texture_payload source = node.input_from_links(i);
+        if (source.source_node != nullptr) {
+            return build_texture_compose_dag(*source.source_node, source.output_index);
+        }
+    }
+    return Texture_compose_dag{};
+}
+
+// Resolves each buffer cut point in the DAG to its already-rendered texture, so
+// an export that samples buffers binds the same textures the editor produced.
+[[nodiscard]] auto gather_texture_sample_bindings(const Texture_compose_dag& dag) -> std::vector<Texture_sample_binding>
+{
+    std::vector<Texture_sample_binding> bindings;
+    bindings.reserve(dag.sampler_sources.size());
+    for (const Texture_sampler_source& sampler_source : dag.sampler_sources) {
+        Texture_sample_binding binding{};
+        binding.binding = sampler_source.binding;
+        binding.name    = std::string{"tex_"} + std::to_string(sampler_source.binding);
+        binding.texture = sampler_source.buffer_node->get_preview_texture().get();
+        bindings.push_back(binding);
+    }
+    return bindings;
+}
+
+[[nodiscard]] auto texture_graph_node_json(Texture_graph_window& window, Texture_graph_node& node) -> json
+{
+    json inputs = json::array();
+    for (const erhe::graph::Pin& pin : node.get_input_pins()) {
+        inputs.push_back(texture_input_pin_json(pin));
+    }
+    json outputs = json::array();
+    for (const erhe::graph::Pin& pin : node.get_output_pins()) {
+        outputs.push_back(texture_output_pin_json(pin));
+    }
+    json parameters = json::object();
+    node.write_parameters(parameters);
+
+    // 'composable' reflects whether the node's primary output currently
+    // assembles to a fragment shader without an error marker. Pure string
+    // composition (no GPU), so it is cheap enough to compute per query.
+    bool composable = false;
+    const Texture_compose_dag dag = build_texture_export_dag(node, 0);
+    if (dag.ok && (dag.sink != nullptr)) {
+        const erhe::texgen::Composer    composer{texture_graph_compose_options()};
+        const erhe::texgen::Shader_code shader_code = composer.compose(*dag.sink, dag.sink_output_index);
+        const std::string               fragment    = composer.assemble_fragment(shader_code);
+        composable = (fragment.find("(error:") == std::string::npos);
+    }
+
+    const ImVec2 position = window.get_node_position(node);
+    return json{
+        {"id",         node.get_id()},
+        {"name",       node.get_name()},
+        {"type",       node.get_factory_type_name()},
+        {"position",   {position.x, position.y}},
+        {"parameters", parameters},
+        {"inputs",     inputs},
+        {"outputs",    outputs},
+        {"composable", composable}
+    };
+}
+
+// Find a content-library asset by name across scenes (or one scene when
+// scene_name is non-empty). folder_member selects the folder (graph_meshes,
+// graph_textures, materials). Returns null when name is empty or no match.
+template <typename T>
+[[nodiscard]] auto find_content_library_asset(
+    App_context&                                        context,
+    const std::string&                                  scene_name,
+    std::shared_ptr<Content_library_node> Content_library::* folder_member,
+    const std::string&                                  name
+) -> std::shared_ptr<T>
+{
+    if ((context.app_scenes == nullptr) || name.empty()) {
+        return {};
+    }
+    for (const std::shared_ptr<Scene_root>& scene_root : context.app_scenes->get_scene_roots()) {
+        if (!scene_name.empty() && (scene_root->get_name() != scene_name)) {
+            continue;
+        }
+        const std::shared_ptr<Content_library> library = scene_root->get_content_library();
+        if (library) {
+            std::shared_ptr<T> found = find_library_item<T>(library.get()->*folder_member, name);
+            if (found) {
+                return found;
+            }
+        }
+    }
+    return {};
+}
+
+} // anonymous namespace
+
+auto Mcp_server::action_create_graph_texture(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<Content_library> library = sr->get_content_library();
+    if (!library) {
+        return make_error_content("Scene has no content library: " + scene_name);
+    }
+    const std::string name = args.value("name", "");
+    if (name.empty()) {
+        return make_error_content("name is required");
+    }
+    if (find_library_item<Graph_texture>(library->graph_textures, name)) {
+        return make_error_content("Graph texture already exists: " + name);
+    }
+
+    const std::shared_ptr<Graph_texture> item = std::make_shared<Graph_texture>(name);
+    // execute_now so the asset is live this frame and selectable immediately.
+    m_context.operation_stack->execute_now(
+        std::make_shared<Item_insert_remove_operation>(
+            Item_insert_remove_operation::Parameters{
+                .context = m_context,
+                .item    = std::make_shared<Content_library_node>(item),
+                .parent  = library->graph_textures,
+                .mode    = Item_insert_remove_operation::Mode::insert
+            }
+        )
+    );
+    // Issue #252: point the Texture Graph window at the new asset explicitly,
+    // so the texture_graph_* tools (which operate on the window's target) act
+    // on it - no longer via the global selection.
+    if (m_context.texture_graph_window != nullptr) {
+        m_context.texture_graph_window->set_target(item);
+    }
+    return make_json_content({
+        {"created", true},
+        {"name",    name},
+        {"id",      item->get_id()}
+    }).dump();
+}
+
+auto Mcp_server::action_set_material_texture_source(const json& args) -> std::string
+{
+    const std::string scene_name         = args.value("scene_name", "");
+    const std::string material_name       = args.value("material_name", "");
+    const std::string slot_name           = args.value("slot", "base_color");
+    const std::string graph_texture_name  = args.value("graph_texture", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<Content_library> library = sr->get_content_library();
+    if (!library) {
+        return make_error_content("Scene has no content library: " + scene_name);
+    }
+    const std::shared_ptr<erhe::primitive::Material> material =
+        find_library_item<erhe::primitive::Material>(library->materials, material_name);
+    if (!material) {
+        return make_error_content("Material not found: " + material_name);
+    }
+
+    erhe::primitive::Material_texture_samplers& samplers = material->data.texture_samplers;
+    erhe::primitive::Material_texture_sampler*  sampler  = nullptr;
+    if      (slot_name == "base_color")         sampler = &samplers.base_color;
+    else if (slot_name == "metallic_roughness") sampler = &samplers.metallic_roughness;
+    else if (slot_name == "normal")             sampler = &samplers.normal;
+    else if (slot_name == "occlusion")          sampler = &samplers.occlusion;
+    else if (slot_name == "emissive")           sampler = &samplers.emissive;
+    else {
+        return make_error_content("Unknown material slot: " + slot_name + " (base_color|metallic_roughness|normal|occlusion|emissive)");
+    }
+
+    if (graph_texture_name.empty()) {
+        sampler->texture_reference.reset();
+        return make_json_content({
+            {"cleared",  true},
+            {"material", material_name},
+            {"slot",     slot_name}
+        }).dump();
+    }
+
+    const std::shared_ptr<Graph_texture> graph_texture =
+        find_library_item<Graph_texture>(library->graph_textures, graph_texture_name);
+    if (!graph_texture) {
+        return make_error_content("Graph texture not found: " + graph_texture_name);
+    }
+    // Graph_texture is-a erhe::graphics::Texture_reference; the shared_ptr upcasts.
+    // The slot has a single reference, so this replaces any previous binding.
+    sampler->texture_reference = graph_texture;
+    return make_json_content({
+        {"bound",            true},
+        {"material",         material_name},
+        {"slot",             slot_name},
+        {"graph_texture",    graph_texture_name},
+        {"graph_texture_id", graph_texture->get_id()}
+    }).dump();
+}
+
+auto Mcp_server::query_graph_textures(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    json graph_textures = json::array();
+    const auto append_from = [&graph_textures](Scene_root& scene_root) {
+        const std::shared_ptr<Content_library> library = scene_root.get_content_library();
+        if (!library || !library->graph_textures) {
+            return;
+        }
+        for (const std::shared_ptr<Graph_texture>& graph_texture : library->graph_textures->get_all<Graph_texture>()) {
+            graph_textures.push_back({
+                {"name",       graph_texture->get_name()},
+                {"id",         graph_texture->get_id()},
+                {"scene",      scene_root.get_name()},
+                {"node_count", graph_texture->nodes().size()},
+                {"has_output", graph_texture->get_referenced_texture() != nullptr}
+            });
+        }
+    };
+    if (!scene_name.empty()) {
+        Scene_root* sr = find_scene(scene_name);
+        if (sr == nullptr) {
+            return make_error_content("Scene not found: " + scene_name);
+        }
+        append_from(*sr);
+    } else if (m_context.app_scenes != nullptr) {
+        for (const std::shared_ptr<Scene_root>& sr : m_context.app_scenes->get_scene_roots()) {
+            append_from(*sr);
+        }
+    }
+    json result;
+    result["graph_textures"] = graph_textures;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_create_graph_mesh(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    const std::shared_ptr<Content_library> library = sr->get_content_library();
+    if (!library) {
+        return make_error_content("Scene has no content library: " + scene_name);
+    }
+    const std::string name = args.value("name", "");
+    if (name.empty()) {
+        return make_error_content("name is required");
+    }
+    if (find_library_item<Graph_mesh>(library->graph_meshes, name)) {
+        return make_error_content("Graph mesh already exists: " + name);
+    }
+
+    const std::shared_ptr<Graph_mesh> item = std::make_shared<Graph_mesh>(name);
+    // execute_now so the asset is live this frame and selectable immediately.
+    m_context.operation_stack->execute_now(
+        std::make_shared<Item_insert_remove_operation>(
+            Item_insert_remove_operation::Parameters{
+                .context = m_context,
+                .item    = std::make_shared<Content_library_node>(item),
+                .parent  = library->graph_meshes,
+                .mode    = Item_insert_remove_operation::Mode::insert
+            }
+        )
+    );
+    // Issue #252: point the Geometry Graph window at the new asset explicitly,
+    // so the geometry_graph_* tools (which operate on the window's target) act
+    // on it - no longer via the global selection.
+    if (m_context.geometry_graph_window != nullptr) {
+        m_context.geometry_graph_window->set_target(item);
+    }
+    return make_json_content({
+        {"created", true},
+        {"name",    name},
+        {"id",      item->get_id()}
+    }).dump();
+}
+
+auto Mcp_server::action_set_node_graph_mesh(const json& args) -> std::string
+{
+    const std::string scene_name      = args.value("scene_name", "");
+    const std::string node_name       = args.value("node_name", "");
+    const std::string graph_mesh_name = args.value("graph_mesh", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    std::shared_ptr<erhe::scene::Node> node;
+    sr->get_scene().for_each_node([&](const std::shared_ptr<erhe::scene::Node>& entry) {
+        if (entry->get_name() == node_name) {
+            node = entry;
+            return false;
+        }
+        return true;
+    });
+    if (!node) {
+        return make_error_content("Node not found: " + node_name);
+    }
+
+    const std::shared_ptr<Geometry_graph_mesh> existing = erhe::scene::get_attachment<Geometry_graph_mesh>(node.get());
+
+    if (graph_mesh_name.empty()) {
+        if (existing) {
+            // set_graph_mesh(nullptr) releases the controlled mesh/physics;
+            // the shared_ptr keeps the attachment alive across detach.
+            existing->set_graph_mesh({});
+            node->detach(existing.get());
+        }
+        return make_json_content({
+            {"cleared", true},
+            {"node",    node_name}
+        }).dump();
+    }
+
+    const std::shared_ptr<Content_library> library = sr->get_content_library();
+    if (!library) {
+        return make_error_content("Scene has no content library: " + scene_name);
+    }
+    const std::shared_ptr<Graph_mesh> graph_mesh = find_library_item<Graph_mesh>(library->graph_meshes, graph_mesh_name);
+    if (!graph_mesh) {
+        return make_error_content("Graph mesh not found: " + graph_mesh_name);
+    }
+
+    std::shared_ptr<Geometry_graph_mesh> attachment = existing;
+    if (!attachment) {
+        attachment = std::make_shared<Geometry_graph_mesh>(graph_mesh);
+        node->attach(attachment);
+    } else {
+        attachment->set_graph_mesh(graph_mesh);
+    }
+    // Materialize the asset's latest bake immediately; a never-baked asset
+    // applies on its first evaluation push (get_geometry_graph barrier).
+    attachment->apply_baked_products();
+    return make_json_content({
+        {"bound",         true},
+        {"node",          node_name},
+        {"graph_mesh",    graph_mesh_name},
+        {"graph_mesh_id", graph_mesh->get_id()}
+    }).dump();
+}
+
+auto Mcp_server::query_graph_meshes(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    json graph_meshes = json::array();
+    const auto append_from = [&graph_meshes](Scene_root& scene_root) {
+        const std::shared_ptr<Content_library> library = scene_root.get_content_library();
+        if (!library || !library->graph_meshes) {
+            return;
+        }
+        for (const std::shared_ptr<Graph_mesh>& graph_mesh : library->graph_meshes->get_all<Graph_mesh>()) {
+            graph_meshes.push_back({
+                {"name",           graph_mesh->get_name()},
+                {"id",             graph_mesh->get_id()},
+                {"scene",          scene_root.get_name()},
+                {"node_count",     graph_mesh->nodes().size()},
+                {"baked_revision", graph_mesh->get_baked_revision()},
+                {"has_bake",       static_cast<bool>(graph_mesh->get_baked_products().primitive)}
+            });
+        }
+    };
+    if (!scene_name.empty()) {
+        Scene_root* sr = find_scene(scene_name);
+        if (sr == nullptr) {
+            return make_error_content("Scene not found: " + scene_name);
+        }
+        append_from(*sr);
+    } else if (m_context.app_scenes != nullptr) {
+        for (const std::shared_ptr<Scene_root>& sr : m_context.app_scenes->get_scene_roots()) {
+            append_from(*sr);
+        }
+    }
+    json result;
+    result["graph_meshes"] = graph_meshes;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::query_texture_graph(const json& args) -> std::string
+{
+    static_cast<void>(args);
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+
+    const std::shared_ptr<Graph_texture>& current = window->get_current_graph_texture();
+    if (!current) {
+        json result;
+        result["selected"] = false;
+        result["nodes"]    = json::array();
+        result["links"]    = json::array();
+        return make_json_content(result).dump();
+    }
+
+    // Texture graph evaluation is synchronous (decision 8), so no wait is needed.
+    json nodes = json::array();
+    for (const std::shared_ptr<Texture_graph_node>& node : window->get_nodes()) {
+        nodes.push_back(texture_graph_node_json(*window, *node.get()));
+    }
+
+    json links = json::array();
+    for (const std::unique_ptr<erhe::graph::Link>& link : current->graph().get_links()) {
+        links.push_back({
+            {"source_node_id", link->get_source()->get_owner_node()->get_id()},
+            {"source_slot",    link->get_source()->get_slot()},
+            {"sink_node_id",   link->get_sink()->get_owner_node()->get_id()},
+            {"sink_slot",      link->get_sink()->get_slot()}
+        });
+    }
+
+    json result;
+    result["selected"]           = true;
+    result["graph_texture_name"] = current->get_name();
+    result["graph_texture_id"]   = current->get_id();
+    result["nodes"] = nodes;
+    result["links"] = links;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_set_texture_graph_target(const json& args) -> std::string
+{
+    // Issue #252: point the Texture Graph window at a named Graph_texture asset
+    // (or clear its target with an empty / omitted name). Explicit replacement
+    // for the old selection-driven targeting.
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const std::string name = args.value("graph_texture", "");
+    if (name.empty()) {
+        window->set_target(std::shared_ptr<Graph_texture>{});
+        return make_json_content({{"target_cleared", true}}).dump();
+    }
+    const std::string scene_name = args.value("scene_name", "");
+    std::shared_ptr<Graph_texture> found;
+    const auto search = [&found, &name](Scene_root& scene_root) {
+        if (found) {
+            return;
+        }
+        const std::shared_ptr<Content_library> library = scene_root.get_content_library();
+        if (library) {
+            found = find_library_item<Graph_texture>(library->graph_textures, name);
+        }
+    };
+    if (!scene_name.empty()) {
+        Scene_root* sr = find_scene(scene_name);
+        if (sr == nullptr) {
+            return make_error_content("Scene not found: " + scene_name);
+        }
+        search(*sr);
+    } else if (m_context.app_scenes != nullptr) {
+        for (const std::shared_ptr<Scene_root>& sr : m_context.app_scenes->get_scene_roots()) {
+            search(*sr);
+        }
+    }
+    if (!found) {
+        return make_error_content("Graph texture not found: " + name);
+    }
+    window->set_target(found);
+    return make_json_content({{"target", name}, {"id", found->get_id()}}).dump();
+}
+
+auto Mcp_server::action_open_geometry_graph_window(const json& args) -> std::string
+{
+    // Issue #252: open a NEW Geometry Graph window, optionally targeting a
+    // named Graph Mesh asset (empty name -> empty editor). Complements the
+    // primary window; closed by the user via its X button.
+    if (m_context.editor_windows == nullptr) {
+        return make_error_content("Editor windows manager not available");
+    }
+    const std::string name       = args.value("graph_mesh", "");
+    const std::string scene_name = args.value("scene_name", "");
+    std::shared_ptr<Graph_mesh> target = find_content_library_asset<Graph_mesh>(
+        m_context, scene_name, &Content_library::graph_meshes, name
+    );
+    if (!name.empty() && !target) {
+        return make_error_content("Graph mesh not found: " + name);
+    }
+    m_context.editor_windows->open_geometry_graph_window(target);
+    return make_json_content({{"opened", true}, {"target", name}}).dump();
+}
+
+auto Mcp_server::action_open_texture_graph_window(const json& args) -> std::string
+{
+    // Issue #252: open a NEW Texture Graph window, optionally targeting a
+    // named Graph Texture asset (empty name -> empty editor).
+    if (m_context.editor_windows == nullptr) {
+        return make_error_content("Editor windows manager not available");
+    }
+    const std::string name       = args.value("graph_texture", "");
+    const std::string scene_name = args.value("scene_name", "");
+    std::shared_ptr<Graph_texture> target = find_content_library_asset<Graph_texture>(
+        m_context, scene_name, &Content_library::graph_textures, name
+    );
+    if (!name.empty() && !target) {
+        return make_error_content("Graph texture not found: " + name);
+    }
+    m_context.editor_windows->open_texture_graph_window(target);
+    return make_json_content({{"opened", true}, {"target", name}}).dump();
+}
+
+auto Mcp_server::action_open_properties_window(const json& args) -> std::string
+{
+    // Issue #252: open a NEW Properties window pinned to a named material
+    // (empty -> pinned to nothing, i.e. it follows the global selection).
+    if (m_context.editor_windows == nullptr) {
+        return make_error_content("Editor windows manager not available");
+    }
+    const std::string name       = args.value("material", "");
+    const std::string scene_name = args.value("scene_name", "");
+    std::shared_ptr<erhe::primitive::Material> target = find_content_library_asset<erhe::primitive::Material>(
+        m_context, scene_name, &Content_library::materials, name
+    );
+    if (!name.empty() && !target) {
+        return make_error_content("Material not found: " + name);
+    }
+    m_context.editor_windows->open_properties_window(target);
+    return make_json_content({{"opened", true}, {"target", name}}).dump();
+}
+
+auto Mcp_server::action_texture_graph_add_node(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    if (!window->get_current_graph_texture()) {
+        return make_error_content("No target Graph Texture - create one (create_graph_texture) or set the target (set_texture_graph_target) first");
+    }
+    const std::string type_name = args.value("type", "");
+    Texture_graph_node* node = window->add_node_of_type(type_name);
+    if (node == nullptr) {
+        return make_error_content("Unknown texture graph node type: " + type_name);
+    }
+    if (args.contains("position") && args["position"].is_array() && (args["position"].size() == 2)) {
+        const float x = args["position"][0].get<float>();
+        const float y = args["position"][1].get<float>();
+        window->set_node_position(*node, ImVec2{x, y});
+    } else {
+        window->request_automatic_layout();
+    }
+    return make_json_content(texture_graph_node_json(*window, *node)).dump();
+}
+
+auto Mcp_server::action_texture_graph_remove_node(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Texture_graph_node* node = find_texture_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    window->remove_node(std::dynamic_pointer_cast<Texture_graph_node>(node->node_from_this()));
+    window->request_automatic_layout();
+
+    json result;
+    result["removed"] = true;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_texture_graph_set_parameter(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Texture_graph_node* node = find_texture_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    if (!args.contains("parameters") || !args["parameters"].is_object()) {
+        return make_error_content("Missing 'parameters' object");
+    }
+    window->set_node_parameters(
+        std::dynamic_pointer_cast<Texture_graph_node>(node->node_from_this()),
+        args["parameters"]
+    );
+    return make_json_content(texture_graph_node_json(*window, *node)).dump();
+}
+
+auto Mcp_server::action_texture_graph_connect(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const std::size_t source_node_id = args.value("source_node_id", std::size_t{0});
+    const std::size_t source_slot    = args.value("source_slot",    std::size_t{0});
+    const std::size_t sink_node_id   = args.value("sink_node_id",   std::size_t{0});
+    const std::size_t sink_slot      = args.value("sink_slot",      std::size_t{0});
+
+    Texture_graph_node* source_node = find_texture_graph_node(window->get_nodes(), source_node_id);
+    Texture_graph_node* sink_node   = find_texture_graph_node(window->get_nodes(), sink_node_id);
+    if (source_node == nullptr) {
+        return make_error_content("Source node not found");
+    }
+    if (sink_node == nullptr) {
+        return make_error_content("Sink node not found");
+    }
+    if (source_slot >= source_node->get_output_pins().size()) {
+        return make_error_content("Source slot out of range");
+    }
+    if (sink_slot >= sink_node->get_input_pins().size()) {
+        return make_error_content("Sink slot out of range");
+    }
+    erhe::graph::Pin* source_pin = &source_node->get_output_pins().at(source_slot);
+    erhe::graph::Pin* sink_pin   = &sink_node->get_input_pins().at(sink_slot);
+    const bool connected = window->connect(source_pin, sink_pin);
+    if (!connected) {
+        return make_error_content("Connect failed (pin key mismatch, or the link would create a cycle)");
+    }
+    window->request_automatic_layout();
+
+    json result;
+    result["connected"] = true;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_texture_graph_disconnect(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const std::size_t source_node_id = args.value("source_node_id", std::size_t{0});
+    const std::size_t source_slot    = args.value("source_slot",    std::size_t{0});
+    const std::size_t sink_node_id   = args.value("sink_node_id",   std::size_t{0});
+    const std::size_t sink_slot      = args.value("sink_slot",      std::size_t{0});
+
+    Texture_graph_node* source_node = find_texture_graph_node(window->get_nodes(), source_node_id);
+    Texture_graph_node* sink_node   = find_texture_graph_node(window->get_nodes(), sink_node_id);
+    if ((source_node == nullptr) || (sink_node == nullptr)) {
+        return make_error_content("Node not found");
+    }
+    if ((source_slot >= source_node->get_output_pins().size()) || (sink_slot >= sink_node->get_input_pins().size())) {
+        return make_error_content("Pin slot out of range");
+    }
+    window->disconnect(&source_node->get_output_pins().at(source_slot), &sink_node->get_input_pins().at(sink_slot));
+    window->request_automatic_layout();
+
+    json result;
+    result["disconnected"] = true;
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_texture_graph_export_png(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    if (m_context.graphics_device == nullptr) {
+        return make_error_content("Graphics device not available");
+    }
+    const std::size_t node_id     = args.value("node_id",     std::size_t{0});
+    const std::size_t output_slot = args.value("output_slot", std::size_t{0});
+    const int         size        = std::clamp(args.value("size", 256), 1, 4096);
+    const std::string path        = args.value("path", "");
+    if (path.empty()) {
+        return make_error_content("Missing 'path'");
+    }
+    Texture_graph_node* node = find_texture_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+
+    // Compose the node's output subtree into a fragment shader (pure string
+    // logic - see decision 1). A sink node (Output) with no descriptor composes
+    // its connected input's source instead.
+    const Texture_compose_dag dag = build_texture_export_dag(*node, output_slot);
+    if (!dag.ok || (dag.sink == nullptr)) {
+        return make_error_content("Node has no composable output (unconnected sink or no descriptor)");
+    }
+    const erhe::texgen::Composer    composer{texture_graph_compose_options()};
+    const erhe::texgen::Shader_code shader_code = composer.compose(*dag.sink, dag.sink_output_index);
+    const std::string               fragment    = composer.assemble_fragment(shader_code);
+    if (fragment.find("(error:") != std::string::npos) {
+        return make_error_content("Composition failed (cycle / depth / error marker)");
+    }
+
+    Texture_renderer* renderer = window->get_renderer();
+    if (renderer == nullptr) {
+        return make_error_content("Texture renderer not available");
+    }
+
+    const std::vector<Texture_sample_binding> sampler_bindings = gather_texture_sample_bindings(dag);
+    std::vector<std::uint8_t> pixels;
+    if (!renderer->render_and_read_rgba8(size, fragment, shader_code.get_uniforms(), pixels, shader_code.get_samplers(), sampler_bindings)) {
+        return make_error_content("Render / readback failed (shader compile error, or a sampled buffer has not rendered yet)");
+    }
+
+    std::unique_ptr<erhe::graphics::Image_writer> writer = erhe::graphics::Image_writer::create();
+    const int                  row_stride = size * 4;
+    std::span<const std::byte> data{reinterpret_cast<const std::byte*>(pixels.data()), pixels.size()};
+    if (!writer->write_png(std::filesystem::path{path}, size, size, row_stride, Texture_renderer::color_format(), data)) {
+        return make_error_content("Failed to write PNG '" + path + "' (image writer backend may be disabled)");
+    }
+
+    return make_json_content({
+        {"path",   path},
+        {"width",  size},
+        {"height", size}
+    }).dump();
+}
+
+auto Mcp_server::action_texture_graph_export_material(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    if (m_context.graphics_device == nullptr) {
+        return make_error_content("Graphics device not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    const int         size    = std::clamp(args.value("size", 256), 1, 4096);
+    const std::string dir     = args.value("dir", "");
+    if (dir.empty()) {
+        return make_error_content("Missing 'dir'");
+    }
+    Texture_graph_node* node = find_texture_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    Texture_material_output_node* material_node = dynamic_cast<Texture_material_output_node*>(node);
+    if (material_node == nullptr) {
+        return make_error_content("Node is not a Material Output node");
+    }
+
+    const std::vector<Material_channel_export> exports = material_node->build_channel_exports();
+    if (exports.empty()) {
+        return make_error_content("Material Output node has no connected channels to export");
+    }
+
+    Texture_renderer* renderer = window->get_renderer();
+    if (renderer == nullptr) {
+        return make_error_content("Texture renderer not available");
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path{dir}, ec);
+
+    const std::string base_name = material_node->get_base_name();
+    json written = json::array();
+    for (const Material_channel_export& channel : exports) {
+        std::vector<std::uint8_t> pixels;
+        if (!renderer->render_and_read_rgba8(size, channel.fragment, channel.uniforms, pixels)) {
+            return make_error_content("Render / readback failed for channel '" + channel.suffix + "'");
+        }
+        const std::filesystem::path path = std::filesystem::path{dir} / (base_name + "_" + channel.suffix + ".png");
+        std::unique_ptr<erhe::graphics::Image_writer> writer = erhe::graphics::Image_writer::create();
+        const int                  row_stride = size * 4;
+        std::span<const std::byte> data{reinterpret_cast<const std::byte*>(pixels.data()), pixels.size()};
+        if (!writer->write_png(path, size, size, row_stride, Texture_renderer::color_format(), data)) {
+            return make_error_content("Failed to write PNG '" + path.string() + "'");
+        }
+        written.push_back(path.string());
+    }
+
+    return make_json_content({
+        {"files",  written},
+        {"width",  size},
+        {"height", size}
+    }).dump();
+}
+
+auto Mcp_server::action_texture_graph_select_nodes(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    std::vector<std::size_t> node_ids;
+    if (args.contains("node_ids") && args["node_ids"].is_array()) {
+        for (const json& value : args["node_ids"]) {
+            if (!value.is_number()) {
+                return make_error_content("'node_ids' entries must be node ids (integers)");
+            }
+            const std::size_t node_id = value.get<std::size_t>();
+            if (find_texture_graph_node(window->get_nodes(), node_id) == nullptr) {
+                return make_error_content("Node not found: " + std::to_string(node_id));
+            }
+            node_ids.push_back(node_id);
+        }
+    }
+    window->select_canvas_nodes(node_ids);
+    // Make the result observable in a screenshot: the canvas showing the
+    // selection (focus raises the window's tab when it is docked behind
+    // another) and the Node Properties window showing the selected nodes.
+    window->request_window_focus();
+    if (m_context.node_properties_window != nullptr) {
+        m_context.node_properties_window->show_window();
+    }
+    json result;
+    result["selected_count"] = node_ids.size();
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_texture_graph_set_node_layout(const json& args) -> std::string
+{
+    Texture_graph_window* window = m_context.texture_graph_window;
+    if (window == nullptr) {
+        return make_error_content("Texture graph window not available");
+    }
+    const std::size_t node_id = args.value("node_id", std::size_t{0});
+    Texture_graph_node* node = find_texture_graph_node(window->get_nodes(), node_id);
+    if (node == nullptr) {
+        return make_error_content("Node not found");
+    }
+    return apply_node_layout(*window, *node, args);
+}
+
+} // namespace editor

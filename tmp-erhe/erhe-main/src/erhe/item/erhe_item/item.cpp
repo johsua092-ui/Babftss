@@ -1,0 +1,322 @@
+#include "erhe_item/item.hpp"
+#include "erhe_utility/bit_helpers.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <fmt/format.h>
+
+#include <filesystem>
+#include <sstream>
+
+namespace erhe {
+
+namespace {
+uint64_t s_item_mutation_serial{0};
+}
+
+auto get_item_mutation_serial() -> uint64_t
+{
+    return s_item_mutation_serial;
+}
+
+void bump_item_mutation_serial()
+{
+    ++s_item_mutation_serial;
+}
+
+auto Item_flags::to_string(const uint64_t flags) -> std::string
+{
+    std::stringstream ss;
+
+    using Item_flags = Item_flags;
+    bool first = true;
+    for (uint64_t bit_position = 0; bit_position < Item_flags::count; ++ bit_position) {
+        const uint64_t bit_mask = (uint64_t{1} << bit_position);
+        const bool     value    = erhe::utility::test_bit_set(flags, bit_mask);
+        if (value) {
+            if (!first) {
+                ss << " | ";
+            }
+            ss << Item_flags::c_bit_labels[bit_position];
+            first = false;
+        }
+    }
+    return ss.str();
+}
+
+auto Item_filter::operator()(const uint64_t visibility_mask) const -> bool
+{
+    if ((visibility_mask & require_all_bits_set) != require_all_bits_set) {
+        return false;
+    }
+    if (require_at_least_one_bit_set != 0u) {
+        if ((visibility_mask & require_at_least_one_bit_set) == 0u) {
+            return false;
+        }
+    }
+    if ((visibility_mask & require_all_bits_clear) != 0u) {
+        return false;
+    }
+    if (require_at_least_one_bit_clear != 0u) {
+        if ((visibility_mask & require_at_least_one_bit_clear) == require_at_least_one_bit_clear) {
+            return false;
+        }
+    }
+    return true;
+}
+
+auto Item_filter::describe() const -> std::string
+{
+    bool first = true;
+    std::stringstream ss;
+    if (require_all_bits_set != 0) {
+        ss << "require_all_bits_set = " << Item_flags::to_string(this->require_all_bits_set);
+        first = false;
+    }
+    if (require_at_least_one_bit_set != 0) {
+        if (!first) {
+            ss << ", ";
+        }
+        ss << "require_at_least_one_bit_set = " << Item_flags::to_string(this->require_at_least_one_bit_set);
+        first = false;
+    }
+    if (require_all_bits_clear != 0) {
+        if (!first) {
+            ss << ", ";
+        }
+        ss << "require_all_bits_clear = " << Item_flags::to_string(this->require_all_bits_clear);
+        first = false;
+    }
+    if (require_at_least_one_bit_clear != 0) {
+        if (!first) {
+            ss << ", ";
+        }
+        ss << "require_at_least_one_bit_clear = " << Item_flags::to_string(this->require_at_least_one_bit_clear);
+    }
+    return ss.str();
+}
+
+// -----------------------------------------------------------------------------
+
+Item_base::Item_base() = default;
+
+Item_base::Item_base(const std::string_view name)
+    : m_name       {name}
+    , m_debug_label{erhe::utility::Debug_label{fmt::format("{}##{}", name, get_id())}}
+{
+}
+
+// Copies (clones) keep the source name; call sites that want a distinct
+// name for a duplicate (e.g. clipboard paste) rename the clone themselves.
+// m_gltf_uid is intentionally NOT copied (see its declaration): a clone is
+// a new object and gets its own uid at first export.
+Item_base::Item_base(const Item_base& other)
+    : enable_shared_from_this{other}
+    , m_flag_bits  {other.m_flag_bits & ~Item_flags::selected}
+    , m_name       {other.m_name}
+    , m_debug_label{erhe::utility::Debug_label{fmt::format("{}##{}", m_name, get_id())}}
+    , m_source_path{other.m_source_path ? std::make_unique<std::filesystem::path>(*other.m_source_path) : nullptr}
+{
+}
+
+auto Item_base::operator=(const Item_base& other) -> Item_base&
+{
+    m_flag_bits   = other.m_flag_bits & ~Item_flags::selected;
+    m_name        = other.m_name;
+    m_debug_label = erhe::utility::Debug_label{fmt::format("{}##{}", m_name, get_id())};
+    m_source_path = other.m_source_path ? std::make_unique<std::filesystem::path>(*other.m_source_path) : nullptr;
+    return *this;
+}
+
+Item_base::~Item_base() noexcept = default;
+
+auto Item_base::get_name() const -> const std::string&
+{
+    return m_name;
+}
+
+auto Item_base::get_debug_label() const -> erhe::utility::Debug_label
+{
+    return m_debug_label;
+}
+
+auto Item_base::get_flag_bits() const -> uint64_t
+{
+    return m_flag_bits;
+}
+
+void Item_base::set_flag_bits(const uint64_t mask, const bool value)
+{
+    const auto old_flag_bits = m_flag_bits;
+    if (value) {
+        m_flag_bits = m_flag_bits | mask;
+    } else {
+        m_flag_bits = m_flag_bits & ~mask;
+    }
+
+    if (m_flag_bits != old_flag_bits) {
+        if (((old_flag_bits ^ m_flag_bits) & ~Item_flags::transient) != 0u) {
+            bump_item_mutation_serial();
+        }
+        handle_flag_bits_update(old_flag_bits, m_flag_bits);
+    }
+}
+
+void Item_base::enable_flag_bits(const uint64_t mask)
+{
+    set_flag_bits(mask, true);
+}
+
+void Item_base::disable_flag_bits(const uint64_t mask)
+{
+    set_flag_bits(mask, false);
+}
+
+auto Item_base::is_no_transform_update() const -> bool
+{
+    return erhe::utility::test_bit_set(m_flag_bits, Item_flags::no_transform_update);
+}
+
+auto Item_base::is_transform_world_normative() const -> bool
+{
+    return erhe::utility::test_bit_set(m_flag_bits, Item_flags::transform_world_normative);
+}
+
+auto Item_base::is_selected() const -> bool
+{
+    return erhe::utility::test_bit_set(m_flag_bits, Item_flags::selected);
+}
+
+auto Item_base::is_hovered() const -> bool
+{
+    return erhe::utility::test_any_rhs_bits_set(m_flag_bits, Item_flags::hovered_in_viewport | Item_flags::hovered_in_item_tree);
+}
+
+void Item_base::set_selected(const bool selected)
+{
+    set_flag_bits(Item_flags::selected, selected);
+}
+
+void Item_base::set_visible(const bool value)
+{
+    set_flag_bits(Item_flags::visible, value);
+}
+
+void Item_base::show()
+{
+    set_flag_bits(Item_flags::visible, true);
+}
+
+void Item_base::hide()
+{
+    set_flag_bits(Item_flags::visible, false);
+}
+
+auto Item_base::is_visible() const -> bool
+{
+    return erhe::utility::test_bit_set(m_flag_bits, Item_flags::visible);
+}
+
+auto Item_base::is_shown_in_ui() const -> bool
+{
+    return erhe::utility::test_bit_set(m_flag_bits, Item_flags::show_in_ui);
+}
+
+auto Item_base::is_hidden() const -> bool
+{
+    return !is_visible();
+}
+
+auto Item_base::is_lock_edit() const -> bool
+{
+    return (m_flag_bits & Item_flags::lock_edit) == Item_flags::lock_edit;
+}
+
+auto Item_base::is_lock_viewport_selection() const -> bool
+{
+    return (m_flag_bits & Item_flags::lock_viewport_selection) == Item_flags::lock_viewport_selection;
+}
+
+auto Item_base::is_lock_viewport_transform() const -> bool
+{
+    return (m_flag_bits & Item_flags::lock_viewport_transform) == Item_flags::lock_viewport_transform;
+}
+
+void Item_base::set_lock_edit(bool value)
+{
+    set_flag_bits(Item_flags::lock_edit, value);
+}
+
+auto Item_base::get_tags() const -> const std::set<std::string>&
+{
+    return m_tags;
+}
+
+auto Item_base::has_tag(const std::string_view tag) const -> bool
+{
+    return m_tags.contains(std::string{tag});
+}
+
+void Item_base::add_tag(const std::string_view tag)
+{
+    m_tags.emplace(tag);
+}
+
+void Item_base::remove_tag(const std::string_view tag)
+{
+    m_tags.erase(std::string{tag});
+}
+
+void Item_base::clear_tags()
+{
+    m_tags.clear();
+}
+
+void Item_base::set_source_path(const std::filesystem::path& path)
+{
+    m_source_path = std::make_unique<std::filesystem::path>(path);
+}
+
+auto Item_base::get_source_path() const -> const std::filesystem::path*
+{
+    return m_source_path.get();
+}
+
+void Item_base::set_gltf_uid(const std::string_view uid)
+{
+    m_gltf_uid = uid;
+}
+
+auto Item_base::get_gltf_uid() const -> const std::string&
+{
+    return m_gltf_uid;
+}
+
+void Item_base::set_name(const std::string_view name)
+{
+    m_name = name;
+    m_debug_label = erhe::utility::Debug_label{fmt::format("{}##{}", name, get_id())};
+    bump_item_mutation_serial();
+}
+
+auto Item_base::describe(int level) const -> std::string
+{
+    switch (level) {
+        case 0:  return get_name();
+        case 1:  return fmt::format("{} {}", get_type_name(), get_name());
+        case 2:  return fmt::format("{} {}, id = {}", get_type_name(), get_name(), get_id());
+        default: return fmt::format("{} {}, id = {}, flags = {}", get_type_name(), get_name(), get_id(), Item_flags::to_string(get_flag_bits()));
+    }
+}
+
+auto Item_base::get_id() const -> std::size_t
+{
+    return m_id.get_id();
+}
+
+void Item_base::set_item_host(Item_host* const item_host)
+{
+    m_item_host = item_host;
+}
+
+} // namespace erhe
+

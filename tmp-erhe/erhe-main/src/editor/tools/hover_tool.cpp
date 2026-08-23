@@ -1,0 +1,546 @@
+// #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+
+#include "tools/hover_tool.hpp"
+
+#include "app_context.hpp"
+#include "app_message_bus.hpp"
+#include "app_settings.hpp"
+#include "config/generated/debug_visualizations_style.hpp"
+#include "config/generated/editor_settings_config.hpp"
+#include "grid/grid.hpp"
+#include "renderers/render_context.hpp"
+#include "scene/node_physics.hpp"
+#include "scene/viewport_scene_view.hpp"
+#include "tools/bone_visualization.hpp"
+#include "tools/mesh_component_selection.hpp"
+#include "tools/tools.hpp"
+#include "transform/handle_enums.hpp"
+#include "transform/transform_tool.hpp"
+#include "windows/viewport_window.hpp"
+
+#include "erhe_geometry_renderer/geometry_debug_renderer.hpp"
+#include "erhe_imgui/imgui_host.hpp"
+#include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_item/hierarchy.hpp"
+#include "erhe_log/log_glm.hpp"
+#include "erhe_renderer/primitive_renderer.hpp"
+#include "erhe_renderer/text_renderer.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_defer/defer.hpp"
+#include "erhe_profile/profile.hpp"
+#include <fmt/format.h>
+
+#include <string>
+
+namespace editor {
+
+Hover_tool::Hover_tool(
+    erhe::imgui::Imgui_renderer& imgui_renderer,
+    erhe::imgui::Imgui_windows&  imgui_windows,
+    App_context&                 app_context,
+    App_message_bus&             app_message_bus,
+    Tools&                       tools
+)
+    : Tool    {app_context, tools, Tool_flags::background | Tool_flags::toolbox}
+    , m_window{imgui_renderer, imgui_windows, "Hover Tool", "hover_tool", [this]() { window_imgui(); }, true}
+{
+    set_description("Hover Tool");
+
+    m_hover_scene_view_subscription = app_message_bus.hover_scene_view.subscribe(
+        [&](Hover_scene_view_message& message) {
+            on_message(message);
+        }
+    );
+    m_hover_mesh_subscription = app_message_bus.hover_mesh.subscribe(
+        [&](Hover_mesh_message& message) {
+            on_hover_mesh(message);
+        }
+    );
+    m_hover_tree_node_subscription = app_message_bus.hover_tree_node.subscribe(
+        [&](Hover_tree_node_message& message) {
+            on_hover_tree_node(message);
+        }
+    );
+}
+
+auto Hover_tool::get_hovered_bone_joint() const -> std::shared_ptr<erhe::scene::Node>
+{
+    Scene_view* scene_view = get_hover_scene_view();
+    if ((scene_view == nullptr) || (m_context.bone_visualization == nullptr)) {
+        return {};
+    }
+    const Hover_entry& bone = scene_view->get_hover(Hover_entry::bone_slot);
+    if (!bone.valid) {
+        return {};
+    }
+    const std::shared_ptr<erhe::scene::Mesh> proxy_mesh = bone.scene_mesh_weak.lock();
+    if (!proxy_mesh) {
+        return {};
+    }
+    return m_context.bone_visualization->get_joint_for_proxy(proxy_mesh.get());
+}
+
+auto Hover_tool::get_hover_node() const -> std::shared_ptr<erhe::scene::Node>
+{
+    Scene_view* scene_view = get_hover_scene_view();
+    if (scene_view == nullptr) {
+        return {};
+    }
+
+    const Hover_entry* nearest_hover = scene_view->get_nearest_hover(
+        scene_view->get_pickable_slot_mask(
+            Hover_entry::content_bit |
+            Hover_entry::rendertarget_bit
+        )
+    );
+    if ((nearest_hover == nullptr) || (nearest_hover->slot == Hover_entry::rendertarget_slot)) {
+        return {};
+    }
+
+    // The hovered node for a bone is the joint, not the proxy - matching what
+    // a click selects.
+    if (nearest_hover->slot == Hover_entry::bone_slot) {
+        return get_hovered_bone_joint();
+    }
+
+    std::shared_ptr<erhe::scene::Mesh> hover_scene_mesh = nearest_hover->scene_mesh_weak.lock();
+    if (!hover_scene_mesh) {
+        return {};
+    }
+    erhe::scene::Node* node = hover_scene_mesh->get_node();
+    if (node == nullptr) {
+        return {};
+    }
+
+    std::shared_ptr<erhe::Item_base> node_item_base = std::dynamic_pointer_cast<erhe::Item_base>(node->shared_from_this());
+    std::shared_ptr<erhe::scene::Node> node_shared = std::dynamic_pointer_cast<erhe::scene::Node>(node_item_base);
+
+    return node_shared;
+}
+
+void Hover_tool::update_ancestor_hover_flags()
+{
+    for (const std::weak_ptr<erhe::Hierarchy>& ancestor_weak : m_flagged_hover_ancestors) {
+        const std::shared_ptr<erhe::Hierarchy> ancestor = ancestor_weak.lock();
+        if (ancestor) {
+            ancestor->disable_flag_bits(erhe::Item_flags::descendant_hovered_in_viewport);
+        }
+    }
+    m_flagged_hover_ancestors.clear();
+
+    const std::shared_ptr<erhe::scene::Node> hovered_node = m_hovered_node_in_viewport.lock();
+    if (hovered_node) {
+        std::shared_ptr<erhe::Hierarchy> ancestor = hovered_node->get_parent().lock();
+        while (ancestor) {
+            ancestor->enable_flag_bits(erhe::Item_flags::descendant_hovered_in_viewport);
+            m_flagged_hover_ancestors.push_back(ancestor);
+            ancestor = ancestor->get_parent().lock();
+        }
+    }
+    m_flagged_hover_ancestors_serial = erhe::get_item_mutation_serial();
+}
+
+void Hover_tool::reset_item_tree_hover()
+{
+    m_context.app_message_bus->hover_tree_node.queue_message(Hover_tree_node_message{.item = {}});
+}
+
+void Hover_tool::on_message(Hover_scene_view_message& message)
+{
+    Tool::on_message(message);
+    m_context.app_message_bus->hover_mesh.queue_message(Hover_mesh_message{});
+}
+
+void Hover_tool::on_hover_mesh(Hover_mesh_message& message)
+{
+    static_cast<void>(message);
+    std::shared_ptr<erhe::scene::Node> hovered_node     = get_hover_node();
+    std::shared_ptr<erhe::scene::Node> old_hovered_node = m_hovered_node_in_viewport.lock();
+    if (old_hovered_node != hovered_node) {
+        log_pointer->debug("Hover_tool::on_hover_mesh()");
+        if (old_hovered_node) {
+            log_pointer->debug("clearing hovered bit for {}", old_hovered_node->get_name());
+            old_hovered_node->disable_flag_bits(erhe::Item_flags::hovered_in_viewport);
+        }
+        if (hovered_node) {
+            log_pointer->debug("setting hovered bit for {}", hovered_node->get_name());
+            hovered_node->enable_flag_bits(erhe::Item_flags::hovered_in_viewport);
+        } else {
+            log_pointer->debug("no new hovered mesh / node");
+        }
+        m_hovered_node_in_viewport = hovered_node;
+        update_ancestor_hover_flags();
+        // Direct call rather than a hover_mesh subscription in
+        // Bone_visualization: a subscriber registered before this one would
+        // read the hovered flags before the flips above. Here both flags are
+        // final.
+        if (m_context.bone_visualization != nullptr) {
+            m_context.bone_visualization->update_hover(old_hovered_node.get(), hovered_node.get());
+        }
+    }
+}
+
+void Hover_tool::on_hover_tree_node(Hover_tree_node_message& message)
+{
+    std::shared_ptr<erhe::scene::Node> old_hovered_node = m_hovered_node_in_item_tree.lock();
+    if (old_hovered_node) {
+        old_hovered_node->disable_flag_bits(erhe::Item_flags::hovered_in_item_tree);
+    }
+
+    std::shared_ptr<erhe::scene::Node> hovered_node = std::dynamic_pointer_cast<erhe::scene::Node>(message.item);
+    if (!hovered_node) {
+        m_hovered_node_in_item_tree.reset();
+        return;
+    }
+
+    hovered_node->enable_flag_bits(erhe::Item_flags::hovered_in_item_tree);
+    m_hovered_node_in_item_tree = hovered_node;
+}
+
+void Hover_tool::window_imgui()
+{
+    std::shared_ptr<erhe::scene::Node> hovered_in_viewport  = m_hovered_node_in_viewport.lock();
+    std::shared_ptr<erhe::scene::Node> hovered_in_item_tree = m_hovered_node_in_item_tree.lock();
+    if (hovered_in_viewport) {
+        ImGui::Text("Hovered in Viewport: %s", hovered_in_viewport->get_name().c_str());
+    }
+    if (hovered_in_item_tree) {
+        ImGui::Text("Hovered in Item tree: %s", hovered_in_item_tree->get_name().c_str());
+    }
+
+    erhe::imgui::Imgui_host* imgui_host = m_window.get_imgui_host();
+    glm::vec2 mouse_position{0.0f, 0.0f};
+    if (imgui_host != nullptr) {
+        mouse_position = imgui_host->get_mouse_position();
+        ImGui::Text("ImGui Host Mouse position: %f, %f", mouse_position.x, mouse_position.y);
+    }
+
+    ImGui::Checkbox("Geometry Debug Facet Hover Only", &m_geometry_debug_hover_facet_only);
+    ImGui::Checkbox("Show Hover Normal",               &m_show_hover_normal);
+    ImGui::Checkbox("Show Snapped Grid Position",      &m_show_snapped_grid_position);
+
+    // Rest requires scene_view so we can early out here
+    Scene_view* scene_view = get_hover_scene_view();
+    if (scene_view == nullptr) {
+        return;
+    }
+
+    Viewport_scene_view* viewport_scene_view = scene_view->as_viewport_scene_view();
+    if (viewport_scene_view != nullptr) {
+        const erhe::math::Viewport& window_viewport = viewport_scene_view->get_window_viewport();
+        ImGui::Text("Window viewport: %d, %d | %d x %d", window_viewport.x, window_viewport.y, window_viewport.width, window_viewport.height);
+
+        // const float content_x      = static_cast<float>(mouse_position.x) - window_viewport.x;
+        // const float content_y      = static_cast<float>(mouse_position.y) - window_viewport.y;
+        // const float content_flip_y = window_viewport.height - content_y;
+        // ImGui::Text("Content x = %f y = %f", content_x, content_y);
+        // ImGui::Text("Y flipped x = %f y = %f", content_x, content_flip_y);
+
+        const std::optional<glm::vec2> position_in_viewport_opt = viewport_scene_view->get_position_in_viewport();
+        if (position_in_viewport_opt.has_value()) {
+            const glm::vec2 position_in_viewport = position_in_viewport_opt.value();
+            ImGui::Text("Mouse position in Viewport scene view: %f, %f", position_in_viewport.x, position_in_viewport.y);
+        }
+    }
+
+    const auto& hover        = scene_view->get_hover(Hover_entry::content_slot);
+    const auto& tool         = scene_view->get_hover(Hover_entry::tool_slot);
+    const auto& rendertarget = scene_view->get_hover(Hover_entry::rendertarget_slot);
+    const auto& grid         = scene_view->get_hover(Hover_entry::grid_slot);
+    const auto* nearest      = scene_view->get_nearest_hover(Hover_entry::all_bits);
+    if ((nearest != nullptr) && nearest->valid) {
+        ImGui::Text("Nearest: %s", nearest->get_name().c_str());
+    }
+
+    std::shared_ptr<erhe::scene::Mesh> hover_scene_mesh        = hover       .scene_mesh_weak.lock();
+    std::shared_ptr<erhe::scene::Mesh> tool_scene_mesh         = tool        .scene_mesh_weak.lock();
+    std::shared_ptr<erhe::scene::Mesh> rendertarget_scene_mesh = rendertarget.scene_mesh_weak.lock();
+    ImGui::Text("Content: %s",      (hover       .valid && hover_scene_mesh       ) ? hover_scene_mesh       ->get_name().c_str() : "");
+    ImGui::Text("Tool: %s",         (tool        .valid && tool_scene_mesh        ) ? tool_scene_mesh        ->get_name().c_str() : "");
+    ImGui::Text("Rendertarget: %s", (rendertarget.valid && rendertarget_scene_mesh) ? rendertarget_scene_mesh->get_name().c_str() : "");
+
+    // Bone proxies are only pickable in bone selection mode, so this line stays
+    // empty otherwise. The joint's own name is authoritative - the proxy is
+    // named after it, but keeps that name until the proxies are rebuilt.
+    std::shared_ptr<erhe::scene::Node> bone_joint = get_hovered_bone_joint();
+    ImGui::Text("Bone: %s", bone_joint ? bone_joint->get_name().c_str() : "");
+
+    if (grid.valid && grid.position.has_value()) {
+        const std::string text = fmt::format("Grid: {}", grid.position.value());
+        ImGui::TextUnformatted(text.c_str());
+    }
+
+    if ((nearest != nullptr) && nearest->valid) {
+        {
+            const std::string text = fmt::format("Nearest Primitive Index: {}", nearest->scene_mesh_primitive_index);
+            ImGui::TextUnformatted(text.c_str());
+        }
+        // Only the raytrace hover path carries a triangle index; the GPU id path
+        // resolves a facet directly and leaves triangle at its sentinel.
+        if (nearest->triangle != std::numeric_limits<uint32_t>::max()) {
+            const std::string text = fmt::format("Nearest triangle: {}", nearest->triangle);
+            ImGui::TextUnformatted(text.c_str());
+        }
+        {
+            const std::string text = fmt::format("Nearest facet: {}", nearest->facet);
+            ImGui::TextUnformatted(text.c_str());
+        }
+        if (nearest->position.has_value()) {
+            const std::string text = fmt::format("Nearest Position: {}", nearest->position.value());
+            ImGui::TextUnformatted(text.c_str());
+        }
+        if (nearest->normal.has_value()) {
+            const std::string text = fmt::format("Nearest Normal: {}", nearest->normal.value());
+            ImGui::TextUnformatted(text.c_str());
+        }
+        if (nearest->uv.has_value()) {
+            const std::string text = fmt::format("Nearest UV: {}", nearest->uv.value());
+            ImGui::TextUnformatted(text.c_str());
+        }
+    }
+    const auto origin    = scene_view->get_control_ray_origin_in_world();
+    const auto direction = scene_view->get_control_ray_direction_in_world();
+    if (origin.has_value()) {
+        const std::string text = fmt::format("Ray Origin: {}", origin.value());
+        ImGui::TextUnformatted(text.c_str());
+    }
+    if (direction.has_value()) {
+        const std::string text = fmt::format("Ray Direction: {}", direction.value());
+        ImGui::TextUnformatted(text.c_str());
+    }
+}
+
+[[nodiscard]] auto get_text_color_from_slot(std::size_t slot)
+{
+    constexpr uint32_t red  {0xff0000ffu};
+    constexpr uint32_t green{0xff00ff00u};
+    constexpr uint32_t blue {0xffff0000u};
+    constexpr uint32_t white{0xffffffffu};
+
+    switch (slot) {
+        case Hover_entry::content_slot: return white;
+        case Hover_entry::tool_slot:    return blue;
+        case Hover_entry::grid_slot:    return green;
+        case Hover_entry::bone_slot:    return green;
+        default: return red;
+    }
+}
+
+[[nodiscard]] auto get_line_color_from_slot(std::size_t slot)
+{
+    constexpr glm::vec4 red  {1.0f, 0.0f, 0.0f, 1.0f};
+    constexpr glm::vec4 green{0.0f, 1.0f, 0.0f, 1.0f};
+    constexpr glm::vec4 blue {0.0f, 0.0f, 1.0f, 1.0f};
+    constexpr glm::vec4 white{1.0f, 1.0f, 1.0f, 1.0f};
+
+    switch (slot) {
+        case Hover_entry::content_slot: return red;
+        case Hover_entry::tool_slot: return blue;
+        case Hover_entry::grid_slot: return green;
+        case Hover_entry::bone_slot: return green;
+        default: return white;
+    }
+}
+
+void Hover_tool::add_line(const std::string& line)
+{
+    m_text_lines.push_back(line);
+}
+
+void Hover_tool::tool_render(const Render_context& context)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // Scene tree structure changed since the ancestor chain was flagged
+    // (reparent, add/remove): re-derive it so the descendant-hovered marks
+    // stay on the hovered node's actual ancestors.
+    if (m_flagged_hover_ancestors_serial != erhe::get_item_mutation_serial()) {
+        update_ancestor_hover_flags();
+    }
+
+    ERHE_DEFER(
+        m_text_lines.clear();
+    );
+
+    if (get_hover_scene_view() == nullptr) {
+        return;
+    }
+
+    const auto* entry = context.scene_view.get_nearest_hover(
+        context.scene_view.get_pickable_slot_mask(
+            Hover_entry::content_bit | Hover_entry::grid_bit | Hover_entry::rendertarget_bit
+        )
+    );
+
+    if ((entry == nullptr) || !entry->valid || !entry->position.has_value()) {
+        return;
+    }
+
+    if (entry->slot == Hover_entry::rendertarget_slot) {
+        return;
+    }
+
+    // While a transform gizmo handle is hovered (including the arcball
+    // sphere region between the rings) or a drag is active, the gizmo owns
+    // the pointer - the hover normal ray under it is just noise. The active
+    // check matters mid-drag: the pointer can leave the handle's pick shape
+    // (fast motion, perspective change) while the drag keeps running.
+    const bool transform_handle_hovered =
+        (m_context.transform_tool != nullptr) &&
+        ((m_context.transform_tool->get_hover_handle()  != Handle::e_handle_none) ||
+         (m_context.transform_tool->get_active_handle() != Handle::e_handle_none));
+
+    if (m_show_hover_normal && !transform_handle_hovered && entry->normal.has_value()) {
+        erhe::renderer::Primitive_renderer line_renderer = context.get({erhe::graphics::Primitive_type::line, 2, true, true});
+        // Hover_entry::normal is a unit direction, so the drawn length is the
+        // configured world-space length whatever the hit geometry's scale.
+        const float normal_length = m_context.editor_settings->debug_visualizations_style.hover_normal_length;
+        const auto p0 = entry->position.value();
+        const auto p1 = entry->position.value() + normal_length * entry->normal.value();
+        line_renderer.set_thickness(3.0f);
+        line_renderer.add_lines(
+            get_line_color_from_slot(entry->slot),
+            {{ glm::vec3{p0}, glm::vec3{p1} }}
+        );
+        std::shared_ptr<Grid> grid = entry->grid_weak.lock();
+        if (m_show_snapped_grid_position && grid) {
+            const auto sp0 = grid->snap_world_position(p0);
+            const auto sp1 = sp0 + normal_length * entry->normal.value();
+            line_renderer.add_lines(
+                glm::vec4{1.0f, 1.0f, 0.0f, 1.0},
+                {{ glm::vec3{sp0}, glm::vec3{sp1} }}
+            );
+        }
+    }
+
+    if (context.viewport_scene_view == nullptr) {
+        return;
+    }
+
+    const auto position_in_viewport_opt = context.viewport_scene_view->project_to_viewport(entry->position.value());
+    if (!position_in_viewport_opt.has_value()) {
+        return;
+    }
+
+    //constexpr uint32_t red   = 0xff0000ffu;
+    //constexpr uint32_t blue  = 0xffff0000u;
+    //constexpr uint32_t white = 0xffffffffu;
+
+    const uint32_t text_color = get_text_color_from_slot(entry->slot);
+
+    const auto position_in_viewport = position_in_viewport_opt.value();
+    glm::vec3 position_at_fixed_depth{
+        position_in_viewport.x + 50.0f,
+        position_in_viewport.y,
+        -0.5f
+    };
+
+    add_line(entry->get_name());
+
+#if 0
+    add_line(fmt::format("Position in world: {}", entry->position.value()));
+#endif
+
+    std::shared_ptr<erhe::scene::Mesh> scene_mesh = entry->scene_mesh_weak.lock();
+
+#if 0
+    const glm::vec3 position_at_fixed_depth_line_3{
+        position_in_viewport.x + 50.0f,
+        position_in_viewport.y + 16.0f * 2,
+        -0.5f
+    };
+    //// std::optional<glm::vec3> entity_position;
+    //// std::optional<glm::vec3> local_position;
+    //// std::optional<glm::vec3> local_normal;
+    std::optional<std::string> name;
+    std::shared_ptr<Grid>              grid       = entry->grid_weak.lock();
+    if (scene_mesh) {
+        //// const auto* node = entry->scene_mesh->get_node();
+        //// entity_position  = glm::vec3{node->position_in_world()};
+        //// local_position   = node->transform_point_from_world_to_local(entry->position.value());
+        name             = scene_mesh->get_name();
+    } else if (grid) {
+        //// entity_position  = glm::vec3{entry->grid->grid_from_world() * glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}};
+        //// local_position   = glm::vec3{entry->grid->grid_from_world() * glm::vec4{entry->position.value(), 1.0f}};
+        name = grid->get_name();
+    }
+    if (name.has_value()) {
+        add_line(name.value());
+    }
+#endif
+
+#if 0
+    if (entry->position.has_value()) {
+        add_line(fmt::format("Position {}", entry->position.value()));
+    }
+    if (local_position.has_value()) {
+        add_line(fmt::format("Local position {}", local_position.value()));
+    }
+    if (entry->normal.has_value()) {
+        add_line(fmt::format("Normal {}", entry->normal.value()));
+    }
+    if (local_normal.has_value()) {
+        add_line(fmt::format("Local normal {}", local_normal.value()));
+    }
+#endif
+
+    for (const auto& text_line : m_text_lines) {
+        m_context.text_renderer->print(
+            position_at_fixed_depth,
+            text_color,
+            text_line.c_str()
+        );
+        position_at_fixed_depth.y += 16.0f;
+    }
+
+
+    auto* scene_view = get_hover_scene_view();
+    if (scene_view == nullptr) {
+        return;
+    }
+    const Hover_entry& hover = scene_view->get_hover(Hover_entry::content_slot);
+
+    if (
+        !hover.valid                ||
+        !hover.position.has_value() ||
+        !scene_mesh                 ||
+        !hover.geometry
+    )  {
+        return;
+    }
+
+    const erhe::scene::Node* node = scene_mesh->get_node();
+    if (node == nullptr) {
+        return;
+    }
+
+    if (hover.facet == GEO::NO_INDEX) {
+        return;
+    }
+
+    const glm::mat4 world_from_node = node->world_from_node();
+    erhe::renderer::Primitive_renderer line_renderer = context.get({erhe::graphics::Primitive_type::line, 2, true, true});
+
+    const erhe::scene::Camera* camera                = context.camera;
+    const auto                 projection_transforms = camera->projection_transforms(
+        context.viewport,
+        context.scene_view.get_reverse_depth(),
+        context.scene_view.get_depth_range(),
+        context.scene_view.get_conventions()
+    );
+    const glm::mat4            clip_from_world       = projection_transforms.clip_from_world.get_matrix();
+
+    const GEO::index_t facet_filter = m_geometry_debug_hover_facet_only ? hover.facet : GEO::NO_INDEX;
+    erhe::geometry_renderer::debug_draw(
+        context.viewport,
+        clip_from_world,
+        context.scene_view.get_conventions(),
+        line_renderer,
+        *m_context.text_renderer,
+        world_from_node,
+        *hover.geometry.get(),
+        facet_filter
+    );
+}
+
+}

@@ -1,0 +1,203 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdlib>
+#include <limits>
+#include <new>
+#include <vector>
+
+#ifdef _MSC_VER
+#pragma warning(disable : 4714)
+#endif
+
+#if defined(ERHE_PROFILE_LIBRARY_TRACY) && defined(TRACY_ENABLE)
+#   if defined(ERHE_GRAPHICS_API_OPENGL)
+#       include "erhe_gl/dynamic_load.hpp"
+#       define glGenQueries          gl::glGenQueries
+#       define glGetInteger64v       gl::glGetInteger64v
+#       define glGetQueryiv          gl::glGetQueryiv
+#       define glGetQueryObjectiv    gl::glGetQueryObjectiv
+#       define glGetQueryObjectui64v gl::glGetQueryObjectui64v
+#       define glQueryCounter        gl::glQueryCounter
+        // Tracy >= (master past 0.13.1) probes the GL context/extensions in
+        // TracyOpenGL.hpp, adding these entry points on top of the timestamp
+        // queries above. erhe uses a dynamic gl:: loader rather than raw gl*
+        // prototypes, so alias them too.
+#       define glGetError            gl::glGetError
+#       define glGetIntegerv         gl::glGetIntegerv
+#       define glGetString           gl::glGetString
+#       define glGetStringi          gl::glGetStringi
+#   endif
+#   include <tracy/Tracy.hpp>
+
+#   if defined(ERHE_GRAPHICS_API_OPENGL)
+#       include "tracy/TracyOpenGL.hpp"
+#   endif
+#   if defined(ERHE_GRAPHICS_API_VULKAN)
+#       include "volk.h"
+#       include "tracy/TracyVulkan.hpp"
+#   endif
+#   if defined(ERHE_GRAPHICS_API_OPENGL)
+#       undef glGenQueries
+#       undef glGetInteger64v
+#       undef glGetQueryiv
+#       undef glGetQueryObjectiv
+#       undef glGetQueryObjectui64v
+#       undef glQueryCounter
+#       undef glGetError
+#       undef glGetIntegerv
+#       undef glGetString
+#       undef glGetStringi
+#   endif
+#
+
+//#   define ERHE_PROFILE_FUNCTION() ZoneScoped
+#   define ERHE_PROFILE_FUNCTION() ZoneScopedS(32)
+//#   define ERHE_PROFILE_FUNCTION()
+
+#   define ERHE_PROFILE_SCOPE(erhe_profile_id) ZoneScopedN(erhe_profile_id)
+//#   define ERHE_PROFILE_SCOPE(erhe_profile_id)
+
+#   define ERHE_PROFILE_COLOR(erhe_profile_id, erhe_profile_color) ZoneScopedNC(erhe_profile_id, erhe_profile_color);
+#   define ERHE_PROFILE_DATA(erhe_profile_id, erhe_profile_data, erhe_profile_data_length) ZoneName(erhe_profile_data, erhe_profile_data_length)
+#   define ERHE_PROFILE_MESSAGE(erhe_profile_message, erhe_profile_message_length) TracyMessage(erhe_profile_message, erhe_profile_message_length)
+#   define ERHE_PROFILE_MESSAGE_LITERAL(erhe_profile_message) TracyMessageL(erhe_profile_message)
+#   define ERHE_PROFILE_GPU_SCOPE(erhe_profile_id) TracyGpuZone(erhe_profile_id.data())
+#   define ERHE_PROFILE_GPU_CONTEXT TracyGpuContext
+
+#   if defined(ERHE_GRAPHICS_API_OPENGL)
+#       define ERHE_PROFILE_FRAME_END FrameMark; TracyGpuCollect
+#   elif defined(ERHE_GRAPHICS_API_VULKAN)
+        // The Vulkan GPU collect (TracyVkCollect) needs an explicit context +
+        // command buffer, so it is issued by the Vulkan Device_impl once per
+        // frame (see maybe_reset_gpu_timer_slice), not from this context-free
+        // macro. Only the CPU frame marker belongs here.
+#       define ERHE_PROFILE_FRAME_END FrameMark;
+#   else
+#       define ERHE_PROFILE_FRAME_END FrameMark;
+#   endif
+
+#   define ERHE_PROFILE_MUTEX_DECLARATION(Type, mutex_variable) tracy::Lockable<Type> mutex_variable
+#   define ERHE_PROFILE_MUTEX(Type, mutex_variable) TracyLockable(Type, mutex_variable)
+#   define ERHE_PROFILE_LOCKABLE_BASE(Type) LockableBase(Type)
+
+#   define ERHE_PROFILE_MEM_ALLOC(ptr, size) TracyAlloc(ptr, size)
+#   define ERHE_PROFILE_MEM_ALLOC_S(ptr, size) TracyAllocS(ptr, size, 40)
+#   define ERHE_PROFILE_MEM_ALLOC_N(ptr, size, name) TracyAllocN(ptr, size, name)
+#   define ERHE_PROFILE_MEM_ALLOC_NS(ptr, size, name) TracyAllocNS(ptr, size, 40, name)
+#   define ERHE_PROFILE_MEM_FREE(ptr) TracyFree(ptr)
+#   define ERHE_PROFILE_MEM_FREE_S(ptr) TracyFreeS(ptr, 40)
+#   define ERHE_PROFILE_MEM_FREE_N(ptr, name) TracyFreeN(ptr, name)
+#   define ERHE_PROFILE_MEM_FREE_NS(ptr, name) TracyFreeNS(ptr, 40, name)
+
+#elif defined(ERHE_PROFILE_LIBRARY_SUPERLUMINAL) && defined(_WIN32)
+#   include <PerformanceAPI.h>
+#
+#   define ERHE_PROFILE_FUNCTION PERFORMANCEAPI_INSTRUMENT_FUNCTION()
+#   define ERHE_PROFILE_SCOPE(erhe_profile_id) PERFORMANCEAPI_INSTRUMENT(erhe_profile_id)
+#   define ERHE_PROFILE_COLOR(erhe_profile_id, erhe_profile_color) PERFORMANCEAPI_INSTRUMENT_COLOR(erhe_profile_id, erhe_profile_color)
+#   define ERHE_PROFILE_DATA(erhe_profile_id, erhe_profile_data, erhe_profile_data_length) PERFORMANCEAPI_INSTRUMENT_DATA(erhe_profile_id, erhe_profile_data)
+#   define ERHE_PROFILE_MESSAGE(erhe_profile_message, erhe_profile_message_length)
+#   define ERHE_PROFILE_MESSAGE_LITERAL(erhe_profile_message)
+#   define ERHE_PROFILE_GPU_SCOPE(erhe_profile_id)
+#   define ERHE_PROFILE_GPU_CONTEXT
+#   define ERHE_PROFILE_FRAME_END
+#   define ERHE_PROFILE_MUTEX_DECLARATION(Type, mutex_variable) Type mutex_variable
+#   define ERHE_PROFILE_MUTEX(Type, mutex_variable) Type mutex_variable
+#   define ERHE_PROFILE_LOCKABLE_BASE(Type) Type
+
+#elif defined(ERHE_PROFILE_LIBRARY_NVTX)
+#   define ERHE_CONCAT(x,y) ERHE_CONCAT_INDIRECT(x,y)
+#   define ERHE_CONCAT_INDIRECT(x,y) x##y
+#   define NVTX3_V1_FUNCTION_RANGE_IN(D)                                             \
+        static ::nvtx3::v1::registered_string_in<D> const nvtx3_func_name__{__FUNCTION__}; \
+        static ::nvtx3::v1::event_attributes const nvtx3_func_attr__{nvtx3_func_name__};   \
+        ::nvtx3::v1::scoped_range_in<D> const nvtx3_range__{nvtx3_func_attr__};
+
+#   include <nvtx3/nvtx3.hpp>
+//#   define ERHE_PROFILE_FUNCTION() NVTX3_V1_FUNC_RANGE()
+#   define ERHE_PROFILE_FUNCTION() NVTX3_V1_FUNCTION_RANGE_IN(::nvtx3::v1::domain::global)
+#   define ERHE_PROFILE_SCOPE(name) nvtx3::scoped_range_in<nvtx3::domain::global> ERHE_CONCAT(__erhe_source_location,__LINE__){name}
+#   define ERHE_PROFILE_COLOR(erhe_profile_id, erhe_profile_color) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_DATA(erhe_profile_id, erhe_profile_data, erhe_profile_data_length) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_MESSAGE(erhe_profile_message, erhe_profile_message_length) static_cast<void>(erhe_profile_message);
+#   define ERHE_PROFILE_MESSAGE_LITERAL(erhe_profile_message) nvtx3::mark(erhe_profile_message)
+#   define ERHE_PROFILE_GPU_SCOPE(erhe_profile_id) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_GPU_CONTEXT
+#   define ERHE_PROFILE_FRAME_END
+#   define ERHE_PROFILE_MUTEX_DECLARATION(Type, mutex_variable) Type mutex_variable
+#   define ERHE_PROFILE_MUTEX(Type, mutex_variable) Type mutex_variable
+#   define ERHE_PROFILE_LOCKABLE_BASE(Type) Type
+
+#else
+#   define ERHE_PROFILE_FUNCTION();
+#   define ERHE_PROFILE_SCOPE(erhe_profile_id) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_COLOR(erhe_profile_id, erhe_profile_color) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_DATA(erhe_profile_id, erhe_profile_data, erhe_profile_data_length) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_MESSAGE(erhe_profile_message, erhe_profile_message_length) static_cast<void>(erhe_profile_message);
+#   define ERHE_PROFILE_MESSAGE_LITERAL(erhe_profile_message) static_cast<void>(erhe_profile_message);
+#   define ERHE_PROFILE_GPU_SCOPE(erhe_profile_id) static_cast<void>(erhe_profile_id);
+#   define ERHE_PROFILE_GPU_CONTEXT
+#   define ERHE_PROFILE_FRAME_END
+#   define ERHE_PROFILE_MUTEX_DECLARATION(Type, mutex_variable) Type mutex_variable
+#   define ERHE_PROFILE_MUTEX(Type, mutex_variable) Type mutex_variable
+#   define ERHE_PROFILE_LOCKABLE_BASE(Type) Type
+#   define ERHE_PROFILE_MEM_ALLOC(ptr, size)
+#   define ERHE_PROFILE_MEM_ALLOC_S(ptr, size)
+#   define ERHE_PROFILE_MEM_ALLOC_N(ptr, size, name)
+#   define ERHE_PROFILE_MEM_ALLOC_NS(ptr, size, name)
+#   define ERHE_PROFILE_MEM_FREE(ptr)
+#   define ERHE_PROFILE_MEM_FREE_S(ptr)
+#   define ERHE_PROFILE_MEM_FREE_N(ptr, name)
+#   define ERHE_PROFILE_MEM_FREE_NS(ptr, name)
+#endif
+
+#if 1
+#define ERHE_USE_PROFILE_ALLOCATOR 1
+template <class T>
+class Profile_allocator
+{
+public:
+    using value_type = T;
+
+    Profile_allocator() = default;
+
+    template <class U>
+    constexpr Profile_allocator(const Profile_allocator<U>&) noexcept
+    {
+    }
+
+    [[nodiscard]] auto allocate(const std::size_t n) -> T*
+    {
+        if (n > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
+            throw std::bad_array_new_length();
+        }
+
+        if (auto p = static_cast<T*>(std::malloc(n * sizeof(T)))) {
+            ERHE_PROFILE_MEM_ALLOC_S(p, n);
+            return p;
+        }
+
+        throw std::bad_alloc();
+    }
+
+    void deallocate(T* p, const std::size_t) noexcept
+    {
+        ERHE_PROFILE_MEM_FREE_S(p);
+        std::free(p);
+    }
+};
+
+namespace erhe {
+template <typename T>
+using vector = std::vector<T, Profile_allocator<T>>;
+}
+
+#else
+
+namespace erhe {
+template <typename T>
+using vector = std::vector<T>;
+}
+
+#endif

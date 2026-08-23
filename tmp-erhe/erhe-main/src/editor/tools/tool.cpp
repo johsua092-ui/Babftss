@@ -1,0 +1,254 @@
+#include "tools/tool.hpp"
+#include "editor_log.hpp"
+#include "app_context.hpp"
+#include "app_message.hpp"
+#include "app_scenes.hpp"
+#include "assets/asset_manager.hpp"
+#include "items.hpp"
+#include "content_library/content_library.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/scene_view.hpp"
+#include "tools/selection_tool.hpp"
+#include "tools/tools.hpp"
+#include "erhe_primitive/material.hpp"
+
+namespace editor {
+
+Tool::Tool(App_context& app_context)
+    : m_context{app_context}
+{
+}
+
+Tool::Tool(App_context& app_context, Tools& tools, const uint64_t flags)
+    : m_context{app_context}
+    , m_flags  {flags}
+{
+    tools.register_tool(this);
+}
+
+void Tool::on_message(Hover_scene_view_message& message)
+{
+    clear_destroyed_scene_view(message);
+    set_hover_scene_view(message.scene_view);
+}
+
+void Tool::clear_destroyed_scene_view(const Hover_scene_view_message& message)
+{
+    if (message.destroyed_scene_view == nullptr) {
+        return;
+    }
+    if (m_hover_scene_view == message.destroyed_scene_view) {
+        m_hover_scene_view = nullptr;
+    }
+    if (m_last_hover_scene_view == message.destroyed_scene_view) {
+        m_last_hover_scene_view = nullptr;
+    }
+}
+
+auto Tool::get_priority() const -> int
+{
+    return m_base_priority + m_priority_boost;
+}
+
+auto Tool::get_base_priority() const -> int
+{
+    return m_base_priority;
+}
+
+auto Tool::get_priority_boost() const -> int
+{
+    return m_priority_boost;
+}
+
+void Tool::set_hover_scene_view(Scene_view* scene_view)
+{
+    m_hover_scene_view = scene_view;
+    if (scene_view != nullptr) {
+        m_last_hover_scene_view = scene_view;
+    }
+}
+
+auto Tool::get_hover_scene_view() const -> Scene_view*
+{
+    return m_hover_scene_view;
+}
+
+auto Tool::get_last_hover_scene_view() const -> Scene_view*
+{
+    return m_last_hover_scene_view;
+}
+
+auto Tool::get_flags() const -> uint64_t
+{
+    return m_flags;
+}
+
+auto Tool::get_icon_font() const -> ImFont*
+{
+    return m_icon_font;
+}
+
+auto Tool::get_icon() const -> const char*
+{
+    return m_icon;
+}
+
+void Tool::set_priority_boost(const int priority_boost)
+{
+    log_tools->trace("{} priority_boost set to {}", get_description(), priority_boost);
+
+    const int old_priority = get_priority();
+    m_priority_boost = priority_boost;
+    const int new_priority = get_priority();
+    handle_priority_update(old_priority, new_priority);
+};
+
+void Tool::set_base_priority(const int base_priority)
+{
+    m_base_priority = base_priority;
+}
+
+void Tool::set_flags(const uint64_t flags)
+{
+    m_flags = flags;
+}
+
+void Tool::register_tool(Tools& tools)
+{
+    tools.register_tool(this);
+}
+
+void Tool::set_icon(ImFont* icon_font, const char* icon_code)
+{
+    m_icon_font = icon_font;
+    m_icon = icon_code;
+}
+    
+auto Tool::get_scene_root() const -> std::shared_ptr<Scene_root>
+{
+    Scene_view* hover_scene_view = get_hover_scene_view();
+    if (hover_scene_view != nullptr) {
+        std::shared_ptr<Scene_root> scene_root = hover_scene_view->get_scene_root();
+        if (scene_root) {
+            return scene_root;
+        }
+    }
+    Scene_view* last_hover_scene_view = get_last_hover_scene_view();
+    if (last_hover_scene_view != nullptr) {
+        std::shared_ptr<Scene_root> scene_root = last_hover_scene_view->get_scene_root();
+        if (scene_root) {
+            return scene_root;
+        }
+    }
+    return m_context.app_scenes->get_single_scene_root();
+}
+
+auto Tool::get_content_library() const -> std::shared_ptr<Content_library>
+{
+    const auto& scene_root = get_scene_root();
+    if (!scene_root) {
+        return {};
+    }
+    return scene_root->get_content_library();
+}
+
+auto get_default_material(App_context& context, Scene_root& scene_root) -> std::shared_ptr<erhe::primitive::Material>
+{
+    const std::shared_ptr<Content_library>& content_library = scene_root.get_content_library();
+    if (!content_library) {
+        return {};
+    }
+    std::shared_ptr<erhe::primitive::Material> material = context.selection->get_last_selected<erhe::primitive::Material>();
+    if (material) {
+        // Cross-scene use rule (R5.6, plan resolution 11): a selected
+        // material defined by ANOTHER scene is usable here only when its
+        // defining container is path-bound (a durable file-scope key
+        // exists); session-only scene assets must not leak in. Materials
+        // without a defining record (shared prefab template resources,
+        // loaded containers' assets, builtins) are usable anywhere.
+        Asset_manager* const asset_manager = context.asset_manager;
+        if (asset_manager != nullptr) {
+            const std::shared_ptr<Scene_root> defining_scene_root = asset_manager->get_defining_scene_root(*material);
+            if (defining_scene_root && (defining_scene_root.get() != &scene_root) && !asset_manager->is_cross_scene_referenceable(*material)) {
+                material.reset();
+            }
+        }
+    }
+    if (!material) {
+        content_library->materials->for_each<Content_library_node>(
+            [&material](const Content_library_node& node) {
+                auto entry = std::dynamic_pointer_cast<erhe::primitive::Material>(node.item);
+                if (entry) {
+                    material = entry;
+                    return false;
+                }
+                return true;
+            }
+        );
+    }
+    return material;
+}
+
+auto Tool::get_material() const -> std::shared_ptr<erhe::primitive::Material>
+{
+    const std::shared_ptr<Scene_root>& scene_root = get_scene_root();
+    if (!scene_root) {
+        return {};
+    }
+    return get_default_material(m_context, *scene_root);
+}
+
+// If Node is currently selected, returns it.
+// If Node_attachment is currently selected and it has owner node, returns the owner node.
+// If a Node was selected, and it still exists, return it
+// If Node_attachemnt was selected, and it still exists, and it has owner node, returns the owner node.
+auto Tool::get_node() const -> std::shared_ptr<erhe::scene::Node>
+{
+    Selection* selection = m_context.selection;
+    const std::vector<std::shared_ptr<erhe::Item_base>>& selected_items = selection->get_selected_items();
+    {
+        std::shared_ptr<erhe::scene::Node> node = get<erhe::scene::Node>(selected_items);
+        if (node) {
+            return node;
+        }
+    }
+
+    {
+        std::shared_ptr<erhe::scene::Node_attachment> attachment = get<erhe::scene::Node_attachment>(selected_items);
+        if (attachment) {
+            erhe::scene::Node* node = attachment->get_node();
+            if (node != nullptr) {
+                std::shared_ptr<erhe::Item_base> item = node->shared_from_this();
+                std::shared_ptr<erhe::scene::Node> shared_node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+                if (shared_node) {
+                    return shared_node;
+                }
+            }
+        }
+    }
+
+    {
+        std::shared_ptr<erhe::scene::Node> node = selection->get_last_selected<erhe::scene::Node>();
+        if (node && (node->get_item_host() != nullptr)) {
+            return node;
+        }
+    }
+
+    {
+        std::shared_ptr<erhe::scene::Node_attachment> attachment = selection->get_last_selected<erhe::scene::Node_attachment>();
+        if (attachment && (attachment->get_item_host() != nullptr)) {
+            erhe::scene::Node* node = attachment->get_node();
+            if (node != nullptr) {
+                std::shared_ptr<erhe::Item_base> item = node->shared_from_this();
+                std::shared_ptr<erhe::scene::Node> shared_node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+                if (shared_node && (shared_node->get_item_host() != nullptr)) {
+                    return shared_node;
+                }
+            }
+        }
+    }
+
+    return {};
+}
+
+}

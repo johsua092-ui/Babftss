@@ -1,0 +1,314 @@
+plugins {
+     id 'com.android.application'
+}
+
+// Opt-in HWAddressSanitizer build (diagnostic; see
+// doc/intermittent_main_loop_hang.md). Enable with `-Phwasan`. HWASan requires
+// c++_shared (the NDK toolchain rejects hwaddress + c++_static), a debuggable
+// build with extracted native libs so the platform honors lib/<abi>/wrap.sh
+// (LD_HWASAN=1), and the hwasan runtime .so bundled into the APK.
+def hwasanEnabled = project.hasProperty('hwasan')
+
+android {
+    namespace = "org.libsdl.app"
+    compileSdkVersion 35
+    ndkVersion = "28.2.13676358"
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 35
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                // Python3_EXECUTABLE pins the host Python used by
+                // erhe_codegen and other build-time scripts. Gradle does
+                // not inherit the user PATH and CMake's find_package can
+                // pick up the Microsoft Store stub on Windows; resolve via
+                // `py -3` instead. Override with -PpythonExecutable=...
+                // on the gradle command line if needed.
+                def pythonExe = project.findProperty("pythonExecutable")
+                if (pythonExe == null) {
+                    def stdout = new ByteArrayOutputStream()
+                    try {
+                        exec {
+                            commandLine "py", "-3", "-c",
+                                "import sys; print(sys.executable)"
+                            standardOutput = stdout
+                        }
+                        pythonExe = stdout.toString().trim()
+                    } catch (ignored) {
+                        pythonExe = ""
+                    }
+                }
+                // ANDROID_PLATFORM is set per flavor below (mobile keeps
+                // android-21, quest raises to android-33). Keeping it out
+                // of defaultConfig means flavors don't have to fight a
+                // baseline that's wrong for them.
+                def cmakeArgs = [hwasanEnabled ? "-DANDROID_STL=c++_shared" : "-DANDROID_STL=c++_static"]
+                if (hwasanEnabled) {
+                    // The NDK toolchain expands this to
+                    // -fsanitize=hwaddress -fno-omit-frame-pointer (compile) and
+                    // -fsanitize=hwaddress (link) for every target, instrumenting
+                    // erhe + all CPM deps so the corrupting write is caught wherever
+                    // it originates.
+                    cmakeArgs << "-DANDROID_SANITIZE=hwaddress"
+                }
+                if (pythonExe) {
+                    cmakeArgs << "-DPython3_EXECUTABLE=${pythonExe}"
+                }
+                arguments cmakeArgs as String[]
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+    flavorDimensions = ["device"]
+    productFlavors {
+        // API 33 is the floor on every flavor because the upstream
+        // third-party geogram uses backtrace() / backtrace_symbols(),
+        // which the NDK gates behind __INTRODUCED_IN(33). Anything
+        // older fails to compile.
+        mobile {
+            dimension "device"
+            minSdkVersion 33
+            externalNativeBuild {
+                cmake {
+                    arguments "-DERHE_ANDROID_FLAVOR=mobile",
+                              "-DANDROID_PLATFORM=android-33"
+                }
+            }
+        }
+        quest {
+            dimension "device"
+            applicationIdSuffix ".quest"
+            // Quest 3 ships on Horizon OS based on Android 14 (API 34);
+            // Quest 2's current Horizon OS updates run API 32+. The
+            // shared API 33 floor (see comment above productFlavors) is
+            // already above both, so no additional Quest-specific bump
+            // is needed.
+            minSdkVersion 33
+            externalNativeBuild {
+                cmake {
+                    arguments "-DERHE_ANDROID_FLAVOR=quest",
+                              "-DANDROID_PLATFORM=android-33"
+                }
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Sign release APKs with the auto-generated debug keystore so
+            // local performance testing can `adb install` without a custom
+            // keystore. NOT suitable for store submission - replace with a
+            // real signingConfig before publishing.
+            signingConfig signingConfigs.debug
+            if (hwasanEnabled) {
+                // wrap.sh is only honored for debuggable apps on stock (user)
+                // devices like the S23. Kept optimized (RelWithDebInfo) -- the
+                // hang reproduces on the optimized build, not the debug one.
+                debuggable true
+            }
+        }
+    }
+
+    if (hwasanEnabled) {
+        // Extract native libs to disk so the platform can exec lib/<abi>/wrap.sh.
+        packaging {
+            jniLibs {
+                useLegacyPackaging = true
+            }
+        }
+        // wrap.sh (LD_HWASAN=1 exec "$@") makes Bionic load the HWASan-instrumented
+        // libc in-process. AGP packages a resources tree's lib/<abi>/wrap.sh into the
+        // APK lib dir. Kept in a dedicated dir so non-hwasan builds never see it.
+        sourceSets.main.resources.srcDir 'hwasan/resources'
+    }
+    // The editor reads via paths like "config/editor/editor_settings.json"
+    // and "res/shaders/standard.vert"; SDL_IOFromFile on Android resolves
+    // those against the APK's assets/ root. Stage res/ and config/ into a
+    // single directory under build/ with their parent prefix preserved so
+    // assets/res/... and assets/config/... line up with the C++ paths.
+    def stagedAssets = layout.buildDirectory.dir('staged-assets')
+    def stageErheAssetsTask = tasks.register('stageErheAssets', Copy) {
+        into stagedAssets
+        from(file('../../res'))    { into 'res' }
+        from(file('../../config')) { into 'config' }
+        // After staging, write a manifest of every file under the directories
+        // that must live in writable internal storage. The Android first-launch
+        // migrator reads this manifest from the APK assets (via SDL_IOFromFile)
+        // and copies each listed file into the app's writable internal storage:
+        //   - config/           so that erhe_codegen save_config round-trips.
+        //   - res/editor/assets/ because this is an editor -- assets are
+        //     read/write and can be created or modified at runtime, and the
+        //     asset browser enumerates them with std::filesystem (which only
+        //     sees real files, not APK assets).
+        // The manifest itself sits at the assets root (NOT under a migrated
+        // directory) so it is never migrated to writable storage -- each launch
+        // re-reads the bundled manifest from the APK so that a future build
+        // which adds new files migrates them cleanly (existing destinations are
+        // never overwritten, preserving user edits).
+        doLast {
+            def root = stagedAssets.get().asFile
+            def manifest = new File(root, 'erhe_migrate_manifest.txt')
+            def lines = []
+            ['config', 'res/editor/assets'].each { sub ->
+                def dir = new File(root, sub)
+                if (dir.exists()) {
+                    dir.eachFileRecurse { f ->
+                        if (f.isFile()) {
+                            def rel = root.toPath().relativize(f.toPath()).toString().replace('\\', '/')
+                            lines << rel
+                        }
+                    }
+                }
+            }
+            lines.sort()
+            manifest.withWriter('UTF-8') { w ->
+                lines.each { w.println(it) }
+            }
+        }
+    }
+    applicationVariants.all { variant ->
+        def variantName = variant.name.capitalize()
+        tasks["merge${variantName}Assets"]
+            .dependsOn("externalNativeBuild${variantName}")
+        tasks["merge${variantName}Assets"]
+            .dependsOn(stageErheAssetsTask)
+    }
+    // Release builds run lint-vital, which scans the merged assets directory
+    // and therefore consumes stageErheAssetsTask's output. Wire the dependency
+    // explicitly so Gradle 8.x's strict implicit-dependency check is happy.
+    // matching {} lets us register before the lint tasks are realized.
+    tasks.matching {
+        it.name.startsWith("lintVitalAnalyze") ||
+        it.name.startsWith("lintVitalReport") ||
+        it.name.startsWith("generate") && it.name.endsWith("LintVitalReportModel")
+    }.configureEach {
+        dependsOn(stageErheAssetsTask)
+    }
+    if (!project.hasProperty('EXCLUDE_NATIVE_LIBS')) {
+        sourceSets.main {
+            jniLibs.srcDir 'libs'
+            assets.srcDirs = [stagedAssets]
+            // SDL3's Java shim (SDLActivity.java and friends) lives at
+            // src/main/java/org/libsdl/app/ and is committed alongside
+            // the rest of the android-project. The default Java srcDir
+            // already covers it; nothing extra to wire up here.
+        }
+        externalNativeBuild {
+            cmake {
+                path '../../CMakeLists.txt'
+            }
+        }
+    }
+
+    // Package the Khronos Vulkan validation layer .so into the APK so
+    // VK_LAYER_KHRONOS_validation is loadable on device. The C++ side
+    // enables the layer only when the matching config knob is true
+    // (config/editor/erhe_graphics.json -> "vulkan_validation_layers":
+    // true) AND the layer is detected at runtime; this task only
+    // ensures the .so is present in the APK so the loader CAN find it.
+    //
+    // Bundled by default: makes "enable validation" a one-config-knob
+    // change with no rebuild needed. The download is cached after the
+    // first run. Opt out with `-Pvulkan_validation_skip` to drop the
+    // ~10 MB layer .so from the APK (e.g. when iterating on a
+    // bandwidth-constrained connection or sizing the release APK).
+    if (project.hasProperty('vulkan_validation_skip')) {
+        // Skip path: remove any previously-staged validation layer .so
+        // so the next build does not silently ship a stale one. The
+        // jniLibs packaging picks up everything under libs/arm64-v8a,
+        // so leaving the file in place would re-bundle the layer.
+        def skipLayerSo = new File(file("libs/arm64-v8a"), "libVkLayer_khronos_validation.so")
+        if (skipLayerSo.exists()) {
+            skipLayerSo.delete()
+        }
+    } else {
+        // Pin to the same Vulkan SDK version the headers reference (see
+        // vulkan_device_init.cpp comment on khronos_validation_layer.html).
+        // Bump in lock-step with the SDK upgrade.
+        def validationLayerVersion = "1.4.328.1"
+        def validationLayerUrl = "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-${validationLayerVersion}/android-binaries-${validationLayerVersion}.zip"
+        def cacheDir = layout.buildDirectory.dir("vulkan-validation-layer-cache").get().asFile
+        def cacheZip = new File(cacheDir, "android-binaries-${validationLayerVersion}.zip")
+        def jniLibsDir = file("libs/arm64-v8a")
+        def layerSo = new File(jniLibsDir, "libVkLayer_khronos_validation.so")
+
+        def fetchValidationLayer = tasks.register("fetchVulkanValidationLayer") {
+            // Declare validationLayerVersion as an input so Gradle treats
+            // a version bump as a cache-invalidating change. Without
+            // this declaration, bumping the version left the previously
+            // staged .so in place because layerSo still existed.
+            inputs.property("validationLayerVersion", validationLayerVersion)
+            outputs.file(layerSo)
+            doLast {
+                // Stale layer with mismatched version? Wipe it so the
+                // copy step below stages the freshly-downloaded one.
+                if (layerSo.exists()) {
+                    layerSo.delete()
+                }
+                cacheDir.mkdirs()
+                if (!cacheZip.exists()) {
+                    logger.lifecycle("Downloading Vulkan validation layer ${validationLayerVersion}")
+                    ant.get(src: validationLayerUrl, dest: cacheZip, verbose: false, usetimestamp: true)
+                }
+                jniLibsDir.mkdirs()
+                copy {
+                    from(zipTree(cacheZip)) {
+                        include "android-binaries-${validationLayerVersion}/arm64-v8a/libVkLayer_khronos_validation.so"
+                        eachFile { fcd ->
+                            fcd.relativePath = new RelativePath(true, fcd.name)
+                        }
+                        includeEmptyDirs = false
+                    }
+                    into jniLibsDir
+                }
+                logger.lifecycle("Staged ${layerSo}")
+            }
+        }
+        applicationVariants.all { variant ->
+            def variantName = variant.name.capitalize()
+            tasks["merge${variantName}JniLibFolders"]
+                .dependsOn(fetchValidationLayer)
+        }
+    }
+    // Bundle the NDK HWASan runtime .so into the APK for -Phwasan builds: the
+    // instrumented libs DT_NEEDED libclang_rt.hwasan-aarch64-android.so. Mirrors
+    // the validation-layer staging (jniLibs.srcDir 'libs' packages it).
+    def hwasanRuntimeDest = file("libs/arm64-v8a/libclang_rt.hwasan-aarch64-android.so")
+    if (hwasanEnabled) {
+        def stageHwasanRuntime = tasks.register("stageHwasanRuntime") {
+            outputs.file(hwasanRuntimeDest)
+            doLast {
+                def prebuilt = new File(android.ndkDirectory, "toolchains/llvm/prebuilt")
+                def matches = fileTree(dir: prebuilt,
+                    include: "**/lib/clang/*/lib/linux/libclang_rt.hwasan-aarch64-android.so").files
+                if (matches.isEmpty()) {
+                    throw new GradleException("HWASan runtime not found under ${prebuilt}")
+                }
+                hwasanRuntimeDest.parentFile.mkdirs()
+                copy {
+                    from matches.iterator().next()
+                    into hwasanRuntimeDest.parentFile
+                }
+                logger.lifecycle("Staged HWASan runtime ${hwasanRuntimeDest}")
+            }
+        }
+        applicationVariants.all { variant ->
+            def variantName = variant.name.capitalize()
+            tasks["merge${variantName}JniLibFolders"].dependsOn(stageHwasanRuntime)
+        }
+    } else if (hwasanRuntimeDest.exists()) {
+        // Don't let a previously-staged runtime leak into normal builds.
+        hwasanRuntimeDest.delete()
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+}

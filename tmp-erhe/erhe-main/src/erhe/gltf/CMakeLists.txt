@@ -1,0 +1,54 @@
+set(_target erhe_gltf)
+add_library(${_target})
+add_library(erhe::gltf ALIAS ${_target})
+erhe_target_sources_grouped(
+    ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+    erhe_gltf/gltf_item_flags.cpp
+    erhe_gltf/gltf_item_flags.hpp
+    erhe_gltf/gltf_log.cpp
+    erhe_gltf/gltf_log.hpp
+    erhe_gltf/gltf_physics.hpp
+    erhe_gltf/image_transfer.cpp
+    erhe_gltf/image_transfer.hpp
+)
+
+target_include_directories(${_target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+if (${ERHE_GLTF_LIBRARY} STREQUAL "fastgltf")
+    erhe_target_sources_grouped(
+        ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_gltf/gltf_fastgltf.cpp
+        erhe_gltf/gltf_fastgltf.hpp
+    )
+    target_link_libraries(${_target} PRIVATE fastgltf)
+    if (MSVC)
+        # The single fastgltf-backend TU exceeds the default COFF section
+        # limit (C1128) in debug builds.
+        set_source_files_properties(erhe_gltf/gltf_fastgltf.cpp PROPERTIES COMPILE_OPTIONS "/bigobj")
+    endif ()
+else ()
+    erhe_target_sources_grouped(
+        ${_target} TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        erhe_gltf/gltf_none.cpp
+        erhe_gltf/gltf_none.hpp
+    )
+endif ()
+
+target_link_libraries(${_target}
+    PUBLIC
+        # erhe::math types appear in the public API (Gltf_scan::bounding_box)
+        erhe::math
+    PRIVATE
+        fmt::fmt
+        simdjson::simdjson
+        Taskflow
+        erhe::file
+        erhe::profile
+        erhe::geometry
+        erhe::graphics
+        erhe::log
+        erhe::primitive
+        erhe::scene
+)
+
+erhe_target_settings(${_target} "erhe")

@@ -1,0 +1,1712 @@
+//------------------------------------------------------------------------------
+// VERSION 0.9.1
+//
+// LICENSE
+//   This software is dual-licensed to the public domain and under the following
+//   license: you are granted a perpetual, irrevocable license to copy, modify,
+//   publish, and distribute this file as you see fit.
+//
+// CREDITS
+//   Written by Michal Cichon
+//------------------------------------------------------------------------------
+# ifndef __IMGUI_NODE_EDITOR_INTERNAL_H__
+# define __IMGUI_NODE_EDITOR_INTERNAL_H__
+# pragma once
+
+
+//------------------------------------------------------------------------------
+# ifndef IMGUI_DEFINE_MATH_OPERATORS
+#     define IMGUI_DEFINE_MATH_OPERATORS
+# endif
+# include "erhe_imgui/imgui_node_editor.h"
+
+
+//------------------------------------------------------------------------------
+# include <imgui/imgui.h>
+# include <imgui/imgui_internal.h>
+# include "erhe_imgui/imgui_extra_math.h"
+# include "erhe_imgui/imgui_bezier_math.h"
+# include "erhe_imgui/imgui_canvas.h"
+# include "erhe_imgui/imgui_log.hpp" // erhe logging for the node editor (issue #251)
+
+# include "erhe_imgui/crude_json.h"
+
+# include <vector>
+# include <string>
+
+
+//------------------------------------------------------------------------------
+namespace ax {
+namespace NodeEditor {
+namespace Detail {
+
+
+//------------------------------------------------------------------------------
+namespace ed = ax::NodeEditor::Detail;
+namespace json = crude_json;
+
+
+//------------------------------------------------------------------------------
+using std::vector;
+using std::string;
+
+
+//------------------------------------------------------------------------------
+void Log(const char* fmt, ...);
+
+
+//------------------------------------------------------------------------------
+//inline ImRect ToRect(const ax::rectf& rect);
+//inline ImRect ToRect(const ax::rect& rect);
+inline ImRect ImGui_GetItemRect();
+inline ImVec2 ImGui_GetMouseClickPos(ImGuiMouseButton buttonIndex);
+
+
+// Issue #251: the _FringeScale reflection helper and the FringeScaleScope RAII
+// guard (which pinned the anti-alias fringe while the canvas scaled it for the
+// faked local space) are gone - primitives render at native resolution now, so
+// the fringe is always 1.0.
+
+//------------------------------------------------------------------------------
+enum class ObjectType
+{
+    None,
+    Node,
+    Link,
+    Pin
+};
+
+using ax::NodeEditor::PinKind;
+using ax::NodeEditor::StyleColor;
+using ax::NodeEditor::StyleVar;
+using ax::NodeEditor::SaveReasonFlags;
+
+using ax::NodeEditor::NodeId;
+using ax::NodeEditor::PinId;
+using ax::NodeEditor::LinkId;
+
+struct ObjectId final: Details::SafePointerType<ObjectId>
+{
+    using Super = Details::SafePointerType<ObjectId>;
+    using Super::Super;
+
+    ObjectId():                  Super(Invalid),              m_Type(ObjectType::None)   {}
+    ObjectId(PinId  pinId):      Super(pinId.AsPointer()),    m_Type(ObjectType::Pin)    {}
+    ObjectId(NodeId nodeId):     Super(nodeId.AsPointer()),   m_Type(ObjectType::Node)   {}
+    ObjectId(LinkId linkId):     Super(linkId.AsPointer()),   m_Type(ObjectType::Link)   {}
+
+    explicit operator PinId()    const { return AsPinId();    }
+    explicit operator NodeId()   const { return AsNodeId();   }
+    explicit operator LinkId()   const { return AsLinkId();   }
+
+    PinId    AsPinId()    const { IM_ASSERT(IsPinId());    return PinId(AsPointer());    }
+    NodeId   AsNodeId()   const { IM_ASSERT(IsNodeId());   return NodeId(AsPointer());   }
+    LinkId   AsLinkId()   const { IM_ASSERT(IsLinkId());   return LinkId(AsPointer());   }
+
+    bool IsPinId()    const { return m_Type == ObjectType::Pin;    }
+    bool IsNodeId()   const { return m_Type == ObjectType::Node;   }
+    bool IsLinkId()   const { return m_Type == ObjectType::Link;   }
+
+    ObjectType Type() const { return m_Type; }
+
+private:
+    ObjectType m_Type;
+};
+
+class EditorContext;
+
+struct Node;
+struct Pin;
+struct Link;
+
+template <typename T, typename Id = typename T::IdType>
+struct ObjectWrapper
+{
+    Id   m_ID;
+    T*   m_Object;
+
+          T* operator->()        { return m_Object; }
+    const T* operator->() const  { return m_Object; }
+
+    operator T*()             { return m_Object; }
+    operator const T*() const { return m_Object; }
+
+    bool operator<(const ObjectWrapper& rhs) const
+    {
+        return m_ID.AsPointer() < rhs.m_ID.AsPointer();
+    }
+};
+
+struct Object
+{
+    enum DrawFlags
+    {
+        None     = 0,
+        Hovered  = 1,
+        Selected = 2,
+        Highlighted = 4,
+    };
+
+    inline friend DrawFlags operator|(DrawFlags lhs, DrawFlags rhs)  { return static_cast<DrawFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
+    inline friend DrawFlags operator&(DrawFlags lhs, DrawFlags rhs)  { return static_cast<DrawFlags>(static_cast<int>(lhs) & static_cast<int>(rhs)); }
+    inline friend DrawFlags& operator|=(DrawFlags& lhs, DrawFlags rhs) { lhs = lhs | rhs; return lhs; }
+    inline friend DrawFlags& operator&=(DrawFlags& lhs, DrawFlags rhs) { lhs = lhs & rhs; return lhs; }
+
+    EditorContext* const Editor;
+
+    bool    m_IsLive;
+    bool    m_IsSelected;
+    bool    m_DeleteOnNewFrame;
+
+    Object(EditorContext* editor)
+        : Editor(editor)
+        , m_IsLive(true)
+        , m_IsSelected(false)
+        , m_DeleteOnNewFrame(false)
+    {
+    }
+
+    virtual ~Object() noexcept = default;
+
+    virtual ObjectId ID() = 0;
+
+    // Issue #251: object bounds are stored in CANVAS units, but this visibility
+    // test runs against ImGui's current clip rect, which is real SCREEN space
+    // after the native-resolution flip (it used to be faked into canvas space).
+    // Feeding canvas bounds to a screen-space clip test silently culled objects
+    // whose canvas bounds fell outside the screen clip while their on-screen
+    // position was inside it - dropping node backgrounds / borders at non-unity
+    // zoom and while dragging (the node content is submitted separately and
+    // stayed visible). Defined out of line because it maps through the (here
+    // still incomplete) EditorContext.
+    bool IsVisible() const;
+
+    virtual void Reset() { m_IsLive = false; }
+
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) = 0;
+
+    virtual bool AcceptDrag() { return false; }
+    virtual void UpdateDrag(const ImVec2& offset) { IM_UNUSED(offset); }
+    virtual bool EndDrag() { return false; }
+    virtual ImVec2 DragStartLocation() { return GetBounds().Min; }
+
+    virtual bool IsDraggable() { bool result = AcceptDrag(); EndDrag(); return result; }
+    virtual bool IsSelectable() { return false; }
+
+    virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
+    {
+        if (!m_IsLive)
+            return false;
+
+        auto bounds = GetBounds();
+        if (extraThickness > 0)
+            bounds.Expand(extraThickness);
+
+        return bounds.Contains(point);
+    }
+
+    virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const
+    {
+        if (!m_IsLive)
+            return false;
+
+        const auto bounds = GetBounds();
+
+        return !ImRect_IsEmpty(bounds) && (allowIntersect ? bounds.Overlaps(rect) : rect.Contains(bounds));
+    }
+
+    virtual ImRect GetBounds() const = 0;
+
+    virtual Node*  AsNode()  { return nullptr; }
+    virtual Pin*   AsPin()   { return nullptr; }
+    virtual Link*  AsLink()  { return nullptr; }
+};
+
+struct Pin final: Object
+{
+    using IdType = PinId;
+
+    PinId   m_ID;
+    PinKind m_Kind;
+    Node*   m_Node;
+    ImRect  m_Bounds;
+    ImRect  m_Pivot;
+    Pin*    m_PreviousPin;
+    ImU32   m_Color;
+    ImU32   m_BorderColor;
+    float   m_BorderWidth;
+    float   m_Rounding;
+    int     m_Corners;
+    ImVec2  m_Dir;
+    float   m_Strength;
+    float   m_Radius;
+    float   m_ArrowSize;
+    float   m_ArrowWidth;
+    bool    m_SnapLinkToDir;
+    bool    m_HasConnection;
+    bool    m_HadConnection;
+
+    Pin(EditorContext* editor, PinId id, PinKind kind)
+        : Object(editor)
+        , m_ID(id)
+        , m_Kind(kind)
+        , m_Node(nullptr)
+        , m_Bounds()
+        , m_PreviousPin(nullptr)
+        , m_Color(IM_COL32_WHITE)
+        , m_BorderColor(IM_COL32_BLACK)
+        , m_BorderWidth(0)
+        , m_Rounding(0)
+        , m_Corners(0)
+        , m_Dir(0, 0)
+        , m_Strength(0)
+        , m_Radius(0)
+        , m_ArrowSize(0)
+        , m_ArrowWidth(0)
+        , m_SnapLinkToDir(true)
+        , m_HasConnection(false)
+        , m_HadConnection(false)
+    {
+    }
+
+    virtual ObjectId ID() override { return m_ID; }
+
+    virtual void Reset() override final
+    {
+        m_HadConnection = m_HasConnection && m_IsLive;
+        m_HasConnection = false;
+
+        Object::Reset();
+    }
+
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
+
+    ImVec2 GetClosestPoint(const ImVec2& p) const;
+    ImLine GetClosestLine(const Pin* pin) const;
+
+    virtual ImRect GetBounds() const override final { return m_Bounds; }
+
+    virtual Pin* AsPin() override final { return this; }
+};
+
+enum class NodeType
+{
+    Node,
+    Group
+};
+
+enum class NodeRegion : uint8_t
+{
+    None        = 0x00,
+    Top         = 0x01,
+    Bottom      = 0x02,
+    Left        = 0x04,
+    Right       = 0x08,
+    Center      = 0x10,
+    Header      = 0x20,
+    TopLeft     = Top | Left,
+    TopRight    = Top | Right,
+    BottomLeft  = Bottom | Left,
+    BottomRight = Bottom | Right,
+};
+
+inline NodeRegion operator |(NodeRegion lhs, NodeRegion rhs) { return static_cast<NodeRegion>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs)); }
+inline NodeRegion operator &(NodeRegion lhs, NodeRegion rhs) { return static_cast<NodeRegion>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs)); }
+
+
+struct Node final: Object
+{
+    using IdType = NodeId;
+
+    NodeId   m_ID;
+    NodeType m_Type;
+    ImRect   m_Bounds;
+    float    m_ZPosition;
+    int      m_Channel;
+    Pin*     m_LastPin;
+    ImVec2   m_DragStart;
+
+    ImU32    m_Color;
+    ImU32    m_BorderColor;
+    float    m_BorderWidth;
+    float    m_Rounding;
+
+    ImU32    m_GroupColor;
+    ImU32    m_GroupBorderColor;
+    float    m_GroupBorderWidth;
+    float    m_GroupRounding;
+    ImRect   m_GroupBounds;
+
+    bool     m_HighlightConnectedLinks;
+
+    bool     m_RestoreState;
+    bool     m_CenterOnScreen;
+
+    Node(EditorContext* editor, NodeId id)
+        : Object(editor)
+        , m_ID(id)
+        , m_Type(NodeType::Node)
+        , m_Bounds()
+        , m_ZPosition(0.0f)
+        , m_Channel(0)
+        , m_LastPin(nullptr)
+        , m_DragStart()
+        , m_Color(IM_COL32_WHITE)
+        , m_BorderColor(IM_COL32_BLACK)
+        , m_BorderWidth(0)
+        , m_Rounding(0)
+        , m_GroupBounds()
+        , m_HighlightConnectedLinks(false)
+        , m_RestoreState(false)
+        , m_CenterOnScreen(false)
+    {
+    }
+
+    virtual ObjectId ID() override { return m_ID; }
+
+    bool AcceptDrag() override;
+    void UpdateDrag(const ImVec2& offset) override;
+    bool EndDrag() override; // return true, when changed
+    ImVec2 DragStartLocation() override { return m_DragStart; }
+
+    virtual bool IsSelectable() override { return true; }
+
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
+    void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f, float offset = 0.0f);
+
+    void GetGroupedNodes(std::vector<Node*>& result, bool append = false);
+
+    void CenterOnScreenInNextFrame() { m_CenterOnScreen = true; }
+
+    ImRect GetRegionBounds(NodeRegion region) const;
+    NodeRegion GetRegion(const ImVec2& point) const;
+
+    virtual ImRect GetBounds() const override final { return m_Bounds; }
+
+    virtual Node* AsNode() override final { return this; }
+};
+
+// erhe: pen-tool tangent handle mode of a link routing mid point. Auto
+// tangents are computed (Kochanek-Bartels / pin directions); the other modes
+// use the mid point's stored tangents, edited by dragging the on-canvas
+// tangent dots of a selected link. Values are part of the public API
+// (EditorContext::Get/SetLinkMidPointTangents) and the serialized formats.
+enum class MidPointMode : int
+{
+    Auto     = 0, // tangents computed; stored tangents unused
+    Mirrored = 1, // in = -out, locked in direction and length
+    Aligned  = 2, // directions locked opposite, lengths independent
+    Free     = 3  // fully independent (corner)
+};
+
+// erhe: one user-editable routing control point of a link (canvas space).
+// m_TanIn / m_TanOut are offsets from m_Pos: TanOut points along the outgoing
+// segment (towards the end pin side), TanIn along the incoming segment
+// (towards the start pin side); meaningful only when m_Mode != Auto.
+struct MidPoint
+{
+    ImVec2       m_Pos;
+    MidPointMode m_Mode;
+    ImVec2       m_TanIn;
+    ImVec2       m_TanOut;
+
+    MidPoint()
+        : m_Pos(0.0f, 0.0f)
+        , m_Mode(MidPointMode::Auto)
+        , m_TanIn(0.0f, 0.0f)
+        , m_TanOut(0.0f, 0.0f)
+    {
+    }
+
+    explicit MidPoint(const ImVec2& pos)
+        : m_Pos(pos)
+        , m_Mode(MidPointMode::Auto)
+        , m_TanIn(0.0f, 0.0f)
+        , m_TanOut(0.0f, 0.0f)
+    {
+    }
+};
+
+struct Link final: Object
+{
+    using IdType = LinkId;
+
+    LinkId m_ID;
+    Pin*   m_StartPin;
+    Pin*   m_EndPin;
+    ImU32  m_Color;
+    ImU32  m_HighlightColor;
+    float  m_Thickness;
+    ImVec2 m_Start;
+    ImVec2 m_End;
+
+    // erhe: user-editable routing control points (canvas space, ordered from
+    // start pin to end pin). The link is drawn as a chain of bezier segments
+    // through them. Double-click on the link adds one, double-click on a
+    // handle removes it, dragging a handle moves it. On a selected link each
+    // mid point also shows pen-tool tangent dots (drag rotates / scales the
+    // tangent; grabbing an Auto point's dot captures the computed tangents
+    // and switches it to Mirrored; Alt-drag breaks it to Free; double-click
+    // on a dot resets the point to Auto).
+    ImVector<MidPoint> m_MidPoints;
+    int                m_DraggedMidPoint;      // index while a handle drag is active, else -1
+    ImVec2             m_MidPointDragStart;
+    int                m_DraggedTangent;       // mid point index while a tangent-dot drag is active, else -1
+    bool               m_DraggedTangentIsOut;  // which dot of that mid point is dragged
+    ImVec2             m_TangentDragStart;     // dragged tangent offset at drag start
+    ImVec2             m_TangentDragStartPos;  // dragged dot canvas position at drag start
+    ImVec2             m_TangentDragOtherStart;// the opposite tangent offset at drag start
+
+    // erhe: per-link curve shape (Kochanek-Bartels style, each in [-1, 1];
+    // 0 / 0 / 0 reproduces the default routing exactly). Tension scales the
+    // tangent lengths (+1 collapses the link to a polyline), continuity and
+    // bias reshape the tangents at the routing mid points (no effect on a
+    // link without mid points). See GetSegmentCurve().
+    float m_CurveTension;
+    float m_CurveContinuity;
+    float m_CurveBias;
+
+    Link(EditorContext* editor, LinkId id)
+        : Object(editor)
+        , m_ID(id)
+        , m_StartPin(nullptr)
+        , m_EndPin(nullptr)
+        , m_Color(IM_COL32_WHITE)
+        , m_Thickness(1.0f)
+        , m_MidPoints()
+        , m_DraggedMidPoint(-1)
+        , m_MidPointDragStart(0.0f, 0.0f)
+        , m_DraggedTangent(-1)
+        , m_DraggedTangentIsOut(false)
+        , m_TangentDragStart(0.0f, 0.0f)
+        , m_TangentDragStartPos(0.0f, 0.0f)
+        , m_TangentDragOtherStart(0.0f, 0.0f)
+        , m_CurveTension(0.0f)
+        , m_CurveContinuity(0.0f)
+        , m_CurveBias(0.0f)
+    {
+    }
+
+    virtual ObjectId ID() override { return m_ID; }
+
+    virtual bool IsSelectable() override { return true; }
+
+    // erhe: dragging a link grabs the mid-point handle under the mouse press
+    // position (no handle hit -> the drag is not accepted and the gesture
+    // falls through, preserving the previous link behavior).
+    bool AcceptDrag() override;
+    void UpdateDrag(const ImVec2& offset) override;
+    bool EndDrag() override;
+    ImVec2 DragStartLocation() override { return (m_DraggedTangent >= 0) ? m_TangentDragStartPos : m_MidPointDragStart; }
+
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
+    void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
+
+    void UpdateEndpoints();
+
+    // Whole-link curve ignoring mid points (kept for flow animation).
+    ImCubicBezierPoints GetCurve() const;
+
+    // erhe: the link as a chain of curve segments through the mid points.
+    // Segment i runs from anchor i to anchor i + 1, where the anchors are
+    // { m_Start, m_MidPoints..., m_End }.
+    int GetSegmentCount() const { return m_MidPoints.size() + 1; }
+    ImCubicBezierPoints GetSegmentCurve(int segment) const;
+
+    // erhe: mid-point handle geometry / hit testing (canvas space).
+    float GetMidPointRadius() const;      // drawn handle radius
+    float GetMidPointGrabRadius() const;  // interaction radius
+    int FindMidPointAt(const ImVec2& point, float radius) const;
+    // Inserts a mid point at the given position, ordered by the closest
+    // curve segment so the chain stays untangled.
+    void InsertMidPoint(const ImVec2& canvasPoint);
+    void RemoveMidPoint(int index);
+
+    // erhe: pen-tool tangent handles. GetMidPointTangents returns the
+    // EFFECTIVE tangent offsets of mid point 'index' (the stored ones when
+    // manual, the computed segment-curve tangents when Auto) - these are what
+    // the on-canvas dots show and what a grab captures. FindTangentAt hit
+    // tests the dots of every mid point (returns the mid point index and
+    // sets isOut); dots exist only while the link is selected.
+    void GetMidPointTangents(int index, ImVec2& tanIn, ImVec2& tanOut) const;
+    float GetTangentDotRadius() const;
+    float GetTangentDotGrabRadius() const;
+    int FindTangentAt(const ImVec2& point, float radius, bool& isOut) const;
+
+    virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
+    virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const override final;
+
+    virtual ImRect GetBounds() const override final;
+
+    virtual Link* AsLink() override final { return this; }
+};
+
+struct NodeSettings
+{
+    NodeId m_ID;
+    ImVec2 m_Location;
+    ImVec2 m_Size;
+    ImVec2 m_GroupSize;
+    bool   m_WasUsed;
+
+    bool            m_Saved;
+    bool            m_IsDirty;
+    SaveReasonFlags m_DirtyReason;
+
+    NodeSettings(NodeId id)
+        : m_ID(id)
+        , m_Location(0, 0)
+        , m_Size(0, 0)
+        , m_GroupSize(0, 0)
+        , m_WasUsed(false)
+        , m_Saved(false)
+        , m_IsDirty(false)
+        , m_DirtyReason(SaveReasonFlags::None)
+    {
+    }
+
+    void ClearDirty();
+    void MakeDirty(SaveReasonFlags reason);
+
+    json::value Serialize();
+
+    static bool Parse(const std::string& string, NodeSettings& settings);
+    static bool Parse(const json::value& data, NodeSettings& result);
+};
+
+struct Settings
+{
+    bool                 m_IsDirty;
+    SaveReasonFlags      m_DirtyReason;
+
+    vector<NodeSettings> m_Nodes;
+    vector<ObjectId>     m_Selection;
+    ImVec2               m_ViewScroll;
+    float                m_ViewZoom;
+    ImRect               m_VisibleRect;
+
+    Settings()
+        : m_IsDirty(false)
+        , m_DirtyReason(SaveReasonFlags::None)
+        , m_ViewScroll(0, 0)
+        , m_ViewZoom(1.0f)
+        , m_VisibleRect()
+    {
+    }
+
+    NodeSettings* AddNode(NodeId id);
+    NodeSettings* FindNode(NodeId id);
+    void RemoveNode(NodeId id);
+
+    void ClearDirty(Node* node = nullptr);
+    void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
+
+    std::string Serialize();
+
+    static bool Parse(const std::string& string, Settings& settings);
+};
+
+struct Control
+{
+    Object* HotObject;
+    Object* ActiveObject;
+    Object* ClickedObject;
+    Object* DoubleClickedObject;
+    Node*   HotNode;
+    Node*   ActiveNode;
+    Node*   ClickedNode;
+    Node*   DoubleClickedNode;
+    Pin*    HotPin;
+    Pin*    ActivePin;
+    Pin*    ClickedPin;
+    Pin*    DoubleClickedPin;
+    Link*   HotLink;
+    Link*   ActiveLink;
+    Link*   ClickedLink;
+    Link*   DoubleClickedLink;
+    bool    BackgroundHot;
+    bool    BackgroundActive;
+    int     BackgroundClickButtonIndex;
+    int     BackgroundDoubleClickButtonIndex;
+
+    Control()
+        : Control(nullptr, nullptr, nullptr, nullptr, false, false, -1, -1)
+    {
+    }
+
+    Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
+        bool backgroundHot, bool backgroundActive, int backgroundClickButtonIndex, int backgroundDoubleClickButtonIndex)
+        : HotObject(hotObject)
+        , ActiveObject(activeObject)
+        , ClickedObject(clickedObject)
+        , DoubleClickedObject(doubleClickedObject)
+        , HotNode(nullptr)
+        , ActiveNode(nullptr)
+        , ClickedNode(nullptr)
+        , DoubleClickedNode(nullptr)
+        , HotPin(nullptr)
+        , ActivePin(nullptr)
+        , ClickedPin(nullptr)
+        , DoubleClickedPin(nullptr)
+        , HotLink(nullptr)
+        , ActiveLink(nullptr)
+        , ClickedLink(nullptr)
+        , DoubleClickedLink(nullptr)
+        , BackgroundHot(backgroundHot)
+        , BackgroundActive(backgroundActive)
+        , BackgroundClickButtonIndex(backgroundClickButtonIndex)
+        , BackgroundDoubleClickButtonIndex(backgroundDoubleClickButtonIndex)
+    {
+        if (hotObject)
+        {
+            HotNode  = hotObject->AsNode();
+            HotPin   = hotObject->AsPin();
+            HotLink  = hotObject->AsLink();
+
+            if (HotPin)
+                HotNode = HotPin->m_Node;
+        }
+
+        if (activeObject)
+        {
+            ActiveNode  = activeObject->AsNode();
+            ActivePin   = activeObject->AsPin();
+            ActiveLink  = activeObject->AsLink();
+        }
+
+        if (clickedObject)
+        {
+            ClickedNode  = clickedObject->AsNode();
+            ClickedPin   = clickedObject->AsPin();
+            ClickedLink  = clickedObject->AsLink();
+        }
+
+        if (doubleClickedObject)
+        {
+            DoubleClickedNode = doubleClickedObject->AsNode();
+            DoubleClickedPin  = doubleClickedObject->AsPin();
+            DoubleClickedLink = doubleClickedObject->AsLink();
+        }
+    }
+};
+
+struct NavigateAction;
+struct SizeAction;
+struct DragAction;
+struct SelectAction;
+struct CutLinksAction;
+struct CreateItemAction;
+struct DeleteItemsAction;
+struct ContextMenuAction;
+struct ShortcutAction;
+
+struct AnimationController;
+struct FlowAnimationController;
+
+struct Animation
+{
+    enum State
+    {
+        Playing,
+        Stopped
+    };
+
+    EditorContext*  Editor;
+    State           m_State;
+    float           m_Time;
+    float           m_Duration;
+
+    Animation(EditorContext* editor);
+    virtual ~Animation() noexcept;
+
+    void Play(float duration);
+    void Stop();
+    void Finish();
+    void Update();
+
+    bool IsPlaying() const { return m_State == Playing; }
+
+    float GetProgress() const { return m_Time / m_Duration; }
+
+protected:
+    virtual void OnPlay() {}
+    virtual void OnFinish() {}
+    virtual void OnStop() {}
+
+    virtual void OnUpdate(float progress) { IM_UNUSED(progress); }
+};
+
+struct NavigateAnimation final: Animation
+{
+    NavigateAction& Action;
+    ImRect      m_Start;
+    ImRect      m_Target;
+
+    NavigateAnimation(EditorContext* editor, NavigateAction& scrollAction);
+
+    void NavigateTo(const ImRect& target, float duration);
+
+private:
+    void OnUpdate(float progress) override final;
+    void OnStop() override final;
+    void OnFinish() override final;
+};
+
+struct FlowAnimation final: Animation
+{
+    FlowAnimationController* Controller;
+    Link* m_Link;
+    float m_Speed;
+    float m_MarkerDistance;
+    float m_Offset;
+
+    FlowAnimation(FlowAnimationController* controller);
+
+    void Flow(Link* link, float markerDistance, float speed, float duration);
+
+    void Draw(ImDrawList* drawList);
+
+private:
+    struct CurvePoint
+    {
+        float  Distance;
+        ImVec2 Point;
+    };
+
+    ImVec2 m_LastStart;
+    ImVec2 m_LastEnd;
+    float  m_PathLength;
+    vector<CurvePoint> m_Path;
+
+    bool IsLinkValid() const;
+    bool IsPathValid() const;
+    void UpdatePath();
+    void ClearPath();
+
+    ImVec2 SamplePath(float distance) const;
+
+    void OnUpdate(float progress) override final;
+    void OnStop() override final;
+};
+
+struct AnimationController
+{
+    EditorContext* Editor;
+
+    AnimationController(EditorContext* editor)
+        : Editor(editor)
+    {
+    }
+
+    virtual ~AnimationController() noexcept
+    {
+    }
+
+    virtual void Draw(ImDrawList* drawList)
+    {
+        IM_UNUSED(drawList);
+    }
+};
+
+struct Style;
+
+struct FlowAnimationController final : AnimationController
+{
+    FlowAnimationController(EditorContext* editor);
+    virtual ~FlowAnimationController() noexcept;
+
+    void Flow(const Style& editorStyle, Link* link, FlowDirection direction = FlowDirection::Forward);
+
+    virtual void Draw(ImDrawList* drawList) override final;
+
+    void Release(FlowAnimation* animation);
+
+private:
+    FlowAnimation* GetOrCreate(Link* link);
+
+    vector<FlowAnimation*> m_Animations;
+    vector<FlowAnimation*> m_FreePool;
+};
+
+struct EditorAction
+{
+    enum AcceptResult { False, True, Possible };
+
+    EditorAction(EditorContext* editor)
+        : Editor(editor)
+    {
+    }
+
+    virtual ~EditorAction() noexcept {}
+
+    virtual const char* GetName() const = 0;
+
+    virtual AcceptResult Accept(const Control& control) = 0;
+    virtual bool Process(const Control& control) = 0;
+    virtual void Reject() {} // celled when Accept return 'Possible' and was rejected
+
+    virtual ImGuiMouseCursor GetCursor() { return ImGuiMouseCursor_Arrow; }
+
+    virtual bool IsDragging() { return false; }
+
+    virtual void ShowMetrics() {}
+
+    virtual NavigateAction*     AsNavigate()     { return nullptr; }
+    virtual SizeAction*         AsSize()         { return nullptr; }
+    virtual DragAction*         AsDrag()         { return nullptr; }
+    virtual SelectAction*       AsSelect()       { return nullptr; }
+    virtual CutLinksAction*     AsCutLinks()     { return nullptr; }
+    virtual CreateItemAction*   AsCreateItem()   { return nullptr; }
+    virtual DeleteItemsAction*  AsDeleteItems()  { return nullptr; }
+    virtual ContextMenuAction*  AsContextMenu()  { return nullptr; }
+    virtual ShortcutAction* AsCutCopyPaste() { return nullptr; }
+
+    EditorContext* Editor;
+};
+
+struct NavigateAction final: EditorAction
+{
+    enum class ZoomMode
+    {
+        None,
+        Exact,
+        WithMargin
+    };
+
+    enum class NavigationReason
+    {
+        Unknown,
+        MouseZoom,
+        Selection,
+        Object,
+        Content,
+        Edge
+    };
+
+    bool            m_IsActive;
+    float           m_Zoom;
+    ImRect          m_VisibleRect;
+    ImVec2          m_Scroll;
+    ImVec2          m_ScrollStart;
+    ImVec2          m_ScrollDelta;
+
+    NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canvas);
+
+    virtual const char* GetName() const override final { return "Navigate"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual NavigateAction* AsNavigate() override final { return this; }
+
+    void NavigateTo(const Style& editorStyle, const ImRect& bounds, ZoomMode zoomMode, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
+    void StopNavigation();
+    void FinishNavigation();
+
+    bool MoveOverEdge(const ImVec2& canvasSize);
+    void StopMoveOverEdge();
+    bool IsMovingOverEdge() const { return m_MovingOverEdge; }
+    ImVec2 GetMoveScreenOffset() const { return m_MoveScreenOffset; }
+
+    void SetWindow(ImVec2 position, ImVec2 size);
+    ImVec2 GetWindowScreenPos() const { return m_WindowScreenPos; };
+    ImVec2 GetWindowScreenSize() const { return m_WindowScreenSize; };
+
+    ImGuiEx::CanvasView GetView() const;
+    ImVec2 GetViewOrigin() const;
+    float GetViewScale() const;
+
+    void SetViewRect(const ImRect& rect);
+    ImRect GetViewRect() const;
+
+private:
+    ImGuiEx::Canvas&   m_Canvas;
+    ImVec2             m_WindowScreenPos;
+    ImVec2             m_WindowScreenSize;
+
+    NavigateAnimation  m_Animation;
+    NavigationReason   m_Reason;
+    uint64_t           m_LastSelectionId;
+    Object*            m_LastObject;
+    bool               m_MovingOverEdge;
+    ImVec2             m_MoveScreenOffset;
+
+    const float*       m_ZoomLevels;
+    int                m_ZoomLevelCount;
+
+    bool HandleZoom(const Control& control);
+
+    void NavigateTo(const ImRect& target, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
+
+    float GetNextZoom(float steps);
+    float MatchSmoothZoom(float steps);
+    float MatchZoom(int steps, float fallbackZoom);
+    int MatchZoomIndex(int direction);
+
+    static const float s_DefaultZoomLevels[];
+    static const int   s_DefaultZoomLevelCount;
+};
+
+struct SizeAction final: EditorAction
+{
+    bool  m_IsActive;
+    bool  m_Clean;
+    Node* m_SizedNode;
+
+    SizeAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Size"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual ImGuiMouseCursor GetCursor() override final { return m_Cursor; }
+
+    virtual void ShowMetrics() override final;
+
+    virtual SizeAction* AsSize() override final { return this; }
+
+    virtual bool IsDragging() override final { return m_IsActive; }
+
+    const ImRect& GetStartGroupBounds() const { return m_StartGroupBounds; }
+
+private:
+    NodeRegion GetRegion(Node* node);
+    ImGuiMouseCursor ChooseCursor(NodeRegion region);
+
+    ImRect           m_StartBounds;
+    ImRect           m_StartGroupBounds;
+    ImVec2           m_LastSize;
+    ImVec2           m_MinimumSize;
+    ImVec2           m_LastDragOffset;
+    ed::NodeRegion   m_Pivot;
+    ImGuiMouseCursor m_Cursor;
+};
+
+struct DragAction final: EditorAction
+{
+    bool            m_IsActive;
+    bool            m_Clear;
+    Object*         m_DraggedObject;
+    vector<Object*> m_Objects;
+
+    DragAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Drag"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_ResizeAll; }
+
+    virtual bool IsDragging() override final { return m_IsActive; }
+
+    virtual void ShowMetrics() override final;
+
+    virtual DragAction* AsDrag() override final { return this; }
+};
+
+struct SelectAction final: EditorAction
+{
+    bool            m_IsActive;
+
+    bool            m_SelectGroups;
+    bool            m_SelectLinkMode;
+    bool            m_CommitSelection;
+    ImVec2          m_StartPoint;
+    ImVec2          m_EndPoint;
+    vector<Object*> m_CandidateObjects;
+    vector<Object*> m_SelectedObjectsAtStart;
+
+    Animation       m_Animation;
+
+    SelectAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Select"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual bool IsDragging() override final { return m_IsActive; }
+
+    virtual SelectAction* AsSelect() override final { return this; }
+
+    void Draw(ImDrawList* drawList);
+};
+
+// erhe: Houdini-style wire cutting. Holding Config::CutLinksKey turns a
+// select-button drag into a cut stroke: every link the stroke crosses is
+// queued into DeleteItemsAction on release, so clients receive the cuts
+// through the standard BeginDelete()/QueryDeletedLink() flow exactly like a
+// Delete-key deletion. Escape cancels the stroke.
+struct CutLinksAction final: EditorAction
+{
+    bool            m_IsActive;
+    vector<ImVec2>  m_StrokePoints;      // canvas space
+    vector<Link*>   m_CutLinkCandidates; // links crossed by the stroke so far
+
+    CutLinksAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Cut Links"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual bool IsDragging() override final { return m_IsActive; }
+
+    virtual CutLinksAction* AsCutLinks() override final { return this; }
+
+    void Draw(ImDrawList* drawList);
+
+private:
+    // Appends a stroke point (skipping sub-pixel moves) and accumulates the
+    // links whose curve the new stroke segment crosses.
+    void AddStrokePoint(const ImVec2& canvasPoint);
+
+    vector<Link*>   m_SegmentLinks; // scratch for the segment broad-phase
+    vector<ImVec2>  m_CurvePoints;  // scratch for the tessellated link curve
+};
+
+struct ContextMenuAction final: EditorAction
+{
+    enum Menu { None, Node, Pin, Link, Background };
+
+    Menu m_CandidateMenu;
+    Menu m_CurrentMenu;
+    ObjectId m_ContextId;
+
+    ContextMenuAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Context Menu"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+    virtual void Reject() override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual ContextMenuAction* AsContextMenu() override final { return this; }
+
+    bool ShowNodeContextMenu(NodeId* nodeId);
+    bool ShowPinContextMenu(PinId* pinId);
+    bool ShowLinkContextMenu(LinkId* linkId);
+    bool ShowBackgroundContextMenu();
+};
+
+struct ShortcutAction final: EditorAction
+{
+    enum Action { None, Cut, Copy, Paste, Duplicate, CreateNode };
+
+    bool            m_IsActive;
+    bool            m_InAction;
+    Action          m_CurrentAction;
+    vector<Object*> m_Context;
+
+    ShortcutAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Shortcut"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+    virtual void Reject() override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual ShortcutAction* AsCutCopyPaste() override final { return this; }
+
+    bool Begin();
+    void End();
+
+    bool AcceptCut();
+    bool AcceptCopy();
+    bool AcceptPaste();
+    bool AcceptDuplicate();
+    bool AcceptCreateNode();
+};
+
+struct CreateItemAction final : EditorAction
+{
+    enum Stage
+    {
+        None,
+        Possible,
+        Create
+    };
+
+    enum Action
+    {
+        Unknown,
+        UserReject,
+        UserAccept
+    };
+
+    enum Type
+    {
+        NoItem,
+        Node,
+        Link
+    };
+
+    enum Result
+    {
+        True,
+        False,
+        Indeterminate
+    };
+
+    bool      m_InActive;
+    Stage     m_NextStage;
+
+    Stage     m_CurrentStage;
+    Type      m_ItemType;
+    Action    m_UserAction;
+    ImU32     m_LinkColor;
+    float     m_LinkThickness;
+    Pin*      m_LinkStart;
+    Pin*      m_LinkEnd;
+
+    bool      m_IsActive;
+    Pin*      m_DraggedPin;
+
+    int       m_LastChannel = -1;
+
+
+    CreateItemAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Create Item"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_Arrow; }
+
+    virtual void ShowMetrics() override final;
+
+    virtual bool IsDragging() override final { return m_IsActive; }
+
+    virtual CreateItemAction* AsCreateItem() override final { return this; }
+
+    void SetStyle(ImU32 color, float thickness);
+
+    bool Begin();
+    void End();
+
+    Result RejectItem();
+    Result AcceptItem();
+
+    Result QueryLink(PinId* startId, PinId* endId);
+    Result QueryNode(PinId* pinId);
+
+private:
+    bool m_IsInGlobalSpace;
+
+    void DragStart(Pin* startPin);
+    void DragEnd();
+    void DropPin(Pin* endPin);
+    void DropNode();
+    void DropNothing();
+};
+
+struct DeleteItemsAction final: EditorAction
+{
+    bool    m_IsActive;
+    bool    m_InInteraction;
+
+    DeleteItemsAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Delete Items"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual DeleteItemsAction* AsDeleteItems() override final { return this; }
+
+    bool Add(Object* object);
+
+    // erhe: queue an object for deletion from inside another action. Add()
+    // refuses while any action is current, which silently drops objects
+    // queued by CutLinksAction (it is the current action when its stroke
+    // ends). The queue is consumed by Accept() on a later frame, after the
+    // queueing action has finished, exactly like Add().
+    void AddFromAction(Object* object);
+
+    bool Begin();
+    void End();
+
+    bool QueryLink(LinkId* linkId, PinId* startId = nullptr, PinId* endId = nullptr);
+    bool QueryNode(NodeId* nodeId);
+
+    bool AcceptItem(bool deleteDependencies);
+    void RejectItem();
+
+private:
+    enum IteratorType { Unknown, Link, Node };
+    enum UserAction { Undetermined, Accepted, Rejected };
+
+    void DeleteDeadLinks(NodeId nodeId);
+    void DeleteDeadPins(NodeId nodeId);
+
+    bool QueryItem(ObjectId* itemId, IteratorType itemType);
+    void RemoveItem(bool deleteDependencies);
+    Object* DropCurrentItem();
+
+    vector<Object*> m_ManuallyDeletedObjects;
+
+    IteratorType    m_CurrentItemType;
+    UserAction      m_UserAction;
+    vector<Object*> m_CandidateObjects;
+    int             m_CandidateItemIndex;
+};
+
+struct NodeBuilder
+{
+    EditorContext* const Editor;
+
+    Node* m_CurrentNode;
+    Pin*  m_CurrentPin;
+
+    ImRect m_NodeRect;
+
+    ImRect m_PivotRect;
+    ImVec2 m_PivotAlignment;
+    ImVec2 m_PivotSize;
+    ImVec2 m_PivotScale;
+    bool   m_ResolvePinRect;
+    bool   m_ResolvePivot;
+
+    ImRect m_GroupBounds;
+    bool   m_IsGroup;
+
+    ImDrawListSplitter m_Splitter;
+    ImDrawListSplitter m_PinSplitter;
+
+    NodeBuilder(EditorContext* editor);
+    ~NodeBuilder() noexcept;
+
+    void Begin(NodeId nodeId);
+    void End();
+
+    void BeginPin(PinId pinId, PinKind kind);
+    void EndPin();
+
+    void PinRect(const ImVec2& a, const ImVec2& b);
+    void PinPivotRect(const ImVec2& a, const ImVec2& b);
+    void PinPivotSize(const ImVec2& size);
+    void PinPivotScale(const ImVec2& scale);
+    void PinPivotAlignment(const ImVec2& alignment);
+
+    void Group(const ImVec2& size);
+
+    ImDrawList* GetUserBackgroundDrawList() const;
+    ImDrawList* GetUserBackgroundDrawList(Node* node) const;
+};
+
+struct HintBuilder
+{
+    EditorContext* const Editor;
+    bool  m_IsActive;
+    Node* m_CurrentNode;
+    float m_LastFringe = 1.0f;
+    int   m_LastChannel = 0;
+
+    HintBuilder(EditorContext* editor);
+
+    bool Begin(NodeId nodeId);
+    void End();
+
+    ImVec2 GetGroupMin();
+    ImVec2 GetGroupMax();
+
+    ImDrawList* GetForegroundDrawList();
+    ImDrawList* GetBackgroundDrawList();
+};
+
+struct Style: ax::NodeEditor::Style
+{
+    void PushColor(StyleColor colorIndex, const ImVec4& color);
+    void PopColor(int count = 1);
+
+    void PushVar(StyleVar varIndex, float value);
+    void PushVar(StyleVar varIndex, const ImVec2& value);
+    void PushVar(StyleVar varIndex, const ImVec4& value);
+    void PopVar(int count = 1);
+
+    const char* GetColorName(StyleColor colorIndex) const;
+
+private:
+    struct ColorModifier
+    {
+        StyleColor  Index;
+        ImVec4      Value;
+    };
+
+    struct VarModifier
+    {
+        StyleVar Index;
+        ImVec4   Value;
+    };
+
+    float* GetVarFloatAddr(StyleVar idx);
+    ImVec2* GetVarVec2Addr(StyleVar idx);
+    ImVec4* GetVarVec4Addr(StyleVar idx);
+
+    vector<ColorModifier>   m_ColorStack;
+    vector<VarModifier>     m_VarStack;
+};
+
+struct Config: ax::NodeEditor::Config
+{
+    Config(const ax::NodeEditor::Config* config);
+
+    std::string Load();
+    std::string LoadNode(NodeId nodeId);
+
+    void BeginSave();
+    bool Save(const std::string& data, SaveReasonFlags flags);
+    bool SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags);
+    void EndSave();
+};
+
+enum class SuspendFlags : uint8_t
+{
+    None = 0,
+    KeepSplitter = 1
+};
+
+inline SuspendFlags operator |(SuspendFlags lhs, SuspendFlags rhs) { return static_cast<SuspendFlags>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs)); }
+inline SuspendFlags operator &(SuspendFlags lhs, SuspendFlags rhs) { return static_cast<SuspendFlags>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs)); }
+
+
+class EditorContext
+{
+public:
+    EditorContext(const ax::NodeEditor::Config* config = nullptr);
+    ~EditorContext() noexcept;
+
+    const Config& GetConfig() const { return m_Config; }
+
+    Style& GetStyle() { return m_Style; }
+
+    void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
+    void End();
+
+    bool DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness);
+
+
+    NodeBuilder& GetNodeBuilder() { return m_NodeBuilder; }
+    HintBuilder& GetHintBuilder() { return m_HintBuilder; }
+
+    EditorAction* GetCurrentAction() { return m_CurrentAction; }
+
+    CreateItemAction& GetItemCreator() { return m_CreateItemAction; }
+    DeleteItemsAction& GetItemDeleter() { return m_DeleteItemsAction; }
+    ContextMenuAction& GetContextMenu() { return m_ContextMenuAction; }
+    ShortcutAction& GetShortcut() { return m_ShortcutAction; }
+
+    const ImGuiEx::CanvasView& GetView() const { return m_Canvas.View(); }
+    const ImRect& GetViewRect() const { return m_Canvas.ViewRect(); }
+    const ImRect& GetRect() const { return m_Canvas.Rect(); }
+
+    void SetNodePosition(NodeId nodeId, const ImVec2& screenPosition);
+    void SetGroupSize(NodeId nodeId, const ImVec2& size);
+    ImVec2 GetNodePosition(NodeId nodeId);
+    ImVec2 GetNodeSize(NodeId nodeId);
+
+    void SetNodeZPosition(NodeId nodeId, float z);
+    float GetNodeZPosition(NodeId nodeId);
+
+    void MarkNodeToRestoreState(Node* node);
+    void UpdateNodeState(Node* node);
+
+    void RemoveSettings(Object* object);
+
+    void ClearSelection();
+    void SelectObject(Object* object);
+    void DeselectObject(Object* object);
+    void SetSelectedObject(Object* object);
+    void ToggleObjectSelection(Object* object);
+    bool IsSelected(Object* object);
+    const vector<Object*>& GetSelectedObjects();
+    bool IsAnyNodeSelected();
+    bool IsAnyLinkSelected();
+    bool HasSelectionChanged();
+    uint64_t GetSelectionId() const { return m_SelectionId; }
+
+    // Interactive resizing of plain (non-group) nodes; see the public API
+    // (EditorContext::EnableNodeResize) for the contract. Groups are always
+    // resizable regardless of this flag.
+    void EnableNodeResize(bool enable) { m_NodeResizeEnabled = enable; }
+    bool IsNodeResizeEnabled() const   { return m_NodeResizeEnabled; }
+    bool GetNodeResize(NodeId& nodeId, ImVec2& position, ImVec2& size);
+
+    Node* FindNodeAt(const ImVec2& p);
+    void FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
+    void FindLinksInRect(const ImRect& r, vector<Link*>& result, bool append = false);
+
+    bool HasAnyLinks(NodeId nodeId) const;
+    bool HasAnyLinks(PinId pinId) const;
+
+    int BreakLinks(NodeId nodeId);
+    int BreakLinks(PinId pinId);
+
+    void FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add = false);
+
+    bool PinHadAnyLinks(PinId pinId);
+
+    ImVec2 ToCanvas(const ImVec2& point) const { return m_Canvas.ToLocal(point); }
+    ImVec2 ToScreen(const ImVec2& point) const { return m_Canvas.FromLocal(point); }
+    // Screen-space vector (e.g. a mouse drag delta, which is real screen pixels
+    // now) -> canvas units. Inverse of DrawVec. #251.
+    ImVec2 ToCanvasVec(const ImVec2& screenVector) const { return m_Canvas.ToLocalV(screenVector); }
+
+    // ---- issue #251: transform for the editor's OWN primitive drawing and
+    // hit-testing. These author primitives directly in SCREEN space at the
+    // zoomed size (native resolution): the canvas no longer post-transforms the
+    // vertex buffer, so points map through canvas->screen and sizes scale by the
+    // view scale here, at submission time. Node CONTENT is likewise emitted in
+    // screen space at a zoomed font (see NodeBuilder). HitMouse maps the real
+    // mouse back to canvas space, giving exactly the value the old fake
+    // produced, so the editor's canvas-space hit-tests are unchanged. The
+    // pre-Begin true-screen consumers (NavigateAction::MoveOverEdge) read
+    // io.MousePos directly and must NOT route through HitMouse.
+    ImVec2 DrawPos (const ImVec2& canvasPos)    const { return ToScreen(canvasPos); }               // point  -> screen
+    ImVec2 DrawVec (const ImVec2& canvasVector) const { return m_Canvas.FromLocalV(canvasVector); } // vector (no translation)
+    float  DrawLen (float         canvasLength) const { return canvasLength * m_Canvas.ViewScale(); } // thickness / rounding / radius
+    ImRect DrawRect(const ImRect& canvasRect)   const { return ImRect(ToScreen(canvasRect.Min), ToScreen(canvasRect.Max)); }
+    ImVec2 HitMouse() const { return ToCanvas(ImGui::GetMousePos()); }
+
+    void NotifyLinkDeleted(Link* link);
+
+    void Suspend(SuspendFlags flags = SuspendFlags::None);
+    void Resume(SuspendFlags flags = SuspendFlags::None);
+    bool IsSuspended();
+
+    bool IsFocused();
+    bool IsHovered() const;
+    bool IsHoveredWithoutOverlapp() const;
+    bool CanAcceptUserInput() const;
+
+    void MakeDirty(SaveReasonFlags reason);
+    void MakeDirty(SaveReasonFlags reason, Node* node);
+
+    int CountLiveNodes() const;
+    int CountLivePins() const;
+    int CountLiveLinks() const;
+
+    Pin*    CreatePin(PinId id, PinKind kind);
+    Node*   CreateNode(NodeId id);
+    Link*   CreateLink(LinkId id);
+
+    Node*   FindNode(NodeId id);
+    Pin*    FindPin(PinId id);
+    Link*   FindLink(LinkId id);
+    Object* FindObject(ObjectId id);
+
+    Node*  GetNode(NodeId id);
+    Pin*   GetPin(PinId id, PinKind kind);
+    Link*  GetLink(LinkId id);
+
+    Link* FindLinkAt(const ImVec2& p);
+
+    template <typename T>
+    ImRect GetBounds(const std::vector<T*>& objects)
+    {
+        ImRect bounds(FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+        for (auto object : objects)
+            if (object->m_IsLive)
+                bounds.Add(object->GetBounds());
+
+        if (ImRect_IsEmpty(bounds))
+            bounds = ImRect();
+
+        return bounds;
+    }
+
+    template <typename T>
+    ImRect GetBounds(const std::vector<ObjectWrapper<T>>& objects)
+    {
+        ImRect bounds(FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+        for (auto object : objects)
+            if (object.m_Object->m_IsLive)
+                bounds.Add(object.m_Object->GetBounds());
+
+        if (ImRect_IsEmpty(bounds))
+            bounds = ImRect();
+
+        return bounds;
+    }
+
+    ImRect GetSelectionBounds() { return GetBounds(m_SelectedObjects); }
+    ImRect GetContentBounds() { return GetBounds(m_Nodes); }
+
+    ImU32 GetColor(StyleColor colorIndex) const;
+    ImU32 GetColor(StyleColor colorIndex, float alpha) const;
+
+    int GetNodeIds(NodeId* nodes, int size) const;
+
+    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1)
+    {
+        auto zoomMode = zoomIn ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
+        m_NavigateAction.NavigateTo(m_Style, bounds, zoomMode, duration);
+    }
+
+    // Set the view scale (zoom) immediately, centered on the graph content.
+    // Here 'zoom' is the view scale used by CanvasView: zoom > 1 zooms in
+    // (content drawn larger), zoom < 1 zooms out. No navigation animation and
+    // no mouse input are involved, so this is a deterministic, greenfield knob
+    // for programmatic / headless zoom-quality verification (issue #251).
+    void SetZoom(float zoom)
+    {
+        if (zoom <= 0.0f)
+            return;
+        erhe::imgui::log_node_editor->info("SetZoom {:.3f} -> {:.3f}", m_NavigateAction.m_Zoom, zoom);
+        ImRect content = GetContentBounds();
+        const ImVec2 center = ImRect_IsEmpty(content)
+            ? m_NavigateAction.GetViewRect().GetCenter()
+            : content.GetCenter();
+        const ImVec2 widgetSize = m_Canvas.Rect().GetSize();
+        m_NavigateAction.StopNavigation();
+        m_NavigateAction.m_Zoom   = zoom;
+        // Origin maps the content center to the widget center:
+        //   origin = widgetSize * 0.5 - center * zoom ; scroll = -origin.
+        m_NavigateAction.m_Scroll = ImVec2(
+            center.x * zoom - widgetSize.x * 0.5f,
+            center.y * zoom - widgetSize.y * 0.5f
+        );
+    }
+
+    void RegisterAnimation(Animation* animation);
+    void UnregisterAnimation(Animation* animation);
+
+    void Flow(Link* link, FlowDirection direction);
+
+    void SetUserContext(bool globalSpace = false);
+
+    void EnableShortcuts(bool enable);
+    bool AreShortcutsEnabled();
+
+    NodeId GetHoveredNode()            const { return m_HoveredNode;             }
+    PinId  GetHoveredPin()             const { return m_HoveredPin;              }
+    LinkId GetHoveredLink()            const { return m_HoveredLink;             }
+    NodeId GetDoubleClickedNode()      const { return m_DoubleClickedNode;       }
+    PinId  GetDoubleClickedPin()       const { return m_DoubleClickedPin;        }
+    LinkId GetDoubleClickedLink()      const { return m_DoubleClickedLink;       }
+    bool   IsBackgroundClicked()                           const { return m_BackgroundClickButtonIndex >= 0; }
+    bool   IsBackgroundDoubleClicked()                     const { return m_BackgroundDoubleClickButtonIndex >= 0; }
+    ImGuiMouseButton GetBackgroundClickButtonIndex()       const { return m_BackgroundClickButtonIndex; }
+    ImGuiMouseButton GetBackgroundDoubleClickButtonIndex() const { return m_BackgroundDoubleClickButtonIndex; }
+
+    float AlignPointToGrid(float p) const
+    {
+        if (!ImGui::GetIO().KeyAlt)
+            return p - ImFmod(p, 16.0f);
+        else
+            return p;
+    }
+
+    ImVec2 AlignPointToGrid(const ImVec2& p) const
+    {
+        return ImVec2(AlignPointToGrid(p.x), AlignPointToGrid(p.y));
+    }
+
+    ImDrawList* GetDrawList() { return m_DrawList; }
+
+private:
+    void LoadSettings();
+    void SaveSettings();
+
+    Control BuildControl(bool allowOffscreen);
+
+    void ShowMetrics(const Control& control);
+
+    void UpdateAnimations();
+
+    Config              m_Config;
+
+    ImGuiID             m_EditorActiveId;
+    bool                m_IsFirstFrame;
+    bool                m_IsFocused;
+    bool                m_IsHovered;
+    bool                m_IsHoveredWithoutOverlapp;
+
+    bool                m_ShortcutsEnabled;
+
+    Style               m_Style;
+
+    vector<ObjectWrapper<Node>> m_Nodes;
+    vector<ObjectWrapper<Pin>>  m_Pins;
+    vector<ObjectWrapper<Link>> m_Links;
+
+    vector<Object*>     m_SelectedObjects;
+
+    vector<Object*>     m_LastSelectedObjects;
+    uint64_t            m_SelectionId;
+
+    Link*               m_LastActiveLink;
+
+    vector<Animation*>  m_LiveAnimations;
+    vector<Animation*>  m_LastLiveAnimations;
+
+    ImGuiEx::Canvas     m_Canvas;
+    bool                m_IsCanvasVisible;
+
+    NodeBuilder         m_NodeBuilder;
+    HintBuilder         m_HintBuilder;
+
+    // Interactive resizing of plain nodes (see EnableNodeResize above).
+    bool                m_NodeResizeEnabled = false;
+
+    EditorAction*       m_CurrentAction;
+    NavigateAction      m_NavigateAction;
+    SizeAction          m_SizeAction;
+    DragAction          m_DragAction;
+    SelectAction        m_SelectAction;
+    CutLinksAction      m_CutLinksAction;
+    ContextMenuAction   m_ContextMenuAction;
+    ShortcutAction      m_ShortcutAction;
+    CreateItemAction    m_CreateItemAction;
+    DeleteItemsAction   m_DeleteItemsAction;
+
+    vector<AnimationController*> m_AnimationControllers;
+    FlowAnimationController      m_FlowAnimationController;
+
+    NodeId              m_HoveredNode;
+    PinId               m_HoveredPin;
+    LinkId              m_HoveredLink;
+    NodeId              m_DoubleClickedNode;
+    PinId               m_DoubleClickedPin;
+    LinkId              m_DoubleClickedLink;
+    int                 m_BackgroundClickButtonIndex;
+    int                 m_BackgroundDoubleClickButtonIndex;
+
+    bool                m_IsInitialized;
+    Settings            m_Settings;
+
+    ImDrawList*         m_DrawList;
+    int                 m_ExternalChannel;
+    ImDrawListSplitter  m_Splitter;
+};
+
+
+//------------------------------------------------------------------------------
+} // namespace Detail
+} // namespace Editor
+} // namespace ax
+
+
+//------------------------------------------------------------------------------
+# include "imgui_node_editor_internal.inl"
+
+
+//------------------------------------------------------------------------------
+# endif // __IMGUI_NODE_EDITOR_INTERNAL_H__

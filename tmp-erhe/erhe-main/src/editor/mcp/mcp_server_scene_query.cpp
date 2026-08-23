@@ -1,0 +1,1890 @@
+// Mcp_server scene query tools (scenes, nodes, cameras, lights, materials, textures, brushes, selection, undo/redo, async status).
+// Split out of mcp_server.cpp; shares helpers via mcp_server_shared.hpp.
+
+#include "mcp/mcp_server.hpp"
+#include "mcp/mcp_server_shared.hpp"
+
+#include "app_context.hpp"
+#include "app_rendering.hpp"
+#include "app_settings.hpp"
+#include "app_scenes.hpp"
+#include "assets/asset_manager.hpp"
+#include "brushes/brush.hpp"
+#include "brushes/brush_placement.hpp"
+#include "content_library/content_library.hpp"
+#include "geometry_graph/geometry_graph_mesh.hpp"
+#include "geometry_graph/graph_mesh.hpp"
+#include "operations/operation.hpp"
+#include "operations/operation_stack.hpp"
+#include "windows/transform_update_stats.hpp"
+#include "renderers/composition_pass.hpp"
+#include "renderers/lightmap_partitioner.hpp"
+#include "erhe_scene_renderer/draw_list_scene.hpp"
+#include "rendergraph/shadow_render_node.hpp"
+#include "windows/frame_pacing_window.hpp"
+#include "erhe_frame_pacing/frame_pacing_observer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "grid/grid.hpp"
+#include "scene/node_joint.hpp"
+#include "scene/node_physics.hpp"
+#include "scene/node_raytrace_mask.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/scene_commit_queue.hpp"
+#include "scene/shadow_fit_debug.hpp"
+#include "scene/viewport_scene_view.hpp"
+#include "scene/viewport_scene_views.hpp"
+#include "texture_graph/graph_texture.hpp"
+#include "tools/bone_visualization.hpp"
+#include "tools/mesh_component_selection.hpp"
+#include "tools/selection_tool.hpp"
+#include "transform/transform_tool.hpp"
+#include "windows/viewport_window.hpp"
+
+#include "config/generated/editor_settings_config.hpp"
+
+#include "erhe_dataformat/dataformat.hpp"
+#include "erhe_geometry/geometry.hpp"
+#include "erhe_imgui/imgui_window.hpp"
+#include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_math/aabb.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_physics/collision_filter.hpp"
+#include "erhe_physics/icollision_shape.hpp"
+#include "erhe_physics/irigid_body.hpp"
+#include "erhe_physics/physics_joint_settings.hpp"
+#include "erhe_physics/physics_material.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_raytrace/iinstance.hpp"
+#include "erhe_raytrace/iscene.hpp"
+#include "erhe_raytrace/ray.hpp"
+#include "erhe_scene/camera.hpp"
+#include "erhe_scene/light.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/mesh_raytrace.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene/trs_transform.hpp"
+
+#include <geogram/mesh/mesh.h>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "scene/generated/scene_settings_serialization.hpp"
+
+namespace editor {
+
+using namespace mcp_server_detail;
+
+// --- Query implementations ---
+
+// Why a composition pass drew or did not draw. A pass that returns early emits
+// no debug marker, so a GPU frame capture shows nothing at all for it and a
+// mis-gated pass is indistinguishable from missing geometry - this reports the
+// gate that actually rejected it.
+auto Mcp_server::query_composition_passes(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    if (m_context.app_rendering == nullptr) {
+        json r = make_text_content("App_rendering not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    json passes = json::array();
+    for (const auto& pass : m_context.app_rendering->composition_passes()) {
+        if (!pass) {
+            continue;
+        }
+        const Composition_pass_data& data = pass->data;
+
+        json mesh_layers = json::array();
+        for (const erhe::scene::Layer_id id : data.mesh_layers) {
+            mesh_layers.push_back(static_cast<uint64_t>(id));
+        }
+
+        passes.push_back({
+            {"name",                 pass->get_name()},
+            {"enabled",              data.enabled},
+            {"has_is_enabled",       static_cast<bool>(data.is_enabled)},
+            {"mesh_layers",          mesh_layers},
+            {"primitive_mode",       static_cast<int>(data.primitive_mode)},
+            {"filter_require_all_bits_set",         data.filter.require_all_bits_set},
+            {"filter_require_at_least_one_bit_set", data.filter.require_at_least_one_bit_set},
+            {"filter_require_all_bits_clear",       data.filter.require_all_bits_clear},
+            {"has_shader_debug_override", data.shader_debug_override.has_value()},
+            // Outcome of this pass's most recent render() call. "submitted"
+            // means it reached draw submission - the meshes may still all have
+            // been rejected by the item filter, which is not visible here.
+            {"last_result",          c_str(pass->get_last_result())},
+            {"last_scene_view",      pass->get_last_scene_view_name()},
+            {"last_mesh_count",      pass->get_last_mesh_count()},
+            {"last_draw_list_entry_count", pass->get_last_draw_list_entry_count()},
+            {"last_cpu_time_us",     pass->get_last_cpu_time_us()},
+            {"total_cpu_time_us",    pass->get_total_cpu_time_us()},
+            {"render_call_count",    pass->get_render_call_count()}
+        });
+    }
+
+    json shadow_nodes = json::array();
+    for (const std::shared_ptr<Shadow_render_node>& node : m_context.app_rendering->get_all_shadow_nodes()) {
+        if (!node) {
+            continue;
+        }
+        shadow_nodes.push_back({
+            {"scene_view",        node->get_scene_view().get_settings_key()},
+            {"last_cpu_time_us",  node->get_last_cpu_time_us()},
+            {"total_cpu_time_us", node->get_total_cpu_time_us()},
+            {"execute_count",     node->get_execute_count()}
+        });
+    }
+
+    json result;
+    result["count"]        = passes.size();
+    result["passes"]       = passes;
+    result["shadow_nodes"] = shadow_nodes;
+    return make_text_content(result.dump(2)).dump();
+}
+
+auto Mcp_server::action_reset_composition_pass_stats(const json& args) -> std::string
+{
+    static_cast<void>(args);
+    if (m_context.app_rendering == nullptr) {
+        return make_error_content("App_rendering not available");
+    }
+    std::size_t count = 0;
+    for (const auto& pass : m_context.app_rendering->composition_passes()) {
+        if (pass) {
+            pass->reset_cpu_time_stats();
+            ++count;
+        }
+    }
+    for (const std::shared_ptr<Shadow_render_node>& node : m_context.app_rendering->get_all_shadow_nodes()) {
+        if (node) {
+            node->reset_cpu_time_stats();
+        }
+    }
+    return make_json_content({{"reset_count", count}}).dump();
+}
+
+auto Mcp_server::query_draw_lists(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    Scene_root* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        return make_error_content("Scene not found: " + scene_name);
+    }
+    erhe::scene_renderer::Draw_list_scene* draw_list_scene = sr->get_draw_list_scene();
+    if (draw_list_scene == nullptr) {
+        return make_json_content({
+            {"scene",          sr->get_name()},
+            {"has_draw_lists", false}
+        }).dump();
+    }
+    const bool verbose = args.value("verbose", false);
+
+    json lists = json::array();
+    std::size_t non_empty_count = 0;
+    std::size_t entry_count     = 0;
+    for (const erhe::scene_renderer::Draw_list& draw_list : draw_list_scene->get_draw_lists()) {
+        entry_count += draw_list.entries.size();
+        if (draw_list.entries.empty()) {
+            continue;
+        }
+        ++non_empty_count;
+        if (verbose) {
+            const erhe::scene_renderer::Draw_list_key& key = draw_list.key;
+            lists.push_back({
+                {"purpose",              erhe::scene_renderer::c_str(key.purpose)},
+                {"mobility",             erhe::scene_renderer::c_str(key.mobility)},
+                {"blending",             erhe::scene_renderer::c_str(key.blending)},
+                {"layer_id",             static_cast<uint64_t>(key.layer_id)},
+                {"negative_determinant", key.negative_determinant},
+                {"entry_count",          draw_list.entries.size()},
+                {"key",                  key.describe()}
+            });
+        }
+    }
+    json result = {
+        {"scene",                  sr->get_name()},
+        {"has_draw_lists",         true},
+        {"object_count",           draw_list_scene->get_object_count()},
+        {"draw_list_count",        draw_list_scene->get_draw_lists().size()},
+        {"non_empty_draw_list_count", non_empty_count},
+        {"entry_count",            entry_count},
+        {"pending_count",          draw_list_scene->get_pending_count()},
+        {"determinant_flip_count", draw_list_scene->get_determinant_flip_count()},
+        // Resolution diagnostics (R17-R22, C5): color environment changes
+        // re-resolve every color list; lazy resolutions are the one-off
+        // first-use paths; material identity changes re-register users.
+        {"color_environment_change_count", draw_list_scene->get_color_environment_change_count()},
+        {"lazy_resolution_count",          draw_list_scene->get_lazy_resolution_count()},
+        {"material_change_count",          draw_list_scene->get_material_change_count()},
+        // Primitive record maintenance (doc/draw_list_performance_improvements.md):
+        // objects whose records were rewritten by the transform hook, the
+        // refresh hook and the draw-time GPU-slot sync.
+        {"transform_update_count",         draw_list_scene->get_transform_update_count()},
+        {"refresh_count",                  draw_list_scene->get_refresh_count()},
+        {"slot_sync_count",                draw_list_scene->get_slot_sync_count()}
+    };
+    if (verbose) {
+        result["draw_lists"] = lists;
+    }
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_set_draw_lists_enabled(const json& args) -> std::string
+{
+    if (m_context.editor_settings == nullptr) {
+        return make_error_content("Editor settings not available");
+    }
+    if (!args.contains("enabled") || !args["enabled"].is_boolean()) {
+        return make_error_content("enabled (boolean) is required");
+    }
+    const bool enabled = args["enabled"].get<bool>();
+    m_context.editor_settings->use_draw_lists = enabled;
+    return make_json_content({
+        {"use_draw_lists", m_context.editor_settings->use_draw_lists}
+    }).dump();
+}
+
+auto Mcp_server::query_list_scenes(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    if (!m_context.app_scenes) {
+        return make_text_content("No scenes available").dump();
+    }
+
+    json scenes = json::array();
+    for (const auto& sr : m_context.app_scenes->get_scene_roots()) {
+        const auto& scene = sr->get_scene();
+        const auto  library = sr->get_content_library();
+
+        int material_count = 0;
+        if (library && library->materials) {
+            material_count = static_cast<int>(library->materials->get_all<erhe::primitive::Material>().size());
+        }
+
+        int light_count = 0;
+        for (const auto& ll : scene.get_light_layers()) {
+            light_count += static_cast<int>(ll->lights.size());
+        }
+
+        scenes.push_back({
+            {"name",                sr->get_name()},
+            {"id",                  scene.get_id()}, // Scene item id (selectable, issue #240)
+            {"node_count",          static_cast<int>(scene.get_node_count())},
+            {"camera_count",        static_cast<int>(scene.get_cameras().size())},
+            {"light_count",         light_count},
+            {"material_count",      material_count},
+            {"trigger_event_count", sr->get_trigger_event_count()}
+        });
+    }
+
+    return make_json_content({{"scenes", scenes}}).dump();
+}
+
+auto Mcp_server::query_scene_nodes(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const auto& scene = sr->get_scene();
+    json nodes = json::array();
+    scene.for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
+        const auto& trs = node->parent_from_node_transform();
+        const glm::vec3 t = trs.get_translation();
+        const glm::quat r = trs.get_rotation();
+        const glm::vec3 s = trs.get_scale();
+
+        json attachment_types = json::array();
+        for (const auto& att : node->get_attachments()) {
+            attachment_types.push_back(std::string{att->get_type_name()});
+        }
+
+        auto parent_node = node->get_parent_node();
+
+        json tags_arr = json::array();
+        for (const auto& tag : node->get_tags()) {
+            tags_arr.push_back(tag);
+        }
+
+        nodes.push_back({
+            {"name",             node->get_name()},
+            {"id",               node->get_id()},
+            {"parent",           parent_node ? parent_node->get_name() : ""},
+            {"parent_id",        parent_node ? json(parent_node->get_id()) : json()},
+            {"position",         {t.x, t.y, t.z}},
+            {"rotation_xyzw",    {r.x, r.y, r.z, r.w}},
+            {"scale",            {s.x, s.y, s.z}},
+            {"attachment_types", attachment_types},
+            {"locked",           node->is_lock_edit()},
+            {"import_root",      (node->get_flag_bits() & erhe::Item_flags::import_root) != 0},
+            {"tags",             tags_arr}
+        });
+        return true;
+    });
+
+    return make_json_content({{"nodes", nodes}}).dump();
+}
+
+auto Mcp_server::query_node_details(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    const std::string node_name  = args.value("node_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const auto& scene = sr->get_scene();
+    std::shared_ptr<erhe::scene::Node> found_node;
+    scene.for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
+        if (node->get_name() == node_name) {
+            found_node = node;
+            return false;
+        }
+        return true;
+    });
+    if (!found_node) {
+        json r = make_text_content("Node not found: " + node_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const auto& trs = found_node->parent_from_node_transform();
+    const glm::vec3 t = trs.get_translation();
+    const glm::quat r = trs.get_rotation();
+    const glm::vec3 s = trs.get_scale();
+    const glm::vec3 k = trs.get_skew();
+    const auto& world_trs = found_node->world_from_node_transform();
+    const glm::vec3 wt = world_trs.get_translation();
+    const glm::quat wr = world_trs.get_rotation();
+    const glm::vec3 ws = world_trs.get_scale();
+    const glm::vec3 wk = world_trs.get_skew();
+    const glm::vec4 wp = found_node->position_in_world();
+
+    json attachments = json::array();
+    for (const auto& att : found_node->get_attachments()) {
+        json att_json = {
+            {"type", std::string{att->get_type_name()}},
+            {"name", att->get_name()},
+            {"id",   att->get_id()}
+        };
+
+        auto mesh = std::dynamic_pointer_cast<erhe::scene::Mesh>(att);
+        if (mesh) {
+            att_json["primitive_count"] = static_cast<int>(mesh->get_primitives().size());
+            json mat_names = json::array();
+            int total_vertices = 0;
+            int total_facets = 0;
+            for (const auto& prim : mesh->get_primitives()) {
+                mat_names.push_back(prim.material ? prim.material->get_name() : "(none)");
+                if (prim.primitive && prim.primitive->render_shape) {
+                    const auto& geom = prim.primitive->render_shape->get_geometry_const();
+                    if (geom) {
+                        total_vertices += static_cast<int>(geom->get_mesh().vertices.nb());
+                        total_facets   += static_cast<int>(geom->get_mesh().facets.nb());
+                    }
+                }
+            }
+            att_json["materials"]     = mat_names;
+            att_json["vertex_count"]  = total_vertices;
+            att_json["facet_count"]   = total_facets;
+            // World-space bounds. For a skinned mesh these are the POSED bounds
+            // computed from the joint transforms - the mesh node's own transform
+            // does not affect them, because skinning ignores it.
+            const erhe::math::Aabb aabb_world = mesh->get_aabb_world();
+            if (aabb_world.is_valid()) {
+                att_json["world_aabb"] = {
+                    {"min", json::array({aabb_world.min.x, aabb_world.min.y, aabb_world.min.z})},
+                    {"max", json::array({aabb_world.max.x, aabb_world.max.y, aabb_world.max.z})}
+                };
+                att_json["skinned"] = static_cast<bool>(mesh->skin);
+            }
+            // Layer diagnostics: layer_id is the mesh's target layer;
+            // in_layer_id is the layer that actually contains it (they
+            // diverge when the mesh was registered into the scene before
+            // its layer_id was set - such a mesh does not render).
+            att_json["layer_id"] = mesh->layer_id;
+            json in_layer_id{};
+            for (const auto& mesh_layer : scene.get_mesh_layers()) {
+                const auto& layer_meshes = mesh_layer->meshes;
+                if (std::find(layer_meshes.begin(), layer_meshes.end(), mesh) != layer_meshes.end()) {
+                    in_layer_id = mesh_layer->id;
+                    break;
+                }
+            }
+            att_json["in_layer_id"] = in_layer_id;
+        }
+
+        auto geometry_graph_mesh = std::dynamic_pointer_cast<Geometry_graph_mesh>(att);
+        if (geometry_graph_mesh) {
+            const std::shared_ptr<Graph_mesh>& graph_mesh = geometry_graph_mesh->get_graph_mesh();
+            att_json["graph_mesh"]    = graph_mesh ? graph_mesh->get_name() : "";
+            att_json["graph_mesh_id"] = graph_mesh ? json(graph_mesh->get_id()) : json(nullptr);
+        }
+
+        auto camera = std::dynamic_pointer_cast<erhe::scene::Camera>(att);
+        if (camera) {
+            att_json["exposure"]     = camera->get_exposure();
+            att_json["shadow_range"] = camera->get_shadow_range();
+        }
+
+        auto light = std::dynamic_pointer_cast<erhe::scene::Light>(att);
+        if (light) {
+            const char* type_str = (light->type == erhe::scene::Light_type::directional) ? "directional"
+                                 : (light->type == erhe::scene::Light_type::point)       ? "point"
+                                 : (light->type == erhe::scene::Light_type::spot)         ? "spot"
+                                 : "unknown";
+            att_json["light_type"] = type_str;
+            att_json["color"]      = {light->color.x, light->color.y, light->color.z};
+            att_json["intensity"]  = light->intensity;
+            att_json["range"]      = light->range;
+        }
+
+        auto bp = std::dynamic_pointer_cast<Brush_placement>(att);
+        if (bp) {
+            auto brush = bp->get_brush();
+            if (brush) {
+                att_json["brush_name"] = brush->get_name();
+                att_json["brush_id"]   = brush->get_id();
+            }
+        }
+
+        auto node_physics = std::dynamic_pointer_cast<Node_physics>(att);
+        if (node_physics) {
+            att_json["motion_mode"]      = motion_mode_to_string(node_physics->get_motion_mode());
+            att_json["is_trigger"]       = node_physics->is_trigger();
+            att_json["gravity_factor"]   = node_physics->get_gravity_factor();
+            att_json["wind_receptivity"] = node_physics->get_wind_receptivity();
+            const std::shared_ptr<erhe::physics::ICollision_shape>& shape = node_physics->get_collision_shape();
+            att_json["collision_shape"] = shape ? shape->describe() : "";
+            const std::shared_ptr<erhe::physics::Physics_material>& physics_material = node_physics->get_physics_material();
+            att_json["physics_material"] = physics_material ? physics_material->get_name() : "";
+            const std::shared_ptr<erhe::physics::Collision_filter>& collision_filter = node_physics->get_collision_filter();
+            att_json["collision_filter"] = collision_filter ? collision_filter->get_name() : "";
+            const erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
+            if (rigid_body != nullptr) {
+                att_json["mass"]        = rigid_body->get_mass();
+                att_json["friction"]    = rigid_body->get_friction();
+                att_json["restitution"] = rigid_body->get_restitution();
+                att_json["is_active"]   = rigid_body->is_active();
+            }
+        }
+
+        auto node_joint = std::dynamic_pointer_cast<Node_joint>(att);
+        if (node_joint) {
+            const std::shared_ptr<erhe::scene::Node> connected = node_joint->get_connected_node();
+            att_json["connected_node"]   = connected ? connected->get_name() : "(world)";
+            const std::shared_ptr<erhe::physics::Physics_joint_settings>& settings = node_joint->get_settings();
+            att_json["joint_settings"]   = settings ? settings->get_name() : "";
+            att_json["enable_collision"] = node_joint->get_enable_collision();
+            att_json["constraint"]       = (node_joint->get_constraint() != nullptr) ? "created" : "pending";
+        }
+
+        attachments.push_back(att_json);
+    }
+
+    json children = json::array();
+    for (const auto& child : found_node->get_children()) {
+        children.push_back(child->get_name());
+    }
+
+    // Merged world AABB of every mesh in this node's SUBTREE (this node
+    // included): one call gives camera auto-fit the whole object's bounds
+    // instead of a per-mesh-node get_node_details walk.
+    erhe::math::Aabb subtree_aabb{};
+    {
+        std::function<void(const std::shared_ptr<erhe::scene::Node>&)> merge_subtree =
+            [&](const std::shared_ptr<erhe::scene::Node>& node) {
+                for (const auto& att : node->get_attachments()) {
+                    const auto mesh = std::dynamic_pointer_cast<erhe::scene::Mesh>(att);
+                    if (mesh) {
+                        const erhe::math::Aabb aabb_world = mesh->get_aabb_world();
+                        if (aabb_world.is_valid()) {
+                            subtree_aabb.include(aabb_world);
+                        }
+                    }
+                }
+                for (const auto& child : node->get_children()) {
+                    const auto child_node = std::dynamic_pointer_cast<erhe::scene::Node>(child);
+                    if (child_node) {
+                        merge_subtree(child_node);
+                    }
+                }
+            };
+        merge_subtree(found_node);
+    }
+
+    auto parent_node = found_node->get_parent_node();
+
+    json result = {
+        {"name",           found_node->get_name()},
+        {"id",             found_node->get_id()},
+        {"parent",         parent_node ? parent_node->get_name() : ""},
+        {"world_position", {wp.x, wp.y, wp.z}},
+        {"local_transform", {
+            {"translation",   {t.x, t.y, t.z}},
+            {"rotation_xyzw", {r.x, r.y, r.z, r.w}},
+            {"scale",         {s.x, s.y, s.z}},
+            {"skew",          {k.x, k.y, k.z}}
+        }},
+        {"world_transform", {
+            {"translation",   {wt.x, wt.y, wt.z}},
+            {"rotation_xyzw", {wr.x, wr.y, wr.z, wr.w}},
+            {"scale",         {ws.x, ws.y, ws.z}},
+            {"skew",          {wk.x, wk.y, wk.z}}
+        }},
+        {"attachments",    attachments},
+        {"children",       children},
+        {"subtree_world_aabb", subtree_aabb.is_valid()
+            ? json{
+                {"min", json::array({subtree_aabb.min.x, subtree_aabb.min.y, subtree_aabb.min.z})},
+                {"max", json::array({subtree_aabb.max.x, subtree_aabb.max.y, subtree_aabb.max.z})}
+            }
+            : json(nullptr)},
+        {"visible",        found_node->is_visible()},
+        {"selected",       found_node->is_selected()},
+        {"locked",         found_node->is_lock_edit()},
+        {"tags",           [&]() { json t = json::array(); for (const auto& tag : found_node->get_tags()) t.push_back(tag); return t; }()}
+    };
+
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::query_scene_cameras(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    // "selectable": offered in camera-selection UI (see get_selectable_cameras);
+    // false for cameras embedded in content (prefab instances, import wrappers).
+    const std::vector<std::shared_ptr<erhe::scene::Camera>> selectable_cameras = get_selectable_cameras(sr->get_scene());
+    json cameras = json::array();
+    for (const auto& camera : sr->get_scene().get_cameras()) {
+        const auto* node = camera->get_node();
+        const erhe::scene::Projection* projection = camera->projection();
+        const bool selectable = std::find(selectable_cameras.begin(), selectable_cameras.end(), camera) != selectable_cameras.end();
+        cameras.push_back({
+            {"name",         camera->get_name()},
+            {"id",           camera->get_id()},
+            {"node",         node ? node->get_name() : ""},
+            {"exposure",     camera->get_exposure()},
+            {"shadow_range", camera->get_shadow_range()},
+            {"fov_y",        (projection != nullptr) ? projection->fov_y : 0.0f},
+            {"selectable",   selectable}
+        });
+    }
+
+    return make_json_content({{"cameras", cameras}}).dump();
+}
+
+auto Mcp_server::query_viewports(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    if (m_context.scene_views == nullptr) {
+        return make_text_content("No scene views available").dump();
+    }
+
+    json viewports = json::array();
+    for (const std::shared_ptr<Viewport_window>& viewport_window : m_context.scene_views->get_viewport_windows()) {
+        const std::shared_ptr<Viewport_scene_view> scene_view = viewport_window->viewport_scene_view();
+        const std::shared_ptr<Scene_root> scene_root = scene_view ? scene_view->get_scene_root() : std::shared_ptr<Scene_root>{};
+        const std::shared_ptr<erhe::scene::Camera> camera = scene_view ? scene_view->get_camera() : std::shared_ptr<erhe::scene::Camera>{};
+        viewports.push_back({
+            {"title",  viewport_window->get_title()},
+            {"scene",  scene_root ? scene_root->get_name() : ""},
+            {"camera", camera ? camera->get_name() : ""}
+        });
+    }
+
+    return make_json_content({{"viewports", viewports}}).dump();
+}
+
+// Headless pick probe: arm the pointer on a viewport, run the same hover
+// update the interactive pointer path runs (raytrace + id-render merge), and
+// report every hover slot plus the nearest pickable hit - resolved through
+// get_pickable_slot_mask(), i.e. the same slot-ownership rule a viewport
+// click uses (in bone selection mode the bone slot replaces content).
+//
+// The id-render readback is asynchronous: the id pass renders at the armed
+// pointer position and its CPU copy settles a few frames later, so the FIRST
+// call at a position reports raytrace hits only. The armed position persists,
+// which keeps the id pass rendering there - call again after a few frames for
+// the merged result that includes the id path (skinned meshes).
+auto Mcp_server::query_pick_at(const json& args) -> std::string
+{
+    if (m_context.scene_views == nullptr) {
+        json r = make_text_content("No scene views available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    if (!args.contains("x") || !args.contains("y")) {
+        json r = make_text_content("Missing required arguments: x, y (viewport pixel coordinates, origin at bottom-left)");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const float       x              = args.value("x", 0.0f);
+    const float       y              = args.value("y", 0.0f);
+    const std::string viewport_title = args.value("viewport", "");
+
+    std::shared_ptr<Viewport_scene_view> scene_view{};
+    for (const std::shared_ptr<Viewport_window>& viewport_window : m_context.scene_views->get_viewport_windows()) {
+        const std::shared_ptr<Viewport_scene_view> candidate = viewport_window->viewport_scene_view();
+        if (!candidate) {
+            continue;
+        }
+        if (viewport_title.empty() || (viewport_window->get_title() == viewport_title)) {
+            scene_view = candidate;
+            break;
+        }
+    }
+    if (!scene_view) {
+        json r = make_text_content(
+            viewport_title.empty()
+                ? "No viewport with a scene view found"
+                : "Viewport not found: " + viewport_title + " (see get_viewports)"
+        );
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    // The same state the interactive path feeds from ImGui hover; update_hover
+    // requires both. The per-frame ImGui draw resets the hovered flag when no
+    // real pointer is over the window, but the position persists - that is
+    // what keeps App_rendering::render_id() rendering at it between calls.
+    scene_view->update_pointer_2d_position(glm::vec2{x, y});
+    scene_view->set_is_scene_view_hovered(true);
+    // Render the ID pass at the armed position for the next few frames: the
+    // per-frame ImGui draw resets the hovered flag before rendering, so
+    // without this the ID pass never runs headlessly and its async readback
+    // would never settle for the second call.
+    scene_view->arm_pick_probe(8);
+    scene_view->update_hover();
+
+    const auto entry_to_json = [this](const Hover_entry& entry) -> json {
+        json j{
+            {"slot",  Hover_entry::slot_names[entry.slot]},
+            {"valid", entry.valid}
+        };
+        if (!entry.valid) {
+            return j;
+        }
+        const std::shared_ptr<erhe::scene::Mesh> mesh = entry.scene_mesh_weak.lock();
+        if (mesh) {
+            j["mesh"] = mesh->get_name();
+            const erhe::scene::Node* node = mesh->get_node();
+            j["node"] = (node != nullptr) ? node->get_name() : "";
+            // A bone-slot hit selects the JOINT, not the proxy; report what a
+            // click would actually select.
+            if ((entry.slot == Hover_entry::bone_slot) && (m_context.bone_visualization != nullptr)) {
+                const std::shared_ptr<erhe::scene::Node> joint = m_context.bone_visualization->get_joint_for_proxy(mesh.get());
+                j["joint"] = joint ? joint->get_name() : "";
+            }
+        }
+        const std::shared_ptr<Grid> grid = entry.grid_weak.lock();
+        if (grid) {
+            j["grid"] = grid->get_name();
+        }
+        if (entry.position.has_value()) {
+            const glm::vec3& p = entry.position.value();
+            j["position"] = {p.x, p.y, p.z};
+        }
+        if (entry.normal.has_value()) {
+            const glm::vec3& n = entry.normal.value();
+            j["normal"] = {n.x, n.y, n.z};
+        }
+        if (entry.facet != GEO::NO_INDEX) {
+            j["facet"] = entry.facet;
+        }
+        return j;
+    };
+
+    json slots = json::array();
+    for (std::size_t slot = 0; slot < Hover_entry::slot_count; ++slot) {
+        slots.push_back(entry_to_json(scene_view->get_hover(slot)));
+    }
+
+    // Same mask Hover_tool::get_hover_node() uses for the pick target.
+    const Hover_entry* nearest = scene_view->get_nearest_hover(
+        scene_view->get_pickable_slot_mask(Hover_entry::content_bit | Hover_entry::rendertarget_bit)
+    );
+    json nearest_json{};
+    if ((nearest != nullptr) && nearest->valid) {
+        nearest_json = entry_to_json(*nearest);
+    }
+
+    return make_json_content({
+        {"x",       x},
+        {"y",       y},
+        {"slots",   slots},
+        {"nearest", nearest_json}
+    }).dump();
+}
+
+auto Mcp_server::query_scene_settings(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+    const erhe::scene::Scene& scene          = sr->get_scene();
+    const Scene_settings&     scene_settings = sr->get_scene_settings();
+    // Per-scene setting overrides (#239): null when every field is at its
+    // "use the editor-global default" state, else the codegen-serialized
+    // Scene_settings object (same shape ERHE_scene persists).
+    json settings_json{};
+    if (!is_default(scene_settings)) {
+        settings_json = json::parse(serialize(scene_settings, 0), nullptr, false);
+        if (settings_json.is_discarded()) {
+            json r = make_text_content("Scene_settings serialization did not parse");
+            r["isError"] = true;
+            return r.dump();
+        }
+    }
+    return make_json_content({
+        {"scene_name",     sr->get_name()},
+        {"ambient_light",  {scene.ambient_light.x, scene.ambient_light.y, scene.ambient_light.z, scene.ambient_light.w}},
+        {"enable_physics", sr->has_physics_world()},
+        {"settings",       settings_json}
+    }).dump();
+}
+
+auto Mcp_server::query_scene_lights(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    // Light slot / shadow map assignment as of the last shadow pass of a view
+    // showing this scene, under the active graphics preset's per light type
+    // limits: shaded = got a light UBO slot (within *_shadow_light_count +
+    // *_unshadowed_light_count of its type), shadow_mapped = also got a shadow
+    // layer (within *_shadow_light_count). Shadow casters beyond the shadow
+    // limit report cast_shadow true / shadow_mapped false; lights beyond the
+    // unshadowed limit report shaded false.
+    const erhe::scene_renderer::Light_projections* light_projections = nullptr;
+    if (m_context.app_rendering != nullptr) {
+        for (const std::shared_ptr<Shadow_render_node>& shadow_node : m_context.app_rendering->get_all_shadow_nodes()) {
+            if (!shadow_node) {
+                continue;
+            }
+            const std::shared_ptr<Scene_root> node_scene_root = shadow_node->get_scene_view().get_scene_root();
+            if (node_scene_root.get() == sr) {
+                light_projections = &shadow_node->get_light_projections();
+                break;
+            }
+        }
+    }
+
+    json lights = json::array();
+    for (const auto& ll : sr->get_scene().get_light_layers()) {
+        for (const auto& light : ll->lights) {
+            const auto* node = light->get_node();
+            const char* type_str = (light->type == erhe::scene::Light_type::directional) ? "directional"
+                                 : (light->type == erhe::scene::Light_type::point)       ? "point"
+                                 : (light->type == erhe::scene::Light_type::spot)         ? "spot"
+                                 : "unknown";
+            json light_json{
+                {"name",        light->get_name()},
+                {"id",          light->get_id()},
+                {"node",        node ? node->get_name() : ""},
+                {"type",        type_str},
+                {"color",       {light->color.x, light->color.y, light->color.z}},
+                {"intensity",   light->intensity},
+                {"range",       light->range},
+                {"cast_shadow", light->cast_shadow}
+            };
+            const erhe::scene::Light_projection_transforms* transforms = (light_projections != nullptr)
+                ? light_projections->get_light_projection_transforms_for_light(light.get())
+                : nullptr;
+            if (transforms != nullptr) {
+                constexpr std::size_t no_index = std::numeric_limits<std::size_t>::max();
+                light_json["shaded"]        = (transforms->index != no_index);
+                light_json["shadow_mapped"] = transforms->is_shadow_mapped();
+                if (transforms->shadow_index != no_index) {
+                    light_json["shadow_index"] = transforms->shadow_index;
+                }
+                if (transforms->point_shadow_index != no_index) {
+                    light_json["point_shadow_index"] = transforms->point_shadow_index;
+                }
+            }
+            lights.push_back(light_json);
+        }
+    }
+
+    return make_json_content({{"lights", lights}}).dump();
+}
+
+auto Mcp_server::query_raycast(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const json origin_json    = args.value("origin",    json::array());
+    const json direction_json = args.value("direction", json::array());
+    if ((origin_json.size() != 3) || (direction_json.size() != 3)) {
+        json r = make_text_content("raycast needs origin [x, y, z] and direction [x, y, z]");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const glm::vec3 ray_origin{
+        origin_json.at(0).get<float>(),
+        origin_json.at(1).get<float>(),
+        origin_json.at(2).get<float>()
+    };
+    glm::vec3 ray_direction{
+        direction_json.at(0).get<float>(),
+        direction_json.at(1).get<float>(),
+        direction_json.at(2).get<float>()
+    };
+    if (glm::length(ray_direction) == 0.0f) {
+        json r = make_text_content("raycast direction must be non-zero");
+        r["isError"] = true;
+        return r.dump();
+    }
+    ray_direction = glm::normalize(ray_direction);
+
+    // Same defaults as Scene_view::update_hover_with_raytrace(): the
+    // pickable_static mask sees everything the interactive hover ray sees.
+    erhe::raytrace::IScene& rt_scene = sr->get_raytrace_scene();
+    rt_scene.commit();
+    erhe::raytrace::Ray ray{
+        .origin    = ray_origin,
+        .t_near    = 0.0f,
+        .direction = ray_direction,
+        .time      = 0.0f,
+        .t_far     = args.value("max_distance", 9999.0f),
+        .mask      = args.value("mask", Raytrace_node_mask::pickable_static),
+        .id        = 0,
+        .flags     = 0
+    };
+    erhe::raytrace::Hit hit;
+    rt_scene.intersect(ray, hit);
+
+    if (hit.instance == nullptr) {
+        return make_json_content({{"hit", false}}).dump();
+    }
+
+    auto* raytrace_primitive = static_cast<erhe::scene::Raytrace_primitive*>(hit.instance->get_user_data());
+    if ((raytrace_primitive == nullptr) || (raytrace_primitive->mesh == nullptr)) {
+        json r = make_text_content("raycast hit an instance without Raytrace_primitive user data");
+        r["isError"] = true;
+        return r.dump();
+    }
+    erhe::scene::Mesh* mesh = raytrace_primitive->mesh;
+    erhe::scene::Node* node = mesh->get_node();
+    const glm::vec3 position = ray.origin + ray.t_far * ray.direction;
+    return make_json_content({
+        {"hit",             true},
+        {"mesh_name",       mesh->get_name()},
+        {"mesh_id",         mesh->get_id()},
+        {"node_name",       node ? node->get_name() : ""},
+        {"node_id",         node ? node->get_id() : 0},
+        {"primitive_index", raytrace_primitive->primitive_index},
+        {"distance",        ray.t_far},
+        {"position",        {position.x, position.y, position.z}},
+        {"normal",          {hit.normal.x, hit.normal.y, hit.normal.z}}
+    }).dump();
+}
+
+namespace {
+
+// Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5).
+auto closest_point_on_triangle(const glm::vec3 p, const glm::vec3 a, const glm::vec3 b, const glm::vec3 c) -> glm::vec3
+{
+    const glm::vec3 ab = b - a;
+    const glm::vec3 ac = c - a;
+    const glm::vec3 ap = p - a;
+    const float d1 = glm::dot(ab, ap);
+    const float d2 = glm::dot(ac, ap);
+    if ((d1 <= 0.0f) && (d2 <= 0.0f)) {
+        return a;
+    }
+    const glm::vec3 bp = p - b;
+    const float d3 = glm::dot(ab, bp);
+    const float d4 = glm::dot(ac, bp);
+    if ((d3 >= 0.0f) && (d4 <= d3)) {
+        return b;
+    }
+    const float vc = d1 * d4 - d3 * d2;
+    if ((vc <= 0.0f) && (d1 >= 0.0f) && (d3 <= 0.0f)) {
+        return a + (d1 / (d1 - d3)) * ab;
+    }
+    const glm::vec3 cp = p - c;
+    const float d5 = glm::dot(ab, cp);
+    const float d6 = glm::dot(ac, cp);
+    if ((d6 >= 0.0f) && (d5 <= d6)) {
+        return c;
+    }
+    const float vb = d5 * d2 - d1 * d6;
+    if ((vb <= 0.0f) && (d2 >= 0.0f) && (d6 <= 0.0f)) {
+        return a + (d2 / (d2 - d6)) * ac;
+    }
+    const float va = d3 * d6 - d5 * d4;
+    if ((va <= 0.0f) && ((d4 - d3) >= 0.0f) && ((d5 - d6) >= 0.0f)) {
+        return b + ((d4 - d3) / ((d4 - d3) + (d5 - d6))) * (c - b);
+    }
+    const float denom = 1.0f / (va + vb + vc);
+    return a + ab * (vb * denom) + ac * (vc * denom);
+}
+
+} // anonymous namespace
+
+// Batched geometry queries: placement scripts need MANY surface probes per
+// object (a stripe run samples the hull every meter), so the API takes an
+// array of queries and answers them in one request instead of one call each.
+auto Mcp_server::query_geometry_batch(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+    const json queries = args.value("queries", json::array());
+    if (!queries.is_array() || queries.empty()) {
+        json r = make_text_content("geometry_query needs a non-empty queries array");
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    erhe::raytrace::IScene& rt_scene = sr->get_raytrace_scene();
+    bool rt_committed = false;  // committed once, lazily, for the whole batch
+    const auto& scene = sr->get_scene();
+
+    json results = json::array();
+    for (const json& q : queries) {
+        const std::string type = q.value("type", "");
+        if (type == "raycast") {
+            const json origin_json    = q.value("origin",    json::array());
+            const json direction_json = q.value("direction", json::array());
+            if ((origin_json.size() != 3) || (direction_json.size() != 3)) {
+                results.push_back({{"error", "raycast needs origin [x, y, z] and direction [x, y, z]"}});
+                continue;
+            }
+            const glm::vec3 ray_origin{origin_json.at(0).get<float>(), origin_json.at(1).get<float>(), origin_json.at(2).get<float>()};
+            glm::vec3 ray_direction{direction_json.at(0).get<float>(), direction_json.at(1).get<float>(), direction_json.at(2).get<float>()};
+            if (glm::length(ray_direction) == 0.0f) {
+                results.push_back({{"error", "raycast direction must be non-zero"}});
+                continue;
+            }
+            ray_direction = glm::normalize(ray_direction);
+            if (!rt_committed) {
+                rt_scene.commit();
+                rt_committed = true;
+            }
+            erhe::raytrace::Ray ray{
+                .origin    = ray_origin,
+                .t_near    = 0.0f,
+                .direction = ray_direction,
+                .time      = 0.0f,
+                .t_far     = q.value("max_distance", 9999.0f),
+                .mask      = q.value("mask", Raytrace_node_mask::pickable_static),
+                .id        = 0,
+                .flags     = 0
+            };
+            erhe::raytrace::Hit hit;
+            rt_scene.intersect(ray, hit);
+            if (hit.instance == nullptr) {
+                results.push_back({{"hit", false}});
+                continue;
+            }
+            auto* raytrace_primitive = static_cast<erhe::scene::Raytrace_primitive*>(hit.instance->get_user_data());
+            if ((raytrace_primitive == nullptr) || (raytrace_primitive->mesh == nullptr)) {
+                results.push_back({{"error", "raycast hit an instance without Raytrace_primitive user data"}});
+                continue;
+            }
+            erhe::scene::Mesh* mesh = raytrace_primitive->mesh;
+            erhe::scene::Node* node = mesh->get_node();
+            const glm::vec3 position = ray.origin + ray.t_far * ray.direction;
+            // The raytracer's hit normal is the unnormalized geometric
+            // normal (triangle-area scaled); a placement API wants a unit
+            // vector like the closest_point branch returns.
+            glm::vec3 hit_normal = hit.normal;
+            const float hit_normal_len = glm::length(hit_normal);
+            if (hit_normal_len > 0.0f) {
+                hit_normal /= hit_normal_len;
+            }
+            results.push_back({
+                {"hit",       true},
+                {"node_name", node ? node->get_name() : ""},
+                {"node_id",   node ? node->get_id() : 0},
+                {"mesh_name", mesh->get_name()},
+                {"distance",  ray.t_far},
+                {"position",  {position.x, position.y, position.z}},
+                {"normal",    {hit_normal.x, hit_normal.y, hit_normal.z}}
+            });
+        } else if (type == "closest_point") {
+            const json point_json = q.value("point", json::array());
+            if (point_json.size() != 3) {
+                results.push_back({{"error", "closest_point needs point [x, y, z]"}});
+                continue;
+            }
+            const glm::vec3 p{point_json.at(0).get<float>(), point_json.at(1).get<float>(), point_json.at(2).get<float>()};
+            const uint64_t    want_id   = q.value("node_id", static_cast<uint64_t>(0));
+            const std::string want_name = q.value("node_name", "");
+
+            float            best_d2 = std::numeric_limits<float>::max();
+            glm::vec3        best_position{0.0f};
+            glm::vec3        best_normal{0.0f};
+            const erhe::scene::Node* best_node = nullptr;
+            bool             mesh_seen = false;
+            scene.for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
+                if ((want_id != 0) && (node->get_id() != want_id)) {
+                    return true;
+                }
+                if (!want_name.empty() && (node->get_name() != want_name)) {
+                    return true;
+                }
+                const auto mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+                if (!mesh) {
+                    return true;
+                }
+                mesh_seen = true;
+                const glm::mat4 world_from_node = node->world_from_node();
+                for (const erhe::scene::Mesh_primitive& prim : mesh->get_primitives()) {
+                    if (!prim.primitive || !prim.primitive->render_shape) {
+                        continue;
+                    }
+                    const std::shared_ptr<erhe::geometry::Geometry> geometry = prim.primitive->render_shape->get_geometry();
+                    if (!geometry) {
+                        continue;
+                    }
+                    const GEO::Mesh& geo_mesh = geometry->get_mesh();
+                    for (GEO::index_t facet : geo_mesh.facets) {
+                        const GEO::index_t corner_count = geo_mesh.facets.nb_corners(facet);
+                        if (corner_count < 3) {
+                            continue;
+                        }
+                        const GEO::vec3f p0 = erhe::geometry::get_pointf(geo_mesh.vertices, geo_mesh.facets.vertex(facet, 0));
+                        const glm::vec3 a = glm::vec3{world_from_node * glm::vec4{p0.x, p0.y, p0.z, 1.0f}};
+                        for (GEO::index_t i = 1; (i + 1) < corner_count; ++i) {
+                            const GEO::vec3f p1 = erhe::geometry::get_pointf(geo_mesh.vertices, geo_mesh.facets.vertex(facet, i));
+                            const GEO::vec3f p2 = erhe::geometry::get_pointf(geo_mesh.vertices, geo_mesh.facets.vertex(facet, i + 1));
+                            const glm::vec3 b = glm::vec3{world_from_node * glm::vec4{p1.x, p1.y, p1.z, 1.0f}};
+                            const glm::vec3 c = glm::vec3{world_from_node * glm::vec4{p2.x, p2.y, p2.z, 1.0f}};
+                            const glm::vec3 candidate = closest_point_on_triangle(p, a, b, c);
+                            const glm::vec3 offset = candidate - p;
+                            const float d2 = glm::dot(offset, offset);
+                            if (d2 < best_d2) {
+                                best_d2       = d2;
+                                best_position = candidate;
+                                best_normal   = glm::cross(b - a, c - a);
+                                best_node     = node.get();
+                            }
+                        }
+                    }
+                }
+                return true;
+            });
+            if (best_node == nullptr) {
+                results.push_back({
+                    {"found", false},
+                    {"error", mesh_seen ? "matched mesh has no triangles" : "no matching mesh node"}
+                });
+                continue;
+            }
+            const float normal_len = glm::length(best_normal);
+            if (normal_len > 0.0f) {
+                best_normal /= normal_len;
+            }
+            results.push_back({
+                {"found",     true},
+                {"node_name", best_node->get_name()},
+                {"node_id",   best_node->get_id()},
+                {"position",  {best_position.x, best_position.y, best_position.z}},
+                {"normal",    {best_normal.x, best_normal.y, best_normal.z}},
+                {"distance",  std::sqrt(best_d2)}
+            });
+        } else {
+            results.push_back({{"error", "unknown query type: '" + type + "' (raycast | closest_point)"}});
+        }
+    }
+    return make_json_content({{"results", results}}).dump();
+}
+
+auto Mcp_server::query_shadow_fit_debug(const json& args) -> std::string
+{
+    static_cast<void>(args);
+    if (m_context.app_rendering == nullptr) {
+        json r = make_text_content("App_rendering not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const std::vector<std::shared_ptr<Shadow_render_node>>& shadow_nodes = m_context.app_rendering->get_all_shadow_nodes();
+    json nodes = json::array();
+    for (std::size_t i = 0; i < shadow_nodes.size(); ++i) {
+        const std::shared_ptr<Shadow_render_node>& node = shadow_nodes[i];
+        if (!node) {
+            continue;
+        }
+        json node_json = dump_shadow_fit_debug(node->get_light_projections());
+        node_json["shadow_node_index"] = i;
+        nodes.push_back(node_json);
+    }
+
+    return make_json_content({{"shadow_nodes", nodes}}).dump();
+}
+
+auto Mcp_server::query_scene_materials(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    auto library = sr->get_content_library();
+    if (!library || !library->materials) {
+        return make_json_content({{"materials", json::array()}}).dump();
+    }
+
+    json materials = json::array();
+    const auto& mat_list = library->materials->get_all<erhe::primitive::Material>();
+    for (const auto& mat : mat_list) {
+        materials.push_back({
+            {"name",       mat->get_name()},
+            {"id",         mat->get_id()},
+            {"base_color", {mat->data.base_color.x, mat->data.base_color.y, mat->data.base_color.z}},
+            {"metallic",   mat->data.metallic},
+            {"roughness",  mat->data.roughness.x},
+            {"emissive",   {mat->data.emissive.x, mat->data.emissive.y, mat->data.emissive.z}}
+        });
+    }
+
+    return make_json_content({{"materials", materials}}).dump();
+}
+
+auto Mcp_server::query_server_info(const json& args) -> std::string
+{
+    static_cast<void>(args);
+    return make_json_content({
+        {"name",    "erhe-editor"},
+        {"version", "0.2.0"},
+        {"pid",     get_process_id()},
+        {"build",   c_mcp_build_timestamp},
+        {"port",    m_port}
+    }).dump();
+}
+
+auto Mcp_server::action_set_window_visibility(const json& args) -> std::string
+{
+    // Show / hide an editor ImGui window by its title. Windows do per-frame
+    // work only while visible (e.g. the Inventory window resolves pending
+    // slot asset references in imgui()), so headless verification needs a
+    // way to open windows the procedural default layout leaves closed.
+    if (m_context.imgui_windows == nullptr) {
+        json r = make_text_content("ImGui windows not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const std::string title   = args.value("title", "");
+    const bool        visible = args.value("visible", true);
+    const bool        focus   = args.value("focus", false);
+    for (erhe::imgui::Imgui_window* window : m_context.imgui_windows->get_windows()) {
+        if ((window != nullptr) && (window->get_title() == title)) {
+            if (visible) {
+                if (focus) {
+                    // Also selects the window's dock tab and brings it to the
+                    // front - a merely visible window can sit behind another
+                    // tab of the same dock node, invisible in screenshots.
+                    window->request_window_focus();
+                } else {
+                    window->show_window();
+                }
+            } else {
+                window->hide_window();
+            }
+            return make_json_content({
+                {"title",   title},
+                {"visible", visible},
+                {"focus",   focus}
+            }).dump();
+        }
+    }
+    json titles = json::array();
+    for (erhe::imgui::Imgui_window* window : m_context.imgui_windows->get_windows()) {
+        if (window != nullptr) {
+            titles.push_back(window->get_title());
+        }
+    }
+    json r = make_json_content({
+        {"error",  "Window not found: " + title},
+        {"titles", titles}
+    });
+    r["isError"] = true;
+    return r.dump();
+}
+
+auto Mcp_server::query_material_details(const json& args) -> std::string
+{
+    const std::string scene_name    = args.value("scene_name", "");
+    const std::string material_name = args.value("material_name", "");
+    auto* sr = find_scene(scene_name);
+    if (!sr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    auto library = sr->get_content_library();
+    if (!library || !library->materials) {
+        json r = make_text_content("No materials in scene: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const auto& mat_list = library->materials->get_all<erhe::primitive::Material>();
+    for (const auto& mat : mat_list) {
+        if (mat->get_name() == material_name) {
+            const auto& d = mat->data;
+            auto sampler_to_json = [](const erhe::primitive::Material_texture_sampler& s) -> json {
+                json entry = {
+                    {"tex_coord", s.tex_coord},
+                    {"rotation",  s.rotation},
+                    {"offset",    {s.offset.x, s.offset.y}},
+                    {"scale",     {s.scale.x,  s.scale.y}}
+                };
+                // The slot holds a single texture_reference; report it as
+                // texture_id/name when it is a plain Texture and as
+                // graph_texture_id/name when it is a Graph_texture asset
+                // (the material -> graph back-reference).
+                const erhe::graphics::Texture* texture       = dynamic_cast<const erhe::graphics::Texture*>(s.texture_reference.get());
+                const Graph_texture*           graph_texture = dynamic_cast<const Graph_texture*>          (s.texture_reference.get());
+                if (texture != nullptr) {
+                    entry["texture_id"]   = texture->get_id();
+                    entry["texture_name"] = texture->get_name();
+                } else {
+                    entry["texture_id"]   = nullptr;
+                    entry["texture_name"] = nullptr;
+                }
+                if (graph_texture != nullptr) {
+                    entry["graph_texture_id"]   = graph_texture->get_id();
+                    entry["graph_texture_name"] = graph_texture->get_name();
+                } else {
+                    entry["graph_texture_id"]   = nullptr;
+                    entry["graph_texture_name"] = nullptr;
+                }
+                return entry;
+            };
+            json result = {
+                {"name",                       mat->get_name()},
+                {"id",                         mat->get_id()},
+                {"base_color",                 {d.base_color.x, d.base_color.y, d.base_color.z}},
+                {"opacity",                    d.opacity},
+                {"roughness",                  {d.roughness.x, d.roughness.y}},
+                {"metallic",                   d.metallic},
+                {"reflectance",                d.reflectance},
+                {"emissive",                   {d.emissive.x, d.emissive.y, d.emissive.z}},
+                {"ior",                        d.ior},
+                {"transmission",               d.transmission},
+                {"normal_texture_scale",       d.normal_texture_scale},
+                {"occlusion_texture_strength", d.occlusion_texture_strength},
+                {"bxdf_model",
+                    (d.bxdf_model == erhe::primitive::Bxdf_model::unlit)                    ? "unlit" :
+                    (d.bxdf_model == erhe::primitive::Bxdf_model::anisotropic_brdf)         ? "anisotropic_brdf" :
+                    (d.bxdf_model == erhe::primitive::Bxdf_model::anisotropic_slope)        ? "anisotropic_slope" :
+                    (d.bxdf_model == erhe::primitive::Bxdf_model::anisotropic_engine_ready) ? "anisotropic_engine_ready" :
+                                                                                              "isotropic_brdf"},
+                {"use_circular_brushed_metal", d.use_circular_brushed_metal},
+                {"use_aniso_control",          d.use_aniso_control},
+                {"blending_mode",
+                    (d.blending_mode == erhe::primitive::Material_blending_mode::alpha_blend) ? "alpha_blend" :
+                    (d.blending_mode == erhe::primitive::Material_blending_mode::multiply)    ? "multiply" :
+                    (d.blending_mode == erhe::primitive::Material_blending_mode::add)         ? "add" :
+                    (d.blending_mode == erhe::primitive::Material_blending_mode::subtract)    ? "subtract" :
+                    (d.blending_mode == erhe::primitive::Material_blending_mode::screen_door) ? "screen_door" :
+                    (d.blending_mode == erhe::primitive::Material_blending_mode::alpha_test)  ? "alpha_test" :
+                                                                                                "opaque"},
+                {"alpha_cutoff",               d.alpha_cutoff},
+                {"texture_samplers", {
+                    {"base_color",         sampler_to_json(d.texture_samplers.base_color)},
+                    {"metallic_roughness", sampler_to_json(d.texture_samplers.metallic_roughness)},
+                    {"normal",             sampler_to_json(d.texture_samplers.normal)},
+                    {"occlusion",          sampler_to_json(d.texture_samplers.occlusion)},
+                    {"emissive",           sampler_to_json(d.texture_samplers.emissive)}
+                }}
+            };
+            return make_json_content(result).dump();
+        }
+    }
+
+    json r = make_text_content("Material not found: " + material_name);
+    r["isError"] = true;
+    return r.dump();
+}
+
+auto Mcp_server::query_scene_textures(const json& args) -> std::string
+{
+    const std::string scene_name = args.value("scene_name", "");
+    auto* sr = find_scene(scene_name);
+    if (sr == nullptr) {
+        json r = make_text_content("Scene not found: " + scene_name);
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    auto library = sr->get_content_library();
+    if (!library || !library->textures) {
+        return make_json_content({{"textures", json::array()}}).dump();
+    }
+
+    json textures = json::array();
+    const auto& tex_list = library->textures->get_all<erhe::graphics::Texture>();
+    for (const auto& tex : tex_list) {
+        textures.push_back({
+            {"name",   tex->get_name()},
+            {"id",     tex->get_id()},
+            {"width",  tex->get_width()},
+            {"height", tex->get_height()},
+            {"format", erhe::dataformat::c_str(tex->get_pixelformat())}
+        });
+    }
+
+    return make_json_content({{"textures", textures}}).dump();
+}
+
+auto Mcp_server::query_scene_brushes(const json& args) -> std::string
+{
+    // Resolve the scene by name, or by id when scene_id is given (lets callers
+    // disambiguate two scenes that share a name, e.g. an original and a loaded
+    // copy).
+    Scene_root* sr = nullptr;
+    if (args.contains("scene_id") && m_context.app_scenes) {
+        const uint64_t scene_id = args.value("scene_id", uint64_t{0});
+        for (const std::shared_ptr<Scene_root>& candidate : m_context.app_scenes->get_scene_roots()) {
+            if (candidate->get_scene().get_id() == scene_id) {
+                sr = candidate.get();
+                break;
+            }
+        }
+    } else {
+        const std::string scene_name = args.value("scene_name", "");
+        sr = find_scene(scene_name);
+    }
+    if (!sr) {
+        json r = make_text_content("Scene not found");
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    auto library = sr->get_content_library();
+    if (!library || !library->brushes) {
+        return make_json_content({{"brushes", json::array()}}).dump();
+    }
+
+    // Walk the brush subtree depth-first so the content-library folder
+    // hierarchy is reported per brush; get_all<Brush>() would flatten it.
+    json brushes = json::array();
+    const std::function<void(const Content_library_node&, const std::string&)> visit =
+        [&](const Content_library_node& folder_node, const std::string& folder_path) -> void
+        {
+            for (const std::shared_ptr<erhe::Hierarchy>& child_hierarchy : folder_node.get_children()) {
+                const std::shared_ptr<Content_library_node> child = std::dynamic_pointer_cast<Content_library_node>(child_hierarchy);
+                if (!child) {
+                    continue;
+                }
+                const std::shared_ptr<Brush> brush = std::dynamic_pointer_cast<Brush>(child->item);
+                if (!brush) {
+                    const std::string child_path = folder_path.empty()
+                        ? child->get_name()
+                        : fmt::format("{}/{}", folder_path, child->get_name());
+                    visit(*child, child_path);
+                    continue;
+                }
+                const std::shared_ptr<erhe::geometry::Geometry> geometry = brush->get_geometry();
+                const GEO::index_t vertex_count = geometry ? geometry->get_mesh().vertices.nb() : 0;
+                const GEO::index_t facet_count  = geometry ? geometry->get_mesh().facets.nb()   : 0;
+                brushes.push_back({
+                    {"name",         brush->get_name()},
+                    {"id",           brush->get_id()},
+                    {"folder_path",  folder_path},
+                    {"vertex_count", vertex_count},
+                    {"facet_count",  facet_count}
+                });
+            }
+        };
+    visit(*library->brushes, std::string{});
+
+    return make_json_content({{"brushes", brushes}}).dump();
+}
+
+auto Mcp_server::query_selection(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    if (!m_context.selection) {
+        return make_json_content({{"items", json::array()}}).dump();
+    }
+
+    json items = json::array();
+    for (const auto& item : m_context.selection->get_selected_items()) {
+        json entry = {
+            {"name",      item->get_name()},
+            {"type",      std::string{item->get_type_name()}},
+            {"id",        item->get_id()}
+        };
+        // Report which scene each item belongs to: hosting for scene
+        // content, the manager's defining-container record for asset types
+        // (not hosted since R5.6). scene_name is absent only for items with
+        // no scene home (shared prefab template resources, loaded
+        // containers' assets, items outside any library).
+        Scene_root* item_scene_root = dynamic_cast<Scene_root*>(item->get_item_host());
+        if ((item_scene_root == nullptr) && (m_context.asset_manager != nullptr)) {
+            item_scene_root = m_context.asset_manager->get_defining_scene_root(*item).get();
+        }
+        if (item_scene_root != nullptr) {
+            entry["scene_name"] = item_scene_root->get_name();
+        }
+        items.push_back(entry);
+    }
+
+    json result = {{"items", items}};
+    const std::shared_ptr<Scene_root> active_scene_root = m_context.selection->get_active_scene_root();
+    if (active_scene_root) {
+        result["active_scene"] = active_scene_root->get_name();
+    }
+    if (m_context.transform_tool != nullptr) {
+        result["transform_reference_mode"] = transform_reference_mode_lc(m_context.transform_tool->shared.settings.reference_mode);
+    }
+    if (m_context.mesh_component_selection != nullptr) {
+        result["mesh_component_mode"] = mesh_component_mode_lc(m_context.mesh_component_selection->get_mode());
+    }
+    if (m_context.editor_settings != nullptr) {
+        result["transform_mode"] = std::string{::to_string(m_context.editor_settings->transform_mode)};
+    }
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::query_undo_redo_stack(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    if (!m_context.operation_stack) {
+        return make_json_content({{"undo", json::array()}, {"redo", json::array()}, {"can_undo", false}, {"can_redo", false}}).dump();
+    }
+
+    auto make_stack = [](const std::vector<std::shared_ptr<Operation>>& ops) -> json {
+        json arr = json::array();
+        for (const auto& op : ops) {
+            json entry = {{"description", op->describe()}};
+            if (op->has_error()) {
+                entry["error"] = op->get_error();
+            }
+            arr.push_back(entry);
+        }
+        return arr;
+    };
+
+    return make_json_content({
+        {"undo",     make_stack(m_context.operation_stack->get_undo_stack())},
+        {"redo",     make_stack(m_context.operation_stack->get_redo_stack())},
+        {"can_undo", m_context.operation_stack->can_undo()},
+        {"can_redo", m_context.operation_stack->can_redo()}
+    }).dump();
+}
+
+auto Mcp_server::action_clear_undo_history(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    if (!m_context.operation_stack) {
+        json r = make_text_content("Operation stack not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const std::size_t dropped =
+        m_context.operation_stack->get_undo_stack().size() +
+        m_context.operation_stack->get_redo_stack().size();
+    m_context.operation_stack->clear_history();
+    return make_json_content({
+        {"cleared",       true},
+        {"dropped_count", dropped}
+    }).dump();
+}
+
+auto Mcp_server::query_async_status(const json& args) -> std::string
+{
+    static_cast<void>(args);
+
+    // queued_operations / pending_scene_commits: async workers decrement
+    // pending/running the moment they have QUEUED their operation or scene
+    // commit; the scene only changes when the main thread executes it
+    // (Operation_stack::update / Scene_commit_queue::flush). asset_loads
+    // counts asset load tasks in flight, which change the scene when they
+    // publish. Idle means all five are zero. An in-flight lightmap prepare
+    // holds pending for its whole flight and is detailed in the
+    // lightmap_prepare sub-object.
+    json result = {
+        {"pending",               m_context.pending_async_ops.load()},
+        {"running",               m_context.running_async_ops.load()},
+        {"queued_operations",     (m_context.operation_stack    != nullptr) ? m_context.operation_stack->get_queued_count()     : 0u},
+        {"pending_scene_commits", (m_context.scene_commit_queue != nullptr) ? m_context.scene_commit_queue->get_pending_count() : 0u},
+        {"asset_loads",           (m_context.asset_manager      != nullptr) ? m_context.asset_manager->get_load_task_count()    : 0u}
+    };
+    if (m_context.lightmap_partitioner != nullptr) {
+        const Lightmap_partitioner::Prepare_progress progress    = m_context.lightmap_partitioner->get_prepare_progress();
+        const Lightmap_partitioner::Prepare_result&  last_result = m_context.lightmap_partitioner->get_last_prepare_result();
+        result["lightmap_prepare"] = {
+            {"in_flight",        progress.in_flight},
+            {"regions_done",     progress.regions_done},
+            {"regions_total",    progress.regions_total},
+            {"cancel_requested", progress.cancel_requested},
+            {"last_result", {
+                {"committed",    last_result.committed},
+                {"mesh_count",   last_result.mesh_count},
+                {"piece_count",  last_result.piece_count},
+                {"tile_count",   last_result.tile_count},
+                {"abort_reason", last_result.abort_reason}
+            }}
+        };
+    }
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::query_transform_update_stats(const json& args) -> std::string
+{
+    Transform_update_stats_tracker* const tracker = m_context.transform_update_stats_tracker;
+    if (tracker == nullptr) {
+        json r = make_text_content("Transform update stats tracker not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const erhe::scene::Scene::Transform_update_stats& frame     = tracker->get_frame_stats();
+    const erhe::scene::Scene::Transform_update_stats& aggregate = tracker->get_aggregate_stats();
+    const std::size_t frames = tracker->get_aggregate_frame_count();
+    const double per_frame = (frames > 0) ? (1.0 / static_cast<double>(frames)) : 0.0;
+
+    json result = {
+        {"last_frame", {
+            {"pass_count",    frame.pass_count},
+            {"dirty_count",   frame.dirty_count},
+            {"visited_count", frame.visited_count},
+            {"lock_wait_ms",  frame.lock_wait_ms},
+            {"sort_ms",       frame.sort_ms},
+            {"propagate_ms",  frame.propagate_ms},
+            {"total_ms",      frame.total_ms()}
+        }},
+        {"aggregate", {
+            {"frames",             frames},
+            {"avg_pass_count",     static_cast<double>(aggregate.pass_count)    * per_frame},
+            {"avg_dirty_count",    static_cast<double>(aggregate.dirty_count)   * per_frame},
+            {"avg_visited_count",  static_cast<double>(aggregate.visited_count) * per_frame},
+            {"avg_lock_wait_ms",   aggregate.lock_wait_ms * per_frame},
+            {"avg_sort_ms",        aggregate.sort_ms      * per_frame},
+            {"avg_propagate_ms",   aggregate.propagate_ms * per_frame},
+            {"avg_total_ms",       aggregate.total_ms()   * per_frame},
+            {"peak_total_ms",      tracker->get_peak_total_ms()}
+        }}
+    };
+
+    if (m_context.app_scenes != nullptr) {
+        json scenes = json::array();
+        for (const std::shared_ptr<Scene_root>& scene_root : m_context.app_scenes->get_scene_roots()) {
+            const erhe::scene::Scene& scene = scene_root->get_scene();
+            scenes.push_back({
+                {"name",                      scene_root->get_name()},
+                {"transform_update_nodes",    scene.get_transform_update_nodes().size()},
+                {"no_transform_update_nodes", scene.get_no_transform_update_nodes().size()}
+            });
+        }
+        result["scenes"] = std::move(scenes);
+    }
+
+    if (args.value("reset", false)) {
+        tracker->reset_aggregate();
+        result["aggregate_reset"] = true;
+    }
+
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::find_items_by_ids(Scene_root& sr, const std::set<std::size_t>& target_ids) -> std::vector<std::shared_ptr<erhe::Item_base>>
+{
+    std::vector<std::shared_ptr<erhe::Item_base>> result;
+
+    const auto& scene = sr.get_scene();
+    // The Scene item itself is selectable (issue #240); match it too so it can
+    // be selected via MCP (e.g. to show Scene properties in the Properties window).
+    const std::shared_ptr<erhe::scene::Scene> scene_item = sr.get_scene_item();
+    if (scene_item && target_ids.contains(scene_item->get_id())) {
+        result.push_back(scene_item);
+    }
+    scene.for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
+        if (target_ids.contains(node->get_id())) {
+            result.push_back(node);
+        }
+        return true;
+    });
+    for (const auto& camera : scene.get_cameras()) {
+        if (target_ids.contains(camera->get_id())) {
+            result.push_back(camera);
+        }
+    }
+    for (const auto& ll : scene.get_light_layers()) {
+        for (const auto& light : ll->lights) {
+            if (target_ids.contains(light->get_id())) {
+                result.push_back(light);
+            }
+        }
+    }
+    auto library = sr.get_content_library();
+    if (library) {
+        if (library->materials) {
+            for (const auto& mat : library->materials->get_all<erhe::primitive::Material>()) {
+                if (target_ids.contains(mat->get_id())) {
+                    result.push_back(mat);
+                }
+            }
+        }
+        if (library->brushes) {
+            for (const auto& brush : library->brushes->get_all<Brush>()) {
+                if (target_ids.contains(brush->get_id())) {
+                    result.push_back(brush);
+                }
+            }
+        }
+        if (library->graph_textures) {
+            for (const auto& graph_texture : library->graph_textures->get_all<Graph_texture>()) {
+                if (target_ids.contains(graph_texture->get_id())) {
+                    result.push_back(graph_texture);
+                }
+            }
+        }
+        if (library->graph_meshes) {
+            for (const auto& graph_mesh : library->graph_meshes->get_all<Graph_mesh>()) {
+                if (target_ids.contains(graph_mesh->get_id())) {
+                    result.push_back(graph_mesh);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+// --- Frame pacing introspection (doc/frame_pacing_user_interface.md; the
+// MCP twins of the Frame Pacing window, for headless verification) ---
+
+auto Mcp_server::query_frame_pacing_status(const json& args) -> std::string
+{
+    static_cast<void>(args);
+    json result;
+    if (m_context.graphics_device != nullptr) {
+        result["display_refresh_period_ms"] = m_context.graphics_device->get_display_refresh_duration_seconds() * 1000.0;
+        const erhe::graphics::Frame_pacing_tier tier = m_context.graphics_device->get_frame_pacing_tier();
+        result["tier"] =
+            (tier == erhe::graphics::Frame_pacing_tier::full)       ? "W" :
+            (tier == erhe::graphics::Frame_pacing_tier::slop_servo) ? "S" :
+                                                                      "OFF";
+    }
+    if (m_context.graphics_config != nullptr) {
+        result["frame_pacing_enforce"] = m_context.graphics_config->frame_pacing_enforce;
+    }
+    if (m_context.frame_pacing_observer != nullptr) {
+        const erhe::frame_pacing::Frame_pacer* const pacer = m_context.frame_pacing_observer->get_pacer();
+        if (pacer != nullptr) {
+            result["pacer"] = {
+                {"vsyncs_per_frame", pacer->get_vsyncs_per_frame()},
+                {"min_vsyncs",       m_context.frame_pacing_observer->get_min_vsyncs()},
+                {"margin_ms",        pacer->get_margin() * 1000.0},
+                // Dynamic vsync grid (deviation 10): boundaries at
+                // grid_phase + n * grid_period; the tracked period deviates
+                // from the queried refresh period on real displays.
+                {"grid_phase",       pacer->get_grid_phase()},
+                {"grid_period",      pacer->get_grid_period()}
+            };
+        }
+        const erhe::frame_pacing::Schedule_decision& decision = m_context.frame_pacing_observer->get_last_decision();
+        result["last_decision"] = {
+            {"frame_id",           decision.frame_id},
+            {"release_time",       decision.release_time},
+            {"target_slot",        decision.target_slot},
+            {"target_time",        decision.target_time},
+            {"predicted_display",  decision.predicted_display},
+            {"predicted_duration", decision.predicted_duration},
+            {"vsyncs_per_frame",   decision.vsyncs_per_frame},
+            {"wait_id",            decision.wait_id}
+        };
+    }
+    if (m_context.frame_pacing_window != nullptr) {
+        result["capture"] = {
+            {"frame_count",     m_context.frame_pacing_window->get_capture_frame_count()},
+            {"first_frame_id",  m_context.frame_pacing_window->get_capture_first_frame_id()},
+            {"latest_frame_id", m_context.frame_pacing_window->get_capture_latest_frame_id()},
+            {"max_frames",      m_context.frame_pacing_window->get_max_capture_frames()}
+        };
+        const std::pair<float, float> workload = m_context.frame_pacing_window->get_workload_range_ms();
+        result["workload_ms"] = {{"min", workload.first}, {"max", workload.second}};
+    }
+    result["now"] = erhe::frame_pacing::Frame_time_recorder::now();
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_set_frame_pacing_min_vsyncs(const json& args) -> std::string
+{
+    if (m_context.frame_pacing_observer == nullptr) {
+        json r = make_text_content("Frame pacing observer not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const int min_vsyncs = args.value("min_vsyncs", 1);
+    m_context.frame_pacing_observer->request_min_vsyncs(min_vsyncs);
+    json result;
+    result["min_vsyncs"] = m_context.frame_pacing_observer->get_min_vsyncs();
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_set_frame_pacing_workload(const json& args) -> std::string
+{
+    if (m_context.frame_pacing_window == nullptr) {
+        json r = make_text_content("Frame pacing window not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    const float min_ms = args.value("min_ms", 0.0f);
+    const float max_ms = args.value("max_ms", min_ms);
+    m_context.frame_pacing_window->set_workload_range_ms(min_ms, max_ms);
+    const std::pair<float, float> workload = m_context.frame_pacing_window->get_workload_range_ms();
+    json result;
+    result["workload_ms"] = {{"min", workload.first}, {"max", workload.second}};
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::action_set_frame_pacing_capture(const json& args) -> std::string
+{
+    Frame_pacing_window* const window = m_context.frame_pacing_window;
+    if (window == nullptr) {
+        json r = make_text_content("Frame pacing window not available");
+        r["isError"] = true;
+        return r.dump();
+    }
+    if (args.contains("max_frames")) {
+        window->set_max_capture_frames(static_cast<std::size_t>(std::max(0, args.value("max_frames", 0))));
+    }
+    if (args.value("clear", false)) {
+        window->clear_capture();
+    }
+    json result;
+    result["capture"] = {
+        {"frame_count",     window->get_capture_frame_count()},
+        {"first_frame_id",  window->get_capture_first_frame_id()},
+        {"latest_frame_id", window->get_capture_latest_frame_id()},
+        {"max_frames",      window->get_max_capture_frames()}
+    };
+    return make_json_content(result).dump();
+}
+
+auto Mcp_server::query_frame_pacing_frames(const json& args) -> std::string
+{
+    Frame_pacing_window* const window = m_context.frame_pacing_window;
+    if ((window == nullptr) || (window->get_capture_frame_count() == 0)) {
+        json r = make_text_content("No frame pacing capture available (pacer dormant or window not yet collecting)");
+        r["isError"] = true;
+        return r.dump();
+    }
+
+    const std::int64_t latest = window->get_capture_latest_frame_id();
+    const std::int64_t count  = std::clamp<std::int64_t>(args.value("count", 120), 1, 2000);
+    std::int64_t first = args.value("first_frame_id", latest - count + 1);
+    first = std::max(first, window->get_capture_first_frame_id());
+    const std::int64_t last = std::min(latest, first + count - 1);
+
+    json frames = json::array();
+    for (std::int64_t frame_id = first; frame_id <= last; ++frame_id) {
+        const Frame_pacing_window::Frame_sample* const sample = window->get_capture_sample(frame_id);
+        if (sample == nullptr) {
+            continue;
+        }
+        const erhe::frame_pacing::Frame_time_record& r = sample->record;
+        json frame = {
+            {"frame_id",              frame_id},
+            {"planned_vsyncs",        sample->planned_vsyncs},
+            {"actual_vsyncs",         window->actual_vsyncs(*sample)},
+            {"wait_id",               sample->wait_id},
+            {"release_time",          sample->release_time},
+            {"predicted_display",     sample->predicted_display},
+            {"cpu_slot_begin",        r.cpu_slot_begin},
+            {"cpu_slot_end",          r.cpu_slot_end},
+            {"cpu_service_ms",        r.cpu_service_time() * 1000.0},
+            {"pacer_wait_begin",      r.pacer_wait_begin},
+            {"pacer_wait_end",        r.pacer_wait_end},
+            {"fence_wait_ms",         r.fence_wait_duration * 1000.0},
+            {"acquire_begin",         r.acquire_begin},
+            {"acquire_end",           r.acquire_end},
+            {"submit_time",           r.submit_time},
+            {"present_holdback_begin", r.present_holdback_begin},
+            {"present_holdback_end",  r.present_holdback_end},
+            {"present_request_time",  r.present_request_time},
+            {"present_return_time",   r.present_return_time},
+            {"gpu_begin",             r.gpu_frame_begin},
+            {"gpu_end",               r.gpu_frame_end},
+            {"achieved_present_time", r.achieved_present_time},
+            {"achieved_queue_ops_time", r.achieved_queue_ops_time},
+            {"grid_phase",            sample->grid_phase},
+            {"grid_period",           sample->grid_period}
+        };
+        if (sample->stats_valid) {
+            frame["slack_ms"]  = sample->slack * 1000.0;
+            frame["self_miss"] = sample->self_miss;
+        }
+        frames.push_back(std::move(frame));
+    }
+
+    const json result = {
+        {"first_frame_id",    first},
+        {"count",             frames.size()},
+        {"refresh_period",    window->get_refresh_period()},
+        {"frames",            std::move(frames)}
+    };
+    return make_json_content(result).dump();
+}
+
+
+} // namespace editor

@@ -1,0 +1,82 @@
+#include "renderers/composer.hpp"
+#include "editor_log.hpp"
+#include "renderers/composition_pass.hpp"
+
+#include "erhe_profile/profile.hpp"
+
+#include <imgui/imgui.h>
+
+namespace editor {
+
+// TODO Do deep copy instead / use Hierarchy
+
+Composer::Composer(const Composer& other)
+    : composition_passes{other.composition_passes}
+{
+}
+
+Composer& Composer::operator=(const Composer& other)
+{
+    composition_passes = other.composition_passes;
+    return *this;
+}
+
+Composer::Composer(Composer&& old) noexcept
+    : composition_passes{std::move(old.composition_passes)}
+{
+}
+
+Composer& Composer::operator=(Composer&& old) noexcept
+{
+    if (this != &old) {
+        composition_passes = std::move(old.composition_passes);
+    }
+    return *this;
+}
+
+Composer::~Composer() noexcept
+{
+}
+
+Composer::Composer(const std::string_view name)
+    : Item{name}
+{
+}
+
+void Composer::render(const Render_context& context, const bool include_content, const bool include_overlay)
+{
+    //log_composer->trace("Composer::render()");
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{mutex};
+
+    for (const auto& composition_pass : composition_passes) {
+        const bool is_overlay = composition_pass->data.overlay;
+        if (is_overlay ? !include_overlay : !include_content) {
+            continue;
+        }
+        // log_composer->trace("  rp: {}", composition_pass->describe());
+        composition_pass->render(context);
+    }
+}
+
+void Composer::imgui()
+{
+    if (!ImGui::TreeNodeEx("Composer", ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_DefaultOpen)) {
+        return;
+    }
+
+    int pass_index = 0;
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{mutex};
+
+    for (const auto& composition_pass : composition_passes) {
+        ImGui::PushID(pass_index++);
+        if (ImGui::TreeNodeEx(composition_pass->describe().c_str(), ImGuiTreeNodeFlags_Framed)) {
+            composition_pass->imgui();
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+
+    ImGui::TreePop();
+}
+
+}

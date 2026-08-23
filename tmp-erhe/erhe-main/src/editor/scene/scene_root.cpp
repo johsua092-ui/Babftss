@@ -1,0 +1,2047 @@
+#include "scene/scene_root.hpp"
+
+#include "config/generated/physics_config.hpp"
+#include "editor_log.hpp"
+#include "app_message_bus.hpp"
+#include "app_scenes.hpp"
+#include "app_settings.hpp"
+#include "rendertarget_mesh.hpp"
+
+#include "app_context.hpp"
+#include "assets/asset_manager.hpp"
+#include "assets/asset_workflow.hpp"
+#include "brushes/brush.hpp"
+#include "content_library/content_library.hpp"
+#include "geometry_graph/graph_mesh.hpp"
+#include "geometry_graph/geometry_graph_window.hpp"
+#include "texture_graph/graph_texture.hpp"
+#include "texture_graph/texture_graph_window.hpp"
+#include "operations/item_insert_remove_operation.hpp"
+#include "operations/item_set_flag_bits_operation.hpp"
+#include "operations/operation_stack.hpp"
+#include "prefabs/prefab_instance.hpp"
+#include "scene/attachment_types.hpp"
+#include "scene/node_joint.hpp"
+#include "scene/node_physics.hpp"
+#include "scene/scene_commands.hpp"
+#include "scene/node_raytrace.hpp"
+#include "scene/node_raytrace_mask.hpp"
+#include "tools/selection_tool.hpp"
+#include "windows/editor_windows.hpp"
+#include "windows/item_tree_window.hpp"
+
+#include "erhe_file/file.hpp"
+#include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_physics/iworld.hpp"
+#include "erhe_physics/irigid_body.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_raytrace/iscene.hpp"
+#include "erhe_scene/camera.hpp"
+#include "erhe_scene/light.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/node_attachment.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene/skin.hpp"
+#include "erhe_scene_renderer/draw_list_scene.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <fmt/format.h>
+
+#include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
+
+#include <glm/gtc/constants.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <chrono>
+#include <ctime>
+#include <functional>
+#include <random>
+#include <unordered_set>
+
+namespace editor {
+
+using erhe::scene::Light;
+using erhe::scene::Light_layer;
+using erhe::scene::Mesh;
+using erhe::scene::Mesh_layer;
+using erhe::scene::Scene;
+
+Scene_layers::Scene_layers()
+{
+    m_brush        = std::make_shared<Mesh_layer>("brush",        erhe::Item_flags::brush,        Mesh_layer_id::brush);
+    m_content      = std::make_shared<Mesh_layer>("content",      erhe::Item_flags::content,      Mesh_layer_id::content);
+    m_controller   = std::make_shared<Mesh_layer>("controller",   erhe::Item_flags::controller,   Mesh_layer_id::controller);
+    m_rendertarget = std::make_shared<Mesh_layer>("rendertarget", erhe::Item_flags::rendertarget, Mesh_layer_id::rendertarget);
+    m_tool         = std::make_shared<Mesh_layer>("tool",         erhe::Item_flags::tool,         Mesh_layer_id::tool);
+    m_bone         = std::make_shared<Mesh_layer>("bone",         erhe::Item_flags::bone_proxy,   Mesh_layer_id::bone);
+
+    m_light        = std::make_shared<Light_layer>("lights", 0);
+}
+
+void Scene_layers::add_layers_to_scene(erhe::scene::Scene& scene)
+{
+    scene.add_mesh_layer(m_brush);
+    scene.add_mesh_layer(m_content);
+    scene.add_mesh_layer(m_controller);
+    scene.add_mesh_layer(m_rendertarget);
+    scene.add_mesh_layer(m_tool);
+    scene.add_mesh_layer(m_bone);
+
+    scene.add_light_layer(m_light);
+}
+
+auto Scene_layers::brush() const -> erhe::scene::Mesh_layer*
+{
+    return m_brush.get();
+}
+
+auto Scene_layers::content() const -> erhe::scene::Mesh_layer*
+{
+    return m_content.get();
+}
+
+auto Scene_layers::controller() const -> erhe::scene::Mesh_layer*
+{
+    return m_controller.get();
+}
+
+auto Scene_layers::tool() const -> erhe::scene::Mesh_layer*
+{
+    return m_tool.get();
+}
+
+auto Scene_layers::rendertarget() const -> erhe::scene::Mesh_layer*
+{
+    return m_rendertarget.get();
+}
+
+auto Scene_layers::bone() const -> erhe::scene::Mesh_layer*
+{
+    return m_bone.get();
+}
+
+auto Scene_layers::light() const -> erhe::scene::Light_layer*
+{
+    return m_light.get();
+}
+
+auto Scene_layers::mesh_layers() const -> std::array<erhe::scene::Mesh_layer*, 6>
+{
+    return std::array<erhe::scene::Mesh_layer*, 6>{
+        content(),
+        controller(),
+        tool(),
+        brush(),
+        rendertarget(),
+        bone()
+    };
+};
+
+Scene_root::Scene_root(
+    App_message_bus*                        app_message_bus,
+    const std::shared_ptr<Content_library>& content_library,
+    const std::string_view                  name,
+    bool                                    enable_physics,
+    const Draw_list_scene_dependencies*     draw_list_dependencies
+)
+    : m_app_message_bus{app_message_bus}
+    , m_content_library{content_library}
+{
+    ERHE_PROFILE_FUNCTION();
+
+    if ((draw_list_dependencies != nullptr) && draw_list_dependencies->is_valid()) {
+        m_draw_list_scene = std::make_unique<erhe::scene_renderer::Draw_list_scene>(
+            *draw_list_dependencies->mesh_memory,
+            *draw_list_dependencies->shader_variant_cache,
+            *draw_list_dependencies->primitive_interface,
+            std::span<const uint32_t>{draw_list_dependencies->multiview_view_counts}
+        );
+    }
+
+    // The scene owns its content library: every library item reports this
+    // Scene_root as its Item_host. Items added before this point (e.g. the
+    // default materials created ahead of Scene_root construction) are hosted
+    // retroactively by set_owner().
+    if (m_content_library) {
+        m_content_library->set_owner(this);
+    }
+
+    m_scene = std::make_shared<Scene>(name, this);
+    m_layers.add_layers_to_scene(*m_scene.get());
+
+    // The Scene item is selectable and shown as the top row of the Hierarchy
+    // window (issue #240); make it pass the window's show_in_ui filter.
+    m_scene->enable_flag_bits(erhe::Item_flags::show_in_ui);
+    m_scene->get_root_node()->enable_flag_bits(erhe::Item_flags::invisible_parent);
+    if (enable_physics) {
+        m_physics_world = erhe::physics::IWorld::create_unique();
+        m_physics_world->set_on_body_activated(
+            [this](erhe::physics::IRigid_body* rigid_body) {
+                ERHE_VERIFY(rigid_body != nullptr);
+                if (rigid_body->get_motion_mode() != erhe::physics::Motion_mode::e_dynamic) {
+                    return;
+                }
+                void* owner = rigid_body->get_owner();
+                Node_physics* node_physics = reinterpret_cast<Node_physics*>(owner);
+                if (node_physics == nullptr) {
+                    return;
+                }
+                erhe::scene::Node* node = node_physics->get_node();
+                if (node == nullptr) {
+                    return;
+                }
+                // Activation events can be dispatched while the simulation is
+                // paused (remove_rigid_body() drains the pending queue); the
+                // flag must not be set then, or it sticks until the next
+                // resume and hierarchy edits stop propagating to the node.
+                if (!m_physics_simulation_running) {
+                    return;
+                }
+                node->enable_flag_bits(erhe::Item_flags::no_transform_update);
+            }
+        );
+        m_physics_world->set_on_body_deactivated(
+            [this](erhe::physics::IRigid_body* rigid_body) {
+                ERHE_VERIFY(rigid_body != nullptr);
+                //if (rigid_body->get_motion_mode() != erhe::physics::Motion_mode::e_dynamic) {
+                //    return;
+                //}
+                void* owner = rigid_body->get_owner();
+                Node_physics* node_physics = reinterpret_cast<Node_physics*>(owner);
+                if (node_physics == nullptr) {
+                    return;
+                }
+                erhe::scene::Node* node = node_physics->get_node();
+                if (node == nullptr) {
+                    return;
+                }
+                node->disable_flag_bits(erhe::Item_flags::no_transform_update);
+            }
+        );
+        m_physics_world->set_on_trigger_enter(
+            [this](const erhe::physics::Trigger_event& event) {
+                add_trigger_event(true, event);
+            }
+        );
+        m_physics_world->set_on_trigger_exit(
+            [this](const erhe::physics::Trigger_event& event) {
+                add_trigger_event(false, event);
+            }
+        );
+    }
+
+    m_raytrace_scene = erhe::raytrace::IScene::create_unique("rt_root_scene");
+
+    // NOTE: register_to_editor_scenes() must be called by the caller after
+    // make_shared<Scene_root>() returns, because shared_from_this() cannot
+    // be used during construction.
+
+    if (app_message_bus != nullptr) {
+        m_selection_subscription = app_message_bus->selection.subscribe(
+            [this](Selection_message& message) {
+                Selection_change& selection_change = message.selection_change;
+                for (const auto& item : selection_change.no_longer_selected) {
+                    if (item->get_item_host() != this) {
+                        continue;
+                    }
+                    const auto& node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+                    if (!node) {
+                        continue;
+                    }
+                    const auto& node_physics = erhe::scene::get_attachment<Node_physics>(node.get());
+                    if (!node_physics) {
+                        continue;
+                    }
+                    auto* rigid_body = node_physics->get_rigid_body();
+                    if (rigid_body == nullptr) {
+                        continue;
+                    }
+                    log_physics->trace("release physics: {}", node->describe());
+                    node_physics->end_interaction();
+                    const auto i = std::remove(m_physics_disabled_nodes.begin(), m_physics_disabled_nodes.end(), item);
+                    if (i == m_physics_disabled_nodes.end()) {
+                        log_physics->error("node {} not in physics disabled nodes", item->get_name());
+                    } else {
+                        m_physics_disabled_nodes.erase(i, m_physics_disabled_nodes.end());
+                    }
+                }
+
+                for (const auto& item : selection_change.newly_selected) {
+                    if (item->get_item_host() != this) {
+                        continue;
+                    }
+                    const auto node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+                    if (!node) {
+                        continue;
+                    }
+                    const auto node_physics = erhe::scene::get_attachment<Node_physics>(node.get());
+                    if (!node_physics) {
+                        continue;
+                    }
+                    auto* rigid_body = node_physics->get_rigid_body();
+                    if (rigid_body == nullptr) {
+                        continue;
+                    }
+                    log_physics->trace("acquire physics: {}", node->describe());
+                    node_physics->begin_interaction();
+
+                    const auto i = std::find(m_physics_disabled_nodes.begin(), m_physics_disabled_nodes.end(), item);
+                    if (i != m_physics_disabled_nodes.end()) {
+                        log_physics->warn("node {} already in physics disabled nodes", item->get_name());
+                    } else {
+                        m_physics_disabled_nodes.push_back(item);
+                    }
+                }
+            }
+        );
+    }
+}
+
+Scene_root::~Scene_root() noexcept
+{
+    if (m_is_registered) {
+        unregister_from_editor_scenes(*m_app_scenes);
+    }
+
+    // Draw lists keep registered meshes alive; drop them (and any queued,
+    // never-flushed changes) while m_raytrace_scene is still alive so a Mesh
+    // released here can still detach its raytrace instances.
+    m_draw_list_scene.reset();
+
+    // The Scene and its content (nodes, meshes, node_physics) hold non-owning
+    // back-pointers into this Scene_root and the resources it owns (the raytrace
+    // scene m_raytrace_scene and physics world m_physics_world). The Scene may be
+    // co-owned elsewhere (selection, undo stack, clipboard, ...) and outlive this
+    // host: closing a still-selected scene destroys the Scene_root while the
+    // Selection keeps a shared_ptr to the Scene, whose deferred ~Scene then runs
+    // after this host and its resources are gone. Detach all content now, while
+    // m_raytrace_scene and m_physics_world are still alive, so the later teardown
+    // does not dereference freed state (see node_sanity_check,
+    // Mesh::detach_rt_from_scene, Node_physics world removal).
+    if (m_scene) {
+        m_scene->sever_host();
+    }
+
+    // Library items (and possibly the library itself, via browser windows or
+    // clipboard/selection references) can outlive this host; detach them now
+    // so no item keeps a dangling Item_host pointer.
+    if (m_content_library) {
+        m_content_library->set_owner(nullptr);
+    }
+}
+
+namespace {
+
+// Early-exit depth-first check used to gate the Add Bone Tip Nodes context
+// menu entry; only runs while the popup is open.
+[[nodiscard]] auto subtree_contains_bone(const erhe::scene::Node& node) -> bool
+{
+    if (erhe::scene::is_bone(&node)) {
+        return true;
+    }
+    for (const std::shared_ptr<erhe::Hierarchy>& child : node.get_children()) {
+        const erhe::scene::Node* const child_node = dynamic_cast<const erhe::scene::Node*>(child.get());
+        if ((child_node != nullptr) && subtree_contains_bone(*child_node)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // anonymous namespace
+
+auto Scene_root::make_browser_window(
+    erhe::imgui::Imgui_renderer& imgui_renderer,
+    erhe::imgui::Imgui_windows&  imgui_windows,
+    App_context&                 context,
+    App_settings&                app_settings
+) -> std::shared_ptr<Item_tree_window>
+{
+    // Scene-independent, slot-based window identity (issue #265): both the
+    // window title ("Scene Hierarchy [N]") and the ini label
+    // ("Hierarchy_window N") carry the lowest free slot (1, 2, ...) among the
+    // live Hierarchy windows, so the imgui.ini dock layout and the
+    // windows.json open state persist across sessions regardless of scene
+    // names or the order scenes were opened in.
+    int window_slot = 1;
+    for (;;) {
+        bool slot_in_use = false;
+        for (erhe::imgui::Imgui_window* window : imgui_windows.get_windows()) {
+            Item_tree_window* tree_window = dynamic_cast<Item_tree_window*>(window);
+            if ((tree_window != nullptr) && (tree_window->get_scene_hierarchy_slot() == window_slot)) {
+                slot_in_use = true;
+                break;
+            }
+        }
+        if (!slot_in_use) {
+            break;
+        }
+        ++window_slot;
+    }
+    m_node_tree_window = std::make_shared<Item_tree_window>(
+        imgui_renderer,
+        imgui_windows,
+        context,
+        fmt::format("Scene Hierarchy [{}]", window_slot),
+        fmt::format("Hierarchy_window {}", window_slot)
+    );
+    m_node_tree_window->set_scene_hierarchy(true);
+    m_node_tree_window->set_scene_hierarchy_slot(window_slot);
+    m_node_tree_window->set_root(m_scene->get_root_node());
+    // Show a selectable Scene item at the top of the Hierarchy window, with the
+    // Content Library nested under it (issue #240). The scene root node's child
+    // nodes continue to render at top level via set_root above.
+    m_node_tree_window->set_header_item(get_scene_item());
+    m_node_tree_window->set_item_filter(
+        app_settings.node_tree_show_all
+            ? erhe::Item_filter{
+                .require_all_bits_set           = 0,
+                .require_at_least_one_bit_set   = 0,
+                .require_all_bits_clear         = 0,//erhe::Item_flags::tool | erhe::Item_flags::brush,
+                .require_at_least_one_bit_clear = 0
+            }
+            : erhe::Item_filter{
+                .require_all_bits_set           = 0,
+                .require_at_least_one_bit_set   = erhe::Item_flags::show_in_ui,
+                .require_all_bits_clear         = 0, //erhe::Item_flags::tool | erhe::Item_flags::brush,
+                .require_at_least_one_bit_clear = 0
+            }
+    );
+    m_node_tree_window->set_item_callback(
+        [this, &context](const std::shared_ptr<erhe::Item_base>& item) -> bool {
+            if (!ImGui::IsDragDropActive()) {
+                return false;
+            }
+            // Material cross-library drop (migrated from the removed Content Library
+            // window, #241 follow-up): dropping a material from another scene's
+            // content library onto this scene's Materials folder (or a material in
+            // it) copies the material into this library.
+            const auto content_node = std::dynamic_pointer_cast<Content_library_node>(item);
+            if (content_node) {
+                const auto& materials_folder = get_content_library()->materials;
+                const bool is_materials_folder = (content_node == materials_folder);
+                const bool is_material_item    = !is_materials_folder &&
+                    content_node->item &&
+                    std::dynamic_pointer_cast<erhe::primitive::Material>(content_node->item) &&
+                    (content_node->get_parent().lock() == materials_folder);
+                if (is_materials_folder || is_material_item) {
+                    const ImGuiPayload* payload_peek = ImGui::GetDragDropPayload();
+                    if ((payload_peek != nullptr) && payload_peek->IsDataType("Content_library_node")) {
+                        erhe::Item_base* payload_item_base = *(static_cast<erhe::Item_base**>(payload_peek->Data));
+                        auto source_node = std::dynamic_pointer_cast<Content_library_node>(payload_item_base->shared_from_this());
+                        if (source_node && source_node->item) {
+                            auto source_material = std::dynamic_pointer_cast<erhe::primitive::Material>(source_node->item);
+                            if (source_material) {
+                                bool is_same_library = false;
+                                for (auto check = source_node->get_parent().lock(); check; check = check->get_parent().lock()) {
+                                    if (check == get_content_library()->root) {
+                                        is_same_library = true;
+                                        break;
+                                    }
+                                }
+                                if (!is_same_library && ImGui::BeginDragDropTarget()) {
+                                    const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("Content_library_node");
+                                    if (payload != nullptr) {
+                                        auto new_material = context.asset_manager->create<erhe::primitive::Material>(*this, *source_material);
+                                        auto new_node = std::make_shared<Content_library_node>(new_material);
+                                        auto op = std::make_shared<Item_insert_remove_operation>(
+                                            Item_insert_remove_operation::Parameters{
+                                                .context = context,
+                                                .item    = new_node,
+                                                .parent  = materials_folder,
+                                                .mode    = Item_insert_remove_operation::Mode::insert
+                                            }
+                                        );
+                                        context.operation_stack->queue(op);
+                                    }
+                                    ImGui::EndDragDropTarget();
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return m_node_tree_window->drag_and_drop_target(item);
+        }
+    );
+    m_node_tree_window->set_hover_callback(
+        [this, &context]() {
+            context.app_message_bus->hover_scene_item_tree.send_message(
+                Hover_scene_item_tree_message{
+                    .scene_root = dynamic_pointer_cast<Scene_root>(shared_from_this())
+                }
+            );
+        }
+    );
+    m_node_tree_window->add_item_context_menu_callback(
+        [this, &context](
+            const std::shared_ptr<erhe::Item_base>& item,
+            std::vector<std::function<void()>>&     deferred_operations,
+            bool&                                   close
+        ) {
+            const auto& node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+            if (!node) {
+                return;
+            }
+            auto parent_node = node->get_parent_node();
+            if (ImGui::BeginMenu("Create")) {
+                if (ImGui::MenuItem("Empty Node")) {
+                    deferred_operations.push_back(
+                        [&context, parent_node]() {
+                            context.scene_commands->create_new_empty_node(parent_node.get());
+                        }
+                    );
+                    close = true;
+                }
+                if (ImGui::MenuItem("Camera")) {
+                    deferred_operations.push_back(
+                        [&context, parent_node]() {
+                            context.scene_commands->create_new_camera(parent_node.get());
+                        }
+                    );
+                    close = true;
+                }
+                if (ImGui::MenuItem("Light")) {
+                    deferred_operations.push_back(
+                        [&context, parent_node]() {
+                            context.scene_commands->create_new_light(parent_node.get());
+                        }
+                    );
+                    close = true;
+                }
+                if (ImGui::MenuItem("Layout")) {
+                    deferred_operations.push_back(
+                        [&context, parent_node]() {
+                            context.scene_commands->create_new_layout(parent_node.get());
+                        }
+                    );
+                    close = true;
+                }
+                ImGui::EndMenu();
+            }
+            // Rigging: offered only when the clicked subtree contains a bone
+            // (early-exit walk; runs only while the popup is open).
+            if (subtree_contains_bone(*node)) {
+                if (ImGui::MenuItem("Add Bone Tip Nodes")) {
+                    deferred_operations.push_back(
+                        [&context, node]() {
+                            context.scene_commands->add_bone_tip_nodes(node);
+                        }
+                    );
+                    close = true;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip(
+                        "Add an empty child node at the tip of every leaf bone in the\n"
+                        "selected subtrees (this subtree when nothing relevant is selected)"
+                    );
+                }
+            }
+            // "Add Attachment": the full attachment catalog (issue #249), each
+            // entry disabled when the node cannot take that kind. Joint keeps its
+            // richer connect-to-selection behaviour instead of the catalog make.
+            if (ImGui::BeginMenu("Add Attachment")) {
+                for (const Attachment_type_info& type_info : get_attachment_types()) {
+                    const bool can_add = type_info.can_add(*node);
+                    if (type_info.key == "joint") {
+                        if (ImGui::MenuItem("Joint", nullptr, false, can_add)) {
+                            deferred_operations.push_back(
+                                [&context, node]() {
+                                    // Connect to the first selected node other than
+                                    // the menu node, when there is one in this scene.
+                                    std::shared_ptr<erhe::scene::Node> connected{};
+                                    for (const std::shared_ptr<erhe::Item_base>& selected_item : context.selection->get_selected_items()) {
+                                        const std::shared_ptr<erhe::scene::Node> other = std::dynamic_pointer_cast<erhe::scene::Node>(selected_item);
+                                        if (other && (other != node) && (other->get_item_host() == node->get_item_host())) {
+                                            connected = other;
+                                            break;
+                                        }
+                                    }
+                                    context.scene_commands->create_new_joint(node.get(), connected);
+                                }
+                            );
+                            close = true;
+                        }
+                        continue;
+                    }
+                    if (ImGui::MenuItem(std::string{type_info.display_name}.c_str(), nullptr, false, can_add)) {
+                        deferred_operations.push_back(
+                            [&context, node, make = type_info.make]() {
+                                make(*context.scene_commands, *node);
+                            }
+                        );
+                        close = true;
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
+            // "Remove Attachment": one undoable pure-detach entry per existing
+            // attachment (only shown when the node has any).
+            const std::vector<std::shared_ptr<erhe::scene::Node_attachment>>& attachments = node->get_attachments();
+            if (!attachments.empty() && ImGui::BeginMenu("Remove Attachment")) {
+                for (const std::shared_ptr<erhe::scene::Node_attachment>& attachment : attachments) {
+                    std::string label = fmt::format("{} '{}'", attachment->get_type_name(), attachment->get_name());
+                    if (ImGui::MenuItem(label.c_str())) {
+                        deferred_operations.push_back(
+                            [&context, attachment]() {
+                                context.scene_commands->remove_attachment(attachment);
+                            }
+                        );
+                        close = true;
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
+            // Lightmap flag (undoable): set / clear Item_flags::lightmapped
+            // on every mesh under the clicked node's subtree - or under
+            // every selected node when the clicked node is selected (the
+            // Cut / Delete convention above). The mesh list is collected in
+            // the deferred operation (selection can change between the
+            // click and the deferred run) and pre-filtered to meshes whose
+            // state actually changes, so undo is an exact inverse.
+            {
+                const auto queue_lightmap_flag = [&context, node, &deferred_operations](const bool enable) {
+                    deferred_operations.push_back(
+                        [&context, node, enable]() {
+                            std::vector<std::shared_ptr<erhe::scene::Node>> roots;
+                            if (node->is_selected()) {
+                                for (const std::shared_ptr<erhe::Item_base>& selected_item : context.selection->get_selected_items()) {
+                                    const std::shared_ptr<erhe::scene::Node> selected_node = std::dynamic_pointer_cast<erhe::scene::Node>(selected_item);
+                                    if (selected_node) {
+                                        roots.push_back(selected_node);
+                                    }
+                                }
+                            }
+                            if (roots.empty()) {
+                                roots.push_back(node);
+                            }
+                            // Guard against double-collect when the selection
+                            // holds both an ancestor and its descendant.
+                            std::unordered_set<const erhe::Item_base*>    seen;
+                            std::vector<std::shared_ptr<erhe::Item_base>> meshes;
+                            const std::function<void(erhe::scene::Node&)> visit = [&](erhe::scene::Node& visited_node) {
+                                for (const std::shared_ptr<erhe::scene::Node_attachment>& attachment : visited_node.get_attachments()) {
+                                    const std::shared_ptr<erhe::scene::Mesh> mesh = std::dynamic_pointer_cast<erhe::scene::Mesh>(attachment);
+                                    if (!mesh || !seen.insert(mesh.get()).second) {
+                                        continue;
+                                    }
+                                    const bool lightmapped = (mesh->get_flag_bits() & erhe::Item_flags::lightmapped) != 0u;
+                                    if (lightmapped != enable) {
+                                        meshes.push_back(mesh);
+                                    }
+                                }
+                                for (const std::shared_ptr<erhe::Hierarchy>& child : visited_node.get_children()) {
+                                    const std::shared_ptr<erhe::scene::Node> child_node = std::dynamic_pointer_cast<erhe::scene::Node>(child);
+                                    if (child_node) {
+                                        visit(*child_node);
+                                    }
+                                }
+                            };
+                            for (const std::shared_ptr<erhe::scene::Node>& root : roots) {
+                                visit(*root);
+                            }
+                            if (meshes.empty()) {
+                                return;
+                            }
+                            auto op = std::make_shared<Item_set_flag_bits_operation>(
+                                std::move(meshes),
+                                erhe::Item_flags::lightmapped,
+                                enable,
+                                enable ? "Enable Lightmap" : "Disable Lightmap"
+                            );
+                            context.operation_stack->queue(op);
+                        }
+                    );
+                };
+                if (ImGui::MenuItem("Enable Lightmap (Recursive)")) {
+                    queue_lightmap_flag(true);
+                    close = true;
+                }
+                if (ImGui::MenuItem("Disable Lightmap (Recursive)")) {
+                    queue_lightmap_flag(false);
+                    close = true;
+                }
+            }
+
+            // No-transform-update flag (undoable): set / clear
+            // Item_flags::no_transform_update on every node in the clicked
+            // node's subtree - or under every selected node when the clicked
+            // node is selected (the Cut / Delete convention above). Same
+            // deferred-collect + pre-filter scheme as the lightmap flag
+            // above, but targeting the nodes themselves; the flag change
+            // re-buckets each node in the Scene's transform-update split.
+            {
+                const auto queue_no_transform_update_flag = [&context, node, &deferred_operations](const bool enable) {
+                    deferred_operations.push_back(
+                        [&context, node, enable]() {
+                            std::vector<std::shared_ptr<erhe::scene::Node>> roots;
+                            if (node->is_selected()) {
+                                for (const std::shared_ptr<erhe::Item_base>& selected_item : context.selection->get_selected_items()) {
+                                    const std::shared_ptr<erhe::scene::Node> selected_node = std::dynamic_pointer_cast<erhe::scene::Node>(selected_item);
+                                    if (selected_node) {
+                                        roots.push_back(selected_node);
+                                    }
+                                }
+                            }
+                            if (roots.empty()) {
+                                roots.push_back(node);
+                            }
+                            // Guard against double-collect when the selection
+                            // holds both an ancestor and its descendant.
+                            std::unordered_set<const erhe::Item_base*>    seen;
+                            std::vector<std::shared_ptr<erhe::Item_base>> nodes;
+                            const std::function<void(const std::shared_ptr<erhe::scene::Node>&)> visit = [&](const std::shared_ptr<erhe::scene::Node>& visited_node) {
+                                if (seen.insert(visited_node.get()).second && (visited_node->is_no_transform_update() != enable)) {
+                                    nodes.push_back(visited_node);
+                                }
+                                for (const std::shared_ptr<erhe::Hierarchy>& child : visited_node->get_children()) {
+                                    const std::shared_ptr<erhe::scene::Node> child_node = std::dynamic_pointer_cast<erhe::scene::Node>(child);
+                                    if (child_node) {
+                                        visit(child_node);
+                                    }
+                                }
+                            };
+                            for (const std::shared_ptr<erhe::scene::Node>& root : roots) {
+                                visit(root);
+                            }
+                            if (nodes.empty()) {
+                                return;
+                            }
+                            auto op = std::make_shared<Item_set_flag_bits_operation>(
+                                std::move(nodes),
+                                erhe::Item_flags::no_transform_update,
+                                enable,
+                                enable ? "Set No Transform Update" : "Clear No Transform Update"
+                            );
+                            context.operation_stack->queue(op);
+                        }
+                    );
+                };
+                if (ImGui::MenuItem("Set No Transform Update (Recursive)")) {
+                    queue_no_transform_update_flag(true);
+                    close = true;
+                }
+                if (ImGui::MenuItem("Clear No Transform Update (Recursive)")) {
+                    queue_no_transform_update_flag(false);
+                    close = true;
+                }
+            }
+        }
+    );
+    // Content-library context menu (migrated from the removed Content Library
+    // window, #241 follow-up): "Create Material" on this scene's Materials folder.
+    m_node_tree_window->add_item_context_menu_callback(
+        [this, &context](
+            const std::shared_ptr<erhe::Item_base>& item,
+            std::vector<std::function<void()>>&     deferred_operations,
+            bool&                                   close
+        ) {
+            const auto content_node = std::dynamic_pointer_cast<Content_library_node>(item);
+            if (!content_node) {
+                return;
+            }
+            const bool is_folder = !content_node->item && (content_node->type_code != 0);
+            if (is_folder && (content_node->type_code == erhe::Item_type::material)) {
+                auto         materials   = get_content_library()->materials;
+                App_context* context_ptr = &context;
+                if (ImGui::MenuItem("Create Material")) {
+                    deferred_operations.push_back(
+                        [this, context_ptr, materials]() {
+                            auto new_material = context_ptr->asset_manager->create<erhe::primitive::Material>(
+                                *this,
+                                erhe::primitive::Material_create_info{
+                                    .name = "New Material",
+                                    .data = {
+                                        .base_color = glm::vec3{0.5f, 0.5f, 0.5f},
+                                        .roughness  = glm::vec2{0.5f, 0.5f},
+                                        .metallic   = 1.0f
+                                    }
+                                }
+                            );
+                            auto new_node = std::make_shared<Content_library_node>(new_material);
+                            auto op = std::make_shared<Item_insert_remove_operation>(
+                                Item_insert_remove_operation::Parameters{
+                                    .context = *context_ptr,
+                                    .item    = new_node,
+                                    .parent  = materials,
+                                    .mode    = Item_insert_remove_operation::Mode::insert
+                                }
+                            );
+                            context_ptr->operation_stack->queue(op);
+                        }
+                    );
+                    close = true;
+                }
+            }
+            if (is_folder && (content_node->type_code == erhe::Item_type::graph_texture)) {
+                auto         graph_textures = get_content_library()->graph_textures;
+                App_context* context_ptr    = &context;
+                if (ImGui::MenuItem("Create Graph Texture")) {
+                    deferred_operations.push_back(
+                        [context_ptr, graph_textures]() {
+                            auto new_graph_texture = std::make_shared<Graph_texture>("Graph Texture");
+                            auto new_node = std::make_shared<Content_library_node>(new_graph_texture);
+                            auto op = std::make_shared<Item_insert_remove_operation>(
+                                Item_insert_remove_operation::Parameters{
+                                    .context = *context_ptr,
+                                    .item    = new_node,
+                                    .parent  = graph_textures,
+                                    .mode    = Item_insert_remove_operation::Mode::insert
+                                }
+                            );
+                            context_ptr->operation_stack->queue(op);
+                            // Issue #252: point the Texture Graph window at the new
+                            // asset explicitly (no longer via the global selection).
+                            if (context_ptr->texture_graph_window != nullptr) {
+                                context_ptr->texture_graph_window->set_target(new_graph_texture);
+                            }
+                        }
+                    );
+                    close = true;
+                }
+            }
+            if (is_folder && (content_node->type_code == erhe::Item_type::graph_mesh)) {
+                auto         graph_meshes = get_content_library()->graph_meshes;
+                App_context* context_ptr  = &context;
+                if (ImGui::MenuItem("Create Graph Mesh")) {
+                    deferred_operations.push_back(
+                        [context_ptr, graph_meshes]() {
+                            auto new_graph_mesh = std::make_shared<Graph_mesh>("Graph Mesh");
+                            auto new_node = std::make_shared<Content_library_node>(new_graph_mesh);
+                            auto op = std::make_shared<Item_insert_remove_operation>(
+                                Item_insert_remove_operation::Parameters{
+                                    .context = *context_ptr,
+                                    .item    = new_node,
+                                    .parent  = graph_meshes,
+                                    .mode    = Item_insert_remove_operation::Mode::insert
+                                }
+                            );
+                            context_ptr->operation_stack->queue(op);
+                            // Issue #252: point the Geometry Graph window at the new
+                            // asset explicitly (no longer via the global selection).
+                            if (context_ptr->geometry_graph_window != nullptr) {
+                                context_ptr->geometry_graph_window->set_target(new_graph_mesh);
+                            }
+                        }
+                    );
+                    close = true;
+                }
+            }
+            // R7 asset workflow verbs on material leaves: "Make External"
+            // moves a definition into a fresh asset container file (the
+            // entry flips to a reference; the next scene save writes an R6
+            // proxy); "Make Internal" copies a referenced material's data
+            // into a scene-owned definition and de-links. Neither is
+            // undoable (they alter container files / manager state).
+            {
+                const std::shared_ptr<erhe::primitive::Material> leaf_material =
+                    std::dynamic_pointer_cast<erhe::primitive::Material>(content_node->item);
+                if (leaf_material && (context.asset_manager != nullptr)) {
+                    App_context* context_ptr = &context;
+                    if (!content_node->is_reference && is_asset_definition(*leaf_material)) {
+                        if (ImGui::MenuItem("Make External")) {
+                            deferred_operations.push_back(
+                                [this, context_ptr, leaf_material]() {
+                                    // Default location; a name collision on disk gets
+                                    // a numeric suffix instead of overwriting.
+                                    const std::filesystem::path directory =
+                                        std::filesystem::path{"res"} / "editor" / "assets" / "materials";
+                                    std::filesystem::path path = directory / (leaf_material->get_name() + ".glb");
+                                    std::error_code error_code;
+                                    for (int suffix = 2; std::filesystem::exists(path, error_code) && (suffix < 100); ++suffix) {
+                                        path = directory / fmt::format("{} ({}).glb", leaf_material->get_name(), suffix);
+                                    }
+                                    std::string error;
+                                    if (!make_material_external(*context_ptr, *this, leaf_material, path, error)) {
+                                        log_scene->warn("Make External failed: {}", error);
+                                    }
+                                }
+                            );
+                            close = true;
+                        }
+                    }
+                    if (content_node->is_reference) {
+                        if (ImGui::MenuItem("Make Internal")) {
+                            deferred_operations.push_back(
+                                [this, context_ptr, leaf_material]() {
+                                    std::string error;
+                                    if (!make_material_internal(*context_ptr, *this, leaf_material, error)) {
+                                        log_scene->warn("Make Internal failed: {}", error);
+                                    }
+                                }
+                            );
+                            close = true;
+                        }
+                    }
+                }
+            }
+            // "Place in Scene": instance a brush leaf at the world origin
+            // with the library's first material. The placement shares the
+            // brush's primitive (one GPU allocation for every instance of
+            // the brush) and inserts undoably.
+            {
+                const std::shared_ptr<Brush> leaf_brush = std::dynamic_pointer_cast<Brush>(content_node->item);
+                if (leaf_brush && ImGui::MenuItem("Place in Scene")) {
+                    App_context* context_ptr = &context;
+                    deferred_operations.push_back(
+                        [this, context_ptr, leaf_brush]() {
+                            std::shared_ptr<erhe::primitive::Material> material;
+                            const std::shared_ptr<Content_library>& library = get_content_library();
+                            if (library && library->materials) {
+                                const auto& materials = library->materials->get_all<erhe::primitive::Material>();
+                                if (!materials.empty()) {
+                                    material = materials.front();
+                                }
+                            }
+                            if (!material) {
+                                log_scene->warn("Place in Scene: scene has no material");
+                                return;
+                            }
+                            place_brush_in_scene(
+                                *context_ptr, *leaf_brush, *this,
+                                glm::mat4{1.0f}, material, 1.0,
+                                erhe::physics::Motion_mode::e_static
+                            );
+                        }
+                    );
+                    close = true;
+                }
+            }
+            // "Copy to Scene": copy a library item into another open scene's
+            // library. Copies never alias - each library owns its items (see
+            // doc/content-library-ownership-plan.md); shown only for copyable
+            // types (copy_library_item_to_library rejects textures and graph
+            // assets, which are shared GPU / graph resources).
+            const uint64_t copyable_types =
+                erhe::Item_type::brush |
+                erhe::Item_type::material |
+                erhe::Item_type::physics_material |
+                erhe::Item_type::collision_filter |
+                erhe::Item_type::physics_joint_settings;
+            if (content_node->item && ((content_node->item->get_type() & copyable_types) != 0) && (context.app_scenes != nullptr)) {
+                const std::vector<std::shared_ptr<Scene_root>>& scene_roots = context.app_scenes->get_scene_roots();
+                bool has_other_scene = false;
+                for (const std::shared_ptr<Scene_root>& other : scene_roots) {
+                    if (other && (other.get() != this)) {
+                        has_other_scene = true;
+                        break;
+                    }
+                }
+                if (has_other_scene && ImGui::BeginMenu("Copy to Scene")) {
+                    for (const std::shared_ptr<Scene_root>& other : scene_roots) {
+                        if (!other || (other.get() == this)) {
+                            continue;
+                        }
+                        if (ImGui::MenuItem(other->get_name().c_str())) {
+                            const std::shared_ptr<erhe::Item_base> library_item = content_node->item;
+                            deferred_operations.push_back(
+                                [library_item, other]() {
+                                    const std::shared_ptr<Content_library> target_library = other->get_content_library();
+                                    if (!target_library) {
+                                        return;
+                                    }
+                                    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{target_library->mutex};
+                                    const std::shared_ptr<erhe::Item_base> copy = copy_library_item_to_library(library_item, *target_library.get());
+                                    if (!copy) {
+                                        log_scene->warn("Copy to Scene: {} '{}' is not copyable", library_item->get_type_name(), library_item->get_name());
+                                    }
+                                }
+                            );
+                            close = true;
+                        }
+                    }
+                    ImGui::EndMenu();
+                }
+            }
+        }
+    );
+    // Scene row context menu (#240): "Close" tears down this scene. The actual
+    // close is queued to the message bus because it destroys ImGui windows
+    // (viewports, this browser), which must not happen inside ImGui iteration.
+    m_node_tree_window->add_item_context_menu_callback(
+        [this, &context](
+            const std::shared_ptr<erhe::Item_base>& item,
+            std::vector<std::function<void()>>&,
+            bool&                                   close
+        ) {
+            if (item.get() != get_scene_item().get()) {
+                return;
+            }
+            if (ImGui::MenuItem("Close")) {
+                context.app_message_bus->close_scene.queue_message(
+                    Close_scene_message{
+                        .scene_root = std::dynamic_pointer_cast<Scene_root>(shared_from_this())
+                    }
+                );
+                close = true;
+            }
+        }
+    );
+    // Prefab instance root context menu: "Load '<source>'" opens the
+    // instance's source glTF file as its own scene -- the same entry (and
+    // the same File > Load Scene message path) the Asset browser offers on
+    // the file itself.
+    m_node_tree_window->add_item_context_menu_callback(
+        [&context](
+            const std::shared_ptr<erhe::Item_base>& item,
+            std::vector<std::function<void()>>&,
+            bool&                                   close
+        ) {
+            std::shared_ptr<Prefab_instance> prefab_instance = std::dynamic_pointer_cast<Prefab_instance>(item);
+            if (!prefab_instance) {
+                const std::shared_ptr<erhe::scene::Node> node = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+                if (node) {
+                    prefab_instance = erhe::scene::get_attachment<Prefab_instance>(node.get());
+                }
+            }
+            if (!prefab_instance || prefab_instance->get_prefab_source_path().empty()) {
+                return;
+            }
+            const std::filesystem::path& source_path = prefab_instance->get_prefab_source_path();
+            const std::string label = fmt::format("Load '{}'", erhe::file::to_string(source_path));
+            if (ImGui::MenuItem(label.c_str())) {
+                context.app_message_bus->load_scene_file.queue_message(
+                    Load_scene_file_message{ .path = source_path }
+                );
+                close = true;
+            }
+        }
+    );
+    // Issue #252: "Open Editor" (graph assets -> their graph editor; a scene ->
+    // a new viewport) and "Open Properties" (any item -> a new pinned
+    // Properties window), each targeting the item explicitly, decoupled from
+    // the global selection. Window creation is deferred (Editor_windows queues
+    // it) so it is safe from inside the popup.
+    m_node_tree_window->add_item_context_menu_callback(
+        [&context](
+            const std::shared_ptr<erhe::Item_base>& item,
+            std::vector<std::function<void()>>&     deferred_operations,
+            bool&                                   close
+        ) {
+            if (context.editor_windows == nullptr) {
+                return;
+            }
+            if (Editor_windows::item_has_editor(item)) {
+                if (ImGui::MenuItem("Open Editor")) {
+                    deferred_operations.push_back(
+                        [&context, item]() { context.editor_windows->open_editor_for_item(item); }
+                    );
+                    close = true;
+                }
+            }
+            if (ImGui::MenuItem("Open Properties")) {
+                deferred_operations.push_back(
+                    [&context, item]() { context.editor_windows->open_properties_for_item(item); }
+                );
+                close = true;
+            }
+        }
+    );
+    return m_node_tree_window;
+}
+
+void Scene_root::remove_browser_window()
+{
+    m_node_tree_window.reset();
+}
+
+void Scene_root::register_to_editor_scenes(App_scenes& app_scenes)
+{
+    ERHE_VERIFY(m_is_registered == false);
+    ERHE_VERIFY(m_app_scenes == nullptr);
+    m_app_scenes = &app_scenes;
+    app_scenes.register_scene_root(shared_from_this());
+    m_is_registered = true;
+}
+
+void Scene_root::unregister_from_editor_scenes(App_scenes& app_scenes)
+{
+    ERHE_VERIFY(m_is_registered == true);
+    ERHE_VERIFY(m_app_scenes == &app_scenes);
+    m_app_scenes = nullptr;
+    app_scenes.unregister_scene_root(this);
+    m_is_registered = false;
+}
+
+void Scene_root::detach_from_editor_scenes(App_scenes& app_scenes)
+{
+    ERHE_VERIFY(m_is_registered == true);
+    ERHE_VERIFY(m_app_scenes == &app_scenes);
+    m_app_scenes    = nullptr;
+    m_is_registered = false;
+}
+
+auto Scene_root::get_host_name() const -> const char*
+{
+    return "Scene_root";
+}
+
+auto Scene_root::get_hosted_scene() -> Scene*
+{
+    return m_scene.get();
+}
+
+void Scene_root::register_node(const std::shared_ptr<erhe::scene::Node>& node)
+{
+    if (m_scene) {
+        m_scene->register_node(node);
+    }
+}
+
+void Scene_root::unregister_node(const std::shared_ptr<erhe::scene::Node>& node)
+{
+    if (m_scene) {
+        m_scene->unregister_node(node);
+    }
+}
+
+void Scene_root::register_camera(const std::shared_ptr<erhe::scene::Camera>& camera)
+{
+    if (m_scene) {
+        m_scene->register_camera(camera);
+    }
+}
+void Scene_root::unregister_camera(const std::shared_ptr<erhe::scene::Camera>& camera)
+{
+    if (m_scene) {
+        m_scene->unregister_camera(camera);
+    }
+}
+
+auto Scene_root::get_node_rt_mask(erhe::scene::Node* node) -> uint32_t
+{
+    uint32_t mask = 0;
+    if (node != nullptr) {
+        for (const auto& node_attachment : node->get_attachments()) {
+            mask = mask | raytrace_node_mask(*node_attachment.get());
+        }
+        log_raytrace->debug("RT node attach to {}, mask = {}", node->get_name(), m_scene->get_name(), mask);
+    }
+
+    return mask;
+}
+
+void Scene_root::begin_mesh_rt_update(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    mesh->detach_rt_from_scene();
+}
+
+auto Scene_root::get_mesh_rt_mask(erhe::scene::Mesh* mesh) -> uint32_t
+{
+    if ((mesh != nullptr) && mesh->skin) {
+        // GPU-skinned mesh: the raytrace BVH was built from rest-pose
+        // vertices and is never refit, so any hit here would correspond
+        // to the unposed surface. Drop the role bits the node would
+        // otherwise contribute and carry only the `skinned` marker so
+        // picking-tool rays (which mask on role bits) skip the instance.
+        // The ID renderer covers skinned meshes correctly. To raytrace
+        // a skinned mesh on purpose, set ray.mask |= Raytrace_node_mask::skinned.
+        return Raytrace_node_mask::skinned;
+    }
+    return get_node_rt_mask(mesh ? mesh->get_node() : nullptr);
+}
+
+void Scene_root::end_mesh_rt_update(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    mesh->set_rt_mask(get_mesh_rt_mask(mesh.get()));
+    mesh->attach_rt_to_scene(m_raytrace_scene.get());
+}
+
+void Scene_root::register_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    ERHE_VERIFY(mesh);
+
+    log_scene->debug("Registering Mesh '{}' into scene", mesh->get_name());
+
+    mesh->attach_rt_to_scene(m_raytrace_scene.get());
+    mesh->set_rt_mask(get_mesh_rt_mask(mesh.get())); // TODO If scene changes, the mesh/node masks need to be updated somehow
+
+    if (m_scene) {
+        m_scene->register_mesh(mesh);
+    }
+
+    // May run on a worker thread (item attach during async load): enqueue
+    // only; flush_draw_lists() applies on the main thread.
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_register(
+            erhe::scene_renderer::Draw_list_object_create_info{
+                .mesh     = mesh,
+                .mobility = erhe::scene_renderer::Draw_mobility::dynamic // no static source yet (R10a)
+            }
+        );
+    }
+
+    if (mesh->skin) {
+        register_skin(mesh->skin);
+    }
+
+    if (erhe::is<Rendertarget_mesh>(mesh)) {
+        const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_rendertarget_meshes_mutex};
+        m_rendertarget_meshes.push_back(std::dynamic_pointer_cast<Rendertarget_mesh>(mesh));
+    }
+
+    // Make sure materials are in the material library. A material this scene
+    // defines (is_asset_definition: this scene's container record is its
+    // defining container) resolves to its existing owning entry; any other
+    // material - a mesh migrating between scenes (e.g. the Hotbar
+    // rendertarget following the active scene), a prefab template resource,
+    // another scene's definition, a loaded container's asset - is listed as
+    // a reference entry so membership stays with the owner. A material with
+    // NO live home at all (not managed, not listed anywhere) means a missing
+    // explicit registration at its creation site (R5.2b removed the implicit
+    // adoption): warn loudly and list it as a reference; rendering and the
+    // Materials panel keep working, but nothing claims ownership (a
+    // definition must never appear as a side effect of mesh registration).
+    Asset_manager* const asset_manager = get_content_library()->get_asset_manager();
+    auto& material_library = get_content_library()->materials;
+    for (const auto& primitive : mesh->get_primitives()) {
+        if (!primitive.material) {
+            continue;
+        }
+        if (is_asset_definition(*primitive.material)) {
+            material_library->add(primitive.material);
+        } else {
+            const bool has_live_home = (asset_manager != nullptr) && asset_manager->is_managed(*primitive.material);
+            if (!has_live_home && !material_library->has_item(*primitive.material)) {
+                log_scene->warn(
+                    "Material '{}' on mesh '{}' entered scene '{}' unowned and unregistered;"
+                    " listing it as a reference without ownership. Register the material explicitly"
+                    " at its creation site (R5.2b: ownership never comes from mesh registration).",
+                    primitive.material->get_name(),
+                    mesh->get_name(),
+                    get_name()
+                );
+            }
+            // Stamp the defining container on the reference when it is
+            // durable (file scope: a loaded container or a saved scene) -
+            // inert metadata until the R6 wire format.
+            std::optional<Asset_key> reference_key{};
+            if (asset_manager != nullptr) {
+                Asset_key key = asset_manager->make_key(*primitive.material);
+                if (key.scope == Asset_scope::file) {
+                    reference_key = std::move(key);
+                }
+            }
+            material_library->add_reference(primitive.material, reference_key);
+        }
+    }
+}
+
+auto Scene_root::is_asset_definition(const erhe::Item_base& item) const -> bool
+{
+    // R5.6 classification (asset-manager plan, R5 sub-plan resolution 2):
+    // a definition is an asset whose defining container is this scene's
+    // record - recorded manager state, never derived from hosting (asset
+    // types are not hosted post-flip). Scenes without a record (previews,
+    // the tool scene; the manager hook is only armed for registered
+    // scenes) define nothing: their libraries hold entries whose lifetime
+    // is the node's item pointer. Keep every definition-vs-reference
+    // decision routed through here.
+    Asset_manager* const asset_manager = m_content_library ? m_content_library->get_asset_manager() : nullptr;
+    if (asset_manager == nullptr) {
+        return false;
+    }
+    return asset_manager->is_defined_by(item, static_cast<const erhe::Item_host*>(this));
+}
+
+void Scene_root::unregister_mesh(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    ERHE_VERIFY(mesh);
+
+    log_scene->debug("Unregistering Mesh '{}' from scene", mesh->get_name());
+
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_unregister(mesh);
+    }
+
+    mesh->detach_rt_from_scene();
+
+    if (erhe::is<Rendertarget_mesh>(mesh)) {
+        const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_rendertarget_meshes_mutex};
+        const auto rendertarget = std::dynamic_pointer_cast<Rendertarget_mesh>(mesh);
+        const auto i = std::remove(m_rendertarget_meshes.begin(), m_rendertarget_meshes.end(), rendertarget);
+        if (i == m_rendertarget_meshes.end()) {
+            log_scene->error("rendertarget mesh {} not in scene root", rendertarget->get_name());
+        } else {
+            m_rendertarget_meshes.erase(i, m_rendertarget_meshes.end());
+        }
+    }
+
+    if (mesh->skin) {
+        unregister_skin(mesh->skin);
+    }
+
+    if (m_scene) {
+        m_scene->unregister_mesh(mesh);
+    }
+
+    // TODO reference count? Remove materials from material library
+    // auto& material_library = get_content_library()->materials;
+    // material_library.remove(m_material);
+}
+
+void Scene_root::register_skin(const std::shared_ptr<erhe::scene::Skin>& skin)
+{
+    if (m_scene) {
+        m_scene->register_skin(skin);
+    }
+    // Flag the joint nodes so a bone is identifiable without walking every skin
+    // (item tree icon, bone selection mode, bone proxies).
+    if (skin) {
+        erhe::scene::mark_skin_joints(*skin);
+    }
+    // Bone_visualization creates the bone proxies for this skin's joints on
+    // this message. Queued (see Skin_registered_message) so proxy nodes are
+    // not attached mid node-attach traversal. weak_from_this() rather than
+    // shared_from_this(): skins can (un)register from inside ~Scene_root
+    // (scene close teardown), where shared_from_this() throws bad_weak_ptr.
+    // A scene tearing down needs no proxies, and the handler skips a null
+    // scene_root.
+    if ((m_app_message_bus != nullptr) && skin) {
+        m_app_message_bus->skin_registered.queue_message(
+            Skin_registered_message{
+                .scene_root = weak_from_this().lock(),
+                .skin       = skin,
+                .registered = true
+            }
+        );
+    }
+}
+
+void Scene_root::unregister_skin(const std::shared_ptr<erhe::scene::Skin>& skin)
+{
+    if (m_scene) {
+        m_scene->unregister_skin(skin);
+    }
+    // weak_from_this(), not shared_from_this(): see register_skin. The
+    // unregister handler only needs the skin.
+    if ((m_app_message_bus != nullptr) && skin) {
+        m_app_message_bus->skin_registered.queue_message(
+            Skin_registered_message{
+                .scene_root = weak_from_this().lock(),
+                .skin       = skin,
+                .registered = false
+            }
+        );
+    }
+}
+
+void Scene_root::register_layout(const std::shared_ptr<erhe::scene::Layout>& layout)
+{
+    if (m_scene) {
+        m_scene->register_layout(layout);
+    }
+}
+
+void Scene_root::unregister_layout(const std::shared_ptr<erhe::scene::Layout>& layout)
+{
+    if (m_scene) {
+        m_scene->unregister_layout(layout);
+    }
+}
+
+void Scene_root::register_light(const std::shared_ptr<erhe::scene::Light>& light)
+{
+    if (m_scene) {
+        m_scene->register_light(light);
+    }
+    m_light_set.invalidate();
+}
+
+void Scene_root::unregister_light(const std::shared_ptr<erhe::scene::Light>& light)
+{
+    if (m_scene) {
+        m_scene->unregister_light(light);
+    }
+    m_light_set.invalidate();
+}
+
+// Light hook: any thread, mark stale only (Scene_host contract).
+void Scene_root::on_light_changed(const std::shared_ptr<erhe::scene::Light>& light)
+{
+    static_cast<void>(light);
+    m_light_set.invalidate();
+}
+
+auto Scene_root::get_light_set() -> erhe::scene_renderer::Light_set&
+{
+    return m_light_set;
+}
+
+// Draw list hooks: any thread, enqueue only (Scene_host contract).
+void Scene_root::on_mesh_primitives_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_reregister(mesh);
+    }
+}
+
+void Scene_root::on_mesh_material_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_reregister(mesh);
+    }
+}
+
+void Scene_root::on_mesh_flags_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh, const uint64_t, const uint64_t new_flag_bits)
+{
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_set_flags(mesh, new_flag_bits);
+    }
+}
+
+void Scene_root::on_mesh_transform_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_transform_update(mesh);
+    }
+}
+
+void Scene_root::on_mesh_primitive_data_changed(const std::shared_ptr<erhe::scene::Mesh>& mesh)
+{
+    if (m_draw_list_scene) {
+        m_draw_list_scene->enqueue_refresh(mesh);
+    }
+}
+
+auto Scene_root::get_draw_list_scene() -> erhe::scene_renderer::Draw_list_scene*
+{
+    return m_draw_list_scene.get();
+}
+
+void Scene_root::flush_draw_lists()
+{
+    if (!m_draw_list_scene) {
+        return;
+    }
+    // Always flush (even with an empty queue): flush_pending() also runs the
+    // per-frame material identity check (R12 material-content edits).
+    // item_host_mutex keeps worker-side Buffer_mesh replacement
+    // (commit_geometry_buffer_mesh under this mutex) from racing the
+    // registration reads. Lock order: item_host_mutex -> pending mutex.
+    const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{item_host_mutex};
+    m_draw_list_scene->flush_pending();
+}
+
+void Scene_root::register_node_physics(const std::shared_ptr<Node_physics>& node_physics)
+{
+    if (!m_physics_world) {
+        return;
+    }
+
+#ifndef NDEBUG
+    const auto i = std::find(m_node_physics.begin(), m_node_physics.end(), node_physics);
+    if (i != m_node_physics.end()) {
+        auto* node = node_physics->get_node();
+        log_physics->error("Node_physics for '{}' already in Scene_root", (node != nullptr) ? node->get_name().c_str() : "");
+    } else
+#endif
+    {
+        m_node_physics.push_back(node_physics);
+        m_node_physics_sorted = false;
+    }
+
+    node_physics->set_physics_world(m_physics_world.get());
+    erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
+    if (rigid_body != nullptr) {
+        m_physics_world->add_rigid_body(node_physics->get_rigid_body());
+    }
+
+    // The newly registered rigid body may be the missing body of a pending
+    // Node_joint (scene load / paste order); retry constraint creation.
+    for (const auto& node_joint : m_node_joints) {
+        static_cast<void>(node_joint->try_create_constraint());
+    }
+}
+
+void Scene_root::unregister_node_physics(const std::shared_ptr<Node_physics>& node_physics)
+{
+    if (!m_physics_world) {
+        return;
+    }
+
+    // Tear down joint constraints referencing this rigid body before it
+    // leaves the world; the affected joints return to the pending state.
+    erhe::physics::IRigid_body* rigid_body_for_joints = node_physics->get_rigid_body();
+    if (rigid_body_for_joints != nullptr) {
+        for (const auto& node_joint : m_node_joints) {
+            node_joint->handle_rigid_body_removed(rigid_body_for_joints);
+        }
+    }
+
+    const auto i = std::remove(
+        m_node_physics.begin(),
+        m_node_physics.end(),
+        node_physics
+    );
+    if (i == m_node_physics.end()) {
+        auto* node = node_physics->get_node();
+        log_physics->error("Node_physics for '{}' not in Scene_root", (node != nullptr) ? node->get_name().c_str() : "");
+    } else {
+        m_node_physics.erase(i, m_node_physics.end());
+        m_node_physics_sorted = false;
+    }
+
+    erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
+    if (rigid_body != nullptr) {
+        m_physics_world->remove_rigid_body(node_physics->get_rigid_body());
+    }
+    node_physics->set_physics_world(nullptr);
+}
+
+void Scene_root::register_node_joint(const std::shared_ptr<Node_joint>& node_joint)
+{
+    if (!m_physics_world) {
+        return;
+    }
+
+#ifndef NDEBUG
+    const auto i = std::find(m_node_joints.begin(), m_node_joints.end(), node_joint);
+    if (i != m_node_joints.end()) {
+        auto* node = node_joint->get_node();
+        log_physics->error("Node_joint for '{}' already in Scene_root", (node != nullptr) ? node->get_name().c_str() : "");
+    } else
+#endif
+    {
+        m_node_joints.push_back(node_joint);
+    }
+
+    node_joint->set_physics_world(m_physics_world.get());
+    // The needed rigid bodies may not be registered yet (scene load / paste
+    // order); when this returns false the joint stays pending and is retried
+    // from register_node_physics().
+    static_cast<void>(node_joint->try_create_constraint());
+}
+
+void Scene_root::unregister_node_joint(const std::shared_ptr<Node_joint>& node_joint)
+{
+    if (!m_physics_world) {
+        return;
+    }
+
+    const auto i = std::remove(m_node_joints.begin(), m_node_joints.end(), node_joint);
+    if (i == m_node_joints.end()) {
+        auto* node = node_joint->get_node();
+        log_physics->error("Node_joint for '{}' not in Scene_root", (node != nullptr) ? node->get_name().c_str() : "");
+    } else {
+        m_node_joints.erase(i, m_node_joints.end());
+    }
+
+    node_joint->set_physics_world(nullptr);
+}
+
+void Scene_root::set_physics_simulation_running(const bool running)
+{
+    if (running == m_physics_simulation_running) {
+        return;
+    }
+    m_physics_simulation_running = running;
+    if (!m_physics_world) {
+        return;
+    }
+    for (const auto& node_physics : m_node_physics) {
+        auto* rigid_body = node_physics->get_rigid_body();
+        if (rigid_body == nullptr) {
+            continue;
+        }
+        erhe::scene::Node* node = node_physics->get_node();
+        if (node == nullptr) {
+            continue;
+        }
+        if (running) {
+            // Awake bodies stayed active across the pause; their activation
+            // events were consumed long ago, so restore the flag here.
+            if (rigid_body->is_active() && (rigid_body->get_motion_mode() == erhe::physics::Motion_mode::e_dynamic)) {
+                node->enable_flag_bits(erhe::Item_flags::no_transform_update);
+            }
+        } else {
+            node->disable_flag_bits(erhe::Item_flags::no_transform_update);
+        }
+    }
+}
+
+void Scene_root::before_physics_simulation_steps()
+{
+    for (const auto& node_physics : m_node_physics) {
+        auto* rigid_body = node_physics->get_rigid_body();
+        if (rigid_body == nullptr) {
+            continue;
+        }
+        node_physics->before_physics_simulation();
+    }
+}
+
+void Scene_root::update_physics_simulation_fixed_step(const double dt, const Physics_config& physics)
+{
+    if (!m_physics_world) {
+        return;
+    }
+    apply_wind_forces(static_cast<float>(dt), physics);
+    m_physics_world->update_fixed_step(dt);
+}
+
+void Scene_root::apply_wind_forces(const float dt, const Physics_config& physics)
+{
+    if (!physics.wind_enable) {
+        return;
+    }
+    const float direction_length = glm::length(physics.wind_direction);
+    if (direction_length < 1e-6f) {
+        return;
+    }
+    m_wind_time += static_cast<double>(dt);
+
+    const glm::vec3 direction = physics.wind_direction / direction_length;
+    // Lateral axis for the turbulence component; when the wind blows straight
+    // up or down any horizontal axis serves.
+    glm::vec3 lateral = glm::cross(direction, glm::vec3{0.0f, 1.0f, 0.0f});
+    const float lateral_length = glm::length(lateral);
+    lateral = (lateral_length > 1e-6f) ? (lateral / lateral_length) : glm::vec3{1.0f, 0.0f, 0.0f};
+
+    const float two_pi     = glm::two_pi<float>();
+    const float t          = static_cast<float>(m_wind_time);
+    const float wavelength = std::max(physics.wind_wavelength, 0.01f);
+
+    for (const std::shared_ptr<Node_physics>& node_physics : m_node_physics) {
+        const float receptivity = node_physics->get_wind_receptivity();
+        if (receptivity <= 0.0f) {
+            continue;
+        }
+        erhe::physics::IRigid_body* rigid_body = node_physics->get_rigid_body();
+        if ((rigid_body == nullptr) || (rigid_body->get_motion_mode() != erhe::physics::Motion_mode::e_dynamic)) {
+            continue;
+        }
+        const glm::vec3 position = rigid_body->get_center_of_mass();
+        // Traveling gust wave: phase advances along the wind direction, so
+        // plants a wavelength apart move a full cycle out of phase.
+        const float phase  = two_pi * (glm::dot(position, direction) / wavelength);
+        const float gust   = physics.wind_gust_amplitude * std::sin((two_pi * physics.wind_gust_frequency * t) - phase);
+        // Off-frequency secondary wave drives the lateral turbulence so the
+        // motion does not read as a single mechanical oscillation.
+        const float wobble = std::sin((two_pi * 0.37f * physics.wind_gust_frequency * t) + (2.0f * phase));
+        const float speed  = std::max(physics.wind_speed + gust, 0.0f);
+        const glm::vec3 wind_velocity = (direction * speed) + (lateral * (physics.wind_turbulence * speed * wobble));
+        // Relative-velocity drag: bodies already moving with the wind feel no
+        // force, which both damps the response and lets gusts hand energy back.
+        const glm::vec3 force = receptivity * (wind_velocity - rigid_body->get_linear_velocity());
+        if (glm::dot(force, force) < 1e-8f) {
+            continue; // do not wake a sleeping body for a negligible force
+        }
+        rigid_body->apply_force(force);
+    }
+}
+
+void Scene_root::after_physics_simulation_steps()
+{
+    if (!m_physics_world) {
+        return;
+    }
+
+    // Sort nodes, so that parent transforms are updated before child nodes
+    if (!m_node_physics_sorted) {
+        std::sort(
+            m_node_physics.begin(),
+            m_node_physics.end(),
+            [](const auto& lhs, const auto& rhs) -> bool {
+                erhe::scene::Node* lhs_node = lhs->get_node();
+                erhe::scene::Node* rhs_node = rhs->get_node();
+                if ((lhs_node == nullptr) || (rhs_node == nullptr)) {
+                    return true;
+                }
+                return lhs_node->get_depth() < rhs_node->get_depth();
+            }
+        );
+        m_node_physics_sorted = true;
+    }
+
+    // Owner-write bracket: dirt recorded by these body -> node writes keeps
+    // the propagation skip over no_transform_update children (the writeback
+    // covers every body-driven node itself); dirt from any other writer
+    // carries body-driven subtrees with their edited ancestor instead (see
+    // Scene::Transform_owner_writes_scope).
+    const erhe::scene::Scene::Transform_owner_writes_scope owner_writes_scope{*m_scene};
+    for (const auto& node_physics : m_node_physics) {
+        auto* rigid_body = node_physics->get_rigid_body();
+        if (rigid_body) {
+            if (rigid_body->is_active()) {
+                node_physics->after_physics_simulation();
+            }
+        }
+    }
+}
+
+auto Scene_root::layers() -> Scene_layers&
+{
+    return m_layers;
+}
+
+auto Scene_root::layers() const -> const Scene_layers&
+{
+    return m_layers;
+}
+
+auto Scene_root::has_physics_world() const -> bool
+{
+    return static_cast<bool>(m_physics_world);
+}
+
+auto Scene_root::get_physics_world() -> erhe::physics::IWorld&
+{
+    ERHE_VERIFY(m_physics_world);
+    return *m_physics_world.get();
+}
+
+void Scene_root::add_trigger_event(const bool enter, const erhe::physics::Trigger_event& event)
+{
+    auto label = [](erhe::physics::IRigid_body* rigid_body) -> const char* {
+        return (rigid_body != nullptr) ? rigid_body->get_debug_label() : "<null>";
+    };
+    ++m_trigger_event_counter;
+    if (m_trigger_event_log.size() >= s_max_trigger_event_log_entries) {
+        m_trigger_event_log.pop_front();
+    }
+    m_trigger_event_log.push_back(
+        fmt::format(
+            "{} {} '{}' {} '{}'",
+            m_trigger_event_counter,
+            enter ? "enter" : "exit",
+            label(event.sensor),
+            enter ? "<-" : "->",
+            label(event.other)
+        )
+    );
+}
+
+auto Scene_root::get_trigger_event_log() const -> const std::deque<std::string>&
+{
+    return m_trigger_event_log;
+}
+
+auto Scene_root::get_trigger_event_count() const -> uint64_t
+{
+    return m_trigger_event_counter;
+}
+
+void Scene_root::clear_trigger_event_log()
+{
+    m_trigger_event_log.clear();
+}
+
+auto Scene_root::get_raytrace_scene() -> erhe::raytrace::IScene&
+{
+    ERHE_VERIFY(m_raytrace_scene);
+    return *m_raytrace_scene.get();
+}
+
+auto Scene_root::get_scene() -> erhe::scene::Scene&
+{
+    ERHE_VERIFY(m_scene);
+    return *m_scene.get();
+}
+
+auto Scene_root::get_scene() const -> const erhe::scene::Scene&
+{
+    ERHE_VERIFY(m_scene);
+    return *m_scene.get();
+}
+
+auto Scene_root::get_scene_item() -> std::shared_ptr<erhe::scene::Scene>
+{
+    return m_scene;
+}
+
+auto Scene_root::get_name() const -> const std::string&
+{
+    ERHE_VERIFY(m_scene);
+    return m_scene->get_name();
+}
+
+auto Scene_root::get_source_path() const -> const std::filesystem::path&
+{
+    return m_source_path;
+}
+
+void Scene_root::set_source_path(const std::filesystem::path& path)
+{
+    m_source_path = path;
+    // R5.3: the scene's container record follows the source path (first
+    // save binds it, save-as re-homes it). The open paths call this before
+    // register_to_editor_scenes(); the record then picks the path up at
+    // registration instead.
+    if (m_is_registered && (m_app_scenes != nullptr)) {
+        m_app_scenes->notify_scene_source_path_changed(*this);
+    }
+}
+
+auto Scene_root::get_scene_settings() -> Scene_settings&
+{
+    return m_scene_settings;
+}
+
+auto Scene_root::get_scene_settings() const -> const Scene_settings&
+{
+    return m_scene_settings;
+}
+
+auto Scene_root::get_scene_id() -> const std::string&
+{
+    if (m_scene_settings.scene_id.empty()) {
+        // Creation timestamp (UTC, second granularity - human-readable
+        // provenance) + 64 random bits (uniqueness).
+        const auto now = std::chrono::system_clock::now();
+        const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm utc{};
+#if defined(_WIN32)
+        gmtime_s(&utc, &now_time);
+#else
+        gmtime_r(&now_time, &utc);
+#endif
+        std::random_device device;
+        const uint64_t random_bits = (static_cast<uint64_t>(device()) << 32) ^ static_cast<uint64_t>(device());
+        m_scene_settings.scene_id = fmt::format(
+            "{:04}{:02}{:02}-{:02}{:02}{:02}-{:016x}",
+            utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday,
+            utc.tm_hour, utc.tm_min, utc.tm_sec,
+            random_bits
+        );
+        log_scene->info("Scene '{}' assigned scene_id {}", get_name(), m_scene_settings.scene_id);
+    }
+    return m_scene_settings.scene_id;
+}
+
+namespace {
+
+// True when the camera reached the scene embedded in content -- under a
+// sealed prefab instance or a glTF import wrapper -- rather than being
+// authored in the scene itself.
+auto is_content_embedded_camera(const erhe::scene::Camera& camera) -> bool
+{
+    for (const erhe::scene::Node* node = camera.get_node(); node != nullptr; node = node->get_parent_node().get()) {
+        if ((node->get_flag_bits() & erhe::Item_flags::import_root) != 0) {
+            return true;
+        }
+        if (erhe::scene::get_attachment<Prefab_instance>(node)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // anonymous namespace
+
+auto get_selectable_cameras(const erhe::scene::Scene& scene) -> std::vector<std::shared_ptr<erhe::scene::Camera>>
+{
+    std::vector<std::shared_ptr<erhe::scene::Camera>> cameras;
+    for (const std::shared_ptr<erhe::scene::Camera>& camera : scene.get_cameras()) {
+        if (!is_content_embedded_camera(*camera)) {
+            cameras.push_back(camera);
+        }
+    }
+    if (cameras.empty()) {
+        cameras = scene.get_cameras();
+    }
+    return cameras;
+}
+
+auto get_hosting_scene_root(const erhe::Item_base* const item) -> std::shared_ptr<Scene_root>
+{
+    if (item == nullptr) {
+        return {};
+    }
+    erhe::Item_host* const host       = item->get_item_host();
+    Scene_root* const      scene_root = dynamic_cast<Scene_root*>(host);
+    if (scene_root == nullptr) {
+        return {};
+    }
+    return scene_root->shared_from_this();
+}
+
+auto Scene_root::camera_combo(
+    const char*           label,
+    erhe::scene::Camera*& selected_camera,
+    const bool            nullptr_option
+) const -> bool
+{
+    int selected_camera_index = 0;
+    int index = 0;
+    std::vector<const char*>          names;
+    std::vector<erhe::scene::Camera*> cameras;
+    if (nullptr_option || (selected_camera == nullptr)) {
+        names.push_back("(none)");
+        cameras.push_back(nullptr);
+        ++index; // keep index in sync with the names / cameras entries
+    }
+    bool selected_present = (selected_camera == nullptr);
+    const std::vector<std::shared_ptr<erhe::scene::Camera>> scene_cameras = get_selectable_cameras(get_scene());
+    for (const auto& camera : scene_cameras) {
+        names.push_back(camera->get_name().c_str());
+        cameras.push_back(camera.get());
+        if (selected_camera == camera.get()) {
+            selected_camera_index = index;
+            selected_present = true;
+        }
+        ++index;
+    }
+    // The current selection can be a content-embedded camera (not offered
+    // above, e.g. set programmatically); keep it listed so the combo
+    // reflects the actual selection.
+    if (!selected_present) {
+        names.push_back(selected_camera->get_name().c_str());
+        cameras.push_back(selected_camera);
+        selected_camera_index = index;
+        ++index;
+    }
+
+    const bool camera_changed =
+        ImGui::Combo(
+            label,
+            &selected_camera_index,
+            names.data(),
+            static_cast<int>(names.size()),
+            static_cast<int>(names.size())
+        ) &&
+        (selected_camera != cameras[selected_camera_index]);
+    if (camera_changed) {
+        selected_camera = cameras[selected_camera_index];
+    }
+    return camera_changed;
+}
+
+auto Scene_root::camera_combo(
+    const char*                           label,
+    std::shared_ptr<erhe::scene::Camera>& selected_camera,
+    const bool                            nullptr_option
+) const -> bool
+{
+    int selected_camera_index = 0;
+    int index = 0;
+    std::vector<const char*> names;
+    std::vector<std::shared_ptr<erhe::scene::Camera>> cameras;
+    if (nullptr_option || (selected_camera == nullptr)) {
+        names.push_back("(none)");
+        cameras.push_back(nullptr);
+        ++index; // keep index in sync with the names / cameras entries
+    }
+    bool selected_present = (selected_camera == nullptr);
+    const std::vector<std::shared_ptr<erhe::scene::Camera>> scene_cameras = get_selectable_cameras(get_scene());
+    for (const auto& camera : scene_cameras) {
+        names.push_back(camera->get_name().c_str());
+        cameras.push_back(camera);
+        if (selected_camera == camera) {
+            selected_camera_index = index;
+            selected_present = true;
+        }
+        ++index;
+    }
+    // The current selection can be a content-embedded camera (not offered
+    // above, e.g. set programmatically); keep it listed so the combo
+    // reflects the actual selection.
+    if (!selected_present) {
+        names.push_back(selected_camera->get_name().c_str());
+        cameras.push_back(selected_camera);
+        selected_camera_index = index;
+        ++index;
+    }
+
+    const bool camera_changed =
+        ImGui::Combo(
+            label,
+            &selected_camera_index,
+            names.data(),
+            static_cast<int>(names.size()),
+            static_cast<int>(names.size())
+        ) &&
+        (selected_camera != cameras[selected_camera_index]);
+    if (camera_changed) {
+        selected_camera = cameras[selected_camera_index];
+    }
+    return camera_changed;
+}
+
+auto Scene_root::camera_combo(
+    const char*                         label,
+    std::weak_ptr<erhe::scene::Camera>& selected_camera,
+    const bool                          nullptr_option
+) const -> bool
+{
+    int selected_camera_index = 0;
+    int index = 0;
+    std::vector<const char*> names;
+    std::vector<std::weak_ptr<erhe::scene::Camera>> cameras;
+    const std::shared_ptr<erhe::scene::Camera> selected = selected_camera.lock();
+    if (nullptr_option || !selected) {
+        names.push_back("(none)");
+        cameras.push_back({});
+        ++index; // keep index in sync with the names / cameras entries
+    }
+    bool selected_present = !selected;
+    const std::vector<std::shared_ptr<erhe::scene::Camera>> scene_cameras = get_selectable_cameras(get_scene());
+    for (const auto& camera : scene_cameras) {
+        names.push_back(camera->get_name().c_str());
+        cameras.push_back(camera);
+        if (selected == camera) {
+            selected_camera_index = index;
+            selected_present = true;
+        }
+        ++index;
+    }
+    // The current selection can be a content-embedded camera (not offered
+    // above, e.g. set programmatically); keep it listed so the combo
+    // reflects the actual selection.
+    if (!selected_present) {
+        names.push_back(selected->get_name().c_str());
+        cameras.push_back(selected);
+        selected_camera_index = index;
+        ++index;
+    }
+
+    const bool camera_changed =
+        ImGui::Combo(
+            label,
+            &selected_camera_index,
+            names.data(),
+            static_cast<int>(names.size()),
+            static_cast<int>(names.size())
+        ) &&
+        (selected_camera.lock() != cameras[selected_camera_index].lock());
+    if (camera_changed) {
+        selected_camera = cameras[selected_camera_index];
+    }
+    return camera_changed;
+}
+
+void Scene_root::update_pointer_for_rendertarget_meshes(Scene_view* scene_view)
+{
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock(m_rendertarget_meshes_mutex);
+
+    for (const auto& rendertarget_mesh : m_rendertarget_meshes) {
+        rendertarget_mesh->update_pointer(scene_view);
+    }
+}
+
+auto Scene_root::get_content_library() const -> std::shared_ptr<Content_library>
+{
+    return m_content_library;
+}
+
+void Scene_root::sanity_check()
+{
+    m_scene->sanity_check();
+}
+
+void Scene_root::imgui()
+{
+    ImGui::Text("Scene_root %s disabled items:", get_name().c_str());
+    for (const auto& item : m_physics_disabled_nodes) {
+        ImGui::BulletText("%s", item->describe().c_str());
+    }
+}
+
+}

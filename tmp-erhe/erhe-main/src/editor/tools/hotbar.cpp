@@ -1,0 +1,1213 @@
+﻿#include "tools/hotbar.hpp"
+
+#include "graph_editor/graph_editor_window_base.hpp"
+
+#include "app_context.hpp"
+#include "brushes/brush.hpp"
+#include "brushes/brush_tool.hpp"
+#include "content_library/content_library.hpp"
+#include "editor_log.hpp"
+#include "app_message_bus.hpp"
+#include "app_settings.hpp"
+#include "graphics/icon_set.hpp"
+#include "graphics/thumbnails.hpp"
+#include "preview/brush_preview.hpp"
+#include "preview/material_preview.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "scene/node_raytrace.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/viewport_scene_view.hpp"
+#include "scene/viewport_scene_views.hpp"
+#include "tools/tool.hpp"
+#include "tools/tools.hpp"
+#include "operations/operation_drag_payload.hpp"
+#include "operations/operations_window.hpp"
+#include "quad_view.hpp"
+#include "rendertarget_imgui_host.hpp"
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+#   include "xr/headset_view.hpp"
+#endif
+
+#include "erhe_commands/commands.hpp"
+#include "erhe_commands/input_arguments.hpp"
+#include "config/generated/hotbar_config.hpp"
+#include "config/generated/editor_settings_config.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_item/item.hpp"
+#include "erhe_imgui/imgui_renderer.hpp"
+#include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_rendergraph/rendergraph.hpp"
+#include "erhe_rendergraph/rendergraph_node.hpp"
+#include "erhe_geometry/shapes/disc.hpp"
+#include "erhe_primitive/primitive_builder.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_scene/camera.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/projection.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_math/viewport.hpp"
+#include "erhe_utility/bit_helpers.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <fmt/format.h>
+
+#include <algorithm>
+#include <cmath>
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+#   include "xr/headset_view.hpp"
+#   include "erhe_xr/xr_action.hpp"
+#   include "erhe_xr/headset.hpp"
+#endif
+
+#include <imgui/imgui.h>
+
+// https://math.stackexchange.com/questions/1662616/calculate-the-diameter-of-an-inscribed-circle-inside-a-sector-of-circle
+//                                                                              .
+// Diameter of an inscribed circle inside a sector of circle:                   .
+//                                                                              .
+//   r = (R-r) * sin(theta/2)                                                   .
+//                                                                              .
+//                                                                              .
+//       R * sin(theta/2)                                                       .
+//   r = ----------------                                                       .
+//       1 + sin(theta/2)                                                       .
+//                                                                              .
+//                                                                              .
+//      :..                                                                     .
+//     :   ˙˙··..                                                               .
+//     :         ˙˙··..                                                         .
+//     :       ..··˙˙˙˙˙˙··..                                                   .
+//    :    .·˙               ˙˙:·..                                             .
+//    :  .˙                     ˙. ˙˙··..                                       .
+//    : .                         ˙.     ˙˙··..                                 .
+//    :.                            ·          ˙˙··..                           .
+//    ::                             :               ˙˙··..                     .
+//    :       r                       :    R-r             ˙˙··..               .
+//    |--------------X----------------+--------------------------::-            .
+//    :               \               :                    ..··˙˙               .
+//    ::               \             :               ..··˙˙                     .
+//    : ·               \           ·          ..··˙˙                           .
+//    :  ˙.              \r       .˙     ..··˙˙                                 .
+//    :    ˙.             \     .˙ ..··˙˙                                       .
+//    :      ˙·.           \ ..··˙˙                                             .
+//     :        ˙··.......··˙                                                   .
+//     :          ..··˙˙                                                        .
+//     :    ..··˙˙                                                              .
+//      :·˙˙                                                                    .
+namespace editor {
+
+using glm::vec3;
+
+auto Slot_entry::get_brush() const -> std::shared_ptr<Brush>
+{
+    return brush.get_as<Brush>();
+}
+
+auto Slot_entry::get_material() const -> std::shared_ptr<erhe::primitive::Material>
+{
+    return material.get_as<erhe::primitive::Material>();
+}
+
+namespace {
+
+// Resolve the configured anchor: platform_default picks the bottom of the
+// vertical FOV on desktop and the top in OpenXR (matching where the hotbar has
+// historically sat on each platform); an explicit bottom/top is used verbatim.
+[[nodiscard]] auto resolve_hotbar_anchor(Hotbar_anchor config_anchor, bool openxr) -> Hotbar_anchor
+{
+    switch (config_anchor) {
+        case Hotbar_anchor::bottom: return Hotbar_anchor::bottom;
+        case Hotbar_anchor::top:    return Hotbar_anchor::top;
+        default:                    return openxr ? Hotbar_anchor::top : Hotbar_anchor::bottom;
+    }
+}
+
+} // namespace
+
+#pragma region Commmands
+Toggle_menu_visibility_command::Toggle_menu_visibility_command(erhe::commands::Commands& commands, App_context& context)
+    : Command  {commands, "Hotbar.toggle_visibility"}
+    , m_context{context}
+{
+}
+
+auto Toggle_menu_visibility_command::try_call() -> bool
+{
+    m_context.hotbar->toggle_mesh_visibility();
+    return true;
+}
+
+Hotbar_trackpad_command::Hotbar_trackpad_command(erhe::commands::Commands& commands, App_context& context)
+    : Command  {commands, "Hotbar.trackpad"}
+    , m_context{context}
+{
+}
+
+auto Hotbar_trackpad_command::try_call_with_input(erhe::commands::Input_arguments& input) -> bool
+{
+    return m_context.hotbar->try_trackpad(input);
+}
+
+Hotbar_thumbstick_command::Hotbar_thumbstick_command(erhe::commands::Commands& commands, App_context& context)
+    : Command  {commands, "Hotbar.thumbstick"}
+    , m_context{context}
+{
+}
+
+auto Hotbar_thumbstick_command::try_call_with_input(erhe::commands::Input_arguments& input) -> bool
+{
+    // In case we are hovering over rendertarget, we do not consume the event,
+    // so that the event can be used to emulate mouse wheel for scrolling.
+    Scene_view* scene_view;
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    if (m_context.OpenXR) {
+        scene_view = m_context.headset_view;
+    }
+    else
+#endif
+    {
+        scene_view = m_context.scene_views->hover_scene_view().get();
+    }
+    if (scene_view != nullptr) {
+        const Hover_entry* nearest_hover = scene_view->get_nearest_hover(
+            Hover_entry::content_bit | Hover_entry::grid_bit | Hover_entry::rendertarget_bit
+        );
+        if (nearest_hover != nullptr) {
+            if (nearest_hover->slot == Hover_entry::rendertarget_slot) {
+                return false;
+            }
+        }
+    }
+
+    // Check for deactivation
+    float x = input.variant.vector2.absolute_value.x;
+    float y = input.variant.vector2.absolute_value.y;
+    if (m_left_active && x > -m_deactivate_threshold) {
+        m_left_active = false;
+    }
+    if (m_right_active && x < m_deactivate_threshold) {
+        m_right_active = false;
+    }
+    if (m_up_active && y < m_deactivate_threshold) {
+        m_up_active = false;
+    }
+    if (m_down_active && y > -m_deactivate_threshold) {
+        m_up_active = false;
+    }
+
+    // Check for activation
+    if (!m_left_active && x < -m_activate_threshold) {
+        m_left_active = true;
+        m_context.hotbar->rotate_tool(-1);
+    }
+    if (!m_right_active && x > m_activate_threshold) {
+        m_right_active = true;
+        m_context.hotbar->rotate_tool(1);
+    }
+    if (!m_down_active && y < -m_activate_threshold) {
+        m_down_active = true;
+        // TODO action
+    } else if (!m_up_active && y > m_activate_threshold) {
+        m_up_active = true;
+        // TODO action
+    }
+    return true;
+}
+
+Hotbar_rotate_tool_command::Hotbar_rotate_tool_command(erhe::commands::Commands& commands, App_context& context, int rotate_direction)
+    : Command{commands, "Hotbar.rotate"}
+    , m_context{context}
+    , m_rotate_direction{rotate_direction}
+{
+}
+
+auto Hotbar_rotate_tool_command::try_call() -> bool
+{
+    m_context.hotbar->rotate_tool(m_rotate_direction);
+    return true;
+}
+
+Hotbar_activate_slot_command::Hotbar_activate_slot_command(erhe::commands::Commands& commands, App_context& context, std::size_t slot_index)
+    : Command    {commands, "Hotbar.activate_slot"}
+    , m_context  {context}
+    , m_slot_index{slot_index}
+{
+}
+
+auto Hotbar_activate_slot_command::try_call() -> bool
+{
+    m_context.hotbar->activate_slot(m_slot_index);
+    return true;
+}
+
+#pragma endregion Commands
+
+Hotbar::Hotbar(
+    const Hotbar_config&               hotbar_config,
+    erhe::commands::Commands&          commands,
+    erhe::imgui::Imgui_renderer&       imgui_renderer,
+    erhe::imgui::Imgui_windows&        imgui_windows,
+    App_context&                       app_context,
+    App_message_bus&                   app_message_bus,
+    Headset_view&                      headset_view,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Tools&                             tools
+)
+    : Tool                       {app_context}
+    , m_window                   {imgui_renderer, imgui_windows, "Hotbar", "", [this]() { window_imgui(); }}
+    , m_toggle_visibility_command{commands, app_context}
+    , m_prev_tool_command        {commands, app_context, -1}
+    , m_next_tool_command        {commands, app_context, 1}
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    , m_trackpad_command         {commands, app_context}
+    , m_trackpad_click_command   {commands, m_trackpad_command}
+    , m_thumbstick_command       {commands, app_context}
+#endif
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // Stored for the deferred attach_to_scene(): the radial menu is built into the
+    // scene there once a scene exists (the scene.create startup command creates it
+    // after all parts are constructed), not at construction time.
+    m_mesh_memory = &mesh_memory;
+
+    m_window.flags_callback    = [this]() { return window_flags(); };
+    m_window.on_begin_callback = [this]() { window_on_begin(); };
+    m_window.on_end_callback   = [this]() { window_on_end(); };
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    m_headset_view = &headset_view;
+#else
+    static_cast<void>(headset_view);
+#endif
+
+    // Initial values; the geometry settings (x, z, height, padding, anchor) are
+    // re-read from the live config every frame in update_node_transform() so
+    // Settings-window edits take effect immediately. m_y is computed each frame.
+    m_enabled    = hotbar_config.enabled;
+    m_show       = hotbar_config.show;
+    m_use_radial = hotbar_config.use_radial;
+    m_x          = hotbar_config.x;
+    m_z          = hotbar_config.z;
+    m_height     = hotbar_config.height;
+    m_padding    = hotbar_config.padding;
+    m_anchor     = resolve_hotbar_anchor(hotbar_config.anchor, app_context.OpenXR);
+
+    if (!m_enabled) {
+        m_window.hide_window();
+        return;
+    }
+
+    commands.register_command            (&m_toggle_visibility_command);
+    commands.register_command            (&m_prev_tool_command);
+    commands.register_command            (&m_next_tool_command);
+    commands.bind_command_to_key         (&m_toggle_visibility_command, erhe::window::Key_space, true);
+    commands.bind_command_to_menu        (&m_toggle_visibility_command, "View.Hotbar", [&]() -> bool { return m_mesh_visible; });
+    commands.bind_command_to_mouse_button(&m_prev_tool_command, erhe::window::Mouse_button_x1, true);
+    commands.bind_command_to_mouse_button(&m_next_tool_command, erhe::window::Mouse_button_x2, true);
+    m_toggle_visibility_command.set_host(this);
+    m_prev_tool_command        .set_host(this);
+    m_next_tool_command        .set_host(this);
+
+    // Minecraft-style number-key slot activation: keys 1..9 select slots 1..9 and
+    // key 0 selects slot 10 (indices 0..9). The number keys are consecutive
+    // keycodes (Key_1..Key_9), with Key_0 handled separately at the end.
+    for (std::size_t slot_index = 0; slot_index < key_slot_count; ++slot_index) {
+        std::unique_ptr<Hotbar_activate_slot_command>& command =
+            m_activate_slot_commands.emplace_back(std::make_unique<Hotbar_activate_slot_command>(commands, app_context, slot_index));
+        const erhe::window::Keycode key = (slot_index < 9)
+            ? static_cast<erhe::window::Keycode>(erhe::window::Key_1 + slot_index)
+            : erhe::window::Key_0;
+        commands.register_command   (command.get());
+        commands.bind_command_to_key(command.get(), key, true);
+        command->set_host(this);
+    }
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    commands.register_command(&m_trackpad_command);
+    erhe::xr::Headset*    headset  = headset_view.get_headset();
+    erhe::xr::Xr_actions* xr_right = (headset != nullptr) ? headset->get_actions_right() : nullptr;
+    if (xr_right != nullptr) {
+        m_trackpad_click_command.bind(xr_right->trackpad);
+        commands.bind_command_to_xr_boolean_action(&m_trackpad_click_command, xr_right->trackpad_click, erhe::commands::Button_trigger::Button_pressed);
+        m_trackpad_click_command.set_host(this);
+        m_trackpad_command.set_host(this);
+
+        commands.register_command(&m_thumbstick_command);
+        commands.bind_command_to_xr_vector2f_action(&m_thumbstick_command, xr_right->thumbstick);
+        m_thumbstick_command.set_host(this);
+    }
+#else
+    static_cast<void>(headset_view);
+#endif
+
+    set_description  ("Hotbar");
+    set_flags        (Tool_flags::background);
+    register_tool    (tools);
+
+    set_mesh_visibility(m_show);
+
+    // The radial menu is built later in attach_to_scene(), once the scene.create
+    // startup command has created a scene (see Phase-3 wiring). The non-radial
+    // window-visibility setup here is scene-independent and stays in the ctor.
+    if (m_use_radial) {
+        m_window.hide_window();
+    } else {
+        m_window.set_show_in_menu(false);
+    }
+
+    m_hover_scene_view_subscription = app_message_bus.hover_scene_view.subscribe(
+        [&](Hover_scene_view_message& message) {
+            on_hover_scene_view_message(message);
+        }
+    );
+    m_tool_select_subscription = app_message_bus.tool_select.subscribe(
+        [&](Tool_select_message& message) {
+            on_tool_select_message(message);
+        }
+    );
+    m_render_scene_view_subscription = app_message_bus.render_scene_view.subscribe(
+        [&](Render_scene_view_message& message) {
+            on_render_scene_view_message(message);
+        }
+    );
+}
+
+Hotbar::~Hotbar() noexcept = default;
+
+void Hotbar::attach_to_scene(const std::shared_ptr<Scene_root>& scene_root)
+{
+    if (!m_enabled) {
+        return;
+    }
+    ERHE_VERIFY(scene_root);
+    // Remember which scene the hotbar is homed in, so init_hotbar() builds the quad
+    // into THIS scene -- the one passed by on_scene_created -- rather than the
+    // Scene_builder's default scene. A scene that was loaded (scene.load_scene) is
+    // never set as the Scene_builder scene root, so reading it there would leave the
+    // hotbar quad unbuilt and the hotbar window rendering in the main window.
+    m_scene_root = scene_root;
+    if (m_use_radial) {
+        init_radial_menu(*m_mesh_memory, *scene_root);
+    }
+    // Build the hotbar quad now that a scene exists. init_hotbar() early-returns if
+    // no slots were registered yet; get_all_tools() populates them at init, where
+    // init_hotbar() deferred for lack of a scene.
+    init_hotbar();
+}
+
+void Hotbar::detach_from_scene()
+{
+    // Hide the window and drop its rendertarget host before the host is
+    // destroyed with the quad view below.
+    m_window.set_imgui_host(nullptr);
+    set_mesh_visibility(false);
+    // The Quad_view owns the rendertarget mesh nodes and the imgui host; their
+    // destructors detach from the scene and unregister from the rendergraph
+    // (disconnecting the edge tracked by m_connected_consumer_node).
+    m_quad_view.reset();
+    m_connected_consumer_node = nullptr;
+    if (m_radial_menu_node) {
+        m_radial_menu_node->set_parent(std::shared_ptr<erhe::scene::Node>{});
+    }
+    m_radial_menu_node.reset();
+    m_radial_menu_background_mesh.reset();
+    m_radial_menu_icons.clear();
+    m_scene_root.reset();
+}
+
+void Hotbar::init_hotbar()
+{
+    if (m_slots.empty()) {
+        return;
+    }
+    const int icon_size = m_context.app_settings->icon_settings.hotbar_icon_size;
+    const int width     = icon_size * static_cast<int>(m_slots.size());
+
+    m_quad_view.reset();
+
+    // init_hotbar runs after construction (driven by set_slots / rebuild), so
+    // the App_context resource pointers are populated here; pass them to
+    // Quad_view explicitly.
+    ERHE_VERIFY(m_context.current_command_buffer != nullptr);
+    ERHE_VERIFY(m_context.graphics_device        != nullptr);
+    ERHE_VERIFY(m_context.mesh_memory            != nullptr);
+    ERHE_VERIFY(m_context.imgui_renderer         != nullptr);
+    ERHE_VERIFY(m_context.rendergraph            != nullptr);
+    const std::shared_ptr<Scene_root> scene_root = m_scene_root.lock();
+    if (!scene_root) {
+        // No scene attached yet (deferred creation): get_all_tools() populates the
+        // slots at init, before any scene exists. The hotbar quad is built once a
+        // scene becomes available -- attach_to_scene() stores it and re-runs
+        // init_hotbar() then.
+        return;
+    }
+    m_quad_view = std::make_unique<Quad_view>(
+        m_context,
+        *m_context.graphics_device,
+        *m_context.current_command_buffer,
+        *m_context.mesh_memory,
+        *m_context.imgui_renderer,
+        *m_context.rendergraph,
+        *scene_root,
+        m_headset_view,
+        width,
+        icon_size,
+        4000.0f,
+        "Hotbar imgui host",
+        false
+    );
+
+    Rendertarget_imgui_host* imgui_host = m_quad_view->get_imgui_host();
+
+    ImGuiStyle& style = imgui_host->get_mutable_style();
+    style.FrameRounding    = 0.0f;
+    style.WindowRounding   = 0.0f;
+    style.ChildRounding    = 0.0f;
+    style.FramePadding     = ImVec2{0.0f, 0.0f};
+    style.ItemSpacing      = ImVec2{0.0f, 0.0f};
+    style.ItemInnerSpacing = ImVec2{0.0f, 0.0f};
+    style.MouseCursorScale = 2.0f;
+
+    m_window.set_imgui_host(imgui_host);
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    // In OpenXR mode the Headset_view_node must be the rendergraph sink
+    // (everything before it, nothing after). Without this connect, this
+    // Rendertarget_imgui_host would be sorted as an orphan after the
+    // headset node and try to record into the device cb after
+    // Xr_session::render_frame already submitted the frame, asserting in
+    // Device_impl::acquire_shared_command_buffer. The on_hover_scene_view
+    // handler tracks m_connected_consumer_node so it does not duplicate
+    // this edge when the headset's hover message arrives later.
+    if (m_context.OpenXR && (m_headset_view != nullptr)) {
+        erhe::rendergraph::Rendergraph_node* headset_node = m_headset_view->get_rendergraph_node();
+        if (headset_node != nullptr) {
+            m_context.rendergraph->connect(
+                erhe::rendergraph::Rendergraph_node_key::rendertarget_texture,
+                imgui_host,
+                headset_node
+            );
+            m_connected_consumer_node = headset_node;
+        }
+    }
+#endif
+
+    set_mesh_visibility(m_show);
+}
+
+void Hotbar::init_radial_menu(erhe::scene_renderer::Mesh_memory& mesh_memory, Scene_root&  scene_root)
+{
+    const float outer_radius = 1.0f;
+    const float inner_radius = 0.125f;
+    const int   slice_count  = 100;
+    const int   stack_count  = 2;
+
+    auto disc_material = std::make_shared<erhe::primitive::Material>(
+        erhe::primitive::Material_create_info{
+            .name = "Circular Menu Disc",
+            .data = {
+                .base_color = glm::vec3{0.1f, 0.2f, 0.3f},
+                .opacity    = 0.5f
+            }
+        }
+    );
+    {
+        // R5.2b explicit definition registration: the hotbar's home scene
+        // owns the disc material (the radial menu is rebuilt on re-home, so
+        // the material lives and dies with this scene); scenes the menu is
+        // shown in list it as a reference entry via register_mesh.
+        const std::shared_ptr<Content_library> content_library = scene_root.get_content_library();
+        std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{content_library->mutex};
+        content_library->materials->add(disc_material);
+    }
+
+    GEO::Mesh disc_geo_mesh_shared;
+    disc_geo_mesh_shared.vertices.set_single_precision();
+    erhe::geometry::shapes::make_disc(
+        disc_geo_mesh_shared,
+        outer_radius,
+        inner_radius,
+        slice_count,
+        stack_count,
+        20,
+        30,
+        0,
+        2
+    );
+
+    erhe::primitive::Element_mappings dummy; // TODO make Element_mappings optional
+    erhe::primitive::Buffer_mesh buffer_mesh{};
+    const bool buffer_mesh_ok = erhe::primitive::build_buffer_mesh(
+        buffer_mesh,
+        disc_geo_mesh_shared,
+        erhe::primitive::Build_info{
+            .primitive_types = { .fill_triangles = true },
+            .buffer_info     = mesh_memory.make_primitive_buffer_info()
+        },
+        dummy
+    );
+    ERHE_VERIFY(buffer_mesh_ok); // TODO
+
+    std::shared_ptr<erhe::primitive::Primitive> new_primitive = std::make_shared<erhe::primitive::Primitive>(std::move(buffer_mesh));
+    m_radial_menu_background_mesh = std::make_shared<erhe::scene::Mesh>("Radial Menu Mesh");
+    m_radial_menu_background_mesh->add_primitive(new_primitive, disc_material);
+
+    erhe::scene::Scene* scene = scene_root.get_hosted_scene();
+    const auto root_node = scene->get_root_node();
+    ERHE_VERIFY(scene != nullptr);
+    ERHE_VERIFY(root_node);
+    m_radial_menu_background_mesh->layer_id = scene_root.layers().content()->id;
+
+    m_radial_menu_background_mesh->enable_flag_bits(
+        erhe::Item_flags::content |
+        erhe::Item_flags::visible |
+        erhe::Item_flags::show_in_ui
+    );
+
+    m_radial_menu_node = std::make_shared<erhe::scene::Node>("Radial menu node");
+    m_radial_menu_node->attach(m_radial_menu_background_mesh);
+    m_radial_menu_node->enable_flag_bits(
+        erhe::Item_flags::content    |
+        erhe::Item_flags::visible    |
+        erhe::Item_flags::show_in_ui
+    );
+}
+
+void Hotbar::get_all_tools()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    m_slot_first = 0;
+    m_slot_last  = 0;
+    m_slots.clear();
+    const auto& tools = m_context.tools->get_tools();
+    for (Tool* tool : tools) {
+        const char* icon = tool->get_icon();
+        if (icon == nullptr) {
+            continue;
+        }
+        if (erhe::utility::test_bit_set(tool->get_flags(), Tool_flags::toolbox)) {
+            m_slot_last = m_slots.size();
+            m_slots.push_back(Slot_entry{.tool = tool});
+        }
+    }
+    init_hotbar();
+}
+
+void Hotbar::set_slots(const std::vector<Slot_entry>& slots)
+{
+    m_slots      = slots;
+    // The copies are their own asset userships: label them as the hotbar's
+    // so unload refusals / query_asset_manager distinguish them from the
+    // Inventory window's authoritative row ("inventory hotbar slot N").
+    for (std::size_t i = 0; i < m_slots.size(); ++i) {
+        const std::string label = fmt::format("hotbar slot {}", i + 1);
+        m_slots[i].brush   .set_user_label(label);
+        m_slots[i].material.set_user_label(label);
+    }
+    m_slot_first = 0;
+    m_slot_last  = m_slots.empty() ? 0 : m_slots.size() - 1;
+    if (m_slot > m_slot_last) {
+        m_slot = 0;
+    }
+    m_needs_rebuild = true;
+}
+
+void Hotbar::rebuild_if_needed()
+{
+    if (m_needs_rebuild) {
+        m_needs_rebuild = false;
+        init_hotbar();
+    }
+}
+
+void Hotbar::on_hover_scene_view_message(Hover_scene_view_message& message)
+{
+    Scene_view* const old_scene_view = get_hover_scene_view();
+    Tool::on_message(message);
+
+    if (!m_enabled || !m_show) {
+        return;
+    }
+
+    if (message.scene_view != old_scene_view) {
+        if (m_use_radial) {
+            update_node_transform();
+        } else {
+            erhe::rendergraph::Rendergraph_node* new_node =
+                (message.scene_view != nullptr) ? message.scene_view->get_rendergraph_node() : nullptr;
+            // Compare against what is actually connected, not against the
+            // hover-tracked old_scene_view -- init_hotbar may have already
+            // connected the rendertarget to the headset_view in OpenXR
+            // mode, in which case the first hover message would otherwise
+            // create a duplicate edge.
+            if (new_node != m_connected_consumer_node) {
+                erhe::rendergraph::Rendergraph& rendergraph = *m_context.rendergraph;
+                Rendertarget_imgui_host* imgui_host = (m_quad_view != nullptr) ? m_quad_view->get_imgui_host() : nullptr;
+                if ((m_connected_consumer_node != nullptr) && (imgui_host != nullptr)) {
+                    rendergraph.disconnect(erhe::rendergraph::Rendergraph_node_key::rendertarget_texture, imgui_host, m_connected_consumer_node);
+                }
+                set_mesh_visibility(static_cast<bool>(new_node));
+                if ((new_node != nullptr) && (imgui_host != nullptr)) {
+                    rendergraph.connect(erhe::rendergraph::Rendergraph_node_key::rendertarget_texture, imgui_host, new_node);
+                }
+                m_connected_consumer_node = new_node;
+            }
+        }
+    }
+}
+
+void Hotbar::on_tool_select_message(Tool_select_message&)
+{
+    if (!m_enabled || !m_show) {
+        return;
+    }
+
+    update_slot_from_tool(m_context.tools->get_priority_tool());
+}
+
+// Show the hotbar only in the view it is anchored to: this runs once per
+// rendered view, from inside that view's rendergraph node, so toggling the
+// mesh here scopes it to the hovered view's render.
+//
+// The node transform is NOT updated here on desktop -- see
+// update_once_per_frame().
+void Hotbar::on_render_scene_view_message(Render_scene_view_message& message)
+{
+    if (!m_enabled || !m_show) {
+        return;
+    }
+
+    bool visible = message.scene_view && (get_hover_scene_view() == message.scene_view);
+    set_mesh_visibility(visible);
+
+    // Under OpenXR the eye poses only become known when
+    // Headset_view::render_frame() locates the views, which happens inside the
+    // rendergraph -- there is no earlier point in the tick where the camera
+    // world transform for this frame exists, so the update has to stay here.
+    if (m_context.OpenXR && !m_use_radial) {
+        update_node_transform();
+    }
+}
+
+// Update the rendertarget node transform to match the hovered view's camera.
+// Used only for the horizontal hotbar, not for the radial menu (which is
+// world-locked and re-placed on hover change instead).
+//
+// This runs from the editor tick, after scene transform propagation and before
+// App_scenes::flush_draw_lists(). The placement is load-bearing for the draw
+// list renderer: Draw_list_scene keeps persistent per-primitive GPU records
+// that are rewritten only in flush_pending(), from the transform updates the
+// scene hooks enqueued. Moving the quad from inside the rendergraph (where
+// Render_scene_view_message is sent) enqueues the update after that flush, so
+// the draw lists would render the quad with the previous frame's transform --
+// the hotbar visibly trails the camera by one frame. Forward_renderer does not
+// show this because it rebuilds its primitive buffer from live node transforms
+// at draw time.
+void Hotbar::update_once_per_frame()
+{
+    if (!m_enabled || !m_show || m_use_radial) {
+        return;
+    }
+    if (m_context.OpenXR) {
+        return; // Updated from on_render_scene_view_message() instead
+    }
+    update_node_transform();
+}
+
+auto Hotbar::get_camera() const -> std::shared_ptr<erhe::scene::Camera>
+{
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    if (m_context.OpenXR) {
+        return m_context.headset_view->get_camera();
+    }
+#endif
+    const auto viewport_scene_view = m_context.scene_views->hover_scene_view();
+    if (!viewport_scene_view) {
+        return {};
+    }
+    return viewport_scene_view->get_camera();
+}
+
+void Hotbar::update_node_transform()
+{
+    if (m_locked) {
+        return;
+    }
+
+    // Re-read the live config so Settings-window edits to the geometry (x, z,
+    // anchor, height, padding) take effect immediately. The config object is the
+    // same Hotbar_config the settings UI mutates (editor_settings->hotbar); the
+    // values are otherwise only read once at construction. (enabled / show /
+    // use_radial stay construction-time: they gate creation / visibility / the
+    // mesh build, not the per-frame transform.)
+    if (m_context.editor_settings != nullptr) {
+        const Hotbar_config& config = m_context.editor_settings->hotbar;
+        m_x       = config.x;
+        m_z       = config.z;
+        m_height  = config.height;
+        m_padding = config.padding;
+        m_anchor  = resolve_hotbar_anchor(config.anchor, m_context.OpenXR);
+    }
+
+    const erhe::scene::Node*           camera_node{nullptr};
+    std::shared_ptr<erhe::scene::Node> root_node;
+    glm::mat4                          world_from_node{1.0f};
+    float                              quad_scale{1.0f};
+    [this, &camera_node, &root_node, &world_from_node, &quad_scale]() {
+        const Scene_view* scene_view = get_hover_scene_view();
+        if (scene_view == nullptr) {
+            return;
+        }
+        const auto& camera = scene_view->get_camera();
+        if (!camera) {
+            return;
+        }
+        camera_node = camera->get_node();
+        if (camera_node == nullptr) {
+            return;
+        }
+
+        const auto& world_from_camera = camera_node->world_from_node();
+
+        // Anchor the hotbar to the camera's vertical FOV and keep a constant
+        // apparent size. The frustum vertical extent at the hotbar depth is
+        // depth * (tan(fov.up) - tan(fov.down)); sizing the panel to m_height of
+        // that extent makes its on-screen height a constant fraction of the
+        // viewport regardless of FOV (and of depth). The panel center is then
+        // offset inward by half that height (plus margin) so the near edge
+        // touches the top/bottom frustum plane while the panel stays inside the
+        // frustum. The panel's local +Y stays aligned with the camera up (the
+        // rotate below only flips X/Z), so this is a pure camera-space Y offset
+        // applied via m_y. On desktop get_fov_sides() returns the
+        // perspective_vertical up/down; in OpenXR the hover camera is the
+        // Headset_view root camera whose projection is the union of the left
+        // and right eye fovs (the same combined frustum used for shadow fit).
+        const erhe::scene::Projection* projection = camera->projection();
+        if (projection != nullptr) {
+            erhe::math::Viewport viewport{};
+            const Viewport_scene_view* viewport_scene_view = scene_view->as_viewport_scene_view();
+            if (viewport_scene_view != nullptr) {
+                viewport = viewport_scene_view->get_projection_viewport();
+            }
+            const erhe::scene::Projection::Fov_sides fov = projection->get_fov_sides(viewport);
+            const float depth = -m_z; // m_z < 0 (forward along -Z); depth is the forward distance
+
+            // Vertical extent of the frustum at the hotbar depth, in meters. Both
+            // the constant-size scaling and the padding are expressed as fractions
+            // of this, so they stay a constant on-screen size regardless of FOV.
+            const float frustum_full_height = depth * (std::tan(fov.up) - std::tan(fov.down));
+            const float padding_offset      = m_padding * frustum_full_height;
+
+            float half_height = 0.0f;
+            if (m_use_radial) {
+                // The radial disc keeps its fixed local radius (outer_radius = 1)
+                // and is not constant-size scaled.
+                half_height = 1.0f;
+            } else {
+                float physical_height = m_height * frustum_full_height;
+                // All slots must always be visible: the quad's width is its fixed
+                // aspect ratio (slot count) times its height, so in a narrow
+                // viewport cap the height to whatever keeps the full width inside
+                // the horizontal frustum extent at this depth (accounting for the
+                // horizontal offset m_x; fov.left is negative). Within that
+                // constraint the height approaches the configured target.
+                const float base_width  = (m_quad_view != nullptr) ? m_quad_view->get_local_width()  : 0.0f;
+                const float base_height = (m_quad_view != nullptr) ? m_quad_view->get_local_height() : 0.0f;
+                if ((base_width > 0.0f) && (base_height > 0.0f)) {
+                    const float space_right = depth * std::tan(fov.right) - m_x;
+                    const float space_left  = m_x - depth * std::tan(fov.left);
+                    const float max_width   = 2.0f * std::min(space_left, space_right);
+                    const float max_height  = std::max(max_width, 0.0f) * (base_height / base_width);
+                    physical_height = std::min(physical_height, max_height);
+                }
+                half_height = 0.5f * physical_height;
+                if ((m_quad_view != nullptr) && (base_height > 0.0f)) {
+                    quad_scale = physical_height / base_height;
+                }
+            }
+            m_y = (m_anchor == Hotbar_anchor::top)
+                ? (depth * std::tan(fov.up)   - half_height - padding_offset)
+                : (depth * std::tan(fov.down) + half_height + padding_offset);
+        }
+
+        // Lookat creates transform which looks along negative Z.
+        // Rotate around local Y.
+        constexpr glm::mat4 rotate{
+            -1.0f, 0.0f, 0.0f, 0.0f,
+             0.0f, 1.0f, 0.0f, 0.0f,
+             0.0f, 0.0f,-1.0f, 0.0f,
+             0.0f, 0.0f, 0.0f, 1.0f
+        };
+
+        // Face the camera straight (panel parallel to the image plane), not
+        // aimed at the camera origin. Building the orientation from an on-axis
+        // eye (0, 0, m_z) makes it look straight down the camera axis regardless
+        // of the x/y offset (an off-axis eye would tilt the panel toward the
+        // origin); the panel is then positioned at the actual offset by
+        // overwriting the translation. At m_x = m_y = 0 this equals a plain
+        // look-at, so the centered case is unchanged.
+        world_from_node = erhe::math::create_look_at(
+            glm::vec3{world_from_camera * glm::vec4{0.0f, 0.0f, m_z, 1.0f}}, // on-axis eye -> image-plane-parallel orientation
+            glm::vec3{world_from_camera * glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}}, // target (camera origin)
+            glm::vec3{world_from_camera * glm::vec4{0.0f, 1.0f, 0.0f, 0.0f}}  // up
+        ) * rotate;
+        world_from_node[3] = world_from_camera * glm::vec4{m_x, m_y, m_z, 1.0f}; // move to the offset, keep orientation
+
+        auto scene_root = scene_view->get_scene_root();
+        if (!scene_root) {
+            return;
+        }
+        auto* scene = scene_root->get_hosted_scene();
+        if (scene == nullptr) {
+            return;
+        }
+        root_node = scene->get_root_node();
+    }();
+
+    if (m_quad_view) {
+        m_quad_view->set_scale(quad_scale);
+        m_quad_view->set_world_from_quad(root_node, world_from_node);
+    }
+
+    if (m_radial_menu_node) {
+        if (root_node) {
+            m_radial_menu_node->set_parent(root_node);
+        }
+        m_radial_menu_node->set_world_from_node(world_from_node);
+    }
+}
+
+auto Hotbar::window_flags() -> ImGuiWindowFlags
+{
+    return
+        ImGuiWindowFlags_NoBackground      |
+        ImGuiWindowFlags_NoTitleBar        |
+        ImGuiWindowFlags_NoResize          |
+        ImGuiWindowFlags_NoMove            |
+        ImGuiWindowFlags_NoScrollbar       |
+        ImGuiWindowFlags_NoScrollWithMouse |
+        ImGuiWindowFlags_NoSavedSettings   |
+        ImGuiWindowFlags_NoCollapse        |
+        ImGuiWindowFlags_NoNavInputs       |
+        ImGuiWindowFlags_NoNavFocus        |
+        ImGuiWindowFlags_NoDocking;
+}
+
+void Hotbar::window_on_begin()
+{
+    if (m_quad_view) {
+        const float w = m_quad_view->get_width();
+        const float h = m_quad_view->get_height();
+        m_window.set_min_size(w, h);
+        m_window.set_max_size(w, h);
+    }
+    ImGui::SetNextWindowPos(ImVec2{0.0f, 0.0f});
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.0f, 0.0f});
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0.0f, 0.0f});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0f, 0.0f});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+}
+
+void Hotbar::window_on_end()
+{
+    ImGui::PopStyleVar(4);
+}
+
+void Hotbar::handle_slot_update()
+{
+    if ((m_slot >= m_slot_first) && (m_slot <= m_slot_last)) {
+        const Slot_entry& entry = m_slots.at(m_slot);
+        m_context.tools->set_priority_tool(entry.tool);
+        const std::shared_ptr<Brush> brush = entry.get_brush();
+        if (brush && (m_context.brush_tool != nullptr)) {
+            m_context.brush_tool->set_active_brush(brush);
+        }
+    }
+}
+
+auto Hotbar::try_trackpad(erhe::commands::Input_arguments& input) -> bool
+{
+    // TODO move most of this logic to Hotbar_trackpad_command,
+    //      should use Hotbar::rotate_tool() from there.
+    if (!m_enabled) {
+        return false;
+    }
+
+    const auto position = input.variant.vector2.absolute_value;
+    if (position.x < -0.2f) {
+        rotate_tool(-1);
+        m_slot = (m_slot == m_slot_first) ? m_slot_last : m_slot - 1;
+    }
+
+    if (position.x > 0.2f) {
+        rotate_tool(1);
+    }
+
+    return true;
+}
+
+void Hotbar::rotate_tool(int direction)
+{
+    const auto old_slot = m_slot;
+    if (direction < 0) {
+        m_slot = (m_slot == m_slot_first) ? m_slot_last : m_slot - 1;
+    } else if (direction > 0) {
+        m_slot = (m_slot == m_slot_last) ? m_slot_first : m_slot + 1;
+    }
+    if (m_slot != old_slot) {
+        handle_slot_update();
+    }
+}
+
+void Hotbar::activate_slot(const std::size_t index)
+{
+    if (!m_enabled) {
+        return;
+    }
+    // The hotbar shows one slot per registered entry; number keys beyond the
+    // current slot count simply do nothing (e.g. key 0 with fewer than 10 slots).
+    if ((index < m_slot_first) || (index > m_slot_last) || (index >= m_slots.size())) {
+        return;
+    }
+    m_slot = index;
+    handle_slot_update();
+}
+
+auto Hotbar::get_color(const int color) -> glm::vec4&
+{
+    switch (color) {
+        case 0:  return m_color_inactive;
+        case 1:  return m_color_hover;
+        case 2:  return m_color_active;
+        default: return m_color_inactive;
+    }
+}
+
+auto Hotbar::get_position() const -> glm::vec3
+{
+    return glm::vec3{m_x, m_y, m_z};
+}
+
+void Hotbar::set_position(glm::vec3 position)
+{
+    m_x = position.x;
+    m_y = position.y;
+    m_z = position.z;
+    // Write through to the live config so the change persists past the per-frame
+    // refresh in update_node_transform() (which re-reads x/z from the config).
+    // m_y is computed from the FOV and is not stored in the config.
+    if (m_context.editor_settings != nullptr) {
+        m_context.editor_settings->hotbar.x = position.x;
+        m_context.editor_settings->hotbar.z = position.z;
+        m_context.app_settings->settings_store().touch();
+    }
+}
+
+auto Hotbar::get_locked() const -> bool
+{
+    return m_locked;
+}
+
+void Hotbar::set_locked(bool value)
+{
+    m_locked = value;
+}
+
+void Hotbar::slot_button(const uint32_t id, Slot_entry& entry)
+{
+    const glm::vec4 background_color{0.05f, 0.1f, 0.5f, 0.6f};
+    const glm::vec4 tint_color      {1.0f, 1.0f, 1.0f, 1.0f};
+    const float     icon_size       {static_cast<float>(m_context.app_settings->icon_settings.hotbar_icon_size)};
+
+    ImGui::PushID(id);
+
+    // Brush slot: render thumbnail
+    const std::shared_ptr<Brush>                     entry_brush    = entry.get_brush();
+    const std::shared_ptr<erhe::primitive::Material> entry_material = entry.get_material();
+    if (entry_brush && m_context.thumbnails && m_context.brush_preview) {
+        Tool* tool = entry.tool;
+        const bool is_boosted = (tool != nullptr) && (tool->get_priority_boost() > 0);
+        std::shared_ptr<Brush> brush = entry_brush;
+        const bool thumbnail_drawn = m_context.thumbnails->draw(
+            brush,
+            [&context = m_context, brush](const std::shared_ptr<erhe::graphics::Texture>& texture, unsigned int texture_layer, int64_t time) {
+                context.brush_preview->render_preview(texture, texture_layer, brush, time);
+            },
+            icon_size
+        );
+        if (!thumbnail_drawn) {
+            if ((tool != nullptr) && (tool->get_icon() != nullptr)) {
+                const auto& icon_set = m_context.icon_set;
+                icon_set->icon_button(id, tool->get_icon(), tool->get_icon_font(), icon_size, tint_color, is_boosted ? m_color_active : background_color);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", brush->get_name().c_str());
+        }
+        if (ImGui::IsItemClicked()) {
+            if (is_boosted) {
+                m_context.tools->set_priority_tool(nullptr);
+            } else {
+                m_context.tools->set_priority_tool(tool);
+                if (m_context.brush_tool != nullptr) {
+                    m_context.brush_tool->set_active_brush(brush);
+                }
+            }
+        }
+    } else if (entry_material && m_context.thumbnails && m_context.material_preview) {
+        // Material slot: render thumbnail
+        Tool* tool = entry.tool;
+        const bool is_boosted = (tool != nullptr) && (tool->get_priority_boost() > 0);
+        std::shared_ptr<erhe::primitive::Material> material = entry_material;
+        const bool thumbnail_drawn = m_context.thumbnails->draw(
+            material,
+            [&context = m_context, material](const std::shared_ptr<erhe::graphics::Texture>& texture, unsigned int /*texture_layer*/, int64_t) {
+                context.material_preview->render_preview(texture, material);
+            },
+            icon_size
+        );
+        if (!thumbnail_drawn) {
+            if ((tool != nullptr) && (tool->get_icon() != nullptr)) {
+                const auto& icon_set = m_context.icon_set;
+                icon_set->icon_button(id, tool->get_icon(), tool->get_icon_font(), icon_size, tint_color, is_boosted ? m_color_active : background_color);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", material->get_name().c_str());
+        }
+        if (ImGui::IsItemClicked()) {
+            m_context.tools->set_priority_tool(is_boosted ? nullptr : tool);
+        }
+    } else if (entry.tool != nullptr) {
+        // Tool slot: render icon
+        Tool* tool = entry.tool;
+        const bool  is_boosted = tool->get_priority_boost() > 0;
+        const char* icon       = tool->get_icon();
+        if (icon != nullptr) {
+            const auto& icon_set = m_context.icon_set;
+            const bool is_pressed = icon_set->icon_button(
+                id, icon, tool->get_icon_font(), icon_size, tint_color,
+                is_boosted ? m_color_active : background_color
+            );
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", tool->get_description());
+            }
+            if (is_pressed) {
+                m_context.tools->set_priority_tool(is_boosted ? nullptr : tool);
+            }
+        }
+    } else if (entry.command != nullptr) {
+        // Operation slot: a labeled button that invokes the stored operation with
+        // its frozen params against the current selection on click. The hotbar lays
+        // items out horizontally by having each item call ImGui::SameLine() after
+        // itself (icon_button does this for the tool/brush/material slots), so this
+        // branch must do the same or the following slots wrap to a new row.
+        const ImVec2 button_size{icon_size, icon_size};
+        const bool pressed = ImGui::Button(operation_short_label(entry.command), button_size);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", entry.command->get_name());
+        }
+        ImGui::SameLine();
+        if (pressed && (m_context.operations != nullptr)) {
+            m_context.operations->run_operation(entry.command, entry.operation_params);
+        }
+    } else if (!entry.graph_node_type.empty()) {
+        // Graph-node slot: a labeled button that spawns the node type in its
+        // graph editor window (on the window's spawn grid) on click. Advances
+        // the layout with SameLine like the other branches.
+        const ImVec2 button_size{icon_size, icon_size};
+        const bool pressed = ImGui::Button(entry.graph_node_label.c_str(), button_size);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s (%s node)", entry.graph_node_label.c_str(), entry.graph_node_kind.c_str());
+        }
+        ImGui::SameLine();
+        if (pressed) {
+            Graph_editor_window_base* window = Graph_editor_window_base::find_window_by_kind(m_context, entry.graph_node_kind.c_str());
+            if (window != nullptr) {
+                window->spawn_node_from_slot(entry.graph_node_type);
+            }
+        }
+    } else {
+        // Empty slot: render a placeholder box so the hotbar keeps a fixed width and
+        // the number-key -> slot mapping stays positionally stable (a filled slot
+        // never shifts when an earlier slot is empty). Like the other branches this
+        // must advance the layout with SameLine or the following slots wrap.
+        const ImVec2 button_size{icon_size, icon_size};
+        ImGui::Button("##empty", button_size);
+        ImGui::SameLine();
+    }
+
+    ImGui::PopID();
+}
+
+void Hotbar::update_slot_from_tool(Tool* tool)
+{
+    if (tool == nullptr) {
+        return;
+    }
+    for (size_t i = 0, end = m_slots.size(); i < end; ++i) {
+        if (m_slots.at(i).tool == tool) {
+            m_slot = i;
+            return;
+        }
+    }
+}
+
+void Hotbar::window_imgui()
+{
+    ERHE_PROFILE_FUNCTION();
+    ImGui::PushID("Hotbar::imgui");
+
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  m_color_active);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, m_color_hover);
+    ImGui::PushStyleColor(ImGuiCol_Button,        m_color_inactive);
+
+    uint32_t id = 0;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.0f, 0.0f});
+    for (Slot_entry& entry : m_slots) {
+        slot_button(++id, entry);
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(3);
+    ImGui::PopID();
+}
+
+auto Hotbar::toggle_mesh_visibility() -> bool
+{
+    if (!m_enabled) {
+        return false;
+    }
+
+    update_node_transform();
+
+    set_mesh_visibility(!m_mesh_visible);
+    return m_mesh_visible;
+}
+
+void Hotbar::set_mesh_visibility(const bool value)
+{
+    // The hotbar window renders into the rendertarget imgui host owned by the
+    // quad view, which is only built once a scene exists (attach_to_scene ->
+    // init_hotbar). Until then there is no host and a visible window would be
+    // drawn into the main desktop window instead (seen with --no-scene), so
+    // keep the window hidden while no quad exists; init_hotbar() re-applies
+    // m_show once the quad is built.
+    m_window.set_window_visibility(value && (m_quad_view != nullptr));
+
+    if (m_quad_view) {
+        m_quad_view->set_visible(value);
+        // log_hud->trace("Horizontal menu visibility set to {}", value);
+    }
+
+    if (m_radial_menu_background_mesh) {
+        m_radial_menu_background_mesh->set_visible(value);
+        // log_hud->trace("Radial menu visibility set to {}", value);
+    }
+}
+
+}

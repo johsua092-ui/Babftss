@@ -1,0 +1,26 @@
+// Minimal compute shader for the "minimal compute-triangle" repro.
+// Writes a single triangle's three vertex positions into the output
+// SSBO at binding 0. No input resources; invoked as a single 1-thread
+// workgroup.
+//
+// The SSBO block `triangle_vertex_buffer` and its `vertices` array of
+// `triangle_vertex` records are declared by erhe at shader-build time
+// from the Shader_stages_create_info passed in from
+// cell_minimal_compute_triangle.cpp. Each record has one field
+// `position_0` of type vec4 (from Vertex_attribute_usage::position
+// with usage_index=0 - see shader_resource.cpp add_attribute).
+
+layout(local_size_x = 32) in;
+
+void main()
+{
+    // Only thread 0 writes the triangle. Other threads in the warp
+    // exist so the compute dispatch shape mirrors Content_wide_line_
+    // renderer's compute shader (local_size_x = 32).
+    if (gl_LocalInvocationID.x != 0u) {
+        return;
+    }
+    triangle_vertex_buffer.vertices[0].position_0 = vec4(-0.7, -0.7, 0.5, 1.0);
+    triangle_vertex_buffer.vertices[1].position_0 = vec4( 0.7, -0.7, 0.5, 1.0);
+    triangle_vertex_buffer.vertices[2].position_0 = vec4( 0.0,  0.7, 0.5, 1.0);
+}

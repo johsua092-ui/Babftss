@@ -1,0 +1,307 @@
+#include "preview/material_preview.hpp"
+
+#include "app_context.hpp"
+#include "app_message_bus.hpp"
+#include "assets/asset_manager.hpp"
+#include "brushes/brush.hpp"
+#include "content_library/content_library.hpp"
+#include "editor_log.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "renderers/programs.hpp"
+#include "renderers/render_context.hpp"
+#include "renderers/composition_pass.hpp"
+#include "renderers/viewport_config.hpp"
+#include "scene/scene_root.hpp"
+
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_imgui/imgui_renderer.hpp"
+#include "erhe_geometry/shapes/sphere.hpp"
+#include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_verify/verify.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_primitive/primitive_builder.hpp"
+#include "erhe_scene/light.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
+
+#include <fmt/format.h>
+
+namespace editor {
+
+Material_preview::Material_preview(
+    erhe::graphics::Device&            graphics_device,
+    erhe::graphics::Command_buffer&    init_command_buffer,
+    App_context&                       app_context,
+    App_message_bus&                   app_message_bus,
+    erhe::scene_renderer::Mesh_memory& mesh_memory
+)
+    : Scene_preview{graphics_device, init_command_buffer, app_context}
+{
+    make_preview_scene(mesh_memory);
+
+    resize(256, 256);
+    update_rendertarget(graphics_device);
+
+    m_close_scene_subscription = app_message_bus.close_scene.subscribe(
+        [this](Close_scene_message& message) {
+            on_close_scene(static_cast<erhe::Item_host*>(message.scene_root.get()));
+        }
+    );
+    m_items_removed_subscription = app_message_bus.items_removed.subscribe(
+        [this](Items_removed_message& message) {
+            on_items_removed(*message.removed.get());
+        }
+    );
+}
+
+Material_preview::~Material_preview() noexcept
+{
+}
+
+void Material_preview::make_preview_scene(erhe::scene_renderer::Mesh_memory& mesh_memory)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    m_node = std::make_shared<erhe::scene::Node>("Material Preview Node");
+    m_mesh = std::make_shared<erhe::scene::Mesh>("Material Preview Mesh");
+    erhe::primitive::Element_mappings dummy; // TODO make Element_mappings optional
+    GEO::Mesh sphere_mesh{3, true};
+    erhe::geometry::shapes::make_sphere(
+        sphere_mesh,
+        m_radius,
+        std::max(1, m_slice_count),
+        std::max(1, m_stack_count)
+    );
+    // The preview mesh skips Geometry::process(), so seed the per-facet
+    // circular-brushed-metal texture coordinates (texcoord set 1) here;
+    // materials sampling set 1 would otherwise see a constant fallback.
+    {
+        erhe::geometry::Mesh_attributes sphere_attributes{sphere_mesh};
+        erhe::geometry::generate_mesh_facet_texture_coordinates(sphere_mesh, sphere_attributes, 1);
+    }
+    erhe::primitive::Buffer_mesh buffer_mesh{};
+    const bool buffer_mesh_ok = erhe::primitive::build_buffer_mesh(
+        buffer_mesh,
+        sphere_mesh,
+        erhe::primitive::Build_info{
+            .primitive_types = {.fill_triangles = true },
+            .buffer_info = mesh_memory.make_primitive_buffer_info()
+        },
+        dummy,
+        erhe::primitive::Normal_style::corner_normals
+    );
+
+    if (buffer_mesh_ok) {
+        std::shared_ptr<erhe::primitive::Primitive> new_primitive = std::make_shared<erhe::primitive::Primitive>(std::move(buffer_mesh));
+        m_mesh->add_primitive(new_primitive);
+    } else {
+        // TODO handle error
+        log_render->error("Unable to create material preview mesh - out of memory?");
+    }
+
+    using Item_flags = erhe::Item_flags;
+    m_mesh->layer_id = m_scene_root_shared->layers().content()->id;
+    m_mesh->enable_flag_bits(Item_flags::content | Item_flags::visible);
+    m_node->attach(m_mesh);
+    m_node->enable_flag_bits(Item_flags::content | Item_flags::visible);
+
+    const auto paremt = m_scene_root_shared->get_hosted_scene()->get_root_node();
+    m_node->set_parent(paremt);
+
+    m_key_light_node = std::make_shared<erhe::scene::Node>("Key Light Node");
+    m_key_light      = std::make_shared<erhe::scene::Light>("Key Light");
+    m_key_light_node->enable_flag_bits(erhe::Item_flags::content);
+    m_key_light->enable_flag_bits(erhe::Item_flags::content);
+    m_key_light->layer_id = m_scene_root_shared->layers().light()->id;
+    m_key_light_node->attach(m_key_light);
+    m_key_light_node->set_parent(paremt);
+    m_key_light_node->set_parent_from_node(
+        erhe::math::create_look_at(
+            glm::vec3{-8.0f, 8.0f, 8.0f},  // eye
+            glm::vec3{0.0f, 0.0f, 0.0f},  // center
+            glm::vec3{0.0f, 1.0f, 0.0f}   // up
+        )
+    );
+
+    //// m_fill_light_node = std::make_shared<erhe::scene::Node>("Fill Light Node");
+    //// m_fill_light      = std::make_shared<erhe::scene::Light>("Fill Light");
+    //// m_fill_light_node->enable_flag_bits(erhe::Item_flags::content);
+    //// m_fill_light     ->enable_flag_bits(erhe::Item_flags::content);
+    //// m_fill_light     ->layer_id = m_scene_root->layers().light()->id;
+
+    m_camera_node = std::make_shared<erhe::scene::Node>("Camera node");
+    m_camera = std::make_shared<erhe::scene::Camera>("Camera");
+    m_camera_node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
+    m_camera->enable_flag_bits(erhe::Item_flags::content | Item_flags::show_in_ui);
+    m_camera->projection()->fov_y = 0.3f;
+    m_camera->projection()->z_near = 4.0f;
+    m_camera->projection()->z_far = 12.0f;
+    m_camera_node->attach(m_camera);
+    m_camera_node->set_parent(paremt);
+    m_camera_node->set_parent_from_node(
+        erhe::math::create_look_at(
+            glm::vec3{0.0f, 0.0f, 8.0f},  // eye
+            glm::vec3{0.0f, 0.0f, 0.0f},  // center
+            glm::vec3{0.0f, 1.0f, 0.0f}   // up
+        )
+    );
+
+    auto composition_pass = std::make_shared<Composition_pass>("Material Preview Composition_pass");
+    composition_pass->data.mesh_layers           = {Mesh_layer_id::content};
+    composition_pass->data.primitive_mode        = erhe::primitive::Primitive_mode::polygon_fill;
+    composition_pass->data.filter                = erhe::Item_filter{};
+    composition_pass->data.base_render_pipelines = m_render_pipelines;
+    composition_pass->data.blending_mode_policy  = erhe::scene_renderer::Blending_mode_policy::allow_all;
+    {
+        std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_composer.mutex};
+        m_composer.composition_passes.push_back(composition_pass);
+    }
+}
+
+void Material_preview::render_preview(
+    const std::shared_ptr<erhe::graphics::Texture>&   texture,
+    const std::shared_ptr<erhe::primitive::Material>& material
+)
+{
+    set_color_texture(texture);
+    resize(texture->get_width(), texture->get_height());
+    set_clear_color(glm::vec4{0.0f, 0.0f, 0.0f, 0.0f});
+    update_rendertarget(*m_context.graphics_device);
+    render_preview(material);
+}
+
+auto Material_preview::get_last_material() const -> const std::shared_ptr<erhe::primitive::Material>&
+{
+    return m_last_material;
+}
+
+void Material_preview::on_items_removed(const Removed_items& removed)
+{
+    if (!m_last_material || !removed.lookup.contains(m_last_material.get())) {
+        return;
+    }
+    if (m_content_library && m_content_library->materials) {
+        m_content_library->materials->remove_all_children_recursively();
+    }
+    if (m_mesh && !m_mesh->get_primitives().empty()) {
+        m_mesh->set_primitive_material(0, {});
+    }
+    m_last_material.reset();
+}
+
+void Material_preview::on_close_scene(erhe::Item_host* const closing_host)
+{
+    // R5.6: materials are not hosted; ask the manager whether the closing
+    // scene's container record defines the inspected one.
+    if (!m_last_material ||
+        (m_context.asset_manager == nullptr) ||
+        !m_context.asset_manager->is_hosted_or_defined_by(*m_last_material, closing_host))
+    {
+        return;
+    }
+    if (m_content_library && m_content_library->materials) {
+        m_content_library->materials->remove_all_children_recursively();
+    }
+    if (m_mesh && !m_mesh->get_primitives().empty()) {
+        m_mesh->set_primitive_material(0, {});
+    }
+    m_last_material.reset();
+}
+
+void Material_preview::render_preview(const std::shared_ptr<erhe::primitive::Material>& material)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ERHE_VERIFY(m_context.current_command_buffer != nullptr);
+    erhe::graphics::Command_buffer& command_buffer = *m_context.current_command_buffer;
+    erhe::graphics::Scoped_debug_group outer_debug_scope{command_buffer, "Scene_preview::render_preview()"};
+
+    m_content_library->materials->remove_all_children_recursively();
+    // Reference entry: the inspected material is owned by its own scene's
+    // content library; the preview library only lists it for rendering and
+    // must not claim the item's host.
+    m_content_library->materials->add_reference(material);
+    m_last_material = material;
+
+    m_mesh->set_primitive_material(0, material);
+
+    const erhe::math::Viewport viewport{0, 0, m_width, m_height};
+
+    const auto& layers = m_scene_root_shared->layers();
+
+    erhe::scene_renderer::Light_set& light_set = m_scene_root_shared->get_light_set();
+    light_set.resolve(layers.light()->lights, get_light_count_limits());
+    m_light_projections.apply(
+        light_set,
+        m_camera.get(),
+        viewport,
+        erhe::math::Viewport{},
+        m_shadow_texture,
+        get_reverse_depth(),
+        get_depth_range()
+    );
+    erhe::graphics::Render_command_encoder render_encoder = m_context.graphics_device->make_render_command_encoder(command_buffer);
+    erhe::graphics::Scoped_render_pass scoped_render_pass{*m_render_pass.get(), command_buffer};
+    const erhe::math::Viewport context_viewport{
+        .x      = 0,
+        .y      = 0,
+        .width  = m_width,
+        .height = m_height
+    };
+    const erhe::scene_renderer::Camera_view_input single_view_input{
+        .projection = m_camera->projection(),
+        .node       = m_camera->get_node(),
+        .viewport   = context_viewport
+    };
+    const Render_context context{
+        .command_buffer      = &command_buffer,
+        .encoder             = &render_encoder,
+        .render_pass         = m_render_pass.get(),
+        .app_context         = m_context,
+        .scene_view          = *this,
+        .viewport_config     = m_viewport_config,
+        .camera              = m_camera.get(),
+        .viewport_scene_view = nullptr,
+        .viewport            = context_viewport,
+        .views               = std::span<const erhe::scene_renderer::Camera_view_input>(&single_view_input, 1)
+    };
+    // No post-processing for the preview: render content + overlay phases in one
+    // pass (issue #230). The preview composer has no overlay passes anyway.
+    m_composer.render(context, true, true);
+}
+
+////void Material_preview::generate_torus_geometry()
+////{
+////    m_torus_geometry = std::make_shared<erhe::geometry::Geometry>(
+////        erhe::geometry::shapes::make_torus(
+////            m_major_radius,
+////            m_minor_radius,
+////            m_major_steps,
+////            m_minor_steps
+////        )
+////    );
+////}
+
+void Material_preview::show_preview()
+{
+    m_context.imgui_renderer->image(
+        erhe::imgui::Draw_texture_parameters{
+            .texture_reference = m_color_texture,
+            .width             = m_width,
+            .height            = m_height,
+            .uv0               = m_context.imgui_renderer->get_rtt_uv0(),
+            .uv1               = m_context.imgui_renderer->get_rtt_uv1(),
+            .debug_label       = "Material_preview::show_preview()"
+        }
+    );
+}
+
+
+}  // namespace editor

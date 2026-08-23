@@ -1,0 +1,149 @@
+#pragma once
+
+#include "erhe_dataformat/dataformat.hpp"
+#include "erhe_hash/hash.hpp"
+
+#include <string>
+#include <vector>
+
+namespace erhe::dataformat {
+
+enum class Vertex_attribute_usage : uint32_t {
+    none          = 0,
+    position      = 1,
+    tangent       = 2,
+    bitangent     = 3,
+    normal        = 4,
+    color         = 5,
+    joint_indices = 6,
+    joint_weights = 7,
+    tex_coord     = 8,
+    custom        = 9
+};
+
+[[nodiscard]] auto c_str(Vertex_attribute_usage usage) -> const char*;
+
+class Vertex_attribute
+{
+public:
+    erhe::dataformat::Format format     {erhe::dataformat::Format::format_undefined};
+    Vertex_attribute_usage   usage_type {Vertex_attribute_usage::none};
+    std::size_t              usage_index{0};
+    std::size_t              offset     {0};
+
+    [[nodiscard]] auto to_string() const -> std::string;
+
+    [[nodiscard]] auto operator==(const Vertex_attribute& other) const -> bool
+    {
+        return
+            (format      == other.format) &&
+            (usage_type  == other.usage_type) &&
+            (usage_index == other.usage_index) &&
+            (offset      == other.offset);
+    }
+    [[nodiscard]] auto operator!=(const Vertex_attribute& other) const -> bool
+    {
+        return !(*this == other);
+    }
+};
+
+static constexpr std::size_t normal_attribute        = 0;
+static constexpr std::size_t normal_attribute_smooth = 1;
+static constexpr std::size_t normal_attribute_flat   = 2;
+
+static constexpr std::size_t custom_attribute_id                 = 0;
+static constexpr std::size_t custom_attribute_aniso_control      = 1; // anisotropy tangent_space
+static constexpr std::size_t custom_attribute_valency_edge_count = 2; // uvec2 vertex valency and polygon edge count
+static constexpr std::size_t custom_attribute_metallic_roughness = 3; // TODO metallic roughess_x roughness_y
+static constexpr std::size_t custom_attribute_wireframe          = 4; // uint: corner index (bits 0..1) + real-edge mask (bits 2..4), expanded solid-wireframe fill
+// Expanded soup fill only: the three corner object positions of this vertex's
+// triangle, replicated onto all three of its vertices. Used by the ID-buffer
+// edge-line method to cap corners in the fill fragment (project each corner to
+// screen, shade as edge line within half-line-width of a real-edge corner).
+static constexpr std::size_t custom_attribute_corner_position_0  = 5;
+static constexpr std::size_t custom_attribute_corner_position_1  = 6;
+static constexpr std::size_t custom_attribute_corner_position_2  = 7;
+
+enum class Vertex_step : unsigned int
+{
+    Step_per_vertex = 0,
+    Step_per_instance
+};
+
+[[nodiscard]] auto c_str(Vertex_step step) -> const char*;
+
+class Vertex_stream
+{
+public:
+
+    static constexpr std::size_t binding_unused_dummy = 0xffff;
+
+    explicit Vertex_stream(std::size_t binding);
+
+    Vertex_stream(std::size_t binding, std::initializer_list<Vertex_attribute> attributes);
+
+    [[nodiscard]] auto find_attribute(Vertex_attribute_usage usage_type, std::size_t index = 0) const -> const Vertex_attribute*;
+    auto emplace_back(
+        erhe::dataformat::Format format,
+        Vertex_attribute_usage   usage_type,
+        std::size_t              usage_index = 0
+    ) -> Vertex_attribute&;
+
+    // Call after all emplace_back() calls to pad stride for Vulkan alignment
+    void finalize_stride();
+
+    [[nodiscard]] auto is_buffer_compatible(const Vertex_stream& other) const -> bool;
+    [[nodiscard]] auto get_hash() const -> uint64_t;
+    [[nodiscard]] auto to_string() const -> std::string;
+
+    [[nodiscard]] auto operator==(const Vertex_stream& other) const -> bool
+    {
+        return
+            (binding    == other.binding   ) &&
+            (stride     == other.stride    ) &&
+            (step       == other.step      ) &&
+            (attributes == other.attributes);
+    }
+    [[nodiscard]] auto operator!=(const Vertex_stream& other) const -> bool
+    {
+        return !(*this == other);
+    }
+
+    std::vector<Vertex_attribute> attributes;
+    std::size_t                   binding      {0};
+    std::size_t                   stride       {0};
+    std::size_t                   max_alignment{1};
+    Vertex_step                   step         {Vertex_step::Step_per_vertex};
+};
+
+struct Attribute_stream
+{
+    const Vertex_attribute* attribute{nullptr};
+    const Vertex_stream*    stream   {nullptr};
+};
+
+class Vertex_format
+{
+public:
+    Vertex_format();
+    Vertex_format(std::initializer_list<Vertex_stream> streams);
+
+    [[nodiscard]] auto get_stream    (std::size_t binding) const -> const Vertex_stream*;
+    [[nodiscard]] auto find_attribute(Vertex_attribute_usage usage_type, std::size_t index = 0) const -> Attribute_stream;
+    [[nodiscard]] auto get_attributes() const -> std::vector<Attribute_stream>;
+    [[nodiscard]] auto get_hash      () const -> uint64_t;
+    [[nodiscard]] auto to_string     () const -> std::string;
+
+    [[nodiscard]] auto operator==(const Vertex_format& other) const -> bool
+    {
+        return (streams == other.streams);
+    }
+    [[nodiscard]] auto operator!=(const Vertex_format& other) const -> bool
+    {
+        return !(*this == other);
+    }
+
+    std::vector<Vertex_stream> streams;
+};
+
+} // namespace erhe::dataformat

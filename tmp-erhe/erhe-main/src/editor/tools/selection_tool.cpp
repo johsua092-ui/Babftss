@@ -1,0 +1,1301 @@
+#include "tools/selection_tool.hpp"
+
+#include "tools/bone_visualization.hpp"
+#include "tools/mesh_component_selection.hpp"
+
+#include "app_context.hpp"
+#include "editor_log.hpp"
+#include "app_message_bus.hpp"
+#include "app_scenes.hpp"
+#include "assets/asset_manager.hpp"
+#include "input_state.hpp"
+#include "graphics/icon_set.hpp"
+#include "operations/compound_operation.hpp"
+#include "operations/item_insert_remove_operation.hpp"
+#include "operations/operation_stack.hpp"
+#include "prefabs/prefab_instance.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/viewport_scene_view.hpp"
+#include "scene/viewport_scene_views.hpp"
+#include "tools/clipboard.hpp"
+#include "tools/mesh_component_selection.hpp"
+#include "tools/tools.hpp"
+
+#include "erhe_commands/commands.hpp"
+#include "erhe_imgui/imgui_helpers.hpp"
+#include "erhe_item/item_host.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_utility/bit_helpers.hpp"
+#include "erhe_hash/xxhash.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <functional>
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+#   include "xr/headset_view.hpp"
+#   include "erhe_xr/xr_action.hpp"
+#   include "erhe_xr/headset.hpp"
+#endif
+
+namespace editor {
+
+using glm::mat4;
+using glm::vec3;
+using glm::vec4;
+
+#pragma region Range_selection
+Range_selection::Range_selection(Selection& selection)
+    : m_selection{selection}
+{
+}
+
+void Range_selection::set_terminator(const std::shared_ptr<erhe::Item_base>& item)
+{
+    // A terminator hosted elsewhere than the current range starts a fresh
+    // range in that host: a range cannot span hosts (each tree feeds entries
+    // for its own host only, so a cross-host range could never resolve).
+    if (m_primary_terminator && item && (item->get_item_host() != m_primary_terminator->get_item_host())) {
+        log_selection->trace("terminator from another host - starting a fresh range");
+        m_primary_terminator.reset();
+        m_secondary_terminator.reset();
+    }
+
+    if (!m_primary_terminator) {
+        log_selection->trace(
+            "setting primary terminator to '{}'",
+            item->describe()
+        );
+
+        m_primary_terminator = item;
+        m_edited = true;
+        return;
+    }
+    if (item == m_primary_terminator) {
+        log_selection->trace(
+            "ignoring setting terminator to '{}' because it is already the primary terminator",
+            item->describe()
+        );
+        return;
+    }
+    if (item == m_secondary_terminator) {
+        log_selection->trace(
+            "ignoring setting terminator to '{}' because it is already the secondary terminator",
+            item->describe()
+        );
+        return;
+    }
+
+    log_selection->trace("setting secondary terminator to '{}'", item->describe());
+    m_secondary_terminator = item;
+    m_edited = true;
+}
+
+void Range_selection::entry(const std::shared_ptr<erhe::Item_base>& item)
+{
+    m_entries.push_back(item);
+}
+
+void Range_selection::begin()
+{
+    m_edited = false;
+    m_entries.clear();
+}
+
+void Range_selection::end()
+{
+    if (m_entries.empty() || !m_edited || !m_primary_terminator || !m_secondary_terminator) {
+        m_entries.clear();
+        return;
+    }
+    log_selection->trace("setting selection since range was modified");
+
+    std::vector<std::shared_ptr<erhe::Item_base>> selection;
+    bool between_terminators{false};
+
+    auto primary_terminator   = m_primary_terminator;
+    auto secondary_terminator = m_secondary_terminator;
+
+    for (const auto& item : m_entries) {
+        const bool match_primary   = item == primary_terminator;
+        const bool match_secondary = item == secondary_terminator;
+        if (match_primary || match_secondary) {
+            log_selection->trace("   T. {}", item->describe());
+            selection.push_back(item);
+            between_terminators = !between_terminators;
+            primary_terminator   = m_primary_terminator;
+            secondary_terminator = m_secondary_terminator;
+            continue;
+        }
+        if (between_terminators) {
+            log_selection->trace("    + {}", item->describe());
+            selection.push_back(item);
+        } else {
+            log_selection->trace("    - {}", item->describe());
+        }
+    }
+    if (selection.empty()) {
+        m_entries.clear();
+        return;
+    }
+
+    // Scope the range to the hosts its entries came from (one tree feeds the
+    // entries per frame): items selected in other hosts (other scenes, the
+    // content library) are preserved instead of being replaced wholesale.
+    std::vector<erhe::Item_host*> entry_hosts;
+    for (const std::shared_ptr<erhe::Item_base>& item : m_entries) {
+        erhe::Item_host* const host = item ? item->get_item_host() : nullptr;
+        if (std::find(entry_hosts.begin(), entry_hosts.end(), host) == entry_hosts.end()) {
+            entry_hosts.push_back(host);
+        }
+    }
+    std::vector<std::shared_ptr<erhe::Item_base>> final_selection;
+    for (const std::shared_ptr<erhe::Item_base>& item : m_selection.get_selected_items()) {
+        erhe::Item_host* const host = item ? item->get_item_host() : nullptr;
+        if (std::find(entry_hosts.begin(), entry_hosts.end(), host) == entry_hosts.end()) {
+            final_selection.push_back(item);
+        }
+    }
+    final_selection.insert(final_selection.end(), selection.begin(), selection.end());
+
+    m_selection.set_selection(final_selection);
+    m_entries.clear();
+}
+
+void Range_selection::reset()
+{
+    log_selection->trace("resetting range selection");
+    if (m_primary_terminator && m_secondary_terminator) {
+        m_selection.clear_selection();
+    }
+    m_primary_terminator.reset();
+    m_secondary_terminator.reset();
+}
+
+void Range_selection::reset(erhe::Item_host* host)
+{
+    const bool primary_hosted   = m_primary_terminator   && m_selection.is_hosted_or_defined_by(*m_primary_terminator,   host);
+    const bool secondary_hosted = m_secondary_terminator && m_selection.is_hosted_or_defined_by(*m_secondary_terminator, host);
+    if (!primary_hosted && !secondary_hosted) {
+        return; // range (if any) belongs to another host - leave it alone
+    }
+    log_selection->trace("resetting range selection for host");
+    if (m_primary_terminator && m_secondary_terminator) {
+        m_selection.clear_selection(host);
+    }
+    m_primary_terminator.reset();
+    m_secondary_terminator.reset();
+}
+
+void Range_selection::reset_terminators_for_host(erhe::Item_host* host)
+{
+    const bool primary_hosted   = m_primary_terminator   && m_selection.is_hosted_or_defined_by(*m_primary_terminator,   host);
+    const bool secondary_hosted = m_secondary_terminator && m_selection.is_hosted_or_defined_by(*m_secondary_terminator, host);
+    if (!primary_hosted && !secondary_hosted) {
+        return;
+    }
+    log_selection->trace("resetting range selection terminators for host");
+    m_primary_terminator.reset();
+    m_secondary_terminator.reset();
+    m_edited = false;
+}
+
+#pragma endregion Range_selection
+
+#pragma region Commands
+Viewport_select_command::Viewport_select_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "Selection.viewport_select"}
+    , m_context{app_context}
+{
+}
+
+void Viewport_select_command::try_ready()
+{
+    if (m_context.selection->on_viewport_select_try_ready()) {
+        log_selection->trace("Selection set ready");
+        set_ready();
+    } else {
+        log_selection->trace("Not setting selection ready");
+    }
+}
+
+auto Viewport_select_command::try_call() -> bool
+{
+    if (get_command_state() != erhe::commands::State::Ready) {
+        log_selection->trace("Selection not in ready state");
+        return false;
+    }
+
+    const bool consumed = m_context.selection->on_viewport_select();
+    set_inactive();
+    return consumed;
+}
+
+//
+
+Viewport_select_toggle_command::Viewport_select_toggle_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "Selection.viewport_select_toggle"}
+    , m_context{app_context}
+{
+}
+
+void Viewport_select_toggle_command::try_ready()
+{
+    if (m_context.selection->on_viewport_select_try_ready()) {
+        set_ready();
+    }
+}
+
+auto Viewport_select_toggle_command::try_call() -> bool
+{
+    if (get_command_state() != erhe::commands::State::Ready) {
+        log_selection->trace("Selection not in ready state");
+        return false;
+    }
+
+    const bool consumed = m_context.selection->on_viewport_select_toggle();
+    set_inactive();
+    return consumed;
+}
+
+//
+
+Selection_delete_command::Selection_delete_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "Selection.delete"}
+    , m_context{app_context}
+{
+}
+
+auto Selection_delete_command::try_call() -> bool
+{
+    return m_context.selection->delete_selection();
+}
+
+//
+
+Selection_cut_command::Selection_cut_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "Selection.cut"}
+    , m_context{app_context}
+{
+}
+
+auto Selection_cut_command::try_call() -> bool
+{
+    return m_context.selection->cut_selection();
+}
+
+//
+
+Selection_copy_command::Selection_copy_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "Selection.copy"}
+    , m_context{app_context}
+{
+}
+
+auto Selection_copy_command::try_call() -> bool
+{
+    return m_context.selection->copy_selection();
+}
+
+//
+
+Selection_duplicate_command::Selection_duplicate_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "Selection.duplicate"}
+    , m_context{app_context}
+{
+}
+
+auto Selection_duplicate_command::try_call() -> bool
+{
+    return m_context.selection->duplicate_selection();
+}
+
+
+#pragma endregion Commands
+
+Selection_tool::Selection_tool(App_context& app_context, Icon_set& icon_set, Tools& tools)
+    : Tool{app_context, tools, Tool_flags::toolbox | Tool_flags::secondary}
+{
+    ERHE_PROFILE_FUNCTION();
+
+    set_base_priority  (c_priority);
+    set_description    ("Selection Tool");
+    set_icon           (icon_set.custom_icons, icon_set.icons.select);
+}
+
+Selection::Selection(erhe::commands::Commands& commands, App_context& context, App_message_bus& app_message_bus)
+    : m_context                       {context}
+    , m_viewport_select_command       {commands, context}
+    , m_viewport_select_toggle_command{commands, context}
+    , m_delete_command                {commands, context}
+    , m_cut_command                   {commands, context}
+    , m_copy_command                  {commands, context}
+    , m_duplicate_command             {commands, context}
+    , m_range_selection               {*this}
+{
+    m_items_removed_subscription = app_message_bus.items_removed.subscribe(
+        [this](Items_removed_message& message) {
+            on_items_removed(*message.removed.get());
+        }
+    );
+    commands.register_command            (&m_viewport_select_command);
+    commands.register_command            (&m_delete_command);
+    commands.register_command            (&m_cut_command);
+    commands.register_command            (&m_copy_command);
+    commands.register_command            (&m_duplicate_command);
+    commands.bind_command_to_mouse_button(&m_viewport_select_command, erhe::window::Mouse_button_left, false);
+    commands.bind_command_to_key         (&m_delete_command,          erhe::window::Key_delete,        true);
+    commands.bind_command_to_key         (&m_cut_command,             erhe::window::Key_x,             true, erhe::window::Key_modifier_bit_ctrl);
+    commands.bind_command_to_key         (&m_copy_command,            erhe::window::Key_insert,        true, erhe::window::Key_modifier_bit_ctrl);
+    commands.bind_command_to_key         (&m_copy_command,            erhe::window::Key_c,             true, erhe::window::Key_modifier_bit_ctrl);
+    commands.bind_command_to_key         (&m_duplicate_command,       erhe::window::Key_d,             true, erhe::window::Key_modifier_bit_ctrl);
+
+    commands.bind_command_to_menu(&m_delete_command,    "Edit.Delete");
+    commands.bind_command_to_menu(&m_cut_command,       "Edit.Cut");
+    commands.bind_command_to_menu(&m_copy_command,      "Edit.Copy");
+    commands.bind_command_to_menu(&m_duplicate_command, "Edit.Duplicate");
+    commands.bind_command_to_menu(&m_duplicate_command, "Edit.Paster");
+
+    m_hover_scene_view_subscription = app_message_bus.hover_scene_view.subscribe(
+        [&](Hover_scene_view_message& message) {
+            m_hover_scene_view = message.scene_view;
+        }
+    );
+
+    m_viewport_select_command.set_host(this);
+    m_delete_command.set_host(this);
+}
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+void Selection::setup_xr_bindings(erhe::commands::Commands& commands, Headset_view& headset_view)
+{
+    erhe::xr::Headset* headset = headset_view.get_headset();
+    if (headset == nullptr) {
+        return;
+    }
+    erhe::xr::Xr_actions* xr_left  = headset->get_actions_left();
+    erhe::xr::Xr_actions* xr_right = headset->get_actions_right();
+    if (xr_right != nullptr) {
+        commands.bind_command_to_xr_boolean_action(&m_viewport_select_command,        xr_right->trigger_click, erhe::commands::Button_trigger::Button_pressed);
+        commands.bind_command_to_xr_boolean_action(&m_viewport_select_toggle_command, xr_right->a_click,       erhe::commands::Button_trigger::Button_pressed);
+    }
+    if (xr_left != nullptr) {
+        commands.bind_command_to_xr_boolean_action(&m_viewport_select_command,        xr_left ->x_click,       erhe::commands::Button_trigger::Button_pressed);
+    }
+}
+#endif
+
+void Selection_tool::handle_priority_update(int old_priority, int new_priority)
+{
+    if (new_priority < old_priority) {
+        m_context.selection->clear_selection();
+    }
+}
+
+auto Selection::get_selected_items() const -> const std::vector<std::shared_ptr<erhe::Item_base>>&
+{
+    return m_selection;
+}
+
+auto Selection::get_hosted_selection(erhe::Item_host* host) -> const std::vector<std::shared_ptr<erhe::Item_base>>&
+{
+    std::vector<std::shared_ptr<erhe::Item_base>>& bucket = (host != nullptr) ? host->hosted_selection : m_non_hosted_selection;
+    bucket.clear();
+    for (const std::shared_ptr<erhe::Item_base>& item : m_selection) {
+        if (item && (item->get_item_host() == host)) {
+            bucket.push_back(item);
+        }
+    }
+    return bucket;
+}
+
+auto Selection::clear_selection(erhe::Item_host* host) -> bool
+{
+    Scoped_selection_change selection_change{*this};
+
+    bool removed_any{false};
+    auto i = m_selection.begin();
+    while (i != m_selection.end()) {
+        const std::shared_ptr<erhe::Item_base>& item = *i;
+        if (item && is_hosted_or_defined_by(*item, host)) {
+            item->set_selected(false);
+            i = m_selection.erase(i);
+            removed_any = true;
+        } else {
+            ++i;
+        }
+    }
+
+    // Reset range terminators for this host even when nothing was selected:
+    // terminators are strong references set independently of the selection
+    // (tree shift-click), so a stale pair must not outlive its host scene.
+    m_range_selection.reset_terminators_for_host(host);
+
+    if (removed_any) {
+        log_selection->trace("Cleared selection for host {}", (host != nullptr) ? host->get_host_name() : "(none)");
+#if !defined(NDEBUG)
+        sanity_check();
+#endif
+    }
+    return removed_any;
+}
+
+auto Selection::is_hosted_or_defined_by(const erhe::Item_base& item, const erhe::Item_host* host) const -> bool
+{
+    if (m_context.asset_manager != nullptr) {
+        return m_context.asset_manager->is_hosted_or_defined_by(item, host);
+    }
+    return item.get_item_host() == host;
+}
+
+auto Selection::get_active_scene_root() -> std::shared_ptr<Scene_root>
+{
+    std::shared_ptr<Scene_root> active_scene_root = m_active_scene_root.lock();
+    if (active_scene_root) {
+        return active_scene_root;
+    }
+
+    // Fallbacks: last hovered scene view's scene, then the single open scene.
+    if (m_context.scene_views != nullptr) {
+        const std::shared_ptr<Viewport_scene_view> last_scene_view = m_context.scene_views->last_scene_view();
+        if (last_scene_view) {
+            const std::shared_ptr<Scene_root> scene_root = last_scene_view->get_scene_root();
+            if (scene_root) {
+                return scene_root;
+            }
+        }
+    }
+    if (m_context.app_scenes != nullptr) {
+        return m_context.app_scenes->get_single_scene_root();
+    }
+    return {};
+}
+
+void Selection::set_active_scene_root(const std::shared_ptr<Scene_root>& scene_root)
+{
+    if (m_active_scene_root.lock() == scene_root) {
+        return;
+    }
+    m_active_scene_root = scene_root;
+    m_context.app_message_bus->active_scene.send_message(
+        Active_scene_changed_message{
+            .scene_root = scene_root
+        }
+    );
+}
+
+auto Selection::get_command_target_selection() -> const std::vector<std::shared_ptr<erhe::Item_base>>&
+{
+    Scene_root* const active_scene_root = get_active_scene_root().get();
+    m_command_target_selection.clear();
+    for (const std::shared_ptr<erhe::Item_base>& item : m_selection) {
+        erhe::Item_host* const host = item ? item->get_item_host() : nullptr;
+        if ((host == nullptr) || (host == static_cast<erhe::Item_host*>(active_scene_root))) {
+            m_command_target_selection.push_back(item);
+        }
+    }
+    return m_command_target_selection;
+}
+
+auto Selection::delete_selection() -> bool
+{
+    return delete_items(get_command_target_selection());
+}
+
+auto Selection::delete_items(const std::vector<std::shared_ptr<erhe::Item_base>>& items) -> bool
+{
+    if (items.empty()) {
+        return false;
+    }
+
+    Compound_operation::Parameters compound_parameters;
+    std::vector<std::shared_ptr<erhe::Item_base>> recursive_selection;
+
+    // Collect an item and its subtree for deletion. lock_edit items and their
+    // subtrees are skipped (locked items survive deletion of an ancestor),
+    // with one exception: a prefab instance is always deleted as a whole. Its
+    // interior is sealed with lock_edit (seal_instance_subtree) to make it
+    // non-editable, not to protect it from deleting the instance, so below a
+    // node carrying a Prefab_instance attachment everything is collected
+    // unconditionally. (The previous for_each<Hierarchy> collection had abort
+    // semantics: the first locked item ended the whole traversal, leaving
+    // even unlocked siblings uncollected.)
+    std::function<void(erhe::Hierarchy&, bool)> collect_item =
+        [&recursive_selection, &collect_item](erhe::Hierarchy& item, bool inside_prefab_instance) {
+        if (!inside_prefab_instance && item.is_lock_edit()) {
+            return; // Skip locked items and their children
+        }
+        // Editor-generated bone proxies are not content; Bone_visualization
+        // owns their lifetime through skin register/unregister. Recording one
+        // in a delete would make undo resurrect it NEXT TO the fresh proxy the
+        // re-registered skin creates, duplicating proxies on every
+        // delete+undo cycle.
+        if ((item.get_flag_bits() & erhe::Item_flags::bone_proxy) != 0) {
+            return;
+        }
+        recursive_selection.push_back(item.shared_from_this());
+        bool collect_subtree_unconditionally = inside_prefab_instance;
+        erhe::scene::Node* const node = dynamic_cast<erhe::scene::Node*>(&item);
+        if ((node != nullptr) && erhe::scene::get_attachment<Prefab_instance>(node)) {
+            collect_subtree_unconditionally = true;
+        }
+        for (const std::shared_ptr<erhe::Hierarchy>& child : item.get_children()) {
+            collect_item(*child, collect_subtree_unconditionally);
+        }
+    };
+    for (const std::shared_ptr<erhe::Item_base>& item : items) {
+        if (item->is_lock_edit()) {
+            continue;
+        }
+        const std::shared_ptr<erhe::Hierarchy> hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(item);
+        if (!hierarchy) {
+            continue;
+        }
+        collect_item(*hierarchy, false);
+    }
+
+    // Sort deepest first
+    std::sort(
+        recursive_selection.begin(),
+        recursive_selection.end(),
+        [](const std::shared_ptr<erhe::Item_base>& lhs, const std::shared_ptr<erhe::Item_base>& rhs)
+        {
+            const std::shared_ptr<erhe::Hierarchy> lhs_hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(lhs);
+            const std::shared_ptr<erhe::Hierarchy> rhs_hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(rhs);
+            size_t lhs_depth = lhs_hierarchy ? lhs_hierarchy->get_depth() : 0;
+            size_t rhs_depth = rhs_hierarchy ? rhs_hierarchy->get_depth() : 0;
+            return lhs_depth > rhs_depth;
+        }
+    );
+
+    //for (auto& item : m_selection) {
+    for (auto& item : recursive_selection) {
+        // TODO
+        const auto hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(item);
+        if (!hierarchy) {
+            continue;
+        }
+
+        compound_parameters.operations.push_back(
+            std::make_shared<Item_insert_remove_operation>(
+                Item_insert_remove_operation::Parameters{
+                    .context = m_context,
+                    .item    = hierarchy,
+                    .parent  = hierarchy->get_parent().lock(),
+                    .mode    = Item_insert_remove_operation::Mode::remove,
+                }
+            )
+        );
+    }
+    if (compound_parameters.operations.empty()) {
+        return false;
+    }
+
+    const auto op = std::make_shared<Compound_operation>(std::move(compound_parameters));
+
+    m_context.operation_stack->queue(op);
+    return true;
+}
+
+auto Selection::cut_selection() -> bool
+{
+    const std::vector<std::shared_ptr<erhe::Item_base>>& target_selection = get_command_target_selection();
+    if (target_selection.empty()) {
+        return false;
+    }
+
+    m_context.clipboard->set_contents(target_selection);
+    return delete_selection();
+}
+
+auto Selection::copy_selection() -> bool
+{
+    if (m_selection.empty()) {
+        return false;
+    }
+
+    std::vector<std::shared_ptr<erhe::Item_base>> selection_clone;
+    for (const auto& item : m_selection) {
+        selection_clone.push_back(item->clone());
+    }
+    m_context.clipboard->set_contents(selection_clone);
+    return true;
+}
+
+auto Selection::duplicate_selection() -> bool
+{
+    const std::vector<std::shared_ptr<erhe::Item_base>>& target_selection = get_command_target_selection();
+    if (target_selection.empty()) {
+        return false;
+    }
+
+    Compound_operation::Parameters compound_parameters{};
+
+    for (const auto& item : target_selection) {
+        const auto& hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(item);
+        if (hierarchy) {
+            // Clones keep the source name; a duplicate wants a
+            // distinguishing name, so rename the duplicate root here.
+            const std::shared_ptr<erhe::Hierarchy> duplicate = std::dynamic_pointer_cast<erhe::Hierarchy>(hierarchy->clone());
+            if (duplicate) {
+                duplicate->set_name(hierarchy->get_name() + " Copy");
+            }
+            compound_parameters.operations.push_back(
+                std::make_shared<Item_insert_remove_operation>(
+                    Item_insert_remove_operation::Parameters{
+                        .context         = m_context,
+                        .item            = duplicate,
+                        .parent          = hierarchy->get_parent().lock(),
+                        .mode            = Item_insert_remove_operation::Mode::insert,
+                        .index_in_parent = hierarchy->get_index_in_parent() + 1
+                    }
+                )
+            );
+        }
+            //const auto& node_attachment = std::dynamic_pointer_cast<erhe::scene::Node_attachment>(item);
+            //if (node_attachment) {
+            //    compound_parameters.operations.push_back(
+            //        std::make_shared<Node_attach_operation>(
+            //            node_attachment,
+            //            target_node
+            //        )
+            //    );
+            //}
+        //}
+    }
+    if (compound_parameters.operations.empty()) {
+        return false;
+    }
+    m_context.operation_stack->queue(
+        std::make_shared<Compound_operation>(std::move(compound_parameters))
+    );
+
+    return true; // TODO
+}
+
+auto Selection::range_selection() -> Range_selection&
+{
+    return m_range_selection;
+}
+
+auto Selection::get(erhe::Item_filter filter, const std::size_t index) -> std::shared_ptr<erhe::Item_base>
+{
+    std::size_t i = 0;
+    for (const auto& item : m_selection) {
+        if (filter(item->get_type())) {
+            if (i == index) {
+                return item;
+            } else {
+                ++i;
+            }
+        }
+    }
+    return {};
+}
+
+
+template <typename T>
+[[nodiscard]] auto is_in(const T& item, const std::vector<T>& items) -> bool
+{
+    return std::find(
+        items.begin(),
+        items.end(),
+        item
+    ) != items.end();
+}
+
+auto item_set_sort_predicate(const std::shared_ptr<erhe::Item_base>& lhs, const std::shared_ptr<erhe::Item_base>& rhs) -> bool {
+    const auto lhs_hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(lhs);
+    const auto rhs_hierarchy = std::dynamic_pointer_cast<erhe::Hierarchy>(rhs);
+    if (lhs_hierarchy && rhs_hierarchy) {
+        const auto lhs_depth = lhs_hierarchy->get_depth();
+        const auto rhs_depth = rhs_hierarchy->get_depth();
+        if (lhs_depth != rhs_depth) {
+            return lhs_depth < rhs_depth;
+        }
+    }
+
+    const auto lhs_type = lhs->get_type();
+    const auto rhs_type = rhs->get_type();
+    if (lhs_type != rhs_type) {
+        return lhs_type < rhs_type;
+    }
+
+    const auto lhs_id = lhs->get_id();
+    const auto rhs_id = rhs->get_id();
+    return lhs_id < rhs_id;
+}
+
+[[nodiscard]] auto get_sorted(const std::vector<std::shared_ptr<erhe::Item_base>>& in_items) -> std::vector<std::shared_ptr<erhe::Item_base>>
+{
+    std::vector<std::shared_ptr<erhe::Item_base>> out_items = in_items;
+    std::sort(out_items.begin(), out_items.end(), item_set_sort_predicate);
+    return out_items;
+}
+
+void Selection::set_selection(const std::vector<std::shared_ptr<erhe::Item_base>>& selection)
+{
+    Scoped_selection_change selection_change{*this};
+
+    for (auto& item : m_selection) {
+        if (item->is_selected() && !is_in(item, selection)) {
+            item->set_selected(false);
+        }
+    }
+    for (auto& item : selection) {
+        item->set_selected(true);
+        update_last_selected(item);
+    }
+
+    m_selection = selection;
+}
+
+Scoped_selection_change::Scoped_selection_change(Selection& selection)
+    : selection{selection}
+{
+    selection.begin_selection_change();
+}
+
+Scoped_selection_change::~Scoped_selection_change() noexcept
+{
+    selection.end_selection_change();
+}
+
+void Selection::begin_selection_change()
+{
+    ++m_selection_change_depth;
+    if (m_selection_change_depth == 1) {
+        m_begin_selection_change_state = m_selection;
+    }
+}
+
+void Selection::end_selection_change()
+{
+    --m_selection_change_depth;
+    ERHE_VERIFY(m_selection_change_depth >= 0);
+    if (m_selection_change_depth > 0) {
+        return;
+    }
+    const auto sorted_old = get_sorted(m_begin_selection_change_state);
+    const auto sorted_new = get_sorted(m_selection);
+
+    Selection_change selection_change;
+
+    std::set_difference(
+        sorted_old.begin(), sorted_old.end(),
+        sorted_new.begin(), sorted_new.end(),
+        std::back_inserter(selection_change.no_longer_selected),
+        item_set_sort_predicate
+    );
+
+    std::set_difference(
+        sorted_new.begin(), sorted_new.end(),
+        sorted_old.begin(), sorted_old.end(),
+        std::back_inserter(selection_change.newly_selected),
+        item_set_sort_predicate
+    );
+
+    // A selection change in a scene makes that scene the active scene
+    // (deselect-only changes do not). Set before broadcasting so
+    // Selection_message subscribers observe the up-to-date active scene.
+    for (const std::shared_ptr<erhe::Item_base>& item : selection_change.newly_selected) {
+        erhe::Item_host* const item_host = item ? item->get_item_host() : nullptr;
+        if (item_host == nullptr) {
+            continue;
+        }
+        Scene_root* const scene_root = dynamic_cast<Scene_root*>(item_host);
+        if (scene_root != nullptr) {
+            set_active_scene_root(scene_root->shared_from_this());
+            break;
+        }
+    }
+
+    // One increment per dispatch, so a test can tell a single batched prune
+    // from an N-call loop that dispatches N times
+    // (doc/import-undo-reference-clearing.md).
+    ++m_selection_change_count;
+    m_context.app_message_bus->selection.send_message(
+        Selection_message{
+            .selection_change = selection_change
+        }
+    );
+
+    // Release the scratch contents (capacity kept): the pre-change snapshot
+    // and the command-target scratch hold strong references that would
+    // otherwise pin items - including a closed scene's content - until the
+    // next selection change / command-target query, which may never come.
+    m_begin_selection_change_state.clear();
+    m_command_target_selection.clear();
+}
+
+void Selection::on_items_removed(const Removed_items& removed)
+{
+    // One batched change, never a remove_from_selection() loop: each of those
+    // opens its own Scoped_selection_change, which sorts the whole selection
+    // twice and dispatches a Selection_message.
+    const bool selection_hit = std::any_of(
+        m_selection.begin(),
+        m_selection.end(),
+        [&removed](const std::shared_ptr<erhe::Item_base>& item) {
+            return item && removed.lookup.contains(item.get());
+        }
+    );
+    if (selection_hit) {
+        std::vector<std::shared_ptr<erhe::Item_base>> kept;
+        kept.reserve(m_selection.size());
+        for (const std::shared_ptr<erhe::Item_base>& item : m_selection) {
+            if (item && !removed.lookup.contains(item.get())) {
+                kept.push_back(item);
+            }
+        }
+        set_selection(kept);
+    }
+
+    // The last-selected entries are weak, but a removed item stays alive in
+    // the undo history for redo, so they stay lockable and would be
+    // re-resolved into a strong reference by the next frame.
+    for (auto i = m_last_selected_by_type.begin(); i != m_last_selected_by_type.end(); ) {
+        const std::shared_ptr<erhe::Item_base> item = i->second.lock();
+        if (!item || removed.lookup.contains(item.get())) {
+            i = m_last_selected_by_type.erase(i);
+        } else {
+            ++i;
+        }
+    }
+}
+
+auto Selection::get_selection_change_count() const -> std::size_t
+{
+    return m_selection_change_count;
+}
+
+auto Selection::on_viewport_select_try_ready() -> bool
+{
+    // Defer to the mesh component selection tool while a component mode
+    // (Vertex / Edge / Face) is active: in those modes a viewport click
+    // selects mesh sub-components instead of whole objects. Object mode
+    // leaves object selection untouched, and bone mode is handled below --
+    // hence is_mesh_component_mode() rather than a test against object,
+    // which would make the bone branch unreachable and leave the click
+    // with no owner at all (Mesh_component_selection_tool declines bone).
+    if (
+        (m_context.mesh_component_selection != nullptr) &&
+        is_mesh_component_mode(m_context.mesh_component_selection->get_mode())
+    ) {
+        return false;
+    }
+
+    if (!m_hover_scene_view) {
+        log_selection->trace("Selection has no hover scene view");
+        return false;
+    }
+
+    const auto& content      = m_hover_scene_view->get_hover(Hover_entry::content_slot);
+    const auto& tool         = m_hover_scene_view->get_hover(Hover_entry::tool_slot);
+    const auto& rendertarget = m_hover_scene_view->get_hover(Hover_entry::rendertarget_slot);
+    m_hover_mesh    = content.scene_mesh_weak;
+    m_hover_content = content.valid;
+    m_hover_tool    = tool.valid;
+
+    // Bone mode owns the viewport click outright: a hovered bone selects its
+    // joint, and empty space clears. Resolving the joint here (rather than at
+    // click time) keeps the click path free of the proxy -> joint lookup.
+    m_hover_bone_joint.reset();
+    if (is_bone_mode()) {
+        const auto& bone = m_hover_scene_view->get_hover(Hover_entry::bone_slot);
+        const std::shared_ptr<erhe::scene::Mesh> bone_mesh = bone.scene_mesh_weak.lock();
+        if (bone.valid && bone_mesh && (m_context.bone_visualization != nullptr)) {
+            m_hover_bone_joint = m_context.bone_visualization->get_joint_for_proxy(bone_mesh.get());
+        }
+        return !m_hover_tool && !rendertarget.valid;
+    }
+
+    if (m_hover_content && !m_hover_tool && !rendertarget.valid) {
+        log_selection->trace("Can select");
+        return true;
+    } else {
+        if (!m_hover_content) {
+            log_selection->trace("Cannot select: Not hovering over content");
+        }
+        if (m_hover_tool) {
+            log_selection->trace("Cannot select: Hovering over tool");
+        }
+        if (rendertarget.valid) {
+            log_selection->trace("Cannot select: Hovering over rendertarget");
+        }
+    }
+    return false;
+}
+
+auto Selection::is_bone_mode() const -> bool
+{
+    return (m_context.mesh_component_selection != nullptr) &&
+           (m_context.mesh_component_selection->get_mode() == Mesh_component_mode::bone);
+}
+
+auto Selection::on_viewport_select_bone(const bool toggle) -> bool
+{
+    Scoped_selection_change selection_change{*this};
+
+    const std::shared_ptr<erhe::scene::Node> joint = m_hover_bone_joint.lock();
+    if (!joint) {
+        if (!toggle) {
+            // Empty space: clear within the hovered scene only, like the object
+            // path - other scenes keep their selection.
+            Scene_root* const hover_scene_root = (m_hover_scene_view != nullptr) ? m_hover_scene_view->get_scene_root().get() : nullptr;
+            if (hover_scene_root != nullptr) {
+                clear_selection(static_cast<erhe::Item_host*>(hover_scene_root));
+            } else {
+                clear_selection();
+            }
+        }
+        return true;
+    }
+
+    const std::shared_ptr<erhe::Item_base> item = joint;
+    const bool was_selected = is_in_selection(item);
+    if (toggle) {
+        if (was_selected) {
+            remove_from_selection(item);
+        } else {
+            add_to_selection(item);
+        }
+        return true;
+    }
+
+    clear_selection(joint->get_item_host());
+    if (!was_selected) {
+        add_to_selection(item);
+    }
+    return true;
+}
+
+auto Selection::on_viewport_select() -> bool
+{
+    if (is_bone_mode()) {
+        return on_viewport_select_bone(m_context.input_state->control);
+    }
+
+    auto shared_hover_mesh = m_hover_mesh.lock();
+    if (!shared_hover_mesh) {
+        return false;
+    }
+
+    auto shared_hover_node = shared_hover_mesh->get_node()->shared_from_this();
+    const bool was_selected = is_in_selection(shared_hover_mesh) || is_in_selection(shared_hover_node);
+    if (m_context.input_state->control) {
+        if (m_hover_content) {
+            toggle_mesh_selection(shared_hover_mesh, was_selected, false);
+            return true;
+        }
+        return false;
+    }
+
+    if (!m_hover_content) {
+        // Plain click on empty space deselects within the hovered scene only;
+        // other scenes (and non-hosted items) keep their selection.
+        Scene_root* const hover_scene_root = (m_hover_scene_view != nullptr) ? m_hover_scene_view->get_scene_root().get() : nullptr;
+        if (hover_scene_root != nullptr) {
+            m_range_selection.reset(static_cast<erhe::Item_host*>(hover_scene_root));
+            clear_selection(static_cast<erhe::Item_host*>(hover_scene_root));
+        } else {
+            clear_selection();
+        }
+    } else {
+        erhe::Item_host* const host = shared_hover_mesh->get_node()->get_item_host();
+        m_range_selection.reset(host);
+        toggle_mesh_selection(shared_hover_mesh, was_selected, true);
+    }
+    return true;
+}
+
+auto Selection::on_viewport_select_toggle() -> bool
+{
+    if (is_bone_mode()) {
+        return on_viewport_select_bone(true);
+    }
+
+    auto shared_hover_mesh = m_hover_mesh.lock();
+    if (!shared_hover_mesh) {
+        return false;
+    }
+
+    auto shared_hover_node = shared_hover_mesh->get_node()->shared_from_this();
+    if (m_hover_content) {
+        const bool was_selected = is_in_selection(shared_hover_mesh) || is_in_selection(shared_hover_node);
+        toggle_mesh_selection(shared_hover_mesh, was_selected, false);
+        return true;
+    }
+    return false;
+}
+
+auto Selection::clear_selection() -> bool
+{
+    Scoped_selection_change selection_change{*this};
+
+    if (m_selection.empty()) {
+        return false;
+    }
+
+    for (const auto& item : m_selection) {
+        ERHE_VERIFY(item);
+        if (!item) {
+            continue;
+        }
+        item->set_selected(false);
+    }
+
+    log_selection->trace("Clearing selection ({} items were selected)", m_selection.size());
+    m_selection.clear();
+    m_range_selection.reset();
+#if !defined(NDEBUG)
+    sanity_check();
+#endif
+
+    return true;
+}
+
+void Selection::toggle_mesh_selection(const std::shared_ptr<erhe::scene::Mesh>& mesh, const bool was_selected, const bool clear_others)
+{
+    Scoped_selection_change selection_change{*this};
+
+    using namespace erhe::utility;
+
+    erhe::scene::Node* const node = mesh->get_node();
+    if (node == nullptr) {
+        return;
+    }
+
+    // Prefab instance subtrees are sealed: picking anything inside an
+    // instance selects the outermost instance root instead of the picked
+    // mesh node. The interior's lock_viewport_selection is part of the seal
+    // and must not block that redirection; the redirected target's own lock
+    // flags still apply.
+    erhe::scene::Node* const prefab_instance_root = get_outermost_prefab_instance_node(node);
+    const bool redirected = (prefab_instance_root != nullptr) && (prefab_instance_root != node);
+    erhe::scene::Node* const target_node = redirected ? prefab_instance_root : node;
+
+    if (!redirected) {
+        const bool mesh_lock_viewport_select = test_bit_set(mesh->get_flag_bits(), erhe::Item_flags::lock_viewport_selection);
+        if (mesh_lock_viewport_select) {
+            return;
+        }
+    }
+
+    const bool node_lock_viewport_select = test_bit_set(target_node->get_flag_bits(), erhe::Item_flags::lock_viewport_selection);
+    if (node_lock_viewport_select) {
+        return;
+    }
+
+    const auto item = target_node->shared_from_this();
+    const bool effective_was_selected = redirected ? is_in_selection(item) : was_selected;
+
+    bool add{false};
+    bool remove{false};
+    if (clear_others) {
+        // Deselect within the clicked node's scene only; other scenes (and
+        // non-hosted items) keep their selection.
+        clear_selection(target_node->get_item_host());
+        if (!effective_was_selected && mesh) {
+            add = true;
+        }
+    } else if (mesh) {
+        if (effective_was_selected) {
+            remove = true;
+        } else {
+            add = true;
+        }
+    }
+
+    ERHE_VERIFY(!add || !remove);
+
+    if (add) {
+        add_to_selection(item);
+        m_range_selection.set_terminator(item);
+    } else if (remove) {
+        remove_from_selection(item);
+    }
+}
+
+auto Selection::is_in_selection(const std::shared_ptr<erhe::Item_base>& item) const -> bool
+{
+    if (!item) {
+        return false;
+    }
+
+    return std::find(m_selection.begin(), m_selection.end(), item) != m_selection.end();
+}
+
+auto Selection::add_to_selection(const std::shared_ptr<erhe::Item_base>& item) -> bool
+{
+    Scoped_selection_change selection_change{*this};
+
+    if (!item) {
+        log_selection->warn("Trying to add empty item to selection");
+        return false;
+    }
+
+    update_last_selected(item);
+
+    item->set_selected(true);
+
+    if (!is_in_selection(item)) {
+        log_selection->trace("Adding {} to selection", item->get_name());
+        m_selection.push_back(item);
+        return true;
+    }
+
+    log_selection->warn("Adding {} to selection failed - was already in selection", item->get_name());
+    return false;
+}
+
+auto Selection::remove_from_selection(const std::shared_ptr<erhe::Item_base>& item) -> bool
+{
+    Scoped_selection_change selection_change{*this};
+
+    if (!item) {
+        log_selection->warn("Trying to remove empty item from selection");
+        return false;
+    }
+
+    item->set_selected(false);
+
+    const auto i = std::remove(m_selection.begin(), m_selection.end(), item);
+    if (i != m_selection.end()) {
+        log_selection->trace("Removing item {} from selection", item->get_name());
+        m_selection.erase(i, m_selection.end());
+        return true;
+    }
+
+    log_selection->trace("Removing item {} from selection failed - was not in selection", item->get_name());
+    return false;
+}
+
+void Selection::update_selection_from_scene_item(const std::shared_ptr<erhe::Item_base>& item, const bool added)
+{
+    Scoped_selection_change selection_change{*this};
+
+    if (item->is_selected() && added) {
+        if (!is_in(item, m_selection)) {
+            m_selection.push_back(item);
+            update_last_selected(item);
+        }
+    } else {
+        if (is_in(item, m_selection)) {
+            const auto i = std::remove(m_selection.begin(), m_selection.end(), item);
+            if (i != m_selection.end()) {
+                m_selection.erase(i, m_selection.end());
+            }
+        }
+    }
+}
+
+void Selection::sanity_check()
+{
+#if !defined(NDEBUG)
+    std::size_t error_count{0};
+
+    const auto& scene_roots = m_context.app_scenes->get_scene_roots();
+    for (const auto& scene_root : scene_roots) {
+        const auto& scene = scene_root->get_scene();
+        scene.for_each_node([&](const std::shared_ptr<erhe::scene::Node>& node) {
+            const auto item = std::static_pointer_cast<erhe::Item_base>(node);
+            if (
+                node->is_selected() &&
+                !is_in(item, m_selection)
+            ) {
+                log_selection->error("Node has selection flag set without being in selection");
+                ++error_count;
+            } else if (
+                !node->is_selected() &&
+                is_in(item, m_selection)
+            ) {
+                log_selection->error("Node does not have selection flag set while being in selection");
+                ++error_count;
+            }
+            return true;
+        });
+    }
+
+    // No duplicates in the selection (each per-host view assumes one entry per item)
+    for (std::size_t i = 0, end = m_selection.size(); i < end; ++i) {
+        for (std::size_t j = i + 1; j < end; ++j) {
+            if (m_selection[i] == m_selection[j]) {
+                log_selection->error("Item '{}' is in the selection more than once", m_selection[i] ? m_selection[i]->get_name() : "(null)");
+                ++error_count;
+            }
+        }
+    }
+
+    if (error_count > 0) {
+        log_selection->error("Selection errors: {}", error_count);
+    }
+#endif
+}
+
+//// void Selection::imgui()
+//// {
+////     for (const auto& item : m_selection) {
+////         if (!item) {
+////             ImGui::BulletText("(empty)");
+////         } else {
+////             ImGui::BulletText(
+////                 "%s %s %s",
+////                 item->get_type_name(),
+////                 item->get_name().c_str(),
+////                 item->is_selected() ? "Ok" : "?!"
+////             );
+////         }
+////     }
+//// }
+
+void Selection_tool::viewport_toolbar()
+{
+    ImGui::PushID("Selection_tool::viewport_toolbar");
+    const auto& icon_set = m_context.icon_set;
+
+    int boost = get_priority_boost();
+    const auto mode = boost > 0 ? erhe::imgui::Item_mode::active : erhe::imgui::Item_mode::normal;
+
+    erhe::imgui::begin_button_style(mode);
+    const bool button_pressed = icon_set->icon_button(
+        ERHE_HASH("select"),
+        m_context.icon_set->icons.select
+    );
+    erhe::imgui::end_button_style(mode);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(boost > 0 ? "De-prioritize Selection Tool" : "Prioritize Selection Tool");
+    }
+    if (button_pressed) {
+        set_priority_boost(boost == 0 ? 10 : 0);
+    }
+    ImGui::PopID();
+}
+
+void Selection::update_last_selected(const std::shared_ptr<erhe::Item_base>& item)
+{
+    if (item->get_type() == erhe::Item_type::content_library_node) {
+        const auto node = std::dynamic_pointer_cast<Content_library_node>(item);
+        if (node) {
+            const auto node_item = node->item;
+            if (node_item) {
+                m_last_selected_by_type[node_item->get_type()] = node_item;
+            }
+        }
+    }
+
+    m_last_selected_by_type[item->get_type()] = item;
+}
+
+auto Selection::get_last_selected(const uint64_t type) -> std::shared_ptr<erhe::Item_base>
+{
+    auto i = m_last_selected_by_type.find(type);
+    if (i == m_last_selected_by_type.end()) {
+        return {};
+    }
+    std::shared_ptr<erhe::Item_base> item = (*i).second.lock();
+    return item;
+}
+
+}

@@ -1,0 +1,344 @@
+#include "erhe_camera_view.glsl"
+
+layout(local_size_x = 32) in;
+
+float get_line_width(uint view_index, vec4 position, float thickness)
+{
+    float fov_left         = view.cameras[view_index].fov[0];
+    float fov_right        = view.cameras[view_index].fov[1];
+    float fov_width        = fov_right - fov_left;
+    float viewport_width   = view.cameras[view_index].viewport[2];
+    float scaled_thickness = (thickness < 0.0)
+        ? -thickness
+        : max(thickness / position.w, 0.01);
+    return (1.0 / 1024.0) * viewport_width * scaled_thickness / fov_width;
+}
+
+bool clip_line(
+    in  vec4  v0,
+    in  vec4  v1,
+    out vec4  clipped_v0,
+    out vec4  clipped_v1,
+    out float tmin,
+    out float tmax
+)
+{
+    vec4  l      = v1 - v0;
+    // Clipping in X and Y axis is disabled so that wide lines that
+    // are outside (left/right/above/below) viewport don't get culled
+    //float denom0 =  l.x + l.w; float num0 = -v0.x - v0.w; float t0 = num0 / denom0;
+    //float denom1 = -l.x + l.w; float num1 =  v0.x - v0.w; float t1 = num1 / denom1;
+    //float denom2 =  l.y + l.w; float num2 = -v0.y - v0.w; float t2 = num2 / denom2;
+    //float denom3 = -l.y + l.w; float num3 =  v0.y - v0.w; float t3 = num3 / denom3;
+    float denom4 =  l.z + l.w; float num4 = -v0.z - v0.w; float t4 = num4 / denom4;
+    float denom5 = -l.z + l.w; float num5 =  v0.z - v0.w; float t5 = num5 / denom5;
+    tmin = 0.0;
+    tmax = 1.0;
+    //if (denom0 > 0) {
+    //    if (t0 > tmax) return false;
+    //    if (t0 > tmin) tmin = t0;
+    //} else if (denom0 < 0) {
+    //    if (t0 < tmin) return false;
+    //    if (t0 < tmax) tmax = t0;
+    //} else if (num0 > 0) {
+    //    return false;
+    //}
+    //if (denom1 > 0) {
+    //    if (t1 > tmax) return false;
+    //    if (t1 > tmin) tmin = t1;
+    //} else if (denom1 < 0) {
+    //    if (t1 < tmin) return false;
+    //    if (t1 < tmax) tmax = t1;
+    //} else if (num1 > 0) {
+    //    return false;
+    //}
+    //if (denom2 > 0) {
+    //    if (t2 > tmax) return false;
+    //    if (t2 > tmin) tmin = t2;
+    //} else if (denom2 < 0) {
+    //    if (t2 < tmin) return false;
+    //    if (t2 < tmax) tmax = t2;
+    //} else if (num2 > 0) {
+    //    return false;
+    //}
+    //if (denom3 > 0) {
+    //    if (t3 > tmax) return false;
+    //    if (t3 > tmin) tmin = t3;
+    //} else if (denom3 < 0) {
+    //    if (t3 < tmin) return false;
+    //    if (t3 < tmax) tmax = t3;
+    //} else if (num3 > 0) {
+    //    return false;
+    //}
+    if (denom4 > 0) {
+        if (t4 > tmax) return false;
+        if (t4 > tmin) tmin = t4;
+    } else if (denom4 < 0) {
+        if (t4 < tmin) return false;
+        if (t4 < tmax) tmax = t4;
+    } else if (num4 > 0) {
+        return false;
+    }
+    if (denom5 > 0) {
+        if (t5 > tmax) return false;
+        if (t5 > tmin) tmin = t5;
+    } else if (denom5 < 0) {
+        if (t5 < tmin) return false;
+        if (t5 < tmax) tmax = t5;
+    } else if (num5 > 0) {
+        return false;
+    }
+    clipped_v0 = mix(v0, v1, tmin);
+    clipped_v1 = mix(v0, v1, tmax);
+    return true;
+}
+
+vec2 screen_from_ndc(vec2 ndc, vec2 vp_size) {
+    return (ndc * 0.5 + 0.5) * vp_size;
+}
+
+vec2 screen_from_ndc_direction(vec2 ndc, vec2 vp_size) {
+    return (ndc * 0.5) * vp_size;
+}
+
+vec2 ndc_from_screen(vec2 screen, vec2 vp_size) {
+    return (screen / vp_size) * 2.0 - 1.0;
+}
+
+vec2 ndc_from_screen_direction(vec2 screen, vec2 vp_size) {
+    return screen / (0.5 * vp_size);
+}
+
+// fp32 depth-buffer resolvable step (1 ULP) at this NDC depth. window_depth
+// follows the depth-range convention (zero_to_one: window == ndc;
+// minus_one_to_one: window = 0.5*ndc + 0.5), selected via window_to_ndc_scale.
+float surface_line_ulp(float ndc_z, float window_to_ndc_scale)
+{
+    float window_depth = (window_to_ndc_scale > 1.5) ? (0.5 * ndc_z + 0.5) : ndc_z;
+    return exp2(floor(log2(max(abs(window_depth), 1e-7))) - 23.0);
+}
+
+// NDC depth of a clip-space plane pi_clip at the given NDC.xy. Planes stay
+// planes through projection, so with gl_Position.w == 1 the depth is affine in
+// NDC.xy: pi_clip . (x, y, z, 1) == 0, i.e. z = -(pi.x*x + pi.y*y + pi.w)/pi.z.
+// pi_clip = M^-T * world_plane has a matrix-dependent (often tiny) absolute
+// scale, so the edge-on guard must be RELATIVE: fall back only when pi_clip.z
+// is small compared with the in-plane coefficients (the depth gradient would
+// blow up -> genuine silhouette), not in absolute units.
+float surface_plane_ndc_depth(vec4 pi_clip, vec2 ndc_xy, float fallback_z)
+{
+    float scale = max(abs(pi_clip.x), max(abs(pi_clip.y), abs(pi_clip.w)));
+    if (abs(pi_clip.z) < 1e-5 * scale) {
+        return fallback_z;
+    }
+    return -(pi_clip.x * ndc_xy.x + pi_clip.y * ndc_xy.y + pi_clip.w) / pi_clip.z;
+}
+
+void do_wide_line(uint view_index, uint in_line_index, uint out_triangle_index)
+{
+    uint in_i0           = 2 * in_line_index;
+    uint in_i1           = 2 * in_line_index + 1;
+    uint out_i0          = 3 * out_triangle_index;
+    mat4 clip_from_world = view.cameras[view_index].clip_from_world;
+    vec4 a_position0     = line_vertex_buffer.vertices[in_i0].position_0;
+    vec4 a_color0        = line_vertex_buffer.vertices[in_i0].color_0   ;
+    vec4 a_position1     = line_vertex_buffer.vertices[in_i1].position_0;
+    vec4 a_color1        = line_vertex_buffer.vertices[in_i1].color_0   ;
+
+    vec4 v0 = clip_from_world * vec4(a_position0.xyz, 1.0);
+    vec4 v1 = clip_from_world * vec4(a_position1.xyz, 1.0);
+
+    //  a - ^ - - - - - -^- - b
+    //  |   |            |    |
+    //  | - v0 - - - - ->v1 ->|
+    //  |   |            |    |
+    //  d - - - - - - - - - - c
+
+    vec4 v0_clipped, v1_clipped; float tmin, tmax;
+
+    if (clip_line(v0, v1, v0_clipped, v1_clipped, tmin, tmax) == false) {
+        // 4 degenerate triangles (12 vertices): the tent emits 4 triangles
+        // per line (two coplanar half-quads meeting at the edge crease).
+        for (uint k = 0u; k < 12u; ++k) {
+            triangle_vertex_buffer.vertices[out_i0 + k].position_0 = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+        return;
+    }
+
+    vec4  position0   = mix(a_position0, a_position1, tmin);
+    vec4  position1   = mix(a_position0, a_position1, tmax);
+    vec4  color0      = mix(a_color0,    a_color1,    tmin);
+    vec4  color1      = mix(a_color0,    a_color1,    tmax);
+    float line_width0 = position0.w;
+    float line_width1 = position1.w;
+
+    float width0      = get_line_width(view_index, v0_clipped, line_width0);
+    float width1      = get_line_width(view_index, v1_clipped, line_width1);
+
+    vec2 vp_size         = view.cameras[view_index].viewport.zw;
+
+    // Compute line axis and side vector in screen space
+    vec3 v0_in_ndc       = v0_clipped.xyz / v0_clipped.w; //  clip to NDC
+    vec3 v1_in_ndc       = v1_clipped.xyz / v1_clipped.w;
+
+    vec2 v0_in_screen    = screen_from_ndc(v0_in_ndc.xy, vp_size);
+    vec2 v1_in_screen    = screen_from_ndc(v1_in_ndc.xy, vp_size);
+    vec2 axis_in_screen  = normalize(v1_in_screen - v0_in_screen); //  NDC to window (direction vector)
+    vec2 side_in_screen  = vec2(-axis_in_screen.y, axis_in_screen.x); // rotate
+    vec2 axis_in_ndc     = ndc_from_screen_direction(axis_in_screen, vp_size);
+    vec2 side_in_ndc     = ndc_from_screen_direction(side_in_screen, vp_size);
+    vec2 offset_a_in_ndc = ( side_in_ndc - axis_in_ndc) * width0;
+    vec2 offset_b_in_ndc = ( side_in_ndc + axis_in_ndc) * width1;
+    vec2 offset_c_in_ndc = (-side_in_ndc + axis_in_ndc) * width1;
+    vec2 offset_d_in_ndc = (-side_in_ndc - axis_in_ndc) * width0;
+
+    // Corner NDC.xy. a, b lie on the +side of the edge; c, d on the -side.
+    vec2 a_in_ndc = v0_in_ndc.xy + offset_a_in_ndc;
+    vec2 b_in_ndc = v1_in_ndc.xy + offset_b_in_ndc;
+    vec2 c_in_ndc = v1_in_ndc.xy + offset_c_in_ndc;
+    vec2 d_in_ndc = v0_in_ndc.xy + offset_d_in_ndc;
+    // Center (crease) vertices lie on the edge centerline (no side offset), so
+    // they sit on BOTH face planes. They split the ribbon into a +side and a
+    // -side half-quad so each half can be coplanar with its own face (a real
+    // tent) instead of a single quad blending the two planes across its width.
+    vec2 e0_in_ndc = v0_in_ndc.xy - axis_in_ndc * width0;
+    vec2 e1_in_ndc = v1_in_ndc.xy + axis_in_ndc * width1;
+
+    // Surface-aligned edge "tent". Endpoint 0 carries face A's world normal and
+    // the interior-tangent sign (normal_0.w); endpoint 1 carries face B's world
+    // normal (see Primitive_renderer::add_surface_lines). The wide-line ribbon
+    // straddles the edge: a, b overlay one face, c, d the other. Set each
+    // corner's NDC depth from its face's plane so each side is coplanar with
+    // its face (no slope-induced z-fight), then lift a few ULP toward the
+    // viewer so the line wins the depth test against its own surface. Ordinary
+    // debug lines have zero normals and keep a flat ribbon at endpoint depth.
+    float a_z  = v0_in_ndc.z;
+    float b_z  = v1_in_ndc.z;
+    float c_z  = v1_in_ndc.z;
+    float d_z  = v0_in_ndc.z;
+    float e0_z = v0_in_ndc.z;
+    float e1_z = v1_in_ndc.z;
+    vec3  normal_a = line_vertex_buffer.vertices[in_i0].normal_0.xyz;
+    vec3  normal_b = line_vertex_buffer.vertices[in_i1].normal_0.xyz;
+    float sign_a   = line_vertex_buffer.vertices[in_i0].normal_0.w;
+    if ((dot(normal_a, normal_a) > 1e-8) || (dot(normal_b, normal_b) > 1e-8)) {
+        vec3 edge_point = position0.xyz;                  // on both face planes
+        vec3 edge_dir   = position1.xyz - position0.xyz;  // world edge direction
+
+        // Side assignment: which face's interior projects to the +side governs
+        // corners a, b. Project face A's world interior tangent into NDC via the
+        // exact clip-space Jacobian of the perspective divide,
+        //   d(ndc.xy) ~ dct.xy * w - clip.xy * dct.w   (up to a positive 1/w^2,
+        // which does not affect the sign), avoiding any finite-step near-plane
+        // hazard. cross(normal_a, edge_dir) lies in face A perpendicular to the
+        // edge; sign_a orients it toward A's interior.
+        vec3 tangent_a = sign_a * cross(normal_a, edge_dir);
+        vec3 plus_normal;
+        vec3 minus_normal;
+        if (dot(tangent_a, tangent_a) > 1e-12) {
+            vec4 dct         = clip_from_world * vec4(tangent_a, 0.0);
+            vec2 tangent_ndc = (dct.xy * v0_clipped.w) - (v0_clipped.xy * dct.w);
+            bool a_on_plus   = dot(tangent_ndc, side_in_ndc) >= 0.0;
+            plus_normal  = a_on_plus ? normal_a : normal_b;
+            minus_normal = a_on_plus ? normal_b : normal_a;
+        } else {
+            // Degenerate face A normal: hug whichever face we have, both sides.
+            vec3 n = (dot(normal_a, normal_a) >= dot(normal_b, normal_b)) ? normal_a : normal_b;
+            plus_normal  = n;
+            minus_normal = n;
+        }
+
+        // Clip-space planes: pi_clip = transpose(inverse(clip_from_world)) * pi_world.
+        mat4 clip_from_world_inv_t = transpose(inverse(clip_from_world));
+        vec4 pi_plus  = clip_from_world_inv_t * vec4(plus_normal,  -dot(plus_normal,  edge_point));
+        vec4 pi_minus = clip_from_world_inv_t * vec4(minus_normal, -dot(minus_normal, edge_point));
+
+        a_z = surface_plane_ndc_depth(pi_plus,  a_in_ndc, v0_in_ndc.z);
+        b_z = surface_plane_ndc_depth(pi_plus,  b_in_ndc, v1_in_ndc.z);
+        c_z = surface_plane_ndc_depth(pi_minus, c_in_ndc, v1_in_ndc.z);
+        d_z = surface_plane_ndc_depth(pi_minus, d_in_ndc, v0_in_ndc.z);
+        // Crease vertices are on the edge -> both planes agree; use pi_plus.
+        e0_z = surface_plane_ndc_depth(pi_plus, e0_in_ndc, v0_in_ndc.z);
+        e1_z = surface_plane_ndc_depth(pi_plus, e1_in_ndc, v1_in_ndc.z);
+
+        float lift0 = view.line_bias_margin * surface_line_ulp(v0_in_ndc.z, view.window_to_ndc_scale) * view.window_to_ndc_scale;
+        float lift1 = view.line_bias_margin * surface_line_ulp(v1_in_ndc.z, view.window_to_ndc_scale) * view.window_to_ndc_scale;
+        a_z  -= lift0 * view.clip_depth_direction;
+        d_z  -= lift0 * view.clip_depth_direction;
+        e0_z -= lift0 * view.clip_depth_direction;
+        b_z  -= lift1 * view.clip_depth_direction;
+        c_z  -= lift1 * view.clip_depth_direction;
+        e1_z -= lift1 * view.clip_depth_direction;
+    }
+
+    // a, b, c, d are in ndc space.
+    // .w carries the full-width line thickness in screen pixels for
+    // line_after_compute.frag (which computes s = v_line_width^2 * 0.25
+    // assuming full-width, matching wide_lines.frag). width0/width1 are
+    // half-widths used for the per-side quad offsets above, so we double
+    // them when writing to .w.
+    vec4 a  = vec4(a_in_ndc,  a_z,  2.0 * width0);
+    vec4 b  = vec4(b_in_ndc,  b_z,  2.0 * width1);
+    vec4 c  = vec4(c_in_ndc,  c_z,  2.0 * width1);
+    vec4 d  = vec4(d_in_ndc,  d_z,  2.0 * width0);
+    vec4 e0 = vec4(e0_in_ndc, e0_z, 2.0 * width0);
+    vec4 e1 = vec4(e1_in_ndc, e1_z, 2.0 * width1);
+
+    // Adjust screen coordinates for fragment shader gl_FragCoord matching.
+    // On Metal (top-left origin), gl_FragCoord.y = 0 is at the top,
+    // but screen_from_ndc maps y=+1 to vp_height. Flip y to match.
+    vec2 v0_frag_screen = vec2(v0_in_screen.x, mix(v0_in_screen.y, vp_size.y - v0_in_screen.y, step(view.vp_y_sign, 0.0)));
+    vec2 v1_frag_screen = vec2(v1_in_screen.x, mix(v1_in_screen.y, vp_size.y - v1_in_screen.y, step(view.vp_y_sign, 0.0)));
+    vec4 l_in_screen = vec4(v0_frag_screen, v1_frag_screen);
+
+    // Two coplanar half-quads meeting at the edge crease (e0..e1), 4 triangles.
+    // The +side half (a, b) hugs face plane A; the -side half (c, d) hugs plane
+    // B; the crease (e0, e1) is shared and lies on both planes. Culling is
+    // disabled for the wide-line pipeline (cull_mode_none), so winding is
+    // unconstrained. color/width follow the endpoint: e0, a, d -> v0 (color0);
+    // e1, b, c -> v1 (color1).
+    //   +side: (e0, a, b), (e0, b, e1)
+    //   -side: (e0, e1, c), (e0, c, d)
+    vec4 verts[12] = vec4[12](e0, a, b,   e0, b, e1,   e0, e1, c,   e0, c, d);
+    vec4 cols [12] = vec4[12](
+        color0, color0, color1,   color0, color1, color1,
+        color0, color1, color1,   color0, color1, color0
+    );
+    for (uint k = 0u; k < 12u; ++k) {
+        triangle_vertex_buffer.vertices[out_i0 + k].position_0 = verts[k];
+        triangle_vertex_buffer.vertices[out_i0 + k].color_0    = cols[k];
+        triangle_vertex_buffer.vertices[out_i0 + k].custom_0   = l_in_screen;
+    }
+}
+
+void main(void)
+{
+    uint in_line_index = gl_GlobalInvocationID.x;
+    // The dispatch rounds the thread count up to whole 32-thread workgroups,
+    // so the tail invocations of the last group have no line. They must return
+    // before writing: the triangle SSBO is bound with room for exactly
+    // view.line_count lines, and anything past that lands in the next
+    // allocation from the shared triangle ring buffer.
+    if (in_line_index >= view.line_count) {
+        return;
+    }
+    // Per-thread: write 12 triangle vertices for this line in EACH view.
+    // Each view occupies a contiguous slab of view.stride_per_view
+    // vertices in the triangle SSBO so the multiview vertex shader can
+    // index it as gl_VertexID + gl_ViewIndex * stride_per_view and a
+    // single draw inside a multiview render pass produces correct
+    // stereo output.
+    //
+    // view.view_count is set by the C++ side: 1 on the single-view
+    // path (cameras[0] only, stride_per_view unused), N on the
+    // multiview path (cameras[0..N-1], stride_per_view =
+    // primitive_count * 12 vertices). out_triangle_index is the index
+    // into the SSBO viewed as 3-vertex triangles (each line expands to a
+    // 4-triangle tent = 12 vertices, hence do_wide_line writes
+    // 3*out_triangle_index .. 3*out_triangle_index+11).
+    uint stride_triangles = view.stride_per_view / 3u; // triangles per view
+    for (uint v = 0u; v < view.view_count; ++v) {
+        uint out_triangle_index = v * stride_triangles + 4u * in_line_index;
+        do_wide_line(v, in_line_index, out_triangle_index);
+    }
+}

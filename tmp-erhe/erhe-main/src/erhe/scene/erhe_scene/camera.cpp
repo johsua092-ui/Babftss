@@ -1,0 +1,95 @@
+#include "erhe_scene/camera.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene_host.hpp"
+#include "erhe_utility/bit_helpers.hpp"
+#include "erhe_verify/verify.hpp"
+
+namespace erhe::scene {
+
+Camera::Camera()                         = default;
+Camera::Camera(const Camera&)            = default;
+Camera::~Camera() noexcept               = default;
+
+Camera::Camera(const std::string_view name)
+    : Item{name}
+{
+}
+
+Camera::Camera(const Camera& src, erhe::for_clone)
+    : Item{src, erhe::for_clone{}}
+    , m_projection  {src.m_projection  }
+    , m_exposure    {src.m_exposure    }
+    , m_shadow_range{src.m_shadow_range}
+{
+}
+
+void Camera::handle_item_host_update(Item_host* const old_item_host, Item_host* const new_item_host)
+{
+    const auto shared_this = std::static_pointer_cast<Camera>(shared_from_this()); // keep alive
+
+    Scene_host* old_scene_host = static_cast<Scene_host*>(old_item_host);
+    Scene_host* new_scene_host = static_cast<Scene_host*>(new_item_host);
+
+    if (old_scene_host != nullptr) {
+        old_scene_host->unregister_camera(shared_this);
+    }
+    if (new_scene_host != nullptr) {
+        new_scene_host->register_camera(shared_this);
+    }
+}
+
+auto Camera::projection_transforms(
+    const erhe::math::Viewport&               viewport,
+    const bool                                reverse_depth,
+    const erhe::math::Depth_range             depth_range,
+    const erhe::math::Coordinate_conventions& conventions
+) const -> Camera_projection_transforms
+{
+    const auto clip_from_node = m_projection.clip_from_node_transform(viewport, reverse_depth, depth_range, conventions);
+    const Node* node = get_node();
+    ERHE_VERIFY(node != nullptr);
+    return Camera_projection_transforms{
+        .clip_from_camera = clip_from_node,
+        .clip_from_world = Transform{
+            clip_from_node.get_matrix() * node->node_from_world(),
+            node->world_from_node()     * clip_from_node.get_inverse_matrix()
+        }
+    };
+}
+
+auto Camera::get_exposure() const -> float
+{
+    return m_exposure;
+}
+
+void Camera::set_exposure(const float value)
+{
+    m_exposure = value;
+}
+
+auto Camera::get_shadow_range() const -> float
+{
+    return m_shadow_range;
+}
+
+void Camera::set_shadow_range(const float value)
+{
+    m_shadow_range = value;
+}
+
+auto Camera::projection() -> Projection*
+{
+    return &m_projection;
+}
+
+auto Camera::projection() const -> const Projection*
+{
+    return &m_projection;
+}
+
+auto Camera::get_projection_scale() const -> float
+{
+    return m_projection.get_scale();
+}
+
+} // namespace erhe::scene

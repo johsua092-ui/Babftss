@@ -1,0 +1,16 @@
+{
+    "loggers": {
+        "erhe.dataformat": "warning",
+        "erhe.file": "info",
+        "erhe.gl.debug": "warning",
+        "erhe.gl.trace": "off",
+        "erhe.graphics.program": "info",
+        "erhe.graphics.startup": "info",
+        "erhe.renderer.render": "info",
+        "erhe.renderer.startup": "info",
+        "erhe.scene": "warning",
+        "erhe.scene_renderer.render": "info",
+        "erhe.scene_renderer.startup": "info",
+        "rendering_test": "trace"
+    }
+}

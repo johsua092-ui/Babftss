@@ -1,0 +1,19 @@
+{
+    "windows": {
+        "frame_log": false,
+        "game": false,
+        "log_settings": false,
+        "map": true,
+        "map_generator": true,
+        "map_tool": true,
+        "menu": false,
+        "new_game": false,
+        "performance": false,
+        "tail_log": false,
+        "terrain_editor": false,
+        "terrain_group_editor": false,
+        "terrain_palete": true,
+        "terrain_replacement_rules": false,
+        "unit_editor": false
+    }
+}

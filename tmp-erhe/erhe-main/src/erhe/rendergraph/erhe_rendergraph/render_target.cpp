@@ -1,0 +1,224 @@
+#include "erhe_rendergraph/render_target.hpp"
+#include "erhe_rendergraph/rendergraph_log.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/gpu_timer.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/texture.hpp"
+
+#include <fmt/format.h>
+
+namespace erhe::rendergraph {
+
+Render_target::Render_target(const Render_target_create_info& create_info)
+    : m_graphics_device    {create_info.graphics_device}
+    , m_debug_label        {create_info.debug_label}
+    , m_color_format       {create_info.color_format}
+    , m_depth_stencil_format{create_info.depth_stencil_format}
+    , m_sample_count       {create_info.sample_count}
+    , m_store_depth_stencil{create_info.store_depth_stencil}
+{
+}
+
+Render_target::~Render_target() noexcept = default;
+
+auto Render_target::get_color_texture() const -> const std::shared_ptr<erhe::graphics::Texture>&
+{
+    return m_color_texture;
+}
+
+auto Render_target::get_depth_stencil_texture() const -> erhe::graphics::Texture*
+{
+    return m_depth_stencil_texture.get();
+}
+
+auto Render_target::get_render_pass() const -> erhe::graphics::Render_pass*
+{
+    return m_render_pass.get();
+}
+
+void Render_target::reconfigure(int sample_count)
+{
+    m_sample_count = sample_count;
+    m_color_texture.reset();
+    m_render_pass.reset();
+}
+
+void Render_target::update(int width, int height, erhe::graphics::Swapchain* swapchain)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    using erhe::graphics::Render_pass;
+    using erhe::graphics::Texture;
+
+    if (swapchain != nullptr) {
+        m_gpu_timer.reset();
+        erhe::graphics::Render_pass_descriptor render_pass_descriptor{};
+        render_pass_descriptor.swapchain                         = swapchain;
+        render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.render_target_width               = width;
+        render_pass_descriptor.render_target_height              = height;
+        render_pass_descriptor.debug_label                       = m_debug_label;
+        m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
+        m_gpu_timer_label = std::string{m_debug_label.string_view()};
+        m_gpu_timer = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), m_gpu_timer_label.c_str());
+    }
+
+    if ((width < 1) || (height < 1)) {
+        if (m_render_pass) {
+            m_gpu_timer.reset();
+            m_color_texture.reset();
+            m_multisampled_color_texture.reset();
+            m_depth_stencil_texture.reset();
+            m_render_pass.reset();
+        }
+        return;
+    }
+
+    // Resize framebuffer if necessary
+    if (
+        !m_color_texture ||
+        (m_color_texture->get_width () != width ) ||
+        (m_color_texture->get_height() != height)
+    ) {
+        log_tail->trace(
+            "Resizing Render_target '{}' to {} x {}",
+            m_debug_label.string_view(),
+            width,
+            height
+        );
+
+        m_multisampled_color_texture.reset();
+        m_color_texture.reset();
+        if (m_sample_count > 1) {
+            m_multisampled_color_texture = std::make_shared<Texture>(
+                m_graphics_device,
+                erhe::graphics::Texture_create_info{
+                    .device       = m_graphics_device,
+                    .usage_mask   =
+                        erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
+                        erhe::graphics::Image_usage_flag_bit_mask::sampled          |
+                        erhe::graphics::Image_usage_flag_bit_mask::transfer_src     |
+                        erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+                    .type         = erhe::graphics::Texture_type::texture_2d,
+                    .pixelformat  = m_color_format,
+                    .sample_count = m_sample_count,
+                    .width        = width,
+                    .height       = height,
+                    .debug_label  = erhe::utility::Debug_label{
+                        fmt::format("{} multisampled color texture", m_debug_label.string_view())
+                    }
+                }
+            );
+        }
+
+        m_color_texture = std::make_shared<Texture>(
+            m_graphics_device,
+            erhe::graphics::Texture_create_info{
+                .device       = m_graphics_device,
+                .usage_mask   =
+                    erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
+                    erhe::graphics::Image_usage_flag_bit_mask::sampled          |
+                    erhe::graphics::Image_usage_flag_bit_mask::transfer_src     |
+                    erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+                .type         = erhe::graphics::Texture_type::texture_2d,
+                .pixelformat  = m_color_format,
+                .sample_count = 0,
+                .width        = width,
+                .height       = height,
+                .debug_label  = erhe::utility::Debug_label{
+                    fmt::format("{} color texture", m_debug_label.string_view())
+                }
+            }
+        );
+        // (Used to debug-clear m_color_texture to magenta here; the
+        // render pass's own load_action discards or clears the
+        // texture on first use, so the explicit pre-clear is no
+        // longer needed.)
+
+        if (m_depth_stencil_format == erhe::dataformat::Format::format_undefined) {
+            m_depth_stencil_texture.reset();
+        } else {
+            m_depth_stencil_texture = std::make_unique<erhe::graphics::Texture>(
+                m_graphics_device,
+                erhe::graphics::Texture_create_info{
+                    .device       = m_graphics_device,
+                    .usage_mask   =
+                        erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
+                        erhe::graphics::Image_usage_flag_bit_mask::sampled,
+                    .type         = erhe::graphics::Texture_type::texture_2d,
+                    .pixelformat  = m_depth_stencil_format,
+                    .sample_count = m_sample_count,
+                    .width        = width,
+                    .height       = height,
+                    .debug_label  = erhe::utility::Debug_label{
+                        fmt::format("{} depth-stencil texture", m_debug_label.string_view())
+                    }
+                }
+            );
+        }
+
+        {
+            erhe::graphics::Render_pass_descriptor render_pass_descriptor{};
+            if (m_sample_count > 1) {
+                render_pass_descriptor.color_attachments[0].texture         = m_multisampled_color_texture.get();
+                render_pass_descriptor.color_attachments[0].resolve_texture = m_color_texture.get();
+                render_pass_descriptor.color_attachments[0].load_action     = erhe::graphics::Load_action::Clear;
+                render_pass_descriptor.color_attachments[0].store_action    = erhe::graphics::Store_action::Multisample_resolve;
+                render_pass_descriptor.color_attachments[0].usage_before    = erhe::graphics::Image_usage_flag_bit_mask::color_attachment;
+                render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::color_attachment_optimal;
+                render_pass_descriptor.color_attachments[0].usage_after     = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+                render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::shader_read_only_optimal;
+            } else {
+                render_pass_descriptor.color_attachments[0].texture         = m_color_texture.get();
+                render_pass_descriptor.color_attachments[0].load_action     = erhe::graphics::Load_action::Clear;
+                render_pass_descriptor.color_attachments[0].store_action    = erhe::graphics::Store_action::Store;
+                render_pass_descriptor.color_attachments[0].usage_before    = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+                render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::shader_read_only_optimal;
+                render_pass_descriptor.color_attachments[0].usage_after     = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+                render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::shader_read_only_optimal;
+            }
+            // When store_depth_stencil is requested, keep the depth/stencil
+            // contents after the pass so a later pass (the editor's
+            // post-processing overlay) can load the same attachment and
+            // depth/stencil-test against this render target. See issue #230.
+            const erhe::graphics::Store_action depth_stencil_store_action = m_store_depth_stencil
+                ? erhe::graphics::Store_action::Store
+                : erhe::graphics::Store_action::Dont_care;
+            if (m_depth_stencil_texture) {
+                if (erhe::dataformat::get_depth_size_bits(m_depth_stencil_format) > 0) {
+                    render_pass_descriptor.depth_attachment.texture         = m_depth_stencil_texture.get();
+                    render_pass_descriptor.depth_attachment.load_action     = erhe::graphics::Load_action::Clear;
+                    render_pass_descriptor.depth_attachment.store_action    = depth_stencil_store_action;
+                    render_pass_descriptor.depth_attachment.clear_value[0]  = m_graphics_device.get_reverse_depth() ? 0.0 : 1.0;
+                    render_pass_descriptor.depth_attachment.usage_before    = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.depth_attachment.layout_before  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+                    render_pass_descriptor.depth_attachment.usage_after     = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.depth_attachment.layout_after   = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+                }
+                if (erhe::dataformat::get_stencil_size_bits(m_depth_stencil_format) > 0) {
+                    render_pass_descriptor.stencil_attachment.texture      = m_depth_stencil_texture.get();
+                    render_pass_descriptor.stencil_attachment.load_action  = erhe::graphics::Load_action::Clear;
+                    render_pass_descriptor.stencil_attachment.store_action = depth_stencil_store_action;
+                    render_pass_descriptor.stencil_attachment.usage_before  = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.stencil_attachment.layout_before = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+                    render_pass_descriptor.stencil_attachment.usage_after   = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+                    render_pass_descriptor.stencil_attachment.layout_after  = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+                }
+            }
+            render_pass_descriptor.render_target_width  = width;
+            render_pass_descriptor.render_target_height = height;
+            render_pass_descriptor.debug_label          = erhe::utility::Debug_label{
+                fmt::format("{} renderpass", m_debug_label.string_view())
+            };
+            m_gpu_timer.reset();
+            m_render_pass = std::make_unique<Render_pass>(m_graphics_device, render_pass_descriptor);
+            m_gpu_timer_label = std::string{m_debug_label.string_view()};
+            m_gpu_timer = std::make_unique<erhe::graphics::Gpu_timer>(*m_render_pass.get(), m_gpu_timer_label.c_str());
+        }
+    }
+}
+
+} // namespace erhe::rendergraph

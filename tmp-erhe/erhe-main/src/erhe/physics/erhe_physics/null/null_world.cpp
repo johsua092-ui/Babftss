@@ -1,0 +1,186 @@
+#include "erhe_physics/null/null_world.hpp"
+#include "erhe_physics/null/null_constraint.hpp"
+#include "erhe_physics/null/null_rigid_body.hpp"
+
+namespace erhe::physics {
+
+void initialize_physics_system()
+{
+}
+
+auto Null_world::create_rigid_body(
+    const IRigid_body_create_info& create_info
+) -> IRigid_body*
+{
+    return new Null_rigid_body(*this, create_info);
+}
+
+auto Null_world::create_rigid_body_shared(
+    const IRigid_body_create_info& create_info
+) -> std::shared_ptr<IRigid_body>
+{
+    return std::make_shared<Null_rigid_body>(*this, create_info);
+}
+
+auto IWorld::create() -> IWorld*
+{
+    return new Null_world();
+}
+
+auto IWorld::create_shared() -> std::shared_ptr<IWorld>
+{
+    return std::make_shared<Null_world>();
+}
+
+auto IWorld::create_unique() -> std::unique_ptr<IWorld>
+{
+    return std::make_unique<Null_world>();
+}
+
+IWorld::~IWorld() noexcept
+{
+}
+
+IWorld::State::~State() noexcept
+{
+}
+
+Null_world::~Null_world() noexcept
+{
+}
+
+auto Null_world::save_state() -> std::unique_ptr<IWorld::State>
+{
+    return std::make_unique<IWorld::State>();
+}
+
+void Null_world::restore_state(IWorld::State& state)
+{
+    static_cast<void>(state);
+}
+
+auto Null_world::would_bodies_intersect(
+    const IRigid_body& body_a, const Transform& transform_a,
+    const IRigid_body& body_b, const Transform& transform_b,
+    const float        penetration_tolerance
+) const -> bool
+{
+    static_cast<void>(body_a);
+    static_cast<void>(transform_a);
+    static_cast<void>(body_b);
+    static_cast<void>(transform_b);
+    static_cast<void>(penetration_tolerance);
+    return false;
+}
+
+auto Null_world::would_body_intersect_world(const IRigid_body& body, const Transform& transform, const float penetration_tolerance) const -> bool
+{
+    static_cast<void>(body);
+    static_cast<void>(transform);
+    static_cast<void>(penetration_tolerance);
+    return false;
+}
+
+void Null_world::update_fixed_step(const double dt)
+{
+    static_cast<void>(dt);
+}
+
+void Null_world::add_rigid_body(IRigid_body* rigid_body)
+{
+    m_rigid_bodies.push_back(rigid_body);
+}
+
+void Null_world::remove_rigid_body(IRigid_body* rigid_body)
+{
+    m_rigid_bodies.erase(
+        std::remove(
+            m_rigid_bodies.begin(),
+            m_rigid_bodies.end(),
+            rigid_body
+        ),
+        m_rigid_bodies.end()
+    );
+}
+
+void Null_world::add_constraint(IConstraint* constraint)
+{
+    m_constraints.push_back(constraint);
+}
+
+void Null_world::remove_constraint(IConstraint* constraint)
+{
+    m_constraints.erase(
+        std::remove(
+            m_constraints.begin(),
+            m_constraints.end(),
+            constraint
+        ),
+        m_constraints.end()
+    );
+}
+
+void Null_world::set_gravity(const glm::vec3& gravity)
+{
+    m_gravity = gravity;
+}
+
+auto Null_world::get_gravity() const -> glm::vec3
+{
+    return m_gravity;
+}
+
+auto Null_world::get_rigid_body_count() const -> std::size_t
+{
+    return 0;
+}
+
+auto Null_world::get_constraint_count() const -> std::size_t
+{
+    return 0;
+}
+
+auto Null_world::describe() const -> std::vector<std::string>
+{
+    return {};
+}
+
+void Null_world::debug_draw(erhe::renderer::Jolt_debug_renderer&)
+{
+}
+
+void Null_world::sanity_check()
+{
+}
+
+void Null_world::set_on_body_activated(std::function<void(IRigid_body*)>)
+{
+}
+
+void Null_world::set_on_body_deactivated(std::function<void(IRigid_body*)>)
+{
+}
+
+void Null_world::for_each_active_body(std::function<void(IRigid_body*)>)
+{
+}
+
+void Null_world::set_on_trigger_enter(std::function<void(const Trigger_event&)> callback)
+{
+    m_on_trigger_enter_callback = callback;
+}
+
+void Null_world::set_on_trigger_exit(std::function<void(const Trigger_event&)> callback)
+{
+    m_on_trigger_exit_callback = callback;
+}
+
+void Null_world::set_collision_enabled(IRigid_body* rigid_body_a, IRigid_body* rigid_body_b, bool enabled)
+{
+    static_cast<void>(rigid_body_a);
+    static_cast<void>(rigid_body_b);
+    static_cast<void>(enabled);
+}
+
+
+} // namespace erhe::physics

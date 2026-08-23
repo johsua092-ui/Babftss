@@ -1,0 +1,194 @@
+#include "grid/grid_tool.hpp"
+
+#include "app_context.hpp"
+#include "app_settings.hpp"
+#include "graphics/icon_set.hpp"
+#include "grid/grid.hpp"
+#include "tools/tools.hpp"
+
+#include "config/generated/grid_config.hpp"
+#include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_profile/profile.hpp"
+
+#include <imgui/imgui.h>
+
+#include <fmt/format.h>
+
+#include <algorithm>
+
+namespace editor {
+
+using glm::vec3;
+
+Grid_tool::Grid_tool(
+    const Grid_config&           grid_config,
+    erhe::imgui::Imgui_renderer& imgui_renderer,
+    erhe::imgui::Imgui_windows&  imgui_windows,
+    App_context&                 context,
+    Icon_set&                    icon_set,
+    Tools&                       tools
+)
+    : Tool    {context, tools, Tool_flags::background}
+    , m_window{imgui_renderer, imgui_windows, "Grid", "grid", [this]() { window_imgui(); }}
+{
+    ERHE_PROFILE_FUNCTION();
+
+    set_description("Grid");
+    set_icon       (icon_set.custom_icons, icon_set.icons.grid);
+
+    std::shared_ptr<Grid> grid = std::make_shared<Grid>();
+    // TODO Move config to editor ?
+    // grid->name        = "Default Grid";
+    grid->read_config(grid_config);
+
+    m_grids.push_back(grid);
+}
+
+void Grid_tool::write_config(Grid_config& grid_config) const
+{
+    if (m_grids.empty()) {
+        return;
+    }
+    const std::size_t index = std::min(
+        static_cast<std::size_t>(std::max(m_grid_index, 0)),
+        m_grids.size() - 1
+    );
+    m_grids[index]->write_config(grid_config);
+}
+
+void Grid_tool::tool_render(const Render_context& context)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    for (const auto& grid : m_grids) {
+        grid->render(context);
+    }
+}
+
+//void Grid_tool::viewport_toolbar(bool& hovered)
+//{
+//    ImGui::SameLine();
+//
+//    const bool grid_pressed = erhe::imgui::make_button(
+//        "G",
+//        (m_enable)
+//            ? erhe::imgui::Item_mode::active
+//            : erhe::imgui::Item_mode::normal
+//    );
+//    if (ImGui::IsItemHovered()) {
+//        hovered = true;
+//        ImGui::SetTooltip(
+//            m_enable
+//                ? "Toggle all grids on -> off"
+//                : "Toggle all grids off -> on"
+//        );
+//    };
+//
+//    if (grid_pressed) {
+//        m_enable = !m_enable;
+//    }
+//}
+
+auto get_plane_transform(const Grid_plane_type plane_type) -> glm::mat4
+{
+    switch (plane_type) {
+        case Grid_plane_type::XY: {
+            return glm::mat4{
+                1.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f,-1.0f, 0.0f,
+                0.0f, 1.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f
+            };
+        }
+        case Grid_plane_type::XZ: {
+            return glm::mat4{1.0f};
+        }
+        case Grid_plane_type::YZ: {
+            return glm::mat4{
+                0.0f, 1.0f, 0.0f, 0.0f,
+                1.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f
+            };
+        }
+        default: {
+            return glm::mat4{1.0f};
+        }
+    }
+}
+
+void Grid_tool::window_imgui()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    //ImGui::Checkbox("Enable All", &m_enable);
+
+    // The selected grid persists into editor_settings.json (write_config via
+    // the collect callback registered in editor.cpp); each edit below
+    // schedules the settings autosave.
+    bool changed = false;
+
+    ImGui::NewLine();
+
+    std::vector<const char*> grid_names;
+    for (auto& grid : m_grids) {
+        grid_names.push_back(grid->get_name().c_str());
+    }
+    changed |= ImGui::Combo("Grid", &m_grid_index, grid_names.data(), static_cast<int>(grid_names.size()));
+    ImGui::NewLine();
+
+    if (!m_grids.empty()) {
+        m_grid_index = std::min(m_grid_index, static_cast<int>(grid_names.size() - 1));
+        changed |= m_grids[m_grid_index]->imgui(m_context);
+    }
+
+    ImGui::NewLine();
+
+    const ImVec2 button_size{ImGui::GetContentRegionAvail().x, 0.0f};
+
+    const bool add_pressed = ImGui::Button("Add Grid", button_size);
+    if (add_pressed) {
+        std::shared_ptr<Grid> new_grid = std::make_shared<Grid>();
+        //new_grid->name = "new grid"; TODO
+        m_grids.push_back(new_grid);
+        changed = true;
+    }
+
+    if (ImGui::Button("Remove Grid", button_size)) {
+        m_grids.erase(m_grids.begin() + m_grid_index);
+        changed = true;
+    }
+
+    if (changed && (m_context.app_settings != nullptr)) {
+        m_context.app_settings->settings_store().touch();
+    }
+}
+
+auto Grid_tool::update_hover(const glm::vec3 ray_origin_in_world, const glm::vec3 ray_direction_in_world) const -> Grid_hover_position
+{
+    Grid_hover_position result{
+        .grid = nullptr
+    };
+    float min_distance = std::numeric_limits<float>::max();
+
+    //if (!m_enable) {
+    //    return result;
+    //}
+
+    for (auto& grid : m_grids) {
+        const auto position_in_world_opt = grid->intersect_ray(ray_origin_in_world, ray_direction_in_world);
+        if (!position_in_world_opt.has_value()) {
+            continue;
+        }
+        const glm::vec3 position_in_world = position_in_world_opt.value();
+        const float     distance          = glm::distance(ray_origin_in_world, position_in_world);
+        if (distance < min_distance) {
+            min_distance    = distance;
+            result.position = position_in_world;
+            result.grid     = grid;
+        }
+    }
+    return result;
+}
+
+}

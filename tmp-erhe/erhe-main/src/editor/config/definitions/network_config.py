@@ -1,0 +1,51 @@
+from erhe_codegen import *
+
+struct("Network_config",
+    reflect=True,
+    version=1,
+    short_desc="",
+    long_desc="",
+    developer=True,
+    fields=[
+        field(
+            "upstream_address",
+            String,
+            added_in=1,
+            default='"127.0.0.1"',
+            short_desc="",
+            long_desc="",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "upstream_port",
+            Int,
+            added_in=1,
+            default="34567",
+            short_desc="",
+            long_desc="",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "downstream_address",
+            String,
+            added_in=1,
+            default='"0.0.0.0"',
+            short_desc="",
+            long_desc="",
+            visible=True,
+            developer=False
+        ),
+        field(
+            "downstream_port",
+            Int,
+            added_in=1,
+            default="34567",
+            short_desc="",
+            long_desc="",
+            visible=True,
+            developer=False
+        ),
+    ],
+)

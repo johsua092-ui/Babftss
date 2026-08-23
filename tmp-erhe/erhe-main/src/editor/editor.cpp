@@ -1,0 +1,4398 @@
+﻿// Using llvm pipe appears to have broken GL context sharing at least with what I do here.
+#define ERHE_SERIAL_INIT 1
+
+#if !defined(ERHE_SERIAL_INIT)
+# define ERHE_PARALLEL_INIT 1
+#endif
+
+#include "editor.hpp"
+
+#include "app_context.hpp"
+#include "config/generated/add_cameras_args.hpp"
+#include "config/generated/add_cameras_args_serialization.hpp"
+#include "config/generated/add_lights_args.hpp"
+#include "config/generated/add_lights_args_serialization.hpp"
+#include "config/generated/add_room_args.hpp"
+#include "config/generated/add_room_args_serialization.hpp"
+#include "config/generated/make_mesh_args.hpp"
+#include "config/generated/make_mesh_args_serialization.hpp"
+#include "config/generated/ddgi_config.hpp"
+#include "config/generated/editor_settings_config.hpp"
+#include "config/generated/editor_settings_config_serialization.hpp"
+#include "crash_handler.hpp"
+#include "erhe_frame_pacing/frame_pacing_observer.hpp"
+#include "erhe_frame_pacing/slop_servo_pacer.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config_serialization.hpp"
+#include "config/generated/renderer_config.hpp"
+#include "config/generated/renderer_config_serialization.hpp"
+#include "config/generated/text_renderer_config.hpp"
+#include "config/generated/text_renderer_config_serialization.hpp"
+#include "config/generated/window_config.hpp"
+#include "config/generated/window_config_serialization.hpp"
+#include "erhe_codegen/config_io.hpp"
+#include "erhe_graphics/generated/graphics_config.hpp"
+#include "erhe_graphics/generated/graphics_config_serialization.hpp"
+#include "items.hpp"
+#include "editor_default_layout.hpp"
+#include "editor_log.hpp"
+#include "editor_settings_store.hpp"
+#include "app_message_bus.hpp"
+#include "app_rendering.hpp"
+#include "app_scenes.hpp"
+#include "app_settings.hpp"
+#include "app_windows.hpp"
+#include "content_library/content_library.hpp"
+#include "content_library/material_library.hpp"
+#include "init_status_display.hpp"
+#include "input_state.hpp"
+#include "time.hpp"
+
+#include "animation/animation_player.hpp"
+#include "animation/animation_window.hpp"
+#include "asset_browser/asset_browser.hpp"
+#include "assets/asset_load_tick_context.hpp"
+#include "assets/asset_manager.hpp"
+#include "brushes/brush.hpp"
+#include "content_library/brdf_slice.hpp"
+#include "developer/clipboard_window.hpp"
+#include "developer/commands_window.hpp"
+#include "developer/composer_window.hpp"
+#include "developer/depth_visualization_window.hpp"
+#include "developer/icon_browser.hpp"
+#include "developer/layers_window.hpp"
+#include "developer/post_processing_window.hpp"
+#include "developer/ddgi_window.hpp"
+#include "developer/ray_trace_window.hpp"
+#include "developer/rendergraph_window.hpp"
+#include "developer/selection_window.hpp"
+#include "developer/tool_properties_window.hpp"
+#include "experiments/gradient_editor.hpp"
+#include "experiments/network_window.hpp"
+#include "experiments/sheet_window.hpp"
+#include "geometry_graph/geometry_graph_window.hpp"
+#include "geometry_graph/graph_mesh.hpp"
+#include "graph/graph_window.hpp"
+#include "graph_editor/graph_editor_palette_window.hpp"
+#include "graph/node_properties.hpp"
+#include "graphics/icon_set.hpp"
+#include "graphics/thumbnails.hpp"
+#include "operations/operation_stack.hpp"
+#include "operations/operations_window.hpp"
+#include "physics/physics_window.hpp"
+#include "preview/brush_preview.hpp"
+#include "preview/material_preview.hpp"
+#include "renderers/id_renderer.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "renderers/prewarm.hpp"
+#include "renderers/programs.hpp"
+#include "renderers/lightmap_baker.hpp"
+#include "renderers/lightmap_report.hpp"
+#include "renderers/lightmap_partitioner.hpp"
+#include "renderers/lightmap_streamer.hpp"
+#include "renderers/lightmap_tile_io.hpp"
+#include "renderers/ddgi_renderer.hpp"
+#include "renderers/ray_trace_renderer.hpp"
+#include "renderers/sky_renderer.hpp"
+#include "rendergraph/post_processing.hpp"
+#include "rendertarget_imgui_host.hpp"
+#include "scene/debug_draw.hpp"
+#include "prefabs/prefab_library.hpp"
+#include "scene/scene_builder.hpp"
+#include "scene/scene_commit_queue.hpp"
+#include "scene/scene_commands.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/scene_settings_resolve.hpp"
+#include "config/generated/sky_config.hpp"
+#include "scene/viewport_scene_view.hpp"
+#include "scene/viewport_scene_views.hpp"
+#include "texture_graph/graph_texture.hpp"
+#include "texture_graph/texture_graph_window.hpp"
+#include "tools/bone_visualization.hpp"
+#include "tools/weight_display.hpp"
+#include "tools/weight_paint_tool.hpp"
+#include "tools/clipboard.hpp"
+#include "tools/mesh_component_selection.hpp"
+#include "tools/lattice_tool.hpp"
+#include "tools/mesh_component_selection_tool.hpp"
+#include "tools/navigation_gizmo_tool.hpp"
+#include "tools/tools.hpp"
+#include "transform/move_tool.hpp"
+#include "transform/rotate_tool.hpp"
+#include "transform/scale_tool.hpp"
+#include "windows/editor_windows.hpp"
+#include "windows/controller_inputs_window.hpp"
+#include "windows/frame_pacing_window.hpp"
+#include "windows/lightmap_texture_window.hpp"
+#include "windows/lightmap_window.hpp"
+#include "windows/inventory_window.hpp"
+#include "windows/properties.hpp"
+#include "windows/settings_window.hpp"
+#include "windows/transform_update_stats.hpp"
+#include "windows/viewport_config_window.hpp"
+#include "windows/scene_view_config_window.hpp"
+
+#include "mcp/mcp_server.hpp"
+#include "xr/headset_view.hpp"
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+#   include "xr/hand_tracker.hpp"
+//#   include "xr/theremin.hpp"
+#   include "erhe_xr/headset.hpp"
+#   include "erhe_xr/xr_session.hpp"
+#   include "erhe_xr/xr_log.hpp"
+#   include "erhe_xr/xr_instance.hpp"
+#   if defined(ERHE_GRAPHICS_API_VULKAN)
+#       include "erhe_graphics/vulkan_external_creators.hpp"
+#   endif
+#endif
+
+#include "erhe_commands/commands.hpp"
+#include "erhe_commands/commands_log.hpp"
+#include "erhe_dataformat/dataformat_log.hpp"
+#include "erhe_file/file.hpp"
+#include "erhe_file/file_log.hpp"
+#include "erhe_geometry/geometry_log.hpp"
+#include "erhe_geometry/geometry_serialization.hpp"
+#include "erhe_geometry/geometry_progress.hpp"
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+# include "erhe_gl/gl_helpers.hpp"
+# include "erhe_gl/gl_log.hpp"
+# include "erhe_gl/wrapper_functions.hpp"
+#endif
+#include "erhe_gltf/gltf_log.hpp"
+#include "erhe_graph/graph_log.hpp"
+#include "erhe_graphics/buffer_transfer_queue.hpp"
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/swapchain.hpp"
+#include "erhe_imgui/imgui_log.hpp"
+#include "erhe_imgui/imgui_renderer.hpp"
+#include "erhe_imgui/imgui_windows.hpp"
+#include "erhe_imgui/window_imgui_host.hpp"
+#include "erhe_imgui/windows/log_window.hpp"
+#include "erhe_imgui/windows/performance_window.hpp"
+#include "erhe_imgui/windows/pipelines.hpp"
+#include "erhe_item/item_log.hpp"
+#include "erhe_log/log.hpp"
+#include "erhe_math/math_log.hpp"
+#include "erhe_net/net_log.hpp"
+#include "erhe_physics/physics_log.hpp"
+#include "erhe_physics/iworld.hpp"
+#if defined(ERHE_PHYSICS_LIBRARY_JOLT) && defined(JPH_DEBUG_RENDERER)
+#   include "erhe_renderer/jolt_debug_renderer.hpp"
+#endif
+#include "erhe_primitive/primitive_log.hpp"
+#include "erhe_raytrace/raytrace_executor.hpp"
+#include "erhe_raytrace/raytrace_log.hpp"
+#include "erhe_renderer/debug_renderer.hpp"
+#include "erhe_scene_renderer/content_wide_line_interface.hpp"
+#include "erhe_scene_renderer/content_wide_line_renderer.hpp"
+#include "erhe_renderer/renderer_log.hpp"
+#include "erhe_renderer/text_renderer.hpp"
+#include "erhe_rendergraph/rendergraph.hpp"
+#include "erhe_rendergraph/rendergraph_log.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene/scene_log.hpp"
+#include "erhe_scene_renderer/forward_renderer.hpp"
+#include "erhe_scene_renderer/program_interface.hpp"
+#include "erhe_scene_renderer/scene_renderer_log.hpp"
+#include "erhe_scene_renderer/shadow_renderer.hpp"
+#include "erhe_scene_renderer/shader_variant_cache.hpp"
+#include "erhe_scene_renderer/texel_renderer.hpp"
+#include "erhe_time/sleep.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_window/renderdoc_capture.hpp"
+#include "erhe_window/window_log.hpp"
+#include "erhe_window/window.hpp"
+#include "erhe_window/window_event_handler.hpp"
+#include "erhe_ui/glyph_outlines.hpp"
+#include "erhe_ui/ui_log.hpp"
+#include "erhe_utility/clipboard.hpp"
+
+#if defined(ERHE_WINDOW_LIBRARY_SDL)
+#   include <SDL3/SDL.h>
+#endif
+#include <taskflow/taskflow.hpp>
+
+#if defined(ERHE_PROFILE_LIBRARY_NVTX)
+#   include <nvtx3/nvToolsExt.h>
+#endif
+
+#if defined(ERHE_PROFILE_LIBRARY_TRACY)
+#   include <tracy/TracyC.h>
+#endif
+
+#include <geogram/basic/assert.h>
+#include <geogram/basic/attributes.h>
+#include <geogram/basic/common.h>
+#include <geogram/basic/command_line.h>
+#include <geogram/basic/command_line_args.h>
+#include <geogram/basic/geometry.h>
+#include <geogram/basic/logger.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <condition_variable>
+#include <cstdlib>
+#include <fstream>
+#include <set>
+#include <filesystem>
+#include <stdexcept>
+#include <thread>
+
+#if defined(ERHE_OS_LINUX)
+#   include <unistd.h>
+#   include <limits.h>
+#endif
+
+namespace editor {
+
+namespace {
+
+// AI-driven editor runs (see AGENTS.md): when an AI coding agent launches
+// the editor it sets ERHE_AI_DRIVER=1. Error artifacts then go to files
+// under logs/ that the agent can read, instead of the clipboard (which
+// assumed a human pastes the prepared message into an AI chat).
+[[nodiscard]] auto is_ai_driver() -> bool
+{
+    static const bool s_ai_driver = []() {
+        const char* const value = std::getenv("ERHE_AI_DRIVER");
+        return (value != nullptr) && (value[0] == '1');
+    }();
+    return s_ai_driver;
+}
+
+// Appends a report to the given file; the file is truncated on the first
+// write of each run so an agent always reads the current run's errors.
+void write_ai_error_report(const char* const path, const std::string& title, const std::string& content)
+{
+    static std::set<std::string> s_truncated_paths;
+    const bool first_write = s_truncated_paths.insert(path).second;
+    std::ofstream stream{path, first_write ? std::ios::trunc : std::ios::app};
+    if (!stream.is_open()) {
+        return;
+    }
+    stream << "=== " << title << " ===\n" << content << "\n";
+}
+
+} // anonymous namespace
+
+#if defined(ERHE_PROFILE_LIBRARY_TRACY)
+class Tracy_observer : public tf::ObserverInterface {
+public:
+    void set_up(std::size_t) override final {};
+
+    void on_entry(tf::WorkerView, tf::TaskView tv) override final
+    {
+        const std::string& name = tv.name();
+#if TRACY_ENABLE
+        const std::size_t hash = tv.hash_value();
+        const uint32_t color = 0x804020ffu;
+        uint64_t srcloc = ___tracy_alloc_srcloc_name(1, "", 0, "", 0, name.c_str(), name.length(), color);
+        TracyCZoneCtx zone = ___tracy_emit_zone_begin_alloc(srcloc, 1);
+        // log_startup->trace("enter zone = {} worker = {} task = {} hash = {:x}", zone.id, w.id(), name, hash);
+        st_entries.emplace_back(hash, zone);
+#endif
+    }
+
+    void on_exit(tf::WorkerView, tf::TaskView tv) override final
+    {
+        //const std::string& name = tv.name();
+#if TRACY_ENABLE
+        const std::size_t hash = tv.hash_value();
+        for (Entry& entry : st_entries) {
+            if (entry.hash == hash && entry.zone.active != 0) {
+                // log_startup->trace("leave zone = {} worker = {} task = {} hash = {:x}", entry.zone.id, w.id(), name, hash);
+                ___tracy_emit_zone_end(entry.zone);
+                entry.zone.active = 0;
+                return;
+            }
+        }
+        ERHE_FATAL("zone not found");
+#endif
+    }
+
+private:
+    struct Entry
+    {
+        std::size_t   hash;
+        TracyCZoneCtx zone;
+    };
+    static thread_local std::vector<Entry> st_entries;
+};
+
+thread_local std::vector<Tracy_observer::Entry> Tracy_observer::st_entries;
+#endif
+
+
+class Editor : public erhe::window::Input_event_handler
+{
+public:
+    std::mutex m_mutex;
+    // Coarse wall-clock accumulators for the tick phases. Printed at info
+    // every 60 frames so a long-running frame time regression is visible
+    // without enabling per-frame trace logs.
+    struct Phase_timing {
+        double wait_frame_us       {0.0};
+        double imgui_us            {0.0};
+        double begin_device_us     {0.0};
+        double begin_swap_us       {0.0};
+        double rendergraph_us      {0.0};
+        double end_frame_us        {0.0};
+        double full_tick_us        {0.0};
+        unsigned int frame_count   {0};
+    };
+    Phase_timing m_phase_timing{};
+
+    void tick()
+    {
+        m_in_tick.store(true);
+        std::lock_guard<std::mutex> lock{m_mutex};
+
+        ERHE_PROFILE_FUNCTION();
+        m_frame_log_window->on_frame_begin();
+
+        // Record which thread runs tick() so the watchdog can attribute the
+        // stuck breadcrumb to this thread (worker threads also set breadcrumbs
+        // during init). Set once; the lock is taken only on the first tick.
+        if (m_tick_thread_hash == 0) {
+            const std::size_t tick_thread_hash = std::hash<std::thread::id>{}(std::this_thread::get_id());
+            std::lock_guard<std::mutex> watchdog_lock{m_watchdog_mutex};
+            m_tick_thread_hash = tick_thread_hash;
+        }
+
+        // Breadcrumbs mark the current main-loop phase so the watchdog can
+        // report where a spinning tick is stuck. See
+        // doc/intermittent_main_loop_hang.md.
+        erhe::log::set_breadcrumb("tick: wait_frame");
+
+        // log_frame->trace("tick() begin");
+        const bool wait_ok = m_graphics_device->wait_frame();
+        ERHE_VERIFY(wait_ok);
+
+        int64_t display_advance_ns = -1; // FR4 routing (P2.4); < 0 = wall-clock fallback
+        {
+            // Frame pacing observer (P2.1): feed the pacer with the frame time
+            // records and log its would-be decisions. Enforces nothing.
+            ERHE_PROFILE_SCOPE("frame pacing")
+            m_frame_pacing_observer.tick(
+                m_graphics_device->get_frame_time_recorder(),
+                erhe::frame_pacing::Frame_time_recorder::now(),
+                m_graphics_device->get_display_refresh_duration_seconds()
+            );
+            if (log_frame_pacing->level() <= spdlog::level::debug) {
+                std::string pacing_log_line;
+                while (m_frame_pacing_observer.consume_log_line(pacing_log_line)) {
+                    log_frame_pacing->debug("{}", pacing_log_line);
+                }
+            }
+
+            // Frame pacing actuation (steps P2.2 + P2.3): before per-frame work,
+            // 1. present-wait clamp (FR5): block until frame (frame_id - 1 - Q*)
+            //    has been displayed, bounding pending presented images to Q* + F;
+            // 2. release gating (FR2): high-resolution timer wait until the
+            //    pacer's release time (P0.5: the waitable timer is the only wait
+            //    mode with usable wake error; its p99 0.59 ms sits inside the
+            //    pacer's 1 ms guard);
+            // 3. target present time (FR3): hand the pacer's target to the
+            //    backend for this frame's vkQueuePresentKHR timing chain.
+            // One pacer_wait record pair spans clamp + timer: both are
+            // involuntary waits, and cpu_service_time subtracts the span.
+            // Graphics config frame_pacing_enforce=false falls back to pure
+            // observer mode (the kill switch). Skipped when nothing is being
+            // presented (hidden window, OpenXR without desktop swapchain):
+            // presents stop, so the waits could only time out.
+            const erhe::graphics::Frame_pacing_tier frame_pacing_tier = m_graphics_device->get_frame_pacing_tier();
+            if (m_graphics_device->get_graphics_config().frame_pacing_enforce &&
+                !m_app_context.OpenXR &&
+                (m_frame_activity != Frame_activity::hidden) &&
+                (frame_pacing_tier == erhe::graphics::Frame_pacing_tier::full))
+            {
+                const erhe::frame_pacing::Schedule_decision& pacing_decision = m_frame_pacing_observer.get_last_decision();
+                const double release_lead_s =
+                    pacing_decision.release_time - erhe::frame_pacing::Frame_time_recorder::now();
+                if ((pacing_decision.wait_id >= 0) || (release_lead_s > 0.0)) {
+                    erhe::frame_pacing::Frame_time_record* const pacing_record =
+                        m_graphics_device->get_frame_time_recorder().find(pacing_decision.frame_id);
+                    if (pacing_record != nullptr) {
+                        pacing_record->pacer_wait_begin = erhe::frame_pacing::Frame_time_recorder::now();
+                    }
+                    if (pacing_decision.wait_id >= 0) {
+                        const erhe::graphics::Present_wait_result wait_result = m_graphics_device->wait_for_displayed_frame(
+                            pacing_decision.wait_id,
+                            100'000'000 // 100 ms bound; a timeout is a logged no-op, not an error
+                        );
+                        if (wait_result == erhe::graphics::Present_wait_result::timeout) {
+                            log_frame_pacing->warn(
+                                "present-wait clamp timed out: frame {} wait_id {}",
+                                pacing_decision.frame_id, pacing_decision.wait_id
+                            );
+                        }
+                    }
+                    double release_wait_s =
+                        pacing_decision.release_time - erhe::frame_pacing::Frame_time_recorder::now();
+                    // A sane release sits at most one latency budget ahead (C14
+                    // measured max ~15 ms); a wait this long means the schedule
+                    // lost contact with reality - cap it so the app never stalls
+                    // on a broken schedule (mirrors the clamp's 100 ms bound).
+                    constexpr double s_max_release_wait_s = 0.1;
+                    if (release_wait_s > s_max_release_wait_s) {
+                        log_frame_pacing->warn(
+                            "release gate capped: frame {} release {:.1f} ms ahead",
+                            pacing_decision.frame_id, release_wait_s * 1000.0
+                        );
+                        release_wait_s = s_max_release_wait_s;
+                    }
+                    m_pacer_release_timer.wait_for(release_wait_s);
+                    if (pacing_record != nullptr) {
+                        pacing_record->pacer_wait_end = erhe::frame_pacing::Frame_time_recorder::now();
+                    }
+                }
+                if (pacing_decision.target_time > 0.0) {
+                    m_graphics_device->set_present_target_time(
+                        pacing_decision.frame_id,
+                        pacing_decision.target_time,
+                        pacing_decision.hold_until
+                    );
+                }
+                // FR4 routing (P2.4): advance the simulation clock by the delta
+                // between successive predicted display times, so the state
+                // rendered into this frame is sampled at the time the frame will
+                // be SHOWN, not the (jittery) time it is produced. Predicted
+                // display slots are strictly increasing; a delta outside
+                // (0, 0.25 s) means the schedule re-anchored across a gap
+                // (cadence change, swapchain recreation) - fall back to wall
+                // clock for that frame. FR4 prediction accuracy is tracked by
+                // the observer summary (achieved vs predicted, median 23 us
+                // steady state).
+                if (pacing_decision.predicted_display > 0.0) {
+                    if (m_last_predicted_display_time > 0.0) {
+                        const double display_delta_s = pacing_decision.predicted_display - m_last_predicted_display_time;
+                        if ((display_delta_s > 0.0) && (display_delta_s < 0.25)) {
+                            display_advance_ns = static_cast<int64_t>(std::llround(display_delta_s * 1e9));
+                        }
+                    }
+                    m_last_predicted_display_time = pacing_decision.predicted_display;
+                } else {
+                    m_last_predicted_display_time = 0.0;
+                }
+            } else if (
+                m_graphics_device->get_graphics_config().frame_pacing_enforce &&
+                !m_app_context.OpenXR &&
+                (m_frame_activity != Frame_activity::hidden) &&
+                (frame_pacing_tier == erhe::graphics::Frame_pacing_tier::slop_servo))
+            {
+                // Tier S (P4.1/P4.2): slop-servo fallback. No display-time
+                // sensing, no grid, no cadence - measure the involuntary
+                // blocking ("slop") the loop experienced since the previous
+                // tick (this frame's device-fence wait, plus the previous
+                // frame's swapchain acquire and present-call blocking - plain
+                // FIFO backpressure blocks inside vkQueuePresentKHR /
+                // vkAcquireNextImageKHR), servo a sleep before input polling,
+                // and let the plain-FIFO queue do the rest. The Frame_pacer
+                // observer still ticks above for records/telemetry, but its
+                // decisions are not enforced in this tier.
+                const double now_seconds = erhe::frame_pacing::Frame_time_recorder::now();
+                const double refresh_period = m_graphics_device->get_display_refresh_duration_seconds();
+                if (refresh_period > 0.0) {
+                    m_slop_servo.set_refresh_period(refresh_period);
+                }
+                erhe::frame_pacing::Frame_time_recorder& recorder = m_graphics_device->get_frame_time_recorder();
+                const std::int64_t current_frame_id = recorder.get_latest_frame_id();
+                erhe::frame_pacing::Frame_time_record* const current_record  = recorder.find(current_frame_id);
+                erhe::frame_pacing::Frame_time_record* const previous_record = recorder.find(current_frame_id - 1);
+                double slop = 0.0;
+                if (current_record != nullptr) {
+                    slop += current_record->fence_wait_duration;
+                }
+                if (previous_record != nullptr) {
+                    slop += std::max(0.0, previous_record->acquire_end - previous_record->acquire_begin);
+                    slop += std::max(0.0, previous_record->present_return_time - previous_record->present_request_time);
+                }
+                if (m_slop_servo_last_tick_time > 0.0) {
+                    m_slop_servo.update(slop, now_seconds - m_slop_servo_last_tick_time);
+                }
+                m_slop_servo_last_tick_time = now_seconds;
+                const double sleep_seconds = m_slop_servo.get_sleep();
+                if (sleep_seconds > 0.0) {
+                    if (current_record != nullptr) {
+                        current_record->pacer_wait_begin = erhe::frame_pacing::Frame_time_recorder::now();
+                    }
+                    m_pacer_release_timer.wait_for(sleep_seconds);
+                    if (current_record != nullptr) {
+                        current_record->pacer_wait_end = erhe::frame_pacing::Frame_time_recorder::now();
+                    }
+                }
+                m_last_predicted_display_time = 0.0;
+            } else {
+                m_slop_servo_last_tick_time   = 0.0;
+                m_last_predicted_display_time = 0.0;
+            }
+
+            // Frame pacing verification UI (doc/frame_pacing_user_interface.md):
+            // collect this frame's decision and records into the window's
+            // history, then run the simulated workload knob. The workload runs
+            // here so it lands inside the measured CPU slot after the pacer
+            // waits - the records count it as CPU service time and the pacer
+            // sees it as real load (U2).
+            m_frame_pacing_window->collect(
+                m_graphics_device->get_frame_time_recorder(),
+                m_frame_pacing_observer,
+                m_graphics_device->get_display_refresh_duration_seconds(),
+                erhe::frame_pacing::Frame_time_recorder::now()
+            );
+            m_frame_pacing_window->run_simulated_workload();
+        }
+
+        // Allocate this frame's command buffer.
+        erhe::graphics::Command_buffer& command_buffer = m_graphics_device->get_command_buffer(0);
+        m_app_context.current_command_buffer = &command_buffer;
+
+        erhe::graphics::Frame_state frame_state{};
+        // Power saving: when the window is not visible (minimized/occluded/
+        // hidden) skip all GPU rendering this frame -- do not acquire or present
+        // the swapchain and do not execute the rendergraph. The device frame is
+        // still opened (wait_frame, above) and closed (end_frame, below)
+        // cleanly. Pacing is handled by the poll_events wait in run(), so no
+        // sleep is added here. The simulation is also paused via prepare_update
+        // below.
+        bool should_render = (m_frame_activity != Frame_activity::hidden);
+
+        // Under OpenXR the headset owns display, so the desktop swapchain
+        // is not engaged. The cb is opened with cb.begin() but no swapchain
+        // is bound to it.
+        // Non-XR path drives the swapchain through cb.wait_for_swapchain
+        // and cb.begin_swapchain.
+        if (should_render && !m_app_context.OpenXR) {
+            ERHE_PROFILE_SCOPE("wait for swapchain")
+            const bool wait_swap_ok = command_buffer.wait_for_swapchain(frame_state);
+            should_render = wait_swap_ok;
+            if (!wait_swap_ok) {
+                // No swapchain image is available -- typical on Android
+                // while the surface is between background and foreground.
+                // Close the device-side frame cleanly so the next tick's
+                // wait_frame entry assertion (state == idle) holds, then
+                // sleep a short interval so the loop above does not burn
+                // CPU spinning on a not-yet-ready surface.
+                static_cast<void>(m_graphics_device->end_frame());
+                m_in_tick.store(false);
+                std::this_thread::sleep_for(std::chrono::milliseconds{50});
+                return;
+            }
+        }
+
+        // The cb must be recording for the WHOLE tick even when nothing is
+        // rendered this frame (hidden window / locked session): tick paths
+        // outside the rendergraph record GPU work - Hotbar's deferred
+        // init_hotbar (rendertarget mesh uploads), MCP-queued actions,
+        // operations - and recording into a never-begun cb is a driver
+        // crash (observed live: launch-while-locked, first hidden tick,
+        // Hotbar::init_hotbar -> Mesh_memory::flush -> null-deref inside
+        // vkCmdCopyBuffer). Mirrors the OpenXR path, which also begins the
+        // cb without engaging the swapchain; the matching end + device-only
+        // submit happens at the end of tick whenever the cb is recording.
+        command_buffer.begin();
+
+        // log_input_frame->trace("----------------------- Editor::tick() -----------------------");
+
+        std::vector<erhe::window::Input_event>& input_events = m_window->get_input_events();
+
+        // Land worker-produced scene mutations (deferred glTF finalize:
+        // raytrace / Buffer_mesh swaps and raytrace instance rebuilds) in one
+        // place, before anything else in this tick reads or edits scenes.
+        // Everything below - pointer / hover raytrace, physics, commands,
+        // MCP, operations, transforms, draw list flush, rendering - then
+        // sees scenes that only the main thread changes.
+        erhe::log::set_breadcrumb("tick: scene_commit_queue flush");
+        m_scene_commit_queue.flush();
+
+        // Advance asynchronous asset loads a bounded amount
+        // (doc/async-asset-loading-plan.md). This sits right after the commit
+        // queue so that worker results land first, and it runs on hidden ticks
+        // too: the command buffer is recording for the whole tick either way
+        // (see the begin() above), so a load keeps streaming while the window
+        // is occluded instead of stalling until it comes back.
+        erhe::log::set_breadcrumb("tick: asset loads");
+        {
+            Frame_load_budget budget{m_app_context.editor_settings->load};
+            Asset_load_tick_context asset_load_tick_context{
+                .app_context                 = m_app_context,
+                .graphics_device             = *m_graphics_device,
+                .command_buffer              = command_buffer,
+                .executor                    = *m_app_context.executor,
+                .budget                      = budget,
+                .max_decoded_bytes_in_flight = static_cast<std::size_t>(
+                    std::max(0, m_app_context.editor_settings->load.max_decoded_bytes_in_flight)
+                )
+            };
+            m_asset_manager->tick(asset_load_tick_context);
+        }
+
+        m_time->prepare_update(m_frame_activity != Frame_activity::hidden, display_advance_ns);
+        m_time->update_transform_animations(*m_app_message_bus.get());
+        // Scene animations advance on the same clock as the simulation:
+        // predicted display delta when pacing is active (P2.4), wall clock
+        // otherwise.
+        const int64_t animation_advance_ns = (display_advance_ns >= 0) ? display_advance_ns : m_time->get_host_system_last_frame_duration_ns();
+        m_animation_player->update(static_cast<float>(animation_advance_ns) * 1.0e-9f);
+        m_fly_camera_tool->on_frame_begin();
+
+        // Updating pointer is probably sufficient to be done once per frame
+        if (!m_app_context.OpenXR) { //if (!m_headset_view.is_active()) {
+            auto* imgui_host = m_imgui_windows->get_window_imgui_host().get(); // get glfw window hosted viewport
+            if (imgui_host != nullptr) {
+                m_viewport_scene_views->update_pointer(imgui_host); // updates what viewport window is being hovered
+            }
+        }
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        // - updates cameras
+        // - updates pointer context for headset scene view from controller
+        // - sends XR input events to Commands
+        // - updates controller visualization nodes
+        if (m_app_context.OpenXR) {
+            ERHE_PROFILE_SCOPE("OpenXR update events");
+            erhe::log::set_breadcrumb("tick: xr poll_events");
+            bool headset_poll_ok           = m_headset_view->poll_events();
+            erhe::log::set_breadcrumb("tick: xr begin_frame");
+            bool headset_begin_frame_ok    = headset_poll_ok        && m_headset_view->begin_frame();
+            erhe::log::set_breadcrumb("tick: xr update_actions");
+            bool headset_update_actions_ok = headset_begin_frame_ok && m_headset_view->update_actions();
+            if (headset_update_actions_ok) {
+                // TOOD m_viewport_config_window->set_edit_data(&m_headset_view->get_config());
+                // TODO m_scene_view_config_window
+            } else{
+                ERHE_PROFILE_SCOPE("OpenXR sleep");
+                // Throttle loop since xrWaitFrame won't be called.
+                std::this_thread::sleep_for(std::chrono::milliseconds{250});
+            }
+        }
+#endif
+
+        erhe::log::set_breadcrumb("tick: fixed_step (physics)");
+        m_app_scenes->before_physics_simulation_steps();
+
+        float host_system_dt_s = 0.0f;
+        int64_t host_system_time_ns = 0;
+        m_time->for_each_fixed_step(
+            [this, &input_events, &host_system_dt_s, &host_system_time_ns](const Time_context& time_context) {
+                ERHE_PROFILE_SCOPE("fixed step update");
+                host_system_dt_s += time_context.host_system_dt_s;
+                host_system_time_ns = time_context.host_system_time_ns;
+                m_headset_view   ->update_fixed_step();
+                m_fly_camera_tool->update_fixed_step(time_context);
+                m_app_scenes     ->update_physics_simulation_fixed_step(time_context);
+            }
+        );
+        m_app_scenes   ->after_physics_simulation_steps();
+        erhe::log::set_breadcrumb("tick: imgui process_events + commands");
+        m_imgui_windows->process_events(host_system_dt_s, host_system_time_ns);
+        m_commands     ->tick(host_system_time_ns, input_events);
+
+        // Process any requests queued by the MCP server
+        if (m_mcp_server) {
+            ERHE_PROFILE_SCOPE("MCP server");
+            m_mcp_server->process_queued_requests();
+        }
+
+        // Once per frame updates
+        m_network_window->update_network();
+
+        // - Update all ImGui hosts. glfw window host processes input events, converting them to ImGui inputs events
+        //   This may consume some input events, so that they will not get processed by m_commands.tick() below
+        // - Call all ImGui code (Imgui_window)
+        m_hover_tool->reset_item_tree_hover();
+        m_hotbar->rebuild_if_needed();
+
+        erhe::log::set_breadcrumb("tick: draw_imgui_windows");
+        m_imgui_windows->begin_frame();
+        m_imgui_windows->draw_imgui_windows();
+        m_imgui_windows->end_frame();
+
+        // Autosave editor settings when an edit site marked them dirty
+        // (Editor_settings_store::touch() / Graphics_settings::
+        // mark_presets_dirty()); a bool test per file otherwise. Defer while
+        // a mouse button is held so dragging a slider results in a single
+        // write when the drag ends.
+        {
+            bool any_mouse_button_down = false;
+            for (const bool button_down : m_input_state->mouse_button) {
+                any_mouse_button_down = any_mouse_button_down || button_down;
+            }
+            m_app_settings.update(!any_mouse_button_down);
+        }
+
+        // - Apply all command bindings (OpenXR bindings were already executed above)
+
+        //m_fly_camera_tool->update_once_per_frame(timestamp);
+
+        erhe::log::set_breadcrumb("tick: update_hover_info");
+        auto* imgui_host = m_imgui_windows->get_window_imgui_host().get(); // get window hosted viewport
+        if (imgui_host != nullptr) {
+            m_viewport_scene_views->update_hover_info(imgui_host); // updates what viewport window is being hovered
+        }
+
+        m_operation_stack->update();
+
+        // Geometry graph background evaluation: apply results of a
+        // completed run and launch a new one when the graph is dirty
+        // (after the operation stack so this frame's edits are seen).
+        m_geometry_graph_window->update_evaluation();
+
+        // Texture graph: synchronous dirty-flag evaluation (cheap GLSL
+        // composition, no background engine), run once per frame so the graph
+        // stays current even when the window is hidden.
+        m_texture_graph_window->update();
+
+        // Issue #252: destroy any extra Properties / graph windows the user
+        // closed this frame (outside ImGui iteration; the primary instances
+        // are not managed here).
+        m_editor_windows->update_once_per_frame();
+
+        // - Execute all fixes step updates
+        // - Execute all once per frame updates
+        //    - App_scenes (updates physics)
+        //    - Fly_camera_tool
+        //    - Network_window
+        // Announce content removed this frame (undo of a glTF import, node
+        // deletes, scene unregistration) before the pump, so subscribers drop
+        // their cached references in the same frame the removal happened. Here
+        // and not at the producers: this is outside ImGui iteration and
+        // outside the Content_library / Item_host mutexes the producing
+        // operations hold (doc/import-undo-reference-clearing.md).
+        if (m_asset_manager) {
+            m_asset_manager->flush_pending_removals();
+        }
+
+        m_app_message_bus->update(); // Flushes queued messages
+
+        // Release completed per-item async task handles: a retained handle
+        // keeps the task lambda's captures (scene root, mesh nodes) alive
+        // past completion and would pin a closed scene's content (see
+        // items.cpp).
+        purge_completed_item_async_tasks();
+
+        // Scene-close leak watchdog: arms watches for scenes closed by the
+        // pump above (after EVERY close_scene subscriber has run) and checks
+        // previously armed watches.
+        update_scene_close_leak_watches();
+
+        // Apply physics updates
+
+        m_fly_camera_tool->on_frame_end();
+
+        // Rendering
+        m_app_rendering->process_start_capture();
+        m_graphics_device->get_shader_monitor().update_once_per_frame();
+
+        // Unconditional: uploads enqueued during a hidden tick (deferred
+        // hotbar init, MCP-driven edits while the session is locked) must
+        // not sit in the queue until the next rendered frame.
+        m_mesh_memory->flush(command_buffer);
+
+        const erhe::graphics::Frame_begin_info frame_begin_info{
+            .resize_width   = static_cast<uint32_t>(m_last_window_width),
+            .resize_height  = static_cast<uint32_t>(m_last_window_height),
+            .request_resize = m_request_resize_pending.load()
+        };
+        m_request_resize_pending.store(false);
+
+        // Under OpenXR the headset owns display: the desktop window swapchain
+        // is not rendered into, so do not acquire/present it (otherwise the
+        // Vulkan Swapchain_impl::end_frame assert would fire because no
+        // render pass ever ran against the acquired image).
+        if (should_render && !m_app_context.OpenXR) {
+            should_render = command_buffer.begin_swapchain(frame_begin_info, frame_state);
+        }
+
+        if (should_render) {
+            ERHE_PROFILE_SCOPE("Thumbnails");
+            erhe::log::set_breadcrumb("tick: thumbnails update");
+            m_thumbnails->update();
+        }
+
+        // Arrange layout-node children, then update scene transforms.
+        erhe::log::set_breadcrumb("tick: update_layout_nodes");
+        m_app_scenes->update_layout_nodes();
+        erhe::log::set_breadcrumb("tick: update_transforms");
+        m_tools->update_transforms();
+        m_viewport_scene_views->update_transforms();
+        if (m_app_context.OpenXR) {
+            m_headset_view->update_transforms();
+        }
+        // Place the hotbar quad in front of the hovered view's camera. Needs
+        // this frame's camera world transform (above) and must land before
+        // flush_draw_lists() below, or the draw list records would carry the
+        // previous frame's transform and the hotbar would trail the camera by
+        // one frame (see Hotbar::update_once_per_frame).
+        erhe::log::set_breadcrumb("tick: hotbar update");
+        m_hotbar->update_once_per_frame();
+
+        if (m_transform_update_stats_tracker) {
+            m_transform_update_stats_tracker->sample_frame(*m_app_scenes.get(), *m_tools.get());
+        }
+
+        // Apply queued draw list changes (register / unregister / flags from
+        // this frame's edits and async loads) after transform propagation
+        // (registration samples node world transforms, R10b) and before the
+        // rendergraph renders any Draw_list_scene-owning root (viewports,
+        // shadow nodes, headset). Thumbnails above render preview roots,
+        // which have no Draw_list_scene. Main thread only.
+        erhe::log::set_breadcrumb("tick: flush_draw_lists");
+        m_app_scenes->flush_draw_lists();
+
+        // Dynamic diffuse global illumination (doc/ddgi-plan.md): refit the
+        // probe volume and record this frame's probe update into the frame
+        // command buffer, before the rendergraph samples the probe atlases.
+        if (m_ddgi_renderer && (m_app_context.current_command_buffer != nullptr)) {
+            erhe::log::set_breadcrumb("tick: ddgi");
+            const std::shared_ptr<Scene_root> ddgi_scene_root = m_app_scenes->get_single_scene_root();
+            if (ddgi_scene_root) {
+                m_ddgi_renderer->tick(*m_app_context.current_command_buffer, *ddgi_scene_root.get());
+            }
+            // Publish (or clear) the probe volume for this frame's forward
+            // passes. Clearing turns the USE_DDGI shader axis back off.
+            if (m_ddgi_renderer->is_active()) {
+                const Ddgi_config&              ddgi_config = m_app_context.editor_settings->ddgi;
+                const Ddgi_renderer::Grid&      grid        = m_ddgi_renderer->get_grid();
+                erhe::scene_renderer::Ddgi_parameters ddgi_parameters{};
+                ddgi_parameters.grid_origin       = grid.origin;
+                ddgi_parameters.grid_spacing      = grid.spacing;
+                ddgi_parameters.grid_counts       = grid.counts;
+                ddgi_parameters.irradiance_texels = m_ddgi_renderer->get_irradiance_texels();
+                ddgi_parameters.distance_texels   = m_ddgi_renderer->get_distance_texels();
+                ddgi_parameters.normal_bias       = ddgi_config.normal_bias;
+                ddgi_parameters.view_bias         = ddgi_config.view_bias;
+                ddgi_parameters.depth_sharpness   = ddgi_config.depth_sharpness;
+                ddgi_parameters.intensity         = ddgi_config.intensity;
+                m_forward_renderer->set_ddgi(
+                    ddgi_parameters,
+                    m_ddgi_renderer->get_irradiance_texture(),
+                    m_ddgi_renderer->get_distance_texture(),
+                    m_ddgi_renderer->get_probe_data_texture()
+                );
+            } else {
+                m_forward_renderer->clear_ddgi();
+            }
+        }
+
+        // Interactive lightmap bake (doc/lightmap_baking_plan.md section
+        // 3a): record this frame's budgeted gather slice + publish into the
+        // frame command buffer before the rendergraph samples the published
+        // atlas.
+        {
+            const Lightmap_config& lightmap_config = m_app_context.editor_settings->lightmap;
+            m_forward_renderer->set_lightmap_bicubic(lightmap_config.bicubic_sampling);
+            if (m_lightmap_partitioner) {
+                // Commit or discard a finished async prepare job. After the
+                // operation stack (:694) and transform updates, so the
+                // commit-time staleness validation sees this frame's scene
+                // mutations; before the baker tick, whose piece-hash change
+                // then triggers the relayout + deferred G-buffer bake.
+                m_lightmap_partitioner->update();
+            }
+            if (m_lightmap_window) {
+                // Deferred Reorder-Charts-By-Bake requests: the atlas
+                // readback must run here, before any lightmap commands are
+                // recorded into the frame, never mid-ImGui.
+                m_lightmap_window->update();
+            }
+            if (m_lightmap_baker) {
+                m_lightmap_baker->set_tile_config(lightmap_config.tile_texture_size, lightmap_config.resident_tile_budget);
+                m_lightmap_baker->set_cell_size(lightmap_config.cell_size_m);
+                m_lightmap_baker->set_options(
+                    Lightmap_baker::Bake_options{
+                        .indirect_bounce = lightmap_config.indirect_bounce,
+                        .terminator_fix  = lightmap_config.terminator_fix,
+                        .denoise         = lightmap_config.denoise,
+                        .dilation        = lightmap_config.dilation,
+                        .seam_blend      = lightmap_config.seam_blend,
+                        .coverage_mode   = static_cast<Lightmap_baker::Coverage_mode>(std::clamp(lightmap_config.coverage_mode, 0, 2)),
+                        // Stored as a combo index (0 = off, 1 = 16 points,
+                        // 2 = 64 points); the baker takes the grid side.
+                        .supersample_factor = (lightmap_config.supersample_points == 2) ? 8 : (lightmap_config.supersample_points == 1) ? 4 : 0,
+                        .gutter_texels   = lightmap_config.uv_gutter_texels
+                    }
+                );
+            }
+            // A finished offline bake left fresh tiles on disk; make the
+            // streamer reload them.
+            if (m_lightmap_baker && m_lightmap_streamer) {
+                const bool offline_active = m_lightmap_baker->is_offline_bake_active();
+                if (m_lightmap_offline_was_active && !offline_active) {
+                    m_lightmap_streamer->invalidate();
+                }
+                m_lightmap_offline_was_active = offline_active;
+            }
+            // Camera for tile residency ranking (both the interactive
+            // baker's clamp and the disk streamer): the last-used viewport
+            // camera, falling back to the scene's first camera; no camera
+            // at all = keep current residency / bake all tiles.
+            const std::shared_ptr<Scene_root> lightmap_scene_root = m_app_context.selection->get_active_scene_root();
+            // Scene-persisted quadtree overrides (subdivide/merge) feed the
+            // grid split; a change flows into the tick's layout hash.
+            if (m_lightmap_baker && lightmap_scene_root) {
+                const std::vector<Lightmap_tile_override>& overrides = lightmap_scene_root->get_scene_settings().lightmap_tile_overrides;
+                std::vector<glm::ivec3> override_values;
+                override_values.reserve(overrides.size());
+                for (const Lightmap_tile_override& value : overrides) {
+                    override_values.emplace_back(value.level, value.ix, value.iz);
+                }
+                m_lightmap_baker->set_tile_overrides(override_values);
+            }
+            glm::vec3  lightmap_camera_position{0.0f};
+            glm::vec3* lightmap_camera_position_ptr{nullptr};
+            if (lightmap_scene_root) {
+                std::shared_ptr<erhe::scene::Camera> camera{};
+                if (m_viewport_scene_views) {
+                    const std::shared_ptr<Viewport_scene_view> scene_view = m_viewport_scene_views->last_scene_view();
+                    camera = scene_view ? scene_view->get_camera() : nullptr;
+                }
+                if (!camera) {
+                    const std::vector<std::shared_ptr<erhe::scene::Camera>>& cameras = lightmap_scene_root->get_scene().get_cameras();
+                    if (!cameras.empty()) {
+                        camera = cameras.front();
+                    }
+                }
+                const erhe::scene::Node* const camera_node = camera ? camera->get_node() : nullptr;
+                if (camera_node != nullptr) {
+                    lightmap_camera_position     = glm::vec3{camera_node->world_from_node()[3]};
+                    lightmap_camera_position_ptr = &lightmap_camera_position;
+                }
+            }
+            // Paused change detection: scene edits made while NOT baking
+            // must not keep showing pre-edit lighting (the tick's hash
+            // checks only run while baking); on a change the baker white-
+            // outs its display and takes the binding below.
+            if (should_render && m_lightmap_baker && !m_lightmap_baker->is_baking_enabled() && lightmap_scene_root) {
+                m_lightmap_baker->monitor_paused_scene(*lightmap_scene_root.get());
+            }
+            if (should_render && m_lightmap_baker && m_lightmap_baker->is_baking_enabled()) {
+                m_lightmap_baker_owned_binding = true;
+                if (lightmap_scene_root) {
+                    // Procedural sky lighting for the bake: same per-scene
+                    // sky resolution + sun direction the viewport uses, so
+                    // the baked environment matches the rendered background.
+                    // Only atmosphere mode (mode == 1) contributes; the LUTs
+                    // exist once a viewport has rendered the atmosphere at
+                    // least once (ensure_luts), and the baker's lighting
+                    // hash resets accumulation when this state changes.
+                    {
+                        const Sky_config& sky_config = get_effective_sky(*m_app_context.editor_settings, *lightmap_scene_root);
+                        Lightmap_baker::Sky_lighting sky{};
+                        sky.enabled =
+                            sky_config.enabled &&
+                            (sky_config.mode == 1) &&
+                            m_sky_renderer &&
+                            m_sky_renderer->is_atmosphere_supported() &&
+                            m_sky_renderer->are_luts_ready();
+                        if (sky.enabled) {
+                            sky.transmittance_lut = m_sky_renderer->get_transmittance_lut();
+                            sky.multiscatter_lut  = m_sky_renderer->get_multiscatter_lut();
+                            sky.sun_direction_and_intensity = glm::vec4{
+                                Sky_renderer::resolve_sun_direction(sky_config, lightmap_scene_root.get()),
+                                sky_config.sun_intensity
+                            };
+                            sky.sky_params = glm::vec4{
+                                static_cast<float>(sky_config.march_steps),
+                                sky_config.observer_altitude_km,
+                                0.0f,
+                                0.0f
+                            };
+                        }
+                        m_lightmap_baker->set_sky_lighting(sky);
+                    }
+                    erhe::log::set_breadcrumb("tick: lightmap bake");
+                    m_lightmap_baker->tick(
+                        command_buffer,
+                        *lightmap_scene_root.get(),
+                        lightmap_config.uv_min_chart_texels,
+                        lightmap_camera_position_ptr,
+                        lightmap_config.active_tile_budget
+                    );
+                    m_forward_renderer->set_lightmap_texture(m_lightmap_baker->get_lightmap_texture());
+                }
+            } else if (
+                should_render &&
+                m_lightmap_streamer &&
+                lightmap_scene_root &&
+                (!m_lightmap_baker ||
+                 (!m_lightmap_baker->is_offline_bake_active() &&
+                  !m_lightmap_baker->has_unsaved_published_display() &&
+                  !m_lightmap_baker->is_display_content_stale()))
+            ) {
+                // Baked-tile streaming from <scene>.lightmap/: whenever the
+                // interactive / offline baker does not own the lightmap
+                // binding, the streamer keeps the N nearest tiles resident
+                // and binds its atlas. A PAUSED baker with UNSAVED published
+                // content keeps the binding (Stop = Pause: the viewport must
+                // keep showing the in-progress bake, not swap to the disk
+                // set); once everything published is saved the streamer owns
+                // again (same pixels) and disk tile streaming resumes.
+                erhe::log::set_breadcrumb("tick: lightmap stream");
+                m_lightmap_streamer->set_budget(lightmap_config.resident_tile_budget);
+                if (m_lightmap_baker_owned_binding) {
+                    // Ownership handoff baker -> streamer: the baker's
+                    // publish_regions overwrote the primitives' uv mappings
+                    // with baker display slots; re-push the streamer's
+                    // (residency is untouched, so this is cheap and covers
+                    // the no-autosave pause where no invalidate() ran).
+                    m_lightmap_baker_owned_binding = false;
+                    m_lightmap_streamer->reapply_regions(*lightmap_scene_root.get());
+                }
+                m_lightmap_streamer->update(*lightmap_scene_root.get(), lightmap_camera_position_ptr);
+                if (m_lightmap_streamer->has_resident_tiles()) {
+                    m_forward_renderer->set_lightmap_texture(m_lightmap_streamer->get_texture());
+                }
+            } else if (
+                should_render &&
+                m_lightmap_baker &&
+                m_lightmap_baker->is_display_content_stale() &&
+                m_lightmap_baker->get_lightmap_texture()
+            ) {
+                // Paused-and-stale: the monitor white-cleared the baker
+                // display and re-published its mappings; actively rebind it
+                // (the streamer may have held the binding since the pause
+                // autosave). The baker owns the binding until Start.
+                m_lightmap_baker_owned_binding = true;
+                m_forward_renderer->set_lightmap_texture(m_lightmap_baker->get_lightmap_texture());
+            }
+        }
+
+        // Execute rendergraph
+        if (should_render) {
+            erhe::log::set_breadcrumb("tick: rendergraph execute");
+            m_rendergraph->execute(command_buffer);
+        }
+
+        if (should_render) {
+            m_imgui_renderer->next_frame();
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+            erhe::log::set_breadcrumb("tick: headset end_frame");
+            m_headset_view->end_frame();
+#endif
+
+            m_id_renderer->next_frame();
+        }
+        erhe::log::set_breadcrumb("tick: submit + end_frame");
+
+        const erhe::graphics::Frame_end_info frame_end_info{
+            .requested_display_time = 0
+        };
+        // Under OpenXR, Xr_session::render_frame ends + submits the cb
+        // before the per-view Swapchain_image destructors run
+        // xrReleaseSwapchainImage (XR_KHR_vulkan_enable2 requires the
+        // submit to land before release). So when OpenXR rendering ran,
+        // the cb is already ended and submitted by the time we get here;
+        // is_recording() detects that and lets us skip the local end +
+        // submit. If render_frame did not run (headset disconnected,
+        // shouldRender == false, etc.) the cb is still recording and we
+        // submit here as for the non-XR case.
+        if (command_buffer.is_recording()) {
+            ERHE_PROFILE_SCOPE("end command buffer, swapchain, submit");
+
+            command_buffer.end();
+            if (should_render && !m_app_context.OpenXR) {
+                ERHE_PROFILE_SCOPE("end_swapchain");
+                command_buffer.end_swapchain(frame_end_info);
+            }
+            // Submit + implicit present (when a swapchain was engaged).
+            // Hidden ticks arrive here with no swapchain engaged; this is
+            // then a device-only submit (same shape as the init pump), so
+            // work recorded during the hidden tick still executes.
+            erhe::graphics::Command_buffer* cbs[] = { &command_buffer };
+            m_graphics_device->submit_command_buffers(std::span<erhe::graphics::Command_buffer* const>{cbs});
+        }
+        m_app_context.current_command_buffer = nullptr;
+
+        // Advance the frame index.
+        const bool end_frame_ok = m_graphics_device->end_frame();
+        ERHE_VERIFY(end_frame_ok);
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+        //if (!m_app_context.OpenXR) {
+        //    gl::bind_framebuffer(gl::Framebuffer_target::framebuffer, 0);
+        //    if (m_app_context.use_sleep) {
+        //        std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+        //        {
+        //            ERHE_PROFILE_SCOPE("swap_buffers");
+        //            m_window->swap_buffers();
+        //        }
+        //        std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
+        //        const std::chrono::duration<float> swap_duration = start_time - end_time;
+        //        const std::chrono::duration<float> sleep_margin{m_app_context.sleep_margin};
+        //        if (swap_duration > sleep_margin) {
+        //            ERHE_PROFILE_SCOPE("sleep");
+        //            erhe::time::sleep_for(swap_duration - sleep_margin);
+        //        }
+        //    } else {
+        //        ERHE_PROFILE_SCOPE("swap_buffers");
+        //        m_window->swap_buffers();
+        //    }
+        //}
+        // TODO move this logic to m_graphics_device->end_of_frame();
+#endif // TODO
+        // log_frame->trace("tick() end");
+        m_frame_log_window->on_frame_end();
+
+        m_app_rendering->process_end_capture();
+
+        // Soak / hang-detection signal: log the first main-loop frames so a
+        // batch run can positively confirm the editor reached steady-state
+        // content rendering. get_frame_number() advances only via
+        // Time::prepare_update() at the top of tick(); init drives the loading
+        // screen through pump(), not tick(), so this counts main-loop frames
+        // only. Bounded to the first frames so it never floods the log. A run
+        // that hangs during the early thumbnail builds stops emitting these
+        // before reaching the target, and the watchdog then names the stuck
+        // phase. See doc/intermittent_main_loop_hang.md.
+        {
+            const uint64_t main_loop_frame = m_time->get_frame_number();
+            if (main_loop_frame <= 12) {
+                log_startup->info("Main loop: completed frame {}", main_loop_frame);
+            }
+        }
+
+        m_in_tick.store(false);
+    }
+
+    // Start the main-loop stall watchdog. Call once, after init completes and
+    // before the redraw callback begins driving tick().
+    void start_main_loop_watchdog()
+    {
+        m_watchdog_thread = std::thread([this]() {
+            // A tick taking longer than this is treated as a stall. Normal
+            // frames are sub-20 ms; the in-tick OpenXR throttle sleep is
+            // 250 ms; both are far below this, so this only fires on a genuine
+            // spin / deadlock.
+            constexpr std::int64_t stall_threshold_ns = 5'000'000'000;  // 5 s
+            constexpr std::int64_t report_interval_ns = 5'000'000'000;  // re-report cadence while stuck
+            std::int64_t last_reported_ns = -1;
+
+            for (;;) {
+                {
+                    std::unique_lock<std::mutex> lock{m_watchdog_mutex};
+                    m_watchdog_cv.wait_for(lock, std::chrono::seconds{1}, [this]{ return m_watchdog_stop; });
+                    if (m_watchdog_stop) {
+                        break;
+                    }
+                }
+
+                // Only a tick that has entered but not returned can be the
+                // spinning one. Between frames m_in_tick is false (idle /
+                // throttled) and must NOT trip the watchdog.
+                if (!m_in_tick.load()) {
+                    last_reported_ns = -1; // re-arm so the next real stall reports promptly
+                    continue;
+                }
+
+                std::size_t tick_thread_hash = 0;
+                {
+                    std::lock_guard<std::mutex> lock{m_watchdog_mutex};
+                    tick_thread_hash = m_tick_thread_hash;
+                }
+
+                // Find the newest breadcrumb set by the tick thread; that is
+                // the phase the spinning tick is stuck in. Worker-thread
+                // breadcrumbs (e.g. background geometry processing) are ignored.
+                const std::vector<erhe::log::Breadcrumb> recent = erhe::log::get_recent_breadcrumbs();
+                const erhe::log::Breadcrumb* stuck = nullptr;
+                for (const erhe::log::Breadcrumb& b : recent) {
+                    if ((tick_thread_hash == 0) || (b.thread_hash == tick_thread_hash)) {
+                        stuck = &b; // recent is oldest -> newest, so this keeps the newest match
+                    }
+                }
+                if (stuck == nullptr) {
+                    continue; // no breadcrumb from the tick thread yet
+                }
+
+                const std::int64_t now_ns   = erhe::log::breadcrumb_now_ns();
+                const std::int64_t stuck_ns = now_ns - stuck->monotonic_ns;
+                if (stuck_ns < stall_threshold_ns) {
+                    continue;
+                }
+                if ((last_reported_ns >= 0) && ((now_ns - last_reported_ns) < report_interval_ns)) {
+                    continue; // already reported this stall recently
+                }
+                last_reported_ns = now_ns;
+
+                log_watchdog->error(
+                    "Main loop STALLED: tick has not progressed for {:.1f} s. Stuck in phase: '{}' (tick thread {:#x}).",
+                    static_cast<double>(stuck_ns) / 1e9, stuck->text, stuck->thread_hash
+                );
+                // Dump the recent breadcrumb ring (oldest -> newest) so the
+                // phase sequence leading into the stall is visible in the log.
+                for (const erhe::log::Breadcrumb& b : recent) {
+                    log_watchdog->error(
+                        "  breadcrumb t={:.3f}s thread={:#x}: {}",
+                        static_cast<double>(b.monotonic_ns) / 1e9, b.thread_hash, b.text
+                    );
+                }
+            }
+        });
+    }
+
+    void stop_main_loop_watchdog()
+    {
+        {
+            std::lock_guard<std::mutex> lock{m_watchdog_mutex};
+            m_watchdog_stop = true;
+        }
+        m_watchdog_cv.notify_all();
+        if (m_watchdog_thread.joinable()) {
+            m_watchdog_thread.join();
+        }
+    }
+
+    [[nodiscard]] static auto get_imgui_config_path(bool openxr) -> std::string
+    {
+        return openxr ? "config/editor/openxr_" : "config/editor/desktop_";
+    }
+
+    [[nodiscard]] static auto conditionally_enable_window_imgui_host(erhe::window::Context_window* context_window, bool openxr)
+    {
+        return openxr ? nullptr : context_window;
+    }
+
+    [[nodiscard]] auto create_window(
+        const Graphics_config&        graphics_config,
+        const Window_config&          window_config,
+        const Editor_settings_config& editor_settings
+    ) -> std::unique_ptr<erhe::window::Context_window>
+    {
+        m_app_context.OpenXR        = editor_settings.headset.openxr;
+        m_app_context.OpenXR_mirror = editor_settings.headset.openxr_mirror;
+
+        m_app_context.developer_mode = editor_settings.developer.enable;
+
+        m_app_context.renderdoc = graphics_config.renderdoc_capture_support;
+        if (m_app_context.renderdoc) {
+            m_app_context.developer_mode = true;
+        }
+
+        m_app_context.use_sleep    = window_config.use_sleep;
+        m_app_context.sleep_margin = window_config.sleep_margin;
+
+        m_app_context.power_save    = window_config.power_save;
+        m_app_context.unfocused_fps = window_config.unfocused_fps;
+        m_app_context.hidden_fps    = window_config.hidden_fps;
+
+        if (m_app_context.OpenXR) {
+            m_app_context.sleep_margin = 0.0f;
+        }
+
+        erhe::window::Window_configuration configuration{
+            .use_depth         = m_app_context.OpenXR_mirror,
+            .use_stencil       = m_app_context.OpenXR_mirror,
+            .msaa_sample_count = m_app_context.OpenXR_mirror ? 0 : 0,
+            .size              = glm::ivec2{1920, 1080},
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta - OpenGL"),
+#elif defined(ERHE_GRAPHICS_API_METAL)
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta - Metal"),
+#elif defined(ERHE_GRAPHICS_API_VULKAN)
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta - Vulkan"),
+#else
+            .title             = erhe::window::format_window_title("erhe editor by Timo Suoranta"),
+#endif
+            .initialize_frame_capture = m_graphics_config.renderdoc_capture_support,
+            .renderdoc_library_path_override = m_graphics_config.renderdoc_library_path_override_enable
+                ? m_graphics_config.renderdoc_library_path_override
+                : std::string{}
+        };
+
+        configuration.show                     = window_config.show;
+        configuration.fullscreen               = window_config.fullscreen;
+        configuration.exclusive_fullscreen     = window_config.exclusive_fullscreen;
+        configuration.refreshrate              = window_config.refreshrate;
+        configuration.high_pixel_density       = window_config.high_pixel_density;
+        configuration.framebuffer_transparency = window_config.use_transparency;
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+        configuration.gl_major                 = window_config.gl_major;
+        configuration.gl_minor                 = window_config.gl_minor;
+# if defined(ERHE_OS_MACOS)
+        configuration.gl_major                 = 4;
+        configuration.gl_minor                 = 1;
+# endif
+#endif
+        configuration.size                     = window_config.size;
+        configuration.swap_interval            = window_config.swap_interval;
+        configuration.enable_joystick          = window_config.enable_joystick;
+        configuration.color_bit_depth          = window_config.color_bit_depth;
+
+        if (m_app_context.OpenXR) {
+            configuration.swap_interval = 0;
+        }
+
+        const char* const env_value = std::getenv("LIBGL_ALWAYS_SOFTWARE");
+        if (env_value != nullptr) {
+            log_startup->info("Detected LIBGL_ALWAYS_SOFTWARE = {}", env_value);
+        } else {
+            log_startup->info("Detected LIBGL_ALWAYS_SOFTWARE is not set");
+        }
+
+        return std::make_unique<erhe::window::Context_window>(configuration);
+    }
+
+    Editor(std::string startup_commands_path, std::string startup_scene_path, bool no_startup_scene, bool force_post_processing_off, bool fix_gltf_spot_lights)
+        : m_startup_commands_path{std::move(startup_commands_path)}
+        , m_startup_scene_path   {std::move(startup_scene_path)}
+        , m_no_startup_scene     {no_startup_scene}
+        , m_graphics_config     {erhe::codegen::load_config<Graphics_config>       ("config/editor/erhe_graphics.json")}
+        , m_mesh_memory_config  {erhe::codegen::load_config<Mesh_memory_config>    ("config/editor/mesh_memory.json")}
+        , m_renderer_config     {erhe::codegen::load_config<Renderer_config>       ("config/editor/renderer.json")}
+        , m_text_renderer_config{erhe::codegen::load_config<Text_renderer_config>  ("config/editor/text_renderer.json")}
+        , m_window_config       {erhe::codegen::load_config<Window_config>         ("config/editor/window.json")}
+    {
+#if defined(__APPLE__)
+        // Must happen before the first Metal framework use - window creation
+        // below brings up a CAMetalLayer, which is enough to load Xcode's
+        // GPUToolsCapture layer, and once loaded it cannot be unloaded.
+        // See Metal_config::disable_gpu_frame_capture.
+        if (m_graphics_config.metal.disable_gpu_frame_capture) {
+            unsetenv("METAL_CAPTURE_ENABLED");
+            log_startup->info(
+                "Metal: GPU frame-capture layer suppressed (metal.disable_gpu_frame_capture); "
+                "Xcode GPU frame capture will NOT work for this run"
+            );
+        }
+#endif
+
+#if defined(ERHE_OS_ANDROID) && defined(ERHE_XR_LIBRARY_OPENXR)
+        // On Android the only flavor that links OpenXR is `quest` (Meta Quest 3).
+        // The flat 2D Horizon panel path is not a supported runtime target;
+        // force-enable OpenXR regardless of the JSON config so the editor always
+        // brings up an immersive session on the headset.
+        m_editor_settings.headset.openxr = true;
+#endif
+
+        if (m_editor_settings.headset.openxr) {
+            m_editor_settings.hud.enabled = true;
+            // Default to camera passthrough on OpenXR: with the sky composition
+            // pass disabled the scene background keeps the transparent render-pass
+            // clear value, so passthrough shows through instead of a rendered sky
+            // (see App_rendering::update_sky_parameters()). Still runtime-toggleable
+            // via the Settings window.
+            m_editor_settings.sky.enabled = false;
+        }
+
+        if (m_graphics_config.renderdoc_capture_support) {
+            m_app_context.renderdoc = true;
+        }
+
+        // --no-post-processing: session-wide override; the stored
+        // editor_settings.json value is left untouched so removing the flag
+        // restores the user's preference.
+        m_app_context.force_post_processing_off = force_post_processing_off;
+        if (force_post_processing_off) {
+            log_startup->info("Post processing forced OFF for this session (--no-post-processing)");
+        }
+
+        // --fix-spot-lights: import-time fixup for broken glTF spot light
+        // exports; applies to every glTF asset loaded in this session.
+        m_app_context.fix_gltf_spot_lights = fix_gltf_spot_lights;
+        if (fix_gltf_spot_lights) {
+            log_startup->info("glTF spot light fixup enabled for this session (--fix-spot-lights)");
+        }
+
+        // Editor is constructed on the main thread; parts constructed on init
+        // taskflow workers must not capture their own thread id as the owner.
+        m_app_context.main_thread_id = std::this_thread::get_id();
+
+        // thread_count <= 0 means one worker per hardware thread.
+        const int configured_thread_count = m_editor_settings.threading.thread_count;
+        const std::size_t thread_count = (configured_thread_count > 0)
+            ? static_cast<std::size_t>(configured_thread_count)
+            : std::max<std::size_t>(std::thread::hardware_concurrency(), 1);
+
+        // Note: m_executor is also used at runtime, so it cannot be
+        //       skipped even if parallel init is not used.
+        m_executor = std::make_unique<tf::Executor>(thread_count);
+
+        // Scene level raytrace BVH builds run on the executor, so that they
+        // never land on the frame.
+        erhe::raytrace::set_executor(m_executor.get());
+
+        // Declared outside the try so the loading screen survives past
+        // the parallel-init catch block; the post-task init phase
+        // (run_startup_script, prewarm_all) still drives pump() through
+        // this owner. Constructed inside the try once Text_renderer is
+        // built; destroyed when Editor::Editor() returns.
+        std::unique_ptr<Init_status_display> init_status_display_ptr;
+
+        try {
+#if defined(ERHE_PARALLEL_INIT)
+            tf::Taskflow taskflow;
+# if defined(ERHE_PROFILE_LIBRARY_TRACY)
+            std::shared_ptr<Tracy_observer> observer = m_executor->make_observer<Tracy_observer>();
+# endif
+#endif
+
+            m_commands          = std::make_unique<erhe::commands::Commands      >();
+            m_app_message_bus   = std::make_unique<App_message_bus               >();
+            m_app_settings.read(m_editor_settings.headset.openxr);
+            m_input_state       = std::make_unique<Input_state                   >();
+            m_time              = std::make_unique<Time                          >();
+            auto& commands        = *m_commands       .get();
+            auto& app_message_bus = *m_app_message_bus.get();
+
+#if defined(ERHE_PARALLEL_INIT)
+#   define ERHE_GET_GL_CONTEXT erhe::graphics::Scoped_gl_context ctx{m_graphics_device->context_provider};
+#   define ERHE_TASK_HEADER(var) auto var = taskflow.emplace([&, this]()
+#   define ERHE_TASK_FOOTER(ops) ) ops
+#else
+#   define ERHE_GET_GL_CONTEXT
+#   define ERHE_TASK_HEADER(var) init_status_display.set_line(1, #var); init_status_display.pump();
+#   define ERHE_TASK_FOOTER(ops) init_status_display.set_line(1, ""); init_status_display.pump();
+#endif
+
+#if defined(ERHE_PARALLEL_INIT)
+            m_executor->run(taskflow);
+#endif
+
+            // Window and graphics context creation - in main thread
+            m_window = create_window(m_graphics_config, m_window_config, m_editor_settings);
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+            // First-phase OpenXR initialization: build Xr_instance before the
+            // graphics Device. On Vulkan the Device needs to create its
+            // VkInstance / VkDevice through the OpenXR runtime hooks, which are
+            // exposed by Xr_instance via make_vulkan_external_creators(). On
+            // OpenGL this only builds the instance; the session is created
+            // later via headset->create_session(*device) on the main thread so
+            // the GL context is still current.
+            if (m_app_context.OpenXR) {
+                ERHE_PROFILE_SCOPE("make xr::Headset (instance)");
+                m_headset = std::make_unique<erhe::xr::Headset>(*m_window.get(), m_editor_settings.headset);
+                if (m_headset->get_xr_instance() == nullptr) {
+                    log_headset->info("OpenXR instance not available. Disabling OpenXR.");
+                    m_app_context.OpenXR = false;
+                    m_headset.reset();
+                }
+            }
+#endif
+
+#if defined(ERHE_GRAPHICS_API_VULKAN) && defined(ERHE_XR_LIBRARY_OPENXR)
+            // Fetch XR-owned Vulkan creators if an Xr_instance is available, so
+            // that the Vulkan graphics device creates its instance / physical
+            // device / device via the OpenXR runtime.
+            erhe::graphics::Vulkan_external_creators vulkan_xr_creators;
+            bool                                     have_vulkan_xr_creators = false;
+            if (m_headset && (m_headset->get_xr_instance() != nullptr)) {
+                vulkan_xr_creators      = m_headset->get_xr_instance()->make_vulkan_external_creators();
+                have_vulkan_xr_creators = true;
+            }
+            const erhe::graphics::Vulkan_external_creators* vulkan_xr_creators_ptr =
+                have_vulkan_xr_creators ? &vulkan_xr_creators : nullptr;
+#else
+            const erhe::graphics::Vulkan_external_creators* vulkan_xr_creators_ptr = nullptr;
+#endif
+
+            // Graphics context state init after window - in main thread
+            m_graphics_device = std::make_unique<erhe::graphics::Device>(
+                erhe::graphics::Surface_create_info{
+                    .context_window            = m_window.get(),
+                    .prefer_low_bandwidth      = false,
+                    .prefer_high_dynamic_range = false
+                },
+                m_graphics_config,
+                [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
+                    const std::string report_text = error_message + "\n=== Callstack ===\n" + callstack;
+                    if (is_ai_driver()) {
+                        write_ai_error_report("logs/device_error.txt", "Device error", report_text);
+                        if (severity == erhe::graphics::Message_severity::error) {
+                            ERHE_FATAL("Device error (see logs/device_error.txt): %s", error_message.c_str());
+                        } else {
+                            log_render->warn("Device message (captured to logs/device_error.txt): {}", error_message);
+                        }
+                        return;
+                    }
+                    erhe::utility::copy_to_clipboard(report_text);
+                    if (severity == erhe::graphics::Message_severity::error) {
+                        ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
+                    } else {
+                        log_render->warn("Device message (copied to clipboard): %s", error_message.c_str());
+                        static int counter = 0;
+                        ++counter;
+                    }
+                },
+                vulkan_xr_creators_ptr
+            );
+
+            // RenderDoc capture is auto-initialized by Device based on Graphics_config
+
+            m_graphics_device->set_shader_error_callback(
+                [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
+                    std::string report_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
+                    if (is_ai_driver()) {
+                        write_ai_error_report("logs/shader_error.txt", "Shader error", report_text);
+                        ERHE_FATAL("Shader compilation/linking failed (see logs/shader_error.txt)");
+                    }
+                    erhe::utility::copy_to_clipboard(report_text);
+                    ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
+                }
+            );
+            m_graphics_device->set_trace_callback(
+                [](const std::string& message) {
+                    if (is_ai_driver()) {
+                        log_render->info("{}", message);
+                        return;
+                    }
+                    erhe::utility::copy_to_clipboard(message);
+                }
+            );
+            m_graphics_device->set_state_dump_callback(
+                [](const std::string& state_dump) {
+                    if (!is_ai_driver()) {
+                        erhe::utility::copy_to_clipboard(state_dump);
+                    }
+                    log_render->info("{}", state_dump);
+                }
+            );
+
+            m_window->set_title(
+                erhe::window::format_window_title(
+                    "erhe editor by Timo Suoranta",
+                    m_graphics_device->get_info().api_info
+                )
+            );
+
+            // Init-time command buffer. The constructor body below records
+            // every init-time GPU operation (texture uploads, buffer
+            // transfers, dummy-texture clears, etc.) into this single cb,
+            // accessed via m_app_context.current_command_buffer.
+            // Init_status_display::set_line ends + submits the cb when it
+            // needs to display loading progress on the desktop swapchain,
+            // then opens a fresh init cb and reseats
+            // m_app_context.current_command_buffer to it. The constructor
+            // body's final wait_idle waits for all submitted init work to
+            // complete on the GPU before the main render loop starts.
+            const bool init_wait_frame_ok = m_graphics_device->wait_frame();
+            ERHE_VERIFY(init_wait_frame_ok);
+            m_app_context.current_command_buffer = &m_graphics_device->get_command_buffer(0);
+            m_app_context.current_command_buffer->begin();
+
+            m_app_settings.apply_limits(
+                *m_graphics_device.get(),
+                app_message_bus,
+                m_window->get_scale_factor(),
+                m_renderer_config.max_light_count
+            );
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+            // Second-phase OpenXR initialization: build the Xr_session now that
+            // the graphics Device exists. Apparently it is necessary to create
+            // OpenXR session in the main thread / original OpenGL context,
+            // instead of using shared context / worker thread. On Vulkan the
+            // session uses the Device's VkInstance / VkDevice / queue indices
+            // to build the XrGraphicsBindingVulkan2KHR.
+            if (m_headset) {
+                ERHE_PROFILE_SCOPE("make xr::Headset (session)");
+                if (!m_headset->create_session(*m_graphics_device.get())) {
+                    log_headset->info("Headset session creation failed. Disabling OpenXR.");
+                    m_app_context.OpenXR = false;
+                    m_headset.reset();
+                } else if (!m_headset->is_valid()) {
+                    log_headset->info("Headset initialization failed. Disabling OpenXR.");
+                    m_app_context.OpenXR = false;
+                    m_headset.reset();
+                }
+            }
+#endif
+
+            // It seems to be faster to create the worker thread here instead of between
+            // executor run and wait.
+#if defined(ERHE_PARALLEL_INIT)
+            m_graphics_device->context_provider.provide_worker_contexts(
+                m_window.get(),
+                8u,
+                []() -> bool { return true; }
+            );
+#endif
+
+            m_clipboard            = std::make_unique<Clipboard     >(commands, m_app_context, app_message_bus);
+            m_prefab_library       = std::make_unique<Prefab_library>(m_app_context);
+            m_animation_player     = std::make_unique<Animation_player>(m_app_context, app_message_bus);
+            m_app_scenes           = std::make_unique<App_scenes    >(m_app_context);
+            m_asset_manager        = std::make_unique<Asset_manager >(m_app_context, app_message_bus, *m_app_scenes.get());
+            m_app_windows          = std::make_unique<App_windows   >(m_app_context, commands);
+            m_viewport_scene_views = std::make_unique<Scene_views   >(m_editor_settings.viewport, commands, m_app_context, app_message_bus);
+            m_selection            = std::make_unique<Selection     >(commands, m_app_context, app_message_bus);
+            m_mesh_component_selection = std::make_unique<Mesh_component_selection>(app_message_bus);
+            m_scene_commands       = std::make_unique<Scene_commands>(commands, m_app_context, app_message_bus);
+            m_debug_draw           = std::make_unique<Debug_draw    >(m_app_context);
+            // Drive view_count from the OpenXR session's multiview
+            // capability. The session was created above (line ~789).
+            // When multiview is enabled, the camera UBO holds two
+            // entries (one per eye); shaders compiled with
+            // ERHE_MULTIVIEW pick the right one via gl_ViewIndex.
+            int xr_view_count = 1;
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+            if (m_headset && (m_headset->get_xr_session() != nullptr) && m_headset->get_xr_session()->is_multiview_enabled()) {
+                xr_view_count = static_cast<int>(m_headset->get_xr_session()->get_view_count());
+            }
+#endif
+            erhe::scene_renderer::Program_interface_config program_interface_config{
+                .shader_paths = {
+                    std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+                    std::filesystem::path{"res"} / std::filesystem::path{"editor"} / std::filesystem::path{"shaders"},
+                },
+                .max_camera_count    = m_renderer_config.max_camera_count,
+                .max_joint_count     = m_renderer_config.max_joint_count,
+                .max_light_count     = m_renderer_config.max_light_count,
+                .max_material_count  = m_renderer_config.max_material_count,
+                .max_primitive_count = m_renderer_config.max_primitive_count,
+                .max_draw_count      = m_renderer_config.max_draw_count,
+                .view_count      = xr_view_count
+            };
+            m_mesh_memory = std::make_unique<erhe::scene_renderer::Mesh_memory>(
+                m_mesh_memory_config,
+                *m_graphics_device.get()
+            );
+            m_program_interface = std::make_unique<erhe::scene_renderer::Program_interface>(
+                *m_graphics_device.get(),
+                *m_mesh_memory.get(),
+                program_interface_config
+            );
+            // Cache constructed before Programs so each Programs member
+            // can hold a reference to it. The cache stays empty until
+            // something calls Shader_variant_cache::get(...).
+            m_shader_variant_cache = std::make_unique<erhe::scene_renderer::Shader_variant_cache>(
+                *m_graphics_device.get(),
+                *m_program_interface.get()
+            );
+            m_programs = std::make_unique<Programs>(
+                *m_graphics_device.get(),
+                *m_program_interface.get()
+                //*m_shader_variant_cache.get()
+            );
+
+            m_text_renderer = std::make_unique<erhe::renderer::Text_renderer>(
+                *m_graphics_device.get(),
+                *m_app_context.current_command_buffer,
+                m_text_renderer_config.enabled,
+                m_text_renderer_config.font_size,
+                xr_view_count
+            );
+
+            // Stack-local: the status display is only useful during init,
+            // and Editor::Editor() is the only scope that drives it.
+            // Init_status_display takes a reference to
+            // m_app_context.current_command_buffer so its pump() can
+            // reseat the pointer after driving a swapchain frame for
+            // the loading screen. When a Headset is supplied, pump()
+            // drives an OpenXR frame instead of the desktop swapchain.
+            // set_line() / set_clear_color() are called from taskflow
+            // workers; they only mutate state under a mutex. pump()
+            // runs on the main thread (driven by the wait_for() loop
+            // below) so SDL_PollEvent and xrBegin/EndFrame never run
+            // off-main-thread.
+            erhe::xr::Headset* const init_status_headset =
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+                m_headset.get();
+#else
+                nullptr;
+#endif
+            init_status_display_ptr = std::make_unique<Init_status_display>(
+                *m_graphics_device.get(),
+                m_app_context.current_command_buffer,
+                *m_window.get(),
+                *m_text_renderer.get(),
+                true,
+                init_status_headset
+            );
+            Init_status_display& init_status_display = *init_status_display_ptr;
+
+            init_status_display.set_line(0, "Initializing erhe editor...");
+            init_status_display.pump();
+
+            ERHE_TASK_HEADER(programs_load_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                init_status_display.set_line(1, "Loading shader stages");
+
+                m_programs->load_programs(
+                    *m_executor.get(),
+                    *m_graphics_device.get(),
+                    *m_mesh_memory.get(),
+                    *m_program_interface.get(),
+                    init_status_display
+                );
+                init_status_display.set_line(1, "");
+            }
+            ERHE_TASK_FOOTER( .name("Programs (load)") );
+
+            ERHE_TASK_HEADER(imgui_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_imgui_renderer = std::make_unique<erhe::imgui::Imgui_renderer>(*m_graphics_device.get(), *m_app_context.current_command_buffer, m_app_settings.imgui);
+            }
+            ERHE_TASK_FOOTER( .name("Imgui_renderer") );
+
+            ERHE_TASK_HEADER(debug_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_debug_renderer = std::make_unique<erhe::renderer::Debug_renderer>(*m_graphics_device.get(), xr_view_count);
+            }
+            ERHE_TASK_FOOTER( .name("Debug_renderer") );
+
+            ERHE_TASK_HEADER(thumbnails_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_thumbnails = std::make_unique<Thumbnails>(m_editor_settings.thumbnails, *m_graphics_device.get(), *m_app_context.current_command_buffer, m_app_context);
+            }
+            ERHE_TASK_FOOTER( .name("Thumbnails") );
+
+            ERHE_TASK_HEADER(rendergraph_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_rendergraph = std::make_unique<erhe::rendergraph::Rendergraph>(*m_graphics_device.get());
+            }
+            ERHE_TASK_FOOTER( .name("Rendergraph") );
+
+#if defined(ERHE_PHYSICS_LIBRARY_JOLT) && defined(JPH_DEBUG_RENDERER)
+            ERHE_TASK_HEADER(jolt_debug_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_jolt_debug_renderer = std::make_unique<erhe::renderer::Jolt_debug_renderer>(*m_debug_renderer.get());
+            }
+            ERHE_TASK_FOOTER( .name("Jolt_debug_renderer").succeed(debug_renderer_task) );
+#endif
+            ERHE_TASK_HEADER(forward_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                // Glyph curve data for GPU curve-based grid axis labels.
+                // Codepoint order defines the glyph slot convention shared
+                // with the shaders: slots 0..9 = '0'..'9', 10 = '-', 11 = '.'.
+                const std::array<char32_t, 12> glyph_codepoints{
+                    U'0', U'1', U'2', U'3', U'4', U'5', U'6', U'7', U'8', U'9', U'-', U'.'
+                };
+                const erhe::ui::Glyph_outline_set glyph_outline_set = erhe::ui::extract_glyph_outlines(
+                    std::filesystem::path{"res"} / std::filesystem::path{"fonts"} / std::filesystem::path{"SourceCodePro-Semibold.otf"},
+                    glyph_codepoints
+                );
+                m_forward_renderer = std::make_unique<erhe::scene_renderer::Forward_renderer>(
+                    *m_graphics_device.get(),
+                    *m_app_context.current_command_buffer,
+                    *m_mesh_memory.get(),
+                    *m_program_interface.get(),
+                    *m_shader_variant_cache.get(),
+                    &glyph_outline_set
+                );
+            }
+            ERHE_TASK_FOOTER( .name("Forward_renderer") );
+
+            ERHE_TASK_HEADER(shadow_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_shadow_renderer = std::make_unique<erhe::scene_renderer::Shadow_renderer>(
+                    *m_graphics_device.get(),
+                    *m_app_context.current_command_buffer,
+                    *m_mesh_memory.get(),
+                    *m_program_interface.get(),
+                    *m_shader_variant_cache.get()
+                );
+            }
+            ERHE_TASK_FOOTER( .name("Shadow_renderer") );
+
+            ERHE_TASK_HEADER(texel_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_texel_renderer = std::make_unique<erhe::scene_renderer::Texel_renderer>(
+                    *m_graphics_device.get(),
+                    *m_app_context.current_command_buffer,
+                    *m_program_interface.get()
+                );
+            }
+            ERHE_TASK_FOOTER( .name("Texel_renderer") );
+
+            ERHE_TASK_HEADER(content_wide_line_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_content_wide_line_interface = std::make_unique<erhe::scene_renderer::Content_wide_line_interface>(
+                    *m_graphics_device,
+                    &m_program_interface->joint_interface.joint_block,
+                    xr_view_count
+                );
+
+                const std::filesystem::path shader_path = std::filesystem::path{"res"} / std::filesystem::path{"shaders"};
+
+                using namespace erhe::graphics;
+
+                if (m_graphics_device->get_info().use_compute_shader) {
+                    // Compute shader (non-skinned variant)
+                    {
+                        Shader_stages_create_info create_info{
+                            .name             = "compute_before_content_line",
+                            .struct_types     = {
+                                m_content_wide_line_interface->edge_line_vertex_struct.get(),
+                                m_content_wide_line_interface->triangle_vertex_struct.get(),
+                                &m_content_wide_line_interface->view_camera_struct
+                            },
+                            .interface_blocks = {
+                                m_content_wide_line_interface->edge_line_vertex_buffer_block.get(),
+                                m_content_wide_line_interface->triangle_vertex_buffer_block.get(),
+                                &m_content_wide_line_interface->view_block
+                            },
+                            .shaders = { { Shader_type::compute_shader, shader_path / "compute_before_content_line.comp" } },
+                            .bind_group_layout = m_content_wide_line_interface->bind_group_layout.get(),
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_compute_stages = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+                    // Compute shader (skinned variant). Same source compiled with
+                    // ERHE_USE_SKINNING; declares the joint side buffer and the
+                    // global `joint` block in addition to the regular bindings.
+                    if (m_content_wide_line_interface->skinned_bind_group_layout != nullptr) {
+                        Shader_stages_create_info create_info{
+                            .name             = "compute_before_content_line_skinned",
+                            .defines          = { { "ERHE_USE_SKINNING", "1" } },
+                            .struct_types     = {
+                                m_content_wide_line_interface->edge_line_vertex_struct.get(),
+                                m_content_wide_line_interface->edge_line_joint_vertex_struct.get(),
+                                m_content_wide_line_interface->triangle_vertex_struct.get(),
+                                &m_content_wide_line_interface->view_camera_struct,
+                                &m_program_interface->joint_interface.joint_struct
+                            },
+                            .interface_blocks = {
+                                m_content_wide_line_interface->edge_line_vertex_buffer_block.get(),
+                                m_content_wide_line_interface->edge_line_joint_vertex_buffer_block.get(),
+                                m_content_wide_line_interface->triangle_vertex_buffer_block.get(),
+                                &m_content_wide_line_interface->view_block,
+                                &m_program_interface->joint_interface.joint_block
+                            },
+                            .shaders           = { { Shader_type::compute_shader, shader_path / "compute_before_content_line.comp" } },
+                            .bind_group_layout = m_content_wide_line_interface->skinned_bind_group_layout.get(),
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_compute_stages_skinned = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+                    // Graphics shader (renders compute output, single-view).
+                    //
+                    // Reads pre-transformed triangle vertices from the
+                    // triangle SSBO (binding 1) and the per-eye viewport
+                    // from the view UBO (binding 3) -- same bindings as
+                    // the multiview variant below; the only difference is
+                    // ERHE_MULTIVIEW + the multiview render pass's view
+                    // mask. The wide-line graphics bind group layout
+                    // intentionally does NOT inherit forward_renderer's
+                    // camera UBO; switching descriptor-set layouts inside
+                    // the render pass invalidates any descriptors bound
+                    // by upstream renderers, so the renderer binds
+                    // everything it needs itself.
+                    {
+                        Shader_stages_create_info create_info{
+                            .name             = "content_line_after_compute",
+                            .struct_types     = {
+                                m_content_wide_line_interface->triangle_vertex_struct.get(),
+                                &m_content_wide_line_interface->view_camera_struct
+                            },
+                            .interface_blocks = {
+                                m_content_wide_line_interface->triangle_vertex_buffer_read_block.get(),
+                                &m_content_wide_line_interface->view_block
+                            },
+                            .fragment_outputs = &m_content_wide_line_interface->fragment_outputs,
+                            // No vertex_format: the vertex shader reads
+                            // the triangle SSBO instead of input-assembler
+                            // attributes.
+                            .no_vertex_input  = true,
+                            .shaders = {
+                                { Shader_type::vertex_shader,   shader_path / "line_after_compute.vert"        },
+                                { Shader_type::fragment_shader, shader_path / "content_line_after_compute.frag" }
+                            },
+                            .bind_group_layout = m_content_wide_line_interface->graphics_bind_group_layout.get(),
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_graphics_stages = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+                    // Seed-masked single-view graphics shader (ID-buffer edge-line
+                    // method): same vertex/fragment pair as above, but the fragment
+                    // is compiled with ERHE_CONTENT_LINE_SEED_MASK and the seed bind
+                    // group layout (adds the s_seed_id sampler). The edge-id pass
+                    // draws with this variant so each edge fragment is discarded
+                    // unless it lands on its own face's visible surface (per the seed
+                    // face-ID buffer). Only built when the seed layout exists (SSBO
+                    // device); the color edge-line path keeps the unmasked variant.
+                    if (m_content_wide_line_interface->graphics_seed_bind_group_layout != nullptr) {
+                        Shader_stages_create_info create_info{
+                            .name             = "content_line_after_compute_seed",
+                            .defines          = { { "ERHE_CONTENT_LINE_SEED_MASK", "1" } },
+                            .struct_types     = {
+                                m_content_wide_line_interface->triangle_vertex_struct.get(),
+                                &m_content_wide_line_interface->view_camera_struct
+                            },
+                            .interface_blocks = {
+                                m_content_wide_line_interface->triangle_vertex_buffer_read_block.get(),
+                                &m_content_wide_line_interface->view_block
+                            },
+                            .fragment_outputs = &m_content_wide_line_interface->fragment_outputs,
+                            .no_vertex_input  = true,
+                            .shaders = {
+                                { Shader_type::vertex_shader,   shader_path / "line_after_compute.vert"        },
+                                { Shader_type::fragment_shader, shader_path / "content_line_after_compute.frag" }
+                            },
+                            .bind_group_layout = m_content_wide_line_interface->graphics_seed_bind_group_layout.get(),
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_graphics_seed_stages = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+                    // Multiview-compiled graphics shader pair. Compiled
+                    // only when the headset can drive multiview
+                    // (view_count >= 2); not used by single-view
+                    // viewports. Reads the triangle SSBO directly from
+                    // the vertex stage at gl_VertexID + gl_ViewIndex *
+                    // stride_per_view (see line_after_compute.vert
+                    // ERHE_MULTIVIEW branch) so a single draw inside
+                    // the headset's multiview render pass produces
+                    // correct stereo output for content edge lines.
+                    if (xr_view_count >= 2) {
+                        Shader_stages_create_info create_info{
+                            .name             = "content_line_after_compute_multiview",
+                            .struct_types     = {
+                                m_content_wide_line_interface->triangle_vertex_struct.get(),
+                                &m_content_wide_line_interface->view_camera_struct
+                            },
+                            .interface_blocks = {
+                                m_content_wide_line_interface->triangle_vertex_buffer_read_block.get(),
+                                &m_content_wide_line_interface->view_block
+                            },
+                            .fragment_outputs = &m_content_wide_line_interface->fragment_outputs,
+                            // No vertex_format: the multiview vertex
+                            // shader reads the triangle SSBO instead of
+                            // input-assembler attributes.
+                            .no_vertex_input  = true,
+                            .shaders = {
+                                { Shader_type::vertex_shader,   shader_path / "line_after_compute.vert"        },
+                                { Shader_type::fragment_shader, shader_path / "content_line_after_compute.frag" }
+                            },
+                            .bind_group_layout = m_content_wide_line_interface->graphics_bind_group_layout.get(),
+                            .view_count        = static_cast<uint32_t>(xr_view_count)
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_multiview_graphics_stages = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+
+                    m_content_wide_line_renderer = erhe::scene_renderer::make_content_wide_line_compute_renderer(
+                        *m_graphics_device,
+                        *m_content_wide_line_interface,
+                        m_content_wide_line_compute_stages.get(),
+                        m_content_wide_line_compute_stages_skinned.get(), // may be null if joint block missing
+                        m_content_wide_line_graphics_stages.get(),
+                        m_content_wide_line_multiview_graphics_stages.get(),
+                        m_content_wide_line_graphics_seed_stages.get() // may be null; seed mask then no-ops
+                    );
+                } else {
+                    // Geometry-shader backend (used when the device does not
+                    // expose compute shaders). Both variants share
+                    // content_edge_lines.{vert,geom,frag}; they differ only
+                    // in the vertex_format passed to attributes_source(),
+                    // which emits the ERHE_ATTRIBUTE_a_joint_* defines the
+                    // vert shader's skinning branch keys on.
+                    {
+                        Shader_stages_create_info create_info{
+                            .name             = "content_edge_lines",
+                            .struct_types     = {
+                                &m_content_wide_line_interface->view_camera_struct
+                            },
+                            .interface_blocks = {
+                                &m_content_wide_line_interface->view_block
+                            },
+                            .fragment_outputs  = &m_content_wide_line_interface->fragment_outputs,
+                            .vertex_format     = &m_mesh_memory->vertex_format_not_skinned,
+                            .shaders = {
+                                { Shader_type::vertex_shader,   shader_path / "content_edge_lines.vert" },
+                                { Shader_type::geometry_shader, shader_path / "content_edge_lines.geom" },
+                                { Shader_type::fragment_shader, shader_path / "content_edge_lines.frag" }
+                            },
+                            .bind_group_layout = &m_content_wide_line_interface->geometry_bind_group_layout_not_skinned,
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_geometry_stages_not_skinned = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+                    if (m_content_wide_line_interface->geometry_bind_group_layout_skinned != nullptr) {
+                        Shader_stages_create_info create_info{
+                            .name             = "content_edge_lines_skinned",
+                            .struct_types     = {
+                                &m_content_wide_line_interface->view_camera_struct,
+                                &m_program_interface->joint_interface.joint_struct
+                            },
+                            .interface_blocks = {
+                                &m_content_wide_line_interface->view_block,
+                                &m_program_interface->joint_interface.joint_block
+                            },
+                            .fragment_outputs  = &m_content_wide_line_interface->fragment_outputs,
+                            .vertex_format     = &m_mesh_memory->vertex_format_skinned,
+                            .shaders = {
+                                { Shader_type::vertex_shader,   shader_path / "content_edge_lines.vert" },
+                                { Shader_type::geometry_shader, shader_path / "content_edge_lines.geom" },
+                                { Shader_type::fragment_shader, shader_path / "content_edge_lines.frag" }
+                            },
+                            .bind_group_layout = m_content_wide_line_interface->geometry_bind_group_layout_skinned.get(),
+                        };
+                        Shader_stages_prototype prototype = build_shader_stages(*m_graphics_device, create_info);
+                        if (prototype.is_valid()) {
+                            m_content_wide_line_geometry_stages_skinned = std::make_unique<Shader_stages>(*m_graphics_device, std::move(prototype));
+                        }
+                    }
+
+                    m_content_wide_line_renderer = erhe::scene_renderer::make_content_wide_line_geometry_renderer(
+                        *m_graphics_device,
+                        *m_content_wide_line_interface,
+                        m_content_wide_line_geometry_stages_not_skinned.get(),
+                        m_content_wide_line_geometry_stages_skinned    .get()  // may be null if joint block missing
+                    );
+                }
+            }
+            ERHE_TASK_FOOTER(.name("Content_wide_line_renderer"));
+
+            ERHE_TASK_HEADER(imgui_windows_task)
+            {
+                m_imgui_windows = std::make_unique<erhe::imgui::Imgui_windows>(
+                    *m_imgui_renderer.get(),
+                    *m_graphics_device.get(),
+                    *m_rendergraph.get(),
+                    conditionally_enable_window_imgui_host(m_window.get(), m_app_context.OpenXR),
+                    get_imgui_config_path(m_app_context.OpenXR)
+                );
+            }
+            ERHE_TASK_FOOTER( .name("Imgui_windows") .succeed(imgui_renderer_task, rendergraph_task) );
+
+            ERHE_TASK_HEADER(icon_set_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_icon_set = std::make_unique<Icon_set>(m_app_context, *m_imgui_renderer.get());
+            }
+            ERHE_TASK_FOOTER( .name("Icon_set") .succeed(imgui_renderer_task) );
+
+            ERHE_TASK_HEADER(post_processing_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_post_processing = std::make_unique<Post_processing>(*m_graphics_device.get(), *m_app_context.current_command_buffer, m_app_context);
+                m_sky_renderer = std::make_unique<Sky_renderer>(
+                    *m_graphics_device.get(),
+                    *m_app_context.current_command_buffer,
+                    m_app_context,
+                    *m_program_interface.get(),
+                    xr_view_count
+                );
+                m_ray_trace_renderer = std::make_unique<Ray_trace_renderer>(
+                    *m_graphics_device.get(),
+                    *m_app_context.current_command_buffer,
+                    m_app_context,
+                    *m_program_interface.get(),
+                    *m_mesh_memory.get(),
+                    m_editor_settings.ray_trace
+                );
+                m_ddgi_renderer = std::make_unique<Ddgi_renderer>(
+                    *m_graphics_device.get(),
+                    *m_app_context.current_command_buffer,
+                    m_app_context,
+                    *m_program_interface.get(),
+                    *m_mesh_memory.get(),
+                    m_editor_settings.ddgi
+                );
+                m_lightmap_baker  = std::make_unique<Lightmap_baker>(*m_graphics_device.get(), *m_mesh_memory.get());
+                m_lightmap_report = std::make_unique<Lightmap_report>();
+                m_lightmap_baker->set_report(m_lightmap_report.get());
+                m_lightmap_streamer    = std::make_unique<Lightmap_streamer>(*m_graphics_device.get(), m_app_context);
+                m_lightmap_partitioner = std::make_unique<Lightmap_partitioner>(m_app_context);
+                m_lightmap_baker->set_partitioner(m_lightmap_partitioner.get());
+                // Interactive bake results must never be lost to a residency
+                // swap: evicting tiles park in a pending-save queue that
+                // Lightmap_window::update() persists to <scene>.lightmap/.
+                m_lightmap_baker->set_save_on_evict(true);
+            }
+            ERHE_TASK_FOOTER( .name("Post_processing") );
+
+            ERHE_TASK_HEADER(id_renderer_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_id_renderer = std::make_unique<Id_renderer>(
+                    m_editor_settings.id_renderer,
+                    *m_graphics_device.get(),
+                    *m_program_interface.get(),
+                    *m_mesh_memory.get(),
+                    *m_shader_variant_cache.get(),
+                    *m_programs.get()
+                );
+            }
+            ERHE_TASK_FOOTER(.name("Id_renderer"));
+
+            ERHE_TASK_HEADER(app_rendering_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_app_rendering = std::make_unique<App_rendering>(
+                    *m_commands.get(),
+                    *m_graphics_device.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_mesh_memory.get(),
+                    *m_programs.get()
+                );
+            }
+            ERHE_TASK_FOOTER(.name("App_rendering"));
+
+            ERHE_TASK_HEADER(some_windows_task)
+            {
+                m_operation_stack        = std::make_unique<Operation_stack                 >(*m_commands.get(),       *m_imgui_renderer.get(), *m_imgui_windows.get(), m_app_context);
+                m_asset_browser          = std::make_unique<Asset_browser                   >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_composer_window        = std::make_unique<Composer_window                 >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_selection_window       = std::make_unique<Selection_window                >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_settings_window        = std::make_unique<Settings_window                 >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_clipboard_window       = std::make_unique<Clipboard_window                >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_commands_window        = std::make_unique<Commands_window                 >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_geometry_graph_window  = std::make_unique<Geometry_graph_window           >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_geometry_graph_palette_window = std::make_unique<Graph_editor_palette_window>(*m_imgui_renderer.get(), *m_imgui_windows.get(), *m_geometry_graph_window.get(), "Geometry Graph Palette", "geometry_graph_palette");
+                m_texture_graph_window   = std::make_unique<Texture_graph_window            >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_texture_graph_palette_window  = std::make_unique<Graph_editor_palette_window>(*m_imgui_renderer.get(), *m_imgui_windows.get(), *m_texture_graph_window.get(), "Texture Graph Palette", "texture_graph_palette");
+                m_graph_window           = std::make_unique<Graph_window                    >(*m_commands.get(),       *m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_node_properties_window = std::make_unique<Node_properties_window          >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_gradient_editor        = std::make_unique<Gradient_editor                 >(*m_imgui_renderer.get(), *m_imgui_windows.get());
+                m_icon_browser           = std::make_unique<Icon_browser                    >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_sheet_window           = std::make_unique<Sheet_window                    >(*m_commands.get(),       *m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_animation_window       = std::make_unique<Animation_window                >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_layers_window          = std::make_unique<Layers_window                   >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_network_window         = std::make_unique<Network_window                  >(m_editor_settings.network, *m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_operations             = std::make_unique<Operations                      >(m_editor_settings.scene, *m_commands.get(),       *m_imgui_renderer.get(), *m_imgui_windows.get(), m_app_context, *m_app_message_bus.get());
+                m_physics_window         = std::make_unique<Physics_window                  >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_post_processing_window = std::make_unique<Post_processing_window          >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_ray_trace_window       = std::make_unique<Ray_trace_window                >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_ddgi_window            = std::make_unique<Ddgi_window                     >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_properties             = std::make_unique<Properties                      >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_editor_windows         = std::make_unique<Editor_windows                  >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_frame_pacing_window    = std::make_unique<Frame_pacing_window             >(*m_imgui_renderer.get(), *m_imgui_windows.get());
+                m_controller_inputs_window = std::make_unique<Controller_inputs_window     >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_lightmap_window        = std::make_unique<Lightmap_window                 >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_lightmap_texture_window = std::make_unique<Lightmap_texture_window        >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context, *m_app_message_bus.get());
+                m_app_context.lightmap_texture_window = m_lightmap_texture_window.get();
+                m_app_context.lightmap_window         = m_lightmap_window.get();
+                m_app_context.frame_pacing_window   = m_frame_pacing_window.get();
+                m_app_context.frame_pacing_observer = &m_frame_pacing_observer;
+                m_rendergraph_window     = std::make_unique<Rendergraph_window              >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_tool_properties_window = std::make_unique<Tool_properties_window          >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  m_app_context);
+                m_logs                   = std::make_unique<erhe::imgui::Logs               >(*m_commands.get(),       *m_imgui_renderer.get(), "config/editor/logging.json");
+                m_log_settings_window    = std::make_unique<erhe::imgui::Log_settings_window>(*m_imgui_renderer.get(), *m_imgui_windows.get(),  *m_logs.get());
+                m_tail_log_window        = std::make_unique<erhe::imgui::Tail_log_window    >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  *m_logs.get());
+                m_frame_log_window       = std::make_unique<erhe::imgui::Frame_log_window   >(*m_imgui_renderer.get(), *m_imgui_windows.get(),  *m_logs.get());
+                m_performance_window     = std::make_unique<erhe::imgui::Performance_window >(*m_imgui_renderer.get(), *m_imgui_windows.get());
+                m_app_context.performance_window = m_performance_window.get();
+                m_transform_update_stats_tracker = std::make_unique<Transform_update_stats_tracker>(*m_performance_window.get());
+                m_app_context.transform_update_stats_tracker = m_transform_update_stats_tracker.get();
+                m_pipelines              = std::make_unique<erhe::imgui::Pipelines          >(*m_imgui_renderer.get(), *m_imgui_windows.get());
+            }
+            ERHE_TASK_FOOTER(
+                .name("Some windows")
+                .succeed(imgui_renderer_task, imgui_windows_task)
+            );
+
+            ERHE_TASK_HEADER(tools_task)
+            {
+                m_tools = std::make_unique<Tools>(
+                    *m_graphics_device,
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_app_rendering.get(),
+                    m_app_settings,
+                    *m_mesh_memory.get(),
+                    *m_programs
+                );
+                m_fly_camera_tool = std::make_unique<Fly_camera_tool>(
+                    m_editor_settings.camera_controls,
+                    *m_commands.get(),
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_tools.get()
+                );
+                m_navigation_gizmo_tool = std::make_unique<Navigation_gizmo_tool>(
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_tools.get()
+                );
+            }
+            ERHE_TASK_FOOTER(
+                .name("Tools")
+                .succeed(imgui_renderer_task, imgui_windows_task, app_rendering_task)
+            );
+        
+            ERHE_TASK_HEADER(default_scene_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                // Only the template content library is created at init, because
+                // Scene_builder builds brushes into it. It is a palette source
+                // only: no scene ever owns it, and every scene (default or new)
+                // seeds its OWN library with brush copies from it plus fresh
+                // default materials (create_default_scene /
+                // Scene_commands::create_new_scene). The Scene_root itself is
+                // created later by the scene.create startup command (or a loaded
+                // scene becomes the only scene) -- so a commands.json that just
+                // loads a scene yields exactly one scene, with no empty default.
+                m_default_content_library = std::make_shared<Content_library>();
+            }
+            ERHE_TASK_FOOTER(
+                .name("Default content library")
+                .succeed(imgui_renderer_task, imgui_windows_task)
+            );
+
+            ERHE_TASK_HEADER(scene_builder_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_scene_builder = std::make_unique<Scene_builder>(
+                    m_editor_settings.scene,                  //const Scene_config&                scene_config
+                    m_editor_settings.post_processing &&
+                        !m_app_context.force_post_processing_off, //bool                          enable_post_processing
+                    m_default_content_library,                //std::shared_ptr<Content_library>   content_library
+                    *m_executor.get(),                        //tf::Executor&                      executor
+                    m_app_context,                            //App_context&                       app_context
+                    m_app_settings,                           //App_settings&                      app_settings
+                    *m_mesh_memory.get()                      //erhe::scene_renderer::Mesh_memory& mesh_memory
+                );
+                // The scene_root is assigned to Scene_builder later, by
+                // create_default_scene() (the scene.create startup command).
+
+                // Bone pick/display proxies. Constructed here because this is
+                // where Mesh_memory is available; it builds its shared bone
+                // primitive lazily on the first skin registration.
+                m_bone_visualization = std::make_unique<Bone_visualization>(m_app_context, *m_app_message_bus.get(), *m_mesh_memory.get());
+                m_app_context.bone_visualization = m_bone_visualization.get();
+
+                // Active-joint tracking for the Joint Weight Ramp debug mode.
+                // Purely message-driven; grouped here with the other
+                // skin/bone-related editor parts.
+                m_weight_display = std::make_unique<Weight_display>(m_app_context, *m_app_message_bus.get());
+                m_app_context.weight_display = m_weight_display.get();
+            }
+            ERHE_TASK_FOOTER(
+                .name("Scene_builder")
+                .succeed(
+                    default_scene_task, imgui_renderer_task, imgui_windows_task, rendergraph_task,
+                    app_rendering_task, post_processing_task, tools_task
+                )
+            );
+
+            ERHE_TASK_HEADER(headset_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_headset_view = std::make_unique<Headset_view>(
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+                    m_editor_settings.viewport,
+#endif
+                    *m_commands.get(),
+                    *m_graphics_device.get(),
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    *m_rendergraph.get(),
+                    *m_window.get(),
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+                    m_headset.get(),
+#endif
+                    m_app_context,
+                    *m_app_rendering.get(),
+                    m_app_settings
+                );
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+                if (m_app_context.OpenXR) {
+                    m_hand_tracker = std::make_unique<Hand_tracker>(m_app_context, *m_app_rendering.get());
+                }
+#endif
+            }
+            ERHE_TASK_FOOTER(
+                .name("Headset (init)")
+                .succeed(imgui_renderer_task, imgui_windows_task, rendergraph_task, app_rendering_task)
+            );
+
+            ERHE_TASK_HEADER(headset_attach_task)
+            {
+                // The Headset_view attaches to the scene when one first exists, via
+                // the Scene_created_message handler (on_scene_created) rather than
+                // here -- no scene_root is created at init any more.
+            }
+            ERHE_TASK_FOOTER(
+                .name("Headset (attach)")
+                .succeed(default_scene_task, headset_task, scene_builder_task)
+            );
+
+            ERHE_TASK_HEADER(transform_tools_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_move_tool   = std::make_unique<Move_tool  >(m_app_context, *m_icon_set.get(), *m_tools.get());
+                m_rotate_tool = std::make_unique<Rotate_tool>(m_app_context, *m_icon_set.get(), *m_tools.get());
+                m_scale_tool  = std::make_unique<Scale_tool >(m_app_context, *m_icon_set.get(), *m_tools.get());
+                m_transform_tool = std::make_unique<Transform_tool>(
+                    m_editor_settings.transform_tool,
+                    *m_executor.get(),
+                    *m_commands.get(),
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_mesh_memory.get(),
+                    *m_tools.get(),
+                    *m_move_tool.get(),
+                    *m_rotate_tool.get(),
+                    *m_scale_tool.get()
+                );
+            }
+            ERHE_TASK_FOOTER(
+                .name("Transform tools")
+                .succeed(imgui_renderer_task, imgui_windows_task, headset_task, icon_set_task, tools_task)
+            );
+
+            ERHE_TASK_HEADER(group_1)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_hud = std::make_unique<Hud>(
+                    m_editor_settings.hud,
+                    *m_commands.get(),
+                    *m_graphics_device.get(),
+                    *m_imgui_renderer.get(),
+                    *m_rendergraph.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_app_windows.get(),
+                    *m_headset_view.get(),
+                    *m_mesh_memory.get(),
+                    *m_tools.get()
+                );
+                m_hotbar = std::make_unique<Hotbar>(
+                    m_editor_settings.hotbar,
+                    *m_commands.get(),
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_mesh_memory.get(),
+                    *m_tools.get()
+                );
+                // Hud/Hotbar attach to the scene when one first exists (driven by the
+                // Scene_created_message in on_scene_created), not here -- no scene_root
+                // is created at init any more.
+                m_inventory_window = std::make_unique<Inventory_window>(
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    m_editor_settings.inventory
+                );
+                m_hover_tool = std::make_unique<Hover_tool>(
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_tools.get()
+                );
+                m_brdf_slice = std::make_unique<Brdf_slice>(
+                    *m_rendergraph.get(),
+                    *m_forward_renderer.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_programs.get()
+                );
+                m_debug_view_window = std::make_unique<Depth_visualization_window>(
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    *m_rendergraph.get(),
+                    *m_forward_renderer.get(),
+                    m_app_context,
+                    *m_app_rendering.get(),
+                    *m_mesh_memory.get(),
+                    *m_programs.get()
+                );
+            }
+            ERHE_TASK_FOOTER(
+                .name("Group 1")
+                .succeed(
+                    imgui_renderer_task,
+                    imgui_windows_task,
+                    app_rendering_task,
+                    rendergraph_task,
+                    forward_renderer_task,
+                    tools_task,
+                    scene_builder_task,
+                    headset_task
+                )
+            );
+
+            ERHE_TASK_HEADER(material_preview_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                {
+                    m_material_preview = std::make_unique<Material_preview>(
+                        *m_graphics_device.get(),
+                        *m_app_context.current_command_buffer,
+                        m_app_context,
+                        *m_app_message_bus.get(),
+                        *m_mesh_memory.get()
+                    );
+                    m_brush_preview = std::make_unique<Brush_preview>(
+                        *m_graphics_device.get(),
+                        *m_app_context.current_command_buffer,
+                        m_app_context
+                    );
+                }
+            }
+            ERHE_TASK_FOOTER(.name("Material_preview"));
+
+            ERHE_TASK_HEADER(brush_tool_task)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_brush_tool = std::make_unique<Brush_tool>(
+                    m_editor_settings.scene,
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+            }
+            ERHE_TASK_FOOTER(
+                .name("Brush_tool")
+                .succeed(headset_task, icon_set_task, tools_task)
+            );
+
+            ERHE_TASK_HEADER(group_2)
+            {
+                ERHE_GET_GL_CONTEXT
+                m_create = std::make_unique<Create>(
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_tools.get()
+                );
+                m_grid_tool = std::make_unique<Grid_tool>(
+                    m_editor_settings.grid,
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+                m_material_paint_tool = std::make_unique<Material_paint_tool>(
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+                m_weight_paint_tool = std::make_unique<Weight_paint_tool>(
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+                m_paint_tool = std::make_unique<Paint_tool>(
+                    *m_commands.get(),
+                    *m_imgui_renderer.get(),
+                    *m_imgui_windows.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+                m_physics_tool = std::make_unique<Physics_tool>(
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_headset_view.get(),
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+                m_selection_tool = std::make_unique<Selection_tool>(
+                    m_app_context,
+                    *m_icon_set.get(),
+                    *m_tools.get()
+                );
+                m_mesh_component_selection_tool = std::make_unique<Mesh_component_selection_tool>(
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_mesh_component_selection.get(),
+                    *m_tools.get()
+                );
+                m_lattice_tool = std::make_unique<Lattice_tool>(
+                    *m_commands.get(),
+                    m_app_context,
+                    *m_app_message_bus.get(),
+                    *m_tools.get()
+                );
+            }
+            ERHE_TASK_FOOTER(
+                .name("Group 2")
+                .succeed(imgui_renderer_task, imgui_windows_task, icon_set_task, tools_task, headset_task)
+            );
+
+#if defined(ERHE_PARALLEL_INIT)
+            std::string graph_dump = taskflow.dump();
+            erhe::file::write_file("erhe_init_graph.dot", graph_dump);
+
+            // Run the parallel-init taskflow with the editor's init cb
+            // already open (opened above before Init_status_display was
+            // constructed). Worker tasks record GPU work via
+            // m_app_context.current_command_buffer. Submission +
+            // wait_idle happens below.
+            //
+            // We poll Init_status_display::pump() on the main thread
+            // while the taskflow runs. set_line() from worker threads
+            // updates the line vector under a mutex and sets a dirty
+            // flag; pump() drains the flag here and runs SDL_PollEvent
+            // + xrBegin/EndFrame, neither of which is safe to call
+            // from worker threads.
+            //
+            // Pre-existing hazard: pump() can reseat
+            // m_app_context.current_command_buffer (when it ends +
+            // submits the init cb and opens a fresh one for a
+            // swapchain or XR frame). Workers that dereference the
+            // pointer concurrently with that reseat race on the
+            // pointer. In practice each worker grabs the pointer once
+            // at task entry under ERHE_GET_GL_CONTEXT (which holds
+            // the GL context lock), and pump() never reseats while a
+            // worker holds that lock; on Vulkan/Metal the workers
+            // each open their own cb so the reseat target is not
+            // shared. Tightening this would need an explicit quiesce
+            // around the reseat, which is out of scope for A3.
+            ERHE_VERIFY(m_app_context.current_command_buffer != nullptr);
+            {
+                tf::Future<void> taskflow_future = m_executor->run(taskflow);
+                using namespace std::chrono_literals;
+                while (taskflow_future.wait_for(16ms) != std::future_status::ready) {
+                    init_status_display.pump();
+                }
+                // get() rethrows any exception captured from worker
+                // threads, restoring the propagation that .wait()
+                // previously gave us into the surrounding catch.
+                taskflow_future.get();
+                init_status_display.pump();
+            }
+#endif
+        } catch (std::runtime_error& e) {
+            log_startup->error("exception: {}", e.what());
+            ERHE_FATAL("editor initialization failed");
+        }
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+        m_window->make_current();
+#endif
+        m_graphics_device->on_thread_enter();
+
+        ERHE_PROFILE_FUNCTION();
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+        ERHE_PROFILE_GPU_CONTEXT
+#endif
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        if (m_app_context.OpenXR) {
+            m_selection->setup_xr_bindings(*m_commands.get(), *m_headset_view.get());
+        }
+#endif
+
+        fill_app_context();
+
+        // Register Scene_builder's template palette brushes with the asset
+        // manager as builtin-scope assets ({builtin, brush, <name>}). The
+        // palette names are a persistence contract from here on (see the
+        // note in Scene_builder::make_brushes). The brushes were built
+        // synchronously in the Scene_builder constructor, so the palette is
+        // complete at this point.
+        {
+            const std::shared_ptr<Content_library>& palette_library = m_scene_builder->get_content_library();
+            if (palette_library && palette_library->brushes) {
+                for (const std::shared_ptr<Brush>& brush : palette_library->brushes->get_all<Brush>()) {
+                    m_asset_manager->register_builtin(Asset_type::brush, brush);
+                }
+            }
+        }
+
+        // Start MCP server (exposes editor commands over HTTP)
+        m_mcp_server = std::make_unique<Mcp_server>(*m_commands.get(), m_app_context);
+        m_mcp_server->start();
+
+        // Enforce the physics invariant on the single (config-owned) copy:
+        // dynamic simulation requires static collision world.
+        if (!m_editor_settings.physics.static_enable) {
+            m_editor_settings.physics.dynamic_enable = false;
+        }
+
+        m_hotbar->get_all_tools();
+        m_inventory_window->collect_tools();
+
+        // Notify ImGui renderer about current font settings
+        m_imgui_renderer->on_font_config_changed(m_app_settings.imgui);
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+        if (m_graphics_device->get_info().use_clip_control) {
+            gl::clip_control(gl::Clip_control_origin::lower_left, gl::Clip_control_depth::zero_to_one);
+        }
+        if (m_window->get_window_configuration().color_bit_depth <= 8) {
+            gl::enable(gl::Enable_cap::framebuffer_srgb);
+        }
+#endif
+
+        const std::shared_ptr<erhe::imgui::Window_imgui_host>& window_imgui_host = m_imgui_windows->get_window_imgui_host();
+        if (!m_app_context.OpenXR) {
+            window_imgui_host->set_begin_callback(
+                [this](erhe::imgui::Imgui_host& imgui_host) {
+                    m_app_windows->viewport_menu(imgui_host);
+                }
+            );
+            install_default_layout(*window_imgui_host, m_app_context);
+            window_imgui_host->set_status_bar_callback(
+                [this](erhe::imgui::Window_imgui_host&) {
+                    {
+                        // std::stringstream ss;
+                        // ss << fmt::format("{:.2f} ms", m_time->get_frame_time_average_ms());
+                        // const int running_async_ops = m_app_context.running_async_ops.load();
+                        // if (running_async_ops > 0) {
+                        //     ss << " " << running_async_ops << " running operations";
+                        // }
+                        // const int pending_async_ops = m_app_context.pending_async_ops.load();
+                        // if (pending_async_ops > 0) {
+                        //     if (running_async_ops > 0) {
+                        //         ss << ", ";
+                        //     }
+                        //     ss << pending_async_ops << " queued operations";
+                        // }
+                        // ImGui::TextUnformatted(ss.str().c_str());
+                        const float frame_ms = m_time->get_frame_time_average_ms();
+                        const int running_async_ops = m_app_context.running_async_ops.load();
+                        const int pending_async_ops = m_app_context.pending_async_ops.load();
+                        if (running_async_ops > 0 && pending_async_ops > 0) {
+                            ImGui::Text(
+                                "%.2f ms %d running operations, %d queued operations",
+                                frame_ms, running_async_ops, pending_async_ops
+                            );
+                        }
+                        else if (running_async_ops > 0) {
+                            ImGui::Text(
+                                "%.2f ms %d running operations",
+                                frame_ms, running_async_ops
+                            );
+                        }
+                        else if (pending_async_ops > 0) {
+                            ImGui::Text(
+                                "%.2f ms %d queued operations",
+                                frame_ms, pending_async_ops
+                            );
+                        } else {
+                            ImGui::Text("%.2f ms", frame_ms);
+                        }
+                        ImGui::SameLine();
+
+                        // Geogram operation progress (Remesh / atlas / ...).
+                        // m_geogram_progress is reused so this allocates no heap
+                        // in steady-state frames; returns false when idle.
+                        if (erhe::geometry::get_geogram_progress(m_geogram_progress)) {
+                            ImGui::Text("%s %u%%", m_geogram_progress.task_name.c_str(), m_geogram_progress.percent);
+                            ImGui::SameLine();
+                            ImGui::ProgressBar(
+                                static_cast<float>(m_geogram_progress.percent) / 100.0f,
+                                ImVec2{160.0f, 0.0f}
+                            );
+                            ImGui::SameLine();
+                        }
+                    }
+                    struct Input_record
+                    {
+                        bool shift              {false};
+                        bool alt                {false};
+                        bool control            {false};
+                        bool mouse_button_left  {false};
+                        bool mouse_button_right {false};
+                        bool mouse_button_middle{false};
+                        bool mouse_button_x1    {false};
+                        bool mouse_button_x2    {false};
+                        bool mouse_drag_left    {false};
+                        bool mouse_drag_right   {false};
+                        bool mouse_drag_middle  {false};
+                        bool mouse_drag_x1      {false};
+                        bool mouse_drag_x2      {false};
+                    };
+                    Input_record r{
+                        .shift               = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift),
+                        .alt                 = ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt),
+                        .control             = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl),
+                        .mouse_button_left   = ImGui::IsMouseDown(ImGuiMouseButton_Left),
+                        .mouse_button_right  = ImGui::IsMouseDown(ImGuiMouseButton_Right),
+                        .mouse_button_middle = ImGui::IsMouseDown(ImGuiMouseButton_Middle),
+                        .mouse_button_x1     = ImGui::IsMouseDown(3),
+                        .mouse_button_x2     = ImGui::IsMouseDown(4),
+                        .mouse_drag_left     = ImGui::IsMouseDragging(ImGuiMouseButton_Left),
+                        .mouse_drag_right    = ImGui::IsMouseDragging(ImGuiMouseButton_Right),
+                        .mouse_drag_middle   = ImGui::IsMouseDragging(ImGuiMouseButton_Middle),
+                        .mouse_drag_x1       = ImGui::IsMouseDragging(3),
+                        .mouse_drag_x2       = ImGui::IsMouseDragging(4)
+                    };
+                    if (r.shift) {
+                        ImGui::Button("Shift");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+                    if (r.alt) {
+                        ImGui::Button("Alt");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+                    if (r.control) {
+                        ImGui::Button("Control");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+                    if (r.mouse_drag_left) {
+                        m_icon_set->draw_icon(m_icon_set->icons.mouse_lmb_drag, glm::vec4{1.0f, 1.0f, 1.0f, 1.0}, m_icon_set->custom_icons);
+                        ImGui::Button("Dragging Left Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    } else if (r.mouse_button_left) {
+                        m_icon_set->draw_icon(m_icon_set->icons.mouse_lmb, glm::vec4{1.0f, 1.0f, 1.0f, 1.0}, m_icon_set->custom_icons);
+                        ImGui::Button("Pressing Left Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+
+                    if (r.mouse_drag_middle) {
+                        m_icon_set->draw_icon(m_icon_set->icons.mouse_mmb_drag, glm::vec4{1.0f, 1.0f, 1.0f, 1.0}, m_icon_set->custom_icons);
+                        ImGui::Button("Dragging Middle Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    } else if (r.mouse_button_middle) {
+                        m_icon_set->draw_icon(m_icon_set->icons.mouse_mmb, glm::vec4{1.0f, 1.0f, 1.0f, 1.0}, m_icon_set->custom_icons);
+                        ImGui::Button("Pressing Middle Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+
+                    if (r.mouse_drag_right) {
+                        m_icon_set->draw_icon(m_icon_set->icons.mouse_rmb_drag, glm::vec4{1.0f, 1.0f, 1.0f, 1.0}, m_icon_set->custom_icons);
+                        ImGui::Button("Dragging Right Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    } else if (r.mouse_button_right) {
+                        m_icon_set->draw_icon(m_icon_set->icons.mouse_rmb, glm::vec4{1.0f, 1.0f, 1.0f, 1.0}, m_icon_set->custom_icons);
+                        ImGui::Button("Pressing Right Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+                    if (r.mouse_drag_x1) {
+                        ImGui::Button("Dragging Extra-1 Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    } else if (r.mouse_button_x1) {
+                        ImGui::Button("Pressing Extra-1 Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+                    if (r.mouse_drag_x2) {
+                        ImGui::Button("Dragging Extra-2 Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    } else if (r.mouse_button_x2) {
+                        ImGui::Button("Extra-2 Mouse Button");
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+                }
+            );
+        }
+
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        if (m_app_context.OpenXR) {
+            // TODO Create windows directly to correct viewport?
+            // Move all imgui windows that have window viewport to hud viewport
+            const auto viewport = m_hud->get_rendertarget_imgui_viewport();
+            if (viewport) {
+                auto& windows = m_imgui_windows->get_windows();
+                for (auto window : windows) {
+                    if (window->get_imgui_host() == window_imgui_host.get()) {
+                        window->set_imgui_host(viewport.get());
+                    }
+                }
+            }
+        }
+#endif
+        m_tools->set_priority_tool(m_physics_tool.get());
+
+        // Attach the global tools to the first scene that is created (scene.create)
+        // or loaded. Subscribed here, after Hud/Hotbar/Headset_view are constructed
+        // and before run_startup_script() can publish Scene_created_message.
+        m_scene_created_subscription = m_app_message_bus->scene_created.subscribe(
+            [this](Scene_created_message& message) {
+                on_scene_created(message);
+            }
+        );
+        // Scene "Close" (Hierarchy window context menu). Queue-only: the
+        // teardown destroys ImGui windows, so it runs from the message bus
+        // pump in tick(), outside ImGui iteration.
+        m_close_scene_subscription = m_app_message_bus->close_scene.subscribe(
+            [this](Close_scene_message& message) {
+                on_close_scene(message);
+            }
+        );
+        m_items_removed_subscription = m_app_message_bus->items_removed.subscribe(
+            [this](Items_removed_message& message) {
+                on_items_removed(message);
+            }
+        );
+
+        // Run the startup command script while the init-time command
+        // buffer is still open. Several scripted commands (e.g.
+        // scene.add_cameras building the default Viewport_scene_view +
+        // Shadow_render_node, scene.add_* invoking Brush::make_instance)
+        // record GPU work during their try_call(), so they need a valid
+        // m_app_context.current_command_buffer. Item_insert_remove_operation
+        // execute happens later when Operation_stack::update() drains the
+        // queue on the first tick, which is fine -- by then the per-frame
+        // command buffer is open.
+        log_startup->info("Init: run_startup_script");
+        run_startup_script();
+        log_startup->info("Init: run_startup_script done");
+
+        // Drain the operation stack before prewarm. Startup script
+        // commands (scene.add_lights, scene.add_room, scene.add_cameras,
+        // scene.add_platonic_solids) queue Item_insert_remove_operation
+        // and Scene_builder_viewport_resources_operation; until they
+        // execute, the scene_root's light_layer / content layer / viewport
+        // / Shadow_render_node are all empty. compute_light_layer_partition
+        // would then see 0 lights, bucket_primitives would see 0 meshes,
+        // and get_all_shadow_nodes() would be empty -- prewarm would
+        // compile variants for a stripped-down scene and the first frame
+        // would compile-on-miss for every actual variant the runtime
+        // needs. Running update() here is normally a per-tick call; at
+        // init it is safe because current_command_buffer is the same
+        // init cb that the operations record GPU work into.
+        log_startup->info("Init: draining operation stack pre-prewarm");
+        m_operation_stack->update();
+
+        // Restore the viewport windows that were open in the previous run
+        // (recorded in the windows visibility config), regardless of scene
+        // state: viewport windows exist independent of scenes and show
+        // nothing until a scene binds into them. Runs after the startup
+        // script drain, so a viewport created by scene.create keeps its slot
+        // and only the remaining recorded slots are restored; a pending
+        // --scene load binds into a restored empty viewport later
+        // (try_repurpose_empty_viewport_window) instead of creating one.
+        m_viewport_scene_views->restore_persistent_viewport_windows();
+
+        // Drive the standard shader-variant cache from the same buckets
+        // the runtime forward path would build for the loaded scene +
+        // content library. Pulls glslang -> SPIR-V -> vkCreateShaderModule
+        // out of the first-frame budget; the trailing wait_idle below
+        // already covers any GPU work the prewarm enqueues.
+        log_startup->info("Init: prewarm shader variants");
+        if (init_status_display_ptr) {
+            init_status_display_ptr->set_line(1, "Prewarming shader variants");
+            init_status_display_ptr->pump();
+        }
+        prewarm_all(
+            m_app_context,
+            [&init_status_display_ptr](std::string_view scene_name) {
+                if (!init_status_display_ptr) {
+                    return;
+                }
+                init_status_display_ptr->set_line(2, scene_name);
+                init_status_display_ptr->pump();
+            }
+        );
+        if (init_status_display_ptr) {
+            init_status_display_ptr->set_line(1, "");
+            init_status_display_ptr->set_line(2, "");
+            init_status_display_ptr->pump();
+        }
+
+        // Close the init-time command buffer opened in the member init
+        // list (or reseated by Init_status_display::pump),
+        // submit, and block until the GPU has consumed every recorded
+        // upload + clear so the resources are ready for the main render
+        // loop.
+        ERHE_VERIFY(m_app_context.current_command_buffer != nullptr);
+        log_startup->info("Init: closing + submitting init command buffer");
+        m_app_context.current_command_buffer->end();
+        erhe::graphics::Command_buffer* init_cbs[] = { m_app_context.current_command_buffer };
+        m_graphics_device->submit_command_buffers(std::span<erhe::graphics::Command_buffer* const>{init_cbs});
+        log_startup->info("Init: waiting for GPU to finish init work");
+        m_graphics_device->wait_idle();
+        log_startup->info("Init: GPU idle reached");
+        m_app_context.current_command_buffer = nullptr;
+
+        // Advance the frame index so subsequent frames are paced on the
+        // device timeline.
+        const bool init_end_frame_ok = m_graphics_device->end_frame();
+        ERHE_VERIFY(init_end_frame_ok);
+        log_startup->info("Init: editor ready, entering main loop");
+
+        // Watch for a main-loop tick that spins / deadlocks and never returns;
+        // the watchdog logs the last breadcrumb so the stuck phase is known.
+        start_main_loop_watchdog();
+
+        m_last_window_width  = m_window->get_width();
+        m_last_window_height = m_window->get_height();
+
+        m_window->register_redraw_callback(
+            [this](){
+                if (!m_run_started || m_in_tick.load()) {
+                    return;
+                }
+                if (
+                    (m_last_window_width  != m_window->get_width ()) ||
+                    (m_last_window_height != m_window->get_height())
+                ) {
+                    m_request_resize_pending.store(true);
+                    m_last_window_width  = m_window->get_width();
+                    m_last_window_height = m_window->get_height();
+                }
+                // TODO throttle redraws - if last redraw was less than live resize redraw threshold limit ago, don't redraw
+                if ((m_last_window_width != 0) && (m_last_window_height != 0)) {
+                    tick();
+                }
+            }
+        );
+    }
+
+    ~Editor() noexcept
+    {
+        // Stop the watchdog first so it cannot touch members during teardown.
+        stop_main_loop_watchdog();
+
+        // Quiesce the GPU before tearing any part down. wait_idle() drives
+        // frame_completed() for every submitted frame and then drains any
+        // leftover completion handlers (e.g. an Id_renderer pixel read-back
+        // whose XR-submitted command buffer was never polled by a following
+        // frame at exit). Those handlers release the ring-buffer ranges held
+        // by Transfer_entry; running them here -- while Id_renderer and the
+        // other parts are still alive -- avoids both the
+        // ~Ring_buffer_range "not released / cancelled" assert and the
+        // use-after-free that would occur if the device destructor ran the
+        // same handlers after their owning parts were gone.
+        if (m_graphics_device) {
+            m_graphics_device->wait_idle();
+        }
+
+        // The imgui renderer retains a Texture_reference for every image drawn
+        // in the last frames, and those references can be Rendergraph_nodes
+        // owned elsewhere (Viewport_window draws a viewport by passing its
+        // rendergraph output node, which is the Viewport_scene_view itself
+        // when post processing is disabled). Imgui_renderer is declared before
+        // Rendergraph and Scene_views, so it is destroyed last and would drop
+        // the last reference - running ~Viewport_scene_view - after its owner
+        // is gone. Release them here, GPU idle and everything still alive.
+        if (m_imgui_renderer) {
+            m_imgui_renderer->release_texture_references();
+        }
+
+        // Wait for all async tasks to complete, then clear task handles
+        // and destroy the executor while m_mesh_memory is still alive.
+        // Without this, implicit member destruction destroys m_mesh_memory
+        // (line 1501) before m_item_task_guard (line 1471), and clearing
+        // the task handles cascades through shared_ptr drops to
+        // Free_list_allocator::free() on the already-destroyed allocator.
+        if (m_executor) {
+            m_executor->wait_for_all();
+        }
+        m_item_task_guard.clear();
+        // Commits the drained workers left behind own scene roots / shapes;
+        // drop them now, while mesh memory and scenes are still alive.
+        m_scene_commit_queue.clear();
+        erhe::raytrace::set_executor(nullptr);
+        m_executor.reset();
+
+        if (m_mcp_server) {
+            m_mcp_server->stop();
+            m_mcp_server.reset();
+        }
+        m_default_scene_browser.reset();
+        m_default_scene.reset();
+        m_default_content_library.reset();
+
+        // Tear the operation stack down ahead of Scene_builder so any
+        // pending or executed operations holding raw Scene_builder*
+        // (see Scene_builder_floor_resources_operation) are destroyed
+        // before the builder. Reverse-declaration order would put
+        // Scene_builder first (its declaration follows
+        // m_operation_stack), so we drop the operations explicitly.
+        m_operation_stack.reset();
+    }
+    void fill_app_context()
+    {
+        ERHE_PROFILE_FUNCTION();
+
+        m_app_context.executor                 = m_executor.get();
+        m_app_context.scene_commit_queue       = &m_scene_commit_queue;
+
+        m_app_context.commands                 = m_commands              .get();
+        m_app_context.graphics_device          = m_graphics_device       .get();
+        m_app_context.imgui_renderer           = m_imgui_renderer        .get();
+        m_app_context.imgui_windows            = m_imgui_windows         .get();
+#if defined(ERHE_PHYSICS_LIBRARY_JOLT) && defined(JPH_DEBUG_RENDERER)
+        m_app_context.jolt_debug_renderer      = m_jolt_debug_renderer   .get();
+#endif
+        m_app_context.debug_renderer           = m_debug_renderer        .get();
+        m_app_context.rendergraph              = m_rendergraph           .get();
+        m_app_context.text_renderer            = m_text_renderer         .get();
+        m_app_context.forward_renderer         = m_forward_renderer      .get();
+        m_app_context.shadow_renderer          = m_shadow_renderer       .get();
+        m_app_context.texel_renderer           = m_texel_renderer        .get();
+        m_app_context.shader_variant_cache     = m_shader_variant_cache  .get();
+        m_app_context.program_interface        = m_program_interface     .get();
+        m_app_context.context_window           = m_window                .get();
+        m_app_context.brdf_slice               = m_brdf_slice            .get();
+        m_app_context.brush_tool               = m_brush_tool            .get();
+        m_app_context.clipboard                = m_clipboard             .get();
+        m_app_context.clipboard_window         = m_clipboard_window      .get();
+        m_app_context.create                   = m_create                .get();
+        m_app_context.app_message_bus          = m_app_message_bus       .get();
+        m_app_context.app_rendering            = m_app_rendering         .get();
+        m_app_context.app_scenes               = m_app_scenes            .get();
+        m_app_context.asset_manager            = m_asset_manager         .get();
+        m_app_context.app_settings             = &m_app_settings;
+        m_app_context.developer_config         = &m_editor_settings.developer;
+        m_app_context.graphics_config          = &m_graphics_config;
+        m_app_context.mesh_memory_config       = &m_mesh_memory_config;
+        m_app_context.renderer_config          = &m_renderer_config;
+        m_app_context.text_renderer_config     = &m_text_renderer_config;
+        m_app_context.window_config            = &m_window_config;
+        m_app_context.editor_settings          = &m_editor_settings;
+        m_app_context.app_windows              = m_app_windows           .get();
+        m_app_context.editor_windows           = m_editor_windows        .get();
+        m_app_context.fly_camera_tool          = m_fly_camera_tool       .get();
+        m_app_context.geometry_graph_window    = m_geometry_graph_window .get();
+        m_app_context.rendergraph_window       = m_rendergraph_window    .get();
+        m_app_context.texture_graph_window     = m_texture_graph_window  .get();
+        m_app_context.navigation_gizmo_tool    = m_navigation_gizmo_tool .get();
+        m_app_context.grid_tool                = m_grid_tool             .get();
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        m_app_context.hand_tracker             = m_hand_tracker          .get();
+#endif
+        m_app_context.headset_view             = m_headset_view          .get();
+        m_app_context.hotbar                   = m_hotbar                .get();
+        m_app_context.hud                      = m_hud                   .get();
+        m_app_context.icon_set                 = m_icon_set              .get();
+        m_app_context.id_renderer              = m_id_renderer           .get();
+        m_app_context.input_state              = m_input_state           .get();
+        m_app_context.inventory_window         = m_inventory_window      .get();
+        m_app_context.lattice_tool             = m_lattice_tool          .get();
+        m_app_context.material_paint_tool      = m_material_paint_tool   .get();
+        m_app_context.material_preview         = m_material_preview      .get();
+        m_app_context.brush_preview            = m_brush_preview         .get();
+        m_app_context.mesh_memory              = m_mesh_memory           .get();
+        m_app_context.mesh_component_selection      = m_mesh_component_selection     .get();
+        m_app_context.mesh_component_selection_tool = m_mesh_component_selection_tool.get();
+        m_app_context.content_wide_line_renderer = m_content_wide_line_renderer.get();
+        m_app_context.move_tool                = m_move_tool             .get();
+        m_app_context.node_properties_window   = m_node_properties_window.get();
+        m_app_context.operation_stack          = m_operation_stack       .get();
+        m_app_context.operations               = m_operations            .get();
+        m_app_context.properties               = m_properties            .get();
+        m_app_context.paint_tool               = m_paint_tool            .get();
+        m_app_context.weight_paint_tool        = m_weight_paint_tool     .get();
+        m_app_context.physics_tool             = m_physics_tool          .get();
+        m_app_context.post_processing          = m_post_processing       .get();
+        m_app_context.prefab_library           = m_prefab_library        .get();
+        m_app_context.sky_renderer             = m_sky_renderer          .get();
+        m_app_context.ray_trace_renderer       = m_ray_trace_renderer    .get();
+        m_app_context.ddgi_renderer            = m_ddgi_renderer         .get();
+        // Probe overlay (debug_draw_probes): a Renderable, drawn with the
+        // other scene-view overlays.
+        if (m_app_rendering && m_ddgi_renderer) {
+            m_app_rendering->add(m_ddgi_renderer.get());
+        }
+        m_app_context.lightmap_baker           = m_lightmap_baker        .get();
+        m_app_context.lightmap_partitioner     = m_lightmap_partitioner  .get();
+        m_app_context.lightmap_report          = m_lightmap_report       .get();
+        m_app_context.lightmap_streamer        = m_lightmap_streamer     .get();
+        m_app_context.programs                 = m_programs              .get();
+        m_app_context.rotate_tool              = m_rotate_tool           .get();
+        m_app_context.scale_tool               = m_scale_tool            .get();
+        m_app_context.scene_builder            = m_scene_builder         .get();
+        m_app_context.scene_commands           = m_scene_commands        .get();
+        m_app_context.selection                = m_selection             .get();
+        m_app_context.selection_tool           = m_selection_tool        .get();
+        m_app_context.settings_window          = m_settings_window       .get();
+        m_app_context.sheet_window             = m_sheet_window          .get();
+        m_app_context.thumbnails               = m_thumbnails            .get();
+        m_app_context.time                     = m_time                  .get();
+        m_app_context.animation_player         = m_animation_player      .get();
+        m_app_context.animation_window         = m_animation_window      .get();
+        m_app_context.tools                    = m_tools                 .get();
+        m_app_context.transform_tool           = m_transform_tool        .get();
+        m_app_context.scene_views              = m_viewport_scene_views  .get();
+
+        // Subsystems whose live state lives outside Editor_settings_config
+        // provide collect callbacks; the store copies their state into the
+        // config before change detection / saving. Sections edited directly
+        // in the config struct (Settings window) need no callback.
+        m_app_settings.settings_store().register_collect_callback(
+            [this](Editor_settings_config& settings) {
+                m_grid_tool->write_config(settings.grid);
+            }
+        );
+        m_app_settings.settings_store().register_collect_callback(
+            [this](Editor_settings_config& settings) {
+                m_inventory_window->write_config(settings.inventory);
+            }
+        );
+    }
+
+    auto on_key_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        m_input_state->shift   = erhe::utility::test_bit_set(input_event.u.key_event.modifier_mask, erhe::window::Key_modifier_bit_shift);
+        m_input_state->control = erhe::utility::test_bit_set(input_event.u.key_event.modifier_mask, erhe::window::Key_modifier_bit_ctrl);
+        m_input_state->alt     = erhe::utility::test_bit_set(input_event.u.key_event.modifier_mask, erhe::window::Key_modifier_bit_menu);
+        return false;
+    }
+
+    std::optional<erhe::window::Input_event> m_window_resize_event{};
+    int               m_last_window_width     {0};
+    int               m_last_window_height    {0};
+    uint32_t          m_swapchain_width       {0};
+    uint32_t          m_swapchain_height      {0};
+    std::atomic<bool> m_request_resize_pending{false};
+
+    auto on_window_resize_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        m_window_resize_event = input_event;
+        return true;
+    }
+
+    auto on_window_scale_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        // Runtime DPI / display-scale change (e.g. window moved to a
+        // different-density external display). Update only the ImGui font
+        // scale; fonts rescale on demand (ImGui 1.92 dynamic font atlas), so
+        // no atlas rebuild is needed. Deliberately not apply_limits() - only
+        // scale_factor changes here. The framebuffer/swapchain side is driven
+        // separately by the paired SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED, which
+        // arrives as a window_resize_event.
+        const float new_scale = input_event.u.window_scale_event.scale;
+        if (new_scale != m_app_settings.imgui.scale_factor) {
+            m_app_settings.imgui.scale_factor = new_scale;
+            m_imgui_renderer->on_font_config_changed(m_app_settings.imgui);
+        }
+        return true;
+    }
+
+    auto on_window_close_event(const erhe::window::Input_event&) -> bool override
+    {
+        m_close_requested = true;
+        return true;
+    }
+    auto on_window_refresh_event(const erhe::window::Input_event&) -> bool override
+    {
+        // TODO
+        return true;
+    }
+
+    // Build the default scene: a Scene_root with the given name, registered into
+    // the editor scene list, given its content-library + browser windows, and handed
+    // to Scene_builder so scene.add_* can populate it. Invoked by the scene.create
+    // startup command. Publishing Scene_created_message attaches the global tools
+    // (Hud / Hotbar / OpenXR Headset_view) to this scene.
+    void create_default_scene(const std::string& name)
+    {
+        if (m_default_scene) {
+            log_startup->warn("scene.create: a scene already exists ('{}'); ignoring", m_default_scene->get_name());
+            return;
+        }
+        const bool enable_physics = m_editor_settings.physics.static_enable;
+        // The default scene gets its own content library, seeded exactly like
+        // Scene_commands::create_new_scene: brushes copied from the
+        // Scene_builder template library (per-scene Brush items, shared
+        // payload) plus fresh default materials. The template library itself
+        // (m_default_content_library) is never owned by any scene - scenes
+        // own their library items (item host = the Scene_root), and an item
+        // is a member of exactly one library.
+        std::shared_ptr<Content_library> content_library = std::make_shared<Content_library>();
+        if (m_default_content_library && m_default_content_library->brushes && content_library->brushes) {
+            std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_default_content_library->mutex};
+            copy_content_library_folder(*m_default_content_library->brushes, *content_library->brushes);
+        }
+        add_default_materials(*content_library.get());
+        add_default_physics_materials(*content_library.get());
+        const Draw_list_scene_dependencies draw_list_dependencies = make_draw_list_scene_dependencies(m_app_context);
+        m_default_scene = std::make_shared<Scene_root>(
+            m_app_message_bus.get(),
+            content_library,
+            name,
+            enable_physics,
+            &draw_list_dependencies
+        );
+        // A from-scratch scene has no source path, so its tile-set
+        // directory is the shared untitled.lightmap/ - whatever a previous
+        // unsaved scene left there is foreign to this one (mismatched
+        // manifests / payload sizes error into the log and stale tiles
+        // stream in). Start clean.
+        {
+            const std::filesystem::path directory = Lightmap_tile_io::directory_for_scene(m_default_scene->get_source_path());
+            std::string error;
+            const int removed = Lightmap_tile_io::delete_tile_set(directory, &error);
+            if (removed > 0) {
+                log_startup->info("scene.create: removed {} stale lightmap tile files from {}", removed, directory.string());
+            } else if (removed < 0) {
+                log_startup->warn("scene.create: could not clear stale lightmap tiles: {}", error);
+            }
+        }
+        m_default_scene->register_to_editor_scenes(*m_app_scenes);
+        // The content library is shown nested under the Scene row in the Hierarchy
+        // window (#240); the standalone Content Library window was removed (#241).
+        m_default_scene_browser = m_default_scene->make_browser_window(
+            *m_imgui_renderer.get(), *m_imgui_windows.get(), m_app_context, m_app_settings
+        );
+        m_scene_builder->set_scene_root(m_default_scene);
+        m_app_message_bus->scene_created.send_message(Scene_created_message{m_default_scene});
+    }
+
+    // Attach the global tools to the FIRST scene that is created (scene.create) or
+    // loaded. Subsequent scenes do not re-home the tools.
+    void on_scene_created(Scene_created_message& message)
+    {
+        if (m_tools_attached_to_scene || !message.scene_root) {
+            return;
+        }
+        m_tools_attached_to_scene = true;
+        m_tools_scene_root = message.scene_root;
+        if (m_hud) {
+            m_hud->attach_to_scene(message.scene_root);
+        }
+        if (m_hotbar) {
+            m_hotbar->attach_to_scene(message.scene_root);
+        }
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        if (m_app_context.OpenXR && m_headset_view) {
+            m_headset_view->attach_to_scene(message.scene_root, *m_mesh_memory.get());
+        }
+#endif
+    }
+
+    // Close a scene (Hierarchy window Scene row "Close" context menu entry).
+    // Runs from the message bus pump, outside ImGui iteration, because it
+    // destroys ImGui windows (the scene's viewports and browser window).
+    // Applies the two visitors to the primary graph editor windows and to
+    // every extra "Open Editor" window. Both the scene-close teardown and the
+    // item-removal cleanup below have to reach the same set.
+    template <typename Geometry_visitor, typename Texture_visitor>
+    void for_each_graph_window(Geometry_visitor&& geometry_visitor, Texture_visitor&& texture_visitor)
+    {
+        geometry_visitor(*m_geometry_graph_window.get());
+        texture_visitor (*m_texture_graph_window.get());
+        for (const std::shared_ptr<Geometry_graph_window>& window : m_editor_windows->get_extra_geometry_graph_windows()) {
+            geometry_visitor(*window.get());
+        }
+        for (const std::shared_ptr<Texture_graph_window>& window : m_editor_windows->get_extra_texture_graph_windows()) {
+            texture_visitor(*window.get());
+        }
+    }
+
+    // Content taken out of the editor without a scene closing - undo of a
+    // glTF import, a node delete, a scene leaving the registry. Parts that
+    // cache their own references subscribe themselves; this handles the
+    // references Editor owns (doc/import-undo-reference-clearing.md).
+    void on_items_removed(Items_removed_message& message)
+    {
+        const Removed_items& removed = *message.removed.get();
+
+        // The window's resolved shared_ptr is what keeps the asset alive, so
+        // the weak target never expires on its own.
+        for_each_graph_window(
+            [&removed](Geometry_graph_window& window) {
+                const std::shared_ptr<Graph_mesh> target = window.get_target();
+                if (target && removed.lookup.contains(target.get())) {
+                    window.set_target({});
+                }
+            },
+            [&removed](Texture_graph_window& window) {
+                const std::shared_ptr<Graph_texture> target = window.get_target();
+                if (target && removed.lookup.contains(target.get())) {
+                    window.set_target({});
+                }
+            }
+        );
+
+        // Selection prunes itself (and its last-selected map) - see
+        // Selection::on_items_removed.
+    }
+
+    void on_close_scene(Close_scene_message& message)
+    {
+        const std::shared_ptr<Scene_root>& scene_root = message.scene_root;
+        if (!scene_root) {
+            return;
+        }
+
+        const bool is_tools_scene = m_tools_attached_to_scene && (m_tools_scene_root.lock() == scene_root);
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        if (is_tools_scene && m_app_context.OpenXR) {
+            // Headset_view scene content has no detach path yet; refuse rather
+            // than leave the headset rendering a dead scene.
+            log_scene->warn("Cannot close scene '{}': the OpenXR headset view is homed in it", scene_root->get_name());
+            return;
+        }
+#endif
+
+        // Drop selected items hosted by this scene (including the Scene item,
+        // whose host is also this scene_root) so the selection does not keep
+        // dead-scene items alive or feed them to tools. Other scenes'
+        // selections are untouched.
+        m_selection->clear_selection(static_cast<erhe::Item_host*>(scene_root.get()));
+
+        // The lightmap partitioner stores shared_ptrs to this scene's meshes
+        // and piece nodes; drop them so the closed scene's content is released.
+        if (m_lightmap_partitioner) {
+            m_lightmap_partitioner->on_scene_closed(scene_root.get());
+        }
+
+        // Stop tracking this scene as the active scene; consumers fall back
+        // via Selection::get_active_scene_root() until another scene is
+        // activated by selection or window focus.
+        if (m_selection->get_active_scene_root() == scene_root) {
+            m_selection->set_active_scene_root({});
+        }
+
+        // Detach the global tools when they are homed in this scene; they
+        // re-home to another scene below (or to the next created scene).
+        if (is_tools_scene) {
+            if (m_hud) {
+                m_hud->detach_from_scene();
+            }
+            if (m_hotbar) {
+                m_hotbar->detach_from_scene();
+            }
+            m_tools_attached_to_scene = false;
+            m_tools_scene_root.reset();
+        }
+
+        // Recorded undo/redo operations hold shared_ptrs to scene content and
+        // viewport resources (e.g. Scene_builder_viewport_resources_operation
+        // owns the startup viewport): they would keep the closed scene's
+        // objects alive and its viewport rendergraph nodes registered -- and
+        // executing against the torn-down scene every frame. Drop the history.
+        m_operation_stack->clear_history();
+
+        // The lightmap bake working set holds a BLAS per traced mesh - each
+        // pinning its Primitive and the GPU ranges behind it - plus the
+        // G-buffer and accumulation targets. Pause semantics keep all of that
+        // on a plain disable so a resume continues where it left off, but a
+        // closed scene is never resumed (doc/reloadable-asset-loads.md).
+        if (m_lightmap_baker) {
+            m_lightmap_baker->release_working_set();
+        }
+
+        // Graph editor windows (the primaries and the "Open Editor" extras)
+        // may be editing a Graph_mesh / Graph_texture asset owned by this
+        // scene's content library. The target weak_ptr does not expire on
+        // its own here - the window's resolved shared_ptr keeps the asset
+        // alive - so clear it explicitly, or the window keeps showing (and
+        // editing) content of the closed scene.
+        //
+        // Part-owned close cleanup (tool state, caches) is NOT here: parts
+        // subscribe to close_scene themselves and drop their own hosted
+        // references (Brush_tool, Material_paint_tool, Material_preview,
+        // Brdf_slice, Physics_tool, Operations, Animation_player /
+        // Animation_window; see AGENTS.md "Scene-hosted references").
+        {
+            erhe::Item_host* const closing_host = static_cast<erhe::Item_host*>(scene_root.get());
+            for_each_graph_window(
+                [closing_host](Geometry_graph_window& window) {
+                    const std::shared_ptr<Graph_mesh> target = window.get_target();
+                    if (target && (target->get_item_host() == closing_host)) {
+                        window.set_target({});
+                    }
+                },
+                [closing_host](Texture_graph_window& window) {
+                    const std::shared_ptr<Graph_texture> target = window.get_target();
+                    if (target && (target->get_item_host() == closing_host)) {
+                        window.set_target({});
+                    }
+                }
+            );
+        }
+
+        // Viewport windows are not destroyed with the scene: they exist
+        // independent of scenes (their open state persists in the windows
+        // visibility config). Unbind them instead -- they stay open, empty,
+        // until another scene binds into them.
+        m_viewport_scene_views->unbind_views_from_scene(scene_root);
+        scene_root->remove_browser_window();
+        scene_root->unregister_from_editor_scenes(*m_app_scenes);
+
+        if (m_default_scene == scene_root) {
+            m_default_scene_browser.reset();
+            m_default_scene.reset();
+        }
+        // Scene_builder targets this scene for the scene.add_* commands; drop
+        // the reference so they do not build into a closed scene (same state
+        // as a --no-scene start before any scene.create).
+        if (m_scene_builder && (m_scene_builder->get_scene_root() == scene_root)) {
+            m_scene_builder->set_scene_root(std::shared_ptr<Scene_root>{});
+        }
+
+        // Re-home the tools to the first remaining scene, when one exists;
+        // otherwise the next Scene_created_message re-attaches them.
+        if (is_tools_scene) {
+            const std::vector<std::shared_ptr<Scene_root>>& remaining = m_app_scenes->get_scene_roots();
+            if (!remaining.empty()) {
+                m_app_message_bus->scene_created.send_message(Scene_created_message{remaining.front()});
+            }
+        }
+
+        // Queue the scene for the scene-close leak watchdog. The watch itself
+        // is armed in update_scene_close_leak_watches(), which runs after the
+        // message bus pump in tick(): by then EVERY close_scene subscriber
+        // (this handler plus the per-part cleanup subscriptions) has run,
+        // regardless of subscription order, so content the cleanup
+        // legitimately re-homed (e.g. HUD / Hotbar nodes detached from a
+        // tools scene) is never tracked. The shared_ptr keeps the scene alive
+        // until the arming collects its weak references.
+        m_scene_roots_pending_close_watch.push_back(scene_root);
+
+        log_scene->info("Closed scene '{}'", scene_root->get_name());
+    }
+
+    // Scene-close leak watchdog. Called from tick() after the message bus
+    // pump. First arms watches for scenes whose close was handled this frame
+    // (queued by on_close_scene): collects weak references to the closed
+    // scene's content (the scene root, its nodes, its owned content-library
+    // items). Because arming runs after the pump, every close_scene
+    // subscriber's cleanup has already run and re-homed content is never
+    // tracked. Then checks armed watches a fixed frame count after the
+    // close, so legitimately deferred releases (an in-flight background
+    // graph evaluation holding its target, queued ImGui window teardown)
+    // have drained; warns - does not abort - because rare legitimate
+    // survivors exist (e.g. a prefab template whose instances in other
+    // scenes keep resources alive). Anything reported is an instance of the
+    // scene-close bug class: a subsystem cached a shared_ptr to scene-hosted
+    // content and did not enroll in close cleanup (see AGENTS.md
+    // "Scene-hosted references in editor parts"). Items intentionally kept
+    // alive by inventory / hotbar slots (persistent inventory) are reported
+    // as info, not warnings.
+    void update_scene_close_leak_watches()
+    {
+        std::vector<std::uint64_t> courtesy_unload_records;
+        for (const std::shared_ptr<Scene_root>& scene_root : m_scene_roots_pending_close_watch) {
+            Scene_close_leak_watch watch;
+            watch.scene_name       = scene_root->get_name();
+            watch.frames_remaining = k_scene_close_leak_check_frames;
+            watch.scene_root       = scene_root;
+            const std::shared_ptr<Content_library> library = scene_root->get_content_library();
+            if (library && library->root) {
+                library->root->for_each<Content_library_node>(
+                    [&watch](const Content_library_node& node) -> bool {
+                        // Reference entries list items owned by another
+                        // scene's library; only owned items must die with
+                        // this scene.
+                        if (node.item && !node.is_reference) {
+                            watch.items.emplace_back(node.item);
+                        }
+                        return true;
+                    }
+                );
+            }
+            scene_root->get_scene().for_each_node(
+                [&watch](const std::shared_ptr<erhe::scene::Node>& node) {
+                    watch.items.emplace_back(node);
+                    return true;
+                }
+            );
+            m_scene_close_leak_watches.push_back(std::move(watch));
+
+            // R5.6: sever the record's scene identity while the Scene_root
+            // is still alive (the pointers must not dangle past the clear()
+            // below) and queue the courtesy unload (plan resolution 4).
+            if (m_asset_manager) {
+                const std::uint64_t record_id = m_asset_manager->detach_scene_record(scene_root.get());
+                if (record_id != 0) {
+                    courtesy_unload_records.push_back(record_id);
+                }
+            }
+        }
+        // In the clean case this destroys the Scene_root: the content
+        // library's nodes release their entry userships here, so the
+        // courtesy unload below sees only EXTERNAL users.
+        m_scene_roots_pending_close_watch.clear();
+        // Courtesy unload (R5.6, plan resolution 4): success means closing a
+        // scene frees its assets (memory behavior matches the pre-flip
+        // library ownership); refusal (slots, other scenes' reference
+        // entries, debug holds) is normal and keeps the container loaded -
+        // its assets then report below as manager-pinned info, not leaks.
+        for (const std::uint64_t record_id : courtesy_unload_records) {
+            m_asset_manager->courtesy_unload_container(record_id);
+        }
+
+        for (std::size_t i = 0; i < m_scene_close_leak_watches.size(); ) {
+            Scene_close_leak_watch& watch = m_scene_close_leak_watches[i];
+            --watch.frames_remaining;
+            if (watch.frames_remaining > 0) {
+                ++i;
+                continue;
+            }
+            // Items intentionally pinned by the clipboard: copied content
+            // (and what it transitively holds, e.g. mesh materials) stays
+            // alive so paste-after-source-scene-close works.
+            std::unordered_set<const erhe::Item_base*> clipboard_pinned_items;
+            if (m_app_context.clipboard != nullptr) {
+                m_app_context.clipboard->collect_pinned_items(clipboard_pinned_items);
+            }
+            constexpr std::size_t max_reported = 16;
+            std::size_t survivor_count = 0;
+            std::size_t pinned_count   = 0;
+            std::size_t rehomed_count  = 0;
+            const std::shared_ptr<Scene_root> pinned_scene_root = watch.scene_root.lock();
+            if (pinned_scene_root) {
+                ++survivor_count;
+                log_scene->warn(
+                    "scene-close leak: Scene_root '{}' is still alive {} frames after close",
+                    watch.scene_name, k_scene_close_leak_check_frames
+                );
+            }
+            for (const std::weak_ptr<erhe::Item_base>& weak_item : watch.items) {
+                const std::shared_ptr<erhe::Item_base> item = weak_item.lock();
+                if (!item) {
+                    continue;
+                }
+                // Items the asset manager keeps alive intentionally: a
+                // manager-owned strong reference (builtin, loaded container,
+                // a surviving scene record after a refused courtesy unload -
+                // including its materials' record-transitive texture pins)
+                // or a declared usership (slots, tools, debug holds). The
+                // R2-era slot whitelist is gone: the surviving record's
+                // strong entries cover the former transitive pins.
+                if (m_asset_manager && m_asset_manager->is_pinned(item.get())) {
+                    ++pinned_count;
+                    log_scene->info(
+                        "scene-close check: {} '{}' of closed scene '{}' intentionally pinned by the asset manager",
+                        item->get_type_name(), item->get_name(), watch.scene_name
+                    );
+                    continue;
+                }
+                if (clipboard_pinned_items.contains(item.get())) {
+                    ++pinned_count;
+                    log_scene->info(
+                        "scene-close check: {} '{}' of closed scene '{}' intentionally pinned by the clipboard",
+                        item->get_type_name(), item->get_name(), watch.scene_name
+                    );
+                    continue;
+                }
+                // An item hosted by a REGISTERED live scene at check time was
+                // re-homed after the close (e.g. a clipboard paste explicitly
+                // re-registered a material into another scene): it is owned
+                // content of that scene now, not a leak of the closed one.
+                {
+                    erhe::Item_host* const item_host = item->get_item_host();
+                    if ((item_host != nullptr) && m_app_scenes->is_host_registered(item_host)) {
+                        ++rehomed_count;
+                        log_scene->info(
+                            "scene-close check: {} '{}' of closed scene '{}' re-homed into live scene host '{}'",
+                            item->get_type_name(), item->get_name(), watch.scene_name, item_host->get_host_name()
+                        );
+                        continue;
+                    }
+                }
+                ++survivor_count;
+                if (survivor_count <= max_reported) {
+                    // use_count - 1 excludes the lock above: the number of
+                    // strong references actually pinning the item.
+                    log_scene->warn(
+                        "scene-close leak: {} '{}' of closed scene '{}' is still alive {} frames after close ({} holder(s))",
+                        item->get_type_name(), item->get_name(), watch.scene_name, k_scene_close_leak_check_frames, item.use_count() - 1
+                    );
+                }
+            }
+            if (survivor_count > max_reported) {
+                log_scene->warn(
+                    "scene-close leak: ... and {} more surviving items of closed scene '{}'",
+                    survivor_count - max_reported, watch.scene_name
+                );
+            }
+            if (survivor_count == 0) {
+                log_scene->info(
+                    "scene-close check: all {} tracked items of closed scene '{}' released ({} intentionally pinned)",
+                    watch.items.size(), watch.scene_name, pinned_count
+                );
+            }
+            m_scene_close_leak_watches.erase(m_scene_close_leak_watches.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+    }
+
+    void run_startup_script()
+    {
+        ERHE_PROFILE_FUNCTION();
+
+        // --no-scene: start with an empty editor -- do not procedurally build the
+        // default scene and do not load any scene. Takes precedence over --scene.
+        if (m_no_startup_scene) {
+            log_startup->info("Starting with no scene (--no-scene); skipping procedural startup script and scene load");
+            return;
+        }
+
+        // --scene <file>: load a saved scene file (.glb / .gltf) on startup
+        // instead of procedurally building the default scene. Uses the same
+        // queued load path as File > Load Scene / the scene.load_scene command; the
+        // load runs once the main loop starts pumping the message bus, and the
+        // resulting Scene_created_message homes the global tools (Hud / Hotbar /
+        // Headset_view) onto it. Takes precedence over the commands.json script.
+        if (!m_startup_scene_path.empty()) {
+            log_startup->info("Loading startup scene '{}' (--scene); skipping procedural startup script", m_startup_scene_path);
+            m_app_message_bus->load_scene_file.queue_message(
+                Load_scene_file_message{ .path = std::filesystem::path{m_startup_scene_path} }
+            );
+            return;
+        }
+
+        // On OpenXR, prefer config/editor/openxr_commands.json (a smaller room
+        // sized for room-scale passthrough) when the caller did not override
+        // --commands. Mirrors the openxr_windows.json / graphics_presets_openxr.json
+        // variants. A missing OpenXR script falls back to the default commands.json.
+        std::string                commands_path = m_startup_commands_path;
+        std::optional<std::string> file_content;
+        if (m_editor_settings.headset.openxr && (commands_path == "config/editor/commands.json")) {
+            const std::string openxr_commands_path = "config/editor/openxr_commands.json";
+            file_content = erhe::file::read("commands script", openxr_commands_path);
+            if (file_content.has_value()) {
+                commands_path = openxr_commands_path;
+                log_startup->info("Using OpenXR startup commands script '{}'", commands_path);
+            }
+        }
+        if (!file_content.has_value()) {
+            file_content = erhe::file::read("commands script", commands_path);
+        }
+        if (!file_content.has_value()) {
+            log_startup->info("startup commands script '{}' not found; skipping startup script", commands_path);
+            return;
+        }
+
+        simdjson::ondemand::parser parser;
+        simdjson::padded_string padded{file_content.value()};
+        simdjson::ondemand::document doc;
+        simdjson::error_code error = parser.iterate(padded).get(doc);
+        if (error != simdjson::SUCCESS) {
+            log_startup->error("commands.json: failed to parse JSON: {}", simdjson::error_message(error));
+            return;
+        }
+
+        simdjson::ondemand::object root;
+        error = doc.get_object().get(root);
+        if (error != simdjson::SUCCESS) {
+            log_startup->error("commands.json: top-level value is not an object");
+            return;
+        }
+
+        simdjson::ondemand::array commands_array;
+        error = root["commands"].get_array().get(commands_array);
+        if (error != simdjson::SUCCESS) {
+            log_startup->info("commands.json: no 'commands' array; skipping startup script");
+            return;
+        }
+
+        Scene_commands& sc = *m_app_context.scene_commands;
+
+        log_startup->info("commands.json: running startup script");
+
+        // Ondemand parses lazily: parser.iterate() above does NOT validate the
+        // whole document, so a syntax error later in the file (e.g. a missing
+        // comma between command objects) surfaces here during iteration. Take
+        // each element as a simdjson_result and check it - the implicit
+        // value conversion of a plain range-for THROWS on error - and keep a
+        // catch as backstop for anything the element processing itself throws.
+        try {
+        for (simdjson::simdjson_result<simdjson::ondemand::value> element_result : commands_array) {
+            simdjson::ondemand::value element;
+            const simdjson::error_code element_error = element_result.get(element);
+            if (element_error != simdjson::SUCCESS) {
+                log_startup->error(
+                    "commands script '{}': malformed JSON in 'commands' array: {} - remaining commands skipped",
+                    commands_path, simdjson::error_message(element_error)
+                );
+                break; // the document iterator is not usable past a parse error
+            }
+            std::string                name;
+            bool                       has_args{false};
+            simdjson::ondemand::object args_obj;
+
+            simdjson::ondemand::json_type type;
+            if (element.type().get(type) != simdjson::SUCCESS) {
+                log_startup->warn("commands.json: malformed array element (type lookup failed)");
+                continue;
+            }
+
+            if (type == simdjson::ondemand::json_type::string) {
+                std::string_view sv;
+                if (element.get_string().get(sv) == simdjson::SUCCESS) {
+                    name = std::string{sv};
+                }
+            } else if (type == simdjson::ondemand::json_type::object) {
+                simdjson::ondemand::object obj;
+                if (element.get_object().get(obj) != simdjson::SUCCESS) {
+                    log_startup->warn("commands.json: malformed object entry");
+                    continue;
+                }
+                std::string_view name_sv;
+                // simdjson ondemand only supports in-document-order key
+                // access via operator[]; if the JSON entry has "args"
+                // before "name", a second operator[]("name") after
+                // operator[]("args") would fail. find_field_unordered
+                // restarts from the object's first key, so the access
+                // order of "name" and "args" no longer matters.
+                if (obj.find_field_unordered("name").get_string().get(name_sv) != simdjson::SUCCESS) {
+                    log_startup->warn("commands.json: object entry missing 'name' field");
+                    continue;
+                }
+                name = std::string{name_sv};
+                if (obj.find_field_unordered("args").get_object().get(args_obj) == simdjson::SUCCESS) {
+                    has_args = true;
+                }
+            } else {
+                log_startup->warn("commands.json: unexpected array element type");
+                continue;
+            }
+
+            if (name.empty()) {
+                log_startup->warn("commands.json: empty command name");
+                continue;
+            }
+
+            // scene.create builds the (previously always-on) default scene: a
+            // Scene_root with the given name, registered and given its content-library
+            // and browser windows, and handed to Scene_builder so the scene.add_*
+            // commands can populate it. Put it FIRST in commands.json, before the
+            // add_* steps. Omitting it -- e.g. a load-only commands.json -- leaves no
+            // default scene, so only a loaded scene exists. Handled directly (not via
+            // the command registry) because it is editor-level scene lifecycle, not a
+            // Scene_commands building step.
+            if (name == "scene.create") {
+                std::string scene_name = "Default Scene";
+                if (has_args) {
+                    std::string_view name_sv;
+                    if (args_obj.find_field_unordered("name").get_string().get(name_sv) == simdjson::SUCCESS) {
+                        scene_name = std::string{name_sv};
+                    }
+                }
+                log_startup->info("commands.json: scene.create '{}'", scene_name);
+                create_default_scene(scene_name);
+                continue;
+            }
+
+            // scene.load_scene loads a saved scene file (path given in args)
+            // instead of building a scene procedurally, so a commands.json can
+            // replace the scene.add_* building steps with a single load. It is
+            // handled here directly rather than through the command registry
+            // because loading is a queued file action -- it reuses the exact same
+            // path as File > Open Scene (Load_scene_file_message -> editor::load_scene
+            // plus content-library / browser / viewport window setup) -- not a
+            // Scene_commands building step. The queued message is delivered once the
+            // main loop starts pumping the message bus.
+            if (name == "scene.load_scene") {
+                std::string_view path_sv;
+                if (has_args && (args_obj.find_field_unordered("path").get_string().get(path_sv) == simdjson::SUCCESS)) {
+                    std::filesystem::path path{std::string{path_sv}};
+                    log_startup->info("commands.json: scene.load_scene '{}'", path.string());
+                    m_app_message_bus->load_scene_file.queue_message(
+                        Load_scene_file_message{ .path = path }
+                    );
+                } else {
+                    log_startup->warn("commands.json: scene.load_scene requires a string 'args.path'");
+                }
+                continue;
+            }
+
+            erhe::commands::Command* command = m_commands->find_command(name);
+            if (command == nullptr) {
+                log_startup->warn("commands.json: unknown command '{}'", name);
+                continue;
+            }
+
+            // Dispatch args by command name. The five scene.add_* mesh
+            // commands take Make_mesh_args; scene.add_lights takes
+            // Add_lights_args; everything else takes none.
+            const bool is_mesh_command =
+                (name == "scene.add_platonic_solids") ||
+                (name == "scene.add_johnson_solids")  ||
+                (name == "scene.add_curved_shapes")   ||
+                (name == "scene.add_chain")           ||
+                (name == "scene.add_toruses");
+
+            // The scene.add_* commands populate the default scene through
+            // Scene_builder, which only has a scene_root after scene.create. Skip
+            // them with a clear warning otherwise, so a malformed commands.json
+            // (add before create, or a load-only script) cannot crash.
+            const bool needs_scene =
+                is_mesh_command ||
+                (name == "scene.add_cameras") ||
+                (name == "scene.add_lights")  ||
+                (name == "scene.add_room");
+            if (needs_scene && !m_default_scene) {
+                log_startup->warn("commands.json: '{}' needs a scene; run scene.create first (skipping)", name);
+                continue;
+            }
+
+            if (is_mesh_command) {
+                Make_mesh_args args{};
+                if (has_args) {
+                    deserialize(args_obj, args);
+                }
+                if      (name == "scene.add_platonic_solids") sc.get_add_platonic_solids_command().apply_args(args);
+                else if (name == "scene.add_johnson_solids")  sc.get_add_johnson_solids_command ().apply_args(args);
+                else if (name == "scene.add_curved_shapes")   sc.get_add_curved_shapes_command  ().apply_args(args);
+                else if (name == "scene.add_chain")           sc.get_add_chain_command          ().apply_args(args);
+                else if (name == "scene.add_toruses")         sc.get_add_toruses_command        ().apply_args(args);
+            } else if (name == "scene.add_cameras") {
+                Add_cameras_args args{};
+                if (has_args) {
+                    deserialize(args_obj, args);
+                }
+                sc.get_add_cameras_command().apply_args(args);
+            } else if (name == "scene.add_lights") {
+                Add_lights_args args{};
+                if (has_args) {
+                    deserialize(args_obj, args);
+                }
+                sc.get_add_lights_command().apply_args(args);
+            } else if (name == "scene.add_room") {
+                Add_room_args args{};
+                if (has_args) {
+                    deserialize(args_obj, args);
+                }
+                sc.get_add_room_command().apply_args(args);
+            } else if (has_args) {
+                log_startup->warn("commands.json: command '{}' does not accept args; ignoring args block", name);
+            }
+
+            log_startup->info("commands.json: invoking '{}'", name);
+            const bool ok = command->try_call();
+            if (!ok) {
+                log_startup->warn("commands.json: command '{}' returned false", name);
+            } else {
+                log_startup->info("commands.json: '{}' returned ok", name);
+            }
+        }
+        } catch (const simdjson::simdjson_error& e) {
+            log_startup->error(
+                "commands script '{}': JSON error while running startup script: {} - remaining commands skipped",
+                commands_path, e.what()
+            );
+        }
+
+        log_startup->info("commands.json: startup script complete");
+    }
+
+    void run()
+    {
+        ERHE_PROFILE_FUNCTION();
+
+        m_run_started = true;
+        // TODO: https://registry.khronos.org/OpenGL/extensions/NV/GLX_NV_delay_before_swap.txt
+        // Also:
+        //  - Measure time since first swapbuffers
+        //  - Count number of swapbuffers
+        //  - Wait to avoid presenting frames faster than display refreshrate
+        while (!m_close_requested) {
+            // Classify window activity for power saving and derive the
+            // poll_events wait timeout. While unfocused or not visible we block
+            // on events with a timeout instead of busy-spinning, which caps the
+            // frame rate and yields the CPU. OpenXR drives its own pacing (the
+            // desktop window is only a mirror), so never throttle under OpenXR.
+            float wait_time = 0.0f;
+            m_frame_activity = Frame_activity::active;
+            if (!m_app_context.OpenXR && m_window->is_session_locked()) {
+                // Session locked: presents cannot reach the display at all.
+                // Pause presentation deliberately instead of waiting for the
+                // swapchain to react to errors (with present timing active
+                // the per-swapchain timing queue stops draining and
+                // vkQueuePresentKHR is eventually rejected with
+                // VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT; observed live on a
+                // locked session). Resumes by itself on unlock - the state
+                // is polled, so no unlock event needs to arrive.
+                m_frame_activity = Frame_activity::hidden;
+                const int fps = (m_app_context.hidden_fps > 0) ? m_app_context.hidden_fps : 1;
+                wait_time = 1.0f / static_cast<float>(fps);
+            } else if (!m_app_context.OpenXR && m_window->is_fullscreen() && !m_window->is_focused()) {
+                // Fullscreen without input focus (alt-tabbed away): treat as
+                // hidden REGARDLESS of power_save. An exclusive-fullscreen
+                // swapchain cannot reach the display in this state; presenting
+                // into it stops draining present-timing feedback until the
+                // timing queue fills and vkQueuePresentKHR dies with
+                // VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT (observed live on
+                // alt-tab). Skipping rendering also releases the GPU to the
+                // foreground application.
+                m_frame_activity = Frame_activity::hidden;
+                const int fps = (m_app_context.hidden_fps > 0) ? m_app_context.hidden_fps : 1;
+                wait_time = 1.0f / static_cast<float>(fps);
+            } else if (m_app_context.power_save && !m_app_context.OpenXR) {
+                if (!m_window->is_visible()) {
+                    m_frame_activity = Frame_activity::hidden;
+                    const int fps = (m_app_context.hidden_fps > 0) ? m_app_context.hidden_fps : 1;
+                    wait_time = 1.0f / static_cast<float>(fps);
+                } else if (!m_window->is_focused()) {
+                    m_frame_activity = Frame_activity::unfocused;
+                    const int fps = (m_app_context.unfocused_fps > 0) ? m_app_context.unfocused_fps : 1;
+                    wait_time = 1.0f / static_cast<float>(fps);
+                }
+            }
+            m_window->poll_events(wait_time);
+#if defined(ERHE_OS_ANDROID)
+            // Skip render while the activity is in the background. SDL's
+            // Java side blocks the event loop on pause via
+            // SDL_HINT_ANDROID_BLOCK_ON_PAUSE, but we still need to avoid
+            // submitting Vulkan work after WILL_ENTER_BACKGROUND.
+            if (m_window->is_paused()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds{50});
+                continue;
+            }
+#endif
+            {
+                ERHE_PROFILE_SCOPE("dispatch events");
+                auto& input_events = m_window->get_input_events();
+                for (erhe::window::Input_event& input_event : input_events) {
+                    dispatch_input_event(input_event);
+                }
+                if (m_window_resize_event.has_value()) {
+                    m_request_resize_pending.store(true);
+                    m_window_resize_event.reset();
+                    m_last_window_width  = m_window->get_width();
+                    m_last_window_height = m_window->get_height();
+                }
+#if defined(ERHE_OS_ANDROID)
+                // Foreground / device-reset arrived while we were
+                // suspended. The previous VkSurfaceKHR is bound to a
+                // now-detached ANativeWindow; rebuild the surface and
+                // swapchain over the freshly-bound ANativeWindow that
+                // SDL has wired into Context_window. Surface_impl::
+                // recreate_for_new_window keeps the Swapchain C++
+                // object identity stable so cached raw Swapchain*
+                // pointers in Render_pass_impl (and therefore in
+                // Window_imgui_host::m_render_pass) stay valid; the
+                // pipeline cache and bindless texture heap are keyed
+                // on format / hold no swapchain-derived handles, so
+                // they survive the rebuild without an explicit
+                // invalidation pass. m_request_resize_pending is also
+                // set so update_swapchain re-queries the new surface
+                // extent and rebuilds the underlying VkSwapchainKHR
+                // on the next frame.
+                if (m_window->consume_swapchain_dirty()) {
+                    if (!m_graphics_device->recreate_surface_for_new_window()) {
+                        log_startup->warn("Surface recreate failed; retrying next frame");
+                    }
+                    m_request_resize_pending.store(true);
+                    m_last_window_width  = m_window->get_width();
+                    m_last_window_height = m_window->get_height();
+                }
+#endif
+            }
+            tick();
+
+            if ((m_editor_settings.quit_after_frames > 0) &&
+                (m_time->get_frame_number() >= static_cast<uint64_t>(m_editor_settings.quit_after_frames))) {
+                m_close_requested = true;
+            }
+
+            ERHE_PROFILE_FRAME_END
+        }
+        // Settings are autosaved from edit sites (touch()); this final flush
+        // compares and writes regardless of the dirty marks, catching an edit
+        // still deferred by a held mouse button and any change site that
+        // failed to notify.
+        m_app_settings.flush();
+        m_run_stopped = true;
+    }
+
+    bool m_close_requested{false};
+    bool                                    m_run_started{false};
+    std::atomic<bool>                       m_in_tick    {false};
+    bool m_run_stopped    {false};
+
+    // Window-activity classification for power saving (see run()). Computed
+    // once per loop iteration and read by tick() to pause the simulation and
+    // skip rendering while the window is not visible.
+    enum class Frame_activity {
+        active,    // focused and visible    -> full rate
+        unfocused, // visible but not focused -> reduced rate
+        hidden     // not visible             -> reduced rate, no render, sim paused
+    };
+    Frame_activity m_frame_activity{Frame_activity::active};
+
+    // Main-loop stall watchdog. The render thread executes tick() under
+    // m_mutex with m_in_tick == true; if a single tick spins (CPU-bound loop)
+    // it never returns, so it cannot log where it is stuck. This background
+    // thread watches the diagnostic breadcrumb (erhe::log::set_breadcrumb) and
+    // reports the last phase when a tick fails to progress past a threshold.
+    // See doc/intermittent_main_loop_hang.md.
+    std::thread             m_watchdog_thread;
+    std::mutex              m_watchdog_mutex;
+    std::condition_variable m_watchdog_cv;
+    bool                    m_watchdog_stop{false};
+    std::size_t             m_tick_thread_hash{0}; // guarded by m_watchdog_mutex; set once in tick()
+
+
+    std::string                         m_startup_commands_path; // startup script path (--commands); declared first so it initializes before run_startup_script() runs
+    std::string                         m_startup_scene_path;    // startup scene bundle path (--scene); when set, loaded instead of running the commands.json scene build
+    bool                                m_no_startup_scene{false}; // --no-scene: start empty (no procedural scene, no scene load); takes precedence over --scene
+    Graphics_config                     m_graphics_config;
+    Mesh_memory_config                  m_mesh_memory_config;
+    Renderer_config                     m_renderer_config;
+    Text_renderer_config                m_text_renderer_config;
+    Window_config                       m_window_config;
+    // Settings root: owns Editor_settings_store, which owns the loaded
+    // Editor_settings_config and its autosave. Declared before all parts so
+    // it outlives every collect-callback client (e.g. Scene_view dtors
+    // unregister against the store).
+    App_settings                        m_app_settings;
+    // Convenience alias for the loaded config; same object as
+    // m_app_settings.config().
+    Editor_settings_config&             m_editor_settings{m_app_settings.config()};
+
+    std::unique_ptr<tf::Executor>       m_executor;
+    Item_async_task_guard               m_item_task_guard; // destroyed before m_executor
+    Scene_commit_queue                  m_scene_commit_queue; // cleared in shutdown after m_executor->wait_for_all()
+
+    App_context                         m_app_context;
+
+    // Reused by the status-bar callback so reading Geogram progress allocates no
+    // heap memory in steady-state frames (its std::string keeps capacity).
+    erhe::geometry::Geogram_progress_state m_geogram_progress;
+
+    // Created at init (brushes are built into it by Scene_builder). The scene_root
+    // and its windows below are created later, by create_default_scene() when the
+    // scene.create startup command runs -- or stay null when commands.json only
+    // loads a scene.
+    std::shared_ptr<Content_library>        m_default_content_library;
+    std::shared_ptr<Scene_root>             m_default_scene;
+    std::shared_ptr<Item_tree_window>       m_default_scene_browser;
+
+    // Global tools (Hud / Hotbar / OpenXR Headset_view) live inside a scene, but no
+    // scene exists at init; this subscription attaches them to the first scene that
+    // is created or loaded. m_tools_attached_to_scene makes that happen exactly once.
+    erhe::message_bus::Subscription<Scene_created_message> m_scene_created_subscription;
+    erhe::message_bus::Subscription<Close_scene_message>   m_close_scene_subscription;
+    erhe::message_bus::Subscription<Items_removed_message>   m_items_removed_subscription;
+
+    // Scene-close leak watchdog state (see on_close_scene /
+    // update_scene_close_leak_watches).
+    static constexpr int k_scene_close_leak_check_frames = 60;
+    class Scene_close_leak_watch
+    {
+    public:
+        std::string                                 scene_name;
+        int                                         frames_remaining{0};
+        std::weak_ptr<Scene_root>                   scene_root;
+        std::vector<std::weak_ptr<erhe::Item_base>> items;
+    };
+    // Scenes closed this frame, waiting for their watch to be armed after
+    // the message bus pump (the shared_ptr keeps the scene alive until the
+    // arming collects its weak references).
+    std::vector<std::shared_ptr<Scene_root>> m_scene_roots_pending_close_watch;
+    std::vector<Scene_close_leak_watch>      m_scene_close_leak_watches;
+    bool                                    m_tools_attached_to_scene{false};
+    // The scene the global tools are currently homed in (set by
+    // on_scene_created, cleared when that scene is closed).
+    std::weak_ptr<Scene_root>               m_tools_scene_root{};
+
+    // No dependencies (constructors)
+    std::unique_ptr<erhe::commands::Commands      > m_commands;
+    std::unique_ptr<App_message_bus               > m_app_message_bus;
+    std::unique_ptr<Input_state                   > m_input_state;
+    std::unique_ptr<Time                          > m_time;
+
+    std::unique_ptr<Clipboard                              > m_clipboard;
+    std::unique_ptr<erhe::window::Context_window           > m_window;
+    std::unique_ptr<erhe::graphics::Device                 > m_graphics_device;
+    // Frame pacing observer mode (implementation plan step P2.1): the pacer
+    // fed by real inputs, enforcing nothing; decisions go to log_frame_pacing.
+    erhe::frame_pacing::Frame_pacing_observer                m_frame_pacing_observer;
+    // Release gating (FR2, step P2.3): high-resolution timer for the pacer
+    // wait at the tick.
+    erhe::time::Waitable_timer                               m_pacer_release_timer;
+    // FR4 routing (P2.4): previous frame's predicted display time; the delta
+    // to the current prediction advances the simulation clock. 0 = invalid
+    // (pacing inactive last frame; next valid prediction re-seeds).
+    double                                                   m_last_predicted_display_time{0.0};
+    // Tier S slop-servo fallback (P4.1/P4.2): pre-input sleep servoed from
+    // measured backpressure blocking. Period corrected each tick from the
+    // swapchain timing query.
+    erhe::frame_pacing::Slop_servo_pacer                     m_slop_servo{erhe::frame_pacing::Slop_servo_tunables{}, 1.0 / 60.0};
+    double                                                   m_slop_servo_last_tick_time{0.0};
+    std::unique_ptr<erhe::imgui::Imgui_renderer            > m_imgui_renderer;
+    std::unique_ptr<erhe::renderer::Debug_renderer         > m_debug_renderer;
+    std::unique_ptr<erhe::scene_renderer::Program_interface> m_program_interface;
+    std::unique_ptr<erhe::rendergraph::Rendergraph         > m_rendergraph;
+    std::unique_ptr<erhe::renderer::Text_renderer          > m_text_renderer;
+#if defined(ERHE_PHYSICS_LIBRARY_JOLT) && defined(JPH_DEBUG_RENDERER)
+    std::unique_ptr<erhe::renderer::Jolt_debug_renderer    > m_jolt_debug_renderer;
+#endif
+    std::unique_ptr<erhe::scene_renderer::Shader_variant_cache>       m_shader_variant_cache;
+    std::unique_ptr<Programs                              >           m_programs;
+    std::unique_ptr<erhe::scene_renderer::Forward_renderer>           m_forward_renderer;
+    std::unique_ptr<erhe::scene_renderer::Shadow_renderer >           m_shadow_renderer;
+    std::unique_ptr<erhe::scene_renderer::Texel_renderer >            m_texel_renderer;
+    std::unique_ptr<erhe::scene_renderer::Mesh_memory     >           m_mesh_memory;
+    std::unique_ptr<erhe::scene_renderer::Content_wide_line_interface> m_content_wide_line_interface;
+    std::unique_ptr<erhe::scene_renderer::Content_wide_line_renderer>  m_content_wide_line_renderer;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_compute_stages;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_compute_stages_skinned;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_graphics_stages;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_graphics_seed_stages;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_multiview_graphics_stages;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_geometry_stages_not_skinned;
+    std::unique_ptr<erhe::graphics::Shader_stages>                    m_content_wide_line_geometry_stages_skinned;
+
+    std::unique_ptr<erhe::imgui::Imgui_windows>              m_imgui_windows;
+    std::unique_ptr<App_scenes             >                 m_app_scenes;
+    std::unique_ptr<App_windows            >                 m_app_windows;
+
+    std::unique_ptr<Asset_browser                   >        m_asset_browser;
+    std::unique_ptr<Icon_set                        >        m_icon_set;
+    std::unique_ptr<Post_processing                 >        m_post_processing;
+    std::unique_ptr<Sky_renderer                    >        m_sky_renderer;
+    std::unique_ptr<Ray_trace_renderer              >        m_ray_trace_renderer;
+    std::unique_ptr<Ddgi_renderer                   >        m_ddgi_renderer;
+    std::unique_ptr<Lightmap_baker                  >        m_lightmap_baker;
+    std::unique_ptr<Lightmap_report                 >        m_lightmap_report;
+    std::unique_ptr<Lightmap_streamer               >        m_lightmap_streamer;
+    std::unique_ptr<Lightmap_partitioner            >        m_lightmap_partitioner;
+    bool                                                     m_lightmap_offline_was_active{false};
+    // The interactive baker held the lightmap binding last frame; a hand-
+    // off to the streamer re-pushes the streamer's region mappings.
+    bool                                                     m_lightmap_baker_owned_binding{false};
+    std::unique_ptr<Id_renderer                     >        m_id_renderer;
+    std::unique_ptr<Composer_window                 >        m_composer_window;
+    std::unique_ptr<Selection_window                >        m_selection_window;
+    std::unique_ptr<Settings_window                 >        m_settings_window;
+    std::unique_ptr<Scene_views                     >        m_viewport_scene_views;
+    std::unique_ptr<App_rendering                   >        m_app_rendering;
+    std::unique_ptr<Selection                       >        m_selection;
+    std::unique_ptr<Mesh_component_selection        >        m_mesh_component_selection;
+    std::unique_ptr<Bone_visualization              >        m_bone_visualization;
+    std::unique_ptr<Weight_display                  >        m_weight_display;
+    std::unique_ptr<Operation_stack                 >        m_operation_stack;
+    std::unique_ptr<Scene_commands                  >        m_scene_commands;
+    std::unique_ptr<Clipboard_window                >        m_clipboard_window;
+    std::unique_ptr<Commands_window                 >        m_commands_window;
+    std::unique_ptr<Geometry_graph_window           >        m_geometry_graph_window;
+    std::unique_ptr<Graph_editor_palette_window     >        m_geometry_graph_palette_window;
+    std::unique_ptr<Texture_graph_window            >        m_texture_graph_window;
+    std::unique_ptr<Graph_editor_palette_window     >        m_texture_graph_palette_window;
+    std::unique_ptr<Graph_window                    >        m_graph_window;
+    std::unique_ptr<Node_properties_window          >        m_node_properties_window;
+    std::unique_ptr<Gradient_editor                 >        m_gradient_editor;
+    std::unique_ptr<Icon_browser                    >        m_icon_browser;
+    std::unique_ptr<Thumbnails                      >        m_thumbnails;
+    std::unique_ptr<Sheet_window                    >        m_sheet_window;
+    std::unique_ptr<Layers_window                   >        m_layers_window;
+    std::unique_ptr<Network_window                  >        m_network_window;
+    std::unique_ptr<Operations                      >        m_operations;
+    std::unique_ptr<Physics_window                  >        m_physics_window;
+    std::unique_ptr<Post_processing_window          >        m_post_processing_window;
+    std::unique_ptr<Ray_trace_window                >        m_ray_trace_window;
+    std::unique_ptr<Ddgi_window                     >        m_ddgi_window;
+    std::unique_ptr<Properties                      >        m_properties;
+    std::unique_ptr<Editor_windows                  >        m_editor_windows;
+    std::unique_ptr<Frame_pacing_window             >        m_frame_pacing_window;
+    std::unique_ptr<Controller_inputs_window        >        m_controller_inputs_window;
+    std::unique_ptr<Lightmap_window                 >        m_lightmap_window;
+    std::unique_ptr<Lightmap_texture_window         >        m_lightmap_texture_window;
+    std::unique_ptr<Rendergraph_window              >        m_rendergraph_window;
+    std::unique_ptr<Animation_player                >        m_animation_player;
+    std::unique_ptr<Animation_window                >        m_animation_window;
+    std::unique_ptr<Tool_properties_window          >        m_tool_properties_window;
+    std::unique_ptr<erhe::imgui::Logs               >        m_logs;
+    std::unique_ptr<erhe::imgui::Log_settings_window>        m_log_settings_window;
+    std::unique_ptr<erhe::imgui::Tail_log_window    >        m_tail_log_window;
+    std::unique_ptr<erhe::imgui::Frame_log_window   >        m_frame_log_window;
+    std::unique_ptr<erhe::imgui::Performance_window >        m_performance_window;
+    // Declared after m_performance_window: destroyed first, so the tracker's
+    // plots unregister while the window is still alive.
+    std::unique_ptr<Transform_update_stats_tracker  >        m_transform_update_stats_tracker;
+    std::unique_ptr<erhe::imgui::Pipelines          >        m_pipelines;
+
+    std::unique_ptr<Tools            >                       m_tools;
+    std::unique_ptr<Scene_builder    >                       m_scene_builder;
+    std::unique_ptr<Prefab_library   >                       m_prefab_library;
+    // Declared after Scene_builder / Prefab_library: destroyed before them,
+    // so the manager releases its builtin palette brushes while
+    // Scene_builder still co-owns them.
+    std::unique_ptr<Asset_manager    >                       m_asset_manager;
+    std::unique_ptr<Fly_camera_tool  >                       m_fly_camera_tool;
+    std::unique_ptr<Navigation_gizmo_tool>                   m_navigation_gizmo_tool;
+    std::unique_ptr<Headset_view     >                       m_headset_view;
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    std::unique_ptr<erhe::xr::Headset>                       m_headset;
+    std::unique_ptr<Hand_tracker     >                       m_hand_tracker;
+#endif
+    std::unique_ptr<Move_tool           >                    m_move_tool;
+    std::unique_ptr<Rotate_tool         >                    m_rotate_tool;
+    std::unique_ptr<Scale_tool          >                    m_scale_tool;
+    std::unique_ptr<Transform_tool      >                    m_transform_tool;
+    std::unique_ptr<Hud                 >                    m_hud;
+    std::unique_ptr<Hotbar              >                    m_hotbar;
+    std::unique_ptr<Inventory_window    >                    m_inventory_window;
+    std::unique_ptr<Hover_tool          >                    m_hover_tool;
+    std::unique_ptr<Brdf_slice          >                    m_brdf_slice;
+    std::unique_ptr<Debug_draw          >                    m_debug_draw;
+    std::unique_ptr<Depth_visualization_window>              m_debug_view_window;
+    std::unique_ptr<Material_preview    >                    m_material_preview;
+    std::unique_ptr<Brush_preview       >                    m_brush_preview;
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    ////Theremin                                m_theremin;
+#endif
+
+    std::unique_ptr<Brush_tool         >                     m_brush_tool;
+    std::unique_ptr<Create             >                     m_create;
+    std::unique_ptr<Grid_tool          >                     m_grid_tool;
+    std::unique_ptr<Material_paint_tool>                     m_material_paint_tool;
+    std::unique_ptr<Mesh_component_selection_tool>           m_mesh_component_selection_tool;
+    std::unique_ptr<Lattice_tool>                            m_lattice_tool;
+    std::unique_ptr<Paint_tool         >                     m_paint_tool;
+    std::unique_ptr<Weight_paint_tool  >                     m_weight_paint_tool;
+    std::unique_ptr<Physics_tool       >                     m_physics_tool;
+    std::unique_ptr<Selection_tool     >                     m_selection_tool;
+
+    // MCP server (exposes editor commands over HTTP)
+    std::unique_ptr<Mcp_server         >                     m_mcp_server;
+};
+
+void run_editor(const std::string& startup_commands_path, const std::string& startup_scene_path, const bool no_startup_scene, const bool force_post_processing_off, const bool fix_gltf_spot_lights)
+{
+//#if defined(ERHE_PROFILE_LIBRARY_TRACY) && TRACY_ENABLE
+//    while (!TracyIsConnected) {
+//        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+//    }
+//#endif
+
+    ERHE_PROFILE_FUNCTION();
+
+#if defined(ERHE_PROFILE_LIBRARY_NVTX)
+    nvtxInitialize(nullptr);
+#endif
+    // Workaround for
+    // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
+    erhe::file::ensure_working_directory_contains("config/editor/editor_settings.json");
+
+    // initialize_log_sinks creates "logs/log.txt" relative to cwd; must
+    // run AFTER ensure_working_directory_contains so the file lands in
+    // the same logs/ directory used by graphics_log (logs/vulkan.txt).
+    erhe::log::redirect_stderr_to_file("logs/stderr.txt");
+    {
+        ERHE_PROFILE_SCOPE("erhe::log::initialize_log_sinks()");
+        erhe::log::initialize_log_sinks();
+    }
+
+    {
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/editor/logging.json");
+        if (contents.has_value()) {
+            erhe::log::load_log_configuration(contents.value());
+        }
+    }
+
+    {
+        ERHE_PROFILE_SCOPE("initialize logging");
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+        gl::initialize_logging();
+        gl_helpers::initialize_logging();
+#endif
+        erhe::commands::initialize_logging();
+        erhe::dataformat::initialize_logging();
+        erhe::file::initialize_logging();
+        erhe::gltf::initialize_logging();
+        erhe::geometry::initialize_logging();
+        erhe::graph::initialize_logging();
+        erhe::graphics::initialize_logging();
+        erhe::imgui::initialize_logging();
+        erhe::item::initialize_logging();
+        erhe::math::initialize_logging();
+        erhe::net::initialize_logging();
+        erhe::physics::initialize_logging();
+        erhe::primitive::initialize_logging();
+        erhe::raytrace::initialize_logging();
+        erhe::renderer::initialize_logging();
+        erhe::rendergraph::initialize_logging();
+        erhe::scene::initialize_logging();
+        erhe::scene_renderer::initialize_logging();
+        erhe::window::initialize_logging();
+        erhe::ui::initialize_logging();
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+        erhe::xr::initialize_logging();
+#endif
+        editor::initialize_logging();
+    }
+
+    erhe::time::sleep_initialize();
+    erhe::physics::initialize_physics_system();
+
+    {
+        ERHE_PROFILE_SCOPE("initialize geogram");
+        GEO::initialize(GEO::GEOGRAM_INSTALL_NONE);
+        // Under a debugger, make Geogram asserts break into it at the failure site
+        // (ASSERT_BREAKPOINT -> __debugbreak) instead of throwing.
+        // geo_assert in parallel code (e.g. parallel_delaunay_3d, reached via chamfer's
+        // convex hull) fires on Geogram's own worker threads, where the throw escapes
+        // every editor-side catch (including the async mesh-operation worker boundary)
+        // and just calls std::terminate - so the process exits with no chance to break
+        // and inspect. Outside a debugger set ASSERT_THROW EXPLICITLY: Geogram's
+        // default is ASSERT_ABORT in GEO_DEBUG builds, and on Windows geo_abort()
+        // blocks on getchar() ("press any key to continue") - in an unattended
+        // headless run a Geogram assert then wedges the process forever instead of
+        // failing loudly (observed live: brush-preview convex hull tripping
+        // CellStatusArray::resize's !Process::is_running_threads() precondition).
+        // ASSERT_THROW lets the editor-side catch boundaries skip the degenerate
+        // operation and keep the run going.
+        if (is_debugger_present()) {
+            GEO::set_assert_mode(GEO::ASSERT_BREAKPOINT);
+        } else {
+            GEO::set_assert_mode(GEO::ASSERT_THROW);
+        }
+        GEO::CmdLine::import_arg_group("algo");
+        // Required by GEO::remesh_smooth() (Remesh / Anisotropic Remesh operations),
+        // which reads remesh:multi_nerve and remesh:RVC_centroids; querying an
+        // undeclared arg aborts via geo_assert_arg_type.
+        GEO::CmdLine::import_arg_group("remesh");
+        GEO::CmdLine::set_arg("sys:multithread", "true");
+        // GEO::remesh_smooth() defaults remesh:multi_nerve=true; we keep it on.
+        // multi_nerve was previously disabled because remeshing e.g. a
+        // uv_sphere(48,24) to 2000 points produced an empty output mesh and an
+        // abort in mesh_adjust_surface (OpenNL nl_assert(NL_NB_VARIABLES > 0)).
+        // Root cause: the editor was handing remesh_smooth() an input surface
+        // with no facet adjacency (every edge a boundary), because
+        // Mesh::facets::triangulate() rebuilds the facets and drops adjacency.
+        // The multinerve RDT path computes per-seed restricted-Voronoi connected
+        // components, so a disconnected surface explodes into a fragmented
+        // triangle soup that mesh_postprocess_RDT() then strips to nothing. The
+        // fix is in erhe::geometry::operation::remesh (input.facets.connect()
+        // after triangulate); with a connected input, multi_nerve works
+        // correctly. It was never a Geogram bug.
+        GEO::CmdLine::set_arg("remesh:multi_nerve", "true");
+        erhe::geometry::register_geogram_attribute_types();
+        // Route Geogram's GEO::Logger output into erhe::geometry::log_geogram.
+        // Requires the Geogram Logger singleton (created by GEO::initialize()
+        // above) and log_geogram (created by erhe::geometry::initialize_logging()).
+        erhe::geometry::register_geogram_logger();
+        // Route Geogram progress (ProgressTask begin/progress/end) into a snapshot
+        // the status bar reads. GEO::initialize() above ran Progress::initialize(),
+        // which installed the default progress client we replace here.
+        erhe::geometry::register_geogram_progress();
+    }
+
+    {
+        ERHE_PROFILE_SCOPE("Construct and run Editor");
+
+        //for (std::size_t i = 0; i < 20; ++i) {
+        //    log_startup->info("Stress test iteration {}", i);
+        //    Editor editor{};
+        //    editor.tick();
+        //}
+
+        Editor editor{startup_commands_path, startup_scene_path, no_startup_scene, force_post_processing_off, fix_gltf_spot_lights};
+        editor.run();
+    }
+
+    // Detach the Geogram -> log_geogram forwarding client while log_geogram is
+    // still alive, so no late Geogram message can reach an already-destroyed
+    // logger during static destruction.
+    erhe::geometry::unregister_geogram_logger();
+    erhe::geometry::unregister_geogram_progress();
+}
+
+}

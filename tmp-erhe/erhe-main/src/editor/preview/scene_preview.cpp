@@ -1,0 +1,342 @@
+#include "preview/scene_preview.hpp"
+
+#include "app_context.hpp"
+#include "app_scenes.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "renderers/programs.hpp"
+#include "renderers/viewport_config.hpp"
+#include "scene/scene_root.hpp"
+#include "content_library/content_library.hpp"
+
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_primitive/material.hpp"
+#include "erhe_scene/light.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene_renderer/forward_renderer.hpp"
+#include "erhe_scene_renderer/shader_key.hpp"
+
+#include <fmt/format.h>
+
+namespace editor {
+
+using Vertex_input_state   = erhe::graphics::Vertex_input_state;
+using Input_assembly_state = erhe::graphics::Input_assembly_state;
+using Rasterization_state  = erhe::graphics::Rasterization_state;
+using Depth_stencil_state  = erhe::graphics::Depth_stencil_state;
+using Color_blend_state    = erhe::graphics::Color_blend_state;
+
+Scene_preview::Scene_preview(
+    erhe::graphics::Device&         graphics_device,
+    erhe::graphics::Command_buffer& init_command_buffer,
+    App_context&                    context
+)
+    : Scene_view{context, nullptr, {}, Viewport_config{}} // previews do not persist settings
+    , m_context{context}
+    , m_y_flip{graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
+    , m_render_pipeline{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Scene Preview"},
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(graphics_device.get_reverse_depth())
+        }
+    }
+    , m_render_pipelines{&m_render_pipeline}
+    , m_composer{"Material Preview Composer"}
+{
+    ERHE_PROFILE_FUNCTION();
+
+    m_content_library = std::make_shared<Content_library>();
+
+    // No Draw_list_scene: previews are tiny scenes constructed before the
+    // renderer dependencies exist; they render through the fallback path.
+    m_scene_root_shared = std::make_shared<Scene_root>(
+        nullptr, // Don't process editor messages
+        m_content_library,
+        "Material preview scene",
+        false,
+        nullptr
+    );
+
+    // I know, this is a bit dirty:
+    // - Scene_view has std::weak_ptr<Scene_root> m_scene_root
+    // - Scene_preview (derived from Scene_view) has std::shared_ptr<Scene_root> m_scene_root_shared
+    set_scene_root(m_scene_root_shared);
+
+    m_scene_root_shared->get_scene().disable_flag_bits(erhe::Item_flags::show_in_ui);
+
+    // For now, shadow texture is dummy 1 by 1 pixel only cleared
+    m_shadow_texture = std::make_shared<erhe::graphics::Texture>(
+        graphics_device,
+        erhe::graphics::Texture_create_info {
+            .device            = graphics_device,
+            .usage_mask        =
+                erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
+                erhe::graphics::Image_usage_flag_bit_mask::sampled |
+                erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+            .type              = erhe::graphics::Texture_type::texture_2d_array,
+            .pixelformat       = graphics_device.choose_depth_stencil_format(erhe::graphics::format_flag_require_depth, 0),
+            .width             = 1,
+            .height            = 1,
+            .depth             = 1,
+            .array_layer_count = 1,
+            .debug_label       = erhe::utility::Debug_label{"Scene_preview::m_shadow_texture (dummy shadowmap)"}
+        }
+    );
+
+    // The dummy shadowmap is sampled by Forward_renderer's standard shaders
+    // even though Scene_preview never renders into it. Clear it to the depth
+    // convention's far value (reverse-Z 0.0, forward-Z 1.0) so the shadow
+    // comparison reads "no occluder" (fully lit). Relying on the undefined
+    // initial contents left it at 0.0, which under forward-Z is a near occluder
+    // and put the entire preview in shadow. clear_texture also transitions the
+    // image out of VK_IMAGE_LAYOUT_UNDEFINED into depth_stencil_read_only_optimal,
+    // which Forward_renderer requires (binding it sampled otherwise trips
+    // VUID-vkCmdDraw-None-09600).
+    init_command_buffer.clear_texture(
+        *m_shadow_texture.get(),
+        { graphics_device.get_reverse_depth() ? 0.0 : 1.0, 0.0, 0.0, 0.0 }
+    );
+}
+
+Scene_preview::~Scene_preview() noexcept
+{
+}
+
+void Scene_preview::resize(int width, int height)
+{
+    m_width  = std::max(1, width);
+    m_height = std::max(1, height);
+}
+
+void Scene_preview::set_color_texture(const std::shared_ptr<erhe::graphics::Texture>& color_texture)
+{
+    m_use_external_color_texture = static_cast<bool>(color_texture);
+    if (m_color_texture != color_texture) {
+        m_render_pass.reset();
+    }
+    m_color_texture = color_texture;
+}
+
+void Scene_preview::set_color_texture_layer(unsigned int layer)
+{
+    if (m_color_texture_layer != layer) {
+        m_render_pass.reset();
+    }
+    m_color_texture_layer = layer;
+}
+
+void Scene_preview::set_clear_color(glm::vec4 clear_color)
+{
+    m_clear_color = clear_color;
+}
+
+void Scene_preview::update_rendertarget(erhe::graphics::Device& graphics_device)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    bool attachment_changed = false;
+    if (
+        !m_use_external_color_texture &&
+        (
+            !m_color_texture ||
+            (m_color_texture->get_width () != m_width) ||
+            (m_color_texture->get_height() != m_height)
+        )
+    ) {
+        m_color_format = erhe::dataformat::Format::format_16_vec4_float;
+        m_color_texture.reset();
+        m_color_texture = std::make_shared<erhe::graphics::Texture>(
+            graphics_device,
+            erhe::graphics::Texture_create_info{
+                .device      = graphics_device,
+                .usage_mask   =
+                    erhe::graphics::Image_usage_flag_bit_mask::color_attachment |
+                    erhe::graphics::Image_usage_flag_bit_mask::sampled |
+                    erhe::graphics::Image_usage_flag_bit_mask::transfer_dst,
+                .type        = erhe::graphics::Texture_type::texture_2d,
+                .pixelformat = m_color_format,
+                .width       = m_width,
+                .height      = m_height,
+                .debug_label = erhe::utility::Debug_label{"Preview Color Texture"}
+            }
+        );
+        // Initial clear performed by the first render pass via Load_action::Clear.
+        attachment_changed = true;
+    }
+
+    if (
+        !m_depth_texture ||
+        (m_depth_texture->get_width() != m_width) ||
+        (m_depth_texture->get_height() != m_height)
+    ) {
+        m_depth_format = erhe::dataformat::Format::format_d32_sfloat;
+        using Render_pass = erhe::graphics::Render_pass;
+        using Texture     = erhe::graphics::Texture;
+        m_depth_texture = std::make_unique<erhe::graphics::Texture>(
+            graphics_device,
+            erhe::graphics::Texture_create_info{
+                .device      = graphics_device,
+                .usage_mask  =
+                    erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment |
+                    erhe::graphics::Image_usage_flag_bit_mask::sampled,
+                .type        = erhe::graphics::Texture_type::texture_2d,
+                .pixelformat = m_depth_format,
+                .width       = m_width,
+                .height      = m_height,
+                .debug_label = erhe::utility::Debug_label{"Material Preview Depth Texture"}
+            }
+        );
+        attachment_changed = true;
+    }
+
+    if (!attachment_changed && m_render_pass) {
+        return;
+    }
+
+    m_render_pass.reset();
+    erhe::graphics::Render_pass_descriptor render_pass_descriptor;
+    render_pass_descriptor.color_attachments[0].texture       = m_color_texture.get();
+    render_pass_descriptor.color_attachments[0].texture_layer = m_color_texture_layer;
+    render_pass_descriptor.color_attachments[0].load_action   = erhe::graphics::Load_action::Clear;
+    render_pass_descriptor.color_attachments[0].store_action  = erhe::graphics::Store_action::Store;
+    render_pass_descriptor.color_attachments[0].clear_value   = { m_clear_color.x, m_clear_color.y, m_clear_color.z, m_clear_color.w };
+    render_pass_descriptor.color_attachments[0].usage_before  = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_before = erhe::graphics::Image_layout::shader_read_only_optimal;
+    render_pass_descriptor.color_attachments[0].usage_after   = erhe::graphics::Image_usage_flag_bit_mask::sampled;
+    render_pass_descriptor.color_attachments[0].layout_after  = erhe::graphics::Image_layout::shader_read_only_optimal;
+    render_pass_descriptor.depth_attachment.texture          = m_depth_texture.get();
+    render_pass_descriptor.depth_attachment.load_action      = erhe::graphics::Load_action::Clear;
+    render_pass_descriptor.depth_attachment.clear_value[0]   = graphics_device.get_reverse_depth() ? 0.0 : 1.0;
+    render_pass_descriptor.depth_attachment.store_action     = erhe::graphics::Store_action::Dont_care;
+    render_pass_descriptor.depth_attachment.usage_before     = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+    render_pass_descriptor.depth_attachment.layout_before    = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+    render_pass_descriptor.depth_attachment.usage_after      = erhe::graphics::Image_usage_flag_bit_mask::depth_stencil_attachment;
+    render_pass_descriptor.depth_attachment.layout_after     = erhe::graphics::Image_layout::depth_stencil_attachment_optimal;
+    render_pass_descriptor.render_target_width               = m_width;
+    render_pass_descriptor.render_target_height              = m_height;
+    render_pass_descriptor.debug_label                       = "Preview Render_pass";
+    m_render_pass = std::make_unique<erhe::graphics::Render_pass>(graphics_device, render_pass_descriptor);
+}
+
+auto Scene_preview::get_camera() const -> std::shared_ptr<erhe::scene::Camera>
+{
+    return m_camera;
+}
+
+auto Scene_preview::get_perspective_scale() const -> float
+{
+    return 1.0f; // TODO
+}
+
+auto Scene_preview::get_rendergraph_node() -> erhe::rendergraph::Rendergraph_node*
+{
+    return {};
+}
+
+auto Scene_preview::get_light_projections() const -> const erhe::scene_renderer::Light_projections*
+{
+    return &m_light_projections;
+}
+
+auto Scene_preview::get_light_count_limits() const -> erhe::scene_renderer::Light_count_limits
+{
+    // The preview never renders shadow maps: the 2D map is a 1x1 single-layer
+    // dummy cleared to "lit" and there is no point cube array. Its layer count
+    // is the directional shadow limit (so the preview's shadowed key light
+    // keeps its shadow-mapped slot / variant), spot / point shadows are never
+    // mapped, and a few unshadowed lights of each type are shaded.
+    return erhe::scene_renderer::Light_count_limits{
+        .per_type_shadow     = {m_shadow_texture ? static_cast<std::size_t>(m_shadow_texture->get_array_layer_count()) : std::size_t{0}, 0, 0, 0},
+        .per_type_unshadowed = {4, 4, 4, 0}
+    };
+}
+
+auto Scene_preview::get_shadow_texture() const -> erhe::graphics::Texture*
+{
+    return m_shadow_texture.get();
+}
+
+auto Scene_preview::get_content_library() -> std::shared_ptr<Content_library>
+{
+    return m_content_library;
+}
+
+void Scene_preview::prewarm_variants(erhe::scene_renderer::Forward_renderer& forward_renderer)
+{
+    if (!m_scene_root_shared) {
+        return;
+    }
+    const erhe::scene::Light_layer* light_layer = m_scene_root_shared->layers().light();
+    if (light_layer == nullptr) {
+        return;
+    }
+
+    const erhe::scene::Mesh_layer* content_layer = m_scene_root_shared->layers().content();
+    std::vector<std::span<const std::shared_ptr<erhe::scene::Mesh>>> mesh_spans;
+    if (content_layer != nullptr) {
+        mesh_spans.push_back(content_layer->meshes);
+    }
+
+    // Preview's own content library (typically empty for previews that
+    // borrow materials from the editor at render-time, e.g.
+    // Material_preview::render_preview(material) assigns a material from
+    // the main editor's content library to its sphere mesh just before
+    // the draw call) plus every main-editor Scene_root's content library.
+    // Without the main-editor pull, the preview's bucket walk only sees
+    // the sphere with material = nullptr -- the lit variant the user
+    // sees the first time they open the material panel would compile
+    // on the first preview frame.
+    std::vector<std::shared_ptr<erhe::primitive::Material>> all_materials;
+    if (m_content_library && m_content_library->materials) {
+        const std::vector<std::shared_ptr<erhe::primitive::Material>>& own = m_content_library->materials->get_all<erhe::primitive::Material>();
+        all_materials.insert(all_materials.end(), own.begin(), own.end());
+    }
+    if (m_context.app_scenes != nullptr) {
+        for (const std::shared_ptr<Scene_root>& main_scene_root : m_context.app_scenes->get_scene_roots()) {
+            if (!main_scene_root) {
+                continue;
+            }
+            const std::shared_ptr<Content_library> main_library = main_scene_root->get_content_library();
+            if (!main_library || !main_library->materials) {
+                continue;
+            }
+            const std::vector<std::shared_ptr<erhe::primitive::Material>>& mats = main_library->materials->get_all<erhe::primitive::Material>();
+            all_materials.insert(all_materials.end(), mats.begin(), mats.end());
+        }
+    }
+    const std::span<const std::shared_ptr<erhe::primitive::Material>> extra_materials{all_materials};
+
+    // The runtime preview render builds environment_key from the preview's
+    // own light_layer (Material_preview seeds 1 shadowed directional light,
+    // for example). Without snapshotting it here, prewarm would compile
+    // variants with all light counts = 0 and the first preview render
+    // would compile-on-miss for every standard-shader variant the preview
+    // actually uses.
+    const erhe::scene_renderer::Light_layer_partition partition = erhe::scene_renderer::compute_light_layer_partition(light_layer->lights, get_light_count_limits());
+
+    // Preview is single-view -- offscreen render target, never multiview.
+    static constexpr uint32_t single_view = 0u;
+    const std::span<const uint32_t> view_counts{&single_view, 1};
+
+    const erhe::scene_renderer::Forward_renderer::Prewarm_parameters params{
+        .blending_mode_policy   = erhe::scene_renderer::Blending_mode_policy::allow_all, // TODO
+        .render_pipeline_states = std::span<erhe::graphics::Base_render_pipeline*>{m_render_pipelines},
+        .mesh_spans             = mesh_spans,
+        .extra_materials        = extra_materials,
+        .multiview_view_counts  = view_counts,
+        .mesh_memory            = *m_context.mesh_memory,
+        .primitive_mode         = erhe::primitive::Primitive_mode::polygon_fill,
+        .warmup_targets         = {},
+        .light_partition        = partition
+    };
+    forward_renderer.prewarm_standard_variants(params);
+}
+
+}

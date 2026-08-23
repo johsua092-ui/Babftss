@@ -1,0 +1,195 @@
+#pragma once
+
+#include "operations/operation_stack_selection.hpp"
+
+#include "erhe_commands/command.hpp"
+#include "erhe_imgui/imgui_window.hpp"
+#include "erhe_profile/profile.hpp"
+
+#include <memory>
+#include <mutex>
+#include <unordered_set>
+#include <optional>
+#include <vector>
+
+namespace erhe            { class Item_base; }
+namespace erhe::commands  { class Commands; }
+namespace erhe::imgui     { class Imgui_windows; }
+
+namespace editor {
+
+class App_context;
+class App_message_bus;
+class Operation;
+class Mcp_server;
+class Operation_stack;
+class Selection_tool;
+
+class Undo_command : public erhe::commands::Command
+{
+public:
+    Undo_command(erhe::commands::Commands& commands, App_context& context);
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+// Edit > Free undone loads: gives back the memory of undone loads that the
+// automatic (lossless-only) drop declined, at the cost of the redo entries
+// recorded after them (doc/reloadable-asset-loads.md).
+class Free_undone_loads_command : public erhe::commands::Command
+{
+public:
+    Free_undone_loads_command(erhe::commands::Commands& commands, App_context& context);
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+class Redo_command : public erhe::commands::Command
+{
+public:
+    Redo_command(erhe::commands::Commands& commands, App_context& context);
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+// Main-thread-only: every entry point verifies the caller is on the main
+// thread (App_context::main_thread_id) instead of locking. All operation
+// sources (ImGui windows/tools, commands, MCP handlers dispatched via
+// Mcp_server::process_queued_requests(), startup script, message-bus
+// callbacks) run on the main thread; the single exception for worker
+// threads is queue_from_thread(), a mutex-protected inbox drained by
+// update() - used by the async mesh-operation completions.
+//
+// Re-entrancy contract: while an operation is executing (or being undone),
+// the only legal Operation_stack call is queue(). Operations queued during
+// execution run later in the same update() pass, in append order.
+class Operation_stack
+    : public erhe::imgui::Imgui_window
+    , public erhe::commands::Command_host
+{
+public:
+    Operation_stack(
+        erhe::commands::Commands&    commands,
+        erhe::imgui::Imgui_renderer& imgui_renderer,
+        erhe::imgui::Imgui_windows&  imgui_windows,
+        App_context&                 context
+    );
+    ~Operation_stack() noexcept override;
+
+    [[nodiscard]] auto can_undo      () const -> bool;
+    [[nodiscard]] auto can_redo      () const -> bool;
+    void queue(const std::shared_ptr<Operation>& operation);
+
+    // Thread-safe variant of queue() for async worker completions (the
+    // async_for_nodes_with_mesh callbacks run on tf::Executor workers):
+    // appends to a mutex-protected inbox that update() drains on the main
+    // thread before executing. This is the ONLY Operation_stack entry point
+    // legal off the main thread.
+    void queue_from_thread(const std::shared_ptr<Operation>& operation);
+
+    // Executes the operation immediately (caller must be on the main
+    // thread) and records it for undo. Used where the caller needs the
+    // operation's effects to be observable right away, e.g. the MCP
+    // server responding to a tool call, or geometry graph edits whose
+    // evaluation runs in the same frame.
+    void execute_now(const std::shared_ptr<Operation>& operation);
+
+    void undo();
+    void redo();
+
+    // Undo-group scope (MCP batch tool). While a group is open, operations
+    // handed to queue() / execute_now() outside of operation execution are
+    // executed immediately and collected instead of recorded; end_group()
+    // records the collected operations as ONE undo entry (a
+    // Compound_operation when there is more than one; Compound undo runs
+    // them in reverse). Operations queue()d while another operation is
+    // executing keep the normal deferred semantics and land OUTSIDE the
+    // group (they run in the next update() pass). Groups do not nest.
+    void begin_group();
+    // Returns the number of operations that were grouped.
+    auto end_group() -> std::size_t;
+
+    // Not-yet-executed operations: the main-thread queue plus the cross-
+    // thread inbox. Stale-data guards use this alongside the async-op
+    // counters (App_context::pending/running_async_ops): an async worker
+    // decrements those the moment it has QUEUED its operation here, but the
+    // scene only changes when update() executes it on the main thread -
+    // acting on the scene in that window consumes stale data (e.g. packing
+    // the lightmap atlas from the old channel-2 UVs). Main thread only.
+    [[nodiscard]] auto get_queued_count() -> std::size_t;
+
+    // Drops the undo and redo histories (queued operations are kept). Used
+    // when a scene is closed: recorded operations hold shared_ptrs to scene
+    // content and viewport resources, which would keep a closed scene's
+    // objects alive -- and its viewport rendergraph nodes registered and
+    // executing -- indefinitely.
+    void clear_history();
+
+    // Releases the payload of the deepest reloadable entry in the redo stack -
+    // the one that would be redone FIRST - and discards every entry recorded
+    // after it, which frees theirs too.
+    //
+    // Discarding is required, not incidental: those entries hold raw
+    // shared_ptrs to content the drop releases, and a rebuild produces fresh
+    // objects, so redoing them would act on dead orphans. Entries recorded
+    // BEFORE the released one are untouched and stay redoable, because they
+    // cannot reference content that did not exist yet.
+    //
+    // This is the explicit counterpart to the automatic drop, which only fires
+    // when nothing would have to be discarded (doc/reloadable-asset-loads.md).
+    class Free_undone_loads_result
+    {
+    public:
+        std::size_t released_count {0}; // payloads dropped
+        std::size_t discarded_count{0}; // redo entries thrown away
+    };
+    auto free_undone_loads() -> Free_undone_loads_result;
+
+    // R5.4: union of Operation::collect_item_references over every recorded
+    // operation (undo + redo histories plus not-yet-executed queued ones).
+    // Asset_manager::request_unload consults this so a container whose asset
+    // is retained by the history refuses with the collective undo/redo-
+    // history label instead of unloading under a live pin.
+    void collect_item_references(std::unordered_set<const erhe::Item_base*>& out_items) const;
+
+    void update();
+
+    // Implements Window
+    void imgui() override;
+
+private:
+    friend class Mcp_server;
+
+    [[nodiscard]] auto get_undo_stack() const -> const std::vector<std::shared_ptr<Operation>>&;
+    [[nodiscard]] auto get_redo_stack() const -> const std::vector<std::shared_ptr<Operation>>&;
+
+    void imgui(const char* stack_label, const std::vector<std::shared_ptr<Operation>>& operations);
+
+    void verify_main_thread() const;
+
+    App_context&  m_context;
+    Undo_command  m_undo_command;
+    Free_undone_loads_command m_free_undone_loads_command;
+    Redo_command  m_redo_command;
+
+    bool                                    m_executing{false};
+    std::vector<std::shared_ptr<Operation>> m_executed;
+    std::vector<std::shared_ptr<Operation>> m_undone;
+    std::vector<std::shared_ptr<Operation>> m_queued;
+
+    // Undo-group scope state (begin_group / end_group).
+    bool                                    m_grouping{false};
+    std::vector<std::shared_ptr<Operation>> m_group_collected;
+
+    // Cross-thread inbox for queue_from_thread(); drained by update().
+    ERHE_PROFILE_MUTEX(std::mutex,          m_thread_queue_mutex);
+    std::vector<std::shared_ptr<Operation>> m_queued_from_threads;
+};
+
+}

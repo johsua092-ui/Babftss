@@ -1,0 +1,218 @@
+#include "erhe_graph/graph.hpp"
+#include "erhe_graph/graph_log.hpp"
+#include "erhe_graph/link.hpp"
+#include "erhe_graph/node.hpp"
+#include "erhe_graph/pin.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
+
+namespace erhe::graph {
+
+void Graph::register_node(Node* node)
+{
+#if !defined(NDEBUG)
+    const auto i = std::find_if(m_nodes.begin(), m_nodes.end(), [node](Node* entry) { return entry == node; });
+    if (i != m_nodes.end()) {
+        log_graph->error("Node {} {} is already registered to Graph", node->get_name(), node->get_id());
+        return;
+    }
+#endif
+    m_nodes.push_back(node);
+    m_is_sorted = false;
+    log_graph->trace("Registered Node {} {}", node->get_name(), node->get_id());
+}
+
+void Graph::unregister_node(Node* node)
+{
+    if (node == nullptr) {
+        return;
+    }
+
+    const auto i = std::find_if(m_nodes.begin(), m_nodes.end(), [node](Node* entry) { return entry == node; });
+    if (i == m_nodes.end()) {
+        log_graph->error("Graph::unregister_node(): Node {} {} is not registered", node->get_name(), node->get_id());
+        return;
+    }
+
+    // Copy link vectors before iterating, since disconnect modifies them
+    etl::vector<Pin, max_pin_count>& input_pins = node->get_input_pins();
+    for (Pin& pin : input_pins) {
+        std::vector<Link*> links = pin.get_links();
+        for (Link* link : links) {
+            disconnect(link);
+        }
+    }
+    etl::vector<Pin, max_pin_count>& output_pins = node->get_output_pins();
+    for (Pin& pin : output_pins) {
+        std::vector<Link*> links = pin.get_links();
+        for (Link* link : links) {
+            disconnect(link);
+        }
+    }
+
+    m_nodes.erase(i);
+    m_is_sorted = false;
+
+    log_graph->trace("Unregistered Node {} {}", node->get_name(), node->get_id());
+}
+
+auto Graph::would_create_cycle(const Pin* source_pin, const Pin* sink_pin) const -> bool
+{
+    ERHE_VERIFY(source_pin != nullptr);
+    ERHE_VERIFY(sink_pin != nullptr);
+
+    const Node* source_node = source_pin->get_owner_node();
+    const Node* sink_node   = sink_pin->get_owner_node();
+    std::vector<const Node*> stack;
+    std::vector<const Node*> visited;
+    stack.push_back(sink_node);
+    while (!stack.empty()) {
+        const Node* node = stack.back();
+        stack.pop_back();
+        if (node == source_node) {
+            return true;
+        }
+        if (std::find(visited.begin(), visited.end(), node) != visited.end()) {
+            continue;
+        }
+        visited.push_back(node);
+        for (const Pin& pin : node->get_output_pins()) {
+            for (const Link* link : pin.get_links()) {
+                stack.push_back(link->get_sink()->get_owner_node());
+            }
+        }
+    }
+    return false;
+}
+
+auto Graph::connect(Pin* source_pin, Pin* sink_pin) -> Link*
+{
+    ERHE_VERIFY(source_pin != nullptr);
+    ERHE_VERIFY(sink_pin != nullptr);
+
+    if (sink_pin->get_key() != source_pin->get_key()) {
+        log_graph->warn("Sink pin key {} does not match source pin key {}", sink_pin->get_key(), source_pin->get_key());
+        return nullptr;
+    }
+    // sort() requires an acyclic graph; a link that closes a cycle (self
+    // links included) would leave the graph permanently unsortable and
+    // its nodes perpetually dirty, so refuse to create it.
+    if (would_create_cycle(source_pin, sink_pin)) {
+        log_graph->warn(
+            "Connecting {} {} to {} {} would create a cycle - refusing",
+            source_pin->get_owner_node()->get_name(), source_pin->get_name(),
+            sink_pin  ->get_owner_node()->get_name(), sink_pin  ->get_name()
+        );
+        return nullptr;
+    }
+    m_links.push_back(std::make_unique<Link>(source_pin, sink_pin));
+    Link* link = m_links.back().get();
+    sink_pin  ->add_link(link);
+    source_pin->add_link(link);
+    m_is_sorted = false;
+
+    log_graph->trace("Connected {} {} to {} {} ", source_pin->get_name(), source_pin->get_id(), sink_pin->get_name(), sink_pin->get_id());
+    return link;
+}
+
+void Graph::disconnect(Link* link)
+{
+    ERHE_VERIFY(link != nullptr);
+
+    auto i = std::find_if(m_links.begin(), m_links.end(), [link](const std::unique_ptr<Link>& entry){ return link == entry.get(); });
+    if (i == m_links.end()) {
+        log_graph->error("Link not found");
+        return;
+    }
+    link->disconnect();
+    m_links.erase(i);
+    m_is_sorted = false;
+}
+
+auto Graph::get_host_name() const -> const char*
+{
+    return "Graph";
+}
+
+void Graph::sort()
+{
+    if (m_is_sorted) {
+        return;
+    }
+
+    std::vector<Node*> unsorted_nodes = m_nodes;
+    std::vector<Node*> sorted_nodes;
+
+    while (!unsorted_nodes.empty()) {
+        bool found_node{false};
+        for (const auto& node : unsorted_nodes) {
+            {
+                bool any_missing_dependency{false};
+                for (const Pin& input : node->get_input_pins()) {
+                    for (Link* link : input.get_links()) {
+                        // See if dependency is in already sorted nodes
+                        const auto i = std::find_if(
+                            sorted_nodes.begin(),
+                            sorted_nodes.end(),
+                            [&link](Node* entry) {
+                                return entry == link->get_source()->get_owner_node();
+                            }
+                        );
+                        if (i == sorted_nodes.end()) {
+                            any_missing_dependency = true;
+                            break;
+                        }
+                    }
+                }
+                if (any_missing_dependency) {
+                    continue;
+                }
+            }
+
+            SPDLOG_LOGGER_TRACE(log_graph, "Sort: Selected node {} - all dependencies are met", node->get_name(), node->get_id());
+            found_node = true;
+
+            // Add selected node to sorted nodes
+            sorted_nodes.push_back(node);
+
+            // Remove from unsorted nodes
+            const auto i = std::remove(unsorted_nodes.begin(), unsorted_nodes.end(), node);
+            if (i == unsorted_nodes.end()) {
+                log_graph->error("Sort: Node {} {} is not in graph nodes", node->get_name(), node->get_id());
+            } else {
+                unsorted_nodes.erase(i, unsorted_nodes.end());
+            }
+
+            // restart loop
+            break;
+        }
+
+        if (!found_node) {
+            log_graph->error("No node with met dependencies found. Graph is not acyclic:");
+            return;
+        }
+    }
+
+    std::swap(m_nodes, sorted_nodes);
+    m_is_sorted = true;
+}
+
+auto Graph::get_nodes() const -> const std::vector<Node*>&
+{
+    return m_nodes;
+}
+
+auto Graph::get_nodes() -> std::vector<Node*>&
+{
+    return m_nodes;
+}
+
+auto Graph::get_links() -> std::vector<std::unique_ptr<Link>>&
+{
+    return m_links;
+}
+
+} // namespace erhe::graph

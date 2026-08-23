@@ -1,0 +1,1713 @@
+#include "erhe_window/sdl_window.hpp"
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+# include "erhe_gl/dynamic_load.hpp"
+# include "erhe_gl/wrapper_functions.hpp"
+#endif
+#include "erhe_dataformat/dataformat.hpp"
+#include "erhe_defer/defer.hpp"
+#include "erhe_window/renderdoc_capture.hpp"
+#include "erhe_window/window_log.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_time/sleep.hpp"
+#include "erhe_verify/verify.hpp"
+
+#include <fmt/printf.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_joystick.h>
+#include <SDL3/SDL_keyboard.h>
+#include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_video.h>
+#if defined(ERHE_OS_LINUX)
+# include <wayland-client.h>
+#endif
+#if defined(ERHE_OS_WINDOWS)
+# include <wtsapi32.h> // WTSQuerySessionInformationW (is_session_locked)
+#endif
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+# if defined(ERHE_OS_WINDOWS)
+#   include <GL/wglext.h>
+# endif
+#endif
+
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+# include <SDL3/SDL_vulkan.h>
+# include "volk.h"
+#endif
+
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <stdexcept>
+#include <thread>
+
+namespace gl {
+
+using glproc = void (*)();
+
+auto get_proc_address(const char* procname) -> glproc
+{
+    auto proc = SDL_GL_GetProcAddress(procname);
+    return proc;
+}
+
+} // namespace gl
+
+namespace erhe::window {
+
+namespace {
+
+auto sdl_key_to_erhe(const SDL_Keycode sdl_key) -> Keycode
+{
+    switch (sdl_key) {
+        case SDLK_SPACE              : return Key_space;
+        case SDLK_APOSTROPHE         : return Key_apostrophe;
+        case SDLK_COMMA              : return Key_comma;
+        case SDLK_MINUS              : return Key_minus;
+        case SDLK_PERIOD             : return Key_period;
+        case SDLK_SLASH              : return Key_slash;
+        case SDLK_0                  : return Key_0;
+        case SDLK_1                  : return Key_1;
+        case SDLK_2                  : return Key_2;
+        case SDLK_3                  : return Key_3;
+        case SDLK_4                  : return Key_4;
+        case SDLK_5                  : return Key_5;
+        case SDLK_6                  : return Key_6;
+        case SDLK_7                  : return Key_7;
+        case SDLK_8                  : return Key_8;
+        case SDLK_9                  : return Key_9;
+        case SDLK_SEMICOLON          : return Key_semicolon;
+        case SDLK_EQUALS             : return Key_equal;
+        case SDLK_A                  : return Key_a;
+        case SDLK_B                  : return Key_b;
+        case SDLK_C                  : return Key_c;
+        case SDLK_D                  : return Key_d;
+        case SDLK_E                  : return Key_e;
+        case SDLK_F                  : return Key_f;
+        case SDLK_G                  : return Key_g;
+        case SDLK_H                  : return Key_h;
+        case SDLK_I                  : return Key_i;
+        case SDLK_J                  : return Key_j;
+        case SDLK_K                  : return Key_k;
+        case SDLK_L                  : return Key_l;
+        case SDLK_M                  : return Key_m;
+        case SDLK_N                  : return Key_n;
+        case SDLK_O                  : return Key_o;
+        case SDLK_P                  : return Key_p;
+        case SDLK_Q                  : return Key_q;
+        case SDLK_R                  : return Key_r;
+        case SDLK_S                  : return Key_s;
+        case SDLK_T                  : return Key_t;
+        case SDLK_U                  : return Key_u;
+        case SDLK_V                  : return Key_v;
+        case SDLK_W                  : return Key_w;
+        case SDLK_X                  : return Key_x;
+        case SDLK_Y                  : return Key_y;
+        case SDLK_Z                  : return Key_z;
+        case SDLK_LEFTBRACKET        : return Key_left_bracket;
+        case SDLK_BACKSLASH          : return Key_backslash;
+        case SDLK_RIGHTBRACKET       : return Key_right_bracket;
+        case SDLK_GRAVE              : return Key_grave_accent;
+        //case SDLK_WORLD_1            : return Key_world_1;
+        //case SDLK_WORLD_2            : return Key_world_2;
+        case SDLK_ESCAPE             : return Key_escape;
+        case SDLK_RETURN             : return Key_enter;
+        case SDLK_TAB                : return Key_tab;
+        case SDLK_BACKSPACE          : return Key_backspace;
+        case SDLK_INSERT             : return Key_insert;
+        case SDLK_DELETE             : return Key_delete;
+        case SDLK_RIGHT              : return Key_right;
+        case SDLK_LEFT               : return Key_left;
+        case SDLK_DOWN               : return Key_down;
+        case SDLK_UP                 : return Key_up;
+        case SDLK_PAGEUP             : return Key_page_up;
+        case SDLK_PAGEDOWN           : return Key_page_down;
+        case SDLK_HOME               : return Key_home;
+        case SDLK_END                : return Key_end;
+        case SDLK_CAPSLOCK           : return Key_caps_lock;
+        case SDLK_SCROLLLOCK         : return Key_scroll_lock;
+        case SDLK_NUMLOCKCLEAR       : return Key_num_lock;
+        case SDLK_PRINTSCREEN        : return Key_print_screen;
+        case SDLK_PAUSE              : return Key_pause;
+        case SDLK_F1                 : return Key_f1;
+        case SDLK_F2                 : return Key_f2;
+        case SDLK_F3                 : return Key_f3;
+        case SDLK_F4                 : return Key_f4;
+        case SDLK_F5                 : return Key_f5;
+        case SDLK_F6                 : return Key_f6;
+        case SDLK_F7                 : return Key_f7;
+        case SDLK_F8                 : return Key_f8;
+        case SDLK_F9                 : return Key_f9;
+        case SDLK_F10                : return Key_f10;
+        case SDLK_F11                : return Key_f11;
+        case SDLK_F12                : return Key_f12;
+        case SDLK_F13                : return Key_f13;
+        case SDLK_F14                : return Key_f14;
+        case SDLK_F15                : return Key_f15;
+        case SDLK_F16                : return Key_f16;
+        case SDLK_F17                : return Key_f17;
+        case SDLK_F18                : return Key_f18;
+        case SDLK_F19                : return Key_f19;
+        case SDLK_F20                : return Key_f20;
+        case SDLK_F21                : return Key_f21;
+        case SDLK_F22                : return Key_f22;
+        case SDLK_F23                : return Key_f23;
+        case SDLK_F24                : return Key_f24;
+        //case SDLK_F25                : return Key_f25;
+        case SDLK_KP_0               : return Key_kp_0;
+        case SDLK_KP_1               : return Key_kp_1;
+        case SDLK_KP_2               : return Key_kp_2;
+        case SDLK_KP_3               : return Key_kp_3;
+        case SDLK_KP_4               : return Key_kp_4;
+        case SDLK_KP_5               : return Key_kp_5;
+        case SDLK_KP_6               : return Key_kp_6;
+        case SDLK_KP_7               : return Key_kp_7;
+        case SDLK_KP_8               : return Key_kp_8;
+        case SDLK_KP_9               : return Key_kp_9;
+        case SDLK_KP_DECIMAL         : return Key_kp_decimal;
+        case SDLK_KP_DIVIDE          : return Key_kp_divide;
+        case SDLK_KP_MULTIPLY        : return Key_kp_multiply;
+        case SDLK_KP_MINUS           : return Key_kp_subtract;
+        case SDLK_KP_PLUS            : return Key_kp_add;
+        case SDLK_KP_ENTER           : return Key_kp_enter;
+        case SDLK_KP_EQUALS          : return Key_kp_equal;
+        case SDLK_LSHIFT             : return Key_left_shift;
+        case SDLK_LCTRL              : return Key_left_control;
+        case SDLK_LALT               : return Key_left_alt;
+        case SDLK_LGUI               : return Key_left_super;
+        case SDLK_RSHIFT             : return Key_right_shift;
+        case SDLK_RCTRL              : return Key_right_control;
+        case SDLK_RALT               : return Key_right_alt;
+        case SDLK_RGUI               : return Key_right_super;
+        case SDLK_MENU               : return Key_menu;
+        case SDLK_UNKNOWN            : return Key_unknown;
+        default:                       return Key_unknown;
+    }
+}
+
+auto sdl_modifiers_to_erhe(const unsigned int sdl_modifiers) -> Key_modifier_mask
+{
+    uint32_t mask = 0;
+    // TODO GLFW_MOD_CAPS_LOCK
+    // TODO GLFW_MOD_NUM_LOCK
+    if (sdl_modifiers & SDL_KMOD_CTRL ) mask |= Key_modifier_bit_ctrl;
+    if (sdl_modifiers & SDL_KMOD_SHIFT) mask |= Key_modifier_bit_shift;
+    if (sdl_modifiers & SDL_KMOD_GUI  ) mask |= Key_modifier_bit_super;
+    if (sdl_modifiers & SDL_KMOD_ALT  ) mask |= Key_modifier_bit_menu;
+    return mask;
+}
+
+auto sdl_mouse_button_to_erhe(const int sdl_mouse_button) -> Mouse_button
+{
+    switch (sdl_mouse_button) {
+        case SDL_BUTTON_LEFT:   return Mouse_button_left;
+        case SDL_BUTTON_MIDDLE: return Mouse_button_middle;
+        case SDL_BUTTON_RIGHT:  return Mouse_button_right;
+        case SDL_BUTTON_X1:     return Mouse_button_x1;
+        case SDL_BUTTON_X2:     return Mouse_button_x2;
+        default: {
+            // TODO
+            return Mouse_button_left;
+        }
+    }
+}
+
+auto sdl_pixel_format_to_erhe(const SDL_PixelFormat sdl_pixel_format)
+{
+    switch (sdl_pixel_format) {
+
+        case SDL_PIXELFORMAT_UNKNOWN:
+            return erhe::dataformat::Format::format_undefined;
+
+        case SDL_PIXELFORMAT_INDEX8:
+            return erhe::dataformat::Format::format_8_scalar_uint;
+
+        case SDL_PIXELFORMAT_RGB24:
+        case SDL_PIXELFORMAT_BGR24:
+            return erhe::dataformat::Format::format_8_vec3_unorm; // TODO or format_8_vec3_srgb ?
+
+        case SDL_PIXELFORMAT_XRGB8888:
+        case SDL_PIXELFORMAT_RGBX8888:
+        case SDL_PIXELFORMAT_XBGR8888:
+        case SDL_PIXELFORMAT_BGRX8888:
+        case SDL_PIXELFORMAT_ARGB8888:
+        case SDL_PIXELFORMAT_RGBA8888:
+        case SDL_PIXELFORMAT_ABGR8888:
+        case SDL_PIXELFORMAT_BGRA8888:
+            return erhe::dataformat::Format::format_8_vec4_unorm; // TODO or format_8_vec3_srgb ?
+
+        case SDL_PIXELFORMAT_XRGB2101010:
+        case SDL_PIXELFORMAT_XBGR2101010:
+        case SDL_PIXELFORMAT_ARGB2101010:
+        case SDL_PIXELFORMAT_ABGR2101010:
+            return erhe::dataformat::Format::format_packed1010102_vec4_unorm;
+
+        case SDL_PIXELFORMAT_RGB48:
+        case SDL_PIXELFORMAT_BGR48:
+            return erhe::dataformat::Format::format_16_vec3_uint;
+
+        case SDL_PIXELFORMAT_RGBA64:
+        case SDL_PIXELFORMAT_ARGB64:
+        case SDL_PIXELFORMAT_BGRA64:
+        case SDL_PIXELFORMAT_ABGR64:
+            return erhe::dataformat::Format::format_16_vec4_uint;
+
+        case SDL_PIXELFORMAT_RGB48_FLOAT:
+        case SDL_PIXELFORMAT_BGR48_FLOAT:
+            return erhe::dataformat::Format::format_16_vec3_float;
+
+        case SDL_PIXELFORMAT_RGBA64_FLOAT:
+        case SDL_PIXELFORMAT_ARGB64_FLOAT:
+        case SDL_PIXELFORMAT_BGRA64_FLOAT:
+        case SDL_PIXELFORMAT_ABGR64_FLOAT:
+            return erhe::dataformat::Format::format_16_vec4_float;
+
+        case SDL_PIXELFORMAT_RGB96_FLOAT:
+        case SDL_PIXELFORMAT_BGR96_FLOAT:
+            return erhe::dataformat::Format::format_32_vec3_float;
+
+        case SDL_PIXELFORMAT_RGBA128_FLOAT:
+        case SDL_PIXELFORMAT_ARGB128_FLOAT:
+        case SDL_PIXELFORMAT_BGRA128_FLOAT:
+        case SDL_PIXELFORMAT_ABGR128_FLOAT:
+            return erhe::dataformat::Format::format_32_vec4_float;
+        default: {
+            // TODO
+            return erhe::dataformat::Format::format_undefined;
+        }
+    }
+}
+
+[[nodiscard]] auto sdl_key_to_modifier(int key) -> int
+{
+    if (key == SDLK_LCTRL || key == SDLK_RCTRL) {
+        return SDL_KMOD_CTRL;
+    }
+    if (key == SDLK_LSHIFT || key == SDLK_RSHIFT) {
+        return SDL_KMOD_SHIFT;
+    }
+    if (key == SDLK_LALT || key == SDLK_RALT) {
+        return SDL_KMOD_ALT;
+    }
+    if (key == SDLK_LGUI || key == SDLK_RGUI) {
+        return SDL_KMOD_GUI;
+    }
+    return 0;
+}
+
+
+} // namespace
+
+int Context_window::s_window_count{0};
+
+Context_window::Context_window(const Window_configuration& configuration)
+{
+    ERHE_PROFILE_FUNCTION();
+    if (configuration.initialize_frame_capture) {
+        initialize_frame_capture(configuration.renderdoc_library_path_override);
+    }
+
+    const bool ok = open(configuration);
+    ERHE_VERIFY(ok);
+}
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+Context_window::Context_window(Context_window* share)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ERHE_VERIFY(share != nullptr);
+
+    const bool ok = open(
+        {
+            .fullscreen = false,
+            .share      = share,
+            .size       = glm::ivec2{64, 64},
+            .title      = "erhe share context"
+        }
+    );
+
+    ERHE_VERIFY(ok);
+}
+#endif
+
+auto Context_window_SDL_EventFilter(void* userdata, SDL_Event* event) -> bool
+{
+    return static_cast<Context_window*>(userdata)->sdl_event_filter(event);
+}
+
+auto Context_window::sdl_event_filter(void* event_) -> bool
+{
+    SDL_Event* event = static_cast<SDL_Event*>(event_);
+    switch (event->type) {
+        case SDL_EVENT_WINDOW_EXPOSED:
+            if (m_redraw_callback) {
+                m_redraw_callback();
+            }
+            break;
+#if defined(ERHE_OS_ANDROID)
+        // Lifecycle events arrive on the SDL event-watch thread and must
+        // be observed before the OS suspends us; that is why we handle
+        // them here, not in poll_events().
+        case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        case SDL_EVENT_DID_ENTER_BACKGROUND:
+            m_paused.store(true, std::memory_order_release);
+            break;
+        case SDL_EVENT_WILL_ENTER_FOREGROUND:
+        case SDL_EVENT_DID_ENTER_FOREGROUND:
+            m_paused.store(false, std::memory_order_release);
+            m_swapchain_dirty.store(true, std::memory_order_release);
+            break;
+        case SDL_EVENT_RENDER_DEVICE_RESET:
+            m_swapchain_dirty.store(true, std::memory_order_release);
+            break;
+#endif
+        default:
+            break;
+    }
+    return true; // allow event to be added
+}
+
+auto Context_window::is_paused() const -> bool
+{
+    return m_paused.load(std::memory_order_acquire);
+}
+
+auto Context_window::consume_swapchain_dirty() -> bool
+{
+    return m_swapchain_dirty.exchange(false, std::memory_order_acq_rel);
+}
+
+auto Context_window::is_focused() const -> bool
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return false;
+    }
+    return (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+}
+
+auto Context_window::is_minimized() const -> bool
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return false;
+    }
+    return (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
+}
+
+auto Context_window::is_occluded() const -> bool
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return false;
+    }
+    return (SDL_GetWindowFlags(window) & SDL_WINDOW_OCCLUDED) != 0;
+}
+
+auto Context_window::is_hidden() const -> bool
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return false;
+    }
+    return (SDL_GetWindowFlags(window) & SDL_WINDOW_HIDDEN) != 0;
+}
+
+auto Context_window::is_visible() const -> bool
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return false;
+    }
+    const SDL_WindowFlags flags = SDL_GetWindowFlags(window);
+    return (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN)) == 0;
+}
+
+auto Context_window::is_fullscreen() const -> bool
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return false;
+    }
+    return (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
+}
+
+auto Context_window::is_session_locked() const -> bool
+{
+#if defined(ERHE_OS_WINDOWS)
+    // Debug aid: simulate a locked session for the first N seconds of
+    // runtime, so launch-while-locked behavior (frame lifecycle without any
+    // swapchain engagement, deferred swapchain creation, hidden-tick GPU
+    // recording) is reproducible without locking the desktop and waiting
+    // for a manual unlock: ERHE_SIMULATE_SESSION_LOCK_SECONDS=30. Kept as a
+    // permanent hook because this class of bug has bitten twice (invisible
+    // meshes from a locked init, hidden-tick recording into a never-begun
+    // command buffer) and real-lock testing cannot be automated.
+    static const char* const simulate_env = std::getenv("ERHE_SIMULATE_SESSION_LOCK_SECONDS");
+    if (simulate_env != nullptr) {
+        return SDL_GetTicks() < static_cast<Uint64>(std::atof(simulate_env) * 1000.0);
+    }
+    // Poll the authoritative source (same philosophy as the
+    // SDL_GetWindowFlags queries above) instead of registering for
+    // WM_WTSSESSION_CHANGE, which needs a wndproc subclass and misses the
+    // launch-while-locked case. The query is an LPC to the terminal
+    // services subsystem, so throttle it; the state is per session, not
+    // per window, hence the file-scope cache.
+    static Uint64 s_last_query_ticks_ms{0};
+    static bool   s_locked{false};
+    static bool   s_queried_once{false};
+    const Uint64 now_ms = SDL_GetTicks();
+    if (!s_queried_once || ((now_ms - s_last_query_ticks_ms) >= 500)) {
+        s_last_query_ticks_ms = now_ms;
+        s_queried_once        = true;
+        WTSINFOEXW* info  = nullptr;
+        DWORD       bytes = 0;
+        if (
+            WTSQuerySessionInformationW(
+                WTS_CURRENT_SERVER_HANDLE,
+                WTS_CURRENT_SESSION,
+                WTSSessionInfoEx,
+                reinterpret_cast<LPWSTR*>(&info),
+                &bytes
+            )
+        ) {
+            if ((info != nullptr) && (info->Level == 1)) {
+                const bool locked = (info->Data.WTSInfoExLevel1.SessionFlags == WTS_SESSIONSTATE_LOCK);
+                if (locked != s_locked) {
+                    log_window->info("session {}", locked ? "locked" : "unlocked");
+                }
+                s_locked = locked;
+            }
+            if (info != nullptr) {
+                WTSFreeMemory(info);
+            }
+        }
+    }
+    return s_locked;
+#else
+    return false;
+#endif
+}
+
+auto Context_window::get_display_refresh_rate() const -> float
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return 0.0f;
+    }
+    const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+    if (display == 0) {
+        return 0.0f;
+    }
+    const SDL_DisplayMode* const mode = SDL_GetCurrentDisplayMode(display);
+    if (mode == nullptr) {
+        return 0.0f;
+    }
+    return mode->refresh_rate;
+}
+
+void Context_window::register_redraw_callback(std::function<void()> callback)
+{
+    m_redraw_callback = callback;
+}
+
+// Currently this is not thread safe.
+// For now, only call this from main thread.
+auto Context_window::open(const Window_configuration& configuration) -> bool
+{
+    ERHE_PROFILE_FUNCTION();
+
+    const bool primary = s_window_count == 0;
+    if (primary) {
+#if defined(ERHE_OS_LINUX)
+        SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR, "1");
+        SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_PREFER_LIBDECOR, "1");
+#endif
+#if defined(ERHE_OS_ANDROID) && !defined(ERHE_XR_LIBRARY_OPENXR)
+        // The 2D (non-OpenXR) editor is a desktop-style ImGui application whose
+        // layout assumes a wide screen; lock it to landscape on phones/tablets.
+        // Both landscape orientations are allowed (SDL maps this to
+        // SCREEN_ORIENTATION_USER_LANDSCAPE) so the device may still flip
+        // between them, but never rotates to portrait. The OpenXR (Quest)
+        // flavor renders through the XR compositor and must not constrain the
+        // flat activity orientation, hence the !ERHE_XR_LIBRARY_OPENXR guard.
+        // SDL_HINT_ORIENTATIONS must be set before SDL_Init.
+        SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
+
+        SDL_InitFlags init_flags = SDL_INIT_VIDEO | SDL_INIT_EVENTS;
+        if (configuration.enable_joystick) {
+            init_flags |= SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD;
+        }
+
+        bool sdl_init_ok = SDL_Init(init_flags);
+        if (!sdl_init_ok) {
+            fputs("Failed to initialize SDL\n", stderr);
+            return false;
+        }
+
+        {
+            int num_displays = 0;
+            SDL_DisplayID* displays = SDL_GetDisplays(&num_displays);
+            for (int i = 0; i < num_displays; i++) {
+                SDL_PropertiesID prop_id = SDL_GetDisplayProperties(displays[i]);
+                if (!SDL_GetBooleanProperty(prop_id, SDL_PROP_DISPLAY_HDR_ENABLED_BOOLEAN, false)) {
+                    log_window->info("Display with ID {} does not have HDR enabled.", displays[i]);
+                } else {
+                    log_window->info("Display with ID {} has HDR enabled.", displays[i]);
+                }
+            }
+        }
+    }
+
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    bool vulkan_load_library_status = SDL_Vulkan_LoadLibrary(nullptr);
+#if defined(__APPLE__)
+    if (!vulkan_load_library_status) {
+        vulkan_load_library_status = SDL_Vulkan_LoadLibrary("/usr/local/lib/libvulkan.dylib");
+    }
+#endif
+    if (!vulkan_load_library_status) {
+        log_window->error("SDL_Vulkan_LoadLibrary() failed: {}", SDL_GetError());
+        return false;
+    }
+#endif
+
+    // Scanning joysticks can be slow, so do it in worker thread
+    if (primary && configuration.enable_joystick) {
+        m_joystick_scan_task = std::thread{
+            [this]() {
+                ERHE_PROFILE_SCOPE("Scan joysticks");
+                int joystick_count{0};
+                SDL_JoystickID* joysticks = SDL_GetJoysticks(&joystick_count);
+                if ((joystick_count > 0) && (joysticks != nullptr)) {
+                    for (int i = 0; i < joystick_count; ++i) {
+                        ERHE_PROFILE_SCOPE("Joystick");
+                        SDL_JoystickID id = joysticks[i];
+                        if (id == 0) {
+                            break;
+                        }
+                        SDL_Joystick* joystick = SDL_OpenJoystick(id); // TODO close?
+                        if (joystick == nullptr) {
+                            continue;
+                        }
+                        const char* name         = SDL_GetJoystickName(joystick);
+                        Uint16      vendor       = SDL_GetJoystickVendor(joystick);
+                        Uint16      product      = SDL_GetJoystickProduct(joystick);
+                        int         axis_count   = SDL_GetNumJoystickAxes(joystick);
+                        int         button_count = SDL_GetNumJoystickButtons(joystick);
+
+                        if (m_joystick_info.size() <= id) {
+                            m_joystick_info.resize(id + 8);
+                        }
+                        log_window->info(
+                            "Joystick id = {} name = {} vendor = {:04x} product = {:04x} axis_count = {} button_count = {}",
+                            id,
+                            (name != nullptr) ? name : "",
+                            vendor,
+                            product,
+                            axis_count,
+                            button_count
+                        );
+                    }
+                }
+                m_joystick_scan_done.store(true);
+            }
+        };
+    };
+
+    SDL_WindowFlags window_flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    window_flags |= SDL_WINDOW_OPENGL;
+#endif
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    window_flags |= SDL_WINDOW_VULKAN;
+#endif
+#if defined(ERHE_GRAPHICS_API_METAL)
+    window_flags |= SDL_WINDOW_METAL;
+#endif
+    if (configuration.fullscreen) {
+        window_flags |= SDL_WINDOW_FULLSCREEN;
+
+        int display_count = 0;
+        SDL_DisplayID* display_ids = SDL_GetDisplays(&display_count);
+        SDL_DisplayID primary_display = SDL_GetPrimaryDisplay();
+        for (int i = 0; i < display_count; ++i) {
+            const SDL_DisplayID display_id = display_ids[i];
+            int display_mode_count = 0;
+            SDL_DisplayMode** display_modes = SDL_GetFullscreenDisplayModes(display_id, &display_mode_count);
+            if (display_modes == nullptr) {
+                log_window->error("SDL_GetFullscreenDisplayModes() failed: {}", SDL_GetError());
+                continue;
+            }
+            ERHE_DEFER( SDL_free(display_modes); );
+            const SDL_DisplayMode* desktop_display_mode = SDL_GetDesktopDisplayMode(display_id);
+            log_window->info(
+                "Display '{}' [{:08x}] {}:",
+                SDL_GetDisplayName(display_id),
+                display_id,
+                (display_id == primary_display) ? " (primary display)" : "",
+                display_mode_count
+            );
+            for (int j = 0; j < display_mode_count; ++j) {
+                SDL_DisplayMode& m = *display_modes[j];
+                if ((m.w != desktop_display_mode->w) || (m.h != desktop_display_mode->h)) {
+                    continue;
+                }
+                log_window->info(
+                    "  format = {}, width = {}, height = {}, refreshrate = {} ({}/{})",
+                    SDL_GetPixelFormatName(m.format),
+                    m.w,
+                    m.h,
+                    m.refresh_rate,
+                    m.refresh_rate_numerator,
+                    m.refresh_rate_denominator
+                );
+            }
+        }
+        ERHE_DEFER( SDL_free(display_ids); );
+        
+    }
+#if defined(ERHE_OS_ANDROID)
+    // On Android the activity always covers the whole display, and
+    // SDL_WINDOW_FULLSCREEN is what drives SDL's immersive system-UI handling
+    // (SDLActivity.setWindowStyle -> SYSTEM_UI_FLAG_IMMERSIVE_STICKY, plus the
+    // re-hide-after-swipe loop). Without it the editor renders behind the top
+    // status bar (clock/battery) and the bottom navigation bar. Force it on so
+    // the mobile editor runs edge-to-edge regardless of the window configuration.
+    window_flags |= SDL_WINDOW_FULLSCREEN;
+#endif
+    if (configuration.framebuffer_transparency) {
+        window_flags |= SDL_WINDOW_TRANSPARENT;
+    }
+    if (configuration.high_pixel_density) {
+        window_flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    }
+    if (!primary) {
+        window_flags |= SDL_WINDOW_HIDDEN;
+        window_flags |= SDL_WINDOW_NOT_FOCUSABLE;
+    }
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE,       configuration.color_bit_depth);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE,     configuration.color_bit_depth);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,      configuration.color_bit_depth);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,     configuration.use_depth   ? 24 : 0);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE,   configuration.use_stencil ?  8 : 0);
+    // For debugging:
+    // SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 0);
+
+    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, configuration.color_bit_depth <= 8 ? 1 : 0);
+    if (configuration.msaa_sample_count > 0) {
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, configuration.msaa_sample_count);
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, configuration.gl_major);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, configuration.gl_minor);
+# if !defined(NDEBUG)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS,         SDL_GL_CONTEXT_DEBUG_FLAG | SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,  SDL_GL_CONTEXT_PROFILE_CORE);
+# else
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS,         0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,  SDL_GL_CONTEXT_PROFILE_CORE);
+# endif
+
+    if (configuration.share != nullptr) {
+        configuration.share->make_current();
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+    } else {
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 0);
+    }
+#endif
+
+    SDL_Window* sdl_window = SDL_CreateWindow(configuration.title.c_str(), configuration.size.x, configuration.size.y, window_flags);
+    m_sdl_window = sdl_window;
+
+    if (sdl_window == nullptr) {
+        log_window->error("Failed to open SDL window");
+        const char* const sdl_error = SDL_GetError();
+        if (sdl_error != nullptr) {
+            log_window->error("SDL error: {}", sdl_error);
+        }
+
+        if (s_window_count == 0) {
+            SDL_Quit();
+        }
+        return false;
+    }
+
+    // Requested fullscreen refresh rate (frame pacing testing): pick the
+    // fullscreen mode at the desktop resolution whose refresh rate is
+    // closest to the request. The available modes are listed in the log
+    // above; 0 keeps the desktop default (borderless fullscreen).
+    if (configuration.fullscreen && (configuration.refreshrate > 0.0f)) {
+        const SDL_DisplayID window_display = SDL_GetDisplayForWindow(sdl_window);
+        int display_mode_count = 0;
+        SDL_DisplayMode** display_modes = SDL_GetFullscreenDisplayModes(window_display, &display_mode_count);
+        if (display_modes == nullptr) {
+            log_window->error("refreshrate: SDL_GetFullscreenDisplayModes() failed: {}", SDL_GetError());
+        } else {
+            ERHE_DEFER( SDL_free(display_modes); );
+            const SDL_DisplayMode* desktop_display_mode = SDL_GetDesktopDisplayMode(window_display);
+            const SDL_DisplayMode* best_mode            = nullptr;
+            for (int j = 0; j < display_mode_count; ++j) {
+                const SDL_DisplayMode* mode = display_modes[j];
+                if (
+                    (desktop_display_mode != nullptr) &&
+                    ((mode->w != desktop_display_mode->w) || (mode->h != desktop_display_mode->h))
+                ) {
+                    continue;
+                }
+                if (
+                    (best_mode == nullptr) ||
+                    (std::abs(mode->refresh_rate - configuration.refreshrate) <
+                     std::abs(best_mode->refresh_rate - configuration.refreshrate))
+                ) {
+                    best_mode = mode;
+                }
+            }
+            if (best_mode == nullptr) {
+                log_window->error(
+                    "refreshrate: no fullscreen mode at the desktop resolution found; keeping desktop default"
+                );
+            } else if (!SDL_SetWindowFullscreenMode(sdl_window, best_mode)) {
+                log_window->error("refreshrate: SDL_SetWindowFullscreenMode() failed: {}", SDL_GetError());
+            } else {
+                SDL_SyncWindow(sdl_window);
+                log_window->info(
+                    "refreshrate: requested {} Hz -> selected fullscreen mode {}x{} @ {} Hz ({}/{})",
+                    configuration.refreshrate,
+                    best_mode->w,
+                    best_mode->h,
+                    best_mode->refresh_rate,
+                    best_mode->refresh_rate_numerator,
+                    best_mode->refresh_rate_denominator
+                );
+            }
+        }
+    }
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    SDL_GLContext sdl_context = SDL_GL_CreateContext(sdl_window);
+    if (sdl_context == nullptr) {
+        log_window->error("Failed to open GL context for GL {}.{}.", configuration.gl_major, configuration.gl_minor);
+        const char* const sdl_error = SDL_GetError();
+        if (sdl_error != nullptr) {
+            log_window->error("SDL error: {}", sdl_error);
+        }
+
+        if (s_window_count == 0) {
+            SDL_Quit();
+        }
+        return false;
+    }
+
+    m_sdl_gl_context = sdl_context;
+    if (primary) {
+        SDL_GL_MakeCurrent(sdl_window, sdl_context);
+        get_extensions();
+        // TODO Is is a bug in RenderDoc? The query should be valid according to Table 9.1,
+        //      but returns invalid operation.
+        //
+        // gl::Error_code error_code_before = gl::get_error();
+        // ERHE_VERIFY(error_code_before == gl::Error_code::no_error);
+        // GLint color_encoding = 0;
+        // gl::get_named_framebuffer_attachment_parameter_iv(
+        //     0,
+        //     gl::Framebuffer_attachment::back_left,
+        //     gl::Framebuffer_attachment_parameter_name::framebuffer_attachment_color_encoding,
+        //     &color_encoding
+        // );
+        // gl::Error_code error_code_after = gl::get_error();
+        // ERHE_VERIFY(error_code_after == gl::Error_code::no_error);
+        // const bool is_linear = color_encoding == GL_LINEAR;
+        // const bool is_srgb   = color_encoding == GL_SRGB;
+        // ERHE_VERIFY(is_linear != is_srgb);
+    }
+#endif
+
+    int red_size = 0;
+    int green_size = 0;
+    int blue_size = 0;
+    SDL_GL_GetAttribute(SDL_GL_RED_SIZE,   &red_size);
+    SDL_GL_GetAttribute(SDL_GL_GREEN_SIZE, &green_size);
+    SDL_GL_GetAttribute(SDL_GL_BLUE_SIZE,  &blue_size);
+    m_pixel_density = SDL_GetWindowPixelDensity(sdl_window);
+    const float display_scale = SDL_GetWindowDisplayScale(sdl_window);
+    log_window->info("Window color depth red = {}, green = {}, blue = {}", red_size, green_size, blue_size);
+    log_window->info("Window pixel density = {}, display scale = {}", m_pixel_density, display_scale);
+
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    Uint32 vulkan_instance_extension_count = 0;
+    char const* const* vulkan_instance_extensions = SDL_Vulkan_GetInstanceExtensions(&vulkan_instance_extension_count);
+    m_required_instance_extensions.clear();
+    for (Uint32 i = 0; i < vulkan_instance_extension_count; ++i) {
+        m_required_instance_extensions.emplace_back(vulkan_instance_extensions[i]);
+    }
+#endif
+
+    if (primary) {
+        SDL_ShowWindow(sdl_window);
+
+        // ImGui mouse cursor shapes -> SDL system cursors. Consumed by
+        // set_cursor(), fed from ImGui::GetMouseCursor() once per frame by
+        // Window_imgui_host.
+        m_mouse_cursors[Mouse_cursor_Arrow     ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+        m_mouse_cursors[Mouse_cursor_TextInput ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
+        m_mouse_cursors[Mouse_cursor_ResizeAll ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
+        m_mouse_cursors[Mouse_cursor_ResizeNS  ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NS_RESIZE);
+        m_mouse_cursors[Mouse_cursor_ResizeEW  ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_EW_RESIZE);
+        m_mouse_cursors[Mouse_cursor_ResizeNESW] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NESW_RESIZE);
+        m_mouse_cursors[Mouse_cursor_ResizeNWSE] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NWSE_RESIZE);
+        m_mouse_cursors[Mouse_cursor_Hand      ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+        m_mouse_cursors[Mouse_cursor_Wait      ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT);
+        m_mouse_cursors[Mouse_cursor_Progress  ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_PROGRESS);
+        m_mouse_cursors[Mouse_cursor_NotAllowed] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NOT_ALLOWED);
+        m_mouse_cursors[Mouse_cursor_Crosshair ] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_CROSSHAIR);
+    }
+
+    s_window_count++;
+    m_is_mouse_relative_hold_enabled = false;
+    m_configuration = configuration;
+    m_configuration.color_bit_depth = red_size;
+    SDL_GetMouseState(&m_last_mouse_x, &m_last_mouse_y);
+
+    const bool event_watch_ok = SDL_AddEventWatch(Context_window_SDL_EventFilter, static_cast<void*>(this));
+    if (!event_watch_ok) {
+        log_window->warn("SDL_AddEventWatch() failed");
+        const char* const sdl_error = SDL_GetError();
+        if (sdl_error != nullptr) {
+            log_window->warn("  SDL error: {}", sdl_error);
+        }
+    }
+    return true;
+}
+
+Context_window::~Context_window() noexcept
+{
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    SDL_Vulkan_UnloadLibrary();
+#endif
+
+    if (m_joystick_scan_task.joinable()) {
+        m_joystick_scan_task.join();
+    }
+
+    for (Mouse_cursor cursor_n = 0; cursor_n < Mouse_cursor_COUNT; cursor_n++) {
+        if (m_mouse_cursors[cursor_n] != nullptr) {
+            SDL_DestroyCursor(reinterpret_cast<SDL_Cursor*>(m_mouse_cursors[cursor_n]));
+            m_mouse_cursors[cursor_n] = nullptr;
+        }
+    }
+
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_DestroyWindow(window);
+        --s_window_count;
+        if (s_window_count == 0) {
+            SDL_Quit();
+        }
+    }
+}
+
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+auto Context_window::get_required_vulkan_instance_extensions() -> const std::vector<std::string>&
+{
+    return m_required_instance_extensions;
+}
+
+auto Context_window::create_vulkan_surface(void* vulkan_instance) -> void*
+{
+    SDL_Window* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return nullptr;
+    }
+
+    VkSurfaceKHR vulkan_surface{nullptr};
+    VkInstance instance = static_cast<VkInstance>(vulkan_instance);
+    bool result = SDL_Vulkan_CreateSurface(window, instance, nullptr, &vulkan_surface);
+    if (result == false) {
+        log_window->error("SDL_Vulkan_CreateSurface() failed");
+        return nullptr;
+    }
+    return static_cast<void*>(vulkan_surface);
+}
+
+auto Context_window::has_vulkan_surface() const -> bool
+{
+    // A real SDL window can create a VkSurfaceKHR, so the Vulkan backend
+    // uses a real surface + swapchain.
+    return true;
+}
+#endif
+
+void Context_window::poll_events(float wait_time)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return;
+    }
+
+    if (m_is_mouse_relative_hold_enabled) {
+        // WarpMouseInWindow takes window coordinates (logical points), convert from pixel coords
+        SDL_WarpMouseInWindow(window, m_mouse_relative_hold_xpos / m_pixel_density, m_mouse_relative_hold_ypos / m_pixel_density);
+    }
+
+    // When the caller requests a wait (window unfocused / not visible), block
+    // until an event arrives or the timeout elapses, instead of busy-polling.
+    // This yields the CPU and is what makes reduced-frequency rendering save
+    // power; we still drain any further queued events below.
+    if (wait_time > 0.0f) {
+        ERHE_PROFILE_SCOPE("wait");
+        int32_t wait_time_ms = static_cast<int32_t>(wait_time * 1000.0f);
+        if (wait_time_ms < 1) {
+            wait_time_ms = 1; // never request a 0 ms timeout (that would busy-poll)
+        }
+        SDL_Event first_event{};
+        if (SDL_WaitEventTimeout(&first_event, wait_time_ms)) {
+            handle_sdl_event(&first_event);
+        }
+    }
+
+    SDL_Event poll_event{};
+    while (SDL_PollEvent(&poll_event)) {
+        handle_sdl_event(&poll_event);
+    }
+
+
+    // SDL only emits MOUSE_ENTER / MOUSE_LEAVE on boundary crossings, so the initial ENTER can
+    // be missed (e.g. the window appears under an already-stationary cursor, or the event lands
+    // before the imgui host starts processing input). Reconcile against the authoritative
+    // SDL_WINDOW_MOUSE_FOCUS flag each poll so has_cursor() is correct from the first frame and
+    // self-heals from any missed enter/leave event. handle_cursor_enter_event() de-duplicates,
+    // so this is a no-op when the state already matches.
+    handle_cursor_enter_event(
+        static_cast<int64_t>(SDL_GetTicksNS()),
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS) != 0
+    );
+
+    if (m_input_event_synthesizer_callback) {
+        m_input_event_synthesizer_callback(*this);
+    }
+
+    // Swap input event buffers
+    int old_read_buffer = 1 - m_input_event_queue_write;
+    m_input_events[old_read_buffer].clear();
+    m_input_event_queue_write = old_read_buffer;
+}
+
+void Context_window::handle_sdl_event(void* sdl_event)
+{
+    SDL_Event& poll_event = *static_cast<SDL_Event*>(sdl_event);
+    {
+        const int64_t timestamp = static_cast<int64_t>(poll_event.common.timestamp);
+        switch (poll_event.type) {
+            case SDL_EVENT_MOUSE_MOTION: {
+                //// log_window_event->info("SDL_EVENT_MOUSE_MOTION x = {}, y = {}", poll_event.motion.x, poll_event.motion.y);
+                handle_mouse_move(timestamp, poll_event.motion.x, poll_event.motion.y, poll_event.motion.xrel, poll_event.motion.yrel);
+                break;
+            }
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+            case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+                //// log_window_event->info("SDL_MouseButtonEvent button = {}, down = {}", poll_event.button.button, poll_event.button.down);
+                handle_mouse_button_event(timestamp, poll_event.button.button, poll_event.button.down);
+                break;
+            }
+            case SDL_EVENT_MOUSE_WHEEL: {
+                //// log_window_event->info("SDL_EVENT_MOUSE_WHEEL x = {}, y = {}", poll_event.wheel.x, poll_event.wheel.y);
+                handle_mouse_wheel_event(timestamp, poll_event.wheel.x, poll_event.wheel.y);
+                break;
+            }
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_KEY_UP: {
+                //// log_window_event->info("SDL_KeyboardEvent key = {}, down = {}, mod = {}", poll_event.key.key, poll_event.key.down, poll_event.key.mod);
+                handle_key_event(timestamp, poll_event.key.key, poll_event.key.scancode, poll_event.key.down, poll_event.key.mod);
+                break;
+            }
+            case SDL_EVENT_TEXT_INPUT: {
+                //// log_window_event->info("SDL_EVENT_TEXT_INPUT text = {}", poll_event.text.text);
+                handle_text_event(timestamp, poll_event.text.text);
+                break;
+            }
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            case SDL_EVENT_WINDOW_FOCUS_LOST: {
+                const bool gained = poll_event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
+                //// log_window_event->info("{}", gained ? "SDL_EVENT_WINDOW_FOCUS_GAINED" : "SDL_EVENT_WINDOW_FOCUS_LOST");
+                handle_window_focus_event(timestamp, gained);
+                break;
+            }
+            case SDL_EVENT_WINDOW_MOUSE_ENTER:
+            case SDL_EVENT_WINDOW_MOUSE_LEAVE: {
+                const bool entered = poll_event.type == SDL_EVENT_WINDOW_MOUSE_ENTER;
+                //// log_window_event->info("{}", entered ? "SDL_EVENT_WINDOW_MOUSE_ENTER" : "SDL_EVENT_WINDOW_MOUSE_LEAVE");
+                handle_cursor_enter_event(timestamp, entered);
+                break;
+            }
+            case SDL_EVENT_WINDOW_EXPOSED: {
+                //// log_window_event->info("SDL_EVENT_WINDOW_EXPOSED");
+                handle_window_refresh_event(timestamp);
+                break;
+            }
+            case SDL_EVENT_WINDOW_RESIZED: {
+                //// log_window_event->info("SDL_EVENT_WINDOW_RESIZED {} x {}", poll_event.window.data1, poll_event.window.data2);
+                handle_window_resize_event(timestamp, poll_event.window.data1, poll_event.window.data2);
+                break;
+            }
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+                // Pixel (framebuffer) size changed. This fires on a pure DPI
+                // change (e.g. window moved to a different-density display) even
+                // when the logical size is unchanged, so SDL_EVENT_WINDOW_RESIZED
+                // would not. Route through the resize path: it recaches
+                // m_pixel_density and drives swapchain recreation at the new
+                // pixel extent (the editor re-queries get_width()/get_height()).
+                //// log_window_event->info("SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED {} x {}", poll_event.window.data1, poll_event.window.data2);
+                handle_window_resize_event(timestamp, poll_event.window.data1, poll_event.window.data2);
+                break;
+            }
+            case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED: {
+                // Display scale (pixel density * content scale) changed. Emit a
+                // window_scale_event so the UI can rescale fonts to keep their
+                // physical size.
+                //// log_window_event->info("SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED");
+                handle_window_scale_event(timestamp);
+                break;
+            }
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
+                //// log_window_event->info("SDL_EVENT_WINDOW_CLOSE_REQUESTED");
+                handle_window_close_event(timestamp);
+                break;
+            }
+            case SDL_EVENT_QUIT: {
+                // SDL posts SDL_EVENT_QUIT when the last window closes and when
+                // SIGINT / SIGTERM is received (SDL installs signal handlers by
+                // default). Map it to a window close event so Ctrl+C and
+                // `kill <pid>` shut the application down cleanly.
+                handle_window_close_event(timestamp);
+                break;
+            }
+            case SDL_EVENT_JOYSTICK_AXIS_MOTION: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_AXIS_MOTION axis = {} value = {}", poll_event.jaxis.axis, poll_event.jaxis.value);
+                handle_controller_axis_event(timestamp, poll_event.jaxis.which, poll_event.jaxis.axis, poll_event.jaxis.value);
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_BALL_MOTION: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_BALL_MOTION");
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_HAT_MOTION: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_HAT_MOTION");
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+            case SDL_EVENT_JOYSTICK_BUTTON_UP: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_BUTTON button = {} down = {}", poll_event.jbutton.button, poll_event.jbutton.down);
+                handle_controller_button_event(timestamp, poll_event.jbutton.which, poll_event.jbutton.button, poll_event.jbutton.down);
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_ADDED: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_ADDED device = {}", poll_event.jdevice.which);
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_REMOVED: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_REMOVED");
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_BATTERY_UPDATED: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_BATTERY_UPDATED power_level = {}", poll_event.jbattery.percent);
+                break;
+            };
+            case SDL_EVENT_JOYSTICK_UPDATE_COMPLETE: {
+                //// log_window_event->info("SDL_EVENT_JOYSTICK_UPDATE_COMPLETE");
+                break;
+            };
+            default: {
+                break;
+            }
+        }
+    }
+}
+
+void Context_window::inject_input_event(const Input_event& event)
+{
+    m_input_events[m_input_event_queue_write].push_back(event);
+}
+
+void Context_window::set_input_event_synthesizer_callback(std::function<void(Context_window& context_window)> callback)
+{
+    m_input_event_synthesizer_callback = callback;
+}
+
+void Context_window::get_cursor_position(float& xpos, float& ypos)
+{
+    SDL_GetMouseState(&xpos, &ypos);
+    xpos *= m_pixel_density;
+    ypos *= m_pixel_density;
+}
+
+void Context_window::get_cursor_relative_hold_position(float& xpos, float& ypos)
+{
+    xpos = static_cast<float>(m_mouse_relative_hold_xpos);
+    ypos = static_cast<float>(m_mouse_relative_hold_ypos);
+}
+
+void Context_window::set_title(const std::string& title)
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_SetWindowTitle(window, title.c_str());
+    }
+    m_configuration.title = title;
+}
+
+void Context_window::set_visible(const bool visible)
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        if (m_is_window_visible != visible) {
+            m_is_window_visible = visible;
+            if (m_is_window_visible) {
+                SDL_ShowWindow(window);
+            } else {
+                SDL_HideWindow(window);
+            }
+        }
+    }
+}
+
+void Context_window::set_cursor(const Mouse_cursor cursor)
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window == nullptr) {
+        return;
+    }
+    if (m_current_mouse_cursor == cursor) {
+        return;
+    }
+    if (m_is_mouse_relative_hold_enabled) {
+        // Pointer is captured / hidden. Keep m_current_mouse_cursor
+        // unchanged so the shape is (re)applied after release.
+        return;
+    }
+    m_current_mouse_cursor = cursor;
+    if (cursor == Mouse_cursor_None) {
+        SDL_HideCursor();
+        return;
+    }
+    SDL_Cursor* const sdl_cursor =
+        ((cursor >= 0) && (cursor < Mouse_cursor_COUNT) && (m_mouse_cursors[cursor] != nullptr))
+            ? reinterpret_cast<SDL_Cursor*>(m_mouse_cursors[cursor])
+            : reinterpret_cast<SDL_Cursor*>(m_mouse_cursors[Mouse_cursor_Arrow]);
+    if (sdl_cursor != nullptr) {
+        SDL_SetCursor(sdl_cursor);
+    }
+    SDL_ShowCursor();
+}
+
+void Context_window::set_cursor_relative_hold(const bool relative_hold_enabled)
+{    
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) 
+    {
+        if (m_is_mouse_relative_hold_enabled != relative_hold_enabled) {
+            SDL_SetWindowRelativeMouseMode(window, relative_hold_enabled);
+            if (relative_hold_enabled) {
+                SDL_GetMouseState(&m_mouse_relative_hold_xpos, &m_mouse_relative_hold_ypos);
+                m_mouse_relative_hold_xpos *= m_pixel_density;
+                m_mouse_relative_hold_ypos *= m_pixel_density;
+                m_mouse_virtual_xpos = m_mouse_relative_hold_xpos;
+                m_mouse_virtual_ypos = m_mouse_relative_hold_ypos;
+            }
+            m_is_mouse_relative_hold_enabled = relative_hold_enabled;
+        }
+    }
+}
+
+void Context_window::set_text_input_area(int x, int y, int w, int h)
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_Rect r;
+        r.x = x;
+        r.y = y;
+        r.w = w;
+        r.h = h;
+        log_window_event->info("SDL_SetTextInputArea({}, {}, {}, {})", x, y, w, h);
+        SDL_SetTextInputArea(window, &r, 0);
+    }
+}
+
+void Context_window::start_text_input()
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        log_window_event->info("SDL_StartTextInput()");
+        SDL_StartTextInput(window);
+    }
+}
+
+void Context_window::stop_text_input()
+{
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        log_window_event->info("SDL_StopTextInput()");
+        SDL_StopTextInput(window);
+    }
+}
+
+auto Context_window::get_modifier_mask() const -> Key_modifier_mask
+{
+    return sdl_modifiers_to_erhe(m_key_modifiers);
+}
+
+void Context_window::handle_key_event(int64_t timestamp, int key, int scancode, bool pressed, int modifiers)
+{
+    static_cast<void>(scancode);
+
+    m_key_modifiers = modifiers;
+
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::key_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .key_event = {
+                    .keycode       = sdl_key_to_erhe(key),
+                    .modifier_mask = sdl_modifiers_to_erhe(modifiers),
+                    .pressed       = pressed
+                }
+            }
+        }
+    );
+}
+
+void Context_window::handle_text_event(int64_t timestamp, const char* utf8_text)
+{
+    Input_event text_event{
+        .type = Input_event_type::text_event,
+        .timestamp_ns = timestamp,
+        .u = {
+            .dummy = true
+        }
+    };
+    memset(text_event.u.text_event.utf8_text, 0, 32);
+    ERHE_VERIFY(strlen(utf8_text) < 32);
+    strncpy(text_event.u.text_event.utf8_text, utf8_text, 31);
+    m_input_events[m_input_event_queue_write].push_back(text_event);
+}
+
+void Context_window::handle_window_resize_event(int64_t timestamp, int width, int height)
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        m_pixel_density = SDL_GetWindowPixelDensity(window);
+    }
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::window_resize_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .window_resize_event = {
+                    .width  = width,
+                    .height = height
+                }
+            }
+        }
+    );
+}
+
+void Context_window::handle_window_scale_event(int64_t timestamp)
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    const float scale = (window != nullptr) ? SDL_GetWindowDisplayScale(window) : 1.0f;
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::window_scale_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .window_scale_event = {
+                    .scale = scale
+                }
+            }
+        }
+    );
+}
+
+void Context_window::handle_window_refresh_event(int64_t timestamp)
+{
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::window_refresh_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .window_refresh_event = {}
+            }
+        }
+    );
+}
+
+void Context_window::handle_window_close_event(int64_t timestamp)
+{
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::window_close_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .window_close_event = {}
+            }
+        }
+    );
+}
+
+void Context_window::handle_window_focus_event(int64_t timestamp, bool focused)
+{
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::window_focus_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .window_focus_event = {
+                    .focused = (focused != 0)
+                }
+            }
+        }
+    );
+    // log_window_event->trace(m_input_events[m_input_event_queue_write].back().describe());
+}
+
+void Context_window::handle_cursor_enter_event(int64_t timestamp, bool entered)
+{
+    // Only emit on an actual change. This avoids redundant events and lets the
+    // SDL_WINDOW_MOUSE_FOCUS reconciliation in poll_events() share this path safely.
+    if (entered == m_mouse_inside_window) {
+        return;
+    }
+    m_mouse_inside_window = entered;
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::cursor_enter_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .cursor_enter_event = {
+                    .entered = entered
+                }
+            }
+        }
+    );
+    // log_window_event->trace(m_input_events[m_input_event_queue_write].back().describe());
+}
+
+void Context_window::handle_mouse_button_event(int64_t timestamp, int button, bool pressed)
+{
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::mouse_button_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .mouse_button_event = {
+                    .button        = sdl_mouse_button_to_erhe(button),
+                    .pressed       = pressed,
+                    .modifier_mask = sdl_modifiers_to_erhe(m_key_modifiers)
+                }
+            }
+        }
+    );
+}
+
+void Context_window::handle_mouse_wheel_event(int64_t timestamp, float x, float y)
+{
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::mouse_wheel_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .mouse_wheel_event = {
+                    .x             = x,
+                    .y             = y,
+                    .modifier_mask = get_modifier_mask()
+                }
+            }
+        }
+    );
+}
+
+void Context_window::handle_mouse_move(int64_t timestamp, float x, float y, float dx, float dy)
+{
+    // SDL3 mouse events are in window coordinates (logical points).
+    // Scale to pixel coordinates to match get_width()/get_height() and GL framebuffer.
+    const float px  = x  * m_pixel_density;
+    const float py  = y  * m_pixel_density;
+    const float pdx = dx * m_pixel_density;
+    const float pdy = dy * m_pixel_density;
+
+    if (m_is_mouse_relative_hold_enabled) {
+        m_input_events[m_input_event_queue_write].push_back(
+            Input_event{
+                .type = Input_event_type::mouse_move_event,
+                .timestamp_ns = timestamp,
+                .u = {
+                    .mouse_move_event = {
+                        .x             = m_mouse_relative_hold_xpos,
+                        .y             = m_mouse_relative_hold_ypos,
+                        .dx            = pdx,
+                        .dy            = pdy,
+                        .modifier_mask = get_modifier_mask()
+                    }
+                }
+            }
+        );
+    } else {
+        m_last_mouse_x = px;
+        m_last_mouse_y = py;
+        m_input_events[m_input_event_queue_write].push_back(
+            Input_event{
+                .type = Input_event_type::mouse_move_event,
+                .timestamp_ns = timestamp,
+                .u = {
+                    .mouse_move_event = {
+                        .x             = px,
+                        .y             = py,
+                        .dx            = pdx,
+                        .dy            = pdy,
+                        .modifier_mask = get_modifier_mask()
+                    }
+                }
+            }
+        );
+    }
+}
+
+void Context_window::handle_controller_axis_event(int64_t timestamp, int device, int axis, int value_)
+{
+    float normalized_value = static_cast<float>(value_) / 32767.0f;
+    if (normalized_value < -1.0f) {
+        normalized_value = -1.0f;
+    }
+    if (normalized_value > 1.0f) {
+        normalized_value = 1.0f;
+    }
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::controller_axis_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .controller_axis_event = {
+                    .controller    = device,
+                    .axis          = axis,
+                    .value         = normalized_value,
+                    .modifier_mask = get_modifier_mask()
+                }
+            }
+        }
+    );
+}
+
+void Context_window::handle_controller_button_event(int64_t timestamp, int device, int button, bool pressed)
+{
+    m_input_events[m_input_event_queue_write].push_back(
+        Input_event{
+            .type = Input_event_type::controller_button_event,
+            .timestamp_ns = timestamp,
+            .u = {
+                .controller_button_event = {
+                    .controller    = device,
+                    .button        = button,
+                    .value         = pressed,
+                    .modifier_mask = get_modifier_mask()
+                }
+            }
+        }
+    );
+}
+
+auto Context_window::get_cursor_relative_hold() const -> bool
+{
+    return m_is_mouse_relative_hold_enabled;
+}
+
+auto Context_window::get_window_configuration() const -> const Window_configuration&
+{
+    return m_configuration;
+}
+
+auto Context_window::get_width() const -> int
+{
+    int width {0};
+    int height{0};
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_GetWindowSizeInPixels(window, &width, &height);
+    }
+    return width;
+}
+
+auto Context_window::get_height() const -> int
+{
+    int width {0};
+    int height{0};
+    auto* const window = reinterpret_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_GetWindowSizeInPixels(window, &width, &height);
+    }
+    return height;
+}
+
+auto Context_window::get_input_events() -> std::vector<Input_event>&
+{
+    return m_input_events[1 - m_input_event_queue_write];
+}
+
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+void Context_window::get_extensions()
+{
+    ERHE_PROFILE_FUNCTION();
+    gl::dynamic_load_init(SDL_GL_GetProcAddress);
+
+# if defined(ERHE_OS_WINDOWS)
+    m_NV_delay_before_swap = SDL_GL_GetProcAddress("wglDelayBeforeSwapNV");
+# else // TODO
+# endif
+}
+
+void Context_window::make_current() const
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_GLContext sdl_context = static_cast<SDL_GLContext>(m_sdl_gl_context);
+        SDL_GL_MakeCurrent(window, sdl_context);
+    }
+}
+
+void Context_window::clear_current() const
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_GL_MakeCurrent(window, nullptr);
+    }
+}
+
+auto Context_window::delay_before_swap(float seconds) const -> bool
+{
+#if defined(ERHE_OS_WINDOWS)
+    if (m_NV_delay_before_swap != nullptr) {
+        auto* window = static_cast<SDL_Window*>(m_sdl_window);
+        if (window != nullptr) {
+            SDL_PropertiesID properties = SDL_GetWindowProperties(window);
+            void* untyped_hdc = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HDC_POINTER, nullptr);
+            HDC dc = static_cast<HDC>(untyped_hdc);
+            PFNWGLDELAYBEFORESWAPNVPROC p_WGL_NV_delay_before_swap = (PFNWGLDELAYBEFORESWAPNVPROC)(m_NV_delay_before_swap);
+            BOOL return_value = p_WGL_NV_delay_before_swap(dc, seconds);
+            return return_value == TRUE;
+        }
+        return false;
+    } else {
+        return false;
+    }
+#else
+    // TODO
+    static_cast<void>(seconds);
+    return false;
+#endif
+}
+
+void Context_window::swap_buffers() const
+{
+    ERHE_PROFILE_FUNCTION();
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_GL_SwapWindow(window);
+    }
+}
+
+void Context_window::set_swap_interval(int interval)
+{
+    log_window->info("Setting swap interval to {}", interval);
+    SDL_GL_SetSwapInterval(interval);
+}
+#endif
+
+auto Context_window::get_device_pointer() const -> void*
+{
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+# if defined(ERHE_OS_WINDOWS)
+    return wglGetCurrentContext();
+# else
+    ERHE_FATAL("TODO");
+    return nullptr; // TODO
+# endif
+#endif
+
+#if defined(ERHE_GRAPHICS_API_VULKAN)
+    return nullptr; // TODO
+#endif
+}
+
+auto Context_window::get_window_handle() const -> void*
+{
+#if defined(ERHE_OS_WINDOWS)
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_PropertiesID properties = SDL_GetWindowProperties(window);
+        void* untyped_hwnd = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+        HWND hwnd = static_cast<HWND>(untyped_hwnd);
+        return hwnd;
+    } else {
+        return nullptr;
+    }
+#else
+    return nullptr; // TODO
+#endif
+}
+
+#if defined(ERHE_OS_WINDOWS)
+auto Context_window::get_hwnd() const -> HWND
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_PropertiesID properties = SDL_GetWindowProperties(window);
+        void* untyped_hwnd = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+        HWND hwnd = static_cast<HWND>(untyped_hwnd);
+        return hwnd;
+    } else {
+        return nullptr;
+    }
+}
+# if defined(ERHE_GRAPHICS_API_OPENGL)
+auto Context_window::get_hglrc() const -> HGLRC
+{
+    return wglGetCurrentContext();
+}
+# endif
+#endif
+
+#if defined(ERHE_OS_LINUX)
+auto Context_window::get_wl_display() const -> struct wl_display*
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    if (window != nullptr) {
+        SDL_PropertiesID properties = SDL_GetWindowProperties(window);
+        void* untyped_wayland_display = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
+        struct wl_display* wayland_display = static_cast<struct wl_display*>(untyped_wayland_display);
+        return wayland_display;
+    } else {
+        return nullptr;
+    }
+}
+#endif
+
+
+auto Context_window::get_scale_factor() const -> float
+{
+    auto* window = static_cast<SDL_Window*>(m_sdl_window);
+    return window != nullptr ? SDL_GetWindowDisplayScale(window) : 1.0f;
+}
+
+auto Context_window::get_pixel_density() const -> float
+{
+    return m_pixel_density;
+}
+
+}

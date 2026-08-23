@@ -1,0 +1,476 @@
+#include "operations/mesh_operation.hpp"
+
+#include "app_context.hpp"
+#include "app_message_bus.hpp"
+#include "editor_log.hpp"
+#include "app_settings.hpp"
+#include "items.hpp"
+#include "scene/node_physics.hpp"
+#include "scene/scene_root.hpp"
+#include "tools/mesh_component_selection.hpp"
+
+#include "erhe_geometry/geometry.hpp"
+#include "erhe_physics/icollision_shape.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene/node.hpp"
+
+#include <geogram/basic/geofile.h>
+#include <geogram/mesh/mesh.h>
+#include <geogram/mesh/mesh_io.h>
+
+#include <filesystem>
+
+using erhe::geometry::get_pointf;
+using erhe::geometry::make_convex_hull;
+using erhe::geometry::to_geo_mat4f;
+
+namespace editor {
+
+Mesh_operation::Mesh_operation(Mesh_operation_parameters&& parameters)
+    : m_parameters{std::move(parameters)}
+{
+}
+
+auto Mesh_operation::describe_entries() const -> std::string
+{
+    std::stringstream ss;
+    ss << fmt::format("[{}] ", get_serial());
+    bool first = true;
+    for (const auto& entry : m_entries) {
+        if (first) {
+            first = false;
+        } else {
+            ss << ", ";
+        }
+        ss << entry.scene_mesh->get_name();
+    }
+    return ss.str();
+}
+
+Mesh_operation::~Mesh_operation() noexcept = default;
+
+void Mesh_operation::execute(App_context& context)
+{
+    log_operations->trace("Op Execute Wait {}", describe());
+
+    if (m_entries.empty()) {
+        set_error("No mesh entries - selection may not contain meshes with geometry");
+        log_operations->warn("Op Execute {} failed: {}", describe(), get_error());
+        return;
+    }
+    Entry& first_entry = m_entries.front();
+    erhe::scene::Mesh* first_mesh = first_entry.scene_mesh.get();
+    if (first_mesh == nullptr) {
+        set_error("First mesh entry is null");
+        log_operations->warn("Op Execute {} failed: {}", describe(), get_error());
+        return;
+    }
+    erhe::scene::Node* first_node = first_mesh->get_node();
+    if (first_node == nullptr) {
+        set_error("First mesh node is null");
+        log_operations->warn("Op Execute {} failed: {}", describe(), get_error());
+        return;
+    }
+    erhe::Item_host* item_host = first_node->get_item_host();
+    if (item_host == nullptr) {
+        set_error("Item host is null");
+        log_operations->warn("Op Execute {} failed: {}", describe(), get_error());
+        return;
+    }
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{item_host->item_host_mutex};
+
+    log_operations->trace("Op Execute Begin {}", describe());
+
+    for (const auto& entry : m_entries) {
+        auto* node = entry.scene_mesh->get_node();
+
+        // TODO Improve physics RAII and remove this workaround
+        std::shared_ptr<erhe::Hierarchy> parent = node->get_parent().lock();
+
+        // This keeps node alive while we modify it
+        std::shared_ptr<erhe::scene::Node> node_shared = std::dynamic_pointer_cast<erhe::scene::Node>(node->shared_from_this());
+
+        node->set_parent(std::shared_ptr<erhe::Hierarchy>{});
+
+        auto old_node_physics = erhe::scene::get_attachment<Node_physics>(node);
+        if (old_node_physics) {
+            node->detach(old_node_physics.get());
+        }
+        entry.scene_mesh->set_primitives(entry.after.primitives);
+        if (entry.after.node_physics) {
+            node->attach(entry.after.node_physics);
+        }
+
+        node->set_parent(parent);
+    }
+
+    log_operations->trace("Op Execute End {}", describe());
+
+    // Announce the geometry swap (eager housekeeping for the component-selection
+    // store). Any entry for the old geometry simply goes dormant via is_live();
+    // the subscriber only prunes entries that can no longer become live.
+    for (const auto& entry : m_entries) {
+        context.app_message_bus->mesh_geometry_changed.send_message(
+            Mesh_geometry_changed_message{.mesh = entry.scene_mesh}
+        );
+    }
+
+    // Move the mesh-component selection onto the components the operation produced
+    // from the previously-selected ones (faces -> new faces, edges -> new edges,
+    // vertices -> new vertices). The pre-operation entry stays in the store (now
+    // dormant, addressed against the old Geometry which is held alive by
+    // before.primitives), so undo revives it automatically and redo re-runs this -
+    // find_or_create keeps it idempotent.
+    if (context.mesh_component_selection != nullptr) {
+        for (const auto& entry : m_entries) {
+            for (const Entry::Selection_remap& remap : entry.selection_remaps) {
+                context.mesh_component_selection->set_after_operation(
+                    entry.scene_mesh,
+                    remap.primitive_index,
+                    remap.after_geometry,
+                    remap.components.vertices,
+                    remap.components.facets,
+                    remap.components.edges
+                );
+            }
+        }
+    }
+}
+
+void Mesh_operation::undo(App_context& context)
+{
+    log_operations->trace("Op Undo Wait {}", describe());
+
+    if (m_entries.empty() || has_error()) {
+        log_operations->warn("Op Undo {} skipped: {}", describe(), has_error() ? get_error() : "no entries");
+        return;
+    }
+    Entry& first_entry = m_entries.front();
+    erhe::scene::Mesh* first_mesh = first_entry.scene_mesh.get();
+    if (first_mesh == nullptr) { return; }
+    erhe::scene::Node* first_node = first_mesh->get_node();
+    if (first_node == nullptr) { return; }
+    erhe::Item_host* item_host = first_node->get_item_host();
+    if (item_host == nullptr) { return; }
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{item_host->item_host_mutex};
+
+    log_operations->trace("Op Undo Begin {}", describe());
+
+    for (const auto& entry : m_entries) {
+        auto* node = entry.scene_mesh->get_node();
+
+        // TODO Improve physics RAII and remove this workaround
+        std::shared_ptr<erhe::Hierarchy> parent = node->get_parent().lock();
+
+        // This keeps node alive while we modify it
+        std::shared_ptr<erhe::scene::Node> node_shared = std::dynamic_pointer_cast<erhe::scene::Node>(node->shared_from_this());
+
+        node->set_parent(std::shared_ptr<erhe::Hierarchy>{});
+
+        auto old_node_physics = erhe::scene::get_attachment<Node_physics>(node);
+        if (old_node_physics) {
+            node->detach(old_node_physics.get());
+        }
+        entry.scene_mesh->set_primitives(entry.before.primitives);
+        if (entry.before.node_physics) {
+            node->attach(entry.before.node_physics);
+        }
+
+        node->set_parent(parent);
+    }
+
+    log_operations->trace("Op Undo End {}", describe());
+
+    // Announce the geometry restore. The component-selection store re-binds the
+    // original geometry (held alive by before.primitives), so any dormant entry
+    // for it becomes live again automatically via is_live() - no restore needed.
+    for (const auto& entry : m_entries) {
+        context.app_message_bus->mesh_geometry_changed.send_message(
+            Mesh_geometry_changed_message{.mesh = entry.scene_mesh}
+        );
+    }
+}
+
+void Mesh_operation::make_entries(
+    const std::function<void(const erhe::geometry::Geometry& before_geometry, erhe::geometry::Geometry& after_geometry)> geometry_operation
+)
+{
+    make_entries(
+        [&geometry_operation](
+            const erhe::geometry::Geometry& before_geometry,
+            erhe::geometry::Geometry&       after_geometry,
+            erhe::scene::Node*
+        ) -> void {
+            geometry_operation(before_geometry, after_geometry);
+        }
+    );
+}
+
+void Mesh_operation::make_entries(
+    const std::function<void(const erhe::geometry::Geometry&, erhe::geometry::Geometry&, erhe::scene::Node*)> geometry_operation
+)
+{
+    make_entries(
+        [geometry_operation](
+            const erhe::geometry::Geometry& before_geometry,
+            erhe::geometry::Geometry&       after_geometry,
+            erhe::scene::Node*              node,
+            const std::set<GEO::index_t>*   /*selected_facets*/,
+            const erhe::geometry::operation::Geometry_component_selection* /*remap_source*/,
+            erhe::geometry::operation::Geometry_component_selection*       /*remap_destination*/
+        ) -> void {
+            geometry_operation(before_geometry, after_geometry, node);
+        }
+    );
+}
+
+void Mesh_operation::make_entries(
+    const std::function<
+        void(
+            const erhe::geometry::Geometry&,
+            erhe::geometry::Geometry&,
+            erhe::scene::Node*,
+            const std::set<GEO::index_t>*,
+            const erhe::geometry::operation::Geometry_component_selection*,
+            erhe::geometry::operation::Geometry_component_selection*
+        )
+    > geometry_operation
+)
+{
+    make_entries(
+        [this, geometry_operation](const std::shared_ptr<erhe::scene::Mesh>& scene_mesh)
+        {
+            erhe::scene::Node* node = scene_mesh->get_node();
+            Entry entry{
+                // TODO consider keeping node alive always .node   = node_shared,
+                .scene_mesh = scene_mesh,
+                .before = {
+                    .node_physics = erhe::scene::get_attachment<Node_physics>(node),
+                    .primitives   = scene_mesh->get_primitives()
+                },
+            };
+
+            erhe::physics::Motion_mode motion_mode = entry.before.node_physics
+                ? entry.before.node_physics->get_motion_mode()
+                : erhe::physics::Motion_mode::e_invalid;
+
+            for (erhe::scene::Mesh_primitive& mesh_primitive : scene_mesh->get_mutable_primitives()) {
+                const erhe::primitive::Primitive&                               primitive       = *mesh_primitive.primitive.get();
+                const std::shared_ptr<erhe::primitive::Primitive_render_shape>& render_shape    = primitive.render_shape;
+                const std::shared_ptr<erhe::geometry::Geometry>&                before_geometry = render_shape->get_geometry();
+                if (!before_geometry) {
+                    continue;
+                }
+                // A live mesh-component selection on this exact Geometry restricts the
+                // operation to the selected facets (the snapshot was keyed by Geometry
+                // identity on the main thread). No entry / empty set => whole mesh.
+                const std::set<GEO::index_t>* selected_facets = nullptr;
+                const auto facet_set_i = m_parameters.selected_facets.find(before_geometry.get());
+                if ((facet_set_i != m_parameters.selected_facets.end()) && !facet_set_i->second.empty()) {
+                    selected_facets = &facet_set_i->second;
+                }
+
+                // Source component selection to remap onto the result (nullptr when this
+                // primitive carries no live component selection). A selection-aware
+                // operation fills remap_destination with the components produced from it.
+                const erhe::geometry::operation::Geometry_component_selection* remap_source = nullptr;
+                const auto component_i = m_parameters.component_selection.find(before_geometry.get());
+                if ((component_i != m_parameters.component_selection.end()) && !component_i->second.is_empty()) {
+                    remap_source = &component_i->second;
+                }
+                erhe::geometry::operation::Geometry_component_selection remap_destination;
+
+                auto after_geometry = std::make_shared<erhe::geometry::Geometry>();
+                {
+                    // The operation implementations reach geogram algorithms
+                    // (mesh_repair, CVT remesh/smooth, booleans, Delaunay)
+                    // which must not run concurrently with other geogram
+                    // invocations - deferred glTF finalize tasks and sibling
+                    // async operations run on other workers. See
+                    // erhe::geometry::geogram_lock(). Scoped to the geometry
+                    // operation only: the buffer-mesh / raytrace builds below
+                    // take their own (inner) locks. Skipped for operations
+                    // that lock internally exactly where Geogram is involved
+                    // (m_callback_requires_geogram_lock in the header).
+                    std::unique_lock<std::recursive_mutex> geogram_guard{erhe::geometry::geogram_lock(), std::defer_lock};
+                    if (m_callback_requires_geogram_lock) {
+                        geogram_guard.lock();
+                    }
+                    geometry_operation(*before_geometry.get(), *after_geometry.get(), node, selected_facets, remap_source, &remap_destination);
+                }
+
+                auto sanitize_warnings = after_geometry->sanitize();
+                if (!sanitize_warnings.empty()) {
+                    // Save the input geometry that produced bad output for debugging
+                    const std::filesystem::path debug_dir{"debug_geometry"};
+                    std::filesystem::create_directories(debug_dir);
+                    const std::string mesh_name = scene_mesh->get_name();
+                    std::string filename = fmt::format("before_op{}_{}_{}.geogram", get_serial(), describe(), mesh_name);
+                    for (char& c : filename) {
+                        if (c == ' ' || c == '(' || c == ')') c = '_';
+                    }
+                    const std::filesystem::path debug_path = debug_dir / filename;
+                    GEO::MeshIOFlags ioflags;
+                    ioflags.set_dimension(3);
+                    ioflags.set_attributes(GEO::MeshAttributesFlags::MESH_ALL_ATTRIBUTES);
+                    ioflags.set_elements(GEO::MeshElementsFlags::MESH_ALL_ELEMENTS);
+                    GEO::OutputGeoFile geofile{debug_path.string(), 3};
+                    if (GEO::mesh_save(before_geometry->get_mesh(), geofile, ioflags)) {
+                        log_operations->warn("{} mesh '{}' saved pre-operation geometry to {}", describe(), mesh_name, debug_path.string());
+                    }
+                    for (const auto& warning : sanitize_warnings) {
+                        log_operations->warn("{} mesh '{}' geometry sanitized: {}", describe(), mesh_name, warning);
+                    }
+                }
+                const std::string validation_error = after_geometry->validate();
+                if (!validation_error.empty()) {
+                    set_error(fmt::format("Geometry validation failed after sanitize: {}", validation_error));
+                    log_operations->warn("Op {} geometry validation failed after sanitize: {}", describe(), validation_error);
+                    return;
+                }
+
+                const uint64_t flags =
+                    erhe::geometry::Geometry::process_flag_connect |
+                    erhe::geometry::Geometry::process_flag_build_edges |
+                    erhe::geometry::Geometry::process_flag_compute_smooth_vertex_normals |
+                    erhe::geometry::Geometry::process_flag_generate_facet_texture_coordinates;
+
+                after_geometry->process({.flags = flags});
+
+                std::shared_ptr<erhe::primitive::Primitive> after_primitive = std::make_shared<erhe::primitive::Primitive>(after_geometry);
+                const bool renderable_ok = after_primitive->make_renderable_mesh(m_parameters.build_info, render_shape->get_normal_style());
+                const bool raytrace_ok   = after_primitive->make_raytrace();
+                ERHE_VERIFY(renderable_ok && raytrace_ok);
+                entry.after.primitives.emplace_back(after_primitive, mesh_primitive.material);
+
+                // If this primitive carried a component selection that mapped to a
+                // non-empty result, record it so execute() can move the selection onto
+                // the newly created components. primitive_index is this primitive's slot
+                // in the post-swap primitive list (== after.primitives index).
+                if ((remap_source != nullptr) && !remap_destination.is_empty()) {
+                    entry.selection_remaps.push_back(
+                        Entry::Selection_remap{
+                            .primitive_index = entry.after.primitives.size() - 1,
+                            .after_geometry  = after_geometry,
+                            .components      = std::move(remap_destination)
+                        }
+                    );
+                }
+
+                if (m_parameters.context.editor_settings->physics.static_enable) {
+
+                    GEO::Mesh convex_hull{};
+                    const bool convex_hull_ok = make_convex_hull(after_geometry->get_mesh(), convex_hull);
+                    ERHE_VERIFY(convex_hull_ok); // TODO handle error
+
+                    std::vector<float> coordinates;
+                    coordinates.resize(convex_hull.vertices.nb() * 3);
+                    for (GEO::index_t vertex : convex_hull.vertices) {
+                        const GEO::vec3f p = get_pointf(convex_hull.vertices, vertex);
+                        coordinates[3 * vertex + 0] = p.x;
+                        coordinates[3 * vertex + 1] = p.y;
+                        coordinates[3 * vertex + 2] = p.z;
+                    }
+
+                    auto collision_shape = erhe::physics::ICollision_shape::create_convex_hull_shape_shared(
+                        coordinates.data(),
+                        static_cast<int>(convex_hull.vertices.nb()),
+                        static_cast<int>(3 * sizeof(float))
+                    );
+
+                    const erhe::physics::IRigid_body_create_info rigid_body_create_info{
+                        .collision_shape = collision_shape,
+                        .debug_label     = after_geometry->get_name(),
+                        .motion_mode     = motion_mode
+                    };
+
+                    if (entry.before.node_physics) {
+                        entry.after.node_physics = std::make_shared<Node_physics>(rigid_body_create_info);
+                    }
+                }
+
+            }
+            add_entry(std::move(entry));
+        }
+    );
+}
+
+void Mesh_operation::make_entries(
+    const std::function<void(const std::shared_ptr<erhe::scene::Mesh>& mesh)> mesh_operation)
+{
+    if (m_parameters.items.empty()) {
+        return;
+    }
+
+    const auto first_mesh = get<erhe::scene::Mesh>(m_parameters.items);
+    const auto first_node = get<erhe::scene::Node>(m_parameters.items);
+    if (!first_mesh && !first_node) {
+        return;
+    }
+
+    erhe::Item_host* item_host = first_node->get_item_host();
+    ERHE_VERIFY(item_host != nullptr);
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> scene_lock{item_host->item_host_mutex};
+
+    auto* const first_node_raw = first_node ? first_node.get() : first_mesh->get_node();
+    if (first_node_raw == nullptr) {
+        // TODO Can this limitation be lifted?
+        log_operations->error("First selected mesh does not have scene, cannot perform geometry operation");
+        return;
+    }
+
+    auto* scene_root = static_cast<Scene_root*>(first_node_raw->node_data.host);
+    if (scene_root == nullptr) {
+        log_operations->error("First selected mesh does node not have item (scene) host");
+        return;
+    }
+
+#if !defined(NDEBUG)
+    const auto& scene = scene_root->get_scene();
+    scene.sanity_check();
+#endif
+
+    for (auto& item : m_parameters.items) {
+        // Prevent hotbar etc. from being operated
+        const bool is_content = erhe::utility::test_bit_set(item->get_flag_bits(), erhe::Item_flags::content);
+        if (!is_content) {
+            continue;
+        }
+
+        auto  node_shared = std::dynamic_pointer_cast<erhe::scene::Node>(item);
+        auto* node        = node_shared.get();
+        auto  scene_mesh  = std::dynamic_pointer_cast<erhe::scene::Mesh>(item);
+
+        // If we have node selected, get mesh from node
+        if (!scene_mesh) {
+            if (node != nullptr) {
+                scene_mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node);
+            }
+        }
+        if (!scene_mesh) {
+            continue;
+        }
+        // If we have mesh selected, get node from mesh
+        if (node == nullptr) {
+            node        = scene_mesh->get_node();
+            node_shared = std::dynamic_pointer_cast<erhe::scene::Node>(node->shared_from_this());
+        }
+
+        if (m_parameters.make_entry_node_callback) {
+            m_parameters.make_entry_node_callback(node, m_parameters);
+        }
+
+        mesh_operation(scene_mesh);
+    }
+
+#if !defined(NDEBUG)
+    scene.sanity_check();
+#endif
+}
+
+void Mesh_operation::add_entry(Entry&& entry)
+{
+    m_entries.emplace_back(entry);
+}
+
+}

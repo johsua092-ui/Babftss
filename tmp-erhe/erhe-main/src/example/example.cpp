@@ -1,0 +1,660 @@
+#include "example.hpp"
+
+#include "example_log.hpp"
+#include "frame_controller.hpp"
+#include "programs.hpp"
+
+#include "erhe_dataformat/dataformat_log.hpp"
+#include "erhe_file/file.hpp"
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+# include "erhe_gl/gl_log.hpp"
+#endif
+#include "erhe_verify/verify.hpp"
+#include "erhe_gltf/gltf.hpp"
+#include "erhe_utility/clipboard.hpp"
+
+#include "erhe_gltf/gltf_log.hpp"
+#include "erhe_gltf/image_transfer.hpp"
+#include "erhe_codegen/config_io.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config.hpp"
+#include "erhe_scene_renderer/generated/mesh_memory_config_serialization.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_graphics/buffer_transfer_queue.hpp"
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/generated/graphics_config_serialization.hpp"
+#include "erhe_graphics/graphics_log.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_command_encoder.hpp"
+#include "erhe_graphics/render_pass.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_graphics/swapchain.hpp"
+#include "erhe_graphics/texture.hpp"
+#include "erhe_item/item_log.hpp"
+#include "erhe_log/log.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_math/math_log.hpp"
+#include "erhe_primitive/primitive_log.hpp"
+#include "erhe_raytrace/raytrace_log.hpp"
+#include "erhe_renderer/renderer_log.hpp"
+#include "erhe_scene/mesh.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene/scene_log.hpp"
+#include "erhe_scene_renderer/forward_renderer.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_scene_renderer/program_interface.hpp"
+#include "erhe_scene_renderer/scene_renderer_log.hpp"
+#include "erhe_scene_renderer/shader_variant_cache.hpp"
+#include "erhe_ui/ui_log.hpp"
+//#include "erhe_verify/verify.hpp"
+#include "erhe_window/renderdoc_capture.hpp"
+#include "erhe_window/window.hpp"
+#include "erhe_window/window_event_handler.hpp"
+#include "erhe_window/window_log.hpp"
+
+#include <taskflow/taskflow.hpp>
+
+#include <atomic>
+#include <thread>
+
+namespace example {
+
+class Example : public erhe::window::Input_event_handler
+{
+public:
+    Example()
+        : m_graphics_config{erhe::codegen::load_config<Graphics_config>("config/example/erhe_graphics.json")}
+        , m_window{
+            erhe::window::Window_configuration{
+                .use_depth                = true,
+                .size                     = glm::ivec2{1920, 1080},
+                .title                    = "erhe example",
+                .initialize_frame_capture = m_graphics_config.renderdoc_capture_support
+            }
+        }
+        , m_graphics_device{
+            erhe::graphics::Surface_create_info{
+                .context_window            = &m_window,
+                .prefer_low_bandwidth      = false,
+                .prefer_high_dynamic_range = false
+            },
+            m_graphics_config,
+            [](erhe::graphics::Message_severity severity, const std::string& error_message, const std::string& callstack) {
+                std::string clipboard_text = error_message + "\n=== Callstack ===\n" + callstack;
+                erhe::utility::copy_to_clipboard(clipboard_text);
+                if (severity == erhe::graphics::Message_severity::error) {
+                    ERHE_FATAL("Device error (copied to clipboard): %s", error_message.c_str());
+                } else {
+                    log_startup->warn("Device message (copied to clipboard): %s", error_message.c_str());
+                    static int counter = 0;
+                    ++counter;
+                }
+            }
+        }
+        , m_shader_error_callback_set{
+            (
+                m_graphics_device.set_shader_error_callback(
+                    [](const std::string& error_log, const std::string& shader_source, const std::string& callstack) {
+                        std::string clipboard_text = "=== Shader Error ===\n" + error_log + "\n=== Shader Source ===\n" + shader_source + "\n=== Callstack ===\n" + callstack;
+                        erhe::utility::copy_to_clipboard(clipboard_text);
+                        ERHE_FATAL("Shader compilation/linking failed (error and source copied to clipboard)");
+                    }
+                ),
+                m_graphics_device.set_trace_callback(
+                    [](const std::string& message) {
+                        erhe::utility::copy_to_clipboard(message);
+                    }
+                ),
+                true
+            )
+        }
+        // Init-time command buffer. The constructor records all init-time
+        // GPU work (gltf-driven texture uploads via Image_transfer, the
+        // mesh_memory buffer-transfer-queue flush, Forward_renderer's
+        // dummy-texture upload + Light_buffer fallback-shadow clear) into
+        // this single cb. The constructor body ends + submits the cb and
+        // wait_idles before returning so every uploaded resource is
+        // GPU-ready by the time the main loop starts.
+        , m_init_command_buffer{[this]() -> erhe::graphics::Command_buffer& {
+            const bool init_wait_frame_ok = m_graphics_device.wait_frame();
+            ERHE_VERIFY(init_wait_frame_ok);
+            erhe::graphics::Command_buffer& cb = m_graphics_device.get_command_buffer(0);
+            cb.begin();
+            return cb;
+        }()}
+        , m_y_flip{m_graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
+        , m_image_transfer   {m_graphics_device}
+        , m_mesh_memory{
+            erhe::codegen::load_config<Mesh_memory_config>("config/example/mesh_memory.json"),
+            m_graphics_device
+        }
+        , m_program_interface_config{
+            .shader_paths = {
+                std::filesystem::path{"res"} / std::filesystem::path{"shaders"},
+                std::filesystem::path{"res"} / std::filesystem::path{"example"} / std::filesystem::path{"shaders"},
+            },
+        }
+        , m_program_interface   {m_graphics_device, m_mesh_memory, m_program_interface_config}
+        , m_shader_variant_cache{m_graphics_device, m_program_interface}
+        , m_programs            {m_graphics_device, m_shader_variant_cache}
+        , m_forward_renderer    {m_graphics_device, m_init_command_buffer, m_mesh_memory, m_program_interface, m_shader_variant_cache, nullptr}
+        , m_scene               {"example scene", nullptr}
+    {
+        m_window.set_title(
+            erhe::window::format_window_title("erhe example", m_graphics_device.get_info().api_info)
+        );
+
+        if (m_graphics_config.renderdoc_capture_support) {
+            erhe::window::initialize_frame_capture();
+        }
+        const unsigned int thread_count = std::thread::hardware_concurrency();
+        tf::Executor executor{thread_count};
+
+        m_gltf_data = erhe::gltf::parse_gltf(
+            erhe::gltf::Gltf_parse_arguments{
+                .executor        = executor,
+                .device_options  = erhe::gltf::query_gltf_device_options(m_graphics_device),
+                .root_node       = m_scene.get_root_node(),
+                .path            = "res/example/models/SM_Deccer_Cubes_Textured.glb"
+            }
+        );
+        // No frame loop exists yet here, so this stays a blocking drain
+        // (async-asset-loading plan 2.6): parse_gltf creates no GPU objects,
+        // residency does.
+        m_gltf_data.image_residency.drain(m_gltf_data, m_graphics_device, m_image_transfer);
+
+        // Convert triangle soup vertex and index data to GL buffers
+        erhe::primitive::Buffer_info buffer_info = m_mesh_memory.make_primitive_buffer_info();
+
+        for (const auto& node : m_gltf_data.nodes) {
+            auto mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+            if (mesh) {
+                std::vector<erhe::scene::Mesh_primitive>& mesh_primitives = mesh->get_mutable_primitives();
+                for (erhe::scene::Mesh_primitive& mesh_primitive : mesh_primitives) {
+                    erhe::primitive::Primitive& primitive = *mesh_primitive.primitive.get();
+                    if (!primitive.has_renderable_triangles()) {
+                        ERHE_VERIFY(primitive.make_renderable_mesh(buffer_info));
+                    }
+                }
+            }
+        }
+
+        m_mesh_memory.flush(m_init_command_buffer);
+
+        make_render_pipelines();
+
+        m_camera = make_camera("Camera", glm::vec3{0.0f, 0.0f, 10.0f}, glm::vec3{0.0f, 0.0f, -1.0f});
+        m_light = make_point_light("Light",
+            glm::vec3{0.0f, 0.0f, 4.0f}, // position
+            glm::vec3{1.0f, 1.0f, 1.0f}, // color
+            40.0f
+        );
+
+        m_camera_controller = std::make_shared<Frame_controller>();
+        m_camera_controller->set_node(m_camera->get_node());
+
+        m_last_window_width  = m_window.get_width();
+        m_last_window_height = m_window.get_height();
+
+#if !defined(ERHE_GRAPHICS_API_METAL)
+        m_window.register_redraw_callback(
+            [this](){
+                if (!m_first_frame_rendered || m_in_tick.load()) {
+                    return;
+                }
+                if (
+                    (m_last_window_width  != m_window.get_width ()) ||
+                    (m_last_window_height != m_window.get_height())
+                ) {
+                    m_request_resize_pending.store(true);
+                    m_last_window_width  = m_window.get_width();
+                    m_last_window_height = m_window.get_height();
+                }
+            }
+        );
+#endif
+
+        // Close the init-time command buffer opened in the member init
+        // list, submit, and block until the GPU has consumed every
+        // recorded upload + clear so the resources are ready for the
+        // main render loop.
+        m_init_command_buffer.end();
+        erhe::graphics::Command_buffer* init_cbs[] = { &m_init_command_buffer };
+        m_graphics_device.submit_command_buffers(std::span<erhe::graphics::Command_buffer* const>{init_cbs});
+        m_graphics_device.wait_idle();
+
+        // Advance the frame index so subsequent frames are paced on the
+        // device timeline.
+        const bool init_end_frame_ok = m_graphics_device.end_frame();
+        ERHE_VERIFY(init_end_frame_ok);
+    }
+
+    std::optional<erhe::window::Input_event> m_window_resize_event{};
+    int               m_last_window_width     {0};
+    int               m_last_window_height    {0};
+    uint32_t          m_swapchain_width       {0};
+    uint32_t          m_swapchain_height      {0};
+    std::atomic<bool> m_request_resize_pending{false};
+
+    auto on_window_resize_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        m_window_resize_event = input_event;
+        return true;
+    }
+
+    auto on_window_close_event(const erhe::window::Input_event&) -> bool override
+    {
+        m_close_requested = true;
+        return true;
+    }
+
+    auto on_key_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        const bool pressed = input_event.u.key_event.pressed;
+        switch (input_event.u.key_event.keycode) {
+            case erhe::window::Key_w: m_camera_controller->translate_z.set_less(pressed); return true;
+            case erhe::window::Key_s: m_camera_controller->translate_z.set_more(pressed); return true;
+            case erhe::window::Key_a: m_camera_controller->translate_x.set_less(pressed); return true;
+            case erhe::window::Key_d: m_camera_controller->translate_x.set_more(pressed); return true;
+            default: return false;
+        }
+    }
+
+    auto on_mouse_move_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        const erhe::window::Mouse_move_event& mouse_move_event = input_event.u.mouse_move_event;
+        if (m_mouse_pressed) {
+            if (mouse_move_event.dx != 0.0f) {
+                m_camera_controller->rotate_y.adjust(mouse_move_event.dx * (-1.0f / 1024.0f));
+            }
+
+            if (mouse_move_event.dy != 0.0f) {
+                m_camera_controller->rotate_x.adjust(mouse_move_event.dy * (-1.0f / 1024.0f));
+            }
+            return true;
+        }
+        return false;
+    }
+
+    auto on_mouse_button_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        const erhe::window::Mouse_button_event& mouse_button_event = input_event.u.mouse_button_event;
+        if (mouse_button_event.button == erhe::window::Mouse_button_left) {
+            m_mouse_pressed = mouse_button_event.pressed;
+            m_window.set_cursor_relative_hold(m_mouse_pressed);
+            return true;
+        }
+        return false;
+    }
+    
+    auto on_mouse_wheel_event(const erhe::window::Input_event& input_event) -> bool override
+    {
+        const erhe::window::Mouse_wheel_event& mouse_wheel_event = input_event.u.mouse_wheel_event;
+        glm::vec3 position = m_camera_controller->get_position();
+        const float l = glm::length(position);
+        const float k = (-1.0f / 16.0f) * l * l * mouse_wheel_event.y;
+        m_camera_controller->get_controller(Control::translate_z).adjust(k);
+        return true;
+    }
+
+    void run()
+    {
+        m_current_time = std::chrono::steady_clock::now();
+        while (!m_close_requested) {
+            const bool wait_ok = m_graphics_device.wait_frame();
+            ERHE_VERIFY(wait_ok);
+
+            m_window.poll_events();
+            auto& input_events = m_window.get_input_events();
+            for (erhe::window::Input_event& input_event : input_events) {
+                static_cast<void>(this->dispatch_input_event(input_event));
+            }
+
+            if (m_window_resize_event.has_value()) {
+                m_request_resize_pending.store(true);
+                m_window_resize_event.reset();
+                m_last_window_width  = m_window.get_width();
+                m_last_window_height = m_window.get_height();
+            }
+
+            const erhe::graphics::Frame_begin_info frame_begin_info{
+                .resize_width   = static_cast<uint32_t>(m_last_window_width),
+                .resize_height  = static_cast<uint32_t>(m_last_window_height),
+                .request_resize = m_request_resize_pending.load()
+            };
+            m_request_resize_pending.store(false);
+
+            // Allocate this frame's command buffer + drive the swapchain
+            // through it (acquire + per-slot acquire/present semaphore
+            // setup). Mirrors hello_swap's tick.
+            erhe::graphics::Command_buffer& command_buffer = m_graphics_device.get_command_buffer(0);
+            erhe::graphics::Frame_state frame_state{};
+            const bool wait_swap_ok  = command_buffer.wait_for_swapchain(frame_state);
+            const bool should_render = wait_swap_ok && command_buffer.begin_swapchain(frame_begin_info, frame_state);
+
+            if (should_render) {
+                command_buffer.begin();
+                m_in_tick.store(true);
+                tick(command_buffer);
+                m_in_tick.store(false);
+                m_first_frame_rendered = true;
+                command_buffer.end();
+
+                const erhe::graphics::Frame_end_info frame_end_info{
+                    .requested_display_time = 0 // TODO
+                };
+                command_buffer.end_swapchain(frame_end_info);
+
+                // Submit + implicit present.
+                erhe::graphics::Command_buffer* cbs[] = { &command_buffer };
+                m_graphics_device.submit_command_buffers(std::span<erhe::graphics::Command_buffer* const>{cbs});
+            }
+
+            const bool end_frame_ok = m_graphics_device.end_frame();
+            ERHE_VERIFY(end_frame_ok);
+        }
+    }
+
+    void tick(erhe::graphics::Command_buffer& command_buffer)
+    {
+        const auto tick_end_time = std::chrono::steady_clock::now();
+
+        // Update fixed steps
+        {
+            const auto new_time   = std::chrono::steady_clock::now();
+            const auto duration   = new_time - m_current_time;
+            double     frame_time = std::chrono::duration<double, std::ratio<1>>(duration).count();
+
+            if (frame_time > 0.25) {
+                frame_time = 0.25;
+            }
+
+            m_current_time = new_time;
+            m_time_accumulator += frame_time;
+            const double dt = 1.0 / 240.0;
+            while (m_time_accumulator >= dt) {
+                m_camera_controller->update_fixed_step();
+                m_time_accumulator -= dt;
+                m_time += dt;
+            }
+        }
+
+        erhe::math::Viewport viewport{
+            .x      = 0,
+            .y      = 0,
+            .width  = m_window.get_width(),
+            .height = m_window.get_height()
+        };
+
+        m_scene.update_node_transforms();
+
+        std::vector<std::shared_ptr<erhe::scene::Light>> lights;
+        for (const auto& light : m_gltf_data.lights) {
+            lights.push_back(light);
+        }
+        lights.push_back(m_light);
+
+        const auto& conventions = m_graphics_device.get_info().coordinate_conventions;
+        // No scene host hooks here: re-resolve the light set every frame.
+        m_light_set.invalidate();
+        m_light_set.resolve(lights, erhe::scene_renderer::Light_count_limits::uniform(0, 8)); // no shadow map -> no light is shadow-mapped
+        m_light_projections.apply(
+            m_light_set,
+            m_camera.get(),
+            viewport,
+            erhe::math::Viewport{},
+            std::shared_ptr<erhe::graphics::Texture>{},
+            (conventions.native_depth_range == erhe::math::Depth_range::zero_to_one), // reverse_depth
+            conventions.native_depth_range
+        );
+
+        std::vector<std::shared_ptr<erhe::scene::Mesh>> meshes;
+        for (const auto& node : m_gltf_data.nodes) {
+            std::shared_ptr<erhe::scene::Mesh> mesh = erhe::scene::get_attachment<erhe::scene::Mesh>(node.get());
+            if (!mesh) {
+                continue;
+            }
+            meshes.push_back(mesh);
+        }
+
+        update_render_pass(viewport.width, viewport.height);
+
+        erhe::graphics::Render_command_encoder render_encoder = m_graphics_device.make_render_command_encoder(command_buffer);
+        erhe::graphics::Scoped_render_pass scoped_render_pass{*m_render_pass.get(), command_buffer};
+
+        const erhe::scene_renderer::Camera_view_input single_view_input{
+            .projection = m_camera->projection(),
+            .node       = m_camera->get_node(),
+            .viewport   = viewport
+        };
+        m_forward_renderer.render(
+            erhe::scene_renderer::Forward_renderer::Render_parameters{
+                .base = erhe::scene_renderer::Forward_renderer::Base_render_parameters{
+                    .render_encoder    = render_encoder,
+                    .render_pass       = m_render_pass.get(),
+                    .viewport          = viewport,
+                    .views             = std::span<const erhe::scene_renderer::Camera_view_input>(&single_view_input, 1),
+                    .exposure          = m_camera->get_exposure(),
+                    .ambient_light     = glm::vec3{0.1f, 0.1f, 0.1f},
+                    .light_projections = &m_light_projections,
+                    .skins             = m_gltf_data.skins,
+                    .materials         = m_gltf_data.materials,
+                    .debug_label       = "example main render"
+                },
+                .mesh_spans            = { meshes },
+                .base_render_pipelines = m_render_pipelines,
+                .blending_mode_policy  = erhe::scene_renderer::Blending_mode_policy::allow_all,
+                .primitive_mode        = erhe::primitive::Primitive_mode::polygon_fill,
+                .primitive_settings    = erhe::scene_renderer::Primitive_interface_settings{},
+                .filter                = erhe::Item_filter{},
+            }
+        );
+    }
+
+private:
+    void update_render_pass(int width, int height)
+    {
+        if (
+            m_render_pass &&
+            (m_render_pass->get_render_target_width () == width) &&
+            (m_render_pass->get_render_target_height() == height)
+        ) {
+            return;
+        }
+
+        m_render_pass.reset();
+        erhe::graphics::Render_pass_descriptor render_pass_descriptor;
+        render_pass_descriptor.swapchain = m_graphics_device.get_surface()->get_swapchain();
+        render_pass_descriptor.color_attachments[0].load_action    = erhe::graphics::Load_action::Clear;
+        render_pass_descriptor.color_attachments[0].clear_value[0] = 0.02;
+        render_pass_descriptor.color_attachments[0].clear_value[1] = 0.02;
+        render_pass_descriptor.color_attachments[0].clear_value[2] = 0.02;
+        render_pass_descriptor.color_attachments[0].clear_value[3] = 1.0;
+        render_pass_descriptor.color_attachments[0].usage_before   = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_before  = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.color_attachments[0].usage_after    = erhe::graphics::Image_usage_flag_bit_mask::present;
+        render_pass_descriptor.color_attachments[0].layout_after   = erhe::graphics::Image_layout::present_src;
+        render_pass_descriptor.depth_attachment    .load_action    = erhe::graphics::Load_action::Clear;
+        render_pass_descriptor.depth_attachment    .clear_value[0] = 0.0; // reverse depth
+        render_pass_descriptor.render_target_width  = width;
+        render_pass_descriptor.render_target_height = height;
+        render_pass_descriptor.debug_label          = erhe::utility::Debug_label{"Example Render_pass"};
+        m_render_pass = std::make_unique<erhe::graphics::Render_pass>(m_graphics_device, render_pass_descriptor);
+    }
+
+    void make_render_pipelines()
+    {
+        m_render_pipeline = std::make_unique<erhe::graphics::Base_render_pipeline>(
+            m_graphics_device,
+            erhe::graphics::Base_render_pipeline_create_info{
+                .debug_label    = erhe::utility::Debug_label{"Example Render_pass"},
+                .input_assembly = erhe::graphics::Input_assembly_state::triangle,
+                .rasterization  = erhe::graphics::Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+                .depth_stencil  = erhe::graphics::Depth_stencil_state::depth_test_enabled_stencil_test_disabled()
+            }
+        );
+        m_render_pipelines.push_back(m_render_pipeline.get());
+    }
+
+    auto make_camera(const std::string_view name, const glm::vec3 position, const glm::vec3 look_at) -> std::shared_ptr<erhe::scene::Camera>
+    {
+        using Item_flags = erhe::Item_flags;
+
+        auto node   = std::make_shared<erhe::scene::Node>(name);
+        auto camera = std::make_shared<erhe::scene::Camera>(name);
+        camera->projection()->fov_y           = glm::radians(45.0f);
+        camera->projection()->projection_type = erhe::scene::Projection::Type::perspective_vertical;
+        camera->projection()->z_near          = 1.0f / 128.0f;
+        camera->projection()->z_far           = 512.0f;
+        camera->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
+        node->attach(camera);
+        node->set_parent(m_scene.get_root_node());
+
+        const glm::mat4 m = erhe::math::create_look_at(
+            position, // eye
+            look_at,  // center
+            glm::vec3{0.0f, 1.0f, 0.0f}  // up
+        );
+        node->set_parent_from_node(m);
+        node->enable_flag_bits(Item_flags::content | Item_flags::show_in_ui);
+
+        return camera;
+    }
+
+    auto make_directional_light(
+        const std::string_view name,
+        const glm::vec3        position,
+        const glm::vec3        color,
+        const float            intensity
+    ) -> std::shared_ptr<erhe::scene::Light>
+    {
+        using Item_flags = erhe::Item_flags;
+
+        auto node  = std::make_shared<erhe::scene::Node>(name);
+        auto light = std::make_shared<erhe::scene::Light>(name);
+        light->type      = erhe::scene::Light::Type::directional;
+        light->color     = color;
+        light->intensity = intensity;
+        light->range     = 0.0f;
+        light->layer_id  = 0;
+        light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        node->attach          (light);
+        node->set_parent      (m_scene.get_root_node());
+        node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+
+        const glm::mat4 m = erhe::math::create_look_at(
+            position,                     // eye
+            glm::vec3{0.0f, 0.0f, 0.0f},  // center
+            glm::vec3{0.0f, 1.0f, 0.0f}   // up
+        );
+        node->set_parent_from_node(m);
+
+        return light;
+    }
+
+    auto make_point_light(
+        const std::string_view name,
+        const glm::vec3        position,
+        const glm::vec3        color,
+        const float            intensity
+    ) -> std::shared_ptr<erhe::scene::Light>
+    {
+        using Item_flags = erhe::Item_flags;
+
+        auto node  = std::make_shared<erhe::scene::Node>(name);
+        auto light = std::make_shared<erhe::scene::Light>(name);
+        light->type      = erhe::scene::Light::Type::point;
+        light->color     = color;
+        light->intensity = intensity;
+        light->range     = 25.0f;
+        light->layer_id  = 0;
+        light->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+        node->attach          (light);
+        node->set_parent      (m_scene.get_root_node());
+        node->enable_flag_bits(Item_flags::content | Item_flags::visible | Item_flags::show_in_ui);
+
+        const glm::mat4 m = erhe::math::create_translation<float>(position);
+        node->set_parent_from_node(m);
+
+        return light;
+    }
+
+    Graphics_config                                m_graphics_config;
+    erhe::window::Context_window                   m_window;
+    erhe::graphics::Device                         m_graphics_device;
+    bool                                           m_shader_error_callback_set{false};
+    erhe::graphics::Command_buffer&                m_init_command_buffer;
+    bool                                           m_y_flip;
+    erhe::gltf::Image_transfer                     m_image_transfer;
+    erhe::scene_renderer::Mesh_memory              m_mesh_memory;
+    erhe::scene_renderer::Program_interface_config m_program_interface_config;
+    erhe::scene_renderer::Program_interface        m_program_interface;
+    erhe::scene_renderer::Shader_variant_cache     m_shader_variant_cache;
+    Programs                                       m_programs;
+    erhe::scene_renderer::Forward_renderer         m_forward_renderer;
+    std::unique_ptr<erhe::graphics::Render_pass>   m_render_pass;
+
+    std::vector<erhe::graphics::Base_render_pipeline*>    m_render_pipelines;
+    std::unique_ptr<erhe::graphics::Base_render_pipeline> m_render_pipeline;
+
+    erhe::scene_renderer::Light_projections m_light_projections;
+    erhe::scene_renderer::Light_set         m_light_set;
+
+    erhe::gltf::Gltf_data                   m_gltf_data;
+
+    // m_scene must be declared after m_mesh_memory and m_gltf_data so that
+    // it is destroyed first. Scene teardown frees Buffer_allocations back to
+    // the Free_list_allocators owned by m_mesh_memory.
+    erhe::scene::Scene                      m_scene;
+
+    bool                                    m_close_requested{false};
+    bool                                    m_first_frame_rendered{false};
+    std::atomic<bool>                       m_in_tick{false};
+    std::shared_ptr<erhe::scene::Camera>    m_camera;
+    std::shared_ptr<erhe::scene::Light>     m_light;
+    std::shared_ptr<Frame_controller>       m_camera_controller;
+    std::chrono::steady_clock::time_point   m_current_time;
+    double                                  m_time_accumulator{0.0};
+    double                                  m_time            {0.0};
+    uint64_t                                m_frame_number    {0};
+    bool                                    m_mouse_pressed   {false};
+};
+
+void run_example()
+{
+    // Workaround for
+    // https://intellij-support.jetbrains.com/hc/en-us/community/posts/27792220824466-CMake-C-git-project-How-to-share-working-directory-in-git
+    erhe::file::ensure_working_directory_contains("config/example/erhe_graphics.json");
+
+    erhe::log::redirect_stderr_to_file("logs/stderr.txt");
+    erhe::log::initialize_log_sinks();
+    {
+        std::optional<std::string> contents = erhe::file::read("logging config", "config/example/logging.json");
+        if (contents.has_value()) {
+            erhe::log::load_log_configuration(contents.value());
+        }
+    }
+
+    example::initialize_logging();
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+    gl::initialize_logging();
+#endif
+    erhe::dataformat::initialize_logging();
+    erhe::gltf::initialize_logging();
+    erhe::graphics::initialize_logging();
+    erhe::item::initialize_logging();
+    erhe::math::initialize_logging();
+    erhe::primitive::initialize_logging();
+    erhe::raytrace::initialize_logging();
+    erhe::renderer::initialize_logging();
+    erhe::scene::initialize_logging();
+    erhe::scene_renderer::initialize_logging();
+    erhe::window::initialize_logging();
+    erhe::ui::initialize_logging();
+
+    Example example{};
+    example.run();
+}
+
+} // namespace example
+

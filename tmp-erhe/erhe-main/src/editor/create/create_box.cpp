@@ -1,0 +1,86 @@
+#include "create/create_box.hpp"
+
+#include "create/create_preview_settings.hpp"
+#include "brushes/brush.hpp"
+#include "renderers/render_context.hpp"
+#include "scene/scene_view.hpp"
+
+#include "erhe_geometry/geometry.hpp"
+#include "erhe_geometry/shapes/box.hpp"
+#include "erhe_math/math_util.hpp"
+#include "erhe_renderer/primitive_renderer.hpp"
+#include "erhe_scene/node.hpp"
+#include "erhe_profile/profile.hpp"
+
+#include <imgui/imgui.h>
+
+using erhe::geometry::to_geo_vec3f;
+using erhe::geometry::to_geo_vec3i;
+using erhe::geometry::to_geo_mat4f;
+using erhe::geometry::transform;
+
+namespace editor {
+
+Create_box::~Create_box() noexcept = default;
+
+void Create_box::render_preview(const Create_preview_settings& preview_settings)
+{
+    const Render_context& render_context = preview_settings.render_context;
+    const auto& view_camera = render_context.scene_view.get_camera();
+    if (!view_camera) {
+        return;
+    }
+
+    erhe::renderer::Primitive_renderer line_renderer = get_line_renderer(preview_settings);
+    line_renderer.add_cube(
+        preview_settings.transform.get_matrix(),
+        preview_settings.major_color,
+        -0.5f * m_parameters.size,
+         0.5f * m_parameters.size
+    );
+}
+
+void Create_box::imgui()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ImGui::Text("Box Parameters");
+
+    ImGui::SliderFloat3("Size",  &m_parameters.size.x,  0.0f, 10.0f);
+    ImGui::SliderInt3  ("Subdivisions", &m_parameters.subdivisions.x, 0, 10);
+    ImGui::SliderFloat ("Power", &m_parameters.power,   0.0f, 10.0f);
+}
+
+auto Create_box::create(Brush_data& brush_create_info) const -> std::shared_ptr<Brush>
+{
+    return create_brush(brush_create_info, m_parameters);
+}
+
+auto Create_box::create_brush(Brush_data& brush_create_info, const Box_parameters& parameters) -> std::shared_ptr<Brush>
+{
+    auto geometry = std::make_shared<erhe::geometry::Geometry>("box");
+    // The mat4_swap_xy below reorients the generated topology; it also swaps
+    // the world X/Y extents, so feed make_box pre-swapped size/subdivisions
+    // to keep the FINAL world extents equal to parameters.size as given
+    // (callers - the Create tool UI and MCP create_shape - think in world axes).
+    const glm::vec3  swapped_size        {parameters.size.y,         parameters.size.x,         parameters.size.z};
+    const glm::ivec3 swapped_subdivisions{parameters.subdivisions.y, parameters.subdivisions.x, parameters.subdivisions.z};
+    erhe::geometry::shapes::make_box(geometry->get_mesh(), to_geo_vec3f(swapped_size), to_geo_vec3i(swapped_subdivisions), parameters.power);
+    brush_create_info.geometry = geometry;
+    transform(*geometry.get(), *geometry.get(), to_geo_mat4f(erhe::math::mat4_swap_xy));
+    geometry->process(
+        {
+            .flags =
+                erhe::geometry::Geometry::process_flag_connect |
+                erhe::geometry::Geometry::process_flag_build_edges |
+                erhe::geometry::Geometry::process_flag_generate_facet_texture_coordinates
+        }
+    );
+
+    brush_create_info.normal_style = erhe::primitive::Normal_style::corner_normals;
+    std::shared_ptr<Brush> brush = std::make_shared<Brush>(brush_create_info);
+    return brush;
+}
+
+
+}

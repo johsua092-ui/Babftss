@@ -1,0 +1,1777 @@
+#include "app_rendering.hpp"
+
+#include "app_context.hpp"
+#include "config/generated/editor_settings_config.hpp"
+#include "config/generated/sky_config.hpp"
+#include "scene/scene_settings_resolve.hpp"
+#include "editor_log.hpp"
+#include "app_message_bus.hpp"
+#include "app_settings.hpp"
+#include "tools/tools.hpp"
+#include "renderable.hpp"
+#include "renderers/composer.hpp"
+#include "renderers/id_renderer.hpp"
+#include "erhe_renderer/text_renderer.hpp"
+#include "erhe_scene_renderer/content_wide_line_renderer.hpp"
+#include "erhe_scene_renderer/forward_renderer.hpp"
+#include "erhe_scene_renderer/joint_buffer.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_scene_renderer/shader_key.hpp"
+#include "renderers/programs.hpp"
+#include "renderers/render_context.hpp"
+#include "renderers/sky_renderer.hpp"
+#include "renderers/viewport_config.hpp"
+#include "rendergraph/shadow_render_node.hpp"
+#include "scene/scene_root.hpp"
+#include "scene/scene_view.hpp"
+#include "scene/viewport_scene_view.hpp"
+#include "tools/debug_visualizations.hpp"
+#include "tools/mesh_component_selection.hpp"
+#include "tools/weight_display.hpp"
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+#   include "xr/headset_view.hpp"
+#endif
+
+#include "erhe_commands/command.hpp"
+#include "erhe_commands/commands.hpp"
+#include "erhe_graphics/command_buffer.hpp"
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/render_pipeline.hpp"
+#include "erhe_graphics/scoped_debug_group.hpp"
+#include "erhe_graphics/scoped_gpu_zone.hpp"
+#include "erhe_math/math_util.hpp"
+#if defined(ERHE_GRAPHICS_API_OPENGL)
+#   include "erhe_gl/wrapper_functions.hpp"
+#   include "erhe_gl/enum_bit_mask_operators.hpp"
+#endif
+#include "erhe_graphics/swapchain.hpp"
+#include "erhe_profile/profile.hpp"
+#include "erhe_rendergraph/rendergraph.hpp"
+#include "erhe_scene/scene.hpp"
+#include "erhe_scene_renderer/mesh_memory.hpp"
+#include "erhe_scene_renderer/shadow_renderer.hpp"
+
+#include "erhe_graphics/device.hpp"
+#include "erhe_verify/verify.hpp"
+#include "erhe_window/window.hpp"
+#include "erhe_window/window_event_handler.hpp"
+
+namespace editor {
+
+using erhe::graphics::Color_blend_state;
+
+// Composition pass for the "Sky" slot. In gradient/checker mode it renders the
+// usual fullscreen sky shader via the base Composition_pass; in atmosphere mode
+// (sky.mode == 1, Vulkan only) it delegates to the dedicated Sky_renderer which
+// ray-marches the physically-based atmosphere with its own pipeline + LUTs.
+class Sky_composition_pass : public Composition_pass
+{
+public:
+    explicit Sky_composition_pass(std::string_view name) : Composition_pass{name} {}
+
+    void render(const Render_context& context) override
+    {
+        if (!data.enabled) {
+            return;
+        }
+        App_context&  app_context  = context.app_context;
+        Sky_renderer* sky_renderer = app_context.sky_renderer;
+        // Resolve sky mode per scene (#239), consistent with update_sky_parameters().
+        const std::shared_ptr<Scene_root> scene_root = context.scene_view.get_scene_root();
+        const int sky_mode = (app_context.editor_settings == nullptr)
+            ? 0
+            : ((scene_root != nullptr)
+                ? get_effective_sky(*app_context.editor_settings, *scene_root).mode
+                : app_context.editor_settings->sky.mode);
+        const bool atmosphere =
+            (sky_mode == 1) &&
+            (sky_renderer != nullptr) &&
+            sky_renderer->is_atmosphere_supported();
+        if (atmosphere) {
+            sky_renderer->render_atmosphere(context);
+        } else {
+            Composition_pass::render(context);
+        }
+    }
+};
+
+
+#pragma region Commands
+Capture_frame_command::Capture_frame_command(erhe::commands::Commands& commands, App_context& app_context)
+    : Command  {commands, "editor.capture_frame"}
+    , m_context{app_context}
+{
+}
+
+auto Capture_frame_command::try_call() -> bool
+{
+    m_context.app_rendering->trigger_capture();
+    return true;
+}
+#pragma endregion Commands
+
+
+App_rendering::App_rendering(
+    erhe::commands::Commands&          commands,
+    erhe::graphics::Device&            graphics_device,
+    App_context&                       app_context,
+    App_message_bus&                   app_message_bus,
+    erhe::scene_renderer::Mesh_memory& mesh_memory,
+    Programs&                          programs
+)
+    : m_context              {app_context}
+    , m_capture_frame_command{commands, app_context}
+    , m_pipeline_passes      {graphics_device, mesh_memory, programs, graphics_device.get_reverse_depth()}
+    , m_composer             {"Main Composer"}
+{
+    ERHE_PROFILE_FUNCTION();
+
+    commands.register_command(&m_capture_frame_command);
+    commands.bind_command_to_key(&m_capture_frame_command, erhe::window::Key_f10);
+    commands.bind_command_to_menu(&m_capture_frame_command, "View.Frame");
+
+    using Item_filter = erhe::Item_filter;
+    using Item_flags  = erhe::Item_flags;
+    using namespace erhe::primitive;
+    // Mirrored (negative determinant) meshes need no dedicated filters or
+    // composition passes: bucket_primitives partitions buckets by the
+    // negative-determinant flag and Forward_renderer selects the
+    // front-face-flipped pipeline variant per bucket.
+    // Rendertarget meshes (e.g. the hotbar) are no longer drawn by the content
+    // fill passes: they are rendered by a dedicated overlay "Rendertarget" pass
+    // (below) that ignores camera exposure and, when post-processing is enabled,
+    // runs after it. See issue #230.
+    // proxy_hidden: the item is visually replaced by a render_proxy (the
+    // lightmap partitioner's piece meshes) - excluded from every visual
+    // content pass, while staying ID-rendered / raytrace-pickable /
+    // selectable (see Item_flags).
+    const Item_filter filter_not_selected{
+        .require_all_bits_set         = Item_flags::visible,
+        .require_at_least_one_bit_set = Item_flags::content  | Item_flags::controller,
+        .require_all_bits_clear       = Item_flags::selected | Item_flags::hovered_in_item_tree | Item_flags::proxy_hidden
+    };
+    const Item_filter filter_selected{
+        .require_all_bits_set         = Item_flags::content | Item_flags::visible,
+        .require_at_least_one_bit_set = Item_flags::selected,
+        .require_all_bits_clear       = Item_flags::proxy_hidden
+    };
+    const Item_filter filter_selected_or_hovered{
+        .require_all_bits_set         = Item_flags::content  | Item_flags::visible,
+        .require_at_least_one_bit_set = Item_flags::selected | Item_flags::hovered_in_item_tree,
+        .require_all_bits_clear       = Item_flags::proxy_hidden
+    };
+    // Selection silhouette for proxy_hidden items: the source draws no fill
+    // (its render proxy does), but it must still get a selection OUTLINE.
+    // This filter feeds a dedicated stencil-mask pass (below) that writes
+    // silhouette bit 7 for selected/hovered proxy-hidden sources, and the
+    // outline pass itself includes proxy_hidden items (its geometry matches
+    // the proxies', so the outline lands exactly around the rendered surface).
+    const Item_filter filter_selected_or_hovered_proxy_hidden{
+        .require_all_bits_set         = Item_flags::content  | Item_flags::visible | Item_flags::proxy_hidden,
+        .require_at_least_one_bit_set = Item_flags::selected | Item_flags::hovered_in_item_tree,
+        .require_all_bits_clear       = 0
+    };
+    const Item_filter filter_selected_or_hovered_outline{
+        .require_all_bits_set         = Item_flags::content  | Item_flags::visible,
+        .require_at_least_one_bit_set = Item_flags::selected | Item_flags::hovered_in_item_tree,
+        .require_all_bits_clear       = 0
+    };
+
+    const auto& render_style_not_selected = [](const Render_context& context) -> const Render_style_data& {
+        return context.viewport_config.render_style_not_selected;
+    };
+    // Editor-global render-style appearance (colors / widths / color sources),
+    // shared by all scene views. Selected to match the per-view render style
+    // each pass gates on (Default vs Selection). See get_primitive_settings.
+    const auto& appearance_not_selected = [](const Render_context& context) -> const Render_style_appearance& {
+        return context.app_context.editor_settings->render_style_appearance;
+    };
+    const auto& appearance_selected = [](const Render_context& context) -> const Render_style_appearance& {
+        return context.app_context.editor_settings->selected_render_style_appearance;
+    };
+
+    using namespace erhe::primitive;
+    using namespace erhe::scene_renderer;
+    using Blend_mode = erhe::renderer::Blend_mode;
+    static constexpr bool selected = true;
+    static constexpr bool not_selected = false;
+
+    // The SOLID_WIREFRAME standard-shader variant cannot link on the macOS
+    // OpenGL 4.1 Apple GLSL compiler (too many flat varyings at high explicit
+    // locations); see Device_info::use_solid_wireframe. Where unsupported, the
+    // solid-wireframe passes are disabled (and their variant is never forced,
+    // so prewarm does not try to compile it) and the wide-line edge passes draw
+    // instead.
+    const bool solid_wireframe_supported = graphics_device.get_info().use_solid_wireframe;
+
+    auto content_fill_not_selected = make_composition_pass(
+        "Content fill opaque not selected",
+        Composition_pass_data{
+            .edge_lines_from_id_capable{true},
+            .mesh_layers          {Mesh_layer_id::content, Mesh_layer_id::controller},
+            .blending_mode_policy {Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode       {Primitive_mode::polygon_fill},
+            .filter               {filter_not_selected},
+            .get_render_style     {render_style_not_selected},
+            .get_appearance       {appearance_not_selected},
+        },
+        not_selected
+    );
+
+    const auto& render_style_selected = [](const Render_context& context) -> const Render_style_data& {
+        return context.viewport_config.render_style_selected;
+    };
+
+    auto content_fill_selected_or_hovered = make_composition_pass(
+        "Content fill selected",
+        Composition_pass_data{
+            .edge_lines_from_id_capable{true},
+            .mesh_layers         {Mesh_layer_id::content, Mesh_layer_id::controller},
+            .blending_mode_policy{Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode      {Primitive_mode::polygon_fill},
+            .filter              {filter_selected_or_hovered},
+            .get_render_style    {render_style_selected},
+            .get_appearance      {appearance_selected},
+        },
+        selected
+    );
+
+    // Solid wireframe: draws the expanded fill geometry with the SOLID_WIREFRAME
+    // standard-shader variant (real polygon edges blended over the lit fill,
+    // sharing the fill's exact depth -> no z-fight). Drawn as a depth
+    // less-or-equal overlay AFTER the normal polygon fill (same positions ->
+    // equal depth -> passes), so meshes that have no expanded geometry simply
+    // show the normal fill (no invisible content). Each pass no-ops unless its
+    // render style enables solid_wireframe (is_primitive_mode_enabled in
+    // Composition_pass::render) and the mesh has an expanded fill range.
+    auto content_solid_wireframe_not_selected = make_composition_pass(
+        "Content solid wireframe not selected",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode               {Primitive_mode::solid_wireframe},
+            .filter                       {filter_not_selected},
+            .shader_key_force_enable_mask {solid_wireframe_supported ? make_shader_bool_mask(Shader_bool::SOLID_WIREFRAME) : uint32_t{0}},
+            .get_render_style             {render_style_not_selected},
+            .get_appearance               {appearance_not_selected},
+            .is_enabled                   {
+                [solid_wireframe_supported](const Render_context&) -> bool {
+                    return solid_wireframe_supported;
+                }
+            },
+        },
+        not_selected
+    );
+
+    auto content_solid_wireframe_selected_or_hovered = make_composition_pass(
+        "Content solid wireframe selected",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode               {Primitive_mode::solid_wireframe},
+            .filter                       {filter_selected_or_hovered},
+            .shader_key_force_enable_mask {solid_wireframe_supported ? make_shader_bool_mask(Shader_bool::SOLID_WIREFRAME) : uint32_t{0}},
+            .get_render_style             {render_style_selected},
+            .get_appearance               {appearance_selected},
+            .is_enabled                   {
+                [solid_wireframe_supported](const Render_context&) -> bool {
+                    return solid_wireframe_supported;
+                }
+            },
+        },
+        selected
+    );
+
+    // ID-buffer edge-line method, corner caps. The EDGE_LINES_FROM_ID fill paints
+    // edges where the per-pixel face-ID buffer matches, but at a shared vertex the
+    // overlapping ribbons store one id/pixel, so the other faces' fills find no
+    // match -> corner gaps. These overlay passes redraw the expanded fill soup
+    // (Primitive_mode::solid_wireframe -> same depth-less-or-equal, no-depth-write
+    // overlay pipeline) with the EDGE_LINES_CORNER_CAP variant, which paints the
+    // edge color within the ribbon half-width of each real projected corner -- a
+    // pure screen-space distance test, so every face meeting at the vertex fills
+    // its own side. Additive on top of the working fill path: only enabled when the
+    // ID-buffer method is active. No get_render_style -> not gated on the
+    // solid_wireframe render-style flag; gated on use_id_buffer instead. The
+    // appearance supplies the edge color + width (matching the wide-line ribbon).
+    auto content_edge_corner_cap_not_selected = make_composition_pass(
+        "Content edge corner caps not selected",
+        Composition_pass_data{
+            .edge_lines_corner_cap        {true},
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode               {Primitive_mode::solid_wireframe},
+            .filter                       {filter_not_selected},
+            .shader_key_force_enable_mask {make_shader_bool_mask(Shader_bool::EDGE_LINES_CORNER_CAP)},
+            .get_appearance               {appearance_not_selected},
+            .is_enabled                   {
+                // Follows the per-view Visual Style edge-lines toggle like the
+                // edge feed in Viewport_scene_view: no edges means no caps.
+                [](const Render_context& context) -> bool {
+                    return
+                        context.app_context.editor_settings->content_edge_lines.use_id_buffer &&
+                        context.viewport_config.render_style_not_selected.edge_lines;
+                }
+            }
+        },
+        not_selected
+    );
+
+    auto content_edge_corner_cap_selected = make_composition_pass(
+        "Content edge corner caps selected",
+        Composition_pass_data{
+            .edge_lines_corner_cap        {true},
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode               {Primitive_mode::solid_wireframe},
+            .filter                       {filter_selected},
+            .shader_key_force_enable_mask {make_shader_bool_mask(Shader_bool::EDGE_LINES_CORNER_CAP)},
+            .get_appearance               {appearance_selected},
+            .is_enabled                   {
+                [](const Render_context& context) -> bool {
+                    return
+                        context.app_context.editor_settings->content_edge_lines.use_id_buffer &&
+                        context.viewport_config.render_style_selected.edge_lines;
+                }
+            }
+        },
+        selected
+    );
+
+    // When selection Polygon Fill is disabled, content_fill_selected_or_hovered
+    // no-ops and never writes selection stencil bit 7, so selection_outline has
+    // no mask and floods the whole object. This pass writes that stencil mask
+    // (depth + bit 7, no color) for the selected/hovered meshes whenever the
+    // selection fill is OFF, reusing polygon_fill_standard_selected (identical
+    // stencil to the fill). VARIANT_DEPTH_ONLY skips the lit fragment work and
+    // the color_writes_disabled override keeps the color buffer untouched.
+    // Exactly one of this pass and content_fill_selected_or_hovered is active
+    // per frame (mutually exclusive on render_style_selected.polygon_fill).
+    auto selection_stencil_mask = make_composition_pass(
+        "Selection stencil mask (fill disabled)",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode               {Primitive_mode::polygon_fill},
+            .filter                       {filter_selected_or_hovered},
+            .color_blend_override         {&Color_blend_state::color_writes_disabled},
+            .shader_key_force_enable_mask {make_shader_bool_mask(Shader_bool::VARIANT_DEPTH_ONLY)},
+            .is_enabled                   {
+                [](const Render_context& context) -> bool {
+                    return !context.viewport_config.render_style_selected.polygon_fill;
+                }
+            }
+        },
+        selected
+    );
+
+    // Selection silhouette for proxy_hidden sources (lightmap originals
+    // while their render proxies draw): the selection fill excludes them,
+    // so bit 7 comes from this always-on depth-only pass instead. Their
+    // depth matches the coplanar proxy surfaces (less-or-equal), so this
+    // adds no visible geometry - just the stencil mask the outline needs.
+    auto selection_stencil_mask_proxy_hidden = make_composition_pass(
+        "Selection stencil mask (proxy hidden)",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode               {Primitive_mode::polygon_fill},
+            .filter                       {filter_selected_or_hovered_proxy_hidden},
+            .color_blend_override         {&Color_blend_state::color_writes_disabled},
+            .shader_key_force_enable_mask {make_shader_bool_mask(Shader_bool::VARIANT_DEPTH_ONLY)}
+        },
+        selected
+    );
+    static_cast<void>(selection_stencil_mask_proxy_hidden);
+
+    edge_lines_not_selected = make_composition_pass(
+        "Content edge lines not selected",
+        Composition_pass_data{
+            .content_wide_line_group       {0},
+            .mesh_layers                   {Mesh_layer_id::content},
+            .blending_mode_policy          {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode                {Primitive_mode::edge_lines},
+            .filter                        {filter_not_selected},
+            .get_render_style              {render_style_not_selected},
+            .get_appearance                {appearance_not_selected},
+            .is_enabled                    {
+                // Solid wireframe replaces the wide-line edge path: when it is
+                // enabled, suppress the Content_wide_line_renderer edge lines so
+                // the two do not both draw. Where solid wireframe is unsupported
+                // (macOS GL 4.1) its toggle is inert, so the wide-line edges
+                // must not be suppressed by it.
+                [solid_wireframe_supported](const Render_context& context) -> bool {
+                    // The ID-buffer method paints edges from the polygon-fill pass
+                    // instead, so suppress the wide-line edge pass (it would also
+                    // draw the id-mode dispatches as color into the main pass).
+                    if (context.app_context.editor_settings->content_edge_lines.use_id_buffer) {
+                        return false;
+                    }
+                    return !solid_wireframe_supported || !context.viewport_config.render_style_not_selected.solid_wireframe;
+                }
+            }
+        }, not_selected
+    );
+
+    edge_lines_selected = make_composition_pass(
+        "Content edge lines opaque selected",
+        Composition_pass_data{
+            .content_wide_line_group       {1},
+            .mesh_layers                   {Mesh_layer_id::content},
+            .blending_mode_policy          {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode                {Primitive_mode::edge_lines},
+            .filter                        {filter_selected},
+            .get_render_style              {render_style_selected},
+            .get_appearance                {appearance_selected},
+            .is_enabled                    {
+                [solid_wireframe_supported](const Render_context& context) -> bool {
+                    if (context.app_context.editor_settings->content_edge_lines.use_id_buffer) {
+                        return false;
+                    }
+                    return !solid_wireframe_supported || !context.viewport_config.render_style_selected.solid_wireframe;
+                }
+            }
+        }, selected
+    );
+
+    // Corner points and polygon centroids. Both take the normal
+    // Forward_renderer path (not Content_wide_line_renderer) and force the
+    // VARIANT_POINTS standard-shader variant, which sizes each point from the
+    // per-draw-primitive size and flat-shades it with the primitive color.
+    // Each pass is a no-op until the viewport render style enables the
+    // corresponding corner_points / polygon_centroids flag (checked by
+    // is_primitive_mode_enabled in Composition_pass::render). Not exposed as
+    // members: unlike the edge-line passes, nothing outside the Composer
+    // references them.
+    const uint32_t points_variant_mask = make_shader_bool_mask(Shader_bool::VARIANT_POINTS);
+
+    auto corner_points_not_selected = make_composition_pass(
+        "Content corner points not selected",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode               {Primitive_mode::corner_points},
+            .filter                       {filter_not_selected},
+            .shader_key_force_enable_mask {points_variant_mask},
+            .get_render_style             {render_style_not_selected},
+            .get_appearance               {appearance_not_selected}
+        }, not_selected
+    );
+
+    auto corner_points_selected = make_composition_pass(
+        "Content corner points selected",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode               {Primitive_mode::corner_points},
+            .filter                       {filter_selected},
+            .shader_key_force_enable_mask {points_variant_mask},
+            .get_render_style             {render_style_selected},
+            .get_appearance               {appearance_selected}
+        }, selected
+    );
+
+    auto polygon_centroids_not_selected = make_composition_pass(
+        "Content polygon centroids not selected",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode               {Primitive_mode::polygon_centroids},
+            .filter                       {filter_not_selected},
+            .shader_key_force_enable_mask {points_variant_mask},
+            .get_render_style             {render_style_not_selected},
+            .get_appearance               {appearance_not_selected}
+        }, not_selected
+    );
+
+    auto polygon_centroids_selected = make_composition_pass(
+        "Content polygon centroids selected",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::content},
+            .blending_mode_policy         {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode               {Primitive_mode::polygon_centroids},
+            .filter                       {filter_selected},
+            .shader_key_force_enable_mask {points_variant_mask},
+            .get_render_style             {render_style_selected},
+            .get_appearance               {appearance_selected}
+        }, selected
+    );
+
+    // Geometry graph ghost meshes (Houdini template flag): edge lines only,
+    // always on (no get_render_style -> not gated by the per-viewport
+    // edge-lines style; pattern: the corner-cap passes above). The filter
+    // keys on the otherwise-unused render_wireframe flag; ghost meshes carry
+    // no `content` flag, so every other pass skips them and this pass never
+    // sees regular content.
+    ghost_edge_lines = make_composition_pass(
+        "Ghost edge lines",
+        Composition_pass_data{
+            .content_wide_line_group       {3},
+            .mesh_layers                   {Mesh_layer_id::content},
+            .blending_mode_policy          {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode                {Primitive_mode::edge_lines},
+            .filter{
+                .require_all_bits_set         = Item_flags::visible | Item_flags::render_wireframe,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = 0
+            },
+            .primitive_settings{
+                erhe::scene_renderer::Primitive_interface_settings{
+                    .color_source    = erhe::scene_renderer::Primitive_color_source::constant_color,
+                    .constant_color0 = glm::vec4{0.55f, 0.45f, 0.7f, 1.0f},
+                    .size_source     = erhe::scene_renderer::Primitive_size_source::constant_size,
+                    .constant_size   = 1.5f
+                }
+            }
+        },
+        not_selected
+    );
+
+    selection_outline = make_composition_pass(
+        "Content outline opaque selected",
+        Composition_pass_data{
+            .content_wide_line_group       {2},
+            .mesh_layers                   {Mesh_layer_id::content},
+            .blending_mode_policy          {Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode                {Primitive_mode::edge_lines},
+            // Outline-inclusive filter: proxy_hidden sources get an outline
+            // too (their silhouette stencil comes from the dedicated pass
+            // above; their edges coincide with the rendered proxies).
+            .filter                        {filter_selected_or_hovered_outline},
+            .primitive_settings{
+                erhe::scene_renderer::Primitive_interface_settings{
+                    .constant_color0 = glm::vec4{1.0f, 0.75f, 0.0f, 1.0f},
+                    .constant_color1 = glm::vec4{0.0f, 0.0f,  1.0f, 1.0f},
+                    .constant_size   = -5.0f
+                }
+            }
+        },
+        { &m_pipeline_passes.outline }
+    );
+
+    // This gets overridden in Composition_pass::render()
+    // TODO Figure out a good way to route the settings
+
+    {
+        // Sky uses a Composition_pass subclass that switches between the
+        // gradient/checker shader and the physically-based atmosphere renderer.
+        auto sky_pass = std::make_shared<Sky_composition_pass>("Sky");
+        sky_pass->data = Composition_pass_data{
+            .non_mesh_vertex_count{3}, // Fullscreen quad
+            .primitive_mode{erhe::primitive::Primitive_mode::polygon_fill},
+            .filter{
+                .require_all_bits_set         = 0,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = 0
+            },
+            .shader_stages{&programs.sky.shader_stages}
+        };
+        sky_pass->data.base_render_pipelines = { &m_pipeline_passes.sky };
+        {
+            std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_composer.mutex};
+            m_composer.composition_passes.push_back(sky_pass);
+        }
+        m_sky_composition_pass = sky_pass;
+    }
+
+    // Infinite plane with 4 triangles / 12 indices - https://stackoverflow.com/questions/12965161/rendering-infinitely-large-plane
+    m_grid_composition_pass = make_composition_pass(
+        "Grid",
+        Composition_pass_data{
+            .non_mesh_vertex_count{12},
+            .primitive_mode{erhe::primitive::Primitive_mode::polygon_fill},
+            .filter{
+                .require_all_bits_set         = 0,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = 0
+            },
+            .shader_stages{&programs.grid.shader_stages}
+        },
+        { &m_pipeline_passes.grid }
+    );
+
+    auto translucent_content_fill_not_selected = make_composition_pass(
+        "Content fill translucent not selected",
+        content_fill_not_selected,
+        erhe::scene_renderer::Blending_mode_policy::translucent_primitives_only
+    );
+
+    auto translucent_content_fill_selected_or_hovered = make_composition_pass(
+        "Content fill translucent selected",
+        content_fill_selected_or_hovered,
+        erhe::scene_renderer::Blending_mode_policy::translucent_primitives_only
+    );
+
+    auto brush = make_composition_pass(
+        "Brush",
+        Composition_pass_data{
+            .mesh_layers         {Mesh_layer_id::brush},
+            .blending_mode_policy{Blending_mode_policy::override_with_base_render_pipeline},
+            .primitive_mode      {erhe::primitive::Primitive_mode::polygon_fill},
+            .filter{
+                .require_all_bits_set         = Item_flags::visible | Item_flags::brush,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = 0
+            },
+            .shader_key_force_enable_mask{
+                erhe::scene_renderer::make_shader_bool_mask(erhe::scene_renderer::Shader_bool::VARIANT_BRUSH_PREVIEW)
+            }
+        },
+        {
+            &m_pipeline_passes.brush_back,
+            &m_pipeline_passes.brush_front
+        }
+    );
+
+    // Solid bone style: the pickable bone proxies rendered as N.V shaded
+    // octahedra, using the stencil-assisted multi-pass method of the tool
+    // handles (see the bone1..bone6 pipelines) so a bone reads as solid where it
+    // is in front of content and dimmed where it is inside it. Before that, a
+    // bone inside a skinned mesh was drawn but lost the depth test against the
+    // mesh's own fill and looked simply missing.
+    //
+    // The N.V shading reuses the existing Shader_debug::vdotn variant -
+    // standard.frag already emits vec3(max(dot(V, N), 0.0)) for it - so this
+    // needs no new shader and no new Shader_key axis, only the per-pass
+    // shader_debug override. The override's own filter excludes the selected and
+    // hovered proxies, because vdotn replaces the fragment color outright and
+    // would swallow their color; those fall back to their plain unlit material
+    // (Bone_visualization swaps in the selected / hover material and mirrors the
+    // joint's flags onto the proxy mesh). One pass therefore covers all three
+    // appearances - the earlier split into three passes existed only to drop the
+    // override, which the filter now does per mesh.
+    //
+    // Ordered after every other content pass on purpose: passes one and two
+    // leave their stencil tags behind in bits 0..6, and the edge-line pipelines
+    // draw only where the stencil is 0 there. The selection bit (7) is preserved
+    // by the write masks.
+    make_composition_pass(
+        "Bone solid (N.V)",
+        Composition_pass_data{
+            .mesh_layers                  {Mesh_layer_id::bone},
+            .blending_mode_policy         {Blending_mode_policy::opaque_primitives_only},
+            .primitive_mode               {Primitive_mode::polygon_fill},
+            .filter{
+                .require_all_bits_set         = Item_flags::visible | Item_flags::bone_proxy,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = 0
+            },
+            .shader_debug_override        {erhe::scene_renderer::Shader_debug::vdotn},
+            .shader_debug_override_filter {
+                .require_all_bits_set         = Item_flags::bone_proxy,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = Item_flags::selected | Item_flags::hovered_in_viewport
+            },
+            // Proxy visibility cannot gate this: in bone selection mode the
+            // proxies must stay visible to be pickable whether or not the solid
+            // style is on. Without this the solid bones drew in bone mode
+            // regardless of the setting, so the toggle looked dead.
+            //
+            // bone_solid selects only HOW bones render (solid octahedra vs
+            // skeleton lines); WHETHER they render is the per-view Skins
+            // visualization mode - plus always in bone selection mode, where
+            // the proxies are pickable and you cannot click what you cannot
+            // see. Without the Skins gate any skinned asset (e.g. the XR
+            // controller render models) grew permanent bone spikes.
+            .is_enabled                   {
+                [](const Render_context& context) -> bool {
+                    if (!context.app_context.editor_settings->debug_visualizations_style.bone_solid) {
+                        return false;
+                    }
+                    const bool bone_mode = (context.app_context.mesh_component_selection != nullptr) &&
+                        (context.app_context.mesh_component_selection->get_mode() == Mesh_component_mode::bone);
+                    if (bone_mode) {
+                        return true;
+                    }
+                    const std::shared_ptr<Scene_root> scene_root = context.scene_view.get_scene_root();
+                    if (!scene_root) {
+                        return false;
+                    }
+                    return Debug_visualizations::skins_shown(context.scene_view.get_debug_visualizations_settings(), *scene_root);
+                }
+            }
+        },
+        {
+            &m_pipeline_passes.bone1_hidden_stencil,  // tag_depth_hidden_with_stencil
+            &m_pipeline_passes.bone2_visible_stencil, // tag_depth_visible_with_stencil
+            &m_pipeline_passes.bone3_depth_clear,     // clear_depth
+            &m_pipeline_passes.bone4_depth,           // depth_only
+            &m_pipeline_passes.bone5_visible_color,   // require_stencil_tag_depth_visible
+            &m_pipeline_passes.bone6_hidden_color     // require_stencil_tag_depth_hidden_and_blend
+        }
+    );
+
+    // Rendertarget meshes (the hotbar quad and any other rendertarget-mesh UI)
+    // render in their own pass that ignores camera exposure and is marked as an
+    // overlay so that, when post-processing is enabled, it runs after it (issue
+    // #230). The hotbar material is unlit + alpha-blended, so allow_all selects
+    // the translucent (alpha-blended) bucket here.
+    rendertarget = make_composition_pass(
+        "Rendertarget",
+        Composition_pass_data{
+            .ignore_exposure     {true},
+            .overlay             {true},
+            .mesh_layers         {Mesh_layer_id::rendertarget},
+            .blending_mode_policy{Blending_mode_policy::allow_all},
+            .primitive_mode      {erhe::primitive::Primitive_mode::polygon_fill},
+            .filter{
+                .require_all_bits_set         = Item_flags::visible | Item_flags::rendertarget,
+                .require_at_least_one_bit_set = 0,
+                .require_all_bits_clear       = 0
+            }
+        },
+        not_selected
+    );
+
+    m_graphics_settings_subscription = app_message_bus.graphics_settings.subscribe(
+        [&](Graphics_settings_message& message) {
+            handle_graphics_settings_changed(message.graphics_preset);
+        }
+    );
+
+    debug_joint_colors.push_back(glm::vec4{0.0f, 0.0f, 0.0f, 1.0f}); //  0
+    debug_joint_colors.push_back(glm::vec4{1.0f, 0.0f, 0.0f, 1.0f}); //  1
+    debug_joint_colors.push_back(glm::vec4{0.0f, 1.0f, 0.0f, 1.0f}); //  2
+    debug_joint_colors.push_back(glm::vec4{0.0f, 0.0f, 1.0f, 1.0f}); //  3
+    debug_joint_colors.push_back(glm::vec4{1.0f, 1.0f, 0.0f, 1.0f}); //  4
+    debug_joint_colors.push_back(glm::vec4{0.0f, 1.0f, 1.0f, 1.0f}); //  5
+    debug_joint_colors.push_back(glm::vec4{1.0f, 0.0f, 1.0f, 1.0f}); //  6
+    debug_joint_colors.push_back(glm::vec4{1.0f, 1.0f, 1.0f, 1.0f}); //  7
+    debug_joint_colors.push_back(glm::vec4{0.5f, 0.0f, 0.0f, 1.0f}); //  8
+    debug_joint_colors.push_back(glm::vec4{0.0f, 0.5f, 0.0f, 1.0f}); //  9
+    debug_joint_colors.push_back(glm::vec4{0.0f, 0.0f, 0.5f, 1.0f}); // 10
+    debug_joint_colors.push_back(glm::vec4{0.5f, 0.5f, 0.0f, 1.0f}); // 11
+    debug_joint_colors.push_back(glm::vec4{0.0f, 0.5f, 0.5f, 1.0f}); // 12
+    debug_joint_colors.push_back(glm::vec4{0.5f, 0.0f, 0.5f, 1.0f}); // 13
+    debug_joint_colors.push_back(glm::vec4{0.5f, 0.5f, 0.5f, 1.0f}); // 14
+    debug_joint_colors.push_back(glm::vec4{1.0f, 0.5f, 0.0f, 1.0f}); // 15
+    debug_joint_colors.push_back(glm::vec4{1.0f, 0.0f, 0.5f, 1.0f}); // 16
+    debug_joint_colors.push_back(glm::vec4{0.5f, 1.0f, 0.0f, 1.0f}); // 17
+    debug_joint_colors.push_back(glm::vec4{0.0f, 1.0f, 0.5f, 1.0f}); // 18
+    debug_joint_colors.push_back(glm::vec4{0.5f, 0.0f, 1.0f, 1.0f}); // 19
+    debug_joint_colors.push_back(glm::vec4{0.0f, 0.5f, 1.0f, 1.0f}); // 20
+    debug_joint_colors.push_back(glm::vec4{1.0f, 1.0f, 0.5f, 1.0f}); // 21
+    debug_joint_colors.push_back(glm::vec4{0.5f, 1.0f, 1.0f, 1.0f}); // 22
+    debug_joint_colors.push_back(glm::vec4{1.0f, 0.5f, 1.0f, 1.0f}); // 23
+}
+
+auto App_rendering::create_shadow_node_for_scene_view(
+    erhe::graphics::Device&         graphics_device,
+    erhe::rendergraph::Rendergraph& rendergraph,
+    App_settings&                   app_settings,
+    Scene_view&                     scene_view
+) -> std::shared_ptr<Shadow_render_node>
+{
+    const auto& preset            = app_settings.graphics.current_graphics_preset;
+    const erhe::scene_renderer::Light_count_limits limits = get_light_count_limits(preset);
+    const int   resolution        = preset.shadow_enable ? preset.shadow_resolution  : 1;
+    const int   light_count       = static_cast<int>(limits.shadow_map_2d_layer_count());
+    const int   point_resolution  = preset.shadow_enable ? preset.point_shadow_resolution  : 1;
+    const int   point_light_count = static_cast<int>(limits.point_shadow_cube_count());
+    log_startup->info(
+        "Creating shadow render node from preset '{}': shadow_enable={} -> light_count={} resolution={} depth_bits={} point_light_count={} point_resolution={}",
+        preset.name, preset.shadow_enable, light_count, resolution, preset.shadow_depth_bits, point_light_count, point_resolution
+    );
+    ERHE_VERIFY(m_context.current_command_buffer != nullptr);
+    auto shadow_render_node = std::make_shared<Shadow_render_node>(
+        graphics_device,
+        *m_context.current_command_buffer,
+        rendergraph,
+        m_context,
+        scene_view,
+        resolution,
+        light_count,
+        preset.shadow_depth_bits,
+        point_resolution,
+        point_light_count
+    );
+    m_all_shadow_render_nodes.push_back(shadow_render_node);
+    return shadow_render_node;
+}
+
+void App_rendering::handle_graphics_settings_changed(Graphics_preset_entry* graphics_preset)
+{
+    const erhe::scene_renderer::Light_count_limits limits = (graphics_preset != nullptr)
+        ? get_light_count_limits(*graphics_preset)
+        : erhe::scene_renderer::Light_count_limits{};
+    const int resolution        = (graphics_preset != nullptr) && graphics_preset->shadow_enable ? graphics_preset->shadow_resolution  : 1;
+    const int light_count       = static_cast<int>(limits.shadow_map_2d_layer_count());
+    const int point_resolution  = (graphics_preset != nullptr) && graphics_preset->shadow_enable ? graphics_preset->point_shadow_resolution  : 1;
+    const int point_light_count = static_cast<int>(limits.point_shadow_cube_count());
+
+    if (graphics_preset != nullptr) {
+        log_startup->info(
+            "Reconfiguring {} shadow render node(s) from preset '{}': shadow_enable={} -> light_count={} resolution={} depth_bits={} point_light_count={} point_resolution={}",
+            m_all_shadow_render_nodes.size(),
+            graphics_preset->name, graphics_preset->shadow_enable, light_count, resolution, graphics_preset->shadow_depth_bits, point_light_count, point_resolution
+        );
+    }
+
+    // Reverse-Z is a static device property (Device::get_reverse_depth()), not a
+    // runtime-mutable setting, so depth state is baked at construction and there
+    // is nothing to rebuild here. clip_control is likewise set once at device /
+    // editor init to match native_depth_range (zero_to_one when supported); it
+    // must not be toggled per preset.
+    ERHE_VERIFY(m_context.current_command_buffer != nullptr);
+    const bool distance_technique = (graphics_preset != nullptr) && (graphics_preset->shadow_technique == Shadow_technique_mode::distance);
+    for (const auto& node : m_all_shadow_render_nodes) {
+        node->reconfigure(*m_context.graphics_device, *m_context.current_command_buffer, resolution, light_count, graphics_preset->shadow_depth_bits, distance_technique, point_resolution, point_light_count);
+    }
+}
+
+auto App_rendering::get_shadow_node_for_view(const Scene_view& scene_view) -> std::shared_ptr<Shadow_render_node>
+{
+    auto i = std::find_if(
+        m_all_shadow_render_nodes.begin(),
+        m_all_shadow_render_nodes.end(),
+        [&scene_view](const auto& entry) {
+            return &entry->get_scene_view() == &scene_view;
+        }
+    );
+    if (i == m_all_shadow_render_nodes.end()) {
+        return {};
+    }
+    return *i;
+}
+
+auto App_rendering::get_all_shadow_nodes() -> const std::vector<std::shared_ptr<Shadow_render_node>>&
+{
+    return m_all_shadow_render_nodes;
+}
+
+auto App_rendering::destroy_shadow_node(const std::shared_ptr<Shadow_render_node>& shadow_render_node) -> bool
+{
+    if (!shadow_render_node) {
+        return false;
+    }
+    const auto i = std::find(m_all_shadow_render_nodes.begin(), m_all_shadow_render_nodes.end(), shadow_render_node);
+    if (i == m_all_shadow_render_nodes.end()) {
+        return false;
+    }
+    m_all_shadow_render_nodes.erase(i);
+    return true;
+}
+
+auto App_rendering::get_render_pipeline_state(
+    const Composition_pass& composition_pass,
+    const bool              selected
+) -> erhe::graphics::Base_render_pipeline*
+{
+    using namespace erhe::primitive;
+    switch (composition_pass.data.primitive_mode) {
+        case Primitive_mode::polygon_fill:
+            return selected
+                ? &m_pipeline_passes.polygon_fill_standard_selected
+                : &m_pipeline_passes.polygon_fill_standard;
+
+        case Primitive_mode::solid_wireframe:
+            // Depth less-or-equal overlay over the normal fill (same pipeline
+            // for selected / not -- the selection stencil is written by the
+            // normal fill pass). No depth write, no stencil.
+            return &m_pipeline_passes.solid_wireframe;
+
+        case Primitive_mode::edge_lines:
+            return &m_pipeline_passes.edge_lines;
+
+        case Primitive_mode::corner_points    : return &m_pipeline_passes.corner_points;
+        case Primitive_mode::corner_normals   : return &m_pipeline_passes.edge_lines;
+        case Primitive_mode::polygon_centroids: return &m_pipeline_passes.polygon_centroids;
+        default: return nullptr;
+    }
+}
+
+auto App_rendering::make_composition_pass(const std::string_view name) -> std::shared_ptr<Composition_pass>
+{
+    auto renderpass = std::make_shared<Composition_pass>(name);
+    std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_composer.mutex};
+    m_composer.composition_passes.push_back(renderpass);
+    return renderpass;
+}
+
+auto App_rendering::make_composition_pass(
+    std::string_view        name,
+    Composition_pass_data&& data,
+    const bool              selected
+) -> std::shared_ptr<Composition_pass>
+{
+    std::shared_ptr<Composition_pass> renderpass = make_composition_pass(name);
+    renderpass->data = std::move(data);
+    renderpass->data.base_render_pipelines.push_back(
+        get_render_pipeline_state(*renderpass.get(), selected)
+    );
+    return renderpass;
+}
+
+auto App_rendering::make_composition_pass(
+    std::string_view                                             name,
+    Composition_pass_data&&                                      data,
+    std::initializer_list<erhe::graphics::Base_render_pipeline*> pipelines
+) -> std::shared_ptr<Composition_pass>
+{
+    std::shared_ptr<Composition_pass> renderpass = make_composition_pass(name);
+    renderpass->data = std::move(data);
+    renderpass->data.base_render_pipelines = pipelines;
+    return renderpass;
+}
+
+auto App_rendering::make_composition_pass(
+    std::string_view                           name,
+    const std::shared_ptr<Composition_pass>&   base_pass,
+    erhe::scene_renderer::Blending_mode_policy blending_mode_policy
+) -> std::shared_ptr<Composition_pass>
+{
+    std::shared_ptr<Composition_pass> renderpass = make_composition_pass(name);
+    renderpass->data = base_pass->data;
+    renderpass->data.blending_mode_policy = blending_mode_policy;
+    return renderpass;
+}
+
+auto App_rendering::composition_passes() const -> const std::vector<std::shared_ptr<Composition_pass>>&
+{
+    return m_composer.composition_passes;
+}
+
+using Vertex_input_state         = erhe::graphics::Vertex_input_state;
+using Input_assembly_state       = erhe::graphics::Input_assembly_state;
+using Multisample_state          = erhe::graphics::Multisample_state;
+using Viewport_depth_range_state = erhe::graphics::Viewport_depth_range_state;
+using Rasterization_state        = erhe::graphics::Rasterization_state;
+using Depth_stencil_state        = erhe::graphics::Depth_stencil_state;
+using Color_blend_state          = erhe::graphics::Color_blend_state;
+
+Pipeline_renderpasses::Pipeline_renderpasses(
+    erhe::graphics::Device&            graphics_device,
+    erhe::scene_renderer::Mesh_memory& /*mesh_memory*/,
+    Programs&                          /*programs*/,
+    const bool                         reverse_depth
+)
+    : m_y_flip{graphics_device.get_info().coordinate_conventions.clip_space_y_flip == erhe::math::Clip_space_y_flip::enabled}
+    , m_empty_vertex_input{graphics_device}
+    , polygon_fill_standard{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Polygon Fill"},
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth)
+        }
+    }
+    , polygon_fill_standard_selected{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Polygon Fill Selected"},
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = true,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less, reverse_depth),
+                .stencil_test_enable = true,
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::replace,
+                    .z_fail_op       = erhe::graphics::Stencil_op::replace,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::always,
+                    .reference       = 0b10000000u,
+                    .test_mask       = 0b00000000u, // always does not use
+                    .write_mask      = 0b10000000u  // = 0x80 = 128
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::replace,
+                    .z_fail_op       = erhe::graphics::Stencil_op::replace,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::always,
+                    .reference       = 0b10000000u,
+                    .test_mask       = 0b00000000u,
+                    .write_mask      = 0b10000000u
+                },
+            }
+        }
+    }
+
+    , solid_wireframe{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Solid Wireframe"},
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = false,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less_or_equal, reverse_depth),
+                .stencil_test_enable = false
+            }
+        }
+    }
+
+    // RGB factors use CONSTANT_COLOR rather than CONSTANT_ALPHA because
+    // VK_KHR_portability_subset on MoltenVK rejects CONSTANT_ALPHA in the
+    // color channel (VUID-...-04454). Blend constant's RGB is set equal to
+    // its alpha so CONSTANT_COLOR yields the same result as CONSTANT_ALPHA.
+    , line_hidden_blend_state{
+        .enabled                = true,
+        .rgb = {
+            .equation_mode      = erhe::graphics::Blend_equation_mode::func_add,
+            .source_factor      = erhe::graphics::Blending_factor::constant_color,
+            .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_color
+        },
+        .alpha = {
+            .equation_mode      = erhe::graphics::Blend_equation_mode::func_add,
+            .source_factor      = erhe::graphics::Blending_factor::constant_alpha,
+            .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_alpha
+        },
+        .constant = { 0.2f, 0.2f, 0.2f, 0.2f }
+    }
+    , line_hidden_blend{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label             = erhe::utility::Debug_label{"Hidden lines with blending"},
+            .input_assembly          = Input_assembly_state::line,
+            .multisample             = Multisample_state{
+                .alpha_to_coverage_enable = true
+            },
+            .rasterization           = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = false,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::greater, reverse_depth),
+                .stencil_test_enable = true,
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::incr,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = 0u,
+                    .test_mask       = 0b11111111u,
+                    .write_mask      = 0b01111111u // ignore high bit (selection)
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::incr,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = 0u,
+                    .test_mask       = 0b11111111u,
+                    .write_mask      = 0b01111111u // ignore high bit (selection)
+                },
+            },
+            .color_blend = &line_hidden_blend_state
+        }
+    }
+
+    , brush_back{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Brush back faces"},
+            //.shader_stages  = programs.brush.shader_stages(),
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_front_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
+            //.color_blend    = &Color_blend_state::color_blend_premultiplied
+        }
+    }
+    , brush_front{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Brush front faces"},
+            //.shader_stages  = programs.brush.shader_stages(),
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
+            //.color_blend    = &Color_blend_state::color_blend_premultiplied
+        }
+    }
+
+    , edge_lines{graphics_device, erhe::graphics::Base_render_pipeline_create_info{
+        .debug_label    = erhe::utility::Debug_label{"Edge Lines"},
+        .input_assembly = Input_assembly_state::line,
+        .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+        .depth_stencil = {
+            .depth_test_enable   = true,
+            .depth_write_enable  = true,
+            .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less_or_equal, reverse_depth),
+            .stencil_test_enable = true,
+            .stencil_front = {
+                .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                .z_pass_op       = erhe::graphics::Stencil_op::incr,
+                .function        = erhe::graphics::Compare_operation::equal,
+                .reference       = 0u,
+                .test_mask       = 0b01111111u,
+                .write_mask      = 0b01111111u // ignore high bit (selection)
+            },
+            .stencil_back = {
+                .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                .z_pass_op       = erhe::graphics::Stencil_op::incr,
+                .function        = erhe::graphics::Compare_operation::equal,
+                .reference       = 0u,
+                .test_mask       = 0b01111111u,
+                .write_mask      = 0b01111111u // ignore high bit (selection)
+            }
+        },
+        .color_blend    = &Color_blend_state::color_blend_premultiplied
+    }}
+    , outline{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Outline (selection/hover)"},
+            .input_assembly = Input_assembly_state::line,
+            .multisample    = Multisample_state{
+                .alpha_to_coverage_enable = true
+            },
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil = {
+                .depth_test_enable   = false,
+                .depth_write_enable  = false,
+                .depth_compare_op    = erhe::graphics::Compare_operation::always,
+                .stencil_test_enable = true, // If bit 7 in the stencil buffer is not set, draw and set it. Otherwise, skip drawing
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::not_equal,
+                    .reference       = 0b10000000u,
+                    .test_mask       = 0b10000000u,
+                    .write_mask      = 0b10000000u
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::not_equal,
+                    .reference       = 0b10000000u,
+                    .test_mask       = 0b10000000u,
+                    .write_mask      = 0b10000000u
+                }
+            },
+            .color_blend    = &Color_blend_state::color_blend_premultiplied
+        }
+    }
+    , corner_points{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Corner Points"},
+            .input_assembly = Input_assembly_state::point,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
+            .color_blend    = &Color_blend_state::color_blend_disabled
+        }
+    }
+    , polygon_centroids{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Polygon Centroids"},
+            .input_assembly = Input_assembly_state::point,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
+            .color_blend    = &Color_blend_state::color_blend_disabled
+        }
+    }
+    , sky{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label          = erhe::utility::Debug_label{"Sky"},
+            .input_assembly       = Input_assembly_state::triangle,
+            .viewport_depth_range = Viewport_depth_range_state{
+                // Far-plane depth: 0.0 for reverse-Z, 1.0 for forward-Z. The sky
+                // draws only where depth equals the (cleared) far plane.
+                .min_depth = reverse_depth ? 0.0f : 1.0f,
+                .max_depth = reverse_depth ? 0.0f : 1.0f
+            },
+            .rasterization  = Rasterization_state::cull_mode_none,
+            .depth_stencil  = Depth_stencil_state{
+                .depth_test_enable   = true,
+                .depth_write_enable  = false,
+                .depth_compare_op    = erhe::graphics::Compare_operation::equal, // Depth buffer must be cleared to the far plane value
+                .stencil_test_enable = true, // Require stencil clear value 0 (to prevent overdrawing selection silhouette)
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = 0u,
+                    .test_mask       = 0b11111111u,
+                    .write_mask      = 0b00000000u
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = 0u,
+                    .test_mask       = 0b11111111u,
+                    .write_mask      = 0b00000000u
+                },
+            }
+        }
+    }
+    , grid{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Grid"},
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_none_depth_clamp,
+            .depth_stencil = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = true,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less_or_equal, reverse_depth),
+                .stencil_test_enable = true, // Conditionally render fragments where bit 7 is not set, without modifying the stencil buffer
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::not_equal,
+                    .reference       = 0b10000000u,
+                    .test_mask       = 0b10000000u,
+                    .write_mask      = 0b10000000u
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::not_equal,
+                    .reference       = 0b10000000u,
+                    .test_mask       = 0b10000000u,
+                    .write_mask      = 0b10000000u
+                }
+            },
+            .color_blend    = &Color_blend_state::color_blend_premultiplied
+        }
+    }
+
+    // Solid bones, six pipelines mirroring the tool-handle method in
+    // Tools_pipeline_renderpasses. Differences from the tool pipelines, both
+    // forced by the bone pass running in the content phase rather than as a
+    // late overlay:
+    //  - the stencil write / test masks exclude bit 7, the selection silhouette
+    //    mask written by "Polygon Fill Selected" and read by the outline pass.
+    //  - the tag values are the bone-specific s_stencil_bone_mesh_* ones.
+    // The tags themselves are left behind in bits 0..6; the bone pass is
+    // therefore ordered after every content pass that requires a zero stencil
+    // there (the edge-line pipelines test `stencil == 0` with mask 0x7f).
+
+    // Bone pass one: tag the parts of a bone that are BEHIND content with
+    // s_stencil_bone_mesh_hidden. Reads depth, writes stencil only.
+    , bone1_hidden_stencil{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label             = erhe::utility::Debug_label{"Bone pass 1: Tag depth hidden `s_stencil_bone_mesh_hidden`"},
+            .input_assembly          = Input_assembly_state::triangle,
+            .rasterization           = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = false,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::greater, reverse_depth),
+                .stencil_test_enable = true,
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::always,
+                    .reference       = s_stencil_bone_mesh_hidden,
+                    .test_mask       = 0b00000000u,
+                    .write_mask      = 0b01111111u // ignore high bit (selection)
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::always,
+                    .reference       = s_stencil_bone_mesh_hidden,
+                    .test_mask       = 0b00000000u,
+                    .write_mask      = 0b01111111u // ignore high bit (selection)
+                },
+            },
+            .color_blend             = &Color_blend_state::color_writes_disabled
+        }
+    }
+
+    // Bone pass two: tag the parts of a bone that are IN FRONT of content with
+    // s_stencil_bone_mesh_visible. Reads depth, writes stencil only.
+    , bone2_visible_stencil{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label             = erhe::utility::Debug_label{"Bone pass 2: Tag depth visible `s_stencil_bone_mesh_visible`"},
+            .input_assembly          = Input_assembly_state::triangle,
+            .rasterization           = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = false,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less_or_equal, reverse_depth),
+                .stencil_test_enable = true,
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::always,
+                    .reference       = s_stencil_bone_mesh_visible,
+                    .test_mask       = 0b00000000u,
+                    .write_mask      = 0b01111111u // ignore high bit (selection)
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::replace,
+                    .function        = erhe::graphics::Compare_operation::always,
+                    .reference       = s_stencil_bone_mesh_visible,
+                    .test_mask       = 0b00000000u,
+                    .write_mask      = 0b01111111u // ignore high bit (selection)
+                },
+            },
+            .color_blend             = &Color_blend_state::color_writes_disabled
+        }
+    }
+
+    // Bone pass three: push depth to the far plane under the bones. Without
+    // this the hidden colour pass (six) has nothing to draw against - its
+    // fragments are behind content by construction and would fail the depth
+    // test. Depth only, no colour.
+    , bone3_depth_clear{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label          = erhe::utility::Debug_label{"Bone pass 3: Set depth to fixed value"},
+            .input_assembly       = Input_assembly_state::triangle,
+            .viewport_depth_range = Viewport_depth_range_state{
+                // Fixed depth at the far plane: 0.0 reverse-Z, 1.0 forward-Z.
+                .min_depth = reverse_depth ? 0.0f : 1.0f,
+                .max_depth = reverse_depth ? 0.0f : 1.0f
+            },
+            .rasterization        = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil        = Depth_stencil_state::depth_test_always_stencil_test_disabled,
+            .color_blend          = &Color_blend_state::color_writes_disabled
+        }
+    }
+
+    // Bone pass four: lay down the bones' own depth over the cleared range, so
+    // passes five and six sort bone against bone correctly (a skeleton is a
+    // pile of overlapping proxies) while the stencil tags from passes one and
+    // two still say what is inside content and what is not.
+    , bone4_depth{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label    = erhe::utility::Debug_label{"Bone pass 4: Set depth to proper bone depth"},
+            .input_assembly = Input_assembly_state::triangle,
+            .rasterization  = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil  = Depth_stencil_state::depth_test_enabled_stencil_test_disabled(reverse_depth),
+            .color_blend    = &Color_blend_state::color_writes_disabled
+        }
+    }
+
+    // Bone pass five: the unoccluded part of each bone, drawn solid.
+    , bone5_visible_color{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label             = erhe::utility::Debug_label{"Bone pass 5: Render visible bone parts, require `s_stencil_bone_mesh_visible`"},
+            .input_assembly          = Input_assembly_state::triangle,
+            .rasterization           = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = true,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less_or_equal, reverse_depth),
+                .stencil_test_enable = true,
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = s_stencil_bone_mesh_visible,
+                    .test_mask       = 0b01111111u, // ignore high bit (selection)
+                    .write_mask      = 0b01111111u
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = s_stencil_bone_mesh_visible,
+                    .test_mask       = 0b01111111u,
+                    .write_mask      = 0b01111111u
+                }
+            }
+        }
+    }
+
+    // Bone pass six: the part of each bone that is inside content, blended at
+    // the same constant the tool handles use so the two read alike.
+    // RGB factors use CONSTANT_COLOR rather than CONSTANT_ALPHA because
+    // VK_KHR_portability_subset on MoltenVK rejects CONSTANT_ALPHA in the
+    // color channel (VUID-...-04454). Blend constant's RGB is set equal to its
+    // alpha so CONSTANT_COLOR yields the same result as CONSTANT_ALPHA.
+    , bone6_hidden_color_blend{
+        .enabled                = true,
+        .rgb = {
+            .equation_mode      = erhe::graphics::Blend_equation_mode::func_add,
+            .source_factor      = erhe::graphics::Blending_factor::constant_color,
+            .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_color
+        },
+        .alpha = {
+            .equation_mode      = erhe::graphics::Blend_equation_mode::func_add,
+            .source_factor      = erhe::graphics::Blending_factor::constant_alpha,
+            .destination_factor = erhe::graphics::Blending_factor::one_minus_constant_alpha
+        },
+        .constant               = { 0.6f, 0.6f, 0.6f, 0.6f }
+    }
+
+    , bone6_hidden_color{
+        graphics_device,
+        erhe::graphics::Base_render_pipeline_create_info{
+            .debug_label             = erhe::utility::Debug_label{"Bone pass 6: Render hidden bone parts, require `s_stencil_bone_mesh_hidden`"},
+            .input_assembly          = Input_assembly_state::triangle,
+            .rasterization           = Rasterization_state::cull_mode_back_ccw.with_winding_flip_if(m_y_flip),
+            .depth_stencil = {
+                .depth_test_enable   = true,
+                .depth_write_enable  = true,
+                .depth_compare_op    = erhe::graphics::get_depth_function(erhe::graphics::Compare_operation::less_or_equal, reverse_depth),
+                .stencil_test_enable = true,
+                .stencil_front = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = s_stencil_bone_mesh_hidden,
+                    .test_mask       = 0b01111111u, // ignore high bit (selection)
+                    .write_mask      = 0b01111111u
+                },
+                .stencil_back = {
+                    .stencil_fail_op = erhe::graphics::Stencil_op::keep,
+                    .z_fail_op       = erhe::graphics::Stencil_op::keep,
+                    .z_pass_op       = erhe::graphics::Stencil_op::keep,
+                    .function        = erhe::graphics::Compare_operation::equal,
+                    .reference       = s_stencil_bone_mesh_hidden,
+                    .test_mask       = 0b01111111u,
+                    .write_mask      = 0b01111111u
+                }
+            },
+            .color_blend = &bone6_hidden_color_blend
+        }
+    }
+{
+}
+
+void App_rendering::trigger_capture()
+{
+    m_trigger_capture = true;
+}
+
+auto App_rendering::width() const -> int
+{
+    return m_context.context_window->get_width();
+}
+
+auto App_rendering::height() const -> int
+{
+    return m_context.context_window->get_height();
+}
+
+void App_rendering::imgui()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // log_frame->trace("App_rendering::imgui()");
+
+    const ImGuiTreeNodeFlags flags{
+        ImGuiTreeNodeFlags_Framed            |
+        ImGuiTreeNodeFlags_OpenOnArrow       |
+        ImGuiTreeNodeFlags_OpenOnDoubleClick |
+        ImGuiTreeNodeFlags_SpanFullWidth
+    };
+
+    if (ImGui::TreeNodeEx("Skin Debug", flags)) {
+        // Active joint / zero-black options for the Joint Weight Ramp mode.
+        // Weight_display owns debug_joint_indices and debug_target_joint.
+        if (m_context.weight_display != nullptr) {
+            m_context.weight_display->imgui();
+        }
+
+        for (int joint_index = 0, end = static_cast<int>(debug_joint_colors.size()); joint_index < end; ++joint_index) {
+            std::string label = fmt::format("Joint {}", joint_index);
+            ImGui::ColorEdit4(label.c_str(), &debug_joint_colors[joint_index].x, ImGuiColorEditFlags_Float);
+        }
+        ImGui::TreePop();
+    }
+
+    m_composer.imgui();
+}
+
+auto App_rendering::is_capturing() const -> bool
+{
+    return m_trigger_capture;
+}
+
+void App_rendering::process_start_capture()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // log_frame->trace("App_rendering::begin_frame() (check for renderdoc frame capture)");
+
+    if (m_trigger_capture) {
+        m_context.graphics_device->start_frame_capture();
+    }
+}
+
+void App_rendering::request_renderdoc_capture()
+{
+#if defined(ERHE_XR_LIBRARY_OPENXR)
+    m_context.headset_view->request_renderdoc_capture();
+#endif
+}
+
+void App_rendering::set_grid_visibility(bool visible)
+{
+    // TODO Consider using Item visibility flag and removing enabled
+    if (m_grid_composition_pass != nullptr) {
+        m_grid_composition_pass->data.enabled = visible;
+    }
+}
+
+void App_rendering::set_grid_label(const glm::vec4& grid_label)
+{
+    if (m_grid_composition_pass != nullptr) {
+        m_grid_composition_pass->data.grid_parameters.grid_label = grid_label;
+    }
+}
+
+void App_rendering::set_grid_colors(const std::array<glm::vec4, 4>& level_colors, const glm::vec4& label_color)
+{
+    if (m_grid_composition_pass != nullptr) {
+        m_grid_composition_pass->data.grid_parameters.grid_color       = level_colors;
+        m_grid_composition_pass->data.grid_parameters.grid_label_color = label_color;
+    }
+}
+
+void App_rendering::set_grid_line_widths(const glm::vec4& level_widths)
+{
+    if (m_grid_composition_pass != nullptr) {
+        m_grid_composition_pass->data.grid_parameters.grid_line_width = level_widths;
+    }
+}
+
+void App_rendering::set_grid_sizes(const glm::vec4& level_cell_sizes)
+{
+    if (m_grid_composition_pass != nullptr) {
+        m_grid_composition_pass->data.grid_parameters.grid_size = level_cell_sizes;
+    }
+}
+
+void App_rendering::update_sky_parameters(const Render_context& context)
+{
+    if ((m_sky_composition_pass == nullptr) || (m_context.editor_settings == nullptr)) {
+        return;
+    }
+    // Resolve per scene (#239): each viewport's composition uses its own scene's
+    // sky (override if engaged, else the editor-global default).
+    const std::shared_ptr<Scene_root> scene_root = context.scene_view.get_scene_root();
+    const Sky_config& sky = (scene_root != nullptr)
+        ? get_effective_sky(*m_context.editor_settings, *scene_root)
+        : m_context.editor_settings->sky;
+    // Applied every frame (render_composer() calls this) so the Settings
+    // window checkbox takes effect immediately; same mechanism as
+    // set_grid_visibility(). With the sky pass disabled the scene background
+    // keeps the render pass clear value (transparent in the headset path, so
+    // camera passthrough shows through; see Headset_view::render_headset()).
+    m_sky_composition_pass->data.enabled = sky.enabled;
+    erhe::scene_renderer::Sky_parameters& parameters = m_sky_composition_pass->data.sky_parameters;
+    parameters.sky_checker          = glm::vec4{sky.checker_frequency.x, sky.checker_frequency.y, sky.checker_intensity_a, sky.checker_intensity_b};
+    parameters.sky_horizon_color    = glm::vec4{glm::vec3{sky.sky_horizon_color},    sky.sky_power};
+    parameters.sky_zenith_color     = glm::vec4{glm::vec3{sky.sky_zenith_color},     0.0f};
+    parameters.ground_horizon_color = glm::vec4{glm::vec3{sky.ground_horizon_color}, sky.ground_power};
+    parameters.ground_nadir_color   = glm::vec4{glm::vec3{sky.ground_nadir_color},   0.0f};
+}
+
+void App_rendering::process_end_capture()
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // log_frame->trace("App_rendering::end_frame() (check for renderdoc frame capture)");
+
+    if (m_trigger_capture) {
+        m_context.graphics_device->end_frame_capture();
+        m_trigger_capture = false;
+    }
+}
+
+void App_rendering::add(Renderable* renderable)
+{
+    ERHE_VERIFY(renderable != nullptr);
+
+    const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_renderables_mutex};
+
+#if !defined(NDEBUG)
+    const auto i = std::find_if(
+        m_renderables.begin(),
+        m_renderables.end(),
+        [renderable](Renderable* entry) {
+            return entry == renderable;
+        }
+    );
+    if (i != m_renderables.end()) {
+        log_render->error("App_rendering::add(Renderable*): renderable is already registered");
+        return;
+    }
+#endif
+
+    m_renderables.push_back(renderable);
+}
+
+void App_rendering::remove(Renderable* renderable)
+{
+    const std::lock_guard<ERHE_PROFILE_LOCKABLE_BASE(std::mutex)> lock{m_renderables_mutex};
+
+    const auto i = std::find_if(
+        m_renderables.begin(),
+        m_renderables.end(),
+        [renderable](Renderable* entry) {
+            return entry == renderable;
+        }
+    );
+    if (i == m_renderables.end()) {
+        log_render->error("App_rendering::remove(Renderable*): renderable is not registered");
+        return;
+    }
+    m_renderables.erase(i);
+}
+
+void App_rendering::render_viewport_main(const Render_context& context, const bool include_overlay)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // log_frame->trace("App_rendering::render_viewport_main()");
+
+    render_composer(context, true, include_overlay);
+}
+
+void App_rendering::render_overlay(const Render_context& context)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // log_frame->trace("App_rendering::render_overlay()");
+
+    render_composer(context, false, true);
+}
+
+void App_rendering::render_viewport_renderables(const Render_context& context)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    ERHE_VERIFY(context.command_buffer != nullptr);
+    erhe::graphics::Scoped_debug_group debug_group{*context.command_buffer, "Viewport Renderables"};
+
+    for (auto* renderable : m_renderables) {
+        renderable->render(context);
+    }
+
+    // Per-view renderables: each Scene_view owns its own Debug_visualizations
+    // instance, so it is dispatched through the view named in the context
+    // instead of the global m_renderables registry.
+    context.scene_view.render_debug_visualizations(context);
+}
+
+void App_rendering::render_composer(const Render_context& context, const bool include_content, const bool include_overlay)
+{
+    // log_frame->trace("App_rendering::render_composer()");
+
+    ERHE_VERIFY(context.command_buffer != nullptr);
+    const char* const zone_label = include_content ? "Main" : "Overlay";
+    erhe::graphics::Scoped_debug_group pass_scope{*context.command_buffer, "Composer"};
+    erhe::graphics::Scoped_gpu_zone   gpu_zone  {*context.command_buffer, zone_label};
+
+    if (include_content) {
+        update_sky_parameters(context);
+    }
+
+    m_composer.render(context, include_content, include_overlay);
+
+    ///// TODO Check m_context.graphics_device->opengl_state_tracker.depth_stencil.reset(); // workaround issue in stencil state tracking
+}
+
+void App_rendering::render_id(const Render_context& context)
+{
+    ERHE_PROFILE_FUNCTION();
+
+    // log_frame->trace("App_rendering::render_id()");
+
+    const auto scene_root = context.scene_view.get_scene_root();
+    if (!scene_root){
+        return;
+    }
+
+    // A pending region selection scan must render the ID pass even when the
+    // pointer is not over the viewport (e.g. a programmatic scan), so fall back
+    // to the viewport centre for the pointer-pick rect in that case.
+    const std::optional<glm::vec2> position_opt = context.viewport_scene_view->get_position_in_viewport();
+    const bool scan_pending = (m_context.id_renderer != nullptr) && m_context.id_renderer->has_pending_scan();
+    if (!position_opt.has_value() && !scan_pending) {
+        return;
+    }
+    const glm::vec2 position = position_opt.has_value()
+        ? position_opt.value()
+        : glm::vec2{static_cast<float>(context.viewport.width) * 0.5f, static_cast<float>(context.viewport.height) * 0.5f};
+
+    const auto& layers = scene_root->layers();
+    Scene_root* tool_scene_root = m_context.tools->get_tool_scene_root().get();
+    if ((tool_scene_root == nullptr) || (context.camera == nullptr)) {
+        return;
+    }
+
+    const Scene_layers& tool_layers = tool_scene_root->layers();
+
+    // Joint UBO/SSBO: the id pass shares standard.{vert,frag} with
+    // Forward_renderer and takes the same GPU skinning branch off
+    // primitive.skinning_factor, so it needs the joint buffer bound when
+    // a skinned mesh is in any of its buckets. Pass the same Joint_buffer
+    // Forward_renderer uses; both updates allocate disjoint ring ranges.
+    erhe::scene_renderer::Joint_buffer* joint_buffer{nullptr};
+    std::span<const std::shared_ptr<erhe::scene::Skin>> skins{};
+    if (m_context.forward_renderer != nullptr) {
+        erhe::scene::Scene* hosted_scene = scene_root->get_hosted_scene();
+        if (hosted_scene != nullptr) {
+            const std::vector<std::shared_ptr<erhe::scene::Skin>>& scene_skins = hosted_scene->get_skins();
+            if (!scene_skins.empty()) {
+                joint_buffer = &m_context.forward_renderer->get_joint_buffer();
+                skins        = std::span<const std::shared_ptr<erhe::scene::Skin>>{scene_skins.data(), scene_skins.size()};
+            }
+        }
+    }
+
+    // TODO listen to viewport changes in msg bus?
+    ERHE_VERIFY(context.command_buffer != nullptr);
+    // id_renderer.enabled is repurposed under the hybrid picker: false
+    // (the default) means the ID pass covers only skinned meshes and the
+    // raytrace path covers static meshes; true means the ID pass covers
+    // everything (legacy "all-id" behaviour) and the raytrace path's
+    // contribution becomes whichever per-slot hit it returns sooner. The
+    // viewport_scene_view merge picks the closer hit per slot either way.
+    // A pending region selection scan (box / paint) reads only the ID color
+    // texture, so static meshes -- normally picked by the raytrace BVH and left
+    // out of the ID pass -- must be rasterized into it for that frame, or the
+    // scan would select nothing on them. Force the all-meshes filter whenever a
+    // scan is pending this frame (scan_pending computed above).
+    const Id_renderer::Skinning_filter skinning_filter = (m_context.id_renderer->enabled || scan_pending)
+        ? Id_renderer::Skinning_filter::all
+        : Id_renderer::Skinning_filter::skinned_only;
+
+    m_context.id_renderer->render(
+        Id_renderer::Render_parameters{
+            .command_buffer     = *context.command_buffer,
+            .viewport           = context.viewport,
+            .camera             = *context.camera,
+            // Bone proxies ride in the content spans (not the tool spans): they
+            // belong to this scene, not the global tool scene. They only carry
+            // Item_flags::id while bone mode is active, so outside it they are
+            // rasterized into no id at all.
+            .content_mesh_spans = { layers.content()->meshes, layers.rendertarget()->meshes, layers.bone()->meshes },
+            .tool_mesh_spans    = { tool_layers.tool()->meshes },
+            .x                  = static_cast<int>(position.x),
+            .y                  = static_cast<int>(position.y),
+            .reverse_depth      = context.scene_view.get_reverse_depth(),
+            .depth_range        = context.scene_view.get_depth_range(),
+            .conventions        = context.scene_view.get_conventions(),
+            .joint_buffer       = joint_buffer,
+            .skins              = skins,
+            .skinning_filter    = skinning_filter,
+        }
+    );
+}
+
+}  // namespace editor

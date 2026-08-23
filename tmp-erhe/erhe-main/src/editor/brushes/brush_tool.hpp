@@ -1,0 +1,201 @@
+#pragma once
+
+#include "tools/tool.hpp"
+#include "assets/asset_reference.hpp"
+#include "brushes/reference_frame.hpp"
+#include "scene/scene_view.hpp"
+#include "erhe_commands/command.hpp"
+#include "erhe_geometry/types.hpp"
+#include "app_message.hpp"
+#include "erhe_message_bus/message_bus.hpp"
+#include "erhe_profile/profile.hpp"
+
+#include <memory>
+#include <mutex>
+
+struct Scene_config;
+
+namespace erhe { class Item_host; }
+
+namespace editor {
+
+class Brush;
+class Brush_tool;
+class Content_library;
+class App_message_bus;
+struct Hover_scene_view_message;
+struct Hover_mesh_message;
+class App_scenes;
+class Icon_set;
+class Item_tree;
+class Operation_stack;
+class Operations;
+class Render_context;
+class Tools;
+class Headset_view;
+
+class Brush_preview_command : public erhe::commands::Command
+{
+public:
+    Brush_preview_command(erhe::commands::Commands& commands, App_context& context);
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+class Brush_insert_command : public erhe::commands::Command
+{
+public:
+    Brush_insert_command(erhe::commands::Commands& commands, App_context& context);
+    void try_ready() override;
+    auto try_call () -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+class Brush_rotate_command : public erhe::commands::Command
+{
+public:
+    Brush_rotate_command(erhe::commands::Commands& commands, App_context& context, int direction);
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+    int          m_direction{1};
+};
+
+class Brush_pick_command : public erhe::commands::Command
+{
+public:
+    Brush_pick_command(erhe::commands::Commands& commands, App_context& context);
+
+    auto try_call() -> bool override;
+
+private:
+    App_context& m_context;
+};
+
+class Brush_tool : public Tool
+{
+public:
+    static constexpr int c_priority{4};
+
+    Brush_tool(
+        const Scene_config&       scene_config,
+        erhe::commands::Commands& commands,
+        App_context&              context,
+        App_message_bus&          app_message_bus,
+        Headset_view&             headset_view,
+        Icon_set&                 icon_set,
+        Tools&                    tools
+    );
+
+    // Implements Tool
+    void tool_render           (const Render_context& context)           override;
+    void tool_properties       (erhe::imgui::Imgui_window& imgui_window) override;
+    void handle_priority_update(int old_priority, int new_priority)      override;
+
+    // Active brush (set from hotbar slot)
+    void set_active_brush  (const std::shared_ptr<Brush>& brush);
+    // Cached reference, for the MCP get_editor_references query
+    // (doc/import-undo-reference-clearing.md).
+    [[nodiscard]] auto get_active_brush       () const -> std::shared_ptr<Brush>;
+    [[nodiscard]] auto get_drag_and_drop_brush() const -> const std::shared_ptr<Brush>&;
+    void clear_active_brush();
+
+    // Commands
+    auto try_insert_ready     () -> bool;
+    auto try_insert           (Brush* brush = nullptr) -> bool;
+    auto try_pick             () -> bool;
+    auto try_rotate           (int direction) -> bool;
+    void on_motion            ();
+    void preview_drag_and_drop(std::shared_ptr<Brush> brush);
+
+    [[nodiscard]] auto get_hover_brush() const -> std::shared_ptr<Brush>;
+
+private:
+    void on_hover_scene_view               (Hover_scene_view_message& message);
+    void on_hover_mesh                     (Hover_mesh_message& message);
+    // Scene close: drop tool state referring to the closing scene's content -
+    // the active / drag-and-drop brush hosted by its content library, and the
+    // preview mesh/node parented into it (a close can arrive mid-hover). A
+    // hotbar slot holding the same brush intentionally keeps it alive;
+    // clicking the slot re-activates the now host-less orphan (brush payloads
+    // are self-contained). The active brush is an Asset_reference (declared
+    // usership, R3), so keeping it would only report as intentionally pinned -
+    // but transient tool state is not a persistence mechanism (the inventory
+    // is), so it is still cleared here as belt-and-braces.
+    void on_close_scene                    (erhe::Item_host* closing_host);
+    // Content removed without a scene closing (undo of a glTF import):
+    // drop the reference when it names one of the removed items.
+    void on_items_removed(const Removed_items& removed);
+    void update_preview_mesh               ();
+    void do_insert_operation               (Brush& brush);
+    void add_preview_mesh                  (Brush& brush);
+    void remove_preview_mesh               ();
+    void update_preview_mesh_node_transform();
+
+    [[nodiscard]] auto get_world_from_grid_hover_point() const -> glm::mat4;
+
+    [[nodiscard]] auto update_hover_frame_from_mesh() -> bool;
+    [[nodiscard]] auto update_hover_frame_from_grid() -> bool;
+    [[nodiscard]] auto update_brush_frame          (Brush& brush) -> bool;
+    [[nodiscard]] auto get_placement_facet  () const -> GEO::index_t;
+    [[nodiscard]] auto get_placement_corner0() const -> GEO::index_t;
+
+    // The brush the tool acts on: drag-and-drop preview wins, then the
+    // active (hotbar-selected) brush, then the last selected brush.
+    [[nodiscard]] auto get_effective_brush() const -> std::shared_ptr<Brush>;
+
+    erhe::message_bus::Subscription<Hover_scene_view_message> m_hover_scene_view_subscription;
+    erhe::message_bus::Subscription<Hover_mesh_message>       m_hover_mesh_subscription;
+    erhe::message_bus::Subscription<Close_scene_message>      m_close_scene_subscription;
+    erhe::message_bus::Subscription<Items_removed_message> m_items_removed_subscription;
+    Brush_preview_command                   m_preview_command;
+    Brush_insert_command                    m_insert_command;
+    Brush_pick_command                      m_pick_command;
+    Brush_rotate_command                    m_rotate_cw_command;
+    Brush_rotate_command                    m_rotate_ccw_command;
+    erhe::commands::Lambda_command          m_toggle_brush_preview_command;
+    erhe::commands::Float_threshold_command m_pick_using_float_input_command;
+
+    ERHE_PROFILE_MUTEX(std::mutex,     m_brush_mutex);
+    Asset_reference                    m_active_brush          {};
+    std::shared_ptr<Brush>             m_drag_and_drop_brush   {};
+    float                              m_preview_hover_distance{0.001f};
+    bool                               m_snap_to_hover_polygon {true};
+    bool                               m_snap_to_grid          {true};
+    bool                               m_scale_to_match        {true};
+    bool                               m_use_matching_face     {true};
+    bool                               m_use_selected_face     {false};
+    bool                               m_debug_visualization   {false};
+    bool                               m_show_receiver_frame   {true};
+    bool                               m_show_brush_frame      {true};
+    bool                               m_show_preview          {true};
+
+    bool                               m_parent_to_first_selected{false};
+    bool                               m_parent_to_scene_root    {true};
+    bool                               m_parent_to_hovered       {false};
+
+    Hover_entry                        m_hover;
+    std::shared_ptr<erhe::scene::Mesh> m_preview_mesh;
+    std::shared_ptr<erhe::scene::Node> m_preview_node;
+    bool                               m_with_physics   {true};
+    float                              m_scale          {1.0f};
+    float                              m_transform_scale{1.0f};
+    float                              m_grid_scale     {1.0f};
+    int                                m_polygon_offset {0};
+    int                                m_corner_offset  {0};
+    std::optional<std::size_t>         m_selected_corner_count{};
+    std::optional<GEO::index_t>        m_hover_facet_corner_count;
+    std::optional<glm::mat4>           m_world_from_hover;
+    std::optional<Reference_frame>     m_hover_frame;
+    std::optional<Reference_frame>     m_brush_placement_frame;
+    std::optional<glm::mat4>           m_hover_transform;
+    std::optional<glm::mat4>           m_align_transform;
+    ///std::unique_ptr<Item_tree>         m_brush_item_tree;
+};
+
+}

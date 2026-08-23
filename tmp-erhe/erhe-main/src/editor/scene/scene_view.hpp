@@ -1,0 +1,284 @@
+#pragma once
+
+#include "renderers/viewport_config.hpp"
+#include "config/generated/scene_and_camera_settings.hpp"
+#include "scene/node_raytrace_mask.hpp"
+#include "tools/debug_visualizations.hpp"
+
+#include "erhe_math/math_util.hpp"
+
+#include <geogram/mesh/mesh.h>
+
+#include <glm/glm.hpp>
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace erhe::rendergraph { class Rendergraph_node; }
+namespace erhe::geometry    { class Geometry; }
+namespace erhe::graphics    { class Texture; }
+namespace erhe::scene {
+    class Camera;
+    class Mesh;
+}
+namespace erhe::scene_renderer { class Light_projections; }
+
+namespace editor {
+
+class App_context;
+class App_message;
+class App_message_bus;
+class Editor_settings_store;
+class Grid;
+class Raytrace_primitive;
+class Render_context;
+class Scene_root;
+class Shadow_render_node;
+class Viewport_scene_view;
+
+class Hover_entry
+{
+public:
+    static constexpr uint32_t content_slot      = 0;
+    static constexpr uint32_t tool_slot         = 1;
+    static constexpr uint32_t brush_slot        = 2;
+    static constexpr uint32_t rendertarget_slot = 3;
+    static constexpr uint32_t grid_slot         = 4;
+    // Bone pick proxies. Its own slot so a bone hit never displaces the content
+    // hit under it: in bone selection mode the bone slot is consulted, in object
+    // mode it stays empty (the proxies carry no pick mask).
+    static constexpr uint32_t bone_slot         = 5;
+    static constexpr uint32_t slot_count        = 6;
+    static constexpr uint32_t content_bit       = (1 << 0u);
+    static constexpr uint32_t tool_bit          = (1 << 1u);
+    static constexpr uint32_t brush_bit         = (1 << 2u);
+    static constexpr uint32_t rendertarget_bit  = (1 << 3u);
+    static constexpr uint32_t grid_bit          = (1 << 4u);
+    static constexpr uint32_t bone_bit          = (1 << 5u);
+    static constexpr uint32_t all_bits          = 0xffffffffu;
+
+    static constexpr std::array<uint32_t, slot_count> raytrace_slot_masks = {
+        Raytrace_node_mask::content,
+        Raytrace_node_mask::tool,
+        Raytrace_node_mask::brush,
+        Raytrace_node_mask::rendertarget,
+        Raytrace_node_mask::grid,
+        Raytrace_node_mask::bone
+    };
+
+    static constexpr std::array<const char*, slot_count> slot_names = {
+        "content",
+        "tool",
+        "brush",
+        "rendertarget",
+        "grid",
+        "bone"
+    };
+
+    [[nodiscard]] auto get_name() const -> const std::string&;
+
+    void reset();
+
+    std::size_t                               slot                      {slot_count};
+    uint32_t                                  mask                      {0};
+    bool                                      valid                     {false};
+
+    // For now, these are weak pointers to avoid dangling pointers
+    std::weak_ptr<erhe::scene::Mesh>          scene_mesh_weak           {};
+    std::weak_ptr<Grid>                       grid_weak                 {};
+
+    std::size_t                               scene_mesh_primitive_index{std::numeric_limits<std::size_t>::max()};
+    std::shared_ptr<erhe::geometry::Geometry> geometry                  {};
+    std::optional<glm::vec3>                  position                  {};
+    std::optional<glm::vec3>                  normal                    {};
+    std::optional<glm::vec2>                  uv                        {};
+    uint32_t                                  triangle                  {std::numeric_limits<uint32_t>::max()};
+    GEO::index_t                              facet                     {GEO::NO_INDEX};
+};
+
+class Scene_view
+{
+public:
+    // settings_key is the stable name under which this view's settings are
+    // persisted in Editor_settings_config::scene_views ("Default Viewport",
+    // "Headset", ...). Pass a null editor_settings_store or an empty key for
+    // views whose settings should not persist (previews). Views sharing a
+    // key also share the persisted entry; the last collected view wins.
+    Scene_view(
+        App_context&           context,
+        Editor_settings_store* editor_settings_store,
+        std::string_view       settings_key,
+        Viewport_config        viewport_config
+    );
+    virtual ~Scene_view() noexcept;
+
+    // Virtual interface
+    //
+    // get_camera() returns THE camera representing this whole view - the one
+    // implementation of the view's frustum that every whole-view consumer must
+    // use. For a Viewport_scene_view it is the viewport camera; for
+    // Headset_view it is the root camera at the head pose, whose projection
+    // Headset_view maintains each frame as the UNION of the per-eye frusta
+    // (perspective_xr; see Headset_view::cache_combined_eye_frustum). Existing
+    // whole-view consumers: the shadow fit (Shadow_render_node), the hotbar
+    // placement, the transform tool's off-screen indicator. Per-eye rendering
+    // uses Render_context::views instead - do not derive a combined frustum
+    // from those; use this camera.
+    [[nodiscard]] virtual auto get_camera            () const -> std::shared_ptr<erhe::scene::Camera> = 0;
+    [[nodiscard]] virtual auto get_perspective_scale () const -> float = 0;
+    [[nodiscard]] virtual auto get_shadow_render_node() const -> Shadow_render_node* { return nullptr; }
+    [[nodiscard]] virtual auto get_shadow_texture    () const -> erhe::graphics::Texture*;
+    [[nodiscard]] virtual auto get_rendergraph_node  () -> erhe::rendergraph::Rendergraph_node* = 0;
+    [[nodiscard]] virtual auto get_light_projections () const -> const erhe::scene_renderer::Light_projections*;
+    [[nodiscard]] virtual auto as_viewport_scene_view() -> Viewport_scene_view*;
+    [[nodiscard]] virtual auto as_viewport_scene_view() const -> const Viewport_scene_view*;
+
+    // The stable name this view persists its settings under ("Default Viewport",
+    // "Headset", ...); empty for views that do not persist (previews). Used to
+    // label per-view diagnostics.
+    [[nodiscard]] auto get_settings_key() const -> const std::string& { return m_settings_key; }
+
+    void set_scene_root    (const std::shared_ptr<Scene_root>& scene_root);
+    [[nodiscard]] auto get_scene_root        () const -> std::shared_ptr<Scene_root>;
+    [[nodiscard]] auto get_reverse_depth     () const -> bool;
+    [[nodiscard]] auto get_depth_range       () const -> erhe::math::Depth_range;
+    [[nodiscard]] auto get_framebuffer_origin() const -> erhe::math::Framebuffer_origin;
+    [[nodiscard]] auto get_conventions       () const -> erhe::math::Coordinate_conventions;
+
+    // Optional camera used instead of the view camera as the shadow frustum
+    // fit target (and thus for the shadow fit debug visualizations). Allows
+    // observing the fit for a static camera while flying around with the
+    // viewport camera. Empty / expired = use the view camera.
+    void set_shadow_fit_override_camera(const std::weak_ptr<erhe::scene::Camera>& camera);
+    [[nodiscard]] auto get_shadow_fit_override_camera() const -> std::weak_ptr<erhe::scene::Camera>;
+
+    // "Pointing"
+    void set_world_from_control(glm::vec3 near_position_in_world, glm::vec3 far_position_in_world);
+
+    [[nodiscard]] virtual auto get_closest_point_on_line (glm::vec3 P0, glm::vec3 P1) -> std::optional<glm::vec3>;
+    [[nodiscard]] virtual auto get_closest_point_on_plane(glm::vec3 N,  glm::vec3 P ) -> std::optional<glm::vec3>;
+
+    void set_world_from_control    (const glm::mat4& world_from_control);
+    void reset_control_transform   ();
+    void reset_hover_slots         ();
+    void update_transforms         ();
+    void update_hover_with_raytrace();
+    void update_grid_hover         ();
+
+    auto icon_button(ImFont* icon_font, float font_size, const char* icon, const char* fallback_text, const char* tooltip, bool& toggle) -> bool;
+    void popup_button(
+        ImFont*                      icon_font,
+        float                        font_size,
+        const char*                  icon,
+        const char*                  title,
+        ImGuiID                      popup_id,
+        bool&                        is_open,
+        const std::function<void()>& content_fn
+    );
+
+    virtual void viewport_toolbar          ();
+
+    // Per-frame: resolves any pending persisted "Scene and Camera" selection
+    // (scene / camera / shadow-camera looked up by name) once the named scene
+    // has been loaded. No-op once resolved or when nothing is pending. Driven
+    // from update_transforms(), which runs every frame for every view type.
+    void tick_scene_and_camera_restore();
+
+    // Called by App_rendering::render_viewport_renderables() so that the
+    // per-view Debug_visualizations renders alongside the globally
+    // registered Renderables. The Render_context names the view being
+    // rendered, so the correct instance is selected by construction.
+    void render_debug_visualizations(const Render_context& context);
+
+    // This view's Debug Visualizations toggles; read by the solid-bone
+    // composition pass gate (App_rendering), which is per view through
+    // Render_context::scene_view.
+    [[nodiscard]] auto get_debug_visualizations_settings() const -> const Debug_visualizations_settings&;
+
+    [[nodiscard]] auto get_config                               () -> Viewport_config&;
+    [[nodiscard]] auto get_world_from_control                   () const -> std::optional<glm::mat4>;
+    [[nodiscard]] auto get_control_from_world                   () const -> std::optional<glm::mat4>;
+    [[nodiscard]] auto get_control_ray_origin_in_world          () const -> std::optional<glm::vec3>;
+    [[nodiscard]] auto get_control_ray_direction_in_world       () const -> std::optional<glm::vec3>;
+    [[nodiscard]] auto get_control_position_in_world_at_distance(float distance) const -> std::optional<glm::vec3>;
+    [[nodiscard]] auto get_hover                                (std::size_t slot) const -> const Hover_entry&;
+    [[nodiscard]] auto get_nearest_hover                        (uint32_t slot_mask) const -> const Hover_entry*;
+
+    // Adjusts a caller's get_nearest_hover() mask for the active selection
+    // mode. Pass the slots the caller wants in ordinary object mode; in bone
+    // selection mode content is replaced by bone, because there a viewport
+    // click selects the hovered bone's joint and nothing else. Everything that
+    // resolves "what is the pointer on" - the hovered-node highlight, the hover
+    // ray indicator's position and normal, the camera orbit anchor - must then
+    // land on the bone rather than on the mesh surface in front of it, or they
+    // disagree with each other and with the click. Masks without content_bit,
+    // and every other mode, pass through unchanged.
+    [[nodiscard]] auto get_pickable_slot_mask                   (uint32_t slot_mask) const -> uint32_t;
+
+protected:
+    // Schedules the settings autosave for a persisted view (no-op otherwise).
+    // Call from every site that changes state written by this view's collect
+    // callback: scene / camera / renderer selection setters and the toolbar
+    // popups (Visual Style, Debug Visualization, Scene and Camera).
+    void touch_settings() const;
+
+    void set_hover  (std::size_t slot, const Hover_entry& entry);
+    // Set the slot to `candidate` only when it is closer (smaller ray-t)
+    // than what is already there, or when there is no valid hit yet.
+    // Invalid / position-less candidates never override. Used by the
+    // hybrid picker that runs both raytrace (static meshes) and the
+    // ID renderer (skinned meshes by default; everything when the
+    // id_renderer.enabled config is true) per frame and keeps whichever
+    // result is closest to the camera along the picking ray.
+    void merge_hover(std::size_t slot, const Hover_entry& candidate);
+
+    // Per-view "Scene and Camera" persistence. The base handles the scene and
+    // the shadow-camera override (both owned by Scene_view); Viewport_scene_view
+    // overrides to also persist camera, shader_debug and renderer_choice.
+    // write_ and resolve_ run per frame (object fully constructed), so virtual
+    // dispatch reaches the most-derived override. The read side is consumed
+    // directly from m_pending_scene_and_camera in each class's constructor to
+    // avoid calling a virtual from a base constructor.
+    virtual void write_scene_and_camera_settings(Scene_and_camera_settings& out) const;
+    // Resolves the staged names to live objects. Returns false while the named
+    // scene is not yet loaded, so the caller retries on a later frame.
+    virtual auto resolve_pending_scene_and_camera() -> bool;
+
+    [[nodiscard]] static auto find_camera_in_scene(
+        const Scene_root&  scene_root,
+        const std::string& name
+    ) -> std::shared_ptr<erhe::scene::Camera>;
+
+    App_context&                       m_context;
+    Editor_settings_store*             m_editor_settings_store{nullptr};
+    std::string                        m_settings_key;
+    std::optional<std::size_t>         m_collect_callback_id;
+    std::optional<glm::mat4>           m_world_from_control;
+    std::optional<glm::mat4>           m_control_from_world;
+    Viewport_config                    m_viewport_config;
+    Debug_visualizations               m_debug_visualizations;
+    bool                               m_hover_update_pending{true};
+    std::weak_ptr<Scene_root>          m_scene_root;
+    std::weak_ptr<erhe::scene::Camera> m_shadow_fit_override_camera;
+
+    // Persisted "Scene and Camera" selection, staged at construction and
+    // applied (by name) on a later frame once the scene is available; see
+    // tick_scene_and_camera_restore(). While restore is pending the collect
+    // callback writes these staged names back verbatim so the baseline collect
+    // cannot clobber the saved selection before it is resolved.
+    Scene_and_camera_settings          m_pending_scene_and_camera       {};
+    bool                               m_scene_and_camera_restore_pending{false};
+
+    bool                               m_show_visual_style_popup        {false};
+    bool                               m_show_scene_and_camera_popup    {false};
+    bool                               m_show_debug_visualizations_popup{false};
+
+private:
+    std::array<Hover_entry, Hover_entry::slot_count> m_hover_entries;
+};
+
+}

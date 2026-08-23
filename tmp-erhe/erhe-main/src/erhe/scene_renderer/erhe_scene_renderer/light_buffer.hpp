@@ -1,0 +1,330 @@
+#pragma once
+
+#include "erhe_graphics/device.hpp"
+#include "erhe_graphics/shader_resource.hpp"
+#include "erhe_graphics/ring_buffer_client.hpp"
+#include "erhe_graphics/sampler.hpp"
+#include "erhe_scene/camera.hpp"
+#include "erhe_scene/light.hpp"
+#include "erhe_scene/light_frustum_fit.hpp"
+#include "erhe_math/aabb.hpp"
+#include "erhe_math/viewport.hpp"
+#include "erhe_scene_renderer/shader_key.hpp"
+#include "erhe_scene_renderer/light_set.hpp"
+
+#include <memory>
+
+namespace erhe::graphics {
+    class Render_command_encoder;
+    class Texture;
+    class Texture_heap;
+}
+namespace erhe::primitive {
+    class Material;
+}
+
+namespace erhe::scene_renderer {
+
+class Shadow_renderer;
+
+class Light_struct
+{
+public:
+    std::size_t clip_from_world;                // mat4
+    std::size_t texture_from_world;             // mat4
+    std::size_t world_from_texture;             // mat4
+    std::size_t position_and_inner_spot_cos;    // vec4 (vec3, float)
+    std::size_t direction_and_outer_spot_cos;   // vec4 (vec3, float)
+    std::size_t radiance_and_range;             // vec4 (float, float, padding, padding )
+    // shadow_index = the dense shadow-array-layer that the shadow
+    // renderer wrote this light's shadow map into. Different from the
+    // light's UBO `index` slot whenever a preceding type bucket has
+    // non-shadow lights (those skip the shadow array layer). Read by
+    // the fragment shader as `array_layer = float(shadow_index.x)`.
+    // packed[1..3] reserved for future per-light shadow metadata.
+    std::size_t shadow_index_packed;            // uvec4 (uint shadow_index, uvec3 padding)
+};
+
+class Light_block
+{
+public:
+    std::size_t  shadow_texture_compare;       // uvec2
+    std::size_t  shadow_texture_no_compare;    // uvec2
+
+    std::size_t  directional_light_count;      // uint
+    std::size_t  spot_light_count;             // uint
+    std::size_t  point_light_count;            // uint
+    std::size_t  directional_shadow_count;     // uint - shadow-mapped prefix size for directional lights
+
+    std::size_t  spot_shadow_count;            // uint - shadow-mapped prefix size for spot lights
+    std::size_t  point_shadow_count;           // uint - shadow-mapped prefix size for point lights
+    std::size_t  brdf_material;                // uint
+    std::size_t  lightmap_flags;               // uint - bit 0: bicubic lightmap sampling
+
+    std::size_t  brdf_phi_incident_phi;        // vec2
+
+    std::size_t  ambient_light;                // vec4
+
+    // Dynamic diffuse global illumination (doc/ddgi-plan.md phase 6). The
+    // probe volume rides in this block rather than a binding point of its
+    // own: it is small, and every shader that reads the lights also wants
+    // the indirect term. Inactive (ddgi_counts.w == 0) means no volume, and
+    // the shader keeps the flat ambient term.
+    std::size_t  ddgi_grid_origin;             // vec4 (xyz origin)
+    std::size_t  ddgi_grid_spacing;            // vec4 (xyz spacing)
+    std::size_t  ddgi_counts;                  // uvec4 (xyz probe counts, w enabled)
+    std::size_t  ddgi_texels;                  // uvec4 (x irradiance texels, y distance texels)
+    std::size_t  ddgi_params;                  // vec4 (normal bias, view bias, depth sharpness, intensity)
+
+    Light_struct light;
+    std::size_t  light_struct;
+};
+
+static constexpr uint32_t c_texture_heap_slot_shadow_compare   {0};
+static constexpr uint32_t c_texture_heap_slot_shadow_no_compare{1};
+// Color-aspect binding for the Shadow_technique_mode::distance R32F distance
+// map. Separate from the two depth-aspect shadow samplers above because a
+// color texture cannot bind to a depth-aspect combined-image-sampler.
+static constexpr uint32_t c_texture_heap_slot_shadow_distance  {2};
+// Color-aspect samplerCubeArray binding for omnidirectional point-light
+// shadows: an R32F cube-map array storing radial distance from the light, one
+// cube (6 faces) per shadow-casting point light. Sampled by direction.
+static constexpr uint32_t c_texture_heap_slot_shadow_cube      {3};
+// Color-aspect sampler2D binding for the baked lightmap atlas
+// (doc/lightmap_baking_plan.md phase 5). Bound to the Lightmap_baker's
+// atlas when a bake exists, else to a 1x1 black fallback; the fragment
+// shader gates sampling on the per-primitive lightmap scale.
+static constexpr uint32_t c_texture_heap_slot_lightmap        {4};
+// Color-aspect sampler2D bindings for the DDGI probe atlases
+// (doc/ddgi-plan.md phase 6): octahedral irradiance (rgba16f), octahedral
+// mean / mean-squared distance (rg16f), and one texel per probe carrying
+// the relocation offset and the active flag. Bound to the Ddgi_renderer's
+// textures when a volume exists, else to 1x1 black fallbacks; the fragment
+// shader gates sampling on light_block.ddgi_counts.w.
+static constexpr uint32_t c_texture_heap_slot_ddgi_irradiance{5};
+static constexpr uint32_t c_texture_heap_slot_ddgi_distance  {6};
+static constexpr uint32_t c_texture_heap_slot_ddgi_probe_data{7};
+
+class Light_interface
+{
+public:
+    Light_interface(erhe::graphics::Device& graphics_device, int max_light_count);
+
+    // Returns the dedicated shadow sampler for the named role. The
+    // comparison-enabled variant uses the comparison op that matches the
+    // engine-wide reverse_depth choice (Device::get_reverse_depth());
+    // there is no per-call override because both Vulkan portability subset
+    // (MoltenVK) and the immutable-sampler descriptor wiring require the
+    // direction to be fixed at engine init.
+    [[nodiscard]] auto get_sampler(bool compare) const -> const erhe::graphics::Sampler*;
+
+    std::size_t                     max_light_count;
+    erhe::graphics::Shader_resource light_block;
+    erhe::graphics::Shader_resource light_control_block;
+    erhe::graphics::Shader_resource light_struct;
+    Light_block                     offsets;
+    std::size_t                     light_index_offset;
+    // Per-pass coefficient the distance caster multiplies fwidth() by, =
+    // cdd*(1+pcfRadius) (Shadow_technique_mode::distance). 0 for the depth path.
+    std::size_t                     shadow_distance_bias_coeff_offset;
+    // Per-pass point light world position (xyz) + far/range (w), used by the
+    // VARIANT_SHADOW_CUBE caster to store radial distance into the cube face.
+    std::size_t                     point_light_position_offset;
+    erhe::graphics::Sampler         shadow_sampler_compare;
+    erhe::graphics::Sampler         shadow_sampler_no_compare;
+    // Bilinear clamp sampler for the baked lightmap atlas (immutable in the
+    // descriptor set layout, like the shadow samplers).
+    erhe::graphics::Sampler         lightmap_sampler;
+    // Bilinear clamp sampler for the DDGI octahedral atlases. The probe data
+    // texture shares it; the shader reads that one with texelFetch, which
+    // ignores filtering.
+    erhe::graphics::Sampler         ddgi_sampler;
+};
+
+// Selects camera for which the shadow frustums are fitted
+class Light_projections
+{
+public:
+    // Computes the per-slot light projection transforms for the resolved
+    // light set (Light_set: which lights are shaded, in light UBO slot order,
+    // and which of them are shadow-mapped). light_projection_transforms[i]
+    // is slot i; shadow_index / point_shadow_index are the 2D shadow map
+    // layer / point shadow cube of the slot (max() when not shadow-mapped).
+    // in_shadow_map_texture may be null (no shadow map: Light_buffer writes
+    // the "no shadow map" sentinel and every light shades unshadowed).
+    void apply(
+        const Light_set&                                light_set,
+        const erhe::scene::Camera*                      main_camera,
+        const erhe::math::Viewport&                     main_camera_viewport,
+        const erhe::math::Viewport&                     light_texture_viewport,
+        const std::shared_ptr<erhe::graphics::Texture>& in_shadow_map_texture,
+        bool                                            reverse_depth,
+        erhe::math::Depth_range                         depth_range,
+        const erhe::math::Coordinate_conventions&       conventions = erhe::math::Coordinate_conventions{},
+        std::span<const erhe::math::Aabb>               in_caster_world_aabbs = {},
+        std::span<const erhe::math::Aabb>               in_receiver_world_aabbs = {},
+        const erhe::scene::Shadow_frustum_fit_settings* fit_settings = nullptr
+    );
+
+    // Debug / tooling lookup by light (linear). Hot paths index
+    // light_projection_transforms by slot instead.
+    // Warning: Returns pointer to element of member vector. That pointer
+    //          should remain stable as long as Light_projections stays
+    //          alive.
+    [[nodiscard]] auto get_light_projection_transforms_for_light(const erhe::scene::Light* light) -> erhe::scene::Light_projection_transforms*;
+    [[nodiscard]] auto get_light_projection_transforms_for_light(const erhe::scene::Light* light) const -> const erhe::scene::Light_projection_transforms*;
+
+    erhe::scene::Light_projection_parameters              parameters;
+    // Slot-ordered (== light UBO slot); copied layout from the Light_set the
+    // last apply() ran with. light_partition is what the forward pass shades
+    // with (shader variant light loop bounds); shadow_map_2d_slots /
+    // point_shadow_slots are the shadow-mapped slots in shadow layer / cube
+    // order (Shadow_renderer iterates these).
+    std::vector<erhe::scene::Light_projection_transforms> light_projection_transforms;
+    Light_layer_partition                                 light_partition{};
+    std::vector<std::size_t>                              shadow_map_2d_slots;
+    std::vector<std::size_t>                              point_shadow_slots;
+    std::shared_ptr<erhe::graphics::Texture>              shadow_map_texture;
+    // Shadow_technique_mode::distance R32F distance map (the fwidth-biased
+    // distances the caster wrote). Null for the depth technique; the receiver
+    // then samples shadow_map_texture through the depth samplers instead.
+    std::shared_ptr<erhe::graphics::Texture>              shadow_distance_texture;
+    // Omnidirectional point-light shadows: R32F cube-map array of radial
+    // distances (one cube / 6 faces per shadow-casting point light). Null when
+    // no point shadows are configured; the receiver then binds the fallback
+    // cube and the point shadow-mapped light count is zero.
+    std::shared_ptr<erhe::graphics::Texture>              shadow_cube_texture;
+
+    // Frame-lifetime backing storage for parameters.fit_debug_out; parallel
+    // to light_projection_transforms, and resized (then filled by the fit)
+    // only when fit_settings->collect_debug is enabled - with the setting off
+    // the fit performs no debug-collection work at all, so the algorithm can
+    // be profiled on its own. (parameters' AABB spans are not backed here;
+    // they point at caller storage during apply() and are reset before it
+    // returns.)
+    std::vector<erhe::scene::Shadow_frustum_fit_debug_data> fit_debug_data;
+
+    // Cross-light cache for the light-independent part of the receiver cull
+    // volume build (see Shadow_fit_receiver_cache). Invalidated at the start
+    // of each apply() pass; buffers keep their capacity across frames.
+    erhe::scene::Shadow_fit_receiver_cache fit_receiver_cache;
+
+    // Persistent scratch buffers for the per-light tight fit (see
+    // Shadow_fit_scratch). Cleared (capacity kept) by the fit at point of
+    // use, so steady-state fits perform no heap allocations.
+    erhe::scene::Shadow_fit_scratch fit_scratch;
+
+    //Variant_counts                                        counts{};
+
+    // TODO A bit hacky injection of these parameters..
+    float                                                 brdf_phi         {0.0f};
+    float                                                 brdf_incident_phi{0.0f};
+    std::shared_ptr<erhe::primitive::Material>            brdf_material    {};
+};
+
+// The probe volume the forward pass samples. Mirrors the Ddgi_renderer's
+// fitted grid; a default-constructed instance (counts 0) means "no volume",
+// which the shader reads as DDGI off.
+class Ddgi_parameters
+{
+public:
+    glm::vec3  grid_origin    {0.0f};
+    glm::vec3  grid_spacing   {1.0f};
+    glm::ivec3 grid_counts    {0};
+    int        irradiance_texels{0};
+    int        distance_texels  {0};
+    float      normal_bias    {0.0f};
+    float      view_bias      {0.0f};
+    float      depth_sharpness{50.0f};
+    float      intensity      {1.0f};
+
+    [[nodiscard]] auto is_valid() const -> bool
+    {
+        return (grid_counts.x > 1) && (grid_counts.y > 1) && (grid_counts.z > 1);
+    }
+};
+
+class Light_buffer
+{
+public:
+    // init_command_buffer must be in recording state. Light_buffer
+    // records the fallback-shadow-texture clear into it; the caller
+    // must end + submit the cb (and wait) before the texture is sampled.
+    Light_buffer(
+        erhe::graphics::Device&         graphics_device,
+        erhe::graphics::Command_buffer& init_command_buffer,
+        Light_interface&                light_interface
+    );
+
+    // Writes the light UBO from the resolved slots in light_projections
+    // (Light_projections::apply); null light_projections writes no lights.
+    auto update(
+        const Light_projections* light_projections,
+        const glm::vec3&         ambient_light,
+        uint32_t                 lightmap_flags = 0u, // bit 0: bicubic lightmap sampling
+        const Ddgi_parameters*   ddgi            = nullptr
+    ) -> erhe::graphics::Ring_buffer_range;
+
+    // Bind the DDGI probe atlases (or the 1x1 black fallbacks when null) to
+    // the s_ddgi_* sampler bindings. Called alongside bind_lightmap by
+    // renderers whose fragment shaders can sample the probe volume.
+    void bind_ddgi(
+        erhe::graphics::Render_command_encoder& encoder,
+        const erhe::graphics::Texture*          irradiance_texture,
+        const erhe::graphics::Texture*          distance_texture,
+        const erhe::graphics::Texture*          probe_data_texture
+    );
+
+    // Bind the shadow map textures to the s_shadow_compare and
+    // s_shadow_no_compare sampler bindings declared in the bind group layout.
+    // Callers that read shadows in their fragment shader (e.g. forward
+    // renderer) must call this before draw; callers that don't (e.g. shadow
+    // renderer, texel renderer) can skip it.
+    void bind_shadow_samplers(
+        erhe::graphics::Render_command_encoder& encoder,
+        const Light_projections*                light_projections
+    );
+
+    // Bind the baked lightmap atlas (or the 1x1 black fallback when null)
+    // to the s_lightmap sampler binding. Called alongside
+    // bind_shadow_samplers by renderers whose fragment shaders can sample
+    // the lightmap.
+    void bind_lightmap(
+        erhe::graphics::Render_command_encoder& encoder,
+        const erhe::graphics::Texture*          lightmap_texture
+    );
+
+    auto update_control(
+        std::size_t      light_index,
+        float            shadow_distance_bias_coeff = 0.0f,
+        const glm::vec4& point_light_position       = glm::vec4{0.0f}
+    ) -> erhe::graphics::Ring_buffer_range;
+
+    void bind_light_buffer  (erhe::graphics::Command_encoder& encoder, const erhe::graphics::Ring_buffer_range& range);
+    void bind_control_buffer(erhe::graphics::Command_encoder& encoder, const erhe::graphics::Ring_buffer_range& range);
+
+private:
+    erhe::graphics::Device&                  m_graphics_device;
+    Light_interface&                         m_light_interface;
+    erhe::graphics::Ring_buffer_client       m_light_buffer;
+    erhe::graphics::Ring_buffer_client       m_control_buffer;
+    std::shared_ptr<erhe::graphics::Texture> m_fallback_shadow_texture;
+    // 1x1 black textures bound to the three s_ddgi_* slots whenever no probe
+    // volume exists, so the bindings always have a valid texture.
+    std::shared_ptr<erhe::graphics::Texture> m_fallback_ddgi_rgba_texture;
+    std::shared_ptr<erhe::graphics::Texture> m_fallback_ddgi_rg_texture;
+    // 1x1 R32F color texture bound to s_shadow_distance whenever no distance
+    // map is active (depth technique), so the color-aspect binding always has
+    // a valid texture. Mirrors m_fallback_shadow_texture for the depth path.
+    std::shared_ptr<erhe::graphics::Texture> m_fallback_distance_texture;
+    // 1x1 R32F cube-map array (6 layers) bound to s_shadow_cube whenever no
+    // point shadows are configured, so the samplerCubeArray binding always has
+    // a valid texture. Cleared to a large distance (every sample reads "lit").
+    std::shared_ptr<erhe::graphics::Texture> m_fallback_point_cube_texture;
+    // 1x1 black RGBA32F bound to s_lightmap when no baked lightmap exists;
+    // the per-primitive lightmap scale gate normally short-circuits before
+    // sampling, so the content only matters defensively.
+    std::shared_ptr<erhe::graphics::Texture> m_fallback_lightmap_texture;
+};
+
+} // namespace erhe::scene_renderer

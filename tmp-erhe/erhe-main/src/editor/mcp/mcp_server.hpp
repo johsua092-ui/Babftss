@@ -1,0 +1,436 @@
+#pragma once
+
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <span>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <nlohmann/json.hpp>
+
+namespace httplib {
+    class Server;
+}
+
+namespace erhe::commands {
+    class Command;
+    class Commands;
+}
+
+namespace erhe {
+    class Item_base;
+}
+namespace erhe::primitive {
+    class Material;
+}
+namespace erhe::scene {
+    class Node;
+}
+namespace erhe::scene_renderer {
+    enum class Shader_debug : uint16_t;
+}
+
+namespace editor {
+
+class App_context;
+class Brush;
+class Scene_root;
+class Viewport_scene_view;
+
+// Represents a single MCP tool descriptor
+struct Mcp_tool_info
+{
+    std::string      name;
+    std::string      description;
+    nlohmann::json   input_schema;
+};
+
+// MCP (Model Context Protocol) server that exposes editor commands and
+// scene/content-library queries over HTTP using JSON-RPC 2.0.
+//
+// Supported MCP methods:
+//   - initialize
+//   - tools/list
+//   - tools/call
+//
+// Query tools: list_scenes, get_scene_nodes, get_node_details,
+//   get_scene_cameras, get_scene_lights, get_scene_materials,
+//   get_material_details, get_selection, get_shadow_fit_debug
+//
+// The server runs on a background thread and dispatches all requests
+// to the main editor thread for thread safety.
+class Mcp_server
+{
+public:
+    Mcp_server(
+        erhe::commands::Commands& commands,
+        App_context&              context,
+        int                       port = 3743 // "erhe" on a phone keypad; ERHE_MCP_PORT env var overrides
+    );
+    ~Mcp_server() noexcept;
+
+    Mcp_server(const Mcp_server&)            = delete;
+    Mcp_server& operator=(const Mcp_server&) = delete;
+    Mcp_server(Mcp_server&&)                 = delete;
+    Mcp_server& operator=(Mcp_server&&)      = delete;
+
+    void start();
+    void stop();
+
+    // Called once per frame from the main thread.
+    auto process_queued_requests() -> int;
+
+    // Name -> handler dispatch shared by process_queued_requests and
+    // action_batch; unknown names fall through to execute_command
+    // (registered editor commands are tools too).
+    auto dispatch_tool_call(const std::string& tool_name, const nlohmann::json& arguments) -> std::string;
+
+    [[nodiscard]] auto is_running() const -> bool;
+
+private:
+    void server_thread_main();
+    void setup_routes();
+
+    // JSON-RPC handlers. The id parameter is the request id echoed verbatim
+    // (string, number or null) - see make_jsonrpc_response.
+    auto handle_initialize(const nlohmann::json& id, const nlohmann::json& params) -> std::string;
+    auto handle_tools_list(const nlohmann::json& id) -> std::string;
+    auto handle_tools_call(const nlohmann::json& id, const std::string& tool_name, const nlohmann::json& arguments) -> std::string;
+    auto handle_error     (const nlohmann::json& id, int code, const std::string& message) -> std::string;
+
+    void refresh_tool_list();
+
+    // Name -> handler dispatch table. A table, not an if/else-if chain: MSVC
+    // counts each else-if as a nested block and aborts with C1061 ("blocks
+    // nested too deeply") once the tool count passes its limit (~120).
+    //
+    // Nested in the class (rather than file-local in mcp_server.cpp) so that
+    // the table's initializer can take the addresses of the private handler
+    // members, while refresh_tool_list() in another translation unit can still
+    // read the names to check them against config/editor/mcp_tools.json.
+    class Tool_dispatch_entry
+    {
+    public:
+        const char* name;
+        auto (Mcp_server::*handler)(const nlohmann::json&) -> std::string;
+    };
+    [[nodiscard]] static auto get_dispatch_table() -> std::span<const Tool_dispatch_entry>;
+
+    // Logs any disagreement between the advertised static tool list and the
+    // dispatch table. Advertising a tool with no handler is not fatal (the
+    // call falls through to execute_command() and reports an error), but it
+    // means the JSON and the handlers have drifted apart.
+    void validate_tool_list_against_dispatch();
+
+    // Query handlers (run on main thread)
+    auto find_scene             (const std::string& name) -> Scene_root*;
+    auto find_items_by_ids      (Scene_root& sr, const std::set<std::size_t>& target_ids) -> std::vector<std::shared_ptr<erhe::Item_base>>;
+
+    // Selection-driven geometry ops (remesh/decimate/smooth/chamfer/
+    // merge_faces/catmull_clark): when args carry explicit node targets
+    // (node_ids / node_id / node_name + scene_name), select them, run op,
+    // and restore the previous selection (the ops snapshot the selection
+    // synchronously). Returns an error message, empty on success.
+    auto run_geometry_op_with_target(const nlohmann::json& args, const std::function<void()>& op) -> std::string;
+    // Finds a material by unique item id across every registered scene's
+    // material library, then the asset manager's builtins and loaded
+    // containers - the id path lets tools address container materials,
+    // which live in no scene library (R5.4 verification surface).
+    auto find_material_by_id    (std::size_t material_id) -> std::shared_ptr<erhe::primitive::Material>;
+
+    // Shared instance-placement path for place_brush / place_brush_instances /
+    // create_shape: resolves material / position / rotation / parent / scale /
+    // mass / motion_mode / pose_node from args, places the brush instance and
+    // fills result. parent_override (from a same-batch placement) takes
+    // precedence over parent_node_id; out_attach_node receives the node later
+    // placements may parent under (the pose node when pose_node, else the
+    // instance node). Returns an empty string on success, or a complete error
+    // response to return to the client.
+    auto place_brush_instance   (
+        const nlohmann::json&                     args,
+        Scene_root&                               scene_root,
+        Brush&                                    brush,
+        nlohmann::json&                           result,
+        const std::shared_ptr<erhe::scene::Node>& parent_override = {},
+        std::shared_ptr<erhe::scene::Node>*       out_attach_node = nullptr
+    ) -> std::string;
+    auto action_place_brush_instances(const nlohmann::json& args) -> std::string;
+    auto query_list_scenes      (const nlohmann::json& args) -> std::string;
+    auto query_scene_nodes      (const nlohmann::json& args) -> std::string;
+    auto query_composition_passes(const nlohmann::json& args) -> std::string;
+    auto query_node_details     (const nlohmann::json& args) -> std::string;
+    auto query_scene_cameras    (const nlohmann::json& args) -> std::string;
+    auto query_scene_lights     (const nlohmann::json& args) -> std::string;
+    auto query_scene_materials  (const nlohmann::json& args) -> std::string;
+    auto query_material_details (const nlohmann::json& args) -> std::string;
+    auto query_scene_textures   (const nlohmann::json& args) -> std::string;
+    auto query_scene_brushes    (const nlohmann::json& args) -> std::string;
+    auto query_scene_settings   (const nlohmann::json& args) -> std::string;
+    auto query_viewports        (const nlohmann::json& args) -> std::string;
+    auto query_pick_at          (const nlohmann::json& args) -> std::string;
+    auto query_server_info      (const nlohmann::json& args) -> std::string;
+    auto action_set_window_visibility(const nlohmann::json& args) -> std::string;
+    auto query_frame_pacing_status  (const nlohmann::json& args) -> std::string;
+    auto query_frame_pacing_frames  (const nlohmann::json& args) -> std::string;
+    auto action_set_frame_pacing_min_vsyncs(const nlohmann::json& args) -> std::string;
+    auto action_set_frame_pacing_workload  (const nlohmann::json& args) -> std::string;
+    auto action_set_frame_pacing_capture   (const nlohmann::json& args) -> std::string;
+    auto query_selection        (const nlohmann::json& args) -> std::string;
+    auto query_undo_redo_stack  (const nlohmann::json& args) -> std::string;
+    auto action_clear_undo_history(const nlohmann::json& args) -> std::string;
+    auto query_async_status     (const nlohmann::json& args) -> std::string;
+    auto query_transform_update_stats(const nlohmann::json& args) -> std::string;
+    auto action_merge_static_subtree(const nlohmann::json& args) -> std::string;
+    auto query_shadow_fit_debug (const nlohmann::json& args) -> std::string;
+    auto query_raycast          (const nlohmann::json& args) -> std::string;
+    auto query_geometry_batch   (const nlohmann::json& args) -> std::string;
+    auto action_select_items    (const nlohmann::json& args) -> std::string;
+    auto action_delete_nodes    (const nlohmann::json& args) -> std::string;
+    auto action_set_item_flags  (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_bake_gbuffer(const nlohmann::json& args) -> std::string;
+    auto action_lightmap_bake_direct (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_set_baking  (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_bake_to_disk(const nlohmann::json& args) -> std::string;
+    auto action_lightmap_save_all_tiles(const nlohmann::json& args) -> std::string;
+    auto action_lightmap_clear_tiles  (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_prepare_tiles(const nlohmann::json& args) -> std::string;
+    auto action_lightmap_revert_tiles (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_prepare_cancel(const nlohmann::json& args) -> std::string;
+    auto action_lightmap_set_render   (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_frame_selection(const nlohmann::json& args) -> std::string;
+    auto action_lightmap_reorder_charts (const nlohmann::json& args) -> std::string;
+    auto query_lightmap_tiles           (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_subdivide_tile (const nlohmann::json& args) -> std::string;
+    auto action_lightmap_merge_tile     (const nlohmann::json& args) -> std::string;
+    auto query_active_scene     (const nlohmann::json& args) -> std::string;
+    auto action_set_active_scene(const nlohmann::json& args) -> std::string;
+    auto action_transform_selection(const nlohmann::json& args) -> std::string;
+    auto action_set_node_transform(const nlohmann::json& args) -> std::string;
+    auto action_place_brush     (const nlohmann::json& args) -> std::string;
+    auto action_create_shape    (const nlohmann::json& args) -> std::string;
+    auto action_create_node     (const nlohmann::json& args) -> std::string;
+    auto action_create_light    (const nlohmann::json& args) -> std::string;
+    auto action_edit_light      (const nlohmann::json& args) -> std::string;
+    auto action_edit_camera     (const nlohmann::json& args) -> std::string;
+    auto action_toggle_physics  (const nlohmann::json& args) -> std::string;
+    auto action_advance_time    (const nlohmann::json& args) -> std::string;
+    auto action_add_node_attachment   (const nlohmann::json& args) -> std::string;
+    auto action_remove_node_attachment(const nlohmann::json& args) -> std::string;
+    auto action_reparent_node   (const nlohmann::json& args) -> std::string;
+    auto action_clipboard_copy_nodes(const nlohmann::json& args) -> std::string;
+    auto action_clipboard_paste (const nlohmann::json& args) -> std::string;
+    auto action_lock_items      (const nlohmann::json& args) -> std::string;
+    auto action_unlock_items    (const nlohmann::json& args) -> std::string;
+    auto action_add_tags        (const nlohmann::json& args) -> std::string;
+    auto action_remove_tags     (const nlohmann::json& args) -> std::string;
+    auto action_batch           (const nlohmann::json& args) -> std::string;
+    auto action_edit_material   (const nlohmann::json& args) -> std::string;
+    auto action_create_material (const nlohmann::json& args) -> std::string;
+    auto action_copy_library_item(const nlohmann::json& args) -> std::string;
+    auto action_set_scene_settings(const nlohmann::json& args) -> std::string;
+    auto action_save_scene      (const nlohmann::json& args) -> std::string;
+    auto action_load_scene      (const nlohmann::json& args) -> std::string;
+    auto action_open_scene      (const nlohmann::json& args) -> std::string;
+    auto action_close_scene     (const nlohmann::json& args) -> std::string;
+    auto action_create_scene    (const nlohmann::json& args) -> std::string;
+    auto action_export_gltf     (const nlohmann::json& args) -> std::string;
+    auto action_import_gltf     (const nlohmann::json& args) -> std::string;
+    auto query_scan_gltf        (const nlohmann::json& args) -> std::string;
+    auto query_asset_manager    (const nlohmann::json& args) -> std::string;
+    auto action_acquire_asset   (const nlohmann::json& args) -> std::string;
+    auto action_release_asset   (const nlohmann::json& args) -> std::string;
+    auto action_unload_asset    (const nlohmann::json& args) -> std::string;
+    auto action_set_tool_asset  (const nlohmann::json& args) -> std::string;
+    auto action_set_inventory_slot(const nlohmann::json& args) -> std::string;
+    auto action_save_container  (const nlohmann::json& args) -> std::string;
+    // R7 asset workflow verbs
+    auto action_load_asset_file           (const nlohmann::json& args) -> std::string;
+    auto action_reference_asset_into_scene(const nlohmann::json& args) -> std::string;
+    auto action_make_asset_external       (const nlohmann::json& args) -> std::string;
+    auto action_make_asset_internal       (const nlohmann::json& args) -> std::string;
+    auto action_instantiate_prefab(const nlohmann::json& args) -> std::string;
+    auto action_reload_prefab   (const nlohmann::json& args) -> std::string;
+    auto query_prefabs          (const nlohmann::json& args) -> std::string;
+    auto action_wake_physics_bodies(const nlohmann::json& args) -> std::string;
+    auto action_apply_physics_force(const nlohmann::json& args) -> std::string;
+    auto query_physics_items    (const nlohmann::json& args) -> std::string;
+    auto query_draw_lists       (const nlohmann::json& args) -> std::string;
+    auto action_set_draw_lists_enabled(const nlohmann::json& args) -> std::string;
+    auto action_reset_composition_pass_stats(const nlohmann::json& args) -> std::string;
+    auto query_get_physics_state(const nlohmann::json& args) -> std::string;
+    auto action_create_physics_body(const nlohmann::json& args) -> std::string;
+    auto action_edit_physics_body  (const nlohmann::json& args) -> std::string;
+    auto action_create_physics_joint(const nlohmann::json& args) -> std::string;
+    auto action_edit_physics_joint  (const nlohmann::json& args) -> std::string;
+    auto action_create_physics_material(const nlohmann::json& args) -> std::string;
+    auto action_edit_physics_material  (const nlohmann::json& args) -> std::string;
+    auto action_create_collision_filter(const nlohmann::json& args) -> std::string;
+    auto action_edit_collision_filter  (const nlohmann::json& args) -> std::string;
+    auto action_create_physics_joint_settings(const nlohmann::json& args) -> std::string;
+    auto action_edit_physics_joint_settings  (const nlohmann::json& args) -> std::string;
+    auto action_capture_screenshot           (const nlohmann::json& args) -> std::string;
+    auto action_push_shader_debug             (const nlohmann::json& args) -> std::string;
+    auto action_pop_shader_debug              (const nlohmann::json& args) -> std::string;
+    auto action_set_mesh_component_mode       (const nlohmann::json& args) -> std::string;
+    auto action_select_mesh_components        (const nlohmann::json& args) -> std::string;
+    auto action_grow_mesh_selection           (const nlohmann::json& args) -> std::string;
+    auto action_shrink_mesh_selection         (const nlohmann::json& args) -> std::string;
+    auto query_mesh_component_selection       (const nlohmann::json& args) -> std::string;
+    auto query_id_range_mapping               (const nlohmann::json& args) -> std::string;
+    auto action_debug_region_select           (const nlohmann::json& args) -> std::string;
+    auto query_mesh_geometry_info             (const nlohmann::json& args) -> std::string;
+    auto query_mesh_attribute_values          (const nlohmann::json& args) -> std::string;
+    auto action_clear_mesh_component_selection(const nlohmann::json& args) -> std::string;
+    auto action_set_edge_sharpness            (const nlohmann::json& args) -> std::string;
+    auto action_catmull_clark                 (const nlohmann::json& args) -> std::string;
+    auto action_align_components              (const nlohmann::json& args) -> std::string;
+    auto action_add_joint                     (const nlohmann::json& args) -> std::string;
+    auto action_flip_joint                    (const nlohmann::json& args) -> std::string;
+    auto action_remesh                        (const nlohmann::json& args) -> std::string;
+    auto action_decimate                      (const nlohmann::json& args) -> std::string;
+    auto action_smooth                        (const nlohmann::json& args) -> std::string;
+    auto action_chamfer3                      (const nlohmann::json& args) -> std::string;
+    auto action_csg                           (const nlohmann::json& args) -> std::string;
+    auto action_lattice_deform                (const nlohmann::json& args) -> std::string;
+    auto action_project_texcoords             (const nlohmann::json& args) -> std::string;
+    auto action_merge_faces                   (const nlohmann::json& args) -> std::string;
+    auto action_generate_texture_coordinates  (const nlohmann::json& args) -> std::string;
+    auto action_set_transform_reference_mode  (const nlohmann::json& args) -> std::string;
+    auto action_set_transform_mode            (const nlohmann::json& args) -> std::string;
+    auto action_set_gizmo_visibility          (const nlohmann::json& args) -> std::string;
+    auto query_transform_state                (const nlohmann::json& args) -> std::string;
+
+    // doc/import-undo-reference-clearing.md
+    auto query_editor_references              (const nlohmann::json& args) -> std::string;
+    auto query_memory_usage                   (const nlohmann::json& args) -> std::string;
+    auto action_free_undone_loads             (const nlohmann::json& args) -> std::string;
+    auto action_move_library_item             (const nlohmann::json& args) -> std::string;
+    auto action_debug_set_item_tree_hover     (const nlohmann::json& args) -> std::string;
+    auto query_geometry_graph                 (const nlohmann::json& args) -> std::string;
+    auto action_set_geometry_graph_target     (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_add_node       (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_remove_node    (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_parameter  (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_display_flags(const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_node_previews(const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_connect        (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_disconnect     (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_link_mid_points(const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_link_curve (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_view       (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_set_view        (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_add_all         (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_select_nodes   (const nlohmann::json& args) -> std::string;
+    auto action_geometry_graph_set_node_layout(const nlohmann::json& args) -> std::string;
+    auto action_create_graph_texture          (const nlohmann::json& args) -> std::string;
+    auto action_set_material_texture_source    (const nlohmann::json& args) -> std::string;
+    auto query_graph_textures                 (const nlohmann::json& args) -> std::string;
+    auto action_create_graph_mesh             (const nlohmann::json& args) -> std::string;
+    auto action_set_node_graph_mesh           (const nlohmann::json& args) -> std::string;
+    auto query_graph_meshes                   (const nlohmann::json& args) -> std::string;
+    auto query_texture_graph                  (const nlohmann::json& args) -> std::string;
+    auto action_set_texture_graph_target      (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_add_node        (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_remove_node     (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_set_parameter   (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_connect         (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_disconnect      (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_export_png      (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_export_material (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_select_nodes    (const nlohmann::json& args) -> std::string;
+    auto action_texture_graph_set_node_layout (const nlohmann::json& args) -> std::string;
+    auto action_open_geometry_graph_window    (const nlohmann::json& args) -> std::string;
+    auto action_open_texture_graph_window     (const nlohmann::json& args) -> std::string;
+    auto action_open_properties_window        (const nlohmann::json& args) -> std::string;
+    auto query_scene_animations               (const nlohmann::json& args) -> std::string;
+    auto action_set_animation_target          (const nlohmann::json& args) -> std::string;
+    auto action_animation_playback            (const nlohmann::json& args) -> std::string;
+    auto action_animation_edit_keyframe       (const nlohmann::json& args) -> std::string;
+    auto action_animation_create_key          (const nlohmann::json& args) -> std::string;
+    auto action_animation_delete_key          (const nlohmann::json& args) -> std::string;
+    auto action_set_ray_trace                 (const nlohmann::json& args) -> std::string;
+    auto action_set_ddgi                      (const nlohmann::json& args) -> std::string;
+    auto execute_command        (const std::string& tool_name) -> std::string;
+
+    erhe::commands::Commands& m_commands;
+    App_context&              m_context;
+    int                       m_port;
+
+    // Lifecycle (start/stop, server creation/destruction, thread join).
+    // Serializes start() / stop() against each other and against
+    // ~Mcp_server so the m_http_server / m_server_thread pair cannot
+    // be observed in a half-torn-down state.
+    std::mutex                       m_lifecycle_mutex;
+    std::unique_ptr<httplib::Server> m_http_server;
+    std::thread                      m_server_thread;
+    std::atomic<bool>                m_running{false};
+
+    // Bearer token loaded from $HOME/.agents/erhe_mcp_token (file
+    // mode 0600 on POSIX). Empty when auth is disabled (the token
+    // file is missing). When set, every /mcp request must present
+    // Authorization: Bearer <m_auth_token>.
+    std::string                      m_auth_token;
+
+    // Maximum HTTP payload size (in bytes) accepted by httplib's POST
+    // parser. Requests larger than this are rejected by httplib with
+    // 413 before any handler runs.
+    static constexpr std::size_t     k_max_payload_bytes = 1 * 1024 * 1024;
+
+    // Maximum queue depth. Beyond this, handle_tools_call returns
+    // JSON-RPC -32000 "server busy" instead of enqueuing.
+    static constexpr std::size_t     k_max_queue_depth = 64;
+
+    // How long a queued request may sit before process_queued_requests
+    // drops it without mutating editor state. Must match the wait_for
+    // in handle_tools_call so an abandoned promise can never reach
+    // set_value (which would also leave the queue holding a
+    // result_promise that nobody is listening on).
+    static constexpr std::chrono::seconds k_request_timeout{5};
+
+    // Tool info cache
+    std::mutex                  m_tools_mutex;
+    std::vector<Mcp_tool_info>  m_tool_infos;
+
+    // Request queue (populated by HTTP thread, drained by main thread)
+    struct Queued_request
+    {
+        std::string                                   tool_name;
+        nlohmann::json                                arguments;
+        std::promise<std::string>                     result_promise;
+        std::chrono::steady_clock::time_point         enqueued_at{std::chrono::steady_clock::now()};
+    };
+    std::mutex                                       m_queue_mutex;
+    std::vector<std::unique_ptr<Queued_request>>     m_request_queue;
+
+    // One-frame request deferral (main thread only, no lock needed). A
+    // handler that needs the editor to render a frame before it can produce
+    // its result (capture_screenshot in the windowed build: it arms a
+    // swapchain capture that the upcoming frame records) sets
+    // m_defer_current_request instead of returning a result;
+    // process_queued_requests then parks the request in m_deferred_requests
+    // and re-runs it on the next frame's pass, ahead of newly queued
+    // requests. The k_request_timeout expiry check bounds repeated deferral
+    // (e.g. a minimized window that never renders).
+    bool                                             m_defer_current_request{false};
+    std::vector<std::unique_ptr<Queued_request>>     m_deferred_requests;
+
+    // Saved per-view shader debug modes for push_shader_debug /
+    // pop_shader_debug (LIFO). Views that disappear between push and pop
+    // (weak_ptr expired) are skipped on restore.
+    class Saved_shader_debug
+    {
+    public:
+        std::weak_ptr<Viewport_scene_view> scene_view;
+        erhe::scene_renderer::Shader_debug shader_debug;
+    };
+    std::vector<std::vector<Saved_shader_debug>>     m_shader_debug_stack;
+};
+
+} // namespace editor

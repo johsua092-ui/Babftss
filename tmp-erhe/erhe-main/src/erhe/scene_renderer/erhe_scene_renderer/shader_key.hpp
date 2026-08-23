@@ -1,0 +1,322 @@
+#pragma once
+
+#include "erhe_hash/hash.hpp"
+#include "erhe_primitive/enums.hpp"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace erhe::dataformat { class Vertex_format; }
+namespace erhe::primitive  { class Material; }
+namespace erhe::scene {
+    class Light;
+    class Light_layer;
+    enum class Light_type : unsigned int;
+}
+
+namespace erhe::scene_renderer {
+
+// Per-viewport debug-visualization selection that replaces the
+// shader ERHE_DEBUG_* defines. Each enum value compiles a distinct
+// variant of the shader that overrides the final fragment color.
+// Keep in sync with the ERHE_SHADER_DEBUG_* macros in shader and with
+// the c_shader_debug_strings table consumers (editor UI).
+enum class Shader_debug : uint16_t
+{
+    none               = 0,
+    vertex_normal      = 1,
+    fragment_normal    = 2,
+    normal_texture     = 3,
+    tangent            = 4,
+    vertex_tangent_w   = 5,
+    bitangent          = 6,
+    texcoord_0         = 7,
+    texcoord_1         = 8,
+    base_color_texture = 9,
+    vertex_color_rgb   = 10,
+    vertex_color_alpha = 11,
+    aniso_strength     = 12,
+    aniso_texcoord     = 13,
+    vdotn              = 14,
+    ldotn              = 15,
+    hdotv              = 16,
+    joint_indices      = 17,
+    joint_weights      = 18,
+    omega_o            = 19,
+    omega_i            = 20,
+    omega_g            = 21,
+    vertex_valency     = 22,
+    polygon_edge_count = 23,
+    metallic           = 24,
+    roughness          = 25,
+    occlusion          = 26,
+    emissive           = 27,
+    shadowmap_texels   = 28,
+    misc               = 29,
+    shadow_visibility  = 30,
+    vdotn_dim          = 31,
+    texcoord_2         = 32,
+    ddgi_irradiance    = 33,
+    joint_weight_ramp  = 34
+};
+
+// User-visible display strings matching the Shader_debug enum, in
+// enum order. Used by the Scene_view_config_window combo.
+inline constexpr const char* c_shader_debug_strings[] = {
+    "None",
+    "Vertex Normal",
+    "Fragment Normal",
+    "Normal Texture",
+    "Tangent",
+    "Vertex Tangent W",
+    "Bitangent",
+    "TexCoord 0",
+    "TexCoord 1",
+    "Base Color Texture",
+    "Vertex Color RGB",
+    "Vertex Color Alpha",
+    "Aniso Strength",
+    "Aniso TexCoord",
+    "V.N",
+    "L.N",
+    "H.V",
+    "Joint Indices",
+    "Joint Weights",
+    "Omega o",
+    "Omega i",
+    "Omega g",
+    "Vertex Valency",
+    "Polygon Edge Count",
+    "Metallic",
+    "Roughness",
+    "Occlusion",
+    "Emissive",
+    "Shadowmap Texels",
+    "Debug Miscellaneous",
+    "Shadow Visibility",
+    "V.N (dim)",
+    "TexCoord 2 (Lightmap)",
+    "DDGI Irradiance",
+    "Joint Weight Ramp"
+};
+
+#define ERHE_SHADER_BOOL(X) \
+    X(USE_BASE_COLOR_TEXTURE)           \
+    X(USE_METALLIC_ROUGHNESS_TEXTURE)   \
+    X(USE_NORMAL_TEXTURE)               \
+    X(USE_OCCLUSION_TEXTURE)            \
+    X(USE_EMISSION_TEXTURE)             \
+    X(USE_CIRCULAR_BRUSHED_METAL)       \
+    X(USE_SKINNING)                     \
+    X(USE_VERTEX_VARYING_NORMAL)        \
+    X(USE_VERTEX_VARYING_TANGENT)       \
+    X(USE_VERTEX_VARYING_BITANGENT)     \
+    X(USE_VERTEX_VARYING_TEXCOORD0)     \
+    X(USE_VERTEX_VARYING_TEXCOORD1)     \
+    X(USE_VERTEX_VARYING_TEXCOORD2)     \
+    X(USE_VERTEX_VARYING_COLOR)         \
+    X(USE_VERTEX_VARYING_ANISO_CONTROL) \
+    X(VARIANT_DEPTH_ONLY)               \
+    X(VARIANT_ID_RENDER)                \
+    X(VARIANT_BRUSH_PREVIEW)            \
+    X(VARIANT_SHADOW_DISTANCE)          \
+    X(VARIANT_SHADOW_CUBE)              \
+    X(VARIANT_POINTS)                   \
+    X(SOLID_WIREFRAME)                  \
+    X(EDGE_LINES_FROM_ID)               \
+    X(EDGE_LINES_CORNER_CAP)            \
+    X(VARIANT_FACE_ID_SEED)             \
+    X(USE_DDGI)
+
+#define ERHE_SHADER_INT(X) \
+    X(LIGHT_COUNT_DIRECTIONAL_SHADOWMAPPED)     \
+    X(LIGHT_COUNT_DIRECTIONAL_NOT_SHADOWMAPPED) \
+    X(LIGHT_COUNT_SPOT_SHADOWMAPPED)            \
+    X(LIGHT_COUNT_SPOT_NOT_SHADOWMAPPED)        \
+    X(LIGHT_COUNT_POINT_SHADOWMAPPED)           \
+    X(LIGHT_COUNT_POINT_NOT_SHADOWMAPPED)       \
+    X(BXDF_MODEL)                               \
+    X(MATERIAL_BLENDING_MODE)                   \
+    X(SHADER_DEBUG)                             \
+    X(SHADOW_FILTER)                            \
+    X(SHADOW_BIAS)                              \
+    X(SHADOW_TECHNIQUE)                         \
+    X(SHADOW_DEPTH_BITS)                        \
+    X(SHADER_MULTIVIEW_COUNT)                   \
+    X(BASE_COLOR_TEX_COORD)                     \
+    X(METALLIC_ROUGHNESS_TEX_COORD)             \
+    X(NORMAL_TEX_COORD)                         \
+    X(NORMAL_TEXTURE_TWO_COMPONENT)             \
+    X(OCCLUSION_TEX_COORD)                      \
+    X(EMISSIVE_TEX_COORD)                       \
+    X(CIRCULAR_BRUSHED_METAL_TEX_COORD)
+
+enum class Shader_bool : uint32_t {
+#define ERHE_X(PARAM) PARAM,
+    ERHE_SHADER_BOOL(ERHE_X)
+#undef ERHE_X
+    count
+};
+
+enum class Shader_int : uint32_t {
+#define ERHE_X(PARAM) PARAM,
+    ERHE_SHADER_INT(ERHE_X)
+#undef ERHE_X
+    count
+};
+
+[[nodiscard]] inline auto make_shader_bool_mask(const Shader_bool param) -> uint32_t
+{
+    return uint32_t{1} << static_cast<uint32_t>(param);
+}
+
+class Shader_key
+{
+public:
+    static_assert(
+        static_cast<uint32_t>(Shader_bool::count) <= 32,
+        "Variant_key: boolean axes must fit in a uint32_t bit-mask"
+    );
+
+    Shader_key();
+    ~Shader_key() noexcept;
+
+    [[nodiscard]] auto get_defines() const -> std::vector<std::pair<std::string, std::string>>;
+
+    [[nodiscard]] auto describe() const -> std::string;
+
+    [[nodiscard]] auto get(const Shader_bool param) const -> bool
+    {
+        const uint32_t bit = make_shader_bool_mask(param);
+        return (bool_mask & bit) == bit;
+    }
+    void set(const Shader_bool param, const bool value)
+    {
+        const uint32_t bit = make_shader_bool_mask(param);
+        if (value) {
+            bool_mask |= bit;
+        } else {
+            bool_mask &= ~bit;
+        }
+    }
+
+    [[nodiscard]] auto get(const Shader_int param) const -> uint32_t
+    {
+        return int_values.at(static_cast<size_t>(param));
+    }
+    void set(const Shader_int param, const uint32_t value)
+    {
+        int_values.at(static_cast<size_t>(param)) = value;
+    }
+
+    [[nodiscard]] auto operator==(const Shader_key& other) const noexcept -> bool = default;
+
+    [[nodiscard]] auto get_hash() const -> uint64_t
+    {
+        constexpr std::uint64_t seed = 14695981039346656037ull;
+        std::uint64_t hash = erhe::hash::hash(&bool_mask, sizeof(bool_mask), seed);
+        hash = erhe::hash::hash(int_values.data(), sizeof(int_values), hash);
+        if (blending_mode.has_value()) {
+            hash = erhe::hash::hash(static_cast<uint8_t>(blending_mode.value()), hash);
+        }
+        return hash;
+    }
+
+    [[nodiscard]] auto derive(
+        const erhe::primitive::Material*       material,
+        const erhe::dataformat::Vertex_format* vertex_format,
+        const bool                             mesh_has_skin
+    ) const -> Shader_key;
+
+    uint32_t                                                     bool_mask{0};
+    std::array<uint32_t, static_cast<size_t>(Shader_int::count)> int_values;
+    std::optional<erhe::primitive::Material_blending_mode>       blending_mode;
+};
+
+class Shader_key_hash
+{
+public:
+    [[nodiscard]] auto operator()(const Shader_key& key) const noexcept -> std::size_t;
+};
+
+// Light type bucket index used by Light_count_limits / Light_layer_partition:
+// directional, spot, point, other. "other" is never shaded by the standard
+// shader (its light loops cover the first three).
+[[nodiscard]] auto light_type_index(erhe::scene::Light_type type) -> std::size_t;
+inline constexpr std::size_t light_type_count = 4;
+
+// Per light type limits on how many lights are shaded, from the active
+// graphics preset (Graphics_preset_entry::*_shadow_light_count /
+// *_unshadowed_light_count): per_type_shadow[t] lights of type t are
+// shadow-mapped, and per_type_unshadowed[t] more are shaded without a shadow
+// map. Lights are handed out in input order: an active light takes a shadow
+// slot of its type while it casts shadows and the shadow limit has room,
+// otherwise an unshadowed slot while the unshadowed limit has room, otherwise
+// it is not shaded at all (no UBO slot). This is applied identically by
+// compute_light_layer_partition (shader variant light loop bounds) and
+// Light_projections::apply (UBO slot / shadow layer assignment), so the
+// forward pass, Light_buffer and Shadow_renderer always agree.
+//
+// The shadow limits also size the shadow maps: directional + spot shadow
+// lights share the 2D shadow map array (layer count = their sum), each point
+// shadow light gets a cube of the cube-map array. Callers with no shadow map
+// pass zero shadow limits: every light within the unshadowed limits is then
+// shaded unshadowed. Default = no lights shaded.
+class Light_count_limits
+{
+public:
+    std::size_t per_type_shadow    [light_type_count] {0, 0, 0, 0}; // directional, spot, point, other
+    std::size_t per_type_unshadowed[light_type_count] {0, 0, 0, 0};
+
+    // Number of 2D shadow map array layers (directional + spot shadow lights).
+    [[nodiscard]] auto shadow_map_2d_layer_count() const -> std::size_t
+    {
+        return per_type_shadow[0] + per_type_shadow[1];
+    }
+    // Number of point light shadow cubes.
+    [[nodiscard]] auto point_shadow_cube_count() const -> std::size_t
+    {
+        return per_type_shadow[2];
+    }
+    // Same unshadowed limits, no shadow-mapped lights: what a renderer with
+    // no shadow map (or shadows disabled) shades with.
+    [[nodiscard]] auto without_shadows() const -> Light_count_limits
+    {
+        Light_count_limits result{};
+        for (std::size_t t = 0; t < light_type_count; ++t) {
+            result.per_type_unshadowed[t] = per_type_unshadowed[t];
+        }
+        return result;
+    }
+    // Same shadow / unshadowed limits for directional, spot and point.
+    [[nodiscard]] static auto uniform(const std::size_t shadow_count, const std::size_t unshadowed_count) -> Light_count_limits
+    {
+        return Light_count_limits{
+            .per_type_shadow     = {shadow_count,     shadow_count,     shadow_count,     0},
+            .per_type_unshadowed = {unshadowed_count, unshadowed_count, unshadowed_count, 0}
+        };
+    }
+};
+
+class Light_layer_partition
+{
+public:
+    std::size_t per_type_shadow   [light_type_count] {0, 0, 0, 0};
+    std::size_t per_type_nonshadow[light_type_count] {0, 0, 0, 0};
+};
+
+// Counts the active lights that get shaded, per type, into shadow-mapped /
+// non-shadow buckets, walking lights in input order against light_count_limits
+// (see Light_count_limits for the rule). This is the canonical partition:
+// Light_projections::apply() assigns UBO slots and shadow layers from it.
+[[nodiscard]] auto compute_light_layer_partition(
+    std::span<const std::shared_ptr<erhe::scene::Light>> lights,
+    const Light_count_limits&                            light_count_limits
+) -> Light_layer_partition;
+
+} // namespace erhe::scene_renderer
