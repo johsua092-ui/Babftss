@@ -1,0 +1,18 @@
+# docker-compose.yml — local dev / testing
+#   docker compose up -d
+#   docker compose logs -f
+
+services:
+  api:
+    build: .
+    container_name: babft-api
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

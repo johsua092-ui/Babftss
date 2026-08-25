@@ -1,0 +1,219 @@
+const QS = [{
+    id: 1,
+    name: "Spur (Basic) Gear",
+    color: "#22d3ee",
+    icon: "spur",
+    desc: "Gigi lurus sejajar poros. Paling umum, sederhana, dan mudah dibuat."
+}, {
+    id: 2,
+    name: "Helical Gear",
+    color: "#60a5fa",
+    icon: "helical",
+    desc: "Gigi miring membentuk sudut heliks. Lebih halus dan senyap dari spur gear."
+}, {
+    id: 3,
+    name: "Herringbone Gear",
+    color: "#4ade80",
+    icon: "herring",
+    desc: "Dua helical berlawanan berbentuk V. Menghilangkan gaya aksial sepenuhnya."
+}, {
+    id: 4,
+    name: "Worm Gear",
+    color: "#a78bfa",
+    icon: "worm",
+    desc: "Cacing (worm) menggerakkan roda. Rasio tinggi, tidak bisa dibalik arah."
+}, {
+    id: 5,
+    name: "Rack & Pinion Gear",
+    color: "#fb923c",
+    icon: "rack",
+    desc: "Mengubah rotasi menjadi gerakan lurus (translasi linear)."
+}, {
+    id: 6,
+    name: "Bevel Gear",
+    color: "#f87171",
+    icon: "bevel",
+    desc: "Gigi kerucut untuk dua poros berpotongan 90°. Ada di diferensial kendaraan."
+}, {
+    id: 7,
+    name: "Miter Gear",
+    color: "#f472b6",
+    icon: "miter",
+    desc: "Bevel gear 90° dengan rasio 1:1. Hanya mengubah arah tanpa mengubah kecepatan."
+}, {
+    id: 8,
+    name: "Spiral Bevel Gear",
+    color: "#fb7185",
+    icon: "spiralbev",
+    desc: "Bevel dengan gigi spiral melengkung. Lebih halus, kuat, dan senyap."
+}, {
+    id: 9,
+    name: "Hypoid Gear",
+    color: "#a3e635",
+    icon: "hypoid",
+    desc: "Spiral bevel dengan sumbu poros tidak berpotongan (offset). Ada di gardan mobil."
+}, {
+    id: 10,
+    name: "Crown Gear",
+    color: "#34d399",
+    icon: "crown",
+    desc: "Gigi tegak lurus pada permukaan disc, bentuknya seperti mahkota."
+}, {
+    id: 11,
+    name: "Planetary Gear",
+    color: "#facc15",
+    icon: "planet",
+    desc: "Sun, planet, dan ring gear. Rasio sangat tinggi dalam ruang yang sangat kecil."
+}, {
+    id: 12,
+    name: "Internal (Ring) Gear",
+    color: "#818cf8",
+    icon: "ring",
+    desc: "Gigi berada di sisi dalam cincin. Pinion berputar di dalamnya."
+}, {
+    id: 13,
+    name: "Harmonic Drive Gear",
+    color: "#38bdf8",
+    icon: "harmonic",
+    desc: "Flex spline bergelombang oleh wave generator. Presisi tinggi, backlash nol."
+}, {
+    id: 14,
+    name: "Cycloidal Gear",
+    color: "#c084fc",
+    icon: "cycloid",
+    desc: "Profil gigi berbasis kurva sikloid. Sangat halus, efisiensi dan ketahanan tinggi."
+}, {
+    id: 15,
+    name: "Geneva (Maltese) Gear",
+    color: "#fbbf24",
+    icon: "geneva",
+    desc: "Mekanisme gerak intermiten. Rotasi kontinu diubah menjadi putaran diskrit."
+}, {
+    id: 16,
+    name: "Sector Gear",
+    color: "#2dd4bf",
+    icon: "sector",
+    desc: "Gigi hanya pada sebagian busur lingkaran. Untuk gerak sudut terbatas."
+}, {
+    id: 17,
+    name: "Face Gear",
+    color: "#e879f9",
+    icon: "face",
+    desc: "Disc dengan gigi di permukaan datar yang beradu dengan pinion spur."
+}, {
+    id: 18,
+    name: "Lantern (Pin) Gear",
+    color: "#f59e0b",
+    icon: "lantern",
+    desc: "Gigi berupa pin silindris di antara dua disc. Desain klasik pada jam mekanik tua."
+}, {
+    id: 19,
+    name: "Crossed Helical (Screw) Gear",
+    color: "#06b6d4",
+    icon: "crossed",
+    desc: "Dua helical gear pada poros tidak sejajar & tidak berpotongan (skew). Mentransmisikan daya antar sumbu silang."
+}, {
+    id: 20,
+    name: "Zerol Bevel Gear",
+    color: "#ef4444",
+    icon: "zerol",
+    desc: "Bevel gear dengan sudut heliks nol di tengah gigi. Kombinasi keunggulan straight dan spiral bevel."
+}, {
+    id: 21,
+    name: "Globoid (Double Enveloping) Worm Gear",
+    color: "#8b5cf6",
+    icon: "globoid",
+    desc: "Worm dan wheel keduanya memiliki bentuk cekung (globoid). Kapasitas beban jauh lebih besar dari worm biasa."
+}, {
+    id: 22,
+    name: "Ratchet & Pawl Gear",
+    color: "#f97316",
+    icon: "ratchet",
+    desc: "Gigi gergaji dengan pawl (kait). Hanya berputar satu arah; sering dipakai pada winch dan kunci torsi."
+}, {
+    id: 23,
+    name: "Sprocket (Chain Drive) Gear",
+    color: "#10b981",
+    icon: "sprocket",
+    desc: "Gigi kait untuk menggerakkan rantai rol. Digunakan pada sepeda, motor, dan konveyor."
+}, {
+    id: 24,
+    name: "Elliptical (Non-Circular) Gear",
+    color: "#ec4899",
+    icon: "elliptical",
+    desc: "Gear berbentuk oval/elips. Menghasilkan rasio kecepatan yang bervariasi selama satu putaran."
+}, {
+    id: 25,
+    name: "Magnetic Gear",
+    color: "#6366f1",
+    icon: "magnetic",
+    desc: "Transmisi daya tanpa kontak melalui medan magnet. Tanpa gesekan, senyap, dan bebas pelumasan."
+}, {
+    id: 26,
+    name: "Nutating (Wobble) Gear",
+    color: "#14b8a6",
+    icon: "nutating",
+    desc: "Disc bergoyang (nutasi) untuk mentransmisikan daya. Rasio sangat tinggi dalam ukuran sangat kompak."
+}, {
+    id: 27,
+    name: "Anti-Backlash (Scissors) Gear",
+    color: "#84cc16",
+    icon: "antibl",
+    desc: "Dua gear tipis berdampingan dengan pegas. Menghilangkan kelonggaran (backlash) untuk presisi tinggi."
+}, {
+    id: 28,
+    name: "Compound Gear Train",
+    color: "#f43f5e",
+    icon: "compound",
+    desc: "Beberapa pasang gear dalam satu jalur. Menghasilkan rasio sangat besar atau sangat kecil secara bertingkat."
+}, {
+    id: 29,
+    name: "Idler Gear",
+    color: "#0ea5e9",
+    icon: "idler",
+    desc: "Gear perantara yang tidak mengubah rasio. Membalikkan arah putaran atau menjembatani jarak antar poros."
+}, {
+    id: 30,
+    name: "Timing (Synchronous) Gear",
+    color: "#d97706",
+    icon: "timing",
+    desc: "Gigi persegi panjang presisi untuk timing belt/chain. Menjamin sinkronisasi rotasi tanpa slip."
+}, {
+    id: 31,
+    name: "Spiroid Gear",
+    color: "#7c3aed",
+    icon: "spiroid",
+    desc: "Hibrida face gear dan worm gear. Rasio tinggi, hemat ruang, dipakai pada alat bedah & robotika."
+}, {
+    id: 32,
+    name: "Skew Bevel Gear (Conoid)",
+    color: "#16a34a",
+    icon: "skewbev",
+    desc: "Bevel gear pada poros yang tidak berpotongan (skew). Lebih fleksibel dalam penempatan poros."
+}, {
+    id: 33,
+    name: "Cluster Gear",
+    color: "#db2777",
+    icon: "cluster",
+    desc: "Beberapa gear berbeda ukuran menyatu dalam satu unit. Umum ditemukan dalam gearbox transmisi kendaraan."
+}, {
+    id: 34,
+    name: "Trochoidal (Rotor) Gear",
+    color: "#0891b2",
+    icon: "trochoid",
+    desc: "Profil gigi epitrochoid, seperti rotor mesin Wankel. Juga digunakan pada pompa oli dan motor hidrolik."
+}, {
+    id: 35,
+    name: "Wildhaber-Novikov (Circular Arc) Gear",
+    color: "#9333ea",
+    icon: "circulararc",
+    desc: "Profil gigi berupa busur lingkaran cembung-cekung. Kapasitas beban sangat tinggi, dipakai di industri berat."
+}, {
+    id: 36,
+    name: "Differential Gear",
+    color: "#ca8a04",
+    icon: "differential",
+    desc: "Membagi torsi ke dua output dengan kecepatan berbeda. Komponen kritis pada gardan mobil dan robot."
+}];
+
+export default QS;

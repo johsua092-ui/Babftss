@@ -1,0 +1,93 @@
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import {
+  auth,
+  googleProvider,
+  loginWithGoogle as firebaseLoginWithGoogle,
+  loginWithEmail as firebaseLoginWithEmail,
+  registerWithEmail as firebaseRegisterWithEmail,
+  logout as firebaseLogout,
+} from '../lib/firebase';
+import { onAuthStateChanged, signInWithPopup, GithubAuthProvider } from 'firebase/auth';
+import { trackUser, trackGuest, updateHeartbeatId } from '../lib/tracker';
+
+const AuthContext = createContext(null);
+const githubProvider = new GithubAuthProvider();
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
+      if (u && u.uid) {
+        updateHeartbeatId(u);
+        trackUser(u);
+      } else {
+        updateHeartbeatId(null);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Track visitor anonim (guest): sekali auth selesai menentukan dan tidak ada
+  // user login, catat sebagai Guest. Di-guard agar hanya jalan satu kali.
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      trackGuest();
+    }
+  }, [loading, user]);
+
+  const loginWithGoogle = useCallback(async () => {
+    const result = await firebaseLoginWithGoogle();
+    return result.user;
+  }, []);
+
+  const loginWithGitHub = useCallback(async () => {
+    const result = await signInWithPopup(auth, githubProvider);
+    return result.user;
+  }, []);
+
+  const loginWithEmail = useCallback(async (email, password) => {
+    const result = await firebaseLoginWithEmail(email, password);
+    return result.user;
+  }, []);
+
+  const registerWithEmail = useCallback(async (email, password) => {
+    const result = await firebaseRegisterWithEmail(email, password);
+    return result.user;
+  }, []);
+
+  const logout = useCallback(async () => {
+    await firebaseLogout();
+  }, []);
+
+  const getIdToken = useCallback(async () => {
+    // getIdToken(true) memaksa refresh token — mencegah token expired/stale
+    // sehingga API (favorites/progress) tidak menolak user yang sudah login.
+    return user ? user.getIdToken(true) : null;
+  }, [user]);
+
+  return (
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      loginWithGoogle,
+      loginWithGitHub,
+      loginWithEmail,
+      registerWithEmail,
+      logout,
+      getIdToken,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}

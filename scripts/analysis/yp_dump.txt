@@ -1,0 +1,501 @@
+function Yp({
+    icon: i,
+    color: a,
+    size: o = 36
+}) {
+    const m = `drop-shadow(0 0 4px rgba(${fa(a)},0.75))`,
+        l = o,
+        c = l / 2,
+        d = l / 2,
+        r = p => p.toFixed(1);
+    switch (i) {
+        case "spur":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: Pt(c, d, l * .43, l * .31, 8),
+                    fill: a,
+                    opacity: "0.92",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("circle", {
+                    cx: c,
+                    cy: d,
+                    r: l * .12,
+                    fill: "#0f172a"
+                })]
+            });
+        case "helical":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: Pt(c, d, l * .43, l * .31, 10),
+                    fill: a,
+                    opacity: "0.88",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("circle", {
+                    cx: c,
+                    cy: d,
+                    r: l * .12,
+                    fill: "#0f172a"
+                }), [-l * .08, 0, l * .08].map((p, x) => y.jsx("line", {
+                    x1: c - l * .1 + p,
+                    y1: d - l * .18,
+                    x2: c + l * .1 + p,
+                    y2: d + l * .18,
+                    stroke: "#0f172a",
+                    strokeWidth: "1.8",
+                    opacity: "0.7"
+                }, x))]
+            });
+        case "herring":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: Pt(c, d, l * .43, l * .31, 10),
+                    fill: a,
+                    opacity: "0.88",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("circle", {
+                    cx: c,
+                    cy: d,
+                    r: l * .12,
+                    fill: "#0f172a"
+                }), y.jsx("path", {
+                    d: `M ${c-l*.1} ${d-l*.14} L ${c} ${d} L ${c+l*.1} ${d-l*.14}`,
+                    fill: "none",
+                    stroke: "#0f172a",
+                    strokeWidth: "1.8"
+                }), y.jsx("path", {
+                    d: `M ${c-l*.1} ${d+l*.14} L ${c} ${d} L ${c+l*.1} ${d+l*.14}`,
+                    fill: "none",
+                    stroke: "#0f172a",
+                    strokeWidth: "1.8"
+                })]
+            });
+        case "worm":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("rect", {
+                    x: l * .04,
+                    y: d - l * .12,
+                    width: l * .6,
+                    height: l * .24,
+                    rx: l * .06,
+                    fill: a,
+                    opacity: "0.45"
+                }), [.1, .22, .34, .46, .58].map((p, x) => y.jsx("path", {
+                    d: `M ${r(l*p)} ${r(d-l*.12)} Q ${r(l*(p+.05))} ${r(d)} ${r(l*p)} ${r(d+l*.12)}`,
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "2.2",
+                    style: {
+                        filter: m
+                    }
+                }, x)), y.jsx("circle", {
+                    cx: l * .82,
+                    cy: d,
+                    r: l * .15,
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "2",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 60, 120, 180, 240, 300].map(p => {
+                    const x = p * Math.PI / 180,
+                        g = l * .82 + l * .15 * Math.cos(x),
+                        S = d + l * .15 * Math.sin(x);
+                    return y.jsx("rect", {
+                        x: g - 1.8,
+                        y: S - 3.5,
+                        width: "3.6",
+                        height: "7",
+                        rx: "0.8",
+                        fill: a,
+                        style: {
+                            filter: m
+                        },
+                        transform: `rotate(${p},${r(g)},${r(S)})`
+                    }, p)
+                })]
+            });
+        case "rack":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("rect", {
+                    x: l * .02,
+                    y: d + l * .05,
+                    width: l * .68,
+                    height: l * .2,
+                    rx: "2",
+                    fill: a,
+                    opacity: "0.7",
+                    style: {
+                        filter: m
+                    }
+                }), [.06, .14, .22, .3, .38, .46, .54, .62].map((p, x) => y.jsx("rect", {
+                    x: l * p,
+                    y: d - l * .12,
+                    width: l * .06,
+                    height: l * .17,
+                    rx: "1",
+                    fill: a,
+                    style: {
+                        filter: m
+                    }
+                }, x)), y.jsx("circle", {
+                    cx: l * .83,
+                    cy: d - l * .04,
+                    r: l * .13,
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "2",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 45, 90, 135, 180, 225, 270, 315].map(p => {
+                    const x = p * Math.PI / 180,
+                        g = l * .83 + l * .13 * Math.cos(x),
+                        S = d - l * .04 + l * .13 * Math.sin(x);
+                    return y.jsx("rect", {
+                        x: g - 2,
+                        y: S - 2,
+                        width: "4",
+                        height: "4",
+                        fill: a,
+                        transform: `rotate(${p},${r(g)},${r(S)})`
+                    }, p)
+                })]
+            });
+        case "bevel":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: `M ${r(l*.06)} ${r(d+l*.2)} L ${r(l*.5)} ${r(d+l*.02)} L ${r(l*.5)} ${r(d-l*.2)} L ${r(l*.06)} ${r(d-l*.02)} Z`,
+                    fill: a,
+                    opacity: "0.7",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 1, 2, 3].map(p => {
+                    const x = p / 3,
+                        g = l * .06 + x * l * .44,
+                        S = d + l * .2 - x * l * .22;
+                    return y.jsx("rect", {
+                        x: g,
+                        y: S,
+                        width: "4",
+                        height: "6",
+                        fill: a,
+                        opacity: "0.9"
+                    }, p)
+                }), y.jsx("path", {
+                    d: `M ${r(l*.5)} ${r(l*.06)} L ${r(l*.5+l*.18)} ${r(d+l*.04)} L ${r(l*.5+l*.01)} ${r(d+l*.04)} L ${r(l*.5-l*.01)} ${r(l*.06)} Z`,
+                    fill: a,
+                    opacity: "0.5"
+                }), y.jsx("circle", {
+                    cx: r(l * .5),
+                    cy: r(d + l * .02),
+                    r: l * .04,
+                    fill: a,
+                    style: {
+                        filter: m
+                    }
+                })]
+            });
+        case "miter":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: `M ${r(l*.06)} ${r(d+l*.18)} L ${r(l*.5)} ${r(d)} L ${r(l*.5)} ${r(d-l*.18)} L ${r(l*.06)} ${r(d-l*0)} Z`,
+                    fill: a,
+                    opacity: "0.75",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("path", {
+                    d: `M ${r(l*.5-l*.18)} ${r(l*.06)} L ${r(l*.5)} ${r(d)} L ${r(l*.5+l*.18)} ${r(d)} L ${r(l*.5+l*0)} ${r(l*.06)} Z`,
+                    fill: a,
+                    opacity: "0.55"
+                }), y.jsx("circle", {
+                    cx: r(l * .5),
+                    cy: r(d),
+                    r: l * .05,
+                    fill: a,
+                    style: {
+                        filter: m
+                    }
+                })]
+            });
+        case "spiralbev":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: `M ${r(l*.08)} ${r(d+l*.18)} L ${r(l*.5)} ${r(d+l*.02)} L ${r(l*.5)} ${r(d-l*.18)} L ${r(l*.08)} ${r(d-l*.02)} Z`,
+                    fill: a,
+                    opacity: "0.5"
+                }), [0, 1, 2].map(p => y.jsx("path", {
+                    d: `M ${r(l*(.13+p*.1))} ${r(d+l*.13)} Q ${r(l*(.21+p*.1))} ${r(d)} ${r(l*(.13+p*.1))} ${r(d-l*.13)}`,
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "2",
+                    style: {
+                        filter: m
+                    }
+                }, p)), y.jsx("path", {
+                    d: `M ${r(l*.5)} ${r(l*.07)} L ${r(l*.5+l*.18)} ${r(l*.5+l*.04)} L ${r(l*.5+l*.02)} ${r(l*.5+l*.04)} L ${r(l*.5-l*.02)} ${r(l*.07)} Z`,
+                    fill: a,
+                    opacity: "0.4"
+                }), y.jsx("circle", {
+                    cx: r(l * .5),
+                    cy: r(d + l * .02),
+                    r: l * .04,
+                    fill: a
+                })]
+            });
+        case "hypoid":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("ellipse", {
+                    cx: r(l * .35),
+                    cy: r(d),
+                    rx: r(l * .3),
+                    ry: r(l * .18),
+                    fill: a,
+                    opacity: "0.5",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 60, 120, 180, 240, 300].map(p => {
+                    const x = p * Math.PI / 180,
+                        g = l * .35 + l * .3 * Math.cos(x),
+                        S = d + l * .18 * Math.sin(x);
+                    return y.jsx("rect", {
+                        x: g - 2,
+                        y: S - 3,
+                        width: "4",
+                        height: "6",
+                        rx: "0.8",
+                        fill: a,
+                        opacity: "0.9",
+                        transform: `rotate(${p},${r(g)},${r(S)})`
+                    }, p)
+                }), y.jsx("circle", {
+                    cx: r(l * .78),
+                    cy: r(d - l * .12),
+                    r: r(l * .13),
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "2",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("circle", {
+                    cx: r(l * .78),
+                    cy: r(d - l * .12),
+                    r: r(l * .05),
+                    fill: a
+                })]
+            });
+        case "crown":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("ellipse", {
+                    cx: r(c),
+                    cy: r(d + l * .12),
+                    rx: r(l * .38),
+                    ry: r(l * .12),
+                    fill: a,
+                    opacity: "0.55",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 45, 90, 135, 180, 225, 270, 315].map(p => {
+                    const x = p * Math.PI / 180,
+                        g = c + l * .3 * Math.cos(x);
+                    return y.jsx("rect", {
+                        x: r(g - 2),
+                        y: r(d),
+                        width: "4",
+                        height: r(l * .14),
+                        rx: "1",
+                        fill: a,
+                        style: {
+                            filter: m
+                        }
+                    }, p)
+                }), y.jsx("ellipse", {
+                    cx: r(c),
+                    cy: r(d + l * .12),
+                    rx: r(l * .18),
+                    ry: r(l * .06),
+                    fill: "#0f172a"
+                })]
+            });
+        case "planet":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("circle", {
+                    cx: r(c),
+                    cy: r(d),
+                    r: r(l * .44),
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "3",
+                    opacity: "0.4"
+                }), y.jsx("circle", {
+                    cx: r(c),
+                    cy: r(d),
+                    r: r(l * .12),
+                    fill: a,
+                    opacity: "0.9",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 120, 240].map(p => {
+                    const x = p * Math.PI / 180,
+                        g = c + l * .27 * Math.cos(x),
+                        S = d + l * .27 * Math.sin(x);
+                    return y.jsx("circle", {
+                        cx: r(g),
+                        cy: r(S),
+                        r: r(l * .11),
+                        fill: a,
+                        opacity: "0.75",
+                        style: {
+                            filter: m
+                        }
+                    }, p)
+                })]
+            });
+        case "ring":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("circle", {
+                    cx: r(c),
+                    cy: r(d),
+                    r: r(l * .46),
+                    fill: a,
+                    opacity: "0.2"
+                }), y.jsx("circle", {
+                    cx: r(c),
+                    cy: r(d),
+                    r: r(l * .46),
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "4",
+                    opacity: "0.6",
+                    style: {
+                        filter: m
+                    }
+                }), [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map(p => {
+                    const x = p * Math.PI / 180;
+                    return y.jsx("line", {
+                        x1: r(c + l * .34 * Math.cos(x)),
+                        y1: r(d + l * .34 * Math.sin(x)),
+                        x2: r(c + l * .46 * Math.cos(x)),
+                        y2: r(d + l * .46 * Math.sin(x)),
+                        stroke: "#0f172a",
+                        strokeWidth: "2.2"
+                    }, p)
+                }), y.jsx("circle", {
+                    cx: r(c + l * .2),
+                    cy: r(d),
+                    r: r(l * .11),
+                    fill: a,
+                    opacity: "0.85",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("circle", {
+                    cx: r(c + l * .2),
+                    cy: r(d),
+                    r: r(l * .04),
+                    fill: "#0f172a"
+                })]
+            });
+        case "harmonic":
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("circle", {
+                    cx: r(c),
+                    cy: r(d),
+                    r: r(l * .44),
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "1.5",
+                    opacity: "0.35"
+                }), y.jsx("path", {
+                    d: `M ${r(c+l*.36)} ${r(d)} Q ${r(c+l*.4)} ${r(d-l*.13)} ${r(c)} ${r(d-l*.23)} Q ${r(c-l*.4)} ${r(d-l*.13)} ${r(c-l*.36)} ${r(d)} Q ${r(c-l*.4)} ${r(d+l*.13)} ${r(c)} ${r(d+l*.23)} Q ${r(c+l*.4)} ${r(d+l*.13)} ${r(c+l*.36)} ${r(d)} Z`,
+                    fill: "none",
+                    stroke: a,
+                    strokeWidth: "2.8",
+                    style: {
+                        filter: m
+                    }
+                }), y.jsx("ellipse", {
+                    cx: r(c),
+                    cy: r(d),
+                    rx: r(l * .28),
+                    ry: r(l * .16),
+                    fill: a,
+                    opacity: "0.45"
+                }), y.jsx("circle", {
+                    cx: r(c),
+                    cy: r(d),
+                    r: r(l * .07),
+                    fill: "#0f172a"
+                })]
+            });
+        case "cycloid": {
+            const p = [];
+            for (let x = 0; x <= 48; x++) {
+                const g = x / 48 * 2 * Math.PI,
+                    S = l * .24,
+                    j = l * .1,
+                    M = c + (S + j) * Math.cos(g) - j * 1.5 * Math.cos((S + j) / j * g),
+                    T = d + (S + j) * Math.sin(g) - j * 1.5 * Math.sin((S + j) / j * g);
+                p.push(`${x===0?"M":"L"} ${r(M)} ${r(T)}`)
+            }
+            return y.jsxs("svg", {
+                width: l,
+                height: l,
+                viewBox: `0 0 ${l} ${l}`,
+                children: [y.jsx("path", {
+                    d: p.join(" ") + " Z",
+                    fill: a,
+                    opacity: "0.78",
+                    style: {
+                        filter: m

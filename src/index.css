@@ -1,0 +1,261 @@
+@import "tailwindcss";
+
+/* Prevent mobile pull-to-refresh globally */
+html, body {
+  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
+}
+
+@keyframes pulse-glow {
+  0%, to {
+    box-shadow: 0 0 15px -3px #4ade8099, 0 0 6px -2px #4ade8066;
+  }
+  50% {
+    box-shadow: 0 0 28px -3px #4ade80cc, 0 0 10px -2px #4ade8088;
+  }
+}
+
+@keyframes gold-pulse {
+  0%, to {
+    background-color: #1e1200;
+    border-color: #fbbf2466;
+    box-shadow: 0 0 10px #fbbf244d, 0 0 22px #fbbf2426;
+  }
+  50% {
+    background-color: #2a1a00;
+    border-color: #fbbf2499;
+    box-shadow: 0 0 18px #fbbf2466, 0 0 36px #fbbf2433;
+  }
+}
+
+@keyframes lock-shake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
+}
+
+@keyframes lock-bounce {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.15) rotate(-8deg); }
+  60% { transform: scale(0.95) rotate(4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes lock-open {
+  0% { transform: rotate(0deg) scale(1); }
+  40% { transform: rotate(-20deg) scale(1.2); }
+  70% { transform: rotate(5deg) scale(1.05); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes lock-close {
+  0% { transform: rotate(0deg) scale(1); }
+  30% { transform: rotate(10deg) scale(1.15); }
+  60% { transform: rotate(-3deg) scale(0.95); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes panel-slide-in {
+  0% { opacity: 0; transform: translateX(20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes overlay-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes dialog-pop-in {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@layer utilities {
+  .animate-pulse-glow {
+    animation: 2s cubic-bezier(.4, 0, .6, 1) infinite pulse-glow;
+  }
+  .animate-gold-pulse {
+    animation: 3s ease-in-out infinite gold-pulse;
+  }
+  .animate-lock-open {
+    animation: 0.4s cubic-bezier(.4,0,.2,1) lock-open;
+  }
+  .animate-lock-close {
+    animation: 0.4s cubic-bezier(.4,0,.2,1) lock-close;
+  }
+  .animate-panel-slide-in {
+    animation: 0.3s cubic-bezier(.4,0,.2,1) panel-slide-in;
+  }
+  .animate-overlay-fade-in {
+    animation: 0.2s ease-out overlay-fade-in;
+  }
+  .animate-dialog-pop-in {
+    animation: 0.25s cubic-bezier(.34,1.56,.64,1) dialog-pop-in;
+  }
+  .linkage-grid {
+    display: grid;
+    width: 100%;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  }
+  .linkage-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    text-align: center;
+    border-radius: 14px;
+    min-height: 118px;
+    padding: 10px 7px;
+    gap: 0;
+    cursor: pointer;
+    transition: transform .22s, box-shadow .22s, border-color .22s, background-color .22s;
+  }
+  .linkage-icon-wrap {
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+    padding: 2px 0;
+  }
+  .linkage-id {
+    align-self: flex-start;
+    margin-bottom: 4px;
+    font-family: Orbitron, sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 1.2px;
+    opacity: .62;
+  }
+  .linkage-name {
+    display: -webkit-box;
+    width: 100%;
+    margin-top: 5px;
+    font-family: Orbitron, sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: .15px;
+    color: #cbd5e1;
+    text-align: center;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .linkage-dot {
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    margin-top: 7px;
+    border-radius: 50%;
+    opacity: .65;
+  }
+}
+
+@media (max-width: 380px) {
+  .linkage-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ═══ Custom Scrollbar — Skeuomorphic Blue (Dark Theme) ═══ */
+.slot-desc-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+.slot-desc-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 25, 50, 0.6);
+  border: 1px solid rgba(96, 165, 250, 0.15);
+  border-radius: 6px;
+}
+.slot-desc-scroll::-webkit-scrollbar-thumb {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px, transparent 5px,
+      rgba(255,255,255,0.07) 5px, rgba(255,255,255,0.07) 6px,
+      transparent 6px, transparent 8px
+    ),
+    linear-gradient(180deg, rgba(96,165,250,0.5) 0%, rgba(59,130,246,0.35) 100%);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.1),
+    0 1px 3px rgba(0,0,0,0.15),
+    0 0 5px rgba(96,165,250,0.1);
+}
+.slot-desc-scroll::-webkit-scrollbar-thumb:hover {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px, transparent 5px,
+      rgba(255,255,255,0.1) 5px, rgba(255,255,255,0.1) 6px,
+      transparent 6px, transparent 8px
+    ),
+    linear-gradient(180deg, rgba(96,165,250,0.7) 0%, rgba(59,130,246,0.55) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 -1px 0 rgba(0,0,0,0.12),
+    0 1px 4px rgba(0,0,0,0.2),
+    0 0 8px rgba(96,165,250,0.18);
+}
+.slot-desc-scroll::-webkit-scrollbar-thumb:active {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px, transparent 5px,
+      rgba(255,255,255,0.12) 5px, rgba(255,255,255,0.12) 6px,
+      transparent 6px, transparent 8px
+    ),
+    linear-gradient(180deg, rgba(96,165,250,0.85) 0%, rgba(59,130,246,0.7) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    inset 0 -1px 0 rgba(0,0,0,0.15),
+    0 1px 3px rgba(0,0,0,0.25),
+    0 0 10px rgba(96,165,250,0.25);
+}
+.slot-desc-scroll::-webkit-scrollbar-button {
+  display: none;
+}
+/* Firefox */
+.slot-desc-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.5) rgba(15, 25, 50, 0.6);
+}
+
+/* ── Move Slot: no CSS border — SVG marching ants handles it ── */
+.slot-move-active {
+}
+
+/* ── Marching ants SVG overlay animation ── */
+@keyframes marchingAntsStroke {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -40; }
+}
+.marching-ants-svg rect {
+  animation: marchingAntsStroke 1.8s linear infinite;
+}
+
+/* ── Swap animation ── */
+@keyframes swapPulse {
+  0%   { transform: scale(1); opacity: 1; }
+  30%  { transform: scale(0.88); opacity: 0.7; }
+  60%  { transform: scale(1.04); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.slot-swap-anim {
+  animation: swapPulse 0.45s ease-in-out;
+}
+
+/* ── Swap success overlay fade-in ── */
+@keyframes swapOverlayFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cp-blink {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.9; }
+}
