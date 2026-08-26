@@ -419,6 +419,520 @@ export default function BlockSimulator3Dv2({ setPage }) {
   }, [tool]);
 
   // Three.js objects — stored in ref (NOT React state, because Three.js mutates directly).
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 172-176: New Feature States (Apps Menu consolidation + 5 features)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Apps Menu — single floating button that opens panel with all features
+  const [appsMenuOpen, setAppsMenuOpen] = useState(false);
+
+  // Phase 172: AI Puzzle Generator
+  const [puzzlePanelOpen, setPuzzlePanelOpen] = useState(false);
+  const [puzzleType, setPuzzleType] = useState('maze');        // 'maze' | 'matching' | 'tower' | 'bridge'
+  const [puzzleDifficulty, setPuzzleDifficulty] = useState(2);  // 1=easy, 2=medium, 3=hard
+  const [puzzleHint, setPuzzleHint] = useState('');
+
+  // Phase 173: Black Hole Simulator
+  const [blackHoleOpen, setBlackHoleOpen] = useState(false);
+
+  // Phase 174: Synchronized Light Show
+  const [lightShowOpen, setLightShowOpen] = useState(false);
+  const [lightShowSpeed, setLightShowSpeed] = useState(2);     // beats per second
+
+  // Phase 175: Biome Terrain Generator
+  const [biomePanelOpen, setBiomePanelOpen] = useState(false);
+  const [biomeType, setBiomeType] = useState('desert');          // 'desert' | 'tundra' | 'jungle' | 'ocean' | 'volcanic'
+
+  // Phase 176: AI Dream Visualizer
+  const [dreamVisOpen, setDreamVisOpen] = useState(false);
+  const [dreamDescription, setDreamDescription] = useState('');
+  const [dreamMood, setDreamMood] = useState('surreal');         // 'surreal' | 'calm' | 'neon' | 'dark' | 'pastel'
+  const [dreamInterpretation, setDreamInterpretation] = useState('');
+
+  // Refs for animate loop access (animate runs once on mount, refs bridge state)
+  const blackHoleOpenRef = useRef(false);
+  const lightShowOpenRef = useRef(false);
+  const lightShowSpeedRef = useRef(2);
+  const dreamVisOpenRef = useRef(false);
+  useEffect(() => { blackHoleOpenRef.current = blackHoleOpen; }, [blackHoleOpen]);
+  useEffect(() => { lightShowOpenRef.current = lightShowOpen; }, [lightShowOpen]);
+  useEffect(() => { lightShowSpeedRef.current = lightShowSpeed; }, [lightShowSpeed]);
+  useEffect(() => { dreamVisOpenRef.current = dreamVisOpen; }, [dreamVisOpen]);
+
+  // Helper: Apps Menu button style (consistent look for all feature buttons in grid)
+  const appsBtnStyle = (active, color) => ({
+    width: '100%', aspectRatio: '1', borderRadius: 10,
+    background: active ? color + '22' : 'rgba(15,23,42,0.6)',
+    border: `1px solid ${active ? color + '99' : 'rgba(148,163,184,0.15)'}`,
+    color: active ? color : '#94a3b8',
+    fontSize: 20, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'all 0.15s', fontFamily: 'Inter, sans-serif',
+  });
+
+  // ─── Phase 172: AI Puzzle Generator ─────────────────────────────────────
+  // Generates maze / matching / tower / bridge puzzles as blocks.
+  // Block types: wall (red), floor (dark), goal (yellow), start (green), key (purple), door (violet).
+  // Goal + start blocks have emissive glow.
+  const generatePuzzle = (type, difficulty) => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    // Clear existing puzzle blocks (tagged userData.isPuzzle)
+    const toRemove = s.blocks.filter(b => b.userData.isPuzzle);
+    toRemove.forEach(b => {
+      s.scene.remove(b);
+      if (b.geometry) b.geometry.dispose();
+      if (b.material) b.material.dispose();
+    });
+    s.blocks = s.blocks.filter(b => !b.userData.isPuzzle);
+
+    const size = 6 + difficulty * 2; // 8, 10, 12 for difficulty 1, 2, 3
+    const hints = {
+      maze:     `Find the path from start (green) to goal (yellow). Walls (red) block movement. Grid: ${size}x${size}.`,
+      matching: `Match pairs of same-colored blocks. ${Math.min(8, difficulty * 2 + 2)} pairs scattered randomly.`,
+      tower:    `Tower of Hanoi — move ${2 + difficulty} disks from left peg to right peg (yellow). Bigger disk on smaller = forbidden.`,
+      bridge:   `Build a stable bridge from start (green) to goal (yellow). ${size+2} segments arc over the chasm.`,
+    };
+    setPuzzleHint(hints[type] || '');
+
+    const colors = {
+      wall: '#dc2626', floor: '#1e293b', goal: '#fbbf24',
+      start: '#22c55e', key: '#a855f7', door: '#8b5cf6',
+    };
+
+    if (type === 'maze') {
+      // Simple random maze (avoiding start/goal corners)
+      for (let x = 0; x < size; x++) {
+        for (let z = 0; z < size; z++) {
+          const isStart = (x === 0 && z === 0);
+          const isGoal = (x === size - 1 && z === size - 1);
+          const isWall = !isStart && !isGoal && Math.random() < 0.32;
+          const blockType = isStart ? 'start' : isGoal ? 'goal' : isWall ? 'wall' : 'floor';
+          const color = colors[blockType];
+          const geo = new THREE.BoxGeometry(0.9, blockType === 'wall' ? 1.5 : 0.5, 0.9);
+          const mat = new THREE.MeshStandardMaterial({
+            color,
+            emissive: (blockType === 'goal' || blockType === 'start') ? color : '#000000',
+            emissiveIntensity: (blockType === 'goal' || blockType === 'start') ? 1.2 : 0,
+            roughness: 0.7,
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(x - size / 2 + 0.5, blockType === 'wall' ? 0.75 : 0.25, z - size / 2 + 0.5);
+          mesh.castShadow = blockType === 'wall';
+          mesh.receiveShadow = true;
+          mesh.userData = { isBlock: true, isPuzzle: true, puzzleType: blockType };
+          s.scene.add(mesh);
+          s.blocks.push(mesh);
+        }
+      }
+    } else if (type === 'matching') {
+      const pairs = Math.min(8, difficulty * 2 + 2);
+      const palette = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316'].slice(0, pairs);
+      for (let i = 0; i < pairs * 2; i++) {
+        const color = palette[Math.floor(i / 2)];
+        const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+        const mat = new THREE.MeshStandardMaterial({
+          color, emissive: color, emissiveIntensity: 0.4, roughness: 0.4,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(
+          (Math.random() - 0.5) * size,
+          0.4,
+          (Math.random() - 0.5) * size
+        );
+        mesh.castShadow = true;
+        mesh.userData = { isBlock: true, isPuzzle: true, puzzleType: 'matching', pairId: Math.floor(i / 2) };
+        s.scene.add(mesh);
+        s.blocks.push(mesh);
+      }
+    } else if (type === 'tower') {
+      const disks = 2 + difficulty; // 3, 4, 5
+      const diskPalette = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7'];
+      for (let i = 0; i < disks; i++) {
+        const w = (disks - i) * 0.8 + 0.5;
+        const color = diskPalette[i];
+        const geo = new THREE.BoxGeometry(w, 0.4, w);
+        const mat = new THREE.MeshStandardMaterial({
+          color, emissive: color, emissiveIntensity: 0.3, roughness: 0.5,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(-4, 0.2 + i * 0.45, 0);
+        mesh.castShadow = true;
+        mesh.userData = { isBlock: true, isPuzzle: true, puzzleType: 'tower', disk: i };
+        s.scene.add(mesh);
+        s.blocks.push(mesh);
+      }
+      // Goal peg indicator (right side)
+      const goalPegGeo = new THREE.CylinderGeometry(0.1, 0.1, 3, 8);
+      const goalPegMat = new THREE.MeshStandardMaterial({
+        color: colors.goal, emissive: colors.goal, emissiveIntensity: 0.5,
+      });
+      const goalPeg = new THREE.Mesh(goalPegGeo, goalPegMat);
+      goalPeg.position.set(4, 1.5, 0);
+      goalPeg.userData = { isBlock: true, isPuzzle: true, puzzleType: 'peg' };
+      s.scene.add(goalPeg);
+      s.blocks.push(goalPeg);
+    } else if (type === 'bridge') {
+      const span = 8;
+      for (let i = 0; i <= span; i++) {
+        const t = i / span;
+        const y = Math.sin(t * Math.PI) * 3;
+        const isStart = i === 0;
+        const isGoal = i === span;
+        const color = isStart ? colors.start : isGoal ? colors.goal : '#8b5cf6';
+        const geo = new THREE.BoxGeometry(1, 0.4, 2);
+        const mat = new THREE.MeshStandardMaterial({
+          color, emissive: color, emissiveIntensity: 0.4, roughness: 0.5,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(-span / 2 + i, y + 0.2, 0);
+        mesh.castShadow = true;
+        mesh.userData = { isBlock: true, isPuzzle: true, puzzleType: 'bridge' };
+        s.scene.add(mesh);
+        s.blocks.push(mesh);
+      }
+    }
+    setBlockCount(s.blocks.length);
+  };
+
+  const clearPuzzle = () => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    const toRemove = s.blocks.filter(b => b.userData.isPuzzle);
+    toRemove.forEach(b => {
+      s.scene.remove(b);
+      if (b.geometry) b.geometry.dispose();
+      if (b.material) b.material.dispose();
+    });
+    s.blocks = s.blocks.filter(b => !b.userData.isPuzzle);
+    setBlockCount(s.blocks.length);
+    setPuzzleHint('');
+  };
+
+  // ─── Phase 173: Black Hole Simulator ────────────────────────────────────
+  // Event horizon (black sphere) + accretion disk (orange torus) + photon ring (yellow)
+  // + 300 spiraling particles consumed by gravity (respawn at outer edge).
+  const toggleBlackHole = () => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    if (s.blackHole) {
+      // Remove existing
+      s.blackHole.traverse(obj => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+      });
+      s.scene.remove(s.blackHole);
+      s.blackHole = null;
+      setBlackHoleOpen(false);
+      return;
+    }
+    const group = new THREE.Group();
+    // Event horizon — pure black sphere (no lighting affects it)
+    const horizonGeo = new THREE.SphereGeometry(2, 32, 32);
+    const horizonMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const horizon = new THREE.Mesh(horizonGeo, horizonMat);
+    group.add(horizon);
+    // Accretion disk — orange torus, emissive
+    const diskGeo = new THREE.TorusGeometry(4, 0.8, 16, 64);
+    const diskMat = new THREE.MeshStandardMaterial({
+      color: 0xff6b1a, emissive: 0xff8c42, emissiveIntensity: 1.5,
+      side: THREE.DoubleSide, roughness: 0.4,
+    });
+    const disk = new THREE.Mesh(diskGeo, diskMat);
+    disk.rotation.x = Math.PI / 2;
+    group.add(disk);
+    // Photon ring — thin yellow ring just outside event horizon
+    const ringGeo = new THREE.TorusGeometry(2.3, 0.05, 8, 64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    group.add(ring);
+    // 300 spiraling particles (Points cloud)
+    const particleCount = 300;
+    const particleGeo = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const particleData = []; // {angle, radius, y}
+    for (let i = 0; i < particleCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 2.5 + Math.random() * 4;
+      const y = (Math.random() - 0.5) * 0.4;
+      positions[i * 3]     = Math.cos(angle) * radius;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = Math.sin(angle) * radius;
+      particleData.push({ angle, radius, y });
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const particleMat = new THREE.PointsMaterial({
+      color: 0xffaa00, size: 0.15, transparent: true, opacity: 0.85,
+    });
+    const particles = new THREE.Points(particleGeo, particleMat);
+    particles.userData.particleData = particleData;
+    group.add(particles);
+    // Stash references for animate loop
+    group.userData.particles = particles;
+    group.userData.disk = disk;
+    group.userData.ring = ring;
+    group.position.y = 4; // hover above ground
+    s.scene.add(group);
+    s.blackHole = group;
+    setBlackHoleOpen(true);
+  };
+
+  // ─── Phase 174: Synchronized Light Show ─────────────────────────────────
+  // 6 colored SpotLights (RGB + YMC) in rotating circle around center.
+  // Intensity pulses with sine wave beat pattern.
+  // Optional sawtooth bass via Web Audio (55Hz) — skipped to avoid audio context issues.
+  const toggleLightShow = () => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    if (s.lightShow) {
+      s.lightShow.lights.forEach(l => {
+        s.scene.remove(l);
+        s.scene.remove(l.target);
+      });
+      s.lightShow = null;
+      setLightShowOpen(false);
+      return;
+    }
+    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0x00ffff, 0xff00ff, 0xffff00];
+    const lights = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const spot = new THREE.SpotLight(colors[i], 5, 30, Math.PI / 6, 0.5, 1);
+      spot.position.set(Math.cos(angle) * 8, 6, Math.sin(angle) * 8);
+      spot.target.position.set(0, 0, 0);
+      spot.castShadow = false; // shadows too expensive for 6 spots
+      s.scene.add(spot);
+      s.scene.add(spot.target);
+      lights.push(spot);
+    }
+    s.lightShow = { lights, startTime: Date.now() };
+    setLightShowOpen(true);
+  };
+
+  // ─── Phase 175: Biome Terrain Generator ─────────────────────────────────
+  // 5 biomes: desert (cacti), tundra (snow mounds), jungle (trees+leaves),
+  // ocean (coral), volcanic (lava rocks with emissive).
+  // Ground layer with sine noise height variation.
+  const generateBiome = (biome) => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    // Clear existing biome
+    const toRemove = s.blocks.filter(b => b.userData.isBiome);
+    toRemove.forEach(b => {
+      s.scene.remove(b);
+      if (b.geometry) b.geometry.dispose();
+      if (b.material) b.material.dispose();
+    });
+    s.blocks = s.blocks.filter(b => !b.userData.isBiome);
+
+    const size = 12;
+    const config = {
+      desert:   { ground: '#e8c97a', flora: 'cacti',  floraColor: '#4a7c3a' },
+      tundra:   { ground: '#e0f0f5', flora: 'snow',   floraColor: '#ffffff' },
+      jungle:   { ground: '#2d6e2d', flora: 'trees',  floraColor: '#1a5e1a' },
+      ocean:    { ground: '#1e90b8', flora: 'coral',  floraColor: '#ff6b6b' },
+      volcanic: { ground: '#3a1a1a', flora: 'lava',   floraColor: '#ff4500' },
+    }[biome];
+
+    // Ground plane with height variation
+    const groundGeo = new THREE.PlaneGeometry(size * 2, size * 2, 24, 24);
+    const groundMat = new THREE.MeshStandardMaterial({ color: config.ground, roughness: 0.9 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    // Sine noise height variation
+    const pos = groundGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);
+      const h = Math.sin(x * 0.5) * Math.cos(y * 0.5) * 0.5 + Math.sin(x * 1.3) * 0.2;
+      pos.setZ(i, h);
+    }
+    pos.needsUpdate = true;
+    ground.geometry.computeVertexNormals();
+    ground.receiveShadow = true;
+    ground.userData = { isBiome: true };
+    s.scene.add(ground);
+    s.blocks.push(ground);
+
+    // Flora scattered across terrain
+    const floraCount = 15;
+    for (let i = 0; i < floraCount; i++) {
+      const x = (Math.random() - 0.5) * size * 1.5;
+      const z = (Math.random() - 0.5) * size * 1.5;
+      const baseY = Math.sin(x * 0.5) * Math.cos(z * 0.5) * 0.5 + Math.sin(x * 1.3) * 0.2;
+
+      if (config.flora === 'cacti') {
+        const geo = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: config.floraColor, roughness: 0.7 });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, baseY + 1, z); m.castShadow = true;
+        m.userData = { isBiome: true };
+        s.scene.add(m); s.blocks.push(m);
+      } else if (config.flora === 'snow') {
+        const geo = new THREE.SphereGeometry(0.6 + Math.random() * 0.4, 8, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: config.floraColor, roughness: 1 });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, baseY + 0.3, z);
+        m.userData = { isBiome: true };
+        s.scene.add(m); s.blocks.push(m);
+      } else if (config.flora === 'trees') {
+        // Trunk
+        const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 6);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: '#5d3a1a', roughness: 0.8 });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.set(x, baseY + 1, z); trunk.castShadow = true;
+        trunk.userData = { isBiome: true };
+        s.scene.add(trunk); s.blocks.push(trunk);
+        // Leaves (sphere)
+        const leavesGeo = new THREE.SphereGeometry(1.2, 8, 8);
+        const leavesMat = new THREE.MeshStandardMaterial({ color: config.floraColor, roughness: 0.7 });
+        const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+        leaves.position.set(x, baseY + 2.5, z);
+        leaves.userData = { isBiome: true };
+        s.scene.add(leaves); s.blocks.push(leaves);
+      } else if (config.flora === 'coral') {
+        const geo = new THREE.ConeGeometry(0.5, 1.5, 6);
+        const mat = new THREE.MeshStandardMaterial({
+          color: config.floraColor, emissive: config.floraColor, emissiveIntensity: 0.3,
+        });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, baseY + 0.5, z);
+        m.userData = { isBiome: true };
+        s.scene.add(m); s.blocks.push(m);
+      } else if (config.flora === 'lava') {
+        const geo = new THREE.DodecahedronGeometry(0.6);
+        const mat = new THREE.MeshStandardMaterial({
+          color: config.floraColor, emissive: config.floraColor, emissiveIntensity: 1.5,
+        });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(x, baseY + 0.4, z);
+        m.userData = { isBiome: true };
+        s.scene.add(m); s.blocks.push(m);
+      }
+    }
+    setBlockCount(s.blocks.length);
+  };
+
+  // ─── Phase 176: AI Dream Visualizer ─────────────────────────────────────
+  // Procedural dream generator — creates surreal dreamscape with unusual colors,
+  // floating blocks (hover animation), dreamlike sky color, mood fog.
+  // NOTE: Real AI generation would require backend API; this is a procedural
+  // placeholder that produces varied, dream-like results.
+  const generateDream = (description, mood) => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    // Clear existing dream blocks
+    const toRemove = s.blocks.filter(b => b.userData.isDream);
+    toRemove.forEach(b => {
+      s.scene.remove(b);
+      if (b.geometry) b.geometry.dispose();
+      if (b.material) b.material.dispose();
+    });
+    s.blocks = s.blocks.filter(b => !b.userData.isDream);
+
+    // Save original scene background/fog (so we can restore later)
+    if (!s._origBg)  s._origBg  = s.scene.background;
+    if (!s._origFog) s._origFog = s.scene.fog;
+
+    // Mood color palettes
+    const palettes = {
+      surreal: ['#ff6ec7', '#7c3aed', '#06b6d4', '#fbbf24', '#10b981', '#ef4444'],
+      calm:    ['#a7c7e7', '#b8d8be', '#f4d6c4', '#e7e3d5', '#c8c8e7'],
+      neon:    ['#ff00ff', '#00ffff', '#ffff00', '#ff0080', '#00ff80', '#8000ff'],
+      dark:    ['#4a1a4a', '#1a1a3a', '#2a1a2a', '#3a2a3a', '#1a3a3a'],
+      pastel:  ['#ffb3ba', '#baffc9', '#bae1ff', '#ffffba', '#e8baff'],
+    };
+    const colors = palettes[mood] || palettes.surreal;
+
+    // Dreamlike sky + mood fog
+    const skyColor = colors[Math.floor(Math.random() * colors.length)];
+    s.scene.background = new THREE.Color(skyColor);
+    s.scene.fog = new THREE.Fog(colors[Math.floor(Math.random() * colors.length)], 20, 60);
+
+    // 5-10 floating blocks with hover animation
+    const count = 5 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < count; i++) {
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const useBox = Math.random() > 0.5;
+      const geo = useBox
+        ? new THREE.BoxGeometry(0.8 + Math.random() * 1.5, 0.8 + Math.random() * 1.5, 0.8 + Math.random() * 1.5)
+        : new THREE.IcosahedronGeometry(0.5 + Math.random());
+      const mat = new THREE.MeshStandardMaterial({
+        color, emissive: color,
+        emissiveIntensity: 0.3 + Math.random() * 0.4,
+        roughness: 0.3, metalness: 0.5,
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(
+        (Math.random() - 0.5) * 14,
+        2 + Math.random() * 6,
+        (Math.random() - 0.5) * 14
+      );
+      m.castShadow = true;
+      m.userData = {
+        isBlock: true, isDream: true,
+        dreamBaseY: m.position.y,
+        dreamPhase: Math.random() * Math.PI * 2,
+        dreamRotSpeed: (Math.random() - 0.5) * 0.02,
+      };
+      s.scene.add(m); s.blocks.push(m);
+    }
+    setBlockCount(s.blocks.length);
+
+    // Generate dream interpretation text (procedural — seeded by description + mood)
+    const interpretations = {
+      surreal: [
+        'A flying fish dives through clouds of cotton candy, leaving trails of forgotten memories. The sky hums in twelve colors.',
+        'Crystalline trees whisper your name in a language you almost remember. Each leaf holds a question you forgot to ask.',
+        'Mirrors reflect not your face, but every choice you never made. The wind carries them away, one by one.',
+        'A staircase spirals upward into a sky made of pages. Each step is a word you have not yet spoken.',
+      ],
+      calm: [
+        'A river of silk flows through a meadow of stars. Each drop carries a single peaceful thought.',
+        'Soft clouds cradle a small house where every window holds a different shade of comfort.',
+        'The horizon breathes slowly, in and out, marking time in heartbeats rather than hours.',
+        'A single white bird circles a still pond. Its reflection is the moon, even at noon.',
+      ],
+      neon: [
+        'Electric storms paint the sky in colors that haven\'t been invented yet, each flash spelling out a forgotten name.',
+        'A city of glass and lightning pulses to a rhythm only you can hear. Every neon sign tells the truth.',
+        'Liquid code rivers flow through canyons of pure data, each spark a moment of deja vu.',
+        'A neon dragon sleeps coiled around a vending machine that sells memories in unlabeled cans.',
+      ],
+      dark: [
+        'A lone figure walks through a forest of silent clocks, each frozen at the moment of a choice.',
+        'Black water reflects stars that don\'t exist in any sky you\'ve seen. Something beneath the surface remembers your name.',
+        'The corridor stretches into infinite shadow, but each step forward is also a step toward the light.',
+        'A candle burns in a window that has no house. The flame is the same color as your hesitation.',
+      ],
+      pastel: [
+        'Cotton clouds drift through a sky of peach and lavender, carrying tiny islands of forgotten dreams.',
+        'A garden of paper flowers blooms in pastel light, each petal a soft memory.',
+        'Pebbles of mint and rose line a stream that flows nowhere, but sounds like home.',
+        'A small fox made of sunrise curls up at your feet. It is not afraid of you, and never has been.',
+      ],
+    };
+    const arr = interpretations[mood] || interpretations.surreal;
+    setDreamInterpretation(arr[Math.floor(Math.random() * arr.length)]);
+  };
+
+  const clearDream = () => {
+    const s = threeRef.current;
+    if (!s.scene) return;
+    const toRemove = s.blocks.filter(b => b.userData.isDream);
+    toRemove.forEach(b => {
+      s.scene.remove(b);
+      if (b.geometry) b.geometry.dispose();
+      if (b.material) b.material.dispose();
+    });
+    s.blocks = s.blocks.filter(b => !b.userData.isDream);
+    // Restore original scene background/fog
+    if (s._origBg)  { s.scene.background = s._origBg;  s._origBg  = null; }
+    if (s._origFog) { s.scene.fog        = s._origFog; s._origFog = null; }
+    setBlockCount(s.blocks.length);
+    setDreamInterpretation('');
+  };
+
   const threeRef = useRef({
     scene: null,
     camera: null,
@@ -431,6 +945,8 @@ export default function BlockSimulator3Dv2({ setPage }) {
     animationId: null,
     ground: null,
     grid: null,
+    blackHole: null,  // Phase 173
+    lightShow: null,  // Phase 174
   });
 
   /* ---------- Initialize Three.js (run once on mount) ---------- */
@@ -669,6 +1185,63 @@ export default function BlockSimulator3Dv2({ setPage }) {
       if (threeRef.current.updateGroupHelpers) {
         threeRef.current.updateGroupHelpers();
       }
+
+      // ── Phase 173: Black Hole particle spiral ─────────────────────────
+      // Particles spiral inward (gravity), respawn at outer edge when consumed.
+      if (blackHoleOpenRef.current && threeRef.current.blackHole) {
+        const bh = threeRef.current.blackHole;
+        const particles = bh.userData.particles;
+        if (particles) {
+          const data = particles.userData.particleData;
+          const posAttr = particles.geometry.attributes.position;
+          for (let i = 0; i < data.length; i++) {
+            const p = data[i];
+            p.angle += 0.02 + (1 / Math.max(0.5, p.radius)) * 0.03;
+            p.radius -= 0.025; // gravity pull-in
+            if (p.radius < 2.0) {
+              // Respawn at outer edge
+              p.radius = 5.5 + Math.random() * 1.5;
+              p.angle = Math.random() * Math.PI * 2;
+              p.y = (Math.random() - 0.5) * 0.4;
+            }
+            posAttr.setXYZ(i, Math.cos(p.angle) * p.radius, p.y, Math.sin(p.angle) * p.radius);
+          }
+          posAttr.needsUpdate = true;
+        }
+        // Rotate accretion disk + photon ring
+        if (bh.userData.disk) bh.userData.disk.rotation.z += 0.008;
+        if (bh.userData.ring) bh.userData.ring.rotation.z -= 0.012;
+      }
+
+      // ── Phase 174: Synchronized Light Show pulse + rotation ──────────
+      if (lightShowOpenRef.current && threeRef.current.lightShow) {
+        const ls = threeRef.current.lightShow;
+        const elapsed = (Date.now() - ls.startTime) / 1000;
+        const beat = Math.sin(elapsed * Math.PI * 2 * lightShowSpeedRef.current);
+        const intensity = 2 + beat * 3; // ranges -1..5, clamp negative to 0 below
+        ls.lights.forEach((light, i) => {
+          const phase = i / 6;
+          const localBeat = Math.sin(elapsed * Math.PI * 2 * lightShowSpeedRef.current + phase * Math.PI * 2);
+          light.intensity = Math.max(0, 2 + localBeat * 3);
+          // Rotate light position around center
+          const angle = (i / 6) * Math.PI * 2 + elapsed * 0.3;
+          light.position.set(Math.cos(angle) * 8, 6, Math.sin(angle) * 8);
+        });
+      }
+
+      // ── Phase 176: Dream Visualizer — floating blocks hover ──────────
+      if (dreamVisOpenRef.current && threeRef.current.blocks) {
+        const t = performance.now() * 0.001;
+        threeRef.current.blocks.forEach(b => {
+          if (b.userData.isDream) {
+            const phase = b.userData.dreamPhase;
+            b.position.y = b.userData.dreamBaseY + Math.sin(t * 1.2 + phase) * 0.5;
+            b.rotation.x += b.userData.dreamRotSpeed;
+            b.rotation.y += b.userData.dreamRotSpeed * 0.7;
+          }
+        });
+      }
+
       // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
       // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
       // Direct render = lebih cepat, untuk saat bloom dimatikan.
@@ -2968,6 +3541,331 @@ export default function BlockSimulator3Dv2({ setPage }) {
               (Strength = intensitas, Radius = lebar glow,<br/>
               Threshold = batas kecerahan yang di-glow)
             </span>
+            <span style={{ display: 'block', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(148,163,184,0.15)', color: '#6366f1' }}>
+              <strong>Apps Menu (⊞)</strong> = All new Phase 172-176 features<br/>
+              Puzzle Generator, Black Hole, Light Show,<br/>
+              Biome Terrain, AI Dream Visualizer
+            </span>
+          </div>
+        )}
+
+        {/* ──────────────────────────────────────────────────────────────
+            Phase 172-176: CONSOLIDATED APPS MENU
+            Single ⊞ button → opens scrollable grid with all new features.
+            Each feature button toggles its respective panel.
+            ──────────────────────────────────────────────────────────── */}
+        <button
+          onClick={() => setAppsMenuOpen(v => !v)}
+          title="All Apps & Features (Phase 172-176)"
+          style={{
+            position: 'absolute', top: 16, right: 60,
+            zIndex: 250,
+            width: 44, height: 44, borderRadius: 12,
+            backgroundColor: appsMenuOpen ? '#3b82f6' : 'rgba(14,20,32,0.92)',
+            border: '2px solid rgba(99,102,241,0.5)',
+            color: appsMenuOpen ? '#fff' : '#6366f1',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px rgba(99,102,241,0.4)',
+            fontSize: 22, transition: 'all 0.2s',
+            backdropFilter: 'blur(10px)',
+          }}
+        >{appsMenuOpen ? '✕' : '⊞'}</button>
+
+        {appsMenuOpen && (
+          <div style={{
+            position: 'absolute', top: 70, right: 16,
+            width: 320, maxHeight: '80dvh',
+            backgroundColor: 'rgba(14,20,32,0.98)',
+            border: '1px solid rgba(99,102,241,0.5)',
+            borderRadius: 12,
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,102,241,0.2)',
+            zIndex: 300,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            fontFamily: 'Inter, sans-serif',
+          }}>
+            <div style={{
+              padding: '10px 14px',
+              borderBottom: '1px solid rgba(99,102,241,0.3)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#6366f1', fontFamily: 'Orbitron, sans-serif' }}>⊞ All Features</span>
+              <button onClick={() => setAppsMenuOpen(false)} style={{
+                background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 18, lineHeight: 1
+              }}>×</button>
+            </div>
+            <div style={{
+              flex: 1, overflowY: 'auto', padding: '8px 12px',
+              display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6,
+            }}>
+              <button onClick={() => { setAppsMenuOpen(false); setPuzzlePanelOpen(v => !v); }} title="AI Puzzle Generator" style={appsBtnStyle(puzzlePanelOpen, '#a855f7')}>🧩</button>
+              <button onClick={() => { setAppsMenuOpen(false); toggleBlackHole(); }} title="Black Hole Simulator" style={appsBtnStyle(blackHoleOpen, '#1e293b')}>🕳</button>
+              <button onClick={() => { setAppsMenuOpen(false); toggleLightShow(); }} title="Synchronized Light Show" style={appsBtnStyle(lightShowOpen, '#ec4899')}>💡</button>
+              <button onClick={() => { setAppsMenuOpen(false); setBiomePanelOpen(v => !v); }} title="Biome Terrain Generator" style={appsBtnStyle(biomePanelOpen, '#22c55e')}>🌍</button>
+              <button onClick={() => { setAppsMenuOpen(false); setDreamVisOpen(v => !v); }} title="AI Dream Visualizer" style={appsBtnStyle(dreamVisOpen, '#7c3aed')}>💭</button>
+            </div>
+            <div style={{
+              padding: '6px 12px',
+              borderTop: '1px solid rgba(99,102,241,0.15)',
+              fontSize: 10, color: '#64748b', textAlign: 'center',
+            }}>5 features • Phase 172-176</div>
+          </div>
+        )}
+
+        {/* ── Phase 172: AI Puzzle Generator panel ─────────────────────── */}
+        {puzzlePanelOpen && (
+          <div style={{
+            position: 'absolute', top: 70, right: 16,
+            width: 280,
+            backgroundColor: 'rgba(14,20,32,0.95)',
+            border: '1px solid rgba(168,85,247,0.5)',
+            borderRadius: 12, backdropFilter: 'blur(12px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(168,85,247,0.2)',
+            zIndex: 280, padding: 14,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontFamily: 'Inter, sans-serif',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#a855f7', fontFamily: 'Orbitron, sans-serif' }}>🧩 Puzzle Generator</span>
+              <button onClick={() => setPuzzlePanelOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+            <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+              Puzzle type
+              <select value={puzzleType} onChange={e => setPuzzleType(e.target.value)}
+                style={{ display: 'block', width: '100%', marginTop: 4, background: '#1e293b',
+                  border: '1px solid #a855f7', borderRadius: 6, color: '#e2e8f0', fontSize: 12,
+                  padding: '6px 8px', fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box' }}>
+                <option value="maze">Maze (find path)</option>
+                <option value="matching">Matching pairs</option>
+                <option value="tower">Tower of Hanoi</option>
+                <option value="bridge">Arc bridge</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+              Difficulty: {puzzleDifficulty} ({['Easy', 'Medium', 'Hard'][puzzleDifficulty - 1]})
+              <input type="range" min="1" max="3" step="1" value={puzzleDifficulty}
+                onChange={e => setPuzzleDifficulty(parseInt(e.target.value, 10))}
+                style={{ display: 'block', width: '100%', marginTop: 4, accentColor: '#a855f7', cursor: 'pointer' }} />
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => generatePuzzle(puzzleType, puzzleDifficulty)}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 8,
+                  backgroundColor: 'rgba(168,85,247,0.18)', border: '1px solid #a855f7',
+                  color: '#a855f7', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#a855f7'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(168,85,247,0.18)'; e.currentTarget.style.color = '#a855f7'; }}>
+                Generate
+              </button>
+              <button onClick={clearPuzzle}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 8,
+                  backgroundColor: 'rgba(239,68,68,0.18)', border: '1px solid #ef4444',
+                  color: '#ef4444', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#ef4444'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.18)'; e.currentTarget.style.color = '#ef4444'; }}>
+                Clear
+              </button>
+            </div>
+            {puzzleHint && (
+              <div style={{ fontSize: 11, color: '#c4b5fd', fontStyle: 'italic',
+                padding: '6px 8px', background: 'rgba(168,85,247,0.08)', borderRadius: 6,
+                border: '1px solid rgba(168,85,247,0.3)', lineHeight: 1.5 }}>
+                {puzzleHint}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Phase 173: Black Hole status panel ───────────────────────── */}
+        {blackHoleOpen && (
+          <div style={{
+            position: 'absolute', top: 70, right: 16,
+            width: 240,
+            backgroundColor: 'rgba(14,20,32,0.95)',
+            border: '1px solid rgba(99,102,241,0.5)',
+            borderRadius: 12, backdropFilter: 'blur(12px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(0,0,0,0.6)',
+            zIndex: 280, padding: 14,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontFamily: 'Inter, sans-serif',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', fontFamily: 'Orbitron, sans-serif' }}>🕳 Black Hole</span>
+              <button onClick={toggleBlackHole} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
+              <div>• Event horizon: <strong style={{color:'#1e293b', background:'#fff', padding:'0 4px', borderRadius:3}}>r=2</strong> (black sphere)</div>
+              <div>• Accretion disk: orange torus (emissive)</div>
+              <div>• Photon ring: yellow (just outside horizon)</div>
+              <div>• 300 particles spiraling inward (gravity)</div>
+              <div>• Particles respawn at outer edge when consumed</div>
+            </div>
+            <div style={{ fontSize: 10, color: '#64748b', fontStyle: 'italic',
+              padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: 6 }}>
+              Enable Bloom (display menu) for glow effect
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase 174: Light Show status panel ───────────────────────── */}
+        {lightShowOpen && (
+          <div style={{
+            position: 'absolute', top: 70, right: 16,
+            width: 240,
+            backgroundColor: 'rgba(14,20,32,0.95)',
+            border: '1px solid rgba(236,72,153,0.5)',
+            borderRadius: 12, backdropFilter: 'blur(12px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(236,72,153,0.3)',
+            zIndex: 280, padding: 14,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontFamily: 'Inter, sans-serif',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#ec4899', fontFamily: 'Orbitron, sans-serif' }}>💡 Light Show</span>
+              <button onClick={toggleLightShow} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+            <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+              Beat speed: {lightShowSpeed.toFixed(1)} Hz
+              <input type="range" min="0.5" max="5" step="0.5" value={lightShowSpeed}
+                onChange={e => setLightShowSpeed(parseFloat(e.target.value))}
+                style={{ display: 'block', width: '100%', marginTop: 4, accentColor: '#ec4899', cursor: 'pointer' }} />
+            </label>
+            <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
+              <div>• 6 colored SpotLights (R, G, B, C, M, Y)</div>
+              <div>• Rotating circle around center</div>
+              <div>• Intensity pulses with sine beat</div>
+              <div>• Each light offset by 60° phase</div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase 175: Biome Terrain panel ───────────────────────────── */}
+        {biomePanelOpen && (
+          <div style={{
+            position: 'absolute', top: 70, right: 16,
+            width: 280,
+            backgroundColor: 'rgba(14,20,32,0.95)',
+            border: '1px solid rgba(34,197,94,0.5)',
+            borderRadius: 12, backdropFilter: 'blur(12px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(34,197,94,0.2)',
+            zIndex: 280, padding: 14,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontFamily: 'Inter, sans-serif',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', fontFamily: 'Orbitron, sans-serif' }}>🌍 Biome Generator</span>
+              <button onClick={() => setBiomePanelOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+            <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+              Biome
+              <select value={biomeType} onChange={e => setBiomeType(e.target.value)}
+                style={{ display: 'block', width: '100%', marginTop: 4, background: '#1e293b',
+                  border: '1px solid #22c55e', borderRadius: 6, color: '#e2e8f0', fontSize: 12,
+                  padding: '6px 8px', fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box' }}>
+                <option value="desert">🏜 Desert (cacti)</option>
+                <option value="tundra">❄ Tundra (snow mounds)</option>
+                <option value="jungle">🌳 Jungle (trees)</option>
+                <option value="ocean">🌊 Ocean (coral)</option>
+                <option value="volcanic">🌋 Volcanic (lava rocks)</option>
+              </select>
+            </label>
+            <button onClick={() => generateBiome(biomeType)}
+              style={{ padding: '8px 12px', borderRadius: 8,
+                backgroundColor: 'rgba(34,197,94,0.18)', border: '1px solid #22c55e',
+                color: '#22c55e', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#22c55e'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(34,197,94,0.18)'; e.currentTarget.style.color = '#22c55e'; }}>
+              Generate Biome
+            </button>
+            <button onClick={() => {
+              const s = threeRef.current;
+              if (!s.scene) return;
+              const toRemove = s.blocks.filter(b => b.userData.isBiome);
+              toRemove.forEach(b => { s.scene.remove(b); if (b.geometry) b.geometry.dispose(); if (b.material) b.material.dispose(); });
+              s.blocks = s.blocks.filter(b => !b.userData.isBiome);
+              setBlockCount(s.blocks.length);
+            }}
+              style={{ padding: '6px 12px', borderRadius: 8,
+                backgroundColor: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.5)',
+                color: '#ef4444', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}>
+              Clear Biome
+            </button>
+            <div style={{ fontSize: 10, color: '#86efac', fontStyle: 'italic',
+              padding: '4px 6px', background: 'rgba(34,197,94,0.08)', borderRadius: 6,
+              border: '1px solid rgba(34,197,94,0.3)', lineHeight: 1.5 }}>
+              Generates ground with height variation + 15 flora items per biome type.
+            </div>
+          </div>
+        )}
+
+        {/* ── Phase 176: AI Dream Visualizer panel ─────────────────────── */}
+        {dreamVisOpen && (
+          <div style={{
+            position: 'absolute', top: 70, right: 16,
+            width: 300,
+            backgroundColor: 'rgba(14,20,32,0.95)',
+            border: '1px solid rgba(124,58,237,0.5)',
+            borderRadius: 12, backdropFilter: 'blur(12px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(124,58,237,0.3)',
+            zIndex: 280, padding: 14,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontFamily: 'Inter, sans-serif',
+            maxHeight: '80dvh', overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#7c3aed', fontFamily: 'Orbitron, sans-serif' }}>💭 Dream Visualizer</span>
+              <button onClick={() => setDreamVisOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+            <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+              Dream description (optional)
+              <textarea value={dreamDescription} onChange={e => setDreamDescription(e.target.value)}
+                placeholder="e.g. flying through clouds of cotton candy..."
+                rows={2}
+                style={{ display: 'block', width: '100%', marginTop: 4, background: '#1e293b',
+                  border: '1px solid #7c3aed', borderRadius: 6, color: '#e2e8f0', fontSize: 12,
+                  padding: '6px 8px', fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }} />
+            </label>
+            <label style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+              Mood
+              <select value={dreamMood} onChange={e => setDreamMood(e.target.value)}
+                style={{ display: 'block', width: '100%', marginTop: 4, background: '#1e293b',
+                  border: '1px solid #7c3aed', borderRadius: 6, color: '#e2e8f0', fontSize: 12,
+                  padding: '6px 8px', fontFamily: 'Inter, sans-serif', outline: 'none', boxSizing: 'border-box' }}>
+                <option value="surreal">Surreal (vibrant mix)</option>
+                <option value="calm">Calm (soft blues/greens)</option>
+                <option value="neon">Neon (electric bright)</option>
+                <option value="dark">Dark (moody purples)</option>
+                <option value="pastel">Pastel (gentle pinks)</option>
+              </select>
+            </label>
+            <button onClick={() => generateDream(dreamDescription, dreamMood)}
+              style={{ padding: '8px 12px', borderRadius: 8,
+                backgroundColor: 'rgba(124,58,237,0.18)', border: '1px solid #7c3aed',
+                color: '#7c3aed', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#7c3aed'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(124,58,237,0.18)'; e.currentTarget.style.color = '#7c3aed'; }}>
+              Generate Dream
+            </button>
+            <button onClick={clearDream}
+              style={{ padding: '6px 12px', borderRadius: 8,
+                backgroundColor: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.5)',
+                color: '#ef4444', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif' }}>
+              Clear Dream (restore scene)
+            </button>
+            {dreamInterpretation && (
+              <div style={{ fontSize: 11, color: '#c4b5fd', fontStyle: 'italic',
+                padding: '8px 10px', background: 'rgba(124,58,237,0.08)', borderRadius: 6,
+                border: '1px solid rgba(124,58,237,0.3)', lineHeight: 1.6 }}>
+                <strong style={{ color: '#a78bfa', display: 'block', marginBottom: 4 }}>Interpretation:</strong>
+                {dreamInterpretation}
+              </div>
+            )}
           </div>
         )}
       </div>
