@@ -1839,3 +1839,56 @@ dengan toneMapped:false → konversi linear→sRGB output → clamp 255.
   tetap kena). Selalu klik area grid terlihat (x>250) saat test mobile.
 - Probe raycast satu-per-satu dengan sleep (loop sinkron tidak memberi
   React waktu render → hasil palsu semua-miss).
+
+## Bagian 53 — Header: Button Hijau "Build Area" (Coming Soon) + Geser Reset Camera & Clear All
+
+### 53.1 Ringkasan
+
+User minta button baru **"Build Area"** warna **hijau** tepat disamping
+badge "Three.js" di header 3D Block Simulator v2. Saat dipencet → modal
+peringatan **"COMING SOON — MASIH DALAM PENGERJAAN"** (bukan browser
+alert). Button "Reset Camera" & "Clear All" otomatis bergeser ke kanan
+memberi ruang.
+
+### 53.2 Spesifikasi Implementasi (murni aditif, 125 baris, 0 deletions)
+
+- **State**: `showBuildAreaSoon` + setter, dideklarasikan tepat setelah
+  `showResetCameraConfirm` (baris ~148), komentar `// Build Area "Coming Soon" modal state`.
+- **Button** (`<button>` setelah `</span>` badge Three.js, sebelum Reset
+  Camera): ikon `Hammer size={14}` (sudah diimpor lucide-react, TIDAK
+  menambah import), label "Build Area", `title="Build Area — Coming Soon"`,
+  `marginLeft: 8` (transisi badge→button konsisten dengan Reset Camera).
+- **Palet hijau emerald** (selaras pola Reset Camera cyan / Clear All merah):
+  - Border: `1px solid #10b981` · BG: `rgba(16,185,129,0.12)` · Teks: `#34d399`
+  - Hover: BG `rgba(16,185,129,0.25)` + `scale(1.05)` + glow
+    `boxShadow 0 0 12px rgba(16,185,129,0.4)`; leave = kembali semula.
+- **Modal** (setelah modal Reset Camera, sebelum penutup root): pola IDENTIK
+  modal Clear All/Reset Camera — overlay fixed `rgba(0,0,0,0.75)` blur 8px
+  zIndex 1000, kartu `rgba(14,20,32,0.98)` border `2px solid #10b981`
+  radius 16 glow ganda, ikon Hammer 24 dalam kotak 48×48 hijau, judul
+  Orbitron "Build Area", subtitle hijau bold "COMING SOON — MASIH DALAM
+  PENGERJAAN", body Inter 14px #cbd5e1 (bahasa Indonesia, sapaan "kamu"),
+  satu tombol solid `#10b981` "Oke, Mengerti" (hover `#059669` translateY
+  -2px). Referensi `animation: fadeIn/slideUp` SENGAJA sama dengan modal
+  existing (keyframe memang tak terdefinisi di file — perilaku no-op,
+  konsisten, dilarang menambah keyframe karena akan mengubah perilaku
+  modal lain yang sudah stabil).
+
+### 53.3 Verifikasi (browser 1600×900, dev server 5173)
+
+- Geometri via getBoundingClientRect: badge Three.js right=600 → Build
+  Area left=618 (gap 18px) → Reset Camera left=741 → Clear All left=878.
+  computed style Build Area: color `rgb(52,211,153)`, border
+  `rgb(16,185,129)`, bg `rgba(16,185,129,0.12)` — hijau emerald sesuai permintaan.
+- Klik Build Area → modal muncul (visible, title "Build Area", subtitle
+  "COMING SOON — MASIH DALAM PENGERJAAN", tombol "Oke, Mengerti"); klik
+  tombol → modal tertutup bersih.
+- VLM header: Build Area hijau ✓ tepat kanan badge Three.js ✓ Reset
+  Camera & Clear All di kanannya ✓ layout bersih tanpa overlap ✓.
+- VLM modal: judul/subtitle benar ✓ aksen hijau emerald ✓ tombol hijau
+  "Oke, Mengerti" kanan-bawah ✓ polished & center dengan overlay gelap ✓.
+- Regresi tetangga: modal Reset Camera buka+tutup (Batal) OK; modal Clear
+  All buka+tutup (Batal) OK; `agent-browser errors` = 0 error.
+- Catatan: `find text "Reset Camera"` gagal setelah modal ditutup (refs
+  kadaluarsa) — gunakan snapshot ulang + `click @ref` atau `find role
+  button click --name "Batal"`.

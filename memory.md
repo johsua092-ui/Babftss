@@ -6543,3 +6543,43 @@ MERAH DARAH terang. Fix = 1 nilai hex: 0xff0a3c → 0xff0a0a (channel biru
 Stage Summary:
 - Delete hover outline kini MERAH DARAH terang (255,29,29) — bukan pink.
   Perubahan minimal 1 hex + komentar; arsitektur Task 14 utuh; push NORMAL.
+
+## Bagian 78 — Header Block Sim v2: Button Hijau "Build Area" (Coming Soon Modal)
+
+### Apa yang Ditambahkan (Task ID 16, murni aditif 125 baris)
+
+- Button **"Build Area"** hijau emerald (border #10b981, teks #34d399, bg
+  rgba(16,185,129,0.12), ikon Hammer 14, hover scale 1.05 + glow) tepat
+  setelah badge "Three.js" di header; `marginLeft: 8`. Reset Camera & Clear
+  All otomatis bergeser kanan (flex layout gap 10 + marginLeft 8).
+- Modal custom "COMING SOON — MASIH DALAM PENGERJAAN" (pola = modal Clear
+  All/Reset Camera: overlay blur zIndex 1000, kartu border 2px #10b981,
+  judul Orbitron "Build Area", tombol hijau "Oke, Mengerti") — BUKAN
+  browser alert (aturan proyek).
+- State baru `showBuildAreaSoon` setelah `showResetCameraConfirm` (baris ~148).
+- Ikon `Hammer` dipakai ulang dari import lucide-react yang sudah ada —
+  import line TIDAK disentuh.
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Geometri: badge right=600 → BuildArea 618-723 → ResetCam 741 → ClearAll
+  878. Warna computed: rgb(52,211,153)/rgb(16,185,129) = emerald.
+- Alur klik: Build Area → modal muncul → "Oke, Mengerti" → modal tertutup.
+- VLM 2 screenshot (header + modal): posisi, warna hijau, teks, layout
+  semua benar.
+- Regresi: modal Reset Camera & Clear All masih buka/tutup normal; 0 console
+  error. Diff = +125/-0 baris (tidak menyenggol kode lain).
+
+### Pelajaran
+
+- Setelah menutup modal (state re-render), refs agent-browser kadaluarsa →
+  `find text` bisa gagal; solusi: snapshot ulang lalu `click @ref`, atau
+  `find role button click --name "..."`.
+- Keyframe `fadeIn`/`slideUp` di modal-modal existing memang tidak
+  didefinisikan (no-op). JANGAN menambah definisi keyframe — akan mengubah
+  perilaku visual modal lama yang sudah stabil.
+
+Stage Summary:
+- Header Block Sim v2 kini punya button hijau "Build Area" (Coming Soon)
+  disamping badge Three.js; Reset Camera & Clear All bergeser kanan; modal
+  peringatan custom dark-theme hijau; zero regression; push NORMAL.

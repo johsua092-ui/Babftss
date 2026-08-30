@@ -144,6 +144,8 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
+  // Build Area "Coming Soon" modal state
+  const [showBuildAreaSoon, setShowBuildAreaSoon] = useState(false);
 
   // Phase 9: Primitives
   const [shapeType, setShapeType] = useState('sphere');
@@ -13740,6 +13742,35 @@ Now you can apply Displacement for detailed effect.`);
               padding: '2px 8px', borderRadius: 4, letterSpacing: 1,
               fontFamily: 'Orbitron, sans-serif',
             }}>Three.js</span>
+            {/* Build Area Button — Coming Soon */}
+            <button
+              onClick={() => setShowBuildAreaSoon(true)}
+              title="Build Area — Coming Soon"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 8,
+                border: '1px solid #10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                color: '#34d399',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+                marginLeft: 8,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.25)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(16, 185, 129, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.12)';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              <Hammer size={14} />
+              Build Area
+            </button>
             {/* Reset Camera Button — permanent, always visible */}
             <button
               onClick={() => setShowResetCameraConfirm(true)}
@@ -21499,6 +21530,100 @@ Now you can apply Displacement for detailed effect.`);
                 }}
               >
                 Ya, Reset Kamera
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Build Area — Coming Soon Modal */}
+      {showBuildAreaSoon && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000,
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <div style={{
+            backgroundColor: 'rgba(14, 20, 32, 0.98)',
+            border: '2px solid #10b981',
+            borderRadius: 16,
+            padding: '24px 32px',
+            maxWidth: 480,
+            boxShadow: '0 20px 60px rgba(16, 185, 129, 0.3), 0 0 100px rgba(16, 185, 129, 0.15)',
+            fontFamily: 'Inter, sans-serif',
+            animation: 'slideUp 0.3s ease-out',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              marginBottom: 20,
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#34d399',
+                boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)',
+              }}>
+                <Hammer size={24} />
+              </div>
+              <div>
+                <h3 style={{
+                  margin: 0, fontSize: 18, fontWeight: 700,
+                  color: '#e2e8f0',
+                  fontFamily: 'Orbitron, sans-serif',
+                }}>
+                  Build Area
+                </h3>
+                <p style={{
+                  margin: '4px 0 0 0', fontSize: 12,
+                  color: '#34d399', fontWeight: 700, letterSpacing: 0.5,
+                }}>
+                  COMING SOON — MASIH DALAM PENGERJAAN
+                </p>
+              </div>
+            </div>
+
+            <p style={{
+              margin: '0 0 24px 0', fontSize: 14,
+              color: '#cbd5e1', lineHeight: 1.6,
+            }}>
+              Fitur <strong style={{ color: '#34d399' }}>Build Area</strong> masih dalam
+              proses pengerjaan dan akan segera hadir. Bersiap untuk pengalaman membangun
+              yang lebih seru — nantikan update selanjutnya ya!
+            </p>
+
+            <div style={{
+              display: 'flex', justifyContent: 'flex-end', gap: 12,
+            }}>
+              <button
+                onClick={() => setShowBuildAreaSoon(false)}
+                style={{
+                  padding: '10px 24px', borderRadius: 8,
+                  backgroundColor: '#10b981',
+                  border: '1px solid #10b981',
+                  color: '#fff',
+                  fontSize: 13, fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  fontFamily: 'Inter, sans-serif',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#059669';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#10b981';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+                }}
+              >
+                Oke, Mengerti
               </button>
             </div>
           </div>
