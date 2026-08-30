@@ -1770,3 +1770,72 @@ Sebagai child, outline otomatis mengikuti position/rotation/scale target.
   highlight biru utuh; ganti tool → outline hilang; 0 error console.
 - Mobile 390x780: tidak crash; place via canvas jalan; UI click guard tetap
   memblokir klik toolbar (tidak nembus).
+
+## Bagian 52 — Fix Warna Delete Hover Outline: Pink → Merah Darah Terang
+
+> Task ID 15. Feedback user: warna outline Task 14 masih PINK terang
+> (terukur (255,29,118)), padahal request = MERAH DARAH terang. Akar masalah:
+> hex `0xff0a3c` memiliki channel biru 60 — setelah HDR ×4 + konversi
+> linear→sRGB di output, biru ter-amplifikasi menjadi 118 di layar = tampak
+> pink/magenta. Fix: channel biru diturunkan ke 10 (`0xff0a0a`) → render
+> final (255,29,29) = merah darah murni tanpa bias biru.
+
+### 52.1 Perubahan (1 file: BlockSimulator3Dv2.jsx, +4/-2)
+
+SATU-SATUNYA perubahan kode: baris warna material outline.
+
+```js
+// SEBELUM:
+color: new THREE.Color(0xff0a3c).multiplyScalar(4),  // → (255,29,118) PINK
+// SESUDAH:
+color: new THREE.Color(0xff0a0a).multiplyScalar(4),  // → (255,29,29) MERAH DARAH
+```
+
+Ditambah komentar dokumentasi di atas baris tersebut (penjelasan mengapa
+channel biru tidak boleh dinaikkan: blue 60 di versi lama ter-HDR×4 jadi
+(255,29,118) = PINK). SEMUA properti lain TIDAK disentuh: BackSide,
+depthWrite:true, toneMapped:false, fog:false, scale 1.3, HDR ×4, lifecycle,
+raycast disabled — arsitektur Task 14 utuh 100%.
+
+### 52.2 Matematika Warna (kenapa 0xff0a0a = merah darah)
+
+Pipeline: hex sRGB → THREE.Color (konversi ke linear) → ×4 (HDR) → render
+dengan toneMapped:false → konversi linear→sRGB output → clamp 255.
+
+- R: 255 → linear 1.0 → ×4 = 4.0 → clamp = 255 (saturasi penuh).
+- G=B: 10/255 → linear 0.0030 → ×4 = 0.0121 → sRGB ≈ 29.
+- Final: **(255,29,29)** — verah darah terang menyala, G=B (netral hangat),
+  TANPA bias biru. Bandingkan lama: (255,29,118) — B=118 >> G=29 = pink.
+- Aturan praktis ke depan: untuk warna "merah" apapun di material HDR ini,
+  jaga channel biru ≤ ~10; biru di-linearisasi lalu di-×4 lalu di-gamma
+  naik ~12× di layar.
+
+### 52.3 Verifikasi (semua PASS — 3 viewport)
+
+- Desktop 1440x900 (viewport kanonik sesi sebelumnya): outline ON saat
+  hover = 415 px dominan **(255,29,29)**; VLM 3/3: "pure/blood red (not
+  pink/magenta)" + "thick and clearly visible" + "cube face inside is
+  blue". Hover away = 0 px merah; delete klik = block terhapus; re-place
+  jalan; Move select "1 Blocks • 1 Selected" + highlight biru utuh; unequip
+  = badge hilang; 0 error console.
+- Desktop 1280x577 (viewport default headless): 189 px dominan (255,29,29)
+  + VLM "pure red / blood red, thick, blue face".
+- Mobile 390x780: ghost mengikuti mouse; place = block terlihat; hover =
+  outline **(255,29,29)** 362 px; hover away = 0 px; delete klik = 0
+  Blocks; 0 error console.
+- Ekuivalensi old-vs-new: flow identik dijalankan dengan kode lama
+  (git stash) — perilaku fungsional 100% sama, satu-satunya beda = warna
+  (pink lama vs merah darah baru). Perubahan terbukti zero-side-effect.
+
+### 52.4 Pelajaran Testing (penting untuk sesi berikutnya)
+
+- **Popup Material Inspector mengecoh scan pixel**: popup muncul mengikuti
+  mouse saat hover block dan berisi swatch biru #3b82f6 + elemen biru lain
+  → blob biru di screenshot = block + popup menyatu. Jangan ukur posisi/
+  ukuran block dari scan warna biru saja; pakai popup DOM sebagai detektor
+  hit (raycast) dan diff-screenshot untuk gerakan.
+- **Mobile: toolbar menutupi ~60% kiri canvas** (390px lebar). Klik test di
+  x<230 = menempatkan block DI BELAKANG toolbar (tidak terlihat, raycast
+  tetap kena). Selalu klik area grid terlihat (x>250) saat test mobile.
+- Probe raycast satu-per-satu dengan sleep (loop sinkron tidak memberi
+  React waktu render → hasil palsu semua-miss).

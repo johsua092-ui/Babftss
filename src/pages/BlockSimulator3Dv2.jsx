@@ -11970,9 +11970,11 @@ Now you can apply Displacement for detailed effect.`);
     let deleteOutlineMesh = null;
     const deleteOutlineMat = new THREE.MeshBasicMaterial({
       // Warna HDR (channel > 1.0) supaya tetap TERANG di kedua jalur render:
-      // - bloom OFF (renderer.render + toneMapped:false) → clamp ke (255,10,60) terang penuh
+      // - bloom OFF (renderer.render + toneMapped:false) → clamp ke (255,10,10) terang penuh
       // - bloom ON (composer + OutputPass ACES) → ACES(4.0) ≈ 0.97 → tetap terang menyala
-      color: new THREE.Color(0xff0a3c).multiplyScalar(4), // merah tua menyala terang (HDR 4x)
+      // 0xff0a0a = MERAH DARAH terang (channel biru ≈ 0 — jangan dinaikkan,
+      // blue 60 di versi lama (0xff0a3c) ter-HDR×4 jadi (255,29,118) = PINK).
+      color: new THREE.Color(0xff0a0a).multiplyScalar(4), // merah darah terang menyala (HDR 4x)
       side: THREE.BackSide,     // render sisi belakang shell → efek outline di tepi
       // depthWrite WAJIB true: shell menulis depth supaya plane grid semi-transparan
       // (yang dirender di pass transparent SETELAH opaque) GAGAL depth-test dan tidak

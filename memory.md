@@ -6497,3 +6497,49 @@ Stage Summary:
 - Delete hover kini menampilkan OUTLINE TEBAL merah tua menyala terang di
   tepi object target (bukan tint merah menyeluruh); berlaku untuk semua
   target delete. Push NORMAL (bukan force).
+
+## Bagian 77 — Fix Warna Delete Hover Outline: Pink → Merah Darah (0xff0a0a)
+
+Task ID 15. Feedback user: warna Task 14 PINK terang (255,29,118), maunya
+MERAH DARAH terang. Fix = 1 nilai hex: 0xff0a3c → 0xff0a0a (channel biru
+60 → 10). Semua properti material/arsitektur Task 14 lain TIDAK disentuh.
+
+### Root Cause Warna Pink
+
+- 0xff0a3c punya B=60. Pipeline: sRGB→linear (B: 0.235→0.045) → HDR×4
+  (0.181) → output linear→sRGB (0.4627 = 118) → (255,29,118) = PINK.
+- 0xff0a0a: B=10 → linear 0.0030 → ×4 0.0121 → sRGB 29 → (255,29,29)
+  = MERAH DARAH murni (G=B, tanpa bias biru).
+- ATURAN: channel biru untuk warna "merah" di material HDR ini maksimum ~10
+  (amplifikasi total biru ≈ 12× di layar: linearisasi+HDR+gamma).
+
+### Verifikasi (3 viewport, semua PASS)
+
+- 1440x900: 415 px (255,29,29); VLM 3/3 (blood red bukan pink; thick;
+  face biru). Regresi: away=0px; delete klik utuh; re-place; Move select
+  "1 Selected"+highlight biru 802px; unequip badge hilang; 0 error.
+- 1280x577: 189 px (255,29,29) + VLM pass.
+- Mobile 390x780: 362 px (255,29,29); away=0; delete klik; 0 error.
+- Ekuivalensi old/new via git stash: fungsional identik, beda warna saja
+  → perubahan terbukti zero-side-effect (memang cuma 1 hex).
+
+### Pelajaran Testing Penting (INVESTIGASI PANJANG SESI INI)
+
+1. **Popup Material Inspector = pengecoh scan pixel #1**: muncul mengikuti
+   mouse saat hover block; berisi swatch #3b82f6 (exact block color, tanpa
+   lighting) + elemen biru → blob "biru besar" di screenshot ternyata
+   block+popup menyatu. Gunakan: popup DOM ada/tidak = detektor raycast
+   hit; diff antar screenshot = gerakan objek murni.
+2. **Mobile: klik x<230 = di belakang toolbar** → block ditempatkan tapi
+   tertutup panel (tampak "hilang"). Klik area grid terlihat (x>250).
+3. **Probe loop sinkron = palsu** (React tak sempat render inspector) —
+   probe posisi harus satu-per-satu + sleep ±0.6s.
+4. "Desync raycast vs visual" yang sempat dicurigai = ILUSI dari #1+#2;
+   setelah prosedur benar: ghost, place, hover, outline SEMUA ter-align
+   sempurna di 3 viewport. Tidak ada bug render/kamera.
+5. Ukuran block yang tampak "2-3× lebih besar" = block+popup merge; ukuran
+   block asli via diff-screenshot (ghost 52×55px di 1440x900).
+
+Stage Summary:
+- Delete hover outline kini MERAH DARAH terang (255,29,29) — bukan pink.
+  Perubahan minimal 1 hex + komentar; arsitektur Task 14 utuh; push NORMAL.
