@@ -1706,3 +1706,67 @@ start DAN end di canvas untuk memicu aksi tool.
 - Mobile 390x780: klik fisik tombol Place (unequip) = 0 block + border
   default. 0 error console. VLM 4/4 (scene kosong, tombol non-aktif, tanpa
   badge, no glitch).
+
+## Bagian 51 — Delete Hover: Outline Tebal Merah Menyala (Ganti Emissive Transparan)
+
+> 2026-08-30 (request user — lihat memory.md Bagian 76): saat memakai tombol
+> Delete dan mengarahkan kursor ke block yang ingin dihapus, sistem lama
+> (emissive merah transparan menyeluruh) dinilai jelek — diganti menjadi
+> OUTLINE TEBAL di tepi object, warna merah tua menyala terang. Berlaku untuk
+> APAPUN target delete (block biasa + nested mesh import GLB).
+
+### 51.1 Implementasi (1 file: BlockSimulator3Dv2.jsx)
+
+Teknik "inverted hull / shell outline": mesh duplikat dengan material
+BackSide ditambahkan sebagai CHILD dari mesh target, di-inflate via scale.
+Back faces shell terletak di belakang front faces object → depth test
+menyembunyikan bagian tertutup → hanya ring tepi (silhouette) terlihat.
+Sebagai child, outline otomatis mengikuti position/rotation/scale target.
+
+- `highlightBlock(block)` di-rewrite: lepas outline lama → pasang outline
+  baru sebagai child mesh target (geometry di-share, tanpa clone).
+- `deleteOutlineMesh.raycast = () => {}` — outline TIDAK ikut raycast
+  (delete hover / place ghost / material inspector tidak terganggu).
+- Material: `MeshBasicMaterial` unlit, warna `0xff0a3c` HDR ×4
+  (`multiplyScalar(4)`), `side: BackSide`, **`depthWrite: true`**,
+  `toneMapped: false`, `fog: false`.
+- `DELETE_OUTLINE_SCALE = 1.3` (inflate 30% → 15% per sisi = tepi tebal).
+- Lifecycle: `clearAllBlocks` reset referensi outline; unmount dispose
+  `deleteOutlineMat`.
+- `setEmissive`/`getEmissiveMaterials` TETAP ADA (dipakai selection highlight
+  biru — highlightSelected/unhighlightSelected TIDAK tersentuh).
+
+### 51.2 Catatan Teknis Penting (hasil investigasi mendalam)
+
+- **depthWrite WAJIB true**: grid lantai semi-transparan dirender di pass
+  transparent SETELAH pass opaque. Jika shell tidak menulis depth, grid
+  lolos depth-test dan blend ~50% di atas ring → outline teredam jadi gelap
+  (terukur: putih HDR → (130,131,133) = 50% campuran warna grid). Dengan
+  depthWrite:true, grid gagal depth test di area ring → warna full.
+- **Warna HDR ×4** menjamin terang di KEDUA jalur render: bloom OFF (direct
+  render + toneMapped:false → clamp (255,10,60) terang penuh; terukur
+  (255,29,118)) dan bloom ON (composer OutputPass ACES — ACES(4.0)≈0.97 →
+  tetap terang; nilai LDR biasa akan dipadatkan ACES jadi ~50%).
+- Warna final terukur di jalur default: **(255,29,118)** — crimson menyala.
+- Verifikasi pixel: 284+ piksel merah terang dominan (255,29,118), ring 4px
+  pada block proyeksi 33px (proporsional 15% per sisi di semua zoom).
+
+### 51.3 Aturan Perilaku (WAJIB)
+
+- Hover cursor di atas block/object apapun saat Delete aktif → outline tebal
+  merah menyala muncul mengikuti tepi object; warna asli object TIDAK berubah.
+- Kursor meninggalkan object / pindah tool → outline hilang total.
+- Outline mengikuti persis mesh yang akan dihapus oleh click handler delete
+  (hits[0].object) — block biasa maupun nested mesh hasil import GLB.
+- Fungsi delete klik, ghost preview place, selection highlight biru, material
+  inspector — semuanya tidak berubah perilakunya.
+
+### 51.4 Verifikasi
+
+- Desktop 1440x900: outline tebal terang muncul saat hover (pixel + VLM 2/2:
+  "thick bright glowing red outline" + "faces still blue"); hover ke area
+  kosong → hilang; klik canvas → block terhapus (fungsi utuh); place +
+  ghost normal; Move select "1 Blocks • 1 Selected" + gizmo normal; selection
+  highlight biru utuh; ganti tool → outline hilang; 0 error console.
+- Mobile 390x780: tidak crash; place via canvas jalan; UI click guard tetap
+  memblokir klik toolbar (tidak nembus).

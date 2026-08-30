@@ -11959,10 +11959,32 @@ Now you can apply Displacement for detailed effect.`);
       else if (axis === 'z') symmetryPlane.rotation.x = 0; // plane facing Z (vertical default)
     };
 
-    // Delete highlight — emissive merah menyala pada block yang akan dihapus.
+    // Delete hover OUTLINE — outline TEBAL warna merah tua menyala pada object
+    // yang akan dihapus (menggantikan sistem emissive merah transparan lama
+    // per request user). Teknik "shell": mesh duplikat dirender BackSide
+    // sebagai CHILD dari mesh target, di-inflate sedikit → hanya tepi
+    // (outline) yang terlihat, warna asli object TIDAK berubah sama sekali.
+    // Berlaku untuk APAPUN target delete: block biasa + nested mesh hasil
+    // import GLB (persis mesh yang akan dihapus oleh click handler).
     let highlightedBlock = null;
+    let deleteOutlineMesh = null;
+    const deleteOutlineMat = new THREE.MeshBasicMaterial({
+      // Warna HDR (channel > 1.0) supaya tetap TERANG di kedua jalur render:
+      // - bloom OFF (renderer.render + toneMapped:false) → clamp ke (255,10,60) terang penuh
+      // - bloom ON (composer + OutputPass ACES) → ACES(4.0) ≈ 0.97 → tetap terang menyala
+      color: new THREE.Color(0xff0a3c).multiplyScalar(4), // merah tua menyala terang (HDR 4x)
+      side: THREE.BackSide,     // render sisi belakang shell → efek outline di tepi
+      // depthWrite WAJIB true: shell menulis depth supaya plane grid semi-transparan
+      // (yang dirender di pass transparent SETELAH opaque) GAGAL depth-test dan tidak
+      // menimpa/blend di atas ring — tanpa ini ring teredam ~50% oleh grid gelap.
+      depthWrite: true,
+      toneMapped: false,        // bypass tone mapping per-material (jalur direct render)
+      fog: false,               // bypass scene fog (FogExp2)
+    });
+    const DELETE_OUTLINE_SCALE = 1.3; // ketebalan outline (inflate 30% → 15% per sisi = tepi TEBAL di semua zoom)
     // Helper aman untuk material yang mungkin array atau non-emissive (hasil import glb).
     // Hanya apply emissive ke material yang support (MeshStandardMaterial, MeshPhysicalMaterial, MeshPhongMaterial).
+    // MASIH DIPAKAI oleh selection highlight (highlightSelected/unhighlightSelected) — jangan dihapus.
     const getEmissiveMaterials = (block) => {
       const mats = Array.isArray(block.material) ? block.material : [block.material];
       return mats.filter(m => m && m.emissive);
@@ -11974,14 +11996,25 @@ Now you can apply Displacement for detailed effect.`);
       });
     };
 
-    const highlightBlock = (block) => {
-      // Revert previous highlight
-      if (highlightedBlock && highlightedBlock !== block) {
-        setEmissive(highlightedBlock, 0x000000, 1);
+    const removeDeleteOutline = () => {
+      if (deleteOutlineMesh) {
+        if (deleteOutlineMesh.parent) deleteOutlineMesh.parent.remove(deleteOutlineMesh);
+        deleteOutlineMesh = null;
       }
-      // Highlight new block
+    };
+
+    const highlightBlock = (block) => {
+      // Lepas outline lama (jika ada)
+      removeDeleteOutline();
       if (block) {
-        setEmissive(block, 0xff0000, 1.5);
+        // Pasang outline baru sebagai child mesh target → otomatis ikut
+        // position/rotation/scale target. Geometry di-share (tanpa clone).
+        deleteOutlineMesh = new THREE.Mesh(block.geometry, deleteOutlineMat);
+        deleteOutlineMesh.scale.setScalar(DELETE_OUTLINE_SCALE);
+        // Outline TIDAK boleh ikut kena raycast (delete hover / place ghost /
+        // material inspector) — disable raycast pada mesh outline.
+        deleteOutlineMesh.raycast = () => {};
+        block.add(deleteOutlineMesh);
         highlightedBlock = block;
       } else {
         highlightedBlock = null;
@@ -12803,8 +12836,10 @@ Now you can apply Displacement for detailed effect.`);
     threeRef.current.clearAllBlocks = () => {
       // Detach transformControls kalau ada object yang di-attach
       if (transformControls.object) transformControls.detach();
-      // Clear highlighted block
+      // Clear highlighted block + reset referensi hover outline
+      // (outline adalah child block yang dihapus → ikut ter-remove dari scene)
       highlightedBlock = null;
+      deleteOutlineMesh = null;
       // Clear selection set
       threeRef.current.selectedBlocks.clear();
       // Hapus SEMUA block tanpa terkecuali (regular + imported + phase objects)
@@ -13610,6 +13645,8 @@ Now you can apply Displacement for detailed effect.`);
       // Dispose ghost
       ghostGeo.dispose();
       ghostMat.dispose();
+      // Dispose delete hover outline material
+      deleteOutlineMat.dispose();
       // Cleanup Phase 12: file input
       if (threeRef.current.fileInputRef) {
         document.body.removeChild(threeRef.current.fileInputRef);

@@ -6435,3 +6435,65 @@ nyasar ditempatkan di belakang toolbar → baru click unequip.
 Stage Summary:
 - Klik di UI apapun kini TERTAHAN di UI — tidak pernah memicu aksi tool di
   scene 3D di belakangnya; klik canvas asli berfungsi normal. Push NORMAL.
+
+## Bagian 76 — Delete Hover Outline Tebal Merah Menyala (Inverted Hull)
+
+Tanggal: 2026-08-30 (Task ID 14 di worklog.md)
+
+### Request User (verbatim inti)
+
+- "jika saya menggunakan tombol delete, lalu saya arahkan kursor ke arah
+  block yang saya inginkan, maka akan muncul warna merah transparan di
+  blocknya kan? nah itu sistem yang jelek banget menurut saya dan wajib
+  diganti menjadi jika saya arahkan kursor ke arah block atau apapun
+  disitu yang ingin di delete maka akan ada outline blocknya disitu!
+  apapun yang ingin saya delete ada outlinenya!! dan outlinenya tebal ya!
+  warna merah tua menyala terang."
+- Wajib hati-hati tidak menyenggol pekerjaan lain; DILARANG force push.
+
+### Perubahan (1 file kode: src/pages/BlockSimulator3Dv2.jsx, +45/-8)
+
+1. `highlightBlock()` rewrite: sistem emissive merah transparan lama →
+   inverted-hull outline (child mesh BackSide, scale 1.3, geometry shared,
+   raycast disabled). `highlightedBlock` semantics tetap (dipakai delete
+   handler + cleanup).
+2. Material `deleteOutlineMat`: MeshBasicMaterial unlit, warna 0xff0a3c ×4
+   (HDR), BackSide, depthWrite TRUE, toneMapped false, fog false.
+3. Lifecycle: clearAllBlocks reset referensi + unmount dispose material.
+4. `setEmissive` TIDAK dihapus — masih dipakai selection highlight biru
+   (highlightSelected/unhighlightSelected utuh, tidak tersentuh).
+
+### Investigasi Panjang (pelajaran teknis — 5 iterasi)
+
+- v1 (0xd90429, fog on, depthWrite false): render (129,7,34) gelap.
+- v2 (+toneMapped false, fog false, 0xff0a3c): masih (130,8,36).
+- v3 (+HDR ×4): masih (130,18,65) — merah ter-cap.
+- Kalibrasi putih HDR (8,8,8) → (130,131,133) = TEPAT 50% campuran dgn
+  warna grid gelap (13,19,32) → ROOT CAUSE: grid lantai semi-transparan
+  (pass transparent) menimpa ring karena shell depthWrite:false tidak
+  menulis depth.
+- FINAL (depthWrite true + HDR ×4): (255,29,118) — TERANG MENYALA ✓.
+- Catatan: pixel forensik sempat tertipu oleh swatch warna UI panel COLORS
+  kanan (terdeteksi sebagai "block biru") — deteksi block asli harus
+  memakai filter warna ketat + area canvas murni; detektor hit yang andal =
+  kehadiran popup Material Inspector (elemen DOM).
+- Warna HDR ×4 membuat outline tetap terang di kedua jalur render
+  (bloom off: clamp terang penuh; bloom on: ACES(4.0)≈0.97).
+
+### Verifikasi (semua PASS)
+
+- Pixel: 284+ px merah terang dominan (255,29,118); ring 4px pada block
+  proyeksi 33px (15% per sisi — proporsional di semua zoom).
+- VLM 2/2: "thick bright glowing red outline" ✓ + "cube faces still blue
+  (not red-tinted)" ✓.
+- Hover pindah ke kosong → outline hilang (diff screenshot mengonfirmasi).
+- Regresi: delete klik via canvas = block terhapus; place + ghost normal;
+  Move select "1 Blocks • 1 Selected" + gizmo; selection highlight biru
+  utuh; ganti tool → outline hilang; 0 error console.
+- Mobile 390x780: no crash; place via canvas jalan; UI click guard tetap
+  kerja (klik toolbar tidak nembus).
+
+Stage Summary:
+- Delete hover kini menampilkan OUTLINE TEBAL merah tua menyala terang di
+  tepi object target (bukan tint merah menyeluruh); berlaku untuk semua
+  target delete. Push NORMAL (bukan force).
