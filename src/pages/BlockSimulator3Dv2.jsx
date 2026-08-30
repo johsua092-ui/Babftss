@@ -11581,7 +11581,7 @@ Now you can apply Displacement for detailed effect.`);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.minDistance = 5;
+    controls.minDistance = 0.5; // Allow extreme close-up zoom
     controls.maxDistance = 80;
     controls.maxPolarAngle = Math.PI / 2 - 0.02; // prevent going below ground
     controls.target.set(0, 0, 0);
