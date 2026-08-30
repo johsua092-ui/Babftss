@@ -1,0 +1,201 @@
+const qp = [{
+    id: 1,
+    name: "Jansen's Linkage",
+    icon: "jansen",
+    color: "#4ade80",
+    desc: "Kaki berjalan Strandbeest oleh Theo Jansen"
+}, {
+    id: 2,
+    name: "Klann Linkage",
+    icon: "klann",
+    color: "#22d3ee",
+    desc: "Kaki berjalan 6-bar — paten RJ Klann"
+}, {
+    id: 3,
+    name: "Chebyshev's Lambda",
+    icon: "chebyshev",
+    color: "#60a5fa",
+    desc: "Garis lurus hampiran berbentuk Λ"
+}, {
+    id: 4,
+    name: "Peaucellier-Lipkin",
+    icon: "peaucellier",
+    color: "#a78bfa",
+    desc: "Garis lurus sempurna pertama — rhombus + dua lengan"
+}, {
+    id: 5,
+    name: "Watt's Linkage",
+    icon: "watts",
+    color: "#f472b6",
+    desc: "Garis lurus hampiran — suspensi mobil modern"
+}, {
+    id: 6,
+    name: "Hoekens Linkage",
+    icon: "hoekens",
+    color: "#fb923c",
+    desc: "Tracer garis lurus hampiran dengan floating point"
+}, {
+    id: 7,
+    name: "Roberts Linkage",
+    icon: "roberts",
+    color: "#facc15",
+    desc: "Garis lurus hampiran simetris oleh Roberts"
+}, {
+    id: 8,
+    name: "Crank-Rocker",
+    icon: "crankrocker",
+    color: "#34d399",
+    desc: "Input berputar penuh, output berayun — 4-bar paling umum"
+}, {
+    id: 9,
+    name: "Double-Rocker",
+    icon: "doublerocker",
+    color: "#38bdf8",
+    desc: "Kedua link berayun, tidak ada yang berputar penuh"
+}, {
+    id: 10,
+    name: "Drag-Link (Double Crank)",
+    icon: "draglink",
+    color: "#818cf8",
+    desc: "Kedua link berputar penuh — Grashof crank-crank"
+}, {
+    id: 11,
+    name: "Pantograph",
+    icon: "pantograph",
+    color: "#f43f5e",
+    desc: "Memperbesar/mengecil gambar secara mekanik"
+}, {
+    id: 12,
+    name: "Sarrus Linkage",
+    icon: "sarrus",
+    color: "#0ea5e9",
+    desc: "Mekanisme 3D garis lurus dari plat-plat berengsel"
+}, {
+    id: 13,
+    name: "Bennett's Linkage",
+    icon: "bennett",
+    color: "#d97706",
+    desc: "Satu-satunya rantai 4R spatial overconstrained yang mobile"
+}, {
+    id: 14,
+    name: "Ornithopter Linkage",
+    icon: "ornithopter",
+    color: "#7c3aed",
+    desc: "Kepakan sayap seperti burung — flapping wing mechanism"
+}, {
+    id: 15,
+    name: "Dwell Linkage (Six-bar)",
+    icon: "dwell",
+    color: "#16a34a",
+    desc: "Output berhenti sesaat saat input terus berputar"
+}, {
+    id: 16,
+    name: "Four-Bar Linkage",
+    icon: "fourbar",
+    color: "#06b6d4",
+    desc: "Mekanisme 4 batang — paling fundamental dalam kinematika"
+}, {
+    id: 17,
+    name: "Slider-Crank Mechanism",
+    icon: "slidercrank",
+    color: "#ef4444",
+    desc: "Rotasi → translasi — dasar mesin piston & kompresor"
+}, {
+    id: 18,
+    name: "Scotch Yoke",
+    icon: "scotch",
+    color: "#8b5cf6",
+    desc: "Menghasilkan gerak sinusoidal murni dari rotasi"
+}, {
+    id: 19,
+    name: "Oldham Coupling",
+    icon: "oldham",
+    color: "#f97316",
+    desc: "Dua poros paralel offset — mid-disc bergeser tegak lurus"
+}, {
+    id: 20,
+    name: "Universal Joint (Cardan)",
+    icon: "cardan",
+    color: "#10b981",
+    desc: "Transmisi torsi antara dua poros bersudut — poros propeller"
+}, {
+    id: 21,
+    name: "Scott-Russell Linkage",
+    icon: "scottrussell",
+    color: "#ec4899",
+    desc: "Garis lurus sempurna — konfigurasi layang-layang + slider"
+}, {
+    id: 22,
+    name: "Hart's Inversor",
+    icon: "hart",
+    color: "#6366f1",
+    desc: "Garis lurus sempurna tanpa pivot di jalur lurus"
+}, {
+    id: 23,
+    name: "Toggle (Over-Center)",
+    icon: "toggle",
+    color: "#14b8a6",
+    desc: "Gaya amplifikasi tinggi mendekati titik mati — press & klem"
+}, {
+    id: 24,
+    name: "Lazy-Tong (Scissor)",
+    icon: "scissor",
+    color: "#84cc16",
+    desc: "Struktur gunting lipat memanjang/memendek — meja lift"
+}, {
+    id: 25,
+    name: "Whitworth Quick-Return",
+    icon: "whitworth",
+    color: "#fb7185",
+    desc: "Maju lambat, balik cepat — mesin shaper perkakas"
+}, {
+    id: 26,
+    name: "Grasshopper Linkage",
+    icon: "grasshopper",
+    color: "#0891b2",
+    desc: "Beam engine Watt — piston lokomotif & pompa uap"
+}, {
+    id: 27,
+    name: "Trammel of Archimedes",
+    icon: "trammel",
+    color: "#9333ea",
+    desc: "Menggambar elips sempurna — dua pin di slot silang"
+}, {
+    id: 28,
+    name: "Stephenson Linkage",
+    icon: "stephenson",
+    color: "#db2777",
+    desc: "6-bar Stephenson tipe I/II/III — valve gear lokomotif"
+}, {
+    id: 29,
+    name: "Watt Six-Bar Linkage",
+    icon: "wattsixbar",
+    color: "#38bdf8",
+    desc: "Perluasan Watt menjadi 6 batang — lebih banyak titik output"
+}, {
+    id: 30,
+    name: "Crossed Four-Bar Linkage",
+    icon: "crossedfb",
+    color: "#a3e635",
+    desc: "Batang bersilang — antiparallelogram, gerakan berlawanan"
+}, {
+    id: 31,
+    name: "Swinging Block Quick-Return",
+    icon: "swingblock",
+    color: "#fb923c",
+    desc: "Balik cepat dengan blok berayun — kecepatan variabel"
+}, {
+    id: 32,
+    name: "Bricard Linkage",
+    icon: "bricard",
+    color: "#c084fc",
+    desc: "Rantai 6R spatial overconstrained — ada 6 tipe berbeda"
+}, {
+    id: 33,
+    name: "Goldberg Linkage",
+    icon: "goldberg",
+    color: "#fbbf24",
+    desc: "5R/6R spatial overconstrained — dipakai dalam origami mekanik"
+}, {
+    id: 34,
+    name: "Myard Linkage",

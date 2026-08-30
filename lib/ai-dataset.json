@@ -1,0 +1,54 @@
+{
+  "instruction": "Kamu adalah AI Tutor untuk BABFT Learning — platform edukasi bertema game Roblox 'Build A Boat For Treasure' yang mengajarkan konsep Logic Gates (gerbang logika digital).\n\nTUGAS UTAMA KAMU:\n1. Jelaskan konsep gerbang logika dengan bahasa sederhana dan analogi sehari-hari\n2. Bantu user memahami truth table (tabel kebenaran) dan cara membacanya\n3. Jawab pertanyaan tentang rangkaian logika (circuit) — bagaimana gate-gate disambung\n4. Beri contoh praktis penggunaan gerbang logika di dunia nyata\n5. Motivasi user yang kesulitan — ingat, ini untuk PEMULA\n\nATURAN:\n- Jawab dalam Bahasa Indonesia (kecuali user pakai bahasa lain)\n- Gunakan analogi yang relatable (saklar lampu, keran air, dll)\n- Untuk penjelasan teknis, gunakan format yang rapi (table, list)\n- JANGAN terlalu teknis di awal — mulai dari konsep sederhana\n- Jika user tanya di luar topik Logic Gates, arahkan kembali dengan sopan\n\nPLATFORM INI MENGAJARKAN:\n- 7 Basic Logic Gates: NOT, AND, NAND, OR, NOR, XOR, XNOR\n- Basic Wire (pengantar — sinyal mengalir langsung)\n- Logic Gates Circuit (rangkaian gabungan beberapa gate)\n- Gears (36 jenis) dan Linkages Mechanic (45 jenis)",
+  "knowledge": {
+    "gates": [
+      {
+        "id": 1, "name": "Basic Wire", "type": "wire", "color": "#60a5fa",
+        "description": "Sinyal mengalir langsung melewati kabel. Tekan saklar A → lampu output ikut menyala. Ini adalah dasar dari semua rangkaian elektronik — tanpa kabel, tidak ada sinyal yang bisa berjalan.",
+        "truth_table": [{ "A": 0, "OUT": 0 }, { "A": 1, "OUT": 1 }]
+      },
+      {
+        "id": 2, "name": "NOT Gate", "type": "not", "color": "#f87171",
+        "description": "Pembalik sinyal (Inverter). Input A = 0 → Output = 1. Input A = 1 → Output = 0. Perhatikan: saat saklar OFF, output justru menyala! Karena NOT membalik segalanya.",
+        "truth_table": [{ "A": 0, "OUT": 1 }, { "A": 1, "OUT": 0 }]
+      },
+      {
+        "id": 3, "name": "AND Gate", "type": "and", "color": "#4ade80",
+        "description": "Output = 1 HANYA jika A dan B keduanya = 1. Seperti dua saklar seri — kedua saklar harus ON baru lampu menyala. Salah satu saja OFF, output langsung 0.",
+        "truth_table": [{ "A": 0, "B": 0, "OUT": 0 }, { "A": 0, "B": 1, "OUT": 0 }, { "A": 1, "B": 0, "OUT": 0 }, { "A": 1, "B": 1, "OUT": 1 }]
+      },
+      {
+        "id": 4, "name": "NAND Gate", "type": "nand", "color": "#fb923c",
+        "description": "Kebalikan AND. Output = 0 HANYA jika A dan B keduanya = 1. Semua kombinasi lain (00, 01, 10) menghasilkan output = 1. NAND adalah gerbang universal.",
+        "truth_table": [{ "A": 0, "B": 0, "OUT": 1 }, { "A": 0, "B": 1, "OUT": 1 }, { "A": 1, "B": 0, "OUT": 1 }, { "A": 1, "B": 1, "OUT": 0 }]
+      },
+      {
+        "id": 5, "name": "OR Gate", "type": "or", "color": "#a78bfa",
+        "description": "Output = 1 jika SALAH SATU atau keduanya bernilai 1. Seperti dua saklar paralel — cukup satu saklar saja yang ON, lampu sudah menyala.",
+        "truth_table": [{ "A": 0, "B": 0, "OUT": 0 }, { "A": 0, "B": 1, "OUT": 1 }, { "A": 1, "B": 0, "OUT": 1 }, { "A": 1, "B": 1, "OUT": 1 }]
+      },
+      {
+        "id": 6, "name": "NOR Gate", "type": "nor", "color": "#f472b6",
+        "description": "Kebalikan OR. Output = 1 HANYA jika A dan B keduanya = 0. Begitu ada satu saja input yang bernilai 1, output langsung jadi 0.",
+        "truth_table": [{ "A": 0, "B": 0, "OUT": 1 }, { "A": 0, "B": 1, "OUT": 0 }, { "A": 1, "B": 0, "OUT": 0 }, { "A": 1, "B": 1, "OUT": 0 }]
+      },
+      {
+        "id": 7, "name": "XOR Gate", "type": "xor", "color": "#facc15",
+        "description": "Exclusive OR. Output = 1 HANYA jika A dan B BERBEDA (01 atau 10). Jika keduanya sama (00 atau 11), output = 0.",
+        "truth_table": [{ "A": 0, "B": 0, "OUT": 0 }, { "A": 0, "B": 1, "OUT": 1 }, { "A": 1, "B": 0, "OUT": 1 }, { "A": 1, "B": 1, "OUT": 0 }]
+      },
+      {
+        "id": 8, "name": "XNOR Gate", "type": "xnor", "color": "#2dd4bf",
+        "description": "Kebalikan XOR. Output = 1 HANYA jika A dan B SAMA (00 atau 11). Jika berbeda, output = 0. Dipakai untuk mengecek kesamaan dua sinyal.",
+        "truth_table": [{ "A": 0, "B": 0, "OUT": 1 }, { "A": 0, "B": 1, "OUT": 0 }, { "A": 1, "B": 0, "OUT": 0 }, { "A": 1, "B": 1, "OUT": 1 }]
+      }
+    ],
+    "circuits": [
+      {
+        "name": "NOT → AND",
+        "tier": "MUDAH",
+        "description": "Rangkaian pertama: Input B masuk ke NOT Gate, hasil NOT(B) jadi input bersama A ke AND Gate. Output = A AND (NOT B)."
+      }
+    ]
+  }
+}

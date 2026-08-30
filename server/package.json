@@ -1,0 +1,20 @@
+{
+  "name": "babftss-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BABFT Learning API Server — Express backend untuk Pterodactyl",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@supabase/supabase-js": "^2.49.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "firebase-admin": "^13.10.0",
+    "google-auth-library": "^9.15.0",
+    "localtunnel": "^2.0.6"
+  }
+}

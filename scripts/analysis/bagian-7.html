@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bagian 7: Tabel Kebenaran Logic Gates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #111133;
+  --bg-card: #1a1a3e;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border: #1e2944;
+  --neon-glow-1: 0 0 7px;
+  --neon-glow-2: 0 0 20px;
+  --neon-glow-3: 0 0 40px;
+  --neon-glow-4: 0 0 80px;
+  --gate-color: #60a5fa;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.bg-grid {
+  position: fixed; top:0; left:0; width:100%; height:100%;
+  background-image:
+    linear-gradient(rgba(100,100,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100,100,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container {
+  position: relative;
+  z-index: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.header h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 2rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.gate-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 36px;
+}
+
+.gate-btn {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 12px 18px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.gate-btn:hover {
+  border-color: var(--gate-color);
+  color: #fff;
+  box-shadow: 0 0 15px color-mix(in srgb, var(--gate-color) 40%, transparent);
+}
+
+.gate-btn.active {
+  border-color: var(--gate-color);
+  color: #fff;
+  background: color-mix(in srgb, var(--gate-color) 15%, var(--bg-card));
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--gate-color) 50%, transparent),
+    inset 0 0 15px color-mix(in srgb, var(--gate-color) 10%, transparent);
+}
+
+.main-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 28px;
+}
+
+.section-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--gate-color);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--gate-color);
+  box-shadow: 0 0 10px var(--gate-color);
+  animation: dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%,100% { opacity:1; box-shadow:0 0 10px var(--gate-color); }
+  50% { opacity:0.4; box-shadow:0 0 20px var(--gate-color); }
+}
+
+.truth-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 28px;
+}
+
+.truth-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Orbitron', sans-serif;
+}
+
+.truth-table th {
+  padding: 14px 16px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.truth-table td {
+  padding: 14px 16px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  transition: all 0.3s ease;
+}
+
+.truth-table tr.highlight {
+  background: color-mix(in srgb, var(--gate-color) 10%, transparent);
+}
+
+.truth-table tr.highlight td {
+  color: #fff;
+}
+
+.value-0 { color: #f87171; }
+.value-1 { color: #4ade80; text-shadow: 0 0 8px rgba(74,222,128,0.5); }
+
+.interactive-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.switches-row {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.switch-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.switch-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+  border: 3px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.switch-btn:active { transform: scale(0.95); }
+
+.switch-btn.on {
+  border-color: #4ade80;
+  color: #4ade80;
+  background: rgba(74,222,128,0.1);
+  box-shadow: 0 0 20px rgba(74,222,128,0.3), 0 0 40px rgba(74,222,128,0.1);
+}
+
+.switch-btn.off {
+  border-color: #f87171;
+  color: #f87171;
+  background: rgba(248,113,113,0.08);
+}
+
+.output-display {
+  text-align: center;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.output-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.output-value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 2.5rem;
+  font-weight: 900;
+  transition: all 0.3s ease;
+}
+
+.output-value.out-1 {
+  color: #4ade80;
+  text-shadow: 0 0 15px rgba(74,222,128,0.6), 0 0 30px rgba(74,222,128,0.3);
+}
+
+.output-value.out-0 {
+  color: #f87171;
+  text-shadow: 0 0 15px rgba(248,113,113,0.4);
+}
+
+.neon-line-container {
+  position: relative;
+  height: 80px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.neon-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--gate-color);
+  border-radius: 2px;
+  transform: translateY(-50%);
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neon-line.glow-on {
+  box-shadow:
+    0 0 10px var(--gate-color),
+    0 0 25px var(--gate-color),
+    0 0 50px var(--gate-color),
+    0 0 100px color-mix(in srgb, var(--gate-color) 60%, transparent);
+  animation: neon-flow-on 0.15s linear infinite;
+}
+
+.neon-line.glow-off {
+  box-shadow:
+    0 0 2px color-mix(in srgb, var(--gate-color) 30%, transparent),
+    0 0 5px color-mix(in srgb, var(--gate-color) 15%, transparent);
+  animation: none;
+}
+
+@keyframes neon-flow-on {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.2); }
+  100% { filter: brightness(1); }
+}
+
+.neon-glow-orb {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--gate-color);
+  transform: translate(-50%, -50%);
+  transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.neon-glow-orb.active {
+  box-shadow:
+    0 0 15px var(--gate-color),
+    0 0 30px var(--gate-color),
+    0 0 50px var(--gate-color);
+  animation: orb-flow 0.6s ease-in-out infinite;
+}
+
+.neon-glow-orb.inactive {
+  box-shadow: 0 0 5px color-mix(in srgb, var(--gate-color) 30%, transparent);
+  animation: none;
+}
+
+@keyframes orb-flow {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.4); }
+}
+
+.neon-particles {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.neon-particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--gate-color);
+  animation: particle-float 2s ease-in-out infinite;
+}
+
+@keyframes particle-float {
+  0%, 100% { transform: translateY(0); opacity: 0; }
+  25% { opacity: 0.8; }
+  50% { transform: translateY(-12px); opacity: 0.3; }
+  75% { opacity: 0.6; }
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: 28px;
+  padding: 10px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.back-link:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  box-shadow: 0 0 15px rgba(255,255,255,0.05);
+}
+
+.footer {
+  text-align: center;
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .container { padding: 20px 14px 40px; }
+  .header h1 { font-size: 1.4rem; }
+  .gate-btn { padding: 10px 14px; font-size: 0.7rem; }
+  .main-card { padding: 20px; }
+  .switch-btn { width: 56px; height: 56px; font-size: 1.1rem; }
+  .truth-table th, .truth-table td { padding: 10px 12px; font-size: 0.85rem; }
+}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<div class="container">
+  <div class="header">
+    <h1>Bagian 7: Tabel Kebenaran Logic Gates</h1>
+    <p class="subtitle">Pilih gerbang logika, lihat tabel kebenaran, dan kendalikan input. Garis neon akan merespons output.</p>
+  </div>
+
+  <div class="gate-selector" id="gateSelector"></div>
+
+  <div class="main-card">
+    <div class="section-title">
+      <div class="section-dot" id="sectionDot"></div>
+      <span id="sectionName">NOT Gate</span>
+    </div>
+
+    <div class="truth-table-wrap">
+      <table class="truth-table" id="truthTable"></table>
+    </div>
+
+    <div class="interactive-section">
+      <div class="switches-row">
+        <div class="switch-group" id="switchGroupA">
+          <span class="switch-label">INPUT A</span>
+          <button class="switch-btn off" id="switchA" onclick="toggleInput('A')">0</button>
+        </div>
+        <div class="switch-group" id="switchGroupB">
+          <span class="switch-label">INPUT B</span>
+          <button class="switch-btn off" id="switchB" onclick="toggleInput('B')">0</button>
+        </div>
+      </div>
+
+      <div class="output-display">
+        <div class="output-label">OUTPUT</div>
+        <div class="output-value out-0" id="outputValue">0</div>
+      </div>
+    </div>
+
+    <div class="neon-line-container" id="neonContainer">
+      <div class="neon-line glow-off" id="neonLine"></div>
+      <div class="neon-glow-orb inactive" id="neonOrb"></div>
+      <div class="neon-particles" id="neonParticles"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="index.html" class="back-link">&#8592; Kembali ke Menu Utama</a>
+  </div>
+</div>
+
+<script>
+(function() {
+  var gates = [
+    { id:'not',  name:'NOT Gate',  dual:false, label:'NOT',  color:'#f87171', fn:function(a,b){ return !a; } },
+    { id:'and',  name:'AND Gate',  dual:true,  label:'AND',  color:'#4ade80', fn:function(a,b){ return a && b; } },
+    { id:'nand', name:'NAND Gate', dual:true,  label:'NAND', color:'#fb923c', fn:function(a,b){ return !(a && b); } },
+    { id:'or',   name:'OR Gate',   dual:true,  label:'OR',   color:'#a78bfa', fn:function(a,b){ return a || b; } },
+    { id:'nor',  name:'NOR Gate',  dual:true,  label:'NOR',  color:'#f472b6', fn:function(a,b){ return !(a || b); } },
+    { id:'xor',  name:'XOR Gate',  dual:true,  label:'XOR',  color:'#facc15', fn:function(a,b){ return a !== b; } },
+    { id:'xnor', name:'XNOR Gate', dual:true,  label:'XNOR', color:'#2dd4bf', fn:function(a,b){ return a === b; } }
+  ];
+
+  var currentGate = gates[0];
+  var inputA = 0;
+  var inputB = 0;
+  var orbAnimationId = null;
+  var orbPos = 0;
+  var orbDirection = 1;
+
+  function buildGateSelector() {
+    var sel = document.getElementById('gateSelector');
+    sel.innerHTML = '';
+    gates.forEach(function(g) {
+      var btn = document.createElement('button');
+      btn.className = 'gate-btn' + (g.id === currentGate.id ? ' active' : '');
+      btn.textContent = g.label;
+      btn.style.setProperty('--gate-color', g.color);
+      btn.onclick = function() { selectGate(g); };
+      sel.appendChild(btn);
+    });
+  }
+
+  function selectGate(gate) {
+    currentGate = gate;
+    document.documentElement.style.setProperty('--gate-color', gate.color);
+
+    var btns = document.querySelectorAll('.gate-btn');
+    btns.forEach(function(b, i) {
+      b.classList.toggle('active', gates[i].id === gate.id);
+      b.style.setProperty('--gate-color', gates[i].id === gate.id ? gate.color : 'transparent');
+    });
+
+    document.getElementById('sectionName').textContent = gate.name;
+    document.getElementById('sectionDot').style.background = gate.color;
+    document.getElementById('sectionDot').style.boxShadow = '0 0 10px ' + gate.color;
+
+    var switchB = document.getElementById('switchGroupB');
+    switchB.style.display = gate.dual ? '' : 'none';
+
+    if (!gate.dual) inputB = 0;
+
+    buildTruthTable();
+    updateOutput();
+  }
+
+  function buildTruthTable() {
+    var table = document.getElementById('truthTable');
+    var g = currentGate;
+    var html = '<thead><tr>';
+
+    html += '<th>Input A</th>';
+    if (g.dual) html += '<th>Input B</th>';
+    html += '<th>Output</th>';
+    html += '</tr></thead><tbody>';
+
+    var combos = [];
+    if (g.dual) {
+      combos = [[0,0],[0,1],[1,0],[1,1]];
+    } else {
+      combos = [[0],[1]];
+    }
+
+    combos.forEach(function(c) {
+      var a = c[0];
+      var b = c[1] !== undefined ? c[1] : 0;
+      var out = g.fn(a,b);
+      var highlight = (a === inputA && b === inputB);
+      html += '<tr class="' + (highlight ? 'highlight' : '') + '">';
+      html += '<td class="' + (a ? 'value-1' : 'value-0') + '">' + a + '</td>';
+      if (g.dual) html += '<td class="' + (b ? 'value-1' : 'value-0') + '">' + b + '</td>';
+      html += '<td class="' + (out ? 'value-1' : 'value-0') + '">' + out + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody>';
+    table.innerHTML = html;
+  }
+
+  function toggleInput(which) {
+    if (which === 'A') {
+      inputA = inputA ? 0 : 1;
+      var btnA = document.getElementById('switchA');
+      btnA.textContent = inputA;
+      btnA.className = 'switch-btn ' + (inputA ? 'on' : 'off');
+    } else {
+      inputB = inputB ? 0 : 1;
+      var btnB = document.getElementById('switchB');
+      btnB.textContent = inputB;
+      btnB.className = 'switch-btn ' + (inputB ? 'on' : 'off');
+    }
+    buildTruthTable();
+    updateOutput();
+    animateNeonLine(inputA, currentGate.dual ? inputB : 0);
+  }
+
+  function updateOutput() {
+    var out = currentGate.fn(inputA, currentGate.dual ? inputB : 0);
+    var el = document.getElementById('outputValue');
+    el.textContent = out ? '1' : '0';
+    el.className = 'output-value ' + (out ? 'out-1' : 'out-0');
+
+    var line = document.getElementById('neonLine');
+    var orb = document.getElementById('neonOrb');
+
+    if (out) {
+      line.className = 'neon-line glow-on';
+      orb.className = 'neon-glow-orb active';
+    } else {
+      line.className = 'neon-line glow-off';
+      orb.className = 'neon-glow-orb inactive';
+    }
+  }
+
+  function createParticles() {
+    var container = document.getElementById('neonParticles');
+    container.innerHTML = '';
+    for (var i = 0; i < 15; i++) {
+      var p = document.createElement('div');
+      p.className = 'neon-particle';
+      p.style.left = (Math.random() * 100) + '%';
+      p.style.top = (20 + Math.random() * 20) + 'px';
+      p.style.animationDelay = (Math.random() * 2) + 's';
+      p.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+      p.style.background = currentGate.color;
+      container.appendChild(p);
+    }
+  }
+
+  function animateNeonLine(a, b) {
+    var out = currentGate.fn(a, b);
+    var orb = document.getElementById('neonOrb');
+    var line = document.getElementById('neonLine');
+
+    if (orbAnimationId) cancelAnimationFrame(orbAnimationId);
+
+    if (out) {
+      line.className = 'neon-line glow-on';
+      orb.className = 'neon-glow-orb active';
+      orbPos = 5;
+      orbDirection = 1;
+
+      function step() {
+        orbPos += orbDirection * 1.2;
+        if (orbPos >= 95) orbDirection = -1;
+        if (orbPos <= 5) orbDirection = 1;
+        orb.style.left = orbPos + '%';
+        orbAnimationId = requestAnimationFrame(step);
+      }
+      orbAnimationId = requestAnimationFrame(step);
+    } else {
+      line.className = 'neon-line glow-off';
+      orb.className = 'neon-glow-orb inactive';
+      orb.style.left = '50%';
+    }
+  }
+
+  window.toggleInput = toggleInput;
+
+  buildGateSelector();
+  buildTruthTable();
+  createParticles();
+  updateOutput();
+  animateNeonLine(0, 0);
+})();
+</script>
+</body>
+</html>

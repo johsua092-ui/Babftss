@@ -1,0 +1,31 @@
+const yn = (i, a) => {
+    const o = W.forwardRef(({
+        className: f,
+        ...m
+    }, l) => W.createElement(wS, {
+        ref: l,
+        iconNode: a,
+        className: Cg(`lucide-${MS(Hp(i))}`, `lucide-${i}`, f),
+        ...m
+    }));
+    return o.displayName = Hp(i), o
+};
+const kS = [
+        ["path", {
+            d: "m12 19-7-7 7-7",
+            key: "1l729n"
+        }],
+        ["path", {
+            d: "M19 12H5",
+            key: "x3x0zl"
+        }]
+    ],
+    br = yn("arrow-left", kS);
+const DS = [
+        ["path", {
+            d: "M12 6v6l4 2",
+            key: "mmk7yg"
+        }],
+        ["circle", {
+            cx: "12",
+            cy: "12",

@@ -1,0 +1,201 @@
+function PS() {
+    const i = [{
+        icon: y.jsx(BS, {
+            size: 18
+        }),
+        title: "INPUT",
+        color: "#60a5fa",
+        desc: "Kamu memberi perintah — tekan tombol untuk mengirim sinyal. Nilai: 1 (ON) atau 0 (OFF)."
+    }, {
+        icon: y.jsx(YS, {
+            size: 18
+        }),
+        title: "PROCESS",
+        color: "#4ade80",
+        desc: "Gate mengolah sinyal sesuai aturannya dan memutuskan output-nya."
+    }, {
+        icon: y.jsx(HS, {
+            size: 18
+        }),
+        title: "OUTPUT",
+        color: "#f472b6",
+        desc: "Hasil keputusan gate. Lampu menyala = 1, Lampu padam = 0."
+    }];
+    return y.jsxs("div", {
+        style: {
+            backgroundColor: "#0a0f1a",
+            border: "1px solid #1e293b",
+            borderRadius: 16,
+            padding: 14,
+            marginBottom: 20
+        },
+        children: [y.jsx("p", {
+            style: {
+                fontFamily: "Orbitron,sans-serif",
+                fontSize: 9,
+                color: "#475569",
+                letterSpacing: 2,
+                textAlign: "center",
+                margin: "0 0 12px"
+            },
+            children: "CARA KERJA LOGIC GATES"
+        }), y.jsx("div", {
+            style: {
+                display: "flex",
+                alignItems: "stretch",
+                gap: 6
+            },
+            children: i.map((a, o) => y.jsxs(K.Fragment, {
+                children: [y.jsxs("div", {
+                    style: {
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 5,
+                        backgroundColor: `rgba(${fa(a.color)},0.06)`,
+                        border: `1px solid rgba(${fa(a.color)},0.2)`,
+                        borderRadius: 12,
+                        padding: "10px 6px",
+                        textAlign: "center"
+                    },
+                    children: [y.jsx("div", {
+                        style: {
+                            color: a.color
+                        },
+                        children: a.icon
+                    }), y.jsx("span", {
+                        style: {
+                            fontFamily: "Orbitron,sans-serif",
+                            fontWeight: 800,
+                            fontSize: 9,
+                            color: a.color
+                        },
+                        children: a.title
+                    }), y.jsx("span", {
+                        style: {
+                            fontFamily: "Inter,sans-serif",
+                            fontSize: 9,
+                            color: "#64748b",
+                            lineHeight: 1.5
+                        },
+                        children: a.desc
+                    })]
+                }), o < i.length - 1 && y.jsx("div", {
+                    style: {
+                        display: "flex",
+                        alignItems: "center",
+                        flexShrink: 0
+                    },
+                    children: y.jsx("span", {
+                        style: {
+                            color: "#334155",
+                            fontSize: 14
+                        },
+                        children: "→"
+                    })
+                })]
+            }, a.title))
+        })]
+    })
+}
+
+
+function CircuitDiagram01({ a, b, bPrime, out, onToggleA, onToggleB }) {
+    const notColor = "#f87171";
+    const andColor = "#4ade80";
+    const notRgb = fa(notColor);
+    const andRgb = fa(andColor);
+    const wc = (val, col) => val ? col : "#1e293b";
+    const inputNodeW = 46, inputNodeH = 42, inputNodeRx = 7;
+    const nodeR = 8, outNodeR = 13;
+    const inputAX = 1, inputAY = 28;
+    const inputBX = 1, inputBY = 76;
+    const notStartX = 100, notEndX = notStartX + 54;
+    const notTopY = inputBY - 22, notBotY = inputBY + 22, notMidY = inputBY;
+    const bubbleR = 5, notOutX = notEndX + bubbleR * 2 + 1;
+    const andStartX = 208, andW = 26;
+    const andTopY = 38, andBotY = 66, andMidY = 52;
+    const andArcR = (andBotY - andTopY) / 2;
+    const andEndX = andStartX + andW + andArcR;
+    const outX = andEndX + 34 + outNodeR, outY = andMidY;
+    const svgW = outX + 1, svgH = 100;
+    const notGlow = bPrime
+        ? `drop-shadow(0 0 4px rgba(${notRgb},0.9)) drop-shadow(0 0 10px rgba(${notRgb},0.5))`
+        : "none";
+    const notFill = bPrime ? `rgba(${notRgb},0.13)` : "#0f172a";
+    const notStroke = bPrime ? notColor : "#475569";
+    const andGlow = out
+        ? `drop-shadow(0 0 4px rgba(${andRgb},0.9)) drop-shadow(0 0 10px rgba(${andRgb},0.5))`
+        : "none";
+    const andFill = out ? `rgba(${andRgb},0.13)` : "#0f172a";
+    const andStroke = out ? andColor : "#475569";
+    const bPrimeColor = bPrime ? notColor : "#475569";
+    return y.jsxs("svg", {
+        viewBox: `0 0 ${svgW} ${svgH}`,
+        width: "100%",
+        style: { overflow: "visible", display: "block" },
+        children: [
+            y.jsxs("g", { onClick: onToggleA, style: { cursor: "pointer" }, children: [
+                y.jsx("rect", { x: inputAX, y: inputAY - 21, width: inputNodeW, height: inputNodeH, rx: inputNodeRx, fill: a ? `rgba(${andRgb},0.2)` : "#0f172a", stroke: a ? andColor : "#334155", strokeWidth: "1.5", style: { transition: "all 0.25s" } }),
+                y.jsx("text", { x: inputAX + 24, y: inputAY - 10, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "8", fill: "#64748b", children: "A" }),
+                y.jsx("circle", { cx: inputAX + 24, cy: inputAY, r: nodeR, fill: a ? andColor : "#1e293b", stroke: a ? andColor : "#334155", strokeWidth: "1.5", style: { filter: a ? `drop-shadow(0 0 5px rgba(${andRgb},0.8))` : "none", transition: "all 0.25s" } }),
+                y.jsx("text", { x: inputAX + 24, y: inputAY + 17, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "11", fontWeight: "bold", fill: a ? andColor : "#475569", children: a ? "1" : "0" })
+            ]}),
+            y.jsxs("g", { onClick: onToggleB, style: { cursor: "pointer" }, children: [
+                y.jsx("rect", { x: inputBX, y: inputBY - 21, width: inputNodeW, height: inputNodeH, rx: inputNodeRx, fill: b ? `rgba(${notRgb},0.2)` : "#0f172a", stroke: b ? notColor : "#334155", strokeWidth: "1.5", style: { transition: "all 0.25s" } }),
+                y.jsx("text", { x: inputBX + 24, y: inputBY - 10, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "8", fill: "#64748b", children: "B" }),
+                y.jsx("circle", { cx: inputBX + 24, cy: inputBY, r: nodeR, fill: b ? notColor : "#1e293b", stroke: b ? notColor : "#334155", strokeWidth: "1.5", style: { filter: b ? `drop-shadow(0 0 5px rgba(${notRgb},0.8))` : "none", transition: "all 0.25s" } }),
+                y.jsx("text", { x: inputBX + 24, y: inputBY + 17, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "11", fontWeight: "bold", fill: b ? notColor : "#475569", children: b ? "1" : "0" })
+            ]}),
+            y.jsx("line", { x1: inputAX + inputNodeW, y1: inputAY, x2: andStartX, y2: andTopY, stroke: wc(a, andColor), strokeWidth: "2.5", strokeLinecap: "round", style: { transition: "stroke 0.3s" } }),
+            y.jsx("line", { x1: inputBX + inputNodeW, y1: inputBY, x2: notStartX, y2: notMidY, stroke: wc(b, notColor), strokeWidth: "2.5", strokeLinecap: "round", style: { transition: "stroke 0.3s" } }),
+            y.jsxs(y.Fragment, { children: [
+                y.jsx("polygon", { points: `${notStartX},${notTopY} ${notStartX},${notBotY} ${notEndX},${notMidY}`, fill: notFill, stroke: notStroke, strokeWidth: "2", style: { filter: notGlow, transition: "all 0.3s" } }),
+                y.jsx("circle", { cx: notEndX + bubbleR, cy: notMidY, r: bubbleR, fill: notFill, stroke: notStroke, strokeWidth: "2", style: { filter: notGlow, transition: "all 0.3s" } }),
+                y.jsx("text", { x: (notStartX + notEndX) / 2, y: notMidY + 4, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "9", fontWeight: "bold", fill: bPrime ? notColor : "#475569", style: { transition: "fill 0.3s" }, children: "NOT" })
+            ]}),
+            y.jsx("line", { x1: notOutX, y1: notMidY, x2: andStartX, y2: andBotY, stroke: wc(bPrime, notColor), strokeWidth: "2.5", strokeLinecap: "round", style: { transition: "stroke 0.3s" } }),
+            y.jsx("text", { x: (notOutX + andStartX) / 2, y: notMidY - 8, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "9", fontWeight: "bold", fill: bPrimeColor, style: { transition: "fill 0.3s" }, children: "B′" }),
+            y.jsxs(y.Fragment, { children: [
+                y.jsx("path", { d: `M ${andStartX},${andTopY} L ${andStartX + andW},${andTopY} A ${andArcR},${andArcR} 0 0,1 ${andStartX + andW},${andBotY} L ${andStartX},${andBotY} Z`, fill: andFill, stroke: andStroke, strokeWidth: "2", style: { filter: andGlow, transition: "all 0.3s" } }),
+                y.jsx("text", { x: andStartX + andW / 2 + 4, y: andMidY + 4, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "9", fontWeight: "bold", fill: out ? andColor : "#475569", style: { transition: "fill 0.3s" }, children: "AND" }),
+                y.jsx("line", { x1: andStartX, y1: andTopY, x2: andStartX - 10, y2: andTopY - 6, stroke: andStroke, strokeWidth: "1.2", opacity: "0.45" }),
+                y.jsx("line", { x1: andStartX, y1: andBotY, x2: andStartX - 10, y2: andBotY + 6, stroke: andStroke, strokeWidth: "1.2", opacity: "0.45" })
+            ]}),
+            y.jsx("line", { x1: andEndX, y1: andMidY, x2: outX - outNodeR, y2: outY, stroke: wc(out, andColor), strokeWidth: "2.5", strokeLinecap: "round", style: { transition: "stroke 0.3s" } }),
+            y.jsx("text", { x: outX, y: outY - outNodeR - 5, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "7", fill: "#475569", letterSpacing: "1", children: "OUT" }),
+            y.jsx("circle", { cx: outX, cy: outY, r: outNodeR, fill: out ? andColor : "#1e293b", stroke: out ? andColor : "#334155", strokeWidth: "2", style: { filter: out ? `drop-shadow(0 0 8px rgba(${andRgb},0.9)) drop-shadow(0 0 18px rgba(${andRgb},0.5))` : "none", transition: "all 0.3s" } }),
+            y.jsx("text", { x: outX, y: outY + 4, textAnchor: "middle", fontFamily: "Orbitron,sans-serif", fontSize: "10", fontWeight: "bold", fill: out ? "#000" : "#475569", style: { transition: "fill 0.3s" }, children: out ? "1" : "0" })
+        ]
+    });
+}
+
+function CircuitCard01() {
+    const [inputA, setInputA] = W.useState(false);
+    const [inputB, setInputB] = W.useState(false);
+    const bPrime = !inputB;
+    const out = inputA && bPrime;
+    const andColor = "#4ade80";
+    const andRgb = fa(andColor);
+    const truthTable = [[0,0,0],[0,1,0],[1,0,1],[1,1,0]];
+    return y.jsxs("div", {
+        style: {
+            backgroundColor: "#0e1420",
+            border: out ? `rgba(${andRgb},0.4)` : "#1e293b",
+            borderRadius: 16, padding: "18px 14px",
+            boxShadow: out ? `0 0 24px rgba(${andRgb},0.18)` : "none",
+            transition: "all 0.4s ease"
+        },
+        children: [
+            y.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }, children: [
+                y.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+                    y.jsx("span", { style: { fontFamily: "Orbitron,sans-serif", fontSize: 11, fontWeight: 700, color: "#475569" }, children: "01" }),
+                    y.jsx("div", { style: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: out ? andColor : "#334155", boxShadow: out ? `0 0 8px ${andColor}` : "none", transition: "all 0.3s" } }),
+                    y.jsx("span", { style: { fontFamily: "Orbitron,sans-serif", fontWeight: 800, fontSize: 13, color: out ? andColor : "#e2e8f0" }, children: "NOT → AND Combo" })
+                ]}),
+                y.jsx("span", { style: { fontFamily: "Orbitron,sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: "4px 10px", borderRadius: 6, backgroundColor: "rgba(100,116,139,0.15)", border: "1px solid rgba(100,116,139,0.3)", color: "#94a3b8" }, children: "MUDAH" })
+            ]}),
+            y.jsx(CircuitDiagram01, { a: inputA, b: inputB, bPrime: bPrime, out: out, onToggleA: () => setInputA(v => !v), onToggleB: () => setInputB(v => !v) }),
+            y.jsxs("div", { style: { display: "flex", gap: 6, alignItems: "center", margin: "10px 0 8px", fontFamily: "Orbitron,sans-serif", fontSize: 10, color: "#475569" }, children: [
+                y.jsxs("span", { style: { color: inputA ? andColor : "#475569" }, children: ["A=", inputA ? 1 : 0] }),
