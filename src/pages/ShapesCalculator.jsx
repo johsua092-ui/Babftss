@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 
 /* ======================================================================
-   SHAPES CALCULATOR — halaman React Orang Jawa.
+   SHAPES CALCULATOR — halaman React BABFT Learning.
 
    Porting dari kalkulator standalone v1.2.1 (vanilla HTML/JS, by
    @dabl2829 di YouTube) ke page ini. Task: GANTI DESIGN saja — fungsi,

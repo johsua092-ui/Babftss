@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Orang Jawa API Server — Express backend untuk Pterodactyl",
+  "description": "BABFT Learning API Server — Express backend untuk Pterodactyl",
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js"

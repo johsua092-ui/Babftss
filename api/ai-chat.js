@@ -752,7 +752,7 @@ function isCodingRequest(msg) {
 
 const CODE_BLOCK_MSG = `# 🚫 Maaf, Saya Tidak Bisa Membuat Kode
 
-Saya adalah **AI Tutor Orang Jawa** — tugas saya membantu kamu belajar:
+Saya adalah **AI Tutor BABFT Learning** — tugas saya membantu kamu belajar:
 - ⚡ **Logic Gates** (AND, OR, NOT, XOR, dll)
 - ⚙️ **Gears & Mechanisms**
 - 🔩 **Linkages Mechanic**
@@ -768,9 +768,9 @@ Kalau kamu butuh bantuan coding, coba tanya ke tools yang tepat seperti GitHub C
 
 Ada yang bisa saya bantu tentang Logic Gates atau BABFT? 😊`;
 
-const IDENTITY_MSG = `# 👋 Halo! Aku Yuki, AI Tutor Orang Jawa 🏴‍☠️
+const IDENTITY_MSG = `# 👋 Halo! Aku Yuki, AI Tutor BABFT Learning 🏴‍☠️
 
-Aku dibuat oleh **tim pengembang Orang Jawa** untuk membantu kamu belajar:
+Aku dibuat oleh **tim pengembang BABFT Learning** untuk membantu kamu belajar:
 
 ## 📚 Yang Bisa Aku Bantu:
 - ⚡ **Logic Gates** — AND, OR, NOT, XOR, NAND, NOR, XNOR
@@ -786,9 +786,9 @@ Aku dibuat oleh **tim pengembang Orang Jawa** untuk membantu kamu belajar:
 
 Mau belajar yang mana dulu? 😊`;
 
-const PLATFORM_INFO = `# 🏴‍☠️ Orang Jawa — Platform Belajar Logic Gates!
+const PLATFORM_INFO = `# 🏴‍☠️ BABFT Learning — Platform Belajar Logic Gates!
 
-Orang Jawa adalah **platform edukasi interaktif** bertema game Roblox **"Build A Boat For Treasure"** yang mengajarkan konsep **Logic Gates (Gerbang Logika)** digital dengan cara visual dan menyenangkan.
+BABFT Learning adalah **platform edukasi interaktif** bertema game Roblox **"Build A Boat For Treasure"** yang mengajarkan konsep **Logic Gates (Gerbang Logika)** digital dengan cara visual dan menyenangkan.
 
 ## 📚 Yang Diajarkan:
 
