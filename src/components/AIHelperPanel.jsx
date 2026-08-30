@@ -660,7 +660,7 @@ export default function AIHelperPanel({ onClose, messages, setMessages, chatId, 
                             <MessageCircle size={20} />
                         </div>
                         <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 13 }}>
-                            Tanya apa saja tentang Logic Gates, Gears, atau materi lain di BABFT Learning.
+                            Tanya apa saja tentang Logic Gates, Gears, atau materi lain di Orang Jawa.
                         </span>
                     </div>
                 )}

@@ -78,7 +78,7 @@ export default function LoginModal({ isOpen, onClose }) {
               fontFamily: 'Orbitron,sans-serif', fontWeight: 900,
               fontSize: 22, color: '#4ade80', margin: '0 0 2px',
               letterSpacing: '-0.02em',
-            }}>Babft Learning</div>
+            }}>Orang Jawa</div>
             <h2 style={{
               fontFamily: 'Orbitron,sans-serif', fontWeight: 800,
               fontSize: 14, color: '#64748b', margin: '0 0 12px',
