@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, Maximize, Paintbrush, Pipette, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Pipette, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -142,6 +142,8 @@ export default function BlockSimulator3Dv2({ setPage }) {
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+  // Reset Camera confirmation modal state
+  const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
 
   // Phase 9: Primitives
   const [shapeType, setShapeType] = useState('sphere');
@@ -6988,6 +6990,38 @@ Now you can apply Displacement for detailed effect.`);
     }
   };
 
+  // Reset Camera handler — teleport kamera ke posisi awal (18, 14, 18) + target (0,0,0)
+  const handleResetCamera = () => {
+    const s = threeRef.current;
+    if (!s || !s.camera || !s.controls) {
+      toast.error('Camera not ready yet');
+      setShowResetCameraConfirm(false);
+      return;
+    }
+    // Smooth animation ke posisi awal
+    const cam = s.camera;
+    const ctrl = s.controls;
+    const startPos = cam.position.clone();
+    const startTarget = ctrl.target.clone();
+    const endPos = new THREE.Vector3(18, 14, 18);
+    const endTarget = new THREE.Vector3(0, 0, 0);
+    const duration = 600; // ms
+    const startTime = performance.now();
+    const animateReset = (now) => {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const ease = 1 - Math.pow(1 - t, 3);
+      cam.position.lerpVectors(startPos, endPos, ease);
+      ctrl.target.lerpVectors(startTarget, endTarget, ease);
+      ctrl.update();
+      if (t < 1) requestAnimationFrame(animateReset);
+    };
+    requestAnimationFrame(animateReset);
+    setShowResetCameraConfirm(false);
+    toast.success('Kamera berhasil direset ke posisi awal!');
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // Phase 172-176: Apps Menu + 5 features (real implementations)
   // ─────────────────────────────────────────────────────────────────────────
@@ -13667,34 +13701,63 @@ Now you can apply Displacement for detailed effect.`);
               padding: '2px 8px', borderRadius: 4, letterSpacing: 1,
               fontFamily: 'Orbitron, sans-serif',
             }}>Three.js</span>
-            {tool === 'delete' && (
-              <button
-                onClick={() => setShowClearAllConfirm(true)}
-                title="Hapus semua block (Clear All)"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 12px', borderRadius: 8,
-                  border: '1px solid #ef4444',
-                  backgroundColor: '#ef4444',
-                  color: '#fff',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
-                  marginLeft: 8,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#dc2626';
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#ef4444';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                <Trash2 size={14} />
-                Clear All
-              </button>
-            )}
+            {/* Reset Camera Button — permanent, always visible */}
+            <button
+              onClick={() => setShowResetCameraConfirm(true)}
+              title="Reset kamera ke posisi awal"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 8,
+                border: '1px solid #06b6d4',
+                backgroundColor: 'rgba(6, 182, 212, 0.12)',
+                color: '#22d3ee',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+                marginLeft: 8,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(6, 182, 212, 0.25)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(6, 182, 212, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(6, 182, 212, 0.12)';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              <RotateCcw size={14} />
+              Reset Camera
+            </button>
+            {/* Clear All Button — permanent, always visible */}
+            <button
+              onClick={() => setShowClearAllConfirm(true)}
+              title="Hapus semua block (Clear All)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 8,
+                border: '1px solid #ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                color: '#f87171',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.25)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              <Trash2 size={14} />
+              Clear All
+            </button>
           </div>
         </div>
 
@@ -21278,6 +21341,125 @@ Now you can apply Displacement for detailed effect.`);
                 }}
               >
                 Ya, Hapus Semua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Camera Confirmation Modal */}
+      {showResetCameraConfirm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000,
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <div style={{
+            backgroundColor: 'rgba(14, 20, 32, 0.98)',
+            border: '2px solid #06b6d4',
+            borderRadius: 16,
+            padding: '24px 32px',
+            maxWidth: 480,
+            boxShadow: '0 20px 60px rgba(6, 182, 212, 0.3), 0 0 100px rgba(6, 182, 212, 0.15)',
+            fontFamily: 'Inter, sans-serif',
+            animation: 'slideUp 0.3s ease-out',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              marginBottom: 20,
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                border: '1px solid rgba(6, 182, 212, 0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#22d3ee',
+                boxShadow: '0 0 20px rgba(6, 182, 212, 0.3)',
+              }}>
+                <RotateCcw size={24} />
+              </div>
+              <div>
+                <h3 style={{
+                  margin: 0, fontSize: 18, fontWeight: 700,
+                  color: '#e2e8f0',
+                  fontFamily: 'Orbitron, sans-serif',
+                }}>
+                  Reset Posisi Kamera?
+                </h3>
+                <p style={{
+                  margin: '4px 0 0 0', fontSize: 13,
+                  color: '#94a3b8',
+                }}>
+                  Kamera akan kembali ke posisi awal
+                </p>
+              </div>
+            </div>
+
+            <p style={{
+              margin: '0 0 24px 0', fontSize: 14, lineHeight: 1.6,
+              color: '#cbd5e1',
+            }}>
+              Apakah kamu yakin ingin mereset posisi kamera ke titik awal? 
+              Semua block dan objek yang sudah kamu buat <strong style={{ color: '#22d3ee' }}>TIDAK akan terhapus</strong>, 
+              hanya posisi kamera yang akan kembali seperti pertama kali membuka halaman ini.
+            </p>
+
+            <div style={{
+              display: 'flex', justifyContent: 'flex-end', gap: 12,
+            }}>
+              <button
+                onClick={() => setShowResetCameraConfirm(false)}
+                style={{
+                  padding: '10px 20px', borderRadius: 8,
+                  backgroundColor: 'transparent',
+                  border: '1px solid #334155',
+                  color: '#94a3b8',
+                  fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                  e.currentTarget.style.borderColor = '#64748b';
+                  e.currentTarget.style.color = '#e2e8f0';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = '#334155';
+                  e.currentTarget.style.color = '#94a3b8';
+                }}
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleResetCamera}
+                style={{
+                  padding: '10px 24px', borderRadius: 8,
+                  backgroundColor: '#06b6d4',
+                  border: '1px solid #06b6d4',
+                  color: '#fff',
+                  fontSize: 13, fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  fontFamily: 'Inter, sans-serif',
+                  boxShadow: '0 4px 12px rgba(6, 182, 212, 0.4)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#0891b2';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(6, 182, 212, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#06b6d4';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(6, 182, 212, 0.4)';
+                }}
+              >
+                Ya, Reset Kamera
               </button>
             </div>
           </div>
