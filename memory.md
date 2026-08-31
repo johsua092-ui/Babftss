@@ -6583,3 +6583,43 @@ Stage Summary:
 - Header Block Sim v2 kini punya button hijau "Build Area" (Coming Soon)
   disamping badge Three.js; Reset Camera & Clear All bergeser kanan; modal
   peringatan custom dark-theme hijau; zero regression; push NORMAL.
+
+## Bagian 79 — Icon "Build Area" Ganti Palu → Miniatur Area Build (SVG Custom)
+
+### Apa yang Berubah (Task ID 17, +47/−2 baris)
+
+- Icon button "Build Area" & modal Coming Soon BUKAN lagi palu (Hammer
+  lucide) — sekarang komponen custom `BuildAreaIcon`: SVG grid floor
+  perspektif (rhombus + grid 3x3, meniru GridHelper 60x60) + block
+  isometrik hijau 3-shade (#34d399 top / #10b981 kanan / #059669 kiri)
+  duduk di tengah grid.
+- Komponen di file scope setelah `const GRID_SIZE = 30` (line ~64-107);
+  dipakai `size={14}` (button header) & `size={24}` (modal). Stroke grid
+  pakai `currentColor` → ikut warna hijau button/modal.
+- Icon Hammer tool Place (line ~14030, `<Hammer size={15} />`) TIDAK
+  tersentuh — import lucide Hammer tetap ada.
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Runtime: custom SVG (non-lucide) di button (viewBox 24, 6 path, 3 fill
+  face) & modal (24px); teks/jumlah path sesuai desain.
+- VLM zoom 4× (button) & 3× (modal): grid floor + cube, shading 3D,
+  crisp, match tema; BUKAN hammer.
+- Regresi: buka section Build Tools → `.lucide-hammer` ada 1 di button
+  "Place" (utuh); 0 console error; modal buka/tutup normal.
+
+### Pelajaran
+
+- Icon lucide untuk "build area/grid 3D perspektif + block" tidak ada
+  yang pas (Grid3x3 = flat top-view) → SVG custom inline lebih akurat &
+  terlihat premium; isi solid (fill face block) mem-mask garis grid di
+  belakang sehingga block tampak "di atas" grid tanpa z-index.
+- Toolbar Build Tools default tertutup (MASTER build:false) → untuk cek
+  ikon tool Place runtime, buka section "Build Tools" dulu.
+- Geometri grid perspektif presisi: taruh garis interior di titik 1/3 &
+  2/3 tiap edge rhombus (bukan tempa-tiba) supaya simetris.
+
+Stage Summary:
+- Icon "Build Area" kini miniatur area build (grid floor perspektif +
+  block hijau isometrik) — bukan palu; dipakai di button header & modal;
+  icon Place tool & semua fitur lain tidak tersentuh; push NORMAL.

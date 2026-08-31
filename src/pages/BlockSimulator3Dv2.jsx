@@ -61,6 +61,51 @@ const COLORS = [
 
 const GRID_SIZE = 30; // same as v1
 
+/* Build Area icon — miniatur area build simulator: grid floor perspektif
+   (GridHelper 60x60) + block isometrik hijau di atasnya (3 shade: top
+   terang #34d399, kanan #10b981, kiri #059669). Dipakai button "Build
+   Area" di header & modal Coming Soon. Jangan pakai icon palu — user minta
+   icon yang menggambarkan area build itu sendiri. */
+function BuildAreaIcon({ size = 14 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      {/* Grid floor perspektif — area build */}
+      <path
+        d="M12 5.5 L21.5 10.25 L12 15 L2.5 10.25 Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Garis grid interior (3x3) */}
+      <path
+        d="M8.83 7.08 L18.33 11.83 M5.67 8.67 L15.17 13.42 M15.17 7.08 L5.67 11.83 M18.33 8.67 L8.83 13.42"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        opacity="0.6"
+      />
+      {/* Block isometrik di atas grid */}
+      <path d="M9.5 7.65 L12 8.9 L12 11.5 L9.5 10.25 Z" fill="#059669" />
+      <path d="M14.5 7.65 L12 8.9 L12 11.5 L14.5 10.25 Z" fill="#10b981" />
+      <path d="M12 6.4 L14.5 7.65 L12 8.9 L9.5 7.65 Z" fill="#34d399" />
+      <path
+        d="M12 6.4 L14.5 7.65 L14.5 10.25 L12 11.5 L9.5 10.25 L9.5 7.65 Z M9.5 7.65 L12 8.9 L14.5 7.65 M12 8.9 L12 11.5"
+        stroke="#34d399"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function BlockSimulator3Dv2({ setPage }) {
   const containerRef = useRef(null);
 
@@ -13768,7 +13813,7 @@ Now you can apply Displacement for detailed effect.`);
                 e.currentTarget.style.boxShadow = 'none';
               }}
             >
-              <Hammer size={14} />
+              <BuildAreaIcon size={14} />
               Build Area
             </button>
             {/* Reset Camera Button — permanent, always visible */}
@@ -21568,7 +21613,7 @@ Now you can apply Displacement for detailed effect.`);
                 color: '#34d399',
                 boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)',
               }}>
-                <Hammer size={24} />
+                <BuildAreaIcon size={24} />
               </div>
               <div>
                 <h3 style={{

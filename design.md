@@ -1892,3 +1892,53 @@ memberi ruang.
 - Catatan: `find text "Reset Camera"` gagal setelah modal ditutup (refs
   kadaluarsa) — gunakan snapshot ulang + `click @ref` atau `find role
   button click --name "Batal"`.
+
+## Bagian 54 — Icon "Build Area": Palu → Miniatur Area Build (Grid Floor Perspektif + Block)
+
+### 54.1 Ringkasan
+
+User: icon palu SALAH — icon harus menggambarkan **area build itu
+sendiri** (grid floor tempat membangun) yang dijadikan icon. Dibuat
+komponen `BuildAreaIcon` — SVG custom (bukan lucide): grid floor
+perspektif (diamond + garis grid 3x3, meniru GridHelper 60x60) + block
+isometrik hijau 3-shade di atasnya.
+
+### 54.2 Spesifikasi Implementasi (aditif +47/−2 baris)
+
+- **Komponen `BuildAreaIcon({ size })`** di file scope (setelah
+  `const GRID_SIZE = 30`, sebelum `export default function`), murni
+  presentational — viewBox 24, `aria-hidden`, `flexShrink: 0`.
+- **Geometri SVG**:
+  - Grid floor: rhombus T(12,5.5) R(21.5,10.25) B(12,15) L(2.5,10.25),
+    stroke `currentColor` width 2 (outline) + 4 garis grid interior 3x3
+    (stroke 1.4, opacity 0.6) — dihitung dari titik 1/3 & 2/3 tiap edge
+    sehingga presisi simetris.
+  - Block isometrik di tengah grid: footprint half-width 2.5 / half-height
+    1.25 / tinggi 2.6; 3 face fill solid — top `#34d399` (terang), kanan
+    `#10b981`, kiri `#059669` — plus outline silhouette `#34d399`
+    stroke 1.4 (termasuk edge vertikal depan & V top). Fill solid =
+    mem-mask garis grid di belakang block (block tampak "duduk" DI ATAS
+    grid, garis grid muncul di sisi kiri/kanan/depan).
+- **Pemakaian**: `<BuildAreaIcon size={14} />` di button header (ganti
+  `<Hammer size={14} />`), `<BuildAreaIcon size={24} />` di modal Coming
+  Soon (ganti `<Hammer size={24} />`). `currentColor` mengikuti warna
+  button/modal (#34d399) sehingga grid ikut hijau.
+- **DILARANG menyentuh**: `<Hammer size={15} />` di tombol tool Place
+  toolbar (line ~14030, hasil task "replace Place icon Plus→Hammer") —
+  import lucide `Hammer` TETAP dipakai, tidak dihapus.
+
+### 54.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: button Build Area berisi custom SVG (bukan class lucide),
+  viewBox 24, 6 path, 3 face fill #059669/#10b981/#34d399; modal icon 24px
+  sama.
+- VLM zoom 4× button: BUKAN palu ✓ grid floor perspektif + cube hijau
+  dengan shading 3D (top terang, side gelap) ✓ crisp & aligned ✓.
+- VLM zoom 3× modal: grid floor + cube ✓ crisp di ukuran besar ✓ match
+  tema hijau modal ✓.
+- Regresi: icon Hammer tool Place tetap utuh (verifikasi runtime: buka
+  section Build Tools → 1 icon `.lucide-hammer` di button "Place");
+  `agent-browser errors` = 0.
+- Catatan: section Build Tools default TERTUTUP (MASTER build:false) →
+  tombol Place tidak ada di DOM sampai section dibuka; cek regresi icon
+  toolbar harus buka section dulu.
