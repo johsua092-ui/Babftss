@@ -68,7 +68,9 @@ const GRID_SIZE = 30; // same as v1
    icon palu — user minta icon yang menggambarkan area build itu sendiri.
    Geometri HARUS mengisi hampir penuh viewBox 24x24 (grid y 10-22, block
    y 5-15.5) — versi lama hanya ~40% tinggi viewBox sehingga tampak kecil
-   dibanding icon lucide tetangga. Jangan kecilkan lagi. */
+   dibanding icon lucide tetangga. Jangan kecilkan lagi.
+   Stroke sengaja TIPIS (outline grid 1.5, interior & block 1.0) — versi
+   tebal (2/1.5) bikin wujud tidak terbaca; jangan tebalkan lagi. */
 function BuildAreaIcon({ size = 20 }) {
   return (
     <svg
@@ -83,16 +85,16 @@ function BuildAreaIcon({ size = 20 }) {
       <path
         d="M12 10 L22.5 16 L12 22 L1.5 16 Z"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
       {/* Garis grid interior (3x3) */}
       <path
         d="M5 14 L15.5 20 M8.5 12 L19 18 M15.5 12 L5 18 M19 14 L8.5 20"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1"
         strokeLinecap="round"
-        opacity="0.75"
+        opacity="0.7"
       />
       {/* Block isometrik di atas grid */}
       <path d="M8 13.5 L12 15.5 L12 9 L8 7 Z" fill="#059669" />
@@ -101,7 +103,7 @@ function BuildAreaIcon({ size = 20 }) {
       <path
         d="M12 5 L16 7 L16 13.5 L12 15.5 L8 13.5 L8 7 Z M8 7 L12 9 L16 7 M12 9 L12 15.5"
         stroke="#34d399"
-        strokeWidth="1.5"
+        strokeWidth="1"
         strokeLinejoin="round"
         strokeLinecap="round"
       />

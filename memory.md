@@ -6664,3 +6664,35 @@ custom icon tampak ~setengahnya. Kamera keluhan user + VLM konfirmasi.
 Stage Summary:
 - Icon Build Area kini besar & jelas (geometri 71% viewBox + render 20px
   header / 32px modal); button & fitur lain tidak tersentuh; push NORMAL.
+
+## Bagian 81 — Icon "Build Area" Garis Ditipiskan (Wujud Jadi Terbaca)
+
+### Perubahan (Task ID 19, +7/−5 baris, murni stroke + komentar)
+
+- Stroke grid outline 2→1.5; grid interior 1.5→1 (opacity 0.75→0.7);
+  block outline 1.5→1. Geometri/ukuran/warna tidak diubah.
+- Komentar anti-regresi baru: "jangan tebalkan lagi" (melengkapi
+  "jangan kecilkan lagi" dari Bagian 80).
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Runtime: stroke-width [1.5,1,1], opacity 0.7, size 20.
+- VLM zoom 5× header + 4× modal: garis thin & crisp; wujud grid floor +
+  cube jelas terbaca; garis grid tidak blur; elegan profesional.
+- Regresi: Place tool hammer utuh; gap 18px no overlap; 0 error.
+
+### Pelajaran
+
+- Perceived quality icon kecil = fokus stroke: pada 20px, stroke
+  efektif >1.5px terlihat "blob". Aturan praktis untuk icon 24-viewBox
+  render 20px: outline 1.5, detail 1.0. Fill solid (bukan stroke) untuk
+  bentuk utama (block) agar tetap bold walau garis tipis.
+- Iterasi icon Build Area (3 tahap): palu → grid+block (kecil, 40%
+  viewBox) → diperbesar (71% viewBox, 20/32px) → garis ditipiskan
+  (wujud terbaca). Setiap keluhan user = 1 aspek berbeda: bentuk,
+  ukuran, ketebalan — jangan asumsi keluhan berikutnya sama.
+
+Stage Summary:
+- Icon Build Area kini: besar (20/32px), geometri penuh viewBox, garis
+  tipis crisp — wujud grid floor perspektif + block hijau isometrik
+  terbaca jelas; push NORMAL.

@@ -1988,3 +1988,38 @@ dari icon lucide tetangga. Penyebab GANDA:
   modal buka/tutup normal ✓.
 - Efektif icon tampak ~2.6× lebih besar (0.71×20px ≈ 14px visible vs
   0.40×14px ≈ 5.5px visible sebelumnya).
+
+## Bagian 56 — Icon "Build Area": Garis Ditipiskan (Wujud Grid + Block Jadi Terbaca)
+
+### 56.1 Masalah
+
+User: "iconnya garisnya ketebalan, jadi gak kelihatan sebenarnya itu
+wujudnya wujud apa? tolong tipisin". Pada render 20px, stroke tebal
+(outline grid 2 + interior/block 1.5, discale 0.83 = 1.67px/1.25px)
+membuat garis-garis saling menumpuk — wujud grid floor + block tidak
+terbaca, terlihat seperti gumpalan.
+
+### 56.2 Perbaikan (diff +7/−5, hanya nilai stroke + komentar)
+
+- Grid floor outline: strokeWidth **2 → 1.5** (render ~1.25px di 20px).
+- Grid interior 3x3: strokeWidth **1.5 → 1** (~0.83px), opacity
+  0.75 → 0.7 (tetap terlihat, tidak dominan).
+- Block outline: strokeWidth **1.5 → 1** (~0.83px) — face fill solid
+  tetap dominan, outline hanya memberi ketegasan edge.
+- Komentar anti-regresi ditambah: "Stroke sengaja TIPIS (outline grid
+  1.5, interior & block 1.0) — versi tebal (2/1.5) bikin wujud tidak
+  terbaca; jangan tebalkan lagi."
+- Geometri, ukuran render (20px/32px), warna, dan pemakaian TIDAK
+  diubah — murni ketebalan garis.
+
+### 56.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: stroke-width SVG = [1.5, 1, 1], opacity interior 0.7,
+  size 20 — sesuai desain.
+- VLM zoom 5× header: garis THIN & crisp ✓ wujud grid floor perspektif
+  + cube hijau jelas terbaca ✓ garis grid interior mudah dipisah,
+  tidak blur ✓ keseluruhan shape readable ✓.
+- VLM zoom 4× modal (32px): tipis & crisp ✓ subjek jelas ✓ elegan &
+  profesional, tidak clunky ✓.
+- Regresi: tool Place ber-icon Hammer utuh ✓; Build Area right <
+  Reset Camera left (gap 18px, no overlap) ✓; 0 console error ✓.
