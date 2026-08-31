@@ -3476,6 +3476,9 @@ Now you can apply Displacement for detailed effect.`);
     s.scene.add(terrain);
     s.blocks.push(terrain);
     setBlockCount(s.blocks.length);
+    // FIX Task ID 24: terrain creation ikut tercatat di history supaya bisa
+    // di-undo/redo seperti aksi lain (permintaan "undo/redo universal").
+    if (threeRef.current.recordHistory) threeRef.current.recordHistory();
   };
 
   // Phase 40: Material copy/paste — copy material dari 1 block, paste ke block lain
@@ -12773,6 +12776,20 @@ Now you can apply Displacement for detailed effect.`);
     window.addEventListener('mouseup', onWindowMouseUp);
 
     // ── Phase 8: Undo/Redo ──
+    // FIX 2026-08-31 (Task ID 24 — "undo harus MAHAKUASA"):
+    // DULU (bug): recordHistory dipanggil SETELAH aksi → snapshot yang masuk stack
+    // SUDAH berisi hasil aksi → doUndo me-restore state yang sama persis dengan
+    // kondisi live → visual no-op ("place block, undo, block gak hilang").
+    // Stack juga tidak punya BASELINE (kondisi awal) — tidak ada state untuk
+    // kembali ke awal.
+    // SEKARANG (invariant BARUS — jangan dilanggar):
+    //   undoStack = urutan state TERMASUK state yang sedang live (top == kondisi
+    //   scene sekarang). Entry[0] = baseline (kondisi awal scene, di-push saat
+    //   init lihat bawah). recordHistory() TETAP dipanggil SETELAH aksi di semua
+    //   call site (place/delete/shape/paint/clone/mirror/object/gizmo/clearAll/
+    //   import) — jangan ubah urutan pemanggilan di call site.
+    //   undo = pop top, restore entry di bawahnya (kondisi SEBELUM aksi terakhir).
+    //   redo = ambil dari redoStack, restore.
     const MAX_HISTORY = 50;
     const undoStack = [];
     const redoStack = [];
@@ -12788,6 +12805,23 @@ Now you can apply Displacement for detailed effect.`);
         b.getWorldQuaternion(worldQuat);
         b.getWorldScale(worldScale);
         const euler = new THREE.Euler().setFromQuaternion(worldQuat);
+        // ── FIX Task ID 24: mesh kompleks (flag importedGlb — mencakup import
+        //    GLB/FBX/OBJ/USD, Object Library, terrain, clone/mirror dari import)
+        //    TIDAK boleh diserialisasi jadi kubus: simpan REFERENSI mesh hidup
+        //    + transform saat snapshot. Kalau direcreate sebagai BoxGeometry
+        //    1×1×1, undo akan menurunkan model 3D jadi kubus polos (regresi baru
+        //    yang muncul begitu undo benar-benar me-restore scene).
+        //    Aman: semua mesh imported di-flatten langsung ke scene
+        //    (processImportedObject pakai scene.attach) → parent = scene
+        //    (transform identity) → world position == local position.
+        if (b.userData.importedGlb) {
+          return {
+            liveMesh: b,
+            px: worldPos.x, py: worldPos.y, pz: worldPos.z,
+            rx: euler.x, ry: euler.y, rz: euler.z,
+            sx: worldScale.x, sy: worldScale.y, sz: worldScale.z,
+          };
+        }
         // Ambil warna dari material pertama yang punya color (handle multi-material glb)
         const mats = Array.isArray(b.material) ? b.material : [b.material];
         const colorMat = mats.find(m => m && m.color);
@@ -12797,7 +12831,6 @@ Now you can apply Displacement for detailed effect.`);
           rx: euler.x, ry: euler.y, rz: euler.z,
           sx: worldScale.x, sy: worldScale.y, sz: worldScale.z,
           color,
-          isImported: !!b.userData.importedGlb,
         };
       });
     };
@@ -12806,10 +12839,18 @@ Now you can apply Displacement for detailed effect.`);
     const restoreState = (snap) => {
       // Clear selection first
       clearSelection();
+      // FIX Task ID 24: reset refs hover-highlight — block yang di-highlight
+      // ikut ter-remove dari scene, referensi lama jadi dangling.
+      highlightedBlock = null;
+      deleteOutlineMesh = null;
       // Remove all current blocks
       threeRef.current.blocks.forEach(b => {
         // removeFromParent aman untuk block biasa (parent=scene) maupun mesh import (parent=gltf.scene group)
         b.removeFromParent();
+        // FIX Task ID 24: mesh imported TIDAK di-dispose — snapshot memegang
+        // referensi hidupnya (untuk restore ulang di redo/undo berikutnya).
+        // Dispose akan merusak resource GPU yang masih dipakai.
+        if (b.userData.importedGlb) return;
         if (Array.isArray(b.material)) {
           b.material.forEach(m => m.dispose());
         } else {
@@ -12820,6 +12861,16 @@ Now you can apply Displacement for detailed effect.`);
       threeRef.current.blocks = [];
       // Recreate from snapshot
       snap.forEach(s => {
+        // FIX Task ID 24: live-reference path — re-add mesh ASLI (GLB/Object
+        // Library/terrain) + kembalikan transform yang tersimpan di snapshot.
+        if (s.liveMesh) {
+          s.liveMesh.position.set(s.px, s.py, s.pz);
+          s.liveMesh.rotation.set(s.rx, s.ry, s.rz);
+          s.liveMesh.scale.set(s.sx, s.sy, s.sz);
+          scene.add(s.liveMesh);
+          threeRef.current.blocks.push(s.liveMesh);
+          return;
+        }
         const geo = new THREE.BoxGeometry(1, 1, 1);
         const mat = new THREE.MeshStandardMaterial({
           color: new THREE.Color(s.color),
@@ -12844,29 +12895,48 @@ Now you can apply Displacement for detailed effect.`);
       undoStack.push(snapshotState());
       if (undoStack.length > MAX_HISTORY) undoStack.shift();
       redoStack.length = 0; // clear redo stack on new action
-      setCanUndo(undoStack.length > 0);
+      // FIX Task ID 24: canUndo butuh MINIMAL 2 entry ([baseline, current]) —
+      // entry tunggal berarti kita sudah di kondisi paling awal (baseline).
+      setCanUndo(undoStack.length >= 2);
       setCanRedo(false);
     };
 
     const doUndo = () => {
-      if (undoStack.length === 0) return;
-      // Push current state to redo stack
+      // FIX Task ID 24: guard BARU — length < 2 = sudah di baseline, tidak ada
+      // kondisi lebih awal untuk kembali. (Guard lama `=== 0` bikin undo di
+      // baseline me-restore baseline = no-op visual.)
+      if (undoStack.length < 2) return;
+      // Push LIVE state (bukan top stack) ke redo — robust walaupun ada mutasi
+      // tak-tercatat sejak record terakhir.
       redoStack.push(snapshotState());
-      // Pop previous state from undo stack
-      const prev = undoStack.pop();
-      restoreState(prev);
-      setCanUndo(undoStack.length > 0);
+      if (redoStack.length > MAX_HISTORY) redoStack.shift();
+      // FIX Task ID 24: buang entry top (duplikat kondisi live sekarang), lalu
+      // restore entry DI BAWAHNYA — itulah kondisi SEBELUM aksi terakhir.
+      // (Cara lama me-restore top yang == kondisi live → visual no-op.)
+      undoStack.pop();
+      restoreState(undoStack[undoStack.length - 1]);
+      setCanUndo(undoStack.length >= 2);
       setCanRedo(redoStack.length > 0);
     };
 
     const doRedo = () => {
       if (redoStack.length === 0) return;
-      undoStack.push(snapshotState());
+      // FIX Task ID 24: ambil state dari redoStack, push ke undoStack, restore.
+      // (Cara lama push snapshot live DULU — di invariant baru itu bikin entry
+      // duplikat karena top stack sudah == kondisi live.)
       const next = redoStack.pop();
+      undoStack.push(next);
       restoreState(next);
-      setCanUndo(undoStack.length > 0);
+      setCanUndo(undoStack.length >= 2);
       setCanRedo(redoStack.length > 0);
     };
+
+    // FIX Task ID 24 — BASELINE: kondisi awal scene di-push SEKALI di init.
+    // Tanpa ini tidak ada state untuk "kembali ke awal". Semua mutasi
+    // (place/delete/transform/paint/clone/mirror/import/clearAll/terrain)
+    // otomatis tercatat karena recordHistory dipanggil post-action di tiap
+    // call site — undo/redo jadi universal untuk KONDISI APAPUN.
+    undoStack.push(snapshotState());
 
     // Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo
     const onUndoKeyDown = (e) => {

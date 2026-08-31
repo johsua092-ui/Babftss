@@ -6864,3 +6864,72 @@ Stage Summary:
 - Undo/Redo kini di urutan teratas Build section (Undo, Redo, Place,
   Delete, dst); section History dihapus; logic undo/redo & shortcut
   tidak tersentuh; zero regression; push NORMAL.
+
+## Bagian 86 — Task ID 24: Fix Fundamental Undo/Redo (Mahakuasa)
+
+Tanggal: 2026-08-31. Commit: (diisi setelah push).
+
+### Konteks
+
+User: place 1 block → undo → block TIDAK hilang; kadang redo gagal
+memunculkan block yang hilang; undo/redo harus UNIVERSAL (rotate, move,
+scale, apapun — "bisa memundurkan atau memajukan kondisi apapun, ini
+harus mahakuasa"). Hati-hati jangan menyenggol pekerjaan lain; push
+NORMAL (dilarang force push).
+
+### Akar Masalah (PELAJARAN PENTING — pola desain undo/redo)
+
+recordHistory dipanggil POST-ACTION di semua call site, tapi doUndo
+lama me-POP top stack dan me-restore-nya — padahal top stack == kondisi
+live sekarang → restore state yang sudah terjadi = VISUAL NO-OP.
+Plus tidak ada baseline di stack. **Pola yang benar untuk snapshot
+post-action**: stack = [baseline, ...states termasuk current]; undo =
+pop top + restore new top; redo = pop dari redoStack + push + restore.
+Semua call site TIDAK perlu diubah — cukup mekanika stack-nya.
+
+### Solusi (diff +80/−10)
+
+- doUndo: guard length < 2; push live snapshot ke redo; pop top;
+  restore entry di bawahnya. doRedo: pop redo → push → restore.
+- canUndo = length >= 2. Baseline push 1× saat init.
+- snapshotState: mesh importedGlb disimpan sebagai LIVE MESH REFERENCE
+  + transform (bukan diserialisasi jadi kubus 1×1×1) — tanpa ini,
+  undo yang baru bekerja akan menurunkan model import jadi kubus.
+- restoreState: skip dispose utk imported; path rebuild live-ref
+  (set transform + scene.add); reset hover refs (dangling).
+- generateTerrain: + recordHistory (terrain undo-able).
+
+### Verifikasi (SEMUA PASS, 1600×900)
+
+- place→undo: 1→0 Blocks (BLOCK HILANG — bug utama FIXED).
+- undo→redo: 0→1 Blocks (block muncul lagi).
+- multi-step: 3 place → undo×4 (no-op di baseline) → redo×3 → 3.
+- delete→undo: 2→3 Blocks (block kembali).
+- move (gizmo drag real mouse)→undo: VLM konfirmasi posisi identik
+  dgn kondisi sebelum move ("successfully reverted").
+- Ctrl+Z / Ctrl+Y konsisten dengan stack baru.
+- Regresi: urutan toolbar, Hammer, gap 18px, modal — semua utuh;
+  0 console error.
+
+### Pelajaran
+
+- Bug "undo tidak ngaruh" = klasik salah arah snapshot: top-of-stack
+  == live state. Cek invariant: apakah undo pernah me-restore state
+  yang BERBEDA dari live? Kalau tidak, undo selalu no-op.
+- Saat memperbaiki fitur yang "diam" (no-op), audit efek samping yang
+  selama ini TERSEMBUNYI: restoreState lama selalu menurunkan import
+  jadi kubus — tidak kelihatan karena undo memang tidak pernah
+  mengubah apa pun. Begitu mekanika dibetulkan, bug laten itu muncul.
+  Selalu tanya: "apa yang berubah perilakunya SETELAH fix ini?"
+- Snapshot berisi referensi mesh hidup WAJIB di-pasangkan dengan
+  skip-dispose di restoreState — dispose akan merusak mesh yang masih
+  dipegang snapshot lain (redo).
+- Untuk verifikasi visual undo: screenshot diff pixel (before vs
+  moved vs undone) + VLM side-by-side — jangan cuma andalkan counter
+  block (move/rotate tidak mengubah counter).
+
+Stage Summary:
+- Undo/redo kini benar-benar bekerja & universal (place, delete, move,
+  rotate, scale, paint, clone, mirror, shape, object, import, terrain,
+  clearAll — semua tercatat post-action); stack = [baseline, ...live];
+  import tidak terdegrade jadi kubus; zero regression; push NORMAL.

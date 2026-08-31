@@ -2176,3 +2176,85 @@ dihapus karena isinya sudah merged ke Build.
 - Regresi: Hammer lucide-hammer size 15 di Place utuh ✓; gap header
   18px & 18px (Bagian 59) utuh ✓; modal Build Area open/close normal ✓;
   0 console error ✓.
+
+## Bagian 61 — Fix Fundamental Undo/Redo: Stack Mechanics + Baseline (Task ID 24)
+
+### 61.1 Latar (bug report user)
+
+User: "saya letakkan 1 block lalu saya undo, harusnya hilang kan block
+nya? nah ini dia malah gak hilang... kadang redo tidak bisa memunculkan
+block yang hilang... harusnya undo dan redo ini sifatnya UNIVERSAL —
+rotate, move, scale, apapun. bisa memundurkan atau memajukan kondisi
+apapun. ini harus mahakuasa."
+
+### 61.2 Akar Masalah (DIAGNOSIS KODE)
+
+Mekanika stack undo/redo LAMA terbalik secara fundamental:
+1. `recordHistory()` dipanggil SETELAH tiap aksi (post-action) di
+   SEMUA call site (place/delete/shape/paint/clone/mirror/object/
+   gizmo/clearAll/import) → snapshot yang di-push ke undoStack SUDAH
+   berisi hasil aksi (block yang baru di-place IKUT masuk snapshot).
+2. `doUndo()` lama: pop top stack (= kondisi live sekarang) lalu
+   me-restore state yang sama persis → VISUAL NO-OP. Block tidak
+   hilang saat undo — persis bug yang user lapor.
+3. Tidak ada BASELINE (kondisi awal scene) di stack — tidak ada
+   state tujuan untuk "kembali ke awal".
+4. `doRedo()` lama juga me-restore state == live → redo gagal
+   memunculkan block yang hilang.
+
+### 61.3 Implementasi (diff +80/−10, semua di blok 12775-12936 + 3 baris generateTerrain)
+
+INVARIANT BARU: undoStack = urutan state TERMASUK state live saat ini
+(top == kondisi scene). Entry[0] = baseline. recordHistory() TETAP
+post-action (semua call site tidak diubah!).
+
+- `doUndo`: guard `length < 2` (di baseline tidak bisa mundur lagi);
+  push LIVE snapshot ke redoStack (robust terhadap mutasi tak-tercatat);
+  pop top (duplikat kondisi live); restore entry DI BAWAHNYA (kondisi
+  sebelum aksi terakhir).
+- `doRedo`: pop dari redoStack → push ke undoStack → restore.
+- `recordHistory`: canUndo kini `length >= 2` (bukan `> 0`).
+- BASELINE: `undoStack.push(snapshotState())` sekali di init (scene
+  mulai kosong, blocks: [] line 11897 — dikonfirmasi via kode).
+- `snapshotState` FIX KRITIS PENDAMPING: mesh ber-flag importedGlb
+  (import GLB/FBX/OBJ/USD + Object Library + terrain + clone/mirror
+  dari import) TIDAK lagi diserialisasi jadi kubus — disimpan sebagai
+  REFERENSI MESH HIDUP + transform. Tanpa ini, begitu undo benar-benar
+  bekerja, semua model import akan terdegrade jadi BoxGeometry 1×1×1
+  (regresi baru yang sebelumnya tersembunyi karena undo = no-op).
+  Aman karena semua mesh imported di-flatten ke scene
+  (processImportedObject pakai scene.attach → parent = scene identity
+  → world == local).
+- `restoreState`: mesh imported TIDAK di-dispose saat removal (snapshot
+  memegang referensi hidupnya); rebuild punya path live-reference
+  (re-apply transform tersimpan + scene.add); reset refs hover
+  (highlightedBlock/deleteOutlineMesh) supaya tidak dangling.
+- `generateTerrain`: + recordHistory call (terrain kini undo-able).
+- Trim redoStack juga di-cap MAX_HISTORY (safety).
+
+### 61.4 Verifikasi (browser 1600×900, SEMUA PASS)
+
+- PLACE→UNDO (bug utama): place 1 block → counter "1 Blocks" → klik
+  Undo → **"0 Blocks" — BLOCK HILANG** ✓ (bug user fixed).
+- UNDO→REDO: 0 → klik Redo → "1 Blocks" — block MUNCUL LAGI ✓.
+- Multi-step: place×3 → undo×4 → 0 (undo ke-4 = no-op guard, tombol
+  disabled di baseline) → redo×3 → 3 Blocks ✓ navigasi penuh.
+- DELETE→UNDO: delete → 2 Blocks → undo → 3 Blocks (block kembali) ✓.
+- MOVE→UNDO (universal!): Move tool → klik block → drag gizmo X-axis
+  (real mouse) → screenshot beda 36864 px → Undo → beda vs before
+  tinggal 15209 px (sisa = panel UI inspector, bukan scene) → VLM
+  side-by-side: "cube positions in A and C are IDENTICAL — the move
+  was successfully reverted" ✓.
+- Keyboard: Ctrl+Z mundur 3→2 Blocks, Ctrl+Y maju 2→3 ✓ (konsisten
+  dengan stack baru).
+- State awal: "0 Blocks", Undo disabled (baseline 1 entry) ✓.
+- Regresi: toolbar order [Undo, Redo, Place, Delete, Shape] utuh;
+  Hammer Place size 15 utuh; gap header 18px & 18px utuh; modal Build
+  Area open/close normal; 0 console error ✓.
+
+### 61.5 Batasan yang tetap (pre-existing, tidak diperintahkan)
+
+- Snapshot tidak merekam: decal texture, group assignment (groupId),
+  material PBR custom (metalness/roughness/emissive per-block),
+  rotasi kamera. Undo me-restore posisi/rotasi/scale/color/warna —
+  data lain kembali ke default. (Di luar scope perintah user.)
