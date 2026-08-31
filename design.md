@@ -2546,3 +2546,92 @@ Transform langsung disusul Groups).
   merah lagi; block count stabil 1 ✓
 - 3 modal header (Build Area/Clear All/Reset Camera) buka-tutup
   normal ✓; 0 console error ✓; semua marker regresi grep PASS ✓
+
+## Bagian 66 — Tombol "Info" (Mode Inspeksi Read-Only) + Material Inspector Ter-Gate + Smart Clamp (Task ID 29)
+
+### 66.1 Latar (permintaan user)
+
+User: (1) ciptakan tombol baru "info" tepat DI ATAS "undo" dengan icon
+kaca pembesar miring ke kanan; (2) tool info = TIDAK ada fungsi apa-apa,
+tidak bisa mengotak-atik block; (3) kursor didekatkan ke block → muncul
+jendela "Material Inspector"; (4) sebagai gantinya, Material Inspector
+TIDAK muncul di manapun KECUALI mode info aktif; (5) jendela inspector
+DILARANG hilang menembus layar — harus punya hitbox besar, saat menabrak
+layar otomatis geser sendiri KE ATAS ("seolah punya kesadaran") supaya
+informasi terbaca jelas, terperinci, nyaman. Peringatan tetap: hati-hati,
+jangan menyenggol pekerjaan lain, push NORMAL.
+
+### 66.2 Desain (5 komponen, 1 file, +117/−25)
+
+1. **Tombol Info** (Build section, urutan PERTAMA — di atas Undo):
+   toggleTool('info'), icon lucide `Search` (lingkaran + handle ke
+   kanan-bawah = kaca pembesar miring kanan, sesuai permintaan), warna
+   aktif sky #38bdf8 (tidak dipakai tool manapun — Undo hijau, Redo biru,
+   Delete merah, Place/Paint amber, Shape/Clone/Mirror/Decal cyan,
+   Object kuning, Scale violet). Urutan final toolbar: Info, Undo, Redo,
+   Delete, Place, Paint, Shape, Clone, Mirror, Object, Decal.
+
+2. **Mode read-only**: click handler onWindowMouseUp adalah if/else-if
+   chain ketat per tool — 'info' tidak match branch MANAPUN → klik
+   canvas = no-op (tidak place/delete/paint/select/gizmo). Ghost preview
+   & delete-highlight juga tidak aktif (branch else). OrbitControls LEFT
+   tetap PAN (kamera boleh digerakkan — itu bukan manipulasi block).
+
+3. **Gate Material Inspector**: tracking hover (onCanvasMouseMove) yang
+   sebelumnya "always cek hover untuk semua tool" kini HANYA jalan saat
+   currentTool === 'info'. Tool lain → setHoveredMaterial(null) (React
+   bailout, no re-render kalau sudah null). Render gate ganda:
+   {hoveredMaterial && tool === 'info' && (...)}. Ditambah: (a) useEffect
+   [tool] — keluar mode info → setHoveredMaterial(null) segera (mouse
+   sudah di toolbar, mousemove canvas tak terpicu); (b) listener BARU
+   mouseleave di canvas → tutup inspector saat kursor keluar canvas
+   (popup hanya sah saat kursor benar-benar di atas canvas dekat block).
+
+4. **Smart clamp anti-tembus-layar** (inti request "kesadaran"):
+   useLayoutEffect [hoveredMaterial, tool] mengukur ukuran ASLI panel
+   (getBoundingClientRect), lalu hitung posisi dengan:
+   - HITBOX_PAD 24px: panel diperlakukan 24px lebih besar di SEMUA sisi
+     → tabrakan dideteksi LEBIH AWAL (hitbox besar, "sadar" sebelum
+     menyentuh tepi);
+   - SCREEN_MARGIN 12px: jarak minimal ke tepi layar setelah digeser;
+   - ideal = (mouseX+16, mouseY+16); overflow kanan → geser kiri;
+     overflow BAWAH → GESER KE ATAS (request eksplisit); sudut ekstrem
+     → kunci di margin.
+   Posisi final ditulis via el.style.left/top di useLayoutEffect =
+     dieksekusi sinkron SEBELUM paint → user tidak pernah melihat frame
+     terpotong. Rumus terverifikasi: bottom-edge → top = vh−12−(h+24);
+     corner → left = vw−12−(w+24).
+
+5. **Integrasi kecil**: import Search (lucide) + useLayoutEffect (react);
+   komentar union type tool + komentar toolbar + 2 status text help
+   ("inspect block (read-only)") — satu baris per rantai ternary.
+
+### 66.3 Verifikasi
+
+- Urutan DOM: Info, Undo, Redo, Delete, Place, Paint, ... ✓; icon =
+  circle r8 + path m21,21-4.3-4.3 (Search, handle kanan-bawah) ✓;
+  aktif = rgb(56,189,248) ✓
+- Gating: hover block dengan tool Place/Delete → inspector 0 di DOM ✓
+  (perilaku lama "muncul di semua tool" TERBUKTI hilang)
+- Muncul: Info aktif → hover block → panel muncul dengan data lengkap
+  (Color/Type/Metalness/Roughness/Opacity/Emissive/Maps/Pos/UUID) ✓
+- Read-only: klik block saat info → 1 Blocks tetap, tanpa seleksi ✓
+- Smart clamp terukur: block bawah (mouse y=540) → ideal top 556+240=
+  796 > 577 → aktual top 302, bottom 542, fullyInside true ✓; pojok
+  kanan-bawah (mouse 1137,522) → ideal (1153,538) menembus kanan+bawah
+  → aktual (1044,302), right 1244, bottom 542, fullyInside true ✓;
+  VLM konfirmasi panel "fully visible, no parts cut off" ✓
+- Penutupan: hover area kosong → tertutup ✓; kursor keluar canvas ke
+  toolbar (mouseleave) → tertutup ✓; ganti tool → tertutup seketika ✓
+- Regresi: place/delete/undo/redo (2→1→2 blocks) ✓; 3 modal header ✓;
+  0 console error ✓; semua marker grep PASS ✓
+
+### 66.4 Catatan desain
+
+- Panel berukuran VARIABEL (200×~240 terukur) — clamp memakai ukuran
+  ASLI via ref, bukan hardcode 240/200 seperti formula lama (yang bisa
+  salah kalau konten lebih tinggi).
+- Inspector hanya menggangu baca-saja: pointerEvents none, zIndex 100.
+- Tidak menyentuh: sistem seleksi/gizmo (perilaku pre-existing gizmo
+  persist antar tool berlaku sama untuk semua tool — info konsisten),
+  undo/redo, panel Colors/Pattern, semua section lain.

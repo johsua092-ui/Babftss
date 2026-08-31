@@ -1,5 +1,5 @@
-import { useRef, useEffect, useState } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
+import { useRef, useEffect, useState, useLayoutEffect } from 'react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, Search, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -185,7 +185,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // null aman di semua konsumen: click handler tidak ada branch yang match
   // (klik canvas = no-op), semua highlight tombol `tool === '...'` false,
   // ghost preview masuk branch else (hide), mouse LEFT tetap PAN.
-  const [tool, setTool] = useState(null); // null | 'place' | 'delete' | 'move' | 'rotate' | 'scale' | 'paint' | 'eyedropper' | 'shape' | 'clone' | 'mirror' | 'object' | 'decal'
+  const [tool, setTool] = useState(null); // null | 'place' | 'delete' | 'move' | 'rotate' | 'scale' | 'paint' | 'eyedropper' | 'shape' | 'clone' | 'mirror' | 'object' | 'decal' | 'info' — Task ID 29: 'info' = mode inspeksi READ-ONLY (hover block → Material Inspector; klik canvas = no-op)
   const [currentColor, setCurrentColor] = useState('#3b82f6');
   const toolRef = useRef(null);
   const colorRef = useRef('#3b82f6');
@@ -3569,6 +3569,54 @@ Now you can apply Displacement for detailed effect.`);
       uuid: mesh.uuid ? mesh.uuid.slice(0, 8) : 'N/A',
     };
   };
+
+  // ── Task ID 29 (2026-08-31): TOOL "INFO" — mode inspeksi READ-ONLY ──
+  // Material Inspector HANYA boleh muncul saat tool 'info' aktif. Sebelumnya
+  // inspector muncul saat hover block dengan tool APAPUN — per request user,
+  // sekarang digate ketat (lihat onCanvasMouseMove + render gate di bawah).
+  const inspectorPanelRef = useRef(null);
+
+  // Task ID 29: "hitbox besar + geser sendiri ke atas" — jendela inspector
+  // DILARANG menembus layar. Setiap kali posisi kursor berubah, panel diukur
+  // ukuran ASLINYA (getBoundingClientRect), lalu posisi di-clamp:
+  // - hitbox panel diperlakukan HITBOX_PAD px lebih besar di SEMUA sisi →
+  //   tabrakan terdeteksi lebih awal (panel "sadar" SEBELUM benar2 menyentuh
+  //   tepi layar);
+  // - nabrak tepi KANAN → geser masuk ke kiri;
+  // - nabrak tepi BAWAH → OTOMATIS GESER KE ATAS (inti request user) supaya
+  //   seluruh informasi selalu terbaca penuh & nyaman;
+  // - sudut ekstrem → tetap dikunci di dalam margin layar.
+  // useLayoutEffect = dieksekusi sinkron SEBELUM browser paint → user tidak
+  // pernah melihat frame dengan posisi terpotong.
+  useLayoutEffect(() => {
+    if (!hoveredMaterial || tool !== 'info' || !inspectorPanelRef.current) return;
+    const el = inspectorPanelRef.current;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return; // panel belum ter-layout
+    const HITBOX_PAD = 24;    // hitbox "besar": deteksi tabrakan 24px lebih awal
+    const SCREEN_MARGIN = 12; // jarak minimal panel ke tepi layar setelah digeser
+    const vw = window.innerWidth, vh = window.innerHeight;
+    // Posisi ideal: 16px di kanan-bawah kursor
+    let left = hoveredMaterial.mouseX + 16;
+    let top = hoveredMaterial.mouseY + 16;
+    // Ukuran efektif hitbox (diperbesar di semua sisi)
+    const w = rect.width + HITBOX_PAD;
+    const h = rect.height + HITBOX_PAD;
+    if (left + w > vw - SCREEN_MARGIN) left = vw - w - SCREEN_MARGIN; // kanan
+    if (top + h > vh - SCREEN_MARGIN) top = vh - h - SCREEN_MARGIN;   // bawah → GESER KE ATAS
+    if (left < SCREEN_MARGIN) left = SCREEN_MARGIN;                    // kiri
+    if (top < SCREEN_MARGIN) top = SCREEN_MARGIN;                      // atas
+    el.style.left = Math.round(left) + 'px';
+    el.style.top = Math.round(top) + 'px';
+  }, [hoveredMaterial, tool]);
+
+  // Task ID 29: keluar dari mode info (tool berubah ke apapun) → tutup
+  // Material Inspector SEGERA. Saat itu mouse sudah ada di toolbar →
+  // mousemove canvas tidak terpicu lagi, jadi popup wajib dibersihkan dari
+  // sini (kalau tidak, popup basi nyangkut di layar).
+  useEffect(() => {
+    if (tool !== 'info') setHoveredMaterial(null);
+  }, [tool]);
 
   // Phase 37: Normal map support — upload image sebagai normal map
   // Normal map = texture RGB yang encode surface detail (bumps, wrinkles)
@@ -13072,15 +13120,23 @@ Now you can apply Displacement for detailed effect.`);
         highlightBlock(null);
       }
 
-      // Phase 38: Material Inspector — tracking hovered block untuk popup
-      // Always cek hover (untuk semua tool), supaya inspector jalan terus
-      const inspectorHits = raycaster.intersectObjects(threeRef.current.blocks, true);
-      if (inspectorHits.length > 0) {
-        const info = extractMaterialInfo(inspectorHits[0].object);
-        if (info) {
-          info.mouseX = e.clientX;
-          info.mouseY = e.clientY;
-          setHoveredMaterial(info);
+      // Phase 38: Material Inspector — tracking hovered block untuk popup.
+      // Task ID 29 (2026-08-31): tracking HANYA jalan saat tool 'info' aktif
+      // (mode inspeksi read-only). Sebelumnya "always cek hover untuk semua
+      // tool" — per request user, inspector TIDAK muncul di manapun kecuali
+      // mode info aktif. setHoveredMaterial(null) di tool lain = React
+      // bailout (no re-render) kalau state memang sudah null.
+      if (currentTool === 'info') {
+        const inspectorHits = raycaster.intersectObjects(threeRef.current.blocks, true);
+        if (inspectorHits.length > 0) {
+          const info = extractMaterialInfo(inspectorHits[0].object);
+          if (info) {
+            info.mouseX = e.clientX;
+            info.mouseY = e.clientY;
+            setHoveredMaterial(info);
+          }
+        } else {
+          setHoveredMaterial(null);
         }
       } else {
         setHoveredMaterial(null);
@@ -13091,6 +13147,13 @@ Now you can apply Displacement for detailed effect.`);
     // bukan pointermove — tidak bentrok karena mousemove tidak di-preventDefault
     // oleh TransformControls saat tidak dragging).
     renderer.domElement.addEventListener('mousemove', onCanvasMouseMove);
+
+    // Task ID 29: kursor keluar dari canvas (ke toolbar/header) → tutup
+    // Material Inspector segera — popup hanya sah saat kursor benar-benar
+    // berada di atas canvas dekat block (listener BARU, tidak menyentuh
+    // listener mousemove yang sudah ada).
+    const onCanvasMouseLeave = () => setHoveredMaterial(null);
+    renderer.domElement.addEventListener('mouseleave', onCanvasMouseLeave);
 
     // ── Phase 12: glTF Import/Export ──
     // Phase 25: Setup DRACOLoader dengan local decoder path (public/draco/gltf/)
@@ -13794,6 +13857,7 @@ Now you can apply Displacement for detailed effect.`);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('keydown', onUndoKeyDown);
       renderer.domElement.removeEventListener('mousemove', onCanvasMouseMove);
+      renderer.domElement.removeEventListener('mouseleave', onCanvasMouseLeave);
       window.removeEventListener('mousedown', onWindowMouseDown);
       window.removeEventListener('mouseup', onWindowMouseUp);
       transformControls.removeEventListener('dragging-changed', onTransformDraggingChanged);
@@ -14019,7 +14083,7 @@ Now you can apply Displacement for detailed effect.`);
       <div ref={containerRef} style={{
         flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0,
       }}>
-        {/* Toolbar — Build: Undo / Redo / Delete / Place / Paint / Shape / Clone / Mirror / Object / Decal — lalu section Transform / Groups / Display / Bloom / IO / Material */}
+        {/* Toolbar — Build: Info / Undo / Redo / Delete / Place / Paint / Shape / Clone / Mirror / Object / Decal — lalu section Transform / Groups / Display / Bloom / IO / Material */}
         <div style={{
           position: 'absolute', top: 16, left: 16,
           display: 'flex', flexDirection: 'column', gap: 6,
@@ -14125,13 +14189,36 @@ Now you can apply Displacement for detailed effect.`);
               lihat memory.md Bagian 69). Section lain tetap bisa di-toggle
               individual saat master terbuka. */}
           {openSections.build && (<>
+            {/* ── INFO (Task ID 29, 2026-08-31) — tool inspeksi READ-ONLY:
+                klik canvas = no-op (tidak bisa mengotak-atik block). Saat
+                aktif, hover kursor ke block memunculkan jendela "Material
+                Inspector" — dan inspector TIDAK muncul di tool lain.
+                Icon: Search (kaca pembesar, handle miring ke kanan). ── */}
+            <button
+              onClick={() => toggleTool('info')}
+              title="Info — mode inspeksi read-only: hover block untuk melihat detail material (Material Inspector)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'info' ? '#38bdf8' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'info' ? '#38bdf8' : 'transparent',
+                color: tool === 'info' ? '#0e1420' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Search size={15} />
+              Info
+            </button>
             {/* ── UNDO & REDO — dipindah dari section "History" (yang dihapus)
                 ke atas tombol Place, per request user 2026-08-31. Task ID 27
-                (2026-08-31): urutan Place ↔ Delete di-SWAP per request user →
-                urutan final = Undo, Redo, DELETE, PLACE, dst. Identitas warna
-                tetap seperti dulu (Undo hijau #22c55e, Redo biru #3b82f6,
-                disabled = abu opacity 0.5). Shortcut keyboard Ctrl+Z / Ctrl+Y
-                TIDAK berubah. ── */}
+                (2026-08-31): urutan Place ↔ Delete di-SWAP per request user.
+                Task ID 29: tombol INFO ditambahkan di urutan PERTAMA (tepat
+                di atas Undo) → urutan final = Info, Undo, Redo, DELETE, PLACE,
+                dst. Identitas warna tetap seperti dulu (Undo hijau #22c55e,
+                Redo biru #3b82f6, disabled = abu opacity 0.5). Shortcut
+                keyboard Ctrl+Z / Ctrl+Y TIDAK berubah. ── */}
             <button
               onClick={() => threeRef.current.doUndo && threeRef.current.doUndo()}
               disabled={!canUndo}
@@ -17337,17 +17424,22 @@ Now you can apply Displacement for detailed effect.`);
             Build Mode
           </div>
           <div style={{ color: textSecondary, fontSize: 11 }}>
-            <strong style={{color:'#e2e8f0'}}>L-Click</strong> {tool === 'place' ? 'place' : tool === 'delete' ? 'delete' : tool === 'move' ? 'select & move' : tool === 'rotate' ? 'select & rotate' : tool === 'scale' ? 'select & scale' : tool === 'paint' ? 'paint block' : 'pick color'} • <strong style={{color:'#e2e8f0'}}>R-Click</strong> orbit • <strong style={{color:'#e2e8f0'}}>Mid-Click</strong> pan • <strong style={{color:'#e2e8f0'}}>WASD</strong> move
+            <strong style={{color:'#e2e8f0'}}>L-Click</strong> {tool === 'place' ? 'place' : tool === 'delete' ? 'delete' : tool === 'move' ? 'select & move' : tool === 'rotate' ? 'select & rotate' : tool === 'scale' ? 'select & scale' : tool === 'paint' ? 'paint block' : tool === 'info' ? 'inspect block (read-only)' : 'pick color'} • <strong style={{color:'#e2e8f0'}}>R-Click</strong> orbit • <strong style={{color:'#e2e8f0'}}>Mid-Click</strong> pan • <strong style={{color:'#e2e8f0'}}>WASD</strong> move
           </div>
         </div>
         )}
 
-        {/* Phase 38: Material Inspector — popup detail material saat hover block */}
-        {hoveredMaterial && (
-          <div style={{
+        {/* Phase 38: Material Inspector — popup detail material saat hover block.
+            Task ID 29 (2026-08-31): popup HANYA muncul saat tool 'info' aktif
+            (mode inspeksi read-only). Posisi awal = 16px kanan-bawah kursor;
+            useLayoutEffect (inspectorPanelRef) meng-clamp posisi dengan hitbox
+            besar supaya panel TIDAK PERNAH menembus tepi layar (bottom overflow
+            → otomatis geser KE ATAS). */}
+        {hoveredMaterial && tool === 'info' && (
+          <div ref={inspectorPanelRef} style={{
             position: 'fixed',
-            left: Math.min(hoveredMaterial.mouseX + 16, window.innerWidth - 240),
-            top: Math.min(hoveredMaterial.mouseY + 16, window.innerHeight - 200),
+            left: hoveredMaterial.mouseX + 16,
+            top: hoveredMaterial.mouseY + 16,
             backgroundColor: 'rgba(14, 20, 32, 0.96)',
             padding: '10px 12px', borderRadius: 10,
             border: '1px solid rgba(34,197,94,0.4)',
@@ -17434,7 +17526,7 @@ Now you can apply Displacement for detailed effect.`);
             zIndex: 5,
           }}>
             <strong style={{ color: '#e2e8f0' }}>Controls</strong><br/>
-            <span><strong>L-Click</strong> = {tool === 'place' ? 'Place block' : tool === 'delete' ? 'Delete block' : tool === 'move' ? 'Select & move' : tool === 'rotate' ? 'Select & rotate' : tool === 'scale' ? 'Select & scale' : tool === 'paint' ? 'Paint block' : tool === 'clone' ? 'Clone block (identik)' : tool === 'mirror' ? `Mirror block (axis ${mirrorAxis.toUpperCase()})` : tool === 'object' ? `Place ${selectedObj || 'object'}` : 'Pick color from block'}{symmetryMode ? ' (auto-mirror ON)' : ''}</span><br/>
+            <span><strong>L-Click</strong> = {tool === 'place' ? 'Place block' : tool === 'delete' ? 'Delete block' : tool === 'move' ? 'Select & move' : tool === 'rotate' ? 'Select & rotate' : tool === 'scale' ? 'Select & scale' : tool === 'paint' ? 'Paint block' : tool === 'clone' ? 'Clone block (identik)' : tool === 'mirror' ? `Mirror block (axis ${mirrorAxis.toUpperCase()})` : tool === 'object' ? `Place ${selectedObj || 'object'}` : tool === 'info' ? 'Inspect block (read-only) — hover block untuk Material Inspector' : 'Pick color from block'}{symmetryMode ? ' (auto-mirror ON)' : ''}</span><br/>
             <span><strong>R-Click Drag</strong> = Orbit camera</span><br/>
             <span><strong>Mid-Click Drag</strong> = Pan camera</span><br/>
             <span><strong>Scroll</strong> = Zoom in/out</span><br/>

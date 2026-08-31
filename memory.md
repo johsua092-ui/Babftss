@@ -7124,3 +7124,66 @@ hati-hati, jangan senggol pekerjaan lain, push normal.
 ### Status
 Commit + push NORMAL (lihat worklog Task ID 28). Toolbar Build final:
 Undo, Redo, Delete, Place, Paint, Shape, Clone, Mirror, Object, Decal.
+
+## Bagian 91 — Tombol Info + Gate Material Inspector + Smart Clamp (Task ID 29)
+
+### Konteks
+User: tombol "Info" baru tepat di atas Undo (icon kaca pembesar miring
+kanan); tool = read-only (tidak bisa mengotak-atik block); hover block
+→ Material Inspector muncul — dan TIDAK muncul di tool lain; jendela
+TIDAK BOLEH menembus layar: hitbox besar + saat nabrak layar otomatis
+geser sendiri ke ATAS. Hati-hati, jangan senggol, push normal.
+
+### Perubahan (1 file, 10 hunk, +117/−25)
+- Tombol Info (Build urutan ke-1, di atas Undo): toggleTool('info'),
+  icon lucide Search (kaca pembesar handle kanan-bawah), aktif sky
+  #38bdf8. Urutan final: Info, Undo, Redo, Delete, Place, Paint, Shape,
+  Clone, Mirror, Object, Decal.
+- Read-only: 'info' tidak match branch manapun di onWindowMouseUp
+  (if/else-if chain ketat) → klik = no-op; ghost & delete-outline off.
+- Gate inspector: tracking hover di onCanvasMouseMove kini hanya saat
+  currentTool === 'info' (dulu: semua tool); render gate ganda
+  {hoveredMaterial && tool === 'info'}; useEffect [tool] → keluar info
+  = setHoveredMaterial(null) segera; listener BARU mouseleave canvas =
+  tutup popup saat kursor keluar canvas (+ cleanup di unmount).
+- Smart clamp: useLayoutEffect [hoveredMaterial, tool] + ref panel →
+  ukur rect ASLI, HITBOX_PAD 24 (hitbox besar, deteksi dini),
+  SCREEN_MARGIN 12; ideal (mx+16, my+16); overflow bawah → GESER KE
+  ATAS; kanan → geser kiri; tulis el.style.left/top SEBELUM paint.
+- Import: + useLayoutEffect (react), + Search (lucide). Komentar union
+  type tool, header toolbar, 2 status text ('inspect block (read-only)').
+
+### Verifikasi (SEMUA PASS)
+- Urutan DOM + icon (circle r8 + path m21,21-4.3-4.3) + warna aktif
+  rgb(56,189,248) ✓
+- Gating: hover block dengan Place/Delete → inspector TIDAK muncul ✓
+- Info + hover block → panel lengkap (VLM: "fully visible, no parts cut
+  off"; Color #3b82f6, MeshStandardMaterial, PBR, Pos, UUID) ✓
+- Read-only: klik block saat info → 1 Blocks, no selection ✓
+- Clamp terukur: bawah (mouse 540) → top ideal 556 → aktual 302 (=
+  577−12−264, rumus EXACT); pojok kanan-bawah → ideal (1153,538)
+  menembus 2 sisi → aktual (1044,302), fullyInside true ✓
+- Penutupan: area kosong / keluar canvas (mouseleave) / ganti tool ✓
+- Regresi: place 2 block, delete, undo/redo 2→1→2, 3 modal, 0 console
+  error, marker grep (Hammer15=1, Search15=1, Undo/Redo/Trash/
+  Paintbrush15=1, Pipette=0, fill gelap 3, geo 1/1, GRID_SIZE=50) ✓
+
+### Pelajaran teknis (PENTING untuk task berikutnya)
+- Rumus clamp terverifikasi matematis: top = vh − SCREEN_MARGIN −
+  (rect.height + HITBOX_PAD); left = vw − SCREEN_MARGIN − (rect.width +
+  HITBOX_PAD). Ukuran panel ASLI via ref — JANGAN hardcode (panel 240px
+  tinggi aktual vs estimasi lama 200).
+- Block hasil klik (1150,545) muncul di layar ~(1137,522) — offset dari
+  titik klik karena cell-center snap + proyeksi oblique; block bawah
+  layar = alat uji clamp paling efektif (ideal pos selalu overflow).
+- useLayoutEffect + el.style langsung = clamp tanpa flicker & tanpa
+  render loop (jangan setState posisi di dalamnya!).
+- Klik toolbar TIDAK memicu mousemove canvas → state hover stale;
+  wajib ada useEffect [tool] + mouseleave utk membersihkan.
+- Panel posisi: fixed; find via textContent.includes('Material
+  Inspector') && getComputedStyle(d).position === 'fixed'.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 29). Toolbar Build final:
+Info, Undo, Redo, Delete, Place, Paint, Shape, Clone, Mirror, Object,
+Decal. Material Inspector = fitur eksklusif mode Info, anti-tembus-layar.
