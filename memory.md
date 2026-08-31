@@ -6933,3 +6933,52 @@ Stage Summary:
   rotate, scale, paint, clone, mirror, shape, object, import, terrain,
   clearAll — semua tercatat post-action); stack = [baseline, ...live];
   import tidak terdegrade jadi kubus; zero regression; push NORMAL.
+
+## Bagian 87 — Fix Redo Shape Jadi Kotak (Task ID 25)
+
+### Konteks
+User melapor bug lanjutan setelah Task 24: place shape (torus/silinder/
+bola/lainnya) → undo BERHASIL → redo → shape kembali sebagai KOTAK polos.
+"sungguh tidak wajar". Warning tetap: hati-hati, jangan senggol fitur
+lain, dilarang force push.
+
+### Akar masalah
+snapshotState() tidak menyimpan GEOMETRI block non-import (hanya
+transform+warna) dan restoreState() selalu rebuild dengan
+BoxGeometry(1,1,1) — undo shape "kebetulan benar" (snapshot sebelum aksi
+tidak berisi shape) tapi redo me-rebuild jadi kotak. Terdampak: Shape tool
+5 tipe, clone/mirror/symmetry-mirror dari shape. Task 24 hanya menutup
+importedGlb (live mesh reference).
+
+### Fix (diff +25/−2, HANYA blok Phase 8 undo/redo — 3 titik)
+1. snapshotState: + `geo: b.geometry` (referensi geometri asli, immutable).
+2. restoreState rebuild: `s.geo || new THREE.BoxGeometry(1,1,1)`
+   (fallback utk snapshot lama).
+3. restoreState removal loop: `b.geometry.dispose()` dihapus utk block
+   non-import (konsisten skip-dispose importedGlb). Material tetap
+   dispose (warna = nilai). Geometri yang di-dispose Delete/Clear All
+   di-revive renderer otomatis (WebGLAttributes.createBuffer dari
+   attribute.array utuh) — pola yang sudah jalan di liveMesh Task 24.
+   GC geometry otomatis setelah keluar jendela MAX_HISTORY.
+Tidak ada call site recordHistory yang diubah; tool lain tidak disentuh.
+
+### Verifikasi (SEMUA PASS, pixel-diff scene 0 + VLM)
+- Torus (skenario user, scene bersih): place→undo→redo = TORUS sama
+  (VLM: "SAME torus"); scene diff 0.
+- Cylinder: diff 0. Sphere: diff 0. Clone sphere: undo→redo diff 0.
+- Delete→undo (jalur revival dispose): scene diff 0, 3 Blocks kembali.
+- Box + Ctrl+Z/Ctrl+Y (KeyboardEvent asli): diff 0.
+- Clear All modal + Reset Camera modal + Build Area modal normal;
+  Clear All = 6→0 Blocks dan undo-able.
+- 0 console error; semua marker regresi utuh (Hammer 1, Undo2/Redo2
+  1/1, fill gelap 3, marginLeft:8 kode 3, toolbar order).
+- Catatan tool: agent-browser "key press Control+z" mengirim e.key ''
+  tanpa ctrlKey → gunakan window.dispatchEvent(new KeyboardEvent(...))
+  untuk tes keyboard. Klik kanvas harus mouse move/down/up. Klik clone
+  butuh raycast pres di badan objek (clone tidak punya fallback Box3
+  seperti delete) — cari centroid objek via segmentasi warna numpy.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 25). Undo/redo kini
+shape-fidelity: torus tetap torus, silinder tetap silinder, bola tetap
+bola — untuk place/clone/mirror/symmetry + kombinasi undo/redo apapun.

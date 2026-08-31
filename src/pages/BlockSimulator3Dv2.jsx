@@ -12826,11 +12826,21 @@ Now you can apply Displacement for detailed effect.`);
         const mats = Array.isArray(b.material) ? b.material : [b.material];
         const colorMat = mats.find(m => m && m.color);
         const color = colorMat ? '#' + colorMat.color.getHexString() : '#3b82f6';
+        // FIX Task ID 25: simpan REFERENSI GEOMETRI ASLI mesh (torus, cylinder,
+        // sphere, cone, cube — termasuk hasil clone/mirror/symmetry-mirror).
+        // DULU (bug): snapshot hanya menyimpan transform + warna → restoreState
+        // me-rebuild SEMUA block sebagai BoxGeometry(1,1,1) → undo lalu redo
+        // mengembalikan shape jadi KOTAK polos ("redo malah jadi kotak").
+        // Referensi geometry aman dipakai ulang lintas snapshot karena geometry
+        // tidak pernah dimutasi oleh tool apapun (immutable, hanya dibaca
+        // renderer). Material tetap disimpan sebagai NILAI warna supaya undo
+        // paint tetap akurat.
         return {
           px: worldPos.x, py: worldPos.y, pz: worldPos.z,
           rx: euler.x, ry: euler.y, rz: euler.z,
           sx: worldScale.x, sy: worldScale.y, sz: worldScale.z,
           color,
+          geo: b.geometry,
         };
       });
     };
@@ -12856,7 +12866,15 @@ Now you can apply Displacement for detailed effect.`);
         } else {
           b.material.dispose();
         }
-        b.geometry.dispose();
+        // FIX Task ID 25: GEOMETRI TIDAK di-dispose di sini — snapshot undo/redo
+        // kini memegang referensi hidupnya (field `geo`) untuk rebuild shape
+        // asli pada undo/redo berikutnya (filosofi sama dengan liveMesh Task ID
+        // 24). Material tetap di-dispose karena snapshot menyimpan warna
+        // sebagai nilai. Geometri yang pernah di-dispose tool lain (delete /
+        // Clear All) otomatis di-upload ulang renderer saat dirender kembali
+        // (WebGLAttributes.createBuffer dari attribute.array yang masih utuh)
+        // — pola revival yang sama dengan liveMesh Task ID 24. Objek geometry
+        // sendiri di-GC otomatis begitu keluar dari jendela history (MAX_HISTORY).
       });
       threeRef.current.blocks = [];
       // Recreate from snapshot
@@ -12871,7 +12889,12 @@ Now you can apply Displacement for detailed effect.`);
           threeRef.current.blocks.push(s.liveMesh);
           return;
         }
-        const geo = new THREE.BoxGeometry(1, 1, 1);
+        // FIX Task ID 25: rebuild memakai GEOMETRI ASLI dari snapshot — bukan
+        // BoxGeometry permanen — supaya undo/redo mengembalikan shape yang
+        // IDENTIK (torus tetap torus, silinder tetap silinder, bola tetap
+        // bola). Fallback BoxGeometry(1,1,1) hanya untuk snapshot lama tanpa
+        // field geo (kompatibilitas mundur).
+        const geo = s.geo || new THREE.BoxGeometry(1, 1, 1);
         const mat = new THREE.MeshStandardMaterial({
           color: new THREE.Color(s.color),
           metalness: 0.1,

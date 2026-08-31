@@ -2258,3 +2258,96 @@ post-action (semua call site tidak diubah!).
   material PBR custom (metalness/roughness/emissive per-block),
   rotasi kamera. Undo me-restore posisi/rotasi/scale/color/warna —
   data lain kembali ke default. (Di luar scope perintah user.)
+
+## Bagian 62 — Fix Undo/Redo: Redo Shape Jangan Jadi Kotak (Task ID 25)
+
+### 62.1 Latar (bug report user)
+
+User: "ketika saya misal menaruh shape disitu, entah torus, silinder, bola
+atau lainnya, nah saya undo berhasil, namun ketika saya redo dia malah jadi
+'kotak' loh apa apaan ini? ini sungguh tidak wajar!!"
+
+Place shape (torus/cylinder/sphere/cone) → undo BERHASIL (shape hilang) →
+redo → shape muncul lagi TAPI sebagai KOTAK polos 1×1×1.
+
+### 62.2 Akar Masalah (DIAGNOSIS KODE)
+
+- `snapshotState()` untuk block non-import menyimpan hanya
+  transform (px..sz) + color string — GEOMETRI TIDAK DISIMPAN.
+- `restoreState()` rebuild SEMUA block non-import dengan
+  `new THREE.BoxGeometry(1, 1, 1)` permanen (line lama 12874).
+- Konsekuensi: place block biasa = box → undo/redo "kelihatan benar"
+  (karena box memang direbuild jadi box identik); place SHAPE =
+  torus/sphere/cylinder/cone → undo OK (snapshot sebelum aksi tidak
+  berisi shape) → redo me-rebuild snapshot → KOTAK. Task 24 hanya
+  menangani mesh importedGlb (live reference); mesh primitive Shape
+  tool + clone/mirror-nya tidak tercakup.
+- Terdampak: Shape tool (5 tipe), Clone dari shape, Mirror dari shape,
+  symmetry auto-mirror dari shape (createMirrorMesh → geometry.clone()).
+
+### 62.3 Implementasi (diff +25/−2, hanya blok Phase 8 undo/redo)
+
+Filosofi sama dengan liveMesh Task 24, diperluas ke geometri:
+
+1. `snapshotState()`: entry block non-import kini menyimpan
+   `geo: b.geometry` (REFERENSI geometri asli, immutable — tidak pernah
+   dimutasi tool manapun). Material tetap disimpan sebagai NILAI warna
+   (supaya undo paint tetap akurat — referensi material akan berubah
+   oleh paint tool).
+2. `restoreState()` rebuild: `const geo = s.geo || new
+   THREE.BoxGeometry(1, 1, 1)` — memakai geometri ASLI dari snapshot;
+   fallback box hanya untuk snapshot lama tanpa field geo
+   (kompatibilitas mundur).
+3. `restoreState()` removal loop: `b.geometry.dispose()` DIHAPUS untuk
+   block non-import (konsisten dengan skip dispose importedGlb Task 24)
+   — snapshot memegang referensi hidup geometri. Material tetap
+   di-dispose (warna tersimpan sebagai nilai).
+   - Geometri yang di-dispose tool lain (Delete tool / Clear All yang
+     masih dispose): otomatis REVIVED oleh renderer —
+     WebGLAttributes.createBuffer() meng-upload ulang dari
+     attribute.array yang masih utuh saat mesh dirender lagi (pola
+     revival yang sama yang sudah menjadi beban production pada path
+     liveMesh Task 24 sejak commit c3b1067).
+   - GC: objek geometry di-gC otomatis begitu keluar jendela history
+     (MAX_HISTORY=50) dan tidak direferensikan mesh manapun.
+4. TIDAK ADA call site yang diubah (11 lokasi recordHistory tetap
+   post-action); TIDAK menyentuh Place/Delete/Clone/Mirror/Shape tool,
+   grup, decal, paint, material clipboard (pekerjaan lain utuh).
+
+### 62.4 Verifikasi (browser 1280×577, SEMUA PASS — pixel-diff 0)
+
+Metode: screenshot sebelum vs sesudah undo→redo; scene diff dihitung
+mengecualikan panel UI (toolbar/pengaturan) supaya hanya objek 3D
+yang dibandingkan; VLM untuk konfirmasi bentuk.
+
+- TORUS (bug user persis, scene bersih): place → 1 Blocks → Undo →
+  0 Blocks → Redo → 1 Blocks → **scene diff = 0** + VLM: "The object
+  in the RIGHT image is the SAME torus (donut/ring) as the LEFT
+  image" ✓ (sebelum fix: merender kotak).
+- CYLINDER: place → undo → redo → scene diff = 0 ✓.
+- SPHERE (bola): place → undo → redo → scene diff = 0 ✓.
+- CLONE dari sphere: clone (4→5) → undo (→4) → redo (→5) → scene
+  diff = 0 — hasil clone direstore sebagai sphere, bukan kotak ✓.
+- DELETE→UNDO (jalur revival): delete 1 dari 3 → undo → 3 Blocks,
+  scene diff = 0 — geometri yang sempat di-dispose Delete tool
+  ter-render sempurna kembali ✓.
+- Place BLOCK biasa (box) + keyboard: place → Ctrl+Z → Ctrl+Y →
+  scene diff = 0 (box tetap box) ✓. Keyboard event disintesis via
+  KeyboardEvent asli (agent-browser "key press Control+z" mengirim
+  e.key kosong — artefak tool, bukan bug app).
+- Clear All: modal konfirmasi open → "Ya, Hapus Semua" bekerja (6→0
+  Blocks) → undo tetap tersedia ✓; "Batal" bekerja ✓.
+- Modal Reset Camera & Build Area: open/close normal ✓.
+- Console error: 0 ✓ (hanya warning ingest backend pre-existing).
+- Regresi UI: toolbar order [Undo, Redo, Place, Delete, Shape, Clone,
+  Mirror, Object, Decal] utuh; Hammer Place size 15 = 1; Undo2/Redo2
+  size 15 = 1/1; fill gelap BuildAreaIcon 3× = 1; marginLeft: 8 kode
+  = 3; state tombol Undo/Redo enable/disable benar sepanjang sesi.
+
+### 62.5 Catatan
+
+- Snapshot tetap tidak merekam decal texture/groupId/material PBR
+  custom/kamera (pre-existing, di luar perintah — lihat 61.5).
+- Teknik verifikasi "scene diff = 0 dengan panel dikecualikan"
+  dipakai karena panel kiri/kanan berubah sesuai tool aktif
+  (false positive jika di-diff mentah).
