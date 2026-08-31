@@ -6982,3 +6982,49 @@ Tidak ada call site recordHistory yang diubah; tool lain tidak disentuh.
 Commit + push NORMAL (lihat worklog Task ID 25). Undo/redo kini
 shape-fidelity: torus tetap torus, silinder tetap silinder, bola tetap
 bola — untuk place/clone/mirror/symmetry + kombinasi undo/redo apapun.
+
+## Bagian 88 — Grid 60×60 → 100×100 (Task ID 26)
+
+### Konteks
+User minta grid build area diperbesar dari 60×60 kotak ke 100×100 kotak.
+Peringatan tetap: hati-hati, jangan senggol fitur lain, push normal.
+
+### Perubahan (1 file, diff kecil, semua turunan ukuran grid)
+- GRID_SIZE 30 → 50 (grid = GRID_SIZE*2 = 100 unit = 100×100 cell);
+  GridHelper, ground raycast, dan 4 boundary check otomatis ikut.
+- symPlane PlaneGeometry(60,60) → (GRID_SIZE*2, GRID_SIZE*2) —
+  symmetry indicator kini menutupi grid penuh.
+- controls.maxDistance 80 → 150 (diagonal grid 141; 80 tidak cukup).
+- dirLight shadow frustum ±50 → ±75 (pojok grid light-space ±70;
+  tanpa ini bayangan block pojok terpotong). near/far tetap (depth max
+  ~84 < 120).
+- Komentar dokumentasi ikut diupdate (header, blok grid, symPlane).
+- TIDAK disentuh: kamera awal + Reset Camera (18,14,18), minimap,
+  WASD, shadow mapSize, v1 simulator, semua tool/UI.
+
+### Verifikasi (SEMUA PASS)
+- Tes klik diskriminatif matematis: klik (640,163) dari kamera awal →
+  hit ground (−44.4,0,−44.4) → cell (−44.5,·,−44.5) → block TERPASANG
+  (grid lama 60 akan menolak |44.5|>30) ✓; klik (640,152) → (−54.6)
+  DITOLAK ✓; klik (640,198) → (−24.5) terpasang ✓.
+- Bayangan block pojok: light-space y'=51 → dalam frustum ±75; VLM
+  konfirmasi "subtle shadow beneath it" ✓.
+- Zoom-out ke 150: grid 100×100 penuh terlihat (VLM: "full square
+  shape and far edges clearly visible") + 2 cube ✓.
+- Undo/redo ×2 pada grid baru: pixel-diff 0 ✓ (Task 24/25 utuh).
+- Modal Build Area normal; 0 console error; semua marker regresi utuh
+  (Hammer 1, Undo2/Redo2 1/1, fill gelap 3, marginLeft:8 kode 3,
+  History 0); v1 0 diff; build 23.93s.
+
+### Catatan teknik pengujian
+- Proyeksi klik→ground dihitung manual (basis kamera r/u/f dari pos
+  (18,14,18) target origin, fov 60, aspect 1280/510, canvas offset y=67)
+  — memilih titik layar yang jatuh di cell 30<|x|<50 sebagai
+  diskriminator grid baru vs lama. 
+- Zoom OrbitControls via synthetic WheelEvent deltaY=+120 ×45 di
+  canvas (works); keyboard Ctrl+Z tetap perlu KeyboardEvent asli.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 26). Grid build area v2
+kini 100×100 kotak dengan seluruh dependensi (raycast, boundary,
+symmetry plane, zoom, shadow) konsisten.

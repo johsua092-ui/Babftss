@@ -2351,3 +2351,75 @@ yang dibandingkan; VLM untuk konfirmasi bentuk.
 - Teknik verifikasi "scene diff = 0 dengan panel dikecualikan"
   dipakai karena panel kiri/kanan berubah sesuai tool aktif
   (false positive jika di-diff mentah).
+
+## Bagian 63 — Grid Build Area 60×60 → 100×100 (Task ID 26)
+
+### 63.1 Latar (permintaan user)
+
+User: "grid kotak kotak tempat saya menaruh block itu panjang 60 kotak dan
+lebar 60 kotak, mau bikin jadi 100 x 100 bukan 60 x 60, bisa??"
+Dengan peringatan tetap: hati-hati, jangan menyenggol pekerjaan lain,
+push NORMAL (dilarang force push).
+
+### 63.2 Desain perubahan (semua turunan langsung ukuran grid)
+
+Grid v2 dibangun dari konstanta `GRID_SIZE` (half-extent; grid =
+GRID_SIZE×2 unit, 1 unit = 1 cell). GRID_SIZE 30 → **50** mengubah:
+GridHelper (100 unit/100 divisi), ground plane raycast 100×100, dan
+SEMUA boundary check placement (|posX| > GRID_SIZE) — otomatis skala,
+tidak ada call site yang diubah.
+
+Audit semua dependensi hardcode terhadap ukuran grid (3 ditemukan,
+semua wajib ikut agar fitur grid baru benar-benar berfungsi):
+
+1. **Symmetry mirror plane** `PlaneGeometry(60, 60)` hardcoded →
+   `PlaneGeometry(GRID_SIZE * 2, GRID_SIZE * 2)` — visual indicator
+   symmetry mode kini menutupi seluruh grid (dulu cuma 60×60 di tengah).
+2. **OrbitControls maxDistance 80 → 150** — batas zoom-out diturunkan
+   dari ukuran grid: kamera FOV 60°, diagonal grid 100×100 ≈ 141 unit;
+   pada jarak 80 grid baru tidak mungkin terlihat penuh (grid lama
+   diagonal 42 — 80 pas). 150 ≈ 80 × (100/60) dengan pembulatan.
+3. **DirectionalLight shadow frustum ±50 → ±75** — dihitung: pojok grid
+   (±49.5) diproyeksikan ke light-space (light dari (20,35,15), arah
+   miring) mencapai ±70; dengan ±50 bayangan block pojok grid baru
+   terpotong. near/far (0.5/120) tetap valid (depth terjauh ≈ 84).
+
+TIDAK diubah (fitur lain yang sudah sempurna): posisi kamera awal
+(18,14,18) & Reset Camera (fitur terpisah), minimap (view lokal
+mengikuti kamera, tetap fungsional), WASD fly (unbounded), mapSize
+shadow 2048, BlockSimulator v1 (halaman berbeda, n=30), semua tool.
+
+### 63.3 Verifikasi (browser 1280×577, SEMUA PASS)
+
+Metode diskriminatif matematis — kamera awal (18,14,18) target (0,0,0),
+proyeksi klik dihitung manual (fov 60, aspect 2.51):
+
+- **Kontrol negatif** klik (640,152) → ground hit (−54.6, 0, −54.6):
+  |54.6| > 50 → DITOLAK (0 Blocks) ✓ (juga di luar ground plane 100×100).
+- **Klik diskriminatif** klik (640,163) → ground hit (−44.4, 0, −44.4)
+  → cell (−44.5, ·, −44.5): |44.5| < 50 → BLOCK TERPASANG ✓.
+  Pada grid lama 60×60 klik ini DITOLAK (44.5 > 30) — bukti fungsional
+  grid kini 100×100.
+- **Sanity** klik (640,198) → cell (−24.5,·,−24.5) → block kedua ✓
+  (diterima di grid lama maupun baru).
+- **Bayangan pojok**: block di (−44.5,·,−44.5) light-space y' = 51
+  (luar frustum lama ±50, dalam baru ±75) — VLM zoom: "subtle shadow
+  cast on the grid surface directly beneath it" ✓.
+- **Zoom-out 150** (45 event wheel): VLM "the large grid fills most of
+  the frame with its full square shape and far edges clearly visible,
+  two small cubes visible" ✓.
+- **Undo/Redo regresi** (grid baru): undo×2 → 0 Blocks; redo×2 →
+  2 Blocks; scene pixel-diff sebelum-undo vs sesudah-redo = **0**
+  (block pojok ter-restore identik — konsisten dengan Task 24/25).
+- Modal Build Area open/close normal; 0 console error.
+- Marker regresi utuh: Hammer 1; Undo2/Redo2 1/1; fill gelap BuildAreaIcon
+  3×1; marginLeft:8 kode 3; toolbar order [Undo,Redo,Place,Delete,Shape,
+  Clone,Mirror,Object,Decal]; v1 BlockSimulator3D.jsx 0 diff.
+
+### 63.4 Catatan
+
+- Shadow sedikit lebih soft (2048px/150-unit frustum ≈ 13.6 px/unit vs
+  20.5 sebelumnya) — konsekuensi wajib menaikkan coverage 2.78× area;
+  kualitas masih lebih dari cukup untuk block 1-unit.
+- Jarak pandang kamera jauh (150) + fog default off → grid terlihat
+  sampai pojok.

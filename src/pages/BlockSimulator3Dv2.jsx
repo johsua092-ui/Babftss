@@ -36,7 +36,7 @@ import { toast } from 'sonner';
    Phase 1 (sekarang):
    - Scene + PerspectiveCamera + WebGLRenderer (antialias + shadowMap)
    - Lighting: AmbientLight + DirectionalLight (dengan shadow setup)
-   - GridHelper (grid floor 60x60)
+   - GridHelper (grid floor 100x100)
    - AxesHelper (X merah, Y hijau, Z biru)
    - Ground plane (invisible, untuk raycaster + shadow receiver)
    - Background gradient gelap + fog (kedalaman)
@@ -59,7 +59,7 @@ const COLORS = [
   '#64748b', '#1e293b', '#ffffff', '#84cc16',
 ];
 
-const GRID_SIZE = 30; // same as v1
+const GRID_SIZE = 50; // grid = GRID_SIZE * 2 = 100 unit → 100x100 cell (Task ID 26; dulu 30 = 60x60)
 
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
    (GridHelper 60x60) + block isometrik hijau di atasnya. 3 sisi kubus
@@ -11600,10 +11600,14 @@ Now you can apply Displacement for detailed effect.`);
     dirLight.shadow.mapSize.height = 2048;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 120;
-    dirLight.shadow.camera.left = -50;
-    dirLight.shadow.camera.right = 50;
-    dirLight.shadow.camera.top = 50;
-    dirLight.shadow.camera.bottom = -50;
+    // Task ID 26: shadow frustum ±50→±75 — grid 100x100: pojok grid (±49.5)
+    // diproyeksikan ke light-space mencapai ±70 (light dari (20,35,15), arah
+    // miring) — dengan ±50 bayangan block di pojok grid baru terpotong.
+    // near/far (0.5/120) tetap cukup: depth terjauh ~84.
+    dirLight.shadow.camera.left = -75;
+    dirLight.shadow.camera.right = 75;
+    dirLight.shadow.camera.top = 75;
+    dirLight.shadow.camera.bottom = -75;
     dirLight.shadow.bias = -0.0005;
     scene.add(dirLight);
 
@@ -11611,7 +11615,7 @@ Now you can apply Displacement for detailed effect.`);
     const hemiLight = new THREE.HemisphereLight(0x4a6fa5, 0x1a1a2e, 0.3);
     scene.add(hemiLight);
 
-    // Grid — 60x60 units (GRID_SIZE * 2), 60 divisions
+    // Grid — 100x100 units (GRID_SIZE * 2), 100 divisions (Task ID 26: dulu 60x60)
     const grid = new THREE.GridHelper(GRID_SIZE * 2, GRID_SIZE * 2, 0x64748b, 0x334155);
     grid.material.opacity = 0.5;
     grid.material.transparent = true;
@@ -11643,7 +11647,7 @@ Now you can apply Displacement for detailed effect.`);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 0.5; // Allow extreme close-up zoom
-    controls.maxDistance = 80;
+    controls.maxDistance = 150; // Task ID 26: 80→150 — grid kini 100x100 (diagonal ~141), 80 tidak cukup untuk melihat grid penuh
     controls.maxPolarAngle = Math.PI / 2 - 0.02; // prevent going below ground
     controls.target.set(0, 0, 0);
     // Mouse buttons: LEFT dinamis berdasarkan tool.
@@ -11996,10 +12000,10 @@ Now you can apply Displacement for detailed effect.`);
 
     // Symmetry mirror plane — visual indicator (semi-transparent pink plane)
     // menunjukkan di mana plane cermin virtual. Muncul saat Symmetry Mode ON.
-    // Plane besar 60x60, posisi di origin (0,0,0), rotasi menyesuaikan axis.
+    // Plane seukuran grid (GRID_SIZE * 2; Task ID 26: dulu hardcoded 60x60 saat grid masih 60x60), posisi di origin (0,0,0), rotasi menyesuaikan axis.
     // Axis X → plane Y-Z (rotasi Y 90°), Axis Y → plane X-Z (horizontal),
     // Axis Z → plane X-Y (rotasi X 90°).
-    const symPlaneGeo = new THREE.PlaneGeometry(60, 60);
+    const symPlaneGeo = new THREE.PlaneGeometry(GRID_SIZE * 2, GRID_SIZE * 2);
     const symPlaneMat = new THREE.MeshBasicMaterial({
       color: 0xec4899,    // pink
       transparent: true,
