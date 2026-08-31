@@ -14126,10 +14126,12 @@ Now you can apply Displacement for detailed effect.`);
               individual saat master terbuka. */}
           {openSections.build && (<>
             {/* ── UNDO & REDO — dipindah dari section "History" (yang dihapus)
-                ke ATAS tombol Place, per request user 2026-08-31: urutan final
-                = Undo, Redo, Place, Delete, dst. Identitas warna tetap seperti
-                dulu (Undo hijau #22c55e, Redo biru #3b82f6, disabled = abu
-                opacity 0.5). Shortcut keyboard Ctrl+Z / Ctrl+Y TIDAK berubah. ── */}
+                ke atas tombol Place, per request user 2026-08-31. Task ID 27
+                (2026-08-31): urutan Place ↔ Delete di-SWAP per request user →
+                urutan final = Undo, Redo, DELETE, PLACE, dst. Identitas warna
+                tetap seperti dulu (Undo hijau #22c55e, Redo biru #3b82f6,
+                disabled = abu opacity 0.5). Shortcut keyboard Ctrl+Z / Ctrl+Y
+                TIDAK berubah. ── */}
             <button
               onClick={() => threeRef.current.doUndo && threeRef.current.doUndo()}
               disabled={!canUndo}
@@ -14169,23 +14171,6 @@ Now you can apply Displacement for detailed effect.`);
               Redo
             </button>
             <button
-              onClick={() => toggleTool('place')}
-              title="Place (P)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'place' ? '#f59e0b' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'place' ? '#f59e0b' : 'transparent',
-                color: tool === 'place' ? '#0e1420' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <Hammer size={15} />
-              Place
-            </button>
-            <button
               onClick={() => toggleTool('delete')}
               title="Delete (X)"
               style={{
@@ -14201,6 +14186,23 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Trash2 size={15} />
               Delete
+            </button>
+            <button
+              onClick={() => toggleTool('place')}
+              title="Place (P)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'place' ? '#f59e0b' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'place' ? '#f59e0b' : 'transparent',
+                color: tool === 'place' ? '#0e1420' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Hammer size={15} />
+              Place
             </button>
             <button
               onClick={() => toggleTool('shape')}
@@ -14490,8 +14492,9 @@ Now you can apply Displacement for detailed effect.`);
 
           {/* ── Section "History" DIHAPUS (2026-08-31, request user): tombol
               Undo/Redo DIPINDAH ke atas tombol Place di section Build
-              (urutan: Undo, Redo, Place, Delete, Shape, dst). Jangan bikin
-              section History terpisah lagi — sudah masuk bagian Build. ── */}
+              (urutan: Undo, Redo, Delete, Place, Shape, dst — Task ID 27 swap
+              Place↔Delete). Jangan bikin section History terpisah lagi —
+              sudah masuk bagian Build. ── */}
 
           {/* ── Section: GROUPS (Group/Ungroup) ── */}
           <div onClick={() => toggleSection('groups')} style={{

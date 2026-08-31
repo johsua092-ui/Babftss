@@ -7028,3 +7028,46 @@ Peringatan tetap: hati-hati, jangan senggol fitur lain, push normal.
 Commit + push NORMAL (lihat worklog Task ID 26). Grid build area v2
 kini 100×100 kotak dengan seluruh dependensi (raycast, boundary,
 symmetry plane, zoom, shadow) konsisten.
+
+## Bagian 89 — Swap Urutan Place ↔ Delete (Task ID 27)
+
+### Konteks
+User minta tombol ketiga toolbar = Delete dan keempat = Place
+(sebelumnya Place ketiga, Delete keempat). Peringatan tetap:
+hati-hati, jangan senggol pekerjaan lain, push normal.
+
+### Perubahan (1 file, 3 hunk, +23/−20)
+- src/pages/BlockSimulator3Dv2.jsx: blok JSX tombol Delete dipindah
+  ke atas blok tombol Place (keduanya self-contained: onClick
+  toggleTool, title, style, icon, label). Isi byte-for-byte sama,
+  murni tukar posisi render → tukar posisi visual flexbox.
+- 2 komentar (blok Undo/Redo ~14128, memorial History ~14493)
+  diupdate agar deskripsi urutan tetap akurat.
+- URUTAN BARU: Undo, Redo, Delete, Place, Shape, Clone, Mirror,
+  Object, Decal. Nol perubahan logika, warna, shortcut (P/X), gap.
+
+### Verifikasi (SEMUA PASS)
+- DOM eval: ["Undo","Redo","Delete","Place",...] ✓; VLM crop sama ✓.
+- Delete aktif #ef4444 / Place aktif #f59e0b (toggle normal) ✓.
+- Place: klik kanvas → 1 Blocks ✓. Delete: klik block → 0 Blocks ✓.
+- Undo/redo: pixel-diff scene = 0; delete→undo revival pixel inti
+  block identik ✓.
+- 3 modal header normal; 0 console error; semua marker regresi
+  grep PASS (Hammer15=1, Trash15=1, Undo/Redo15=1, fill gelap 3,
+  marginLeft:8 kode 3+1 komentar, History 0, geo marker 1/1) ✓.
+
+### Pelajaran teknis (penting untuk task delete-tool berikutnya)
+- Block jauh (cell −24.5, kamera 18,14,18) hanya ~10×10 px di layar
+  pada (639,193) dan dirender DARK blue (b,g rendah — bukan biru
+  terang): mask warna (b>180) MENEMUKAN elemen UI lain, BUKAN block.
+  Lokasi block yang benar ditemukan via DIFF screenshot dengan-block
+  vs tanpa-block (undo) → gunakan teknik ini, bukan color mask.
+- Klik delete tepat pada centroid diff → langsung kena raycast.
+- Setelah delete+undo, screenshot berisi Material Inspector panel
+  (hover-triggered, muncul karena mouse parkir di atas block) —
+  itu fitur hover pre-existing, BUKAN regression; diff scene mesti
+  memisahkan UI overlay dari area 3D.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 27). Toolbar final:
+Undo, Redo, Delete, Place, Shape, Clone, Mirror, Object, Decal.

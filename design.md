@@ -2423,3 +2423,65 @@ proyeksi klik dihitung manual (fov 60, aspect 2.51):
   kualitas masih lebih dari cukup untuk block 1-unit.
 - Jarak pandang kamera jauh (150) + fog default off → grid terlihat
   sampai pojok.
+
+## Bagian 64 — Swap Urutan Tombol Place ↔ Delete (Task ID 27)
+
+### 64.1 Latar (permintaan user)
+
+User: "tolong yang swap urutan place dan delete, harusnya yang urutan
+ketiga itu adalah delete, dan urutan keempat itu adalah place!"
+Dengan peringatan tetap: hati-hati, jangan menyenggol pekerjaan lain
+yang sudah sempurna, fokus tugas yang diperintahkan, push NORMAL.
+
+### 64.2 Desain perubahan (murni urutan render JSX, nol logika)
+
+Toolbar Build sebelumnya: Undo, Redo, **Place**, **Delete**, Shape,
+Clone, Mirror, Object, Decal. Kedua tombol adalah blok JSX yang
+sepenuhnya self-contained — masing-masing membawa onClick
+(toggleTool), title, style, icon, dan label sendiri; tidak ada state,
+ref, atau handler yang dibagi dengan tombol lain. Karena container
+toolbar adalah flexbox yang render berurutan sumber, menukar POSISI
+DUA BLOK JSX di sumber = menukar posisi visualnya, tanpa efek lain
+apa pun.
+
+Urutan baru: Undo, Redo, **Delete (ketiga)**, **Place (keempat)**,
+Shape, Clone, Mirror, Object, Decal.
+
+Properti yang tetap persis sama (tidak disentuh):
+- Place: toggleTool('place'), title "Place (P)", Hammer icon,
+  highlight amber #f59e0b.
+- Delete: toggleTool('delete'), title "Delete (X)", Trash2 icon,
+  highlight merah #ef4444, teks putih saat aktif.
+- Shortcut keyboard P / X, identitas warna, gap 18px antar tombol
+  header, section Build lainnya (Shape s/d Material).
+
+### 64.3 Edit (1 file, +23/−20 baris, 3 hunk)
+
+1. Hunk 1 (baris ~14128): komentar blok Undo/Redo diupdate —
+   urutan dideskripsikan ulang jadi "Undo, Redo, DELETE, PLACE, dst"
+   + catatan Task ID 27.
+2. Hunk 2 (baris ~14171-14204): blok tombol Delete DIPINDAH ke atas
+   blok tombol Place. Isi kedua blok byte-for-byte identik dengan
+   sebelumnya — hanya posisinya yang bertukar.
+3. Hunk 3 (baris ~14493): komentar memorial section History diupdate
+   (deskripsi urutan) agar dokumentasi tetap akurat.
+
+### 64.4 Verifikasi
+
+- DOM order via eval: ["Undo","Redo","Delete","Place","Shape","Clone",
+  "Mirror","Object","Decal"] ✓
+- VLM crop toolbar: urutan top→bottom sama persis ✓
+- Delete tool aktif di posisi ketiga: background rgb(239,68,68) ✓;
+  Place tool aktif di posisi keempat: rgb(245,158,11) ✓ (toggle
+  berganti normal).
+- Fungsi Place: klik kanvas → block terpasang (1 Blocks) ✓.
+- Fungsi Delete: klik block (lokasi ditemukan via diff screenshot
+  sebelum/sesudah undo — block di layar hanya ~10×10 px pada
+  (639,193)) → block terhapus (0 Blocks) ✓.
+- Regresi undo/redo (Task 24/25): place → undo → redo, pixel-diff
+  area scene = 0 ✓; delete → undo → block di-revive, pixel inti block
+  identik ✓.
+- Tiga modal header (Build Area / Clear All / Reset Camera) buka-tutup
+  normal ✓; 0 console error ✓; marker regresi grep semua PASS
+  (Hammer15=1, Trash2_15=1, Undo15=1, Redo15=1, fill gelap 3,
+  marginLeft:8 kode 3, History 0, marker geo Task 25 utuh) ✓.
