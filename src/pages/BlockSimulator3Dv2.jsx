@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, Search, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -14193,7 +14193,16 @@ Now you can apply Displacement for detailed effect.`);
                 klik canvas = no-op (tidak bisa mengotak-atik block). Saat
                 aktif, hover kursor ke block memunculkan jendela "Material
                 Inspector" — dan inspector TIDAK muncul di tool lain.
-                Icon: Search (kaca pembesar, handle miring ke kanan). ── */}
+                Task ID 30 (2026-08-31): icon diganti custom SVG inline.
+                lucide <Search> lama bermasalah: lens di KIRI-ATAS = miring
+                ke KIRI (user: "arahnya salah") + handle cuma 4.3 unit
+                (0.54x radius, proporsi jelek). SVG baru: lens circle r7 di
+                KANAN-ATAS (14.5,9.5) + handle 45° dari rim lensa menuju
+                KIRI-BAWAH (9.9,14.1 → 4.2,19.8, panjang ~1.15x radius) =
+                kaca pembesar MIRING KE KANAN dengan proporsi klasik.
+                strokeWidth 2 + linecap round + stroke currentColor → gaya
+                identik icon lucide lain di toolbar (ikut warna tombol
+                aktif #0e1420 / non-aktif #e2e8f0). ── */}
             <button
               onClick={() => toggleTool('info')}
               title="Info — mode inspeksi read-only: hover block untuk melihat detail material (Material Inspector)"
@@ -14208,7 +14217,15 @@ Now you can apply Displacement for detailed effect.`);
                 fontFamily: 'Inter, sans-serif',
               }}
             >
-              <Search size={15} />
+              <svg
+                width={15} height={15} viewBox="0 0 24 24"
+                fill="none" stroke="currentColor"
+                strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                style={{ flexShrink: 0 }}
+              >
+                <circle cx="14.5" cy="9.5" r="7" />
+                <line x1="9.9" y1="14.1" x2="4.2" y2="19.8" />
+              </svg>
               Info
             </button>
             {/* ── UNDO & REDO — dipindah dari section "History" (yang dihapus)

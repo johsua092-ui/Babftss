@@ -2635,3 +2635,66 @@ jangan menyenggol pekerjaan lain, push NORMAL.
 - Tidak menyentuh: sistem seleksi/gizmo (perilaku pre-existing gizmo
   persist antar tool berlaku sama untuk semua tool — info konsisten),
   undo/redo, panel Colors/Pattern, semua section lain.
+
+## Bagian 67 — Icon Info Custom: Kaca Pembesar Miring ke Kanan (Task ID 30)
+
+### 67.1 Latar (permintaan user)
+
+User feedback pasca-Task 29: icon kaca pembesar tombol Info dinilai
+"jelek banget" DAN arahnya SALAH — "miring ke kiri bukan ke kanan".
+Analisis geometri lucide Search: circle cx11 cy11 r8 (lens KIRI-ATAS)
++ handle path m21,21-4.3-4.3 (menuju KANAN-BAWAH) → siluet "\" =
+miring KIRI (konvensi baca user = posisi lens/kepala, sama seperti
+emoji 🔍 resmi disebut "tilted left"). Handle juga cuma 4.3 unit dari
+viewBox 24 (0.54× radius) — proporsi "stubby" → dinilai jelek.
+
+### 67.2 Perubahan (1 file, 3 hunk, +20/−3)
+
+1. Import: `Search` dihapus dari lucide-react (satu-satunya usage =
+   tombol Info; pola sama dengan hapus Pipette Task 28).
+2. Comment block tombol Info di-update (dokumentasi Task 30).
+3. `<Search size={15} />` → SVG inline custom:
+   `<circle cx="14.5" cy="9.5" r="7"/>` + `<line x1=9.9 y1=14.1
+   x2=4.2 y2=19.8/>` = lens KANAN-ATAS + handle 45° ke KIRI-BAWAH →
+   siluet "/" = MIRING KE KANAN (mirror horizontal persis dari lucide
+   Search lama — semua fitur visual yang user baca terbalik arah).
+   Handle 8.06 unit ≈ 1.15× radius (proporsi klasik kaca pembesar).
+   Start handle (9.9,14.1) = jarak 6.5 dari center → handle tumbuh
+   mulus dari dalam stroke band rim [6,8]. strokeWidth 2 + linecap/
+   linejoin round + stroke="currentColor" → gaya identik icon lucide
+   lain di toolbar; warna otomatis ikut state tombol (aktif #0e1420 /
+   non-aktif #e2e8f0).
+
+### 67.3 Verifikasi (SEMUA PASS)
+
+- DOM: svg width 15 + circle(14.5,9.5,r7) + line persis desain;
+  computedColor non-aktif rgb(226,232,240), aktif rgb(14,20,32)
+  (currentColor bekerja) ✓
+- Pixel ASCII zoom 8× KEDUA state (aktif biru + non-aktif): circle
+  di kanan + ekor handle ke kiri-bawah ✓ (ground truth)
+- VLM zoom 8×: "lens top-RIGHT, handle bottom-left, classic
+  well-proportioned, clean line quality" ✓; VLM crop toolbar final:
+  "lens right side, handle points bottom-left" ✓
+- Catatan VLM: pembacaan full-screenshot (icon 15px kecil) BISA salah
+  arah (pattern-completion ke mayoritas icon search di training data
+  yang lens-kiri) → verifikasi arah icon WAJIB zoom ≥8× + pixel ASCII.
+- Fungsi Task 29 utuh semua: Info aktif → hover block (639,493) →
+  panel 200×240 muncul di (655,302), bottom 542, fullyInside=true
+  (hasil IDENTIK dengan tes Task 29) ✓; mouse geser → panel tutup ✓;
+  ganti Place + hover block → 0 panel (gating 3 lapis) ✓
+- Regresi marker grep SEMUA PASS: Hammer/Undo/Redo/Trash/Paintbrush
+  size15 = 1; Pipette = 0; toggleTool('info') = 1; <Search size={15}>
+  1→0; stroke currentColor 2→3 (+1 tepat) ✓
+- 0 console error ✓; npx vite build 23.54s sukses ✓
+
+### 67.4 Catatan desain
+
+- User mempersepsi arah "miring" dari posisi LENS/kepala icon, BUKAN
+  arah handle (bukti: icon lama dengan handle ke kanan-bawah tetap
+  disebut "miring ke kiri"). Kunci perbaikan = pindahkan lens ke
+  kanan-atas (mirror horizontal), bukan sekadar rotasi CSS.
+- SVG custom inline 9 baris = zero dependency baru — pattern berguna
+  saat lucide tidak menyediakan varian arah yang dibutuhkan.
+- Tidak menyentuh: semua tombol lain, icon lain, gating logic, smart
+  clamp logic, semua section panel. Hanya 3 lokasi: import, comment,
+  JSX icon.

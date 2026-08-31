@@ -7187,3 +7187,42 @@ geser sendiri ke ATAS. Hati-hati, jangan senggol, push normal.
 Commit + push NORMAL (lihat worklog Task ID 29). Toolbar Build final:
 Info, Undo, Redo, Delete, Place, Paint, Shape, Clone, Mirror, Object,
 Decal. Material Inspector = fitur eksklusif mode Info, anti-tembus-layar.
+
+## Bagian 92 — Icon Kaca Pembesar Custom Miring Kanan (Task ID 30)
+
+### Perubahan
+- 3 hunk, 1 file BlockSimulator3Dv2.jsx (+20/−3): hapus `Search` dari
+  import lucide; ganti `<Search size={15}/>` dengan SVG inline
+  (circle cx14.5 cy9.5 r7 + line 9.9,14.1→4.2,19.8); update comment.
+  Logic Task 29 (gating/clamp/read-only) NOL perubahan.
+- Geometri kunci: lens KANAN-ATAS + handle 45° KIRI-BAWAH = mirror
+  horizontal dari lucide Search. User membaca "miring" dari posisi
+  LENS, bukan handle (bukti: icon lama handle-kanan-bawah tetap
+  disebut "miring ke kiri"). Handle 8.06/24 unit ≈ 1.15× radius.
+
+### Pelajaran teknis (PENTING untuk task berikutnya)
+- VLM pada icon 15px di full-screenshot TIDAK reliable untuk arah —
+  pattern-completion: mayoritas icon "search" di training data =
+  lens-kiri/handle-kanan → VLM "melihat" itu meski icon aslinya
+  terbalik (kontradiksi langsung dengan VLM zoom dari gambar sama).
+  Verifikasi arah icon WAJIB: zoom ≥8× crop + pixel ASCII + DOM SVG
+  attribute.
+- VLM juga bisa salah klaim "panel terpotong" pada screenshot full
+  page — kebenarannya: DOM getBoundingClientRect (authoritative) +
+  pixel check row border (y=541 full green = border bawah utuh).
+- Blok ditempatkan via klik (640,535) → render di layar (639,493)
+  (offset −42px y dari titik klik, proyeksi oblique). Color-mask
+  cluster besar = ARTIFAK (grid/symmetry-line/floor tiles perspektif)
+  — jangan percaya; gunakan diff with-block vs no-block.
+- Pola uji blok teruji: place → screenshot A → delete (klik titik
+  sama) → screenshot B → diff → ctrl+z (KeyboardEvent dispatch)
+  restore. Semua tanpa menyentuh modal.
+- Canvas v2 = full width x 0→1280, y 67→577 (crop lama 230-950 hanya
+  untuk pixel-diff konservatif scene, BUKAN batas render — blok bisa
+  render sampai x~1250).
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 30). Icon Info = custom
+SVG miring ke kanan, handle 1.15× radius, gaya stroke lucide
+(currentColor + strokeWidth 2 + round caps). Fungsi Task 29 utuh
+terverifikasi penuh (panel, clamp, gating, penutupan).
