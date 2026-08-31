@@ -6623,3 +6623,44 @@ Stage Summary:
 - Icon "Build Area" kini miniatur area build (grid floor perspektif +
   block hijau isometrik) — bukan palu; dipakai di button header & modal;
   icon Place tool & semua fitur lain tidak tersentuh; push NORMAL.
+
+## Bagian 80 — Icon "Build Area" Diperbesar (Full-ViewBox + 20px/32px)
+
+### Root Cause (Task ID 18)
+
+Icon custom SVG tampak kecil BUKAN hanya karena render 14px — geometri
+lama hanya mengisi ~40% tinggi viewBox 24 (rhombus y 5.5-15 + block
+kecil). Icon lucide tetangga mengisi ~penuh viewBox → pada px sama,
+custom icon tampak ~setengahnya. Kamera keluhan user + VLM konfirmasi.
+
+### Perubahan (+17/−14 baris, hanya komponen + 2 call site)
+
+- Geometri baru: grid rhombus y 10-22 (tinggi 12 unit), block footprint
+  4/2 half + tinggi 6.5, total span y 5-22 = 71% viewBox, x 87.5%.
+- Grid interior: titik presisi 1/3 & 2/3 edge; stroke 1.5, opacity 0.75.
+- Render: header 14→20px (SVG 20×20 vs tetangga 14×14; button 111×34),
+  modal 24→32px (box 48×48). Default prop size = 20.
+- Komentar anti-regresi: "Jangan kecilkan lagi."
+
+### Verifikasi (semua PASS, 1600×900)
+
+- VLM zoom 4× (header): icon LARGE, grid + cube + 3 shade hijau jelas,
+  proporsional. VLM zoom 3× (modal): large & prominent, crisp.
+- Regresi: Place tool hammer utuh; Build Area right 729 < ResetCam left
+  747 (no overlap); 0 console error; modal open/close normal.
+- Efektif ~2.6× lebih besar secara visual dari versi sebelumnya.
+
+### Pelajaran
+
+- Icon custom SVG vs lucide pada px yang sama TIDAK setara secara
+  visual — lucide mengisi penuh viewBox; kalau desain custom hanya
+  memakai sebagian viewBox, harus kompensasi: isi viewBox maksimal ATAU
+  naikkan ukuran render. Selalu hitung "perceived size" = px × (span
+  gambar / viewBox), bukan px mentah.
+- Untuk komplain "kecil/gak kelihatan": perbaiki KEDUA sisi (geometri
+  fill + render size) sekaligus — hanya menaikkan px pada geometri
+  sparse tetap menyisakan kesan kecil.
+
+Stage Summary:
+- Icon Build Area kini besar & jelas (geometri 71% viewBox + render 20px
+  header / 32px modal); button & fitur lain tidak tersentuh; push NORMAL.

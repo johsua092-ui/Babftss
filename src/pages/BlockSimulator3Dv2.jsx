@@ -64,9 +64,12 @@ const GRID_SIZE = 30; // same as v1
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
    (GridHelper 60x60) + block isometrik hijau di atasnya (3 shade: top
    terang #34d399, kanan #10b981, kiri #059669). Dipakai button "Build
-   Area" di header & modal Coming Soon. Jangan pakai icon palu — user minta
-   icon yang menggambarkan area build itu sendiri. */
-function BuildAreaIcon({ size = 14 }) {
+   Area" di header (size 20) & modal Coming Soon (size 32). Jangan pakai
+   icon palu — user minta icon yang menggambarkan area build itu sendiri.
+   Geometri HARUS mengisi hampir penuh viewBox 24x24 (grid y 10-22, block
+   y 5-15.5) — versi lama hanya ~40% tinggi viewBox sehingga tampak kecil
+   dibanding icon lucide tetangga. Jangan kecilkan lagi. */
+function BuildAreaIcon({ size = 20 }) {
   return (
     <svg
       width={size}
@@ -78,27 +81,27 @@ function BuildAreaIcon({ size = 14 }) {
     >
       {/* Grid floor perspektif — area build */}
       <path
-        d="M12 5.5 L21.5 10.25 L12 15 L2.5 10.25 Z"
+        d="M12 10 L22.5 16 L12 22 L1.5 16 Z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinejoin="round"
       />
       {/* Garis grid interior (3x3) */}
       <path
-        d="M8.83 7.08 L18.33 11.83 M5.67 8.67 L15.17 13.42 M15.17 7.08 L5.67 11.83 M18.33 8.67 L8.83 13.42"
+        d="M5 14 L15.5 20 M8.5 12 L19 18 M15.5 12 L5 18 M19 14 L8.5 20"
         stroke="currentColor"
-        strokeWidth="1.4"
+        strokeWidth="1.5"
         strokeLinecap="round"
-        opacity="0.6"
+        opacity="0.75"
       />
       {/* Block isometrik di atas grid */}
-      <path d="M9.5 7.65 L12 8.9 L12 11.5 L9.5 10.25 Z" fill="#059669" />
-      <path d="M14.5 7.65 L12 8.9 L12 11.5 L14.5 10.25 Z" fill="#10b981" />
-      <path d="M12 6.4 L14.5 7.65 L12 8.9 L9.5 7.65 Z" fill="#34d399" />
+      <path d="M8 13.5 L12 15.5 L12 9 L8 7 Z" fill="#059669" />
+      <path d="M16 13.5 L12 15.5 L12 9 L16 7 Z" fill="#10b981" />
+      <path d="M12 5 L16 7 L12 9 L8 7 Z" fill="#34d399" />
       <path
-        d="M12 6.4 L14.5 7.65 L14.5 10.25 L12 11.5 L9.5 10.25 L9.5 7.65 Z M9.5 7.65 L12 8.9 L14.5 7.65 M12 8.9 L12 11.5"
+        d="M12 5 L16 7 L16 13.5 L12 15.5 L8 13.5 L8 7 Z M8 7 L12 9 L16 7 M12 9 L12 15.5"
         stroke="#34d399"
-        strokeWidth="1.4"
+        strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
       />
@@ -13813,7 +13816,7 @@ Now you can apply Displacement for detailed effect.`);
                 e.currentTarget.style.boxShadow = 'none';
               }}
             >
-              <BuildAreaIcon size={14} />
+              <BuildAreaIcon size={20} />
               Build Area
             </button>
             {/* Reset Camera Button — permanent, always visible */}
@@ -21613,7 +21616,7 @@ Now you can apply Displacement for detailed effect.`);
                 color: '#34d399',
                 boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)',
               }}>
-                <BuildAreaIcon size={24} />
+                <BuildAreaIcon size={32} />
               </div>
               <div>
                 <h3 style={{

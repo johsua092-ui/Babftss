@@ -1942,3 +1942,49 @@ isometrik hijau 3-shade di atasnya.
 - Catatan: section Build Tools default TERTUTUP (MASTER build:false) →
   tombol Place tidak ada di DOM sampai section dibuka; cek regresi icon
   toolbar harus buka section dulu.
+
+## Bagian 55 — Icon "Build Area" Diperbesar (Geometri Full-ViewBox + Render 20px/32px)
+
+### 55.1 Root Cause Icon Tampak Kecil
+
+User: "kok kecil gitu? gak kelihatan dong. gedein lah" (dengan screenshot
+zoom button). Analisis VLM screenshot konfirmasi: icon tampak ~setengah
+dari icon lucide tetangga. Penyebab GANDA:
+1. Geometri SVG lama hanya mengisi ~40% tinggi viewBox (rhombus y 5.5-15
+   dari 24) — icon lucide tetangga mengisi hampir penuh viewBox, jadi
+   pada px yang sama icon custom tampak jauh lebih kecil.
+2. Ukuran render hanya 14px (sama seperti RotateCcw/Trash2 tetangga).
+
+### 55.2 Perbaikan (diff +17/−14, hanya komponen icon & 2 call site)
+
+- **Geometri baru mengisi viewBox penuh**: grid rhombus T(12,10)
+  R(22.5,16) B(12,22) L(1.5,16) — tinggi 12 unit (vs 9.5 lama), lebar 21;
+  grid interior 3x3 digambar presisi di titik 1/3 & 2/3 edge
+  ("M5 14 L15.5 20 M8.5 12 L19 18 M15.5 12 L5 18 M19 14 L8.5 20").
+- **Block isometrik lebih besar**: footprint half-width 4 / half-height 2
+  (vs 2.5/1.25), tinggi block 6.5 (vs 2.6); base diamond di center grid
+  (12,13.5), top face y=5 → total gambar span y 5-22 = 17 unit (71%
+  viewBox) dan x 1.5-22.5 (87.5%).
+- **Stroke lebih tegas** untuk keterbacaan kecil: grid interior 1.4→1.5
+  + opacity 0.6→0.75; outline block 1.4→1.5.
+- **Ukuran render**: header button 14→**20px** (bounding SVG 20×20 vs
+  tetangga 14×14; button jadi 111×34 vs tetangga ~32px tinggi — tetap
+  center-aligned rapi); modal Coming Soon 24→**32px** (mengisi box ikon
+  48×48 dengan padding 8px). Default prop size 14→20.
+- Komentar anti-regresi di komponen: "Geometri HARUS mengisi hampir
+  penuh viewBox... Jangan kecilkan lagi."
+- **TIDAK disentuh**: style button (padding/radius/warna), button
+  Reset Camera & Clear All, icon Hammer tool Place, layout header.
+
+### 55.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: icon header 20×20 (tetangga 14×14), button Build Area
+  111×34; icon modal 32×32 dalam box 48×48.
+- VLM zoom 4× header: icon LARGE & clearly visible ✓ grid floor + cube
+  jelas ✓ 3 shade hijau mudah dibedakan ✓ proporsional, tidak cramped ✓.
+- VLM zoom 3× modal: icon large & prominent mengisi box ✓ crisp ✓.
+- Regresi: tool Place masih ber-icon Hammer ✓; Build Area right=729 <
+  Reset Camera left=747 (no overlap, gap 18px) ✓; 0 console error ✓;
+  modal buka/tutup normal ✓.
+- Efektif icon tampak ~2.6× lebih besar (0.71×20px ≈ 14px visible vs
+  0.40×14px ≈ 5.5px visible sebelumnya).
