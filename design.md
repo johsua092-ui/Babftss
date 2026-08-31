@@ -2485,3 +2485,64 @@ Properti yang tetap persis sama (tidak disentuh):
   normal ✓; 0 console error ✓; marker regresi grep semua PASS
   (Hammer15=1, Trash2_15=1, Undo15=1, Redo15=1, fill gelap 3,
   marginLeft:8 kode 3, History 0, marker geo Task 25 utuh) ✓.
+
+## Bagian 65 — Hapus Pick Color + Pindah Paint ke Bawah Place + Hapus Section Paint (Task ID 28)
+
+### 65.1 Latar (permintaan user)
+
+User: "pick color di hapus permanen dari situ, kemudian paint pindah
+tepat dibawah place. nah maka 'print' itu menjadi tidak ada karena
+penghuninya sudah pindah jadi menghilang tidak ada atau terhapus."
+("print" = section "Paint".) Dengan peringatan tetap: hati-hati,
+jangan menyenggol pekerjaan lain, push NORMAL.
+
+### 65.2 Desain perubahan (3 aksi, 1 file)
+
+Struktur sebelum: toolbar Build = Undo, Redo, Delete, Place, Shape,
+Clone, Mirror, Object, Decal; lalu section terpisah "PAINT"
+(header collapsible) berisi tombol Paint + Pick Color (eyedropper).
+
+1. **Pick Color dihapus permanen**: tombol eyedropper (toggleTool
+   ('eyedropper'), icon Pipette) di-delete dari JSX. Audit: tombol
+   itu adalah SATU-SATUNYA cara mengaktifkan tool eyedropper (tidak
+   ada keyboard shortcut I — handler keyboard hanya WASD/QE/Shift +
+   Ctrl+Z/Y; setTool('eyedropper') tidak ada call site lain) → tool
+   jadi unreachable, path canvas-nya (baris ~12326) dibiarkan sebagai
+   dead code yang tidak mungkin terpicu (nol risiko, sesuai prinsip
+   jangan senggol). Icon Pipette ikut dibuang dari import lucide.
+2. **Paint pindah tepat di bawah Place**: blok JSX tombol Paint
+   (toggleTool('paint'), title "Paint (C)", icon Paintbrush, highlight
+   amber #f59e0b) dipindah dari section PAINT ke Build section,
+   disisipkan persis setelah tombol Place. Properti tombol identik
+   byte-for-byte.
+3. **Section PAINT dihapus total**: header collapsible (toggleSection
+   ('paint')) + wrapper {openSections.paint && (<>)} di-delete karena
+   penghuninya sudah pindah/terhapus. Key `paint` di state
+   openSections sengaja TETAP ADA (compat localStorage lama — schema
+   merge spread, key tak terbaca JSX; precedent sama dengan key
+   `history` Task sebelumnya).
+
+Urutan toolbar final: Undo, Redo, Delete, Place, Paint, Shape, Clone,
+Mirror, Object, Decal — lalu section Transform (Paint section hilang,
+Transform langsung disusul Groups).
+
+### 65.3 Verifikasi
+
+- DOM eval urutan: ["Undo","Redo","Delete","Place","Paint","Shape",
+  "Clone","Mirror","Object","Decal"] ✓; posisi vertikal: Place y=285,
+  Paint y=328 (tepat di bawah, gap 6px konsisten) ✓
+- Tombol Pick Color/Eyedropper: 0 di snapshot & DOM ✓; grep Pick
+  Color hanya 3 hit di komentar dokumentasi ✓; Pipette import = 0 ✓
+- Section header PAINT hilang; Transform (y=595) → langsung Groups
+  (y=768) ✓; section lain utuh: Groups/Display/Bloom/Import-Export;
+  Material kondisional selectedCount>0 (perilaku pre-existing) ✓
+- Fungsi Paint di posisi baru: place block biru → pilih swatch merah
+  di panel Colors (kanan atas, muncul saat tool place/paint) → klik
+  block → pixel block berubah biru (29,70,127) → merah (91,19,35) ✓
+- Panel Pattern (Phase 27, muncul saat tool=paint) masih render
+  (selector visible, value solid) ✓; panel Colors tetap muncul untuk
+  tool place+paint ✓
+- Regresi undo/redo: paint → undo → block kembali biru; redo →
+  merah lagi; block count stabil 1 ✓
+- 3 modal header (Build Area/Clear All/Reset Camera) buka-tutup
+  normal ✓; 0 console error ✓; semua marker regresi grep PASS ✓

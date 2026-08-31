@@ -7071,3 +7071,56 @@ hati-hati, jangan senggol pekerjaan lain, push normal.
 ### Status
 Commit + push NORMAL (lihat worklog Task ID 27). Toolbar final:
 Undo, Redo, Delete, Place, Shape, Clone, Mirror, Object, Decal.
+
+## Bagian 90 — Hapus Pick Color + Paint ke Bawah Place + Section Paint Dihapus (Task ID 28)
+
+### Konteks
+User: Pick Color dihapus permanen; Paint pindah tepat di bawah Place;
+section Paint lama jadi kosong → hilang/terhapus. Peringatan tetap:
+hati-hati, jangan senggol pekerjaan lain, push normal.
+
+### Perubahan (1 file, 5 hunk, +31/−55)
+- src/pages/BlockSimulator3Dv2.jsx:
+  1. Tombol Paint (self-contained) dipindah ke Build section, disisipkan
+     tepat setelah tombol Place (isi byte-for-byte identik).
+  2. Section "PAINT" dihapus TOTAL: header toggleSection('paint') +
+     wrapper {openSections.paint && (<>)} + tombol Pick Color
+     (eyedropper) — semua di-delete, diganti komentar memorial.
+  3. Key `paint` di DEFAULT_SECTIONS TETAP ADA (compat localStorage
+     lama; tidak dibaca JSX lagi — precedent sama dengan `history`).
+  4. Icon Pipette dibuang dari import lucide-react (satu-satunya usage
+     adalah tombol Pick Color yang dihapus).
+  5. Komentar header toolbar diupdate (urutan Build + daftar section).
+- URUTAN FINAL: Undo, Redo, Delete, Place, Paint, Shape, Clone,
+  Mirror, Object, Decal. Section: Transform, Groups, Display, Bloom,
+  IO, Material(kondisional selection).
+- Tool eyedropper kini UNREACHABLE (tombolnya satu-satunya pintu; tak
+  ada shortcut keyboard I di kode) — path canvas-nya dibiarkan sebagai
+  dead code tak terpicu, NOL risiko (prinsip jangan senggol).
+
+### Verifikasi (SEMUA PASS)
+- DOM eval: [..."Delete","Place","Paint","Shape"...] ✓; Place y=285 →
+  Paint y=328 (tepat di bawah) ✓
+- Pick Color/Eyedropper 0 di DOM; Pipette=0 di file; toggleSection
+  ('paint')=0; openSections.paint=0 di JSX ✓
+- Section PAINT header hilang: Transform (595) langsung → Groups
+  (768) ✓
+- Fungsional: place block biru → swatch merah → Paint tool (amber
+  rgb(245,158,11)) → klik block → pixel biru→merah ✓
+- Pattern selector (tool=paint panel) tetap muncul ✓
+- Undo/redo regresi: paint→undo→biru, redo→merah ✓
+- 3 modal header normal; 0 console error; marker grep PASS
+  (Hammer15=1, Trash15=1, Undo/Redo15=1, Paintbrush15=1, fill gelap 3,
+  History 0, geo marker 1/1, toggleTool('paint')=1) ✓
+
+### Pelajaran teknis
+- Tombol swatch warna = div onClick (BUKAN button) — cari via
+  div[style 30px] di dalam panel COLORS; posisi absolut kanan atas,
+  hanya muncul saat tool place/paint.
+- Verifikasi klik swatch: border amber 2px pindah ke swatch terpilih.
+- Material Inspector panel muncul saat hover block (pre-existing) —
+  selalu pisahkan area UI overlay saat pixel-diff scene.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 28). Toolbar Build final:
+Undo, Redo, Delete, Place, Paint, Shape, Clone, Mirror, Object, Decal.

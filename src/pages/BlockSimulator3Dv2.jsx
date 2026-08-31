@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Pipette, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -140,7 +140,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
     const DEFAULT_SECTIONS = {
       build: false,    // MASTER toggle — SELALU false saat masuk halaman (tidak dipersist)
       transform: true, // Move / Rotate / Scale
-      paint: false,    // Paint / Eyedropper
+      paint: false,    // Section "Paint" DIHAPUS 2026-08-31 (Task ID 28): tombol Paint pindah ke Build (bawah Place), Pick Color dihapus permanen; key TETAP ADA utk compat localStorage lama (tidak dibaca JSX lagi)
       display: false,  // Grid / Snap / Shadows / Symmetry
       bloom: false,    // Bloom + sliders
       io: false,       // Import / Export
@@ -14019,7 +14019,7 @@ Now you can apply Displacement for detailed effect.`);
       <div ref={containerRef} style={{
         flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0,
       }}>
-        {/* Toolbar — Undo / Redo / Place / Delete / Shape / Transform / Paint / Display / Material */}
+        {/* Toolbar — Build: Undo / Redo / Delete / Place / Paint / Shape / Clone / Mirror / Object / Decal — lalu section Transform / Groups / Display / Bloom / IO / Material */}
         <div style={{
           position: 'absolute', top: 16, left: 16,
           display: 'flex', flexDirection: 'column', gap: 6,
@@ -14203,6 +14203,27 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Hammer size={15} />
               Place
+            </button>
+            {/* ── PAINT — dipindah dari section "Paint" (section itu dihapus
+                Task ID 28, 2026-08-31) ke SINI, tepat di bawah tombol Place
+                per request user. Tombol "Pick Color" (eyedropper) dihapus
+                permanen dari toolbar. Properti tombol tidak berubah. ── */}
+            <button
+              onClick={() => toggleTool('paint')}
+              title="Paint (C)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'paint' ? '#f59e0b' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'paint' ? '#f59e0b' : 'transparent',
+                color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Paintbrush size={15} />
+              Paint
             </button>
             <button
               onClick={() => toggleTool('shape')}
@@ -14437,58 +14458,13 @@ Now you can apply Displacement for detailed effect.`);
             </button>
           </>)}
 
-          {/* ── Section: PAINT (Paint/Eyedropper) ── */}
-          <div onClick={() => toggleSection('paint')} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            cursor: 'pointer', padding: '4px 2px', marginTop: 6, marginBottom: 2,
-            borderTop: '1px solid rgba(148,163,184,0.12)', paddingTop: 8,
-            userSelect: 'none',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: textSecondary,
-              textTransform: 'uppercase', letterSpacing: '1px',
-              fontFamily: 'Orbitron, sans-serif',
-            }}>Paint</div>
-            {openSections.paint
-              ? <ChevronDown size={14} color="#64748b" />
-              : <ChevronRight size={14} color="#64748b" />}
-          </div>
-          {openSections.paint && (<>
-            <button
-              onClick={() => toggleTool('paint')}
-              title="Paint (C)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'paint' ? '#f59e0b' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'paint' ? '#f59e0b' : 'transparent',
-                color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <Paintbrush size={15} />
-              Paint
-            </button>
-            <button
-              onClick={() => toggleTool('eyedropper')}
-              title="Eyedropper (I)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'eyedropper' ? '#a855f7' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'eyedropper' ? '#a855f7' : 'transparent',
-                color: tool === 'eyedropper' ? '#fff' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <Pipette size={15} />
-              Pick Color
-            </button>
-          </>)}
+          {/* ── Section "PAINT" DIHAPUS (2026-08-31, Task ID 28, request
+              user): tombol Paint DIPINDAH ke section Build (tepat di bawah
+              tombol Place), tombol "Pick Color" (eyedropper) DIHAPUS PERMANEN
+              dari toolbar. Section jadi kosong → header + wrapper dihapus
+              total. Key `paint` di state openSections sengaja TETAP ADA untuk
+              compat localStorage lama (tidak dibaca JSX lagi) — sama seperti
+              precedent key `history`. ── */}
 
           {/* ── Section "History" DIHAPUS (2026-08-31, request user): tombol
               Undo/Redo DIPINDAH ke atas tombol Place di section Build
