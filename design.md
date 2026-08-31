@@ -2128,3 +2128,51 @@ cuma 10px.
 - Regresi: 3 modal (Build Area/Clear All/Reset Camera) open+close
   normal ✓; tool Place ber-icon lucide-hammer size 15 utuh ✓;
   0 console error ✓.
+
+## Bagian 60 — Toolbar Block Sim v2: Undo/Redo Pindah ke Atas Place, Section "History" Dihapus (Task ID 23)
+
+### 60.1 Latar
+
+User: "undo dan redo berada di atas 'place' jadi urutannya undo,
+kemudian redo, baru build lalu delete... jadi 'history sudah tidak
+ada' itu sudah masuk bagian lain". Maksudnya: tombol Undo & Redo
+dipindah dari section "History" (collapsible terpisah, di tengah
+toolbar) ke ATAS tombol Place di section Build; section "History"
+dihapus karena isinya sudah merged ke Build.
+
+### 60.2 Implementasi (diff +50/−61)
+
+- INSERT 2 tombol (Undo hijau #22c55e, Redo biru #3b82f6) sebagai anak
+  PERTAMA master wrapper `{openSections.build && (<>`, sebelum tombol
+  Place. Urutan final: Undo, Redo, Place, Delete, Shape, Clone, Mirror,
+  Object, Decal, lalu section Transform dst.
+- DELETE section "History" lengkap (header div + `{openSections.history
+  && (...)}` conditional) — diganti komentar anti-regresi "Jangan bikin
+  section History terpisah lagi".
+- Style tombol mengikuti pola tombol Build section (full-width row,
+  padding 8px 14px, gap 8, fontSize 13, fontWeight 500, icon 15) supaya
+  konsisten dengan sibling; identitas warna + disabled state (abu,
+  opacity 0.5, cursor not-allowed) dipertahankan persis dari versi lama.
+- Komentar basi di-update: urutan toolbar (line ~13925), daftar section
+  master toggle (history dihapus dari list), key state `history: false`
+  (dipertahankan untuk compat localStorage lama — tidak dibaca JSX lagi).
+- TIDAK disentuh: logic doUndo/doRedo/recordHistory (line ~12775-12888),
+  shortcut Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z (window keydown), state
+  canUndo/canRedo, MAX_HISTORY 50, undoStack/redoStack.
+
+### 60.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: toolbarButtons = [Undo, Redo, Place, Delete, Shape,
+  Clone, Mirror, Object, Decal, Move, Rotate, Scale] — urutan benar.
+- Section History: benar-benar hilang dari DOM; section lain (Groups,
+  Display, Transform, Import, Bloom) tetap ada & toggle normal.
+- Fungsional: klik Place → klik canvas → Undo enabled → klik Undo →
+  Redo enabled → klik Redo → Undo enabled lagi (siklus penuh).
+- Keyboard: Ctrl+Z terpicu (state flip undoEnabled false / redoEnabled
+  true) — listener window tidak terpengaruh.
+- VLM zoom 3×: urutan Undo, Redo, Place (hammer), Delete (trash) ✓;
+  tidak ada header "History" ✓; tombol disabled tampak grayed-out ✓;
+  semua tombol konsisten size/alignment/padding ✓.
+- Regresi: Hammer lucide-hammer size 15 di Place utuh ✓; gap header
+  18px & 18px (Bagian 59) utuh ✓; modal Build Area open/close normal ✓;
+  0 console error ✓.

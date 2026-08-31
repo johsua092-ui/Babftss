@@ -146,7 +146,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
       io: false,       // Import / Export
       groups: false,   // Group / Ungroup
       material: true,  // PBR + Emissive (auto-open saat ada selection)
-      history: false,  // Undo / Redo
+      history: false,  // Undo/Redo — SECTION "History" dihapus 2026-08-31 (tombolnya pindah ke atas Place di Build); key sengaja TETAP ADA untuk compat localStorage lama (tidak dibaca JSX lagi)
     };
     const saved = localStorage.getItem('blockSimulator_toolbarSections');
     if (saved) {
@@ -13922,7 +13922,7 @@ Now you can apply Displacement for detailed effect.`);
       <div ref={containerRef} style={{
         flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0,
       }}>
-        {/* Toolbar — Place / Delete / Undo / Redo / Shape / Transform / Paint / Display / Material */}
+        {/* Toolbar — Undo / Redo / Place / Delete / Shape / Transform / Paint / Display / Material */}
         <div style={{
           position: 'absolute', top: 16, left: 16,
           display: 'flex', flexDirection: 'column', gap: 6,
@@ -13954,7 +13954,7 @@ Now you can apply Displacement for detailed effect.`);
               Tombol ini sengaja DIDESAIN BERBEDA dari section header lain di
               bawahnya (gradient biru→ungu + icon chip + chevron ganda) karena
               fungsinya MASTER COLLAPSE: satu klik = buka/tutup SEMUA section
-              sekaligus (konten build + transform + paint + history + groups +
+              sekaligus (konten build + transform + paint + groups +
               display + bloom + io + material). Saat tertutup, toolbar bersih
               total — hanya tombol master ini yang tersisa.
               UPDATE 2026-08-30: subtitle "Buka/Tutup semua tools" DIHILANGKAN
@@ -14028,6 +14028,49 @@ Now you can apply Displacement for detailed effect.`);
               lihat memory.md Bagian 69). Section lain tetap bisa di-toggle
               individual saat master terbuka. */}
           {openSections.build && (<>
+            {/* ── UNDO & REDO — dipindah dari section "History" (yang dihapus)
+                ke ATAS tombol Place, per request user 2026-08-31: urutan final
+                = Undo, Redo, Place, Delete, dst. Identitas warna tetap seperti
+                dulu (Undo hijau #22c55e, Redo biru #3b82f6, disabled = abu
+                opacity 0.5). Shortcut keyboard Ctrl+Z / Ctrl+Y TIDAK berubah. ── */}
+            <button
+              onClick={() => threeRef.current.doUndo && threeRef.current.doUndo()}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${canUndo ? '#22c55e' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: canUndo ? 'rgba(34,197,94,0.15)' : 'transparent',
+                color: canUndo ? '#22c55e' : '#475569',
+                fontSize: 13, fontWeight: 500, cursor: canUndo ? 'pointer' : 'not-allowed',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+                opacity: canUndo ? 1 : 0.5,
+              }}
+            >
+              <Undo2 size={15} />
+              Undo
+            </button>
+            <button
+              onClick={() => threeRef.current.doRedo && threeRef.current.doRedo()}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Y)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${canRedo ? '#3b82f6' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: canRedo ? 'rgba(59,130,246,0.15)' : 'transparent',
+                color: canRedo ? '#3b82f6' : '#475569',
+                fontSize: 13, fontWeight: 500, cursor: canRedo ? 'pointer' : 'not-allowed',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+                opacity: canRedo ? 1 : 0.5,
+              }}
+            >
+              <Redo2 size={15} />
+              Redo
+            </button>
             <button
               onClick={() => toggleTool('place')}
               title="Place (P)"
@@ -14348,64 +14391,10 @@ Now you can apply Displacement for detailed effect.`);
             </button>
           </>)}
 
-          {/* ── Section: HISTORY (Undo/Redo) ── */}
-          <div onClick={() => toggleSection('history')} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            cursor: 'pointer', padding: '4px 2px', marginTop: 6, marginBottom: 2,
-            borderTop: '1px solid rgba(148,163,184,0.12)', paddingTop: 8,
-            userSelect: 'none',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: textSecondary,
-              textTransform: 'uppercase', letterSpacing: '1px',
-              fontFamily: 'Orbitron, sans-serif',
-            }}>History</div>
-            {openSections.history
-              ? <ChevronDown size={14} color="#64748b" />
-              : <ChevronRight size={14} color="#64748b" />}
-          </div>
-          {openSections.history && (
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => threeRef.current.doUndo && threeRef.current.doUndo()}
-                disabled={!canUndo}
-                title="Undo (Ctrl+Z)"
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  padding: '8px 10px', borderRadius: 10,
-                  border: `1px solid ${canUndo ? '#22c55e' : 'rgba(148,163,184,0.12)'}`,
-                  backgroundColor: canUndo ? 'rgba(34,197,94,0.15)' : 'transparent',
-                  color: canUndo ? '#22c55e' : '#475569',
-                  fontSize: 12, fontWeight: 600, cursor: canUndo ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
-                  opacity: canUndo ? 1 : 0.5,
-                }}
-              >
-                <Undo2 size={14} />
-                Undo
-              </button>
-              <button
-                onClick={() => threeRef.current.doRedo && threeRef.current.doRedo()}
-                disabled={!canRedo}
-                title="Redo (Ctrl+Y)"
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  padding: '8px 10px', borderRadius: 10,
-                  border: `1px solid ${canRedo ? '#3b82f6' : 'rgba(148,163,184,0.12)'}`,
-                  backgroundColor: canRedo ? 'rgba(59,130,246,0.15)' : 'transparent',
-                  color: canRedo ? '#3b82f6' : '#475569',
-                  fontSize: 12, fontWeight: 600, cursor: canRedo ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
-                  opacity: canRedo ? 1 : 0.5,
-                }}
-              >
-                <Redo2 size={14} />
-                Redo
-              </button>
-            </div>
-          )}
+          {/* ── Section "History" DIHAPUS (2026-08-31, request user): tombol
+              Undo/Redo DIPINDAH ke atas tombol Place di section Build
+              (urutan: Undo, Redo, Place, Delete, Shape, dst). Jangan bikin
+              section History terpisah lagi — sudah masuk bagian Build. ── */}
 
           {/* ── Section: GROUPS (Group/Ungroup) ── */}
           <div onClick={() => toggleSection('groups')} style={{

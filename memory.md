@@ -6811,3 +6811,56 @@ push NORMAL (force push dilarang).
 Stage Summary:
 - Gap 3 tombol header Block Sim v2 kini seragam 18px; fix 1 properti
   (marginLeft: 8 di Clear All); zero regression; push NORMAL.
+
+## Bagian 85 — Task ID 23: Undo/Redo ke Atas Place, Section History Dihapus
+
+Tanggal: 2026-08-31. Commit: (diisi setelah push).
+
+### Konteks
+
+User: "undo dan redo berada di atas 'place' jadi urutannya undo,
+kemudian redo, baru build lalu delete. jadi 'history sudah tidak ada'
+itu sudah masuk bagian lain" — tombol Undo/Redo pindah ke ATAS Place
+di section Build, section "History" (collapsible terpisah) dihapus.
+Hati-hati jangan menyenggol pekerjaan lain; push NORMAL.
+
+### Solusi
+
+- 2 tombol Undo/Redo jadi anak pertama master wrapper `openSections
+  .build` (sebelum Place). Section "History" (header + conditional
+  openSections.history) dihapus total, diganti komentar anti-regresi.
+- Style mengikuti sibling Build (full-width, padding 8px 14px, icon
+  15, fontSize 13) — konsisten visual; warna identitas tetap (Undo
+  #22c55e, Redo #3b82f6) + disabled state tetap (opacity 0.5 abu).
+- Key state `history: false` SENGAJA dipertahankan di DEFAULT_SECTIONS
+  untuk compat localStorage lama (spread merge aman, tidak dibaca JSX).
+- Logic undo/redo 100% tidak disentuh: doUndo/doRedo/recordHistory,
+  undoStack/redoStack, MAX_HISTORY 50, Ctrl+Z/Y/Shift+Z keydown.
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Urutan: [Undo, Redo, Place, Delete, Shape, Clone, Mirror, Object,
+  Decal, ...] — orderBenar true.
+- History section hilang dari DOM; Groups/Display/Transform/Import/
+  Bloom tetap ada & toggle normal.
+- Fungsional penuh: place block → Undo enabled → undo → Redo enabled
+  → redo → siklus balik. Ctrl+Z juga terpicu.
+- VLM: urutan + grayed-out disabled + konsistensi tombol semua OK.
+- Regresi: Hammer Place utuh; gap header 18px (Bagian 84) utuh; modal
+  Build Area normal; 0 console error.
+
+### Pelajaran
+
+- "Pindahin tombol X ke atas Y" di toolbar flex-column = INSERT
+  sebelum Y + DELETE blok lama; JANGAN duplikat (kalau lupa delete,
+  doUndo kedua tombol = doUndo doUndo sekaligus — behavior aneh).
+- Tombol yang dipindah antar-section beda layout (half-width centered
+  → full-width left) harus ikut style section TUJUAN supaya rapi,
+  tapi identitas warna & disabled behavior dipertahankan.
+- State key collapsible yang section-nya dihapus aman dibiarkan (dead
+  key) asal tidak dibaca JSX — localStorage lama tetap parse mulus.
+
+Stage Summary:
+- Undo/Redo kini di urutan teratas Build section (Undo, Redo, Place,
+  Delete, dst); section History dihapus; logic undo/redo & shortcut
+  tidak tersentuh; zero regression; push NORMAL.
