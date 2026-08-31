@@ -2023,3 +2023,36 @@ terbaca, terlihat seperti gumpalan.
   profesional, tidak clunky ✓.
 - Regresi: tool Place ber-icon Hammer utuh ✓; Build Area right <
   Reset Camera left (gap 18px, no overlap) ✓; 0 console error ✓.
+
+## Bagian 57 — Icon "Build Area": Kontras 3 Sisi Kubus Diperlebar (Gelap/Sedang/Terang)
+
+### 57.1 Masalah
+
+User: "sisi sisi kubusnya ada yang terlalu terang, sisi sisinya gak
+kelihatan. harus ada sisi yang gelap, sisi yang agak terang, dan sisi
+terang". Shade lama (#059669 kiri / #10b981 kanan / #34d399 top) adalah
+emerald 600/500/400 — terlalu berdekatan, di render 20px sisi-sisi
+menyatu jadi flat.
+
+### 57.2 Perbaikan (diff +11/−7, hanya fill 3 face + komentar)
+
+- Kiri (GELAP): #059669 → **#065f46** (emerald-800)
+- Kanan (SEDANG): #10b981 → tetap (emerald-500)
+- Top (TERANG): #34d399 → **#6ee7b7** (emerald-300)
+- Jarak shade: 600/500/400 (berdekatan) → **800/500/300** (3 tingkat
+  jelas). Outline kubus tetap #34d399 stroke 1 — di antara top & sisi,
+  berfungsi sebagai definisi edge di semua face.
+- Komentar anti-regresi: "3 shade kontras jelas: kiri GELAP, kanan
+  SEDANG, top TERANG (jangan dirapatkan lagi)". Geometri/ukuran/stroke
+  tidak diubah.
+
+### 57.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: fills = [#065f46, #10b981, #6ee7b7] sesuai desain.
+- VLM zoom 5× header: 3 shade berbeda jelas (dark left / medium right /
+  bright top) ✓ mudah dibedakan sekilas ✓ kubus terbaca jelas sebagai
+  blok 3D ✓.
+- VLM zoom 4× modal: 3 shade distinct ✓ bentuk 3D isometrik jelas
+  terbaca di 32px ✓.
+- Regresi: tool Place ber-icon Hammer utuh ✓; gap 18px no overlap ✓;
+  0 console error ✓.

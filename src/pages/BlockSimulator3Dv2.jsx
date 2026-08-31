@@ -62,10 +62,12 @@ const COLORS = [
 const GRID_SIZE = 30; // same as v1
 
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
-   (GridHelper 60x60) + block isometrik hijau di atasnya (3 shade: top
-   terang #34d399, kanan #10b981, kiri #059669). Dipakai button "Build
-   Area" di header (size 20) & modal Coming Soon (size 32). Jangan pakai
-   icon palu — user minta icon yang menggambarkan area build itu sendiri.
+   (GridHelper 60x60) + block isometrik hijau di atasnya. 3 shade wajib
+   KONTRAS JELAS (user: sisi gelap + sisi agak terang + sisi terang):
+   top TERANG #6ee7b7, kanan SEDANG #10b981, kiri GELAP #065f46.
+   Dipakai button "Build Area" di header (size 20) & modal Coming Soon
+   (size 32). Jangan pakai icon palu — user minta icon yang menggambarkan
+   area build itu sendiri.
    Geometri HARUS mengisi hampir penuh viewBox 24x24 (grid y 10-22, block
    y 5-15.5) — versi lama hanya ~40% tinggi viewBox sehingga tampak kecil
    dibanding icon lucide tetangga. Jangan kecilkan lagi.
@@ -96,10 +98,12 @@ function BuildAreaIcon({ size = 20 }) {
         strokeLinecap="round"
         opacity="0.7"
       />
-      {/* Block isometrik di atas grid */}
-      <path d="M8 13.5 L12 15.5 L12 9 L8 7 Z" fill="#059669" />
+      {/* Block isometrik di atas grid — 3 shade kontras jelas:
+          kiri GELAP, kanan SEDANG, top TERANG (jangan dirapatkan lagi —
+          versi lama #059669/#10b981/#34d399 terlalu mirip, sisi menyatu) */}
+      <path d="M8 13.5 L12 15.5 L12 9 L8 7 Z" fill="#065f46" />
       <path d="M16 13.5 L12 15.5 L12 9 L16 7 Z" fill="#10b981" />
-      <path d="M12 5 L16 7 L12 9 L8 7 Z" fill="#34d399" />
+      <path d="M12 5 L16 7 L12 9 L8 7 Z" fill="#6ee7b7" />
       <path
         d="M12 5 L16 7 L16 13.5 L12 15.5 L8 13.5 L8 7 Z M8 7 L12 9 L16 7 M12 9 L12 15.5"
         stroke="#34d399"

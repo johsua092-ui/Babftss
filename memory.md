@@ -6696,3 +6696,35 @@ Stage Summary:
 - Icon Build Area kini: besar (20/32px), geometri penuh viewBox, garis
   tipis crisp — wujud grid floor perspektif + block hijau isometrik
   terbaca jelas; push NORMAL.
+
+## Bagian 82 — Icon "Build Area": Kontras 3 Sisi Kubus (800/500/300)
+
+### Perubahan (Task ID 20, +11/−7 baris)
+
+- Fill kubus: kiri #059669→#065f46 (GELAP, emerald-800), kanan tetap
+  #10b981 (SEDANG, emerald-500), top #34d399→#6ee7b7 (TERANG,
+  emerald-300). Shade lama 600/500/400 terlalu berdekatan → sisi menyatu
+  di render kecil.
+- Outline kubus tetap #34d399; geometri/ukuran/stroke tidak diubah.
+- Komentar anti-regresi: "jangan dirapatkan lagi".
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Runtime: fills [#065f46, #10b981, #6ee7b7].
+- VLM zoom 5× header: 3 shade jelas berbeda, mudah dibedakan sekilas,
+  kubus terbaca 3D. VLM zoom 4× modal: 3 shade distinct, form jelas.
+- Regresi: Place tool hammer utuh; gap 18px; 0 error.
+
+### Pelajaran
+
+- Untuk kubus isometrik kecil, pakai shade yang BERJARAK TINGKAT
+  (mis. Tailwind emerald 800/500/300), BUKAN berurutan (600/500/400) —
+  pada render 20px selisih 1 tingkat tidak terlihat, sisi menyatu flat.
+- Iterasi icon Build Area lengkap (4 tahap): palu → grid+block kecil →
+  diperbesar → garis tipis → kontras shade. Tiap keluhan user = aspek
+  berbeda (bentuk, ukuran, ketebalan, shading) — selesaikan satu per
+  satu tanpa menyentuh yang lain.
+
+Stage Summary:
+- Kubus icon Build Area kini punya shading gelap/sedang/terang yang
+  jelas (emerald 800/500/300) — terbaca sebagai blok 3D; push NORMAL.
