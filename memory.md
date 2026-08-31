@@ -6728,3 +6728,36 @@ Stage Summary:
 Stage Summary:
 - Kubus icon Build Area kini punya shading gelap/sedang/terang yang
   jelas (emerald 800/500/300) — terbaca sebagai blok 3D; push NORMAL.
+
+## Bagian 83 — Icon "Build Area": 3 Sisi Kubus Semua Gelap
+
+### Perubahan (Task ID 21, +14/−12 baris)
+
+- User membatalkan skema kontras gelap/sedang/terang (Bagian 82) —
+  kini SEMUA face gelap: kiri #022c22 (emerald-950), kanan #064e3b
+  (emerald-900), top #065f46 (emerald-800). Gradasi halus dipertahankan
+  (bukan satu warna persis) supaya face tetap terbedakan samar;
+  outline #34d399 jadi penegas bentuk utama.
+- Komentar anti-regresi: "Jangan dibuat terang lagi — user sudah
+  eksplisit minta gelap."
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Runtime: fills [#022c22, #064e3b, #065f46].
+- VLM zoom 5× header: semua face dark green, gradasi subtle, bentuk 3D
+  jelas via outline, terbaca solid dark block. VLM zoom 4× modal: sama.
+- Regresi: Place tool hammer utuh; gap 18px; 0 error.
+
+### Pelajaran
+
+- Perubahan arah user ("ah gak jadi...") = REVISI, bukan bug: terima
+  permintaan baru, ganti skema warna, update komentar anti-regresi lama
+  (hapus "jangan dirapatkan lagi" yang sudah tidak relevan, ganti
+  "jangan dibuat terang lagi").
+- Kubus gelap di background gelap butuh outline terang sebagai penegas
+  bentuk — outline #34d399 (stroke 1) terbukti cukup di 20px & 32px.
+
+Stage Summary:
+- Kubus icon Build Area kini 3 sisi gelap bergradasi (emerald
+  950/900/800) dengan outline terang — solid dark block yang tetap
+  terbaca 3D; push NORMAL.

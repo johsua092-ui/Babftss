@@ -2056,3 +2056,37 @@ menyatu jadi flat.
   terbaca di 32px ✓.
 - Regresi: tool Place ber-icon Hammer utuh ✓; gap 18px no overlap ✓;
   0 console error ✓.
+
+## Bagian 58 — Icon "Build Area": 3 Sisi Kubus Semua Gelap (Revisi Final User)
+
+### 58.1 Perubahan Permintaan
+
+User membatalkan skema gelap/sedang/terang (Bagian 57): "ah gak jadi,
+sisanya 2 sisi kubus jadi gelap juga, jadi 3 sisi gelap". Semua face
+kubus kini GELAP.
+
+### 58.2 Implementasi (diff +14/−12, hanya fill 3 face + komentar)
+
+- Kiri: #065f46 → **#022c22** (emerald-950, paling gelap)
+- Kanan: #10b981 → **#064e3b** (emerald-900)
+- Top: #6ee7b7 → **#065f46** (emerald-800)
+- Strategi: 3 shade gelap bergradasi halus (950/900/800) BUKAN satu
+  warna sama persis — face tetap bisa dibedakan samar; bentuk kubus
+  tetap tegas lewat outline terang #34d399 (tetap, tidak diubah).
+  Kalau 3 face satu warna persis, kubus jadi silhouette flat tanpa
+  kedalaman — outline saja tidak cukup menunjukkan 3 face.
+- Outline kubus #34d399 stroke 1 TIDAK diubah — sekarang berperan
+  sebagai kontras utama yang menegaskan edge kubus gelap.
+- Komentar anti-regresi: "3 sisi SEMUA GELAP (user final)... Jangan
+  dibuat terang lagi — user sudah eksplisit minta gelap."
+- Geometri/ukuran/stroke/grid tidak diubah.
+
+### 58.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: fills = [#022c22, #064e3b, #065f46].
+- VLM zoom 5× header: ketiga face dark green ✓ ada gradasi subtle ✓
+  bentuk 3D tetap jelas lewat outline terang ✓ terbaca sebagai solid
+  dark block ✓.
+- VLM zoom 4× modal: semua face dark green ✓ bentuk 3D tetap jelas ✓.
+- Regresi: tool Place ber-icon Hammer utuh ✓; gap 18px no overlap ✓;
+  0 console error ✓.
