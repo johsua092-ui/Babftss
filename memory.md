@@ -6761,3 +6761,53 @@ Stage Summary:
 - Kubus icon Build Area kini 3 sisi gelap bergradasi (emerald
   950/900/800) dengan outline terang — solid dark block yang tetap
   terbaca 3D; push NORMAL.
+
+## Bagian 84 — Task ID 22: Gap 3 Tombol Header Seragam 18px
+
+Tanggal: 2026-08-31. Commit: (diisi setelah push).
+
+### Konteks
+
+User: gap "Build Area" → "Reset Camera" → "Clear All" beda-beda,
+suruh disamain biar rapi. Hati-hati jangan menyenggol pekerjaan lain;
+push NORMAL (force push dilarang).
+
+### Akar Masalah (pelajaran penting)
+
+- Ketiga tombol ada di container title-group `gap: 10`.
+- Build Area & Reset Camera punya `marginLeft: 8` masing-masing →
+  gap efektif 18px; Clear All tidak punya → cuma 10px.
+- Bug ini warisan Task 16: saat menambah Build Area, Reset Camera
+  digeser pakai marginLeft: 8, tapi Clear All (tombol paling kanan)
+  tidak pernah diberi marginLeft yang sama.
+
+### Solusi
+
+- Tambah `marginLeft: 8` di style Clear All (satu properti, posisi
+  setelah fontFamily — pola identik 2 tombol lain).
+- Gap kini seragam 18px (parent gap 10 + margin 8).
+- Komentar anti-regresi: "marginLeft: 8 WAJIB ada... Jangan dihapus
+  lagi".
+
+### Verifikasi (semua PASS, 1600×900)
+
+- Runtime: gap1 = 18px, gap2 = 18px (seragam).
+- VLM zoom 3×: equal, rapi, no overlap.
+- Free space kanan Clear All 137px → 129px setelah fix, parent nowrap.
+- Regresi: 3 modal open/close normal; Place tool hammer (size 15)
+  utuh; 0 console error; vertical center tetap (center Y semua = 33).
+- Height Build Area 34px vs 32px lainnya = disengaja (Bagian 56,
+  icon 20px) — dibiarkan, jangan "rapiin" tanpa perintah.
+
+### Pelajaran
+
+- Gap antar elemen flex = parent gap + marginLeft anak; tambah tombol
+  baru di grup flex WAJIB cek apakah tombol-tombol lama punya margin
+  kompensasi, jangan cuma andalkan gap parent.
+- "Bedikit doang toh" tetap harus diukur runtime (getBoundingClientRect)
+  sebelum & sesudah — 18 vs 10px tidak terlihat jelas dari kode saja
+  kalau tidak teliti.
+
+Stage Summary:
+- Gap 3 tombol header Block Sim v2 kini seragam 18px; fix 1 properti
+  (marginLeft: 8 di Clear All); zero regression; push NORMAL.

@@ -13856,7 +13856,10 @@ Now you can apply Displacement for detailed effect.`);
               <RotateCcw size={14} />
               Reset Camera
             </button>
-            {/* Clear All Button — permanent, always visible */}
+            {/* Clear All Button — permanent, always visible
+                marginLeft: 8 WAJIB ada — sama seperti Build Area & Reset Camera,
+                supaya gap antar 3 tombol header seragam 18px (gap parent 10 + margin 8).
+                Jangan dihapus lagi (dulu gap Reset Camera→Clear All cuma 10px, beda). */}
             <button
               onClick={() => setShowClearAllConfirm(true)}
               title="Hapus semua block (Clear All)"
@@ -13869,6 +13872,7 @@ Now you can apply Displacement for detailed effect.`);
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 transition: 'all 0.15s ease',
                 fontFamily: 'Inter, sans-serif',
+                marginLeft: 8,
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.25)';

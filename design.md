@@ -2090,3 +2090,41 @@ kubus kini GELAP.
 - VLM zoom 4× modal: semua face dark green ✓ bentuk 3D tetap jelas ✓.
 - Regresi: tool Place ber-icon Hammer utuh ✓; gap 18px no overlap ✓;
   0 console error ✓.
+
+## Bagian 59 — Header Block Sim v2: Gap Antar 3 Tombol Diseragamkan 18px (Task ID 22)
+
+### 59.1 Latar
+
+User: gap antara "Build Area" → "Reset Camera" → "Clear All" beda-beda,
+tidak rapi. Pengukuran aktual (1600×900) sebelum fix:
+Build Area → Reset Camera = 18px, Reset Camera → Clear All = 10px.
+
+Akar masalah: ketiga tombol hidup di container title-group
+(gap: 10). Build Area & Reset Camera masing-masing punya marginLeft: 8
+(total 10+8 = 18px), tapi Clear All TIDAK punya marginLeft → gap-nya
+cuma 10px.
+
+### 59.2 Implementasi (diff +5/−1, satu properti + komentar)
+
+- Clear All button: tambah `marginLeft: 8` (posisi persis setelah
+  fontFamily, meniru pola 2 tombol lainnya).
+- Semua gap antar tombol kini seragam: gap parent 10 + marginLeft 8
+  = **18px**.
+- Komentar anti-regresi di atas tombol: "marginLeft: 8 WAJIB ada...
+  Jangan dihapus lagi (dulu gap Reset Camera→Clear All cuma 10px)".
+- Tidak ada properti lain yang disentuh (warna, padding, border, hover,
+  ukuran icon, posisi tombol lain semua utuh).
+
+### 59.3 Verifikasi (browser 1600×900)
+
+- Runtime eval: gap Build Area→Reset Camera = 18px, gap Reset Camera→
+  Clear All = 18px → SERAGAM.
+- Free space kanan Clear All 137px → setelah +8px masih 129px; parent
+  nowrap, tidak ada overlap/wrap.
+- Vertical: semua tombol center-aligned (center Y = 33px semua); height
+  Build Area 34px vs lainnya 32px = kondisi lama yang disengaja
+  (icon Build Area 20px per Bagian 56) — TIDAK disentuh.
+- VLM zoom 3×: gap equal ✓ rapi ✓ no overlap ✓.
+- Regresi: 3 modal (Build Area/Clear All/Reset Camera) open+close
+  normal ✓; tool Place ber-icon lucide-hammer size 15 utuh ✓;
+  0 console error ✓.
