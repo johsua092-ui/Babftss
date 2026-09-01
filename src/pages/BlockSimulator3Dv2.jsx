@@ -14432,42 +14432,28 @@ Now you can apply Displacement for detailed effect.`);
             >
               <svg
                 width={15} height={15} viewBox="0 0 24 24"
+                fill="none" stroke="currentColor"
+                strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                 style={{ flexShrink: 0 }}
               >
-                <defs>
-                  {/* Gradient vertikal kasing: kuning muda di atas →
-                      hijau-kuning lebih dewasa di bawah (volume +
-                      kesan 3D ringan, sesuai referensi). ID unik
-                      supaya tidak bentrok dengan SVG id lain. */}
-                  <linearGradient id="scaleCaseGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#eef592" />
-                    <stop offset="100%" stopColor="#c9d440" />
-                  </linearGradient>
-                </defs>
-                {/* Pita ukur (tape blade): pipih horizontal keluar dari
-                    kasing ke kanan. Digambar SEBELUM kasing supaya
-                    bagian pita yang "di dalam" kasing tertutup oleh
-                    kasing → efek visual pita muncul dari celah kasing. */}
-                <rect x="11" y="14.4" width="11" height="2.4" rx="0.3"
-                  fill="#3f3f46" stroke="#1e293b" strokeWidth="0.5" />
-                {/* Kaitan logam (hook tab) MERAH di ujung kanan pita —
-                    khas meteran saku: pelat vertikal melebihi lebar pita
-                    sedikit. Warna merah kontras → sinyal kuat "ini hook". */}
-                <rect x="20.4" y="13.6" width="2.3" height="4" rx="0.4"
-                  fill="#ef4444" stroke="#1e293b" strokeWidth="0.5" />
-                {/* Kasing meteran saku: rounded rect, fill gradient
-                    kuning-hijau, stroke dark slate (bukan currentColor
-                    supaya ikon tetap kaya warna baik saat tombol aktif
-                    maupun inactive). */}
-                <rect x="3" y="2.5" width="15" height="14.5" rx="3.5"
-                  fill="url(#scaleCaseGrad)" stroke="#1e293b" strokeWidth="1.2" />
-                {/* Mekanisme internal: 2 arc konsentris (sinyal rumahan
-                    pita / spring coil). Warna olive gelap supaya kontras
-                    dengan fill kuning-hijau tapi tidak dominan. */}
-                <path d="M7 7.5 Q10.5 5.5 14 7.5" fill="none"
-                  stroke="#65712a" strokeWidth="0.8" strokeLinecap="round" />
-                <path d="M7.8 10 Q10.5 8.5 13.2 10" fill="none"
-                  stroke="#65712a" strokeWidth="0.7" strokeLinecap="round" />
+                {/* Kasing meteran saku: rounded rect (body case). Rounded
+                    radius 3 — sedikit lebih soft dari rect biasa supaya
+                    tidak terbaca sebagai card/box generik. */}
+                <rect x="2" y="5" width="12" height="14" rx="3" />
+                {/* Gulungan pita di dalam kasing: arc tunggal melengkung
+                    ke atas. Sinyal semantik "ini meteran, bukan rect
+                    kosong" — tanpa arc, icon bisa tertukar dengan card/
+                    tag. Tetap ringkas (1 path) supaya tidak noisy di 15px. */}
+                <path d="M6 12 Q8 9 11 12" />
+                {/* Pita ukur: 2 garis paralel pipih keluar dari sisi
+                    kanan kasing ke arah kanan. Side-view pita pipih
+                    (bukan garis tunggal) supaya TIDAK terbaca sebagai
+                    kaca pembesar (pola circle+garis-tunggal = magnifier). */}
+                <line x1="14" y1="10" x2="20" y2="10" />
+                <line x1="14" y1="14" x2="20" y2="14" />
+                {/* Kaitan logam (hook tab): vertikal di ujung kanan pita,
+                    melebihi lebar pita sedikit — khas hook meteran saku. */}
+                <line x1="20" y1="8" x2="20" y2="16" />
               </svg>
               Scale
             </button>
