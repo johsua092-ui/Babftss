@@ -7346,3 +7346,47 @@ reorder. 0 page error.
 Commit + push NORMAL (lihat worklog Task ID 33). Size tool fungsional
 penuh: grow/shrink instan terverifikasi presisi pixel + toast boundary
 + undo. Zero regression (gizmo Scale, inspector, toast 31, urutan 32).
+
+## Bagian 96 — Icon Scale: Meteran Saku Custom SVG (Task ID 34)
+
+### Perubahan
+- 1 file, 3 hunk, +36/−3: icon tombol Scale `<Maximize>` → custom SVG
+  meteran saku (kasing circle 6.5,12 r4.5 + pita RIBBON 2 garis y9.3/
+  y14.7 dari x10.5→20 + kaitan pelat x20 y8.2→15.8 + 2 tick ukur
+  x13.5/x16.5 y11→13). Gaya stroke = icon Info/Property (15×15, sw2,
+  currentColor, round cap/join). Tombol Size MAXIMIZE TIDAK disentuh
+  (kini Maximize terakhir; komentar Size di-update komentar-saja).
+- Urutan toolbar Build (17 tombol) TIDAK berubah. Fungsi Scale tool,
+  warna aktif ungu #8b5cf6, shortcut S, gizmo TransformControls —
+  semua tidak disentuh (icon-only change).
+
+### Pelajaran teknis (PENTING untuk task ikon berikutnya)
+- POLA "circle + garis tunggal" SELALU terbaca kaca pembesar (VLM ×2,
+  orientasi apapun). Solusi: pita digambar RIBBON 2 garis paralel +
+  TICK UKUR di antaranya — magnifier tidak punya struktur itu. Tick
+  = sinyal semantik "mengukur" paling kuat di stroke icon.
+- Proporsi penting: kasing jangan dominan (v1 circle r5.5 → baca
+  lensa); pita harus elemen terpanjang; start point pita ditempatkan
+  di annulus stroke circle (jarak start ke center ≈ r+ε) supaya
+  junction pita-kasing menyatu mulus.
+- VLM TIDAK reliable untuk penamaan ikon TANPA konteks (4 tebakan
+  berbeda utk 4 desain: magnifier×3, wrench). DENGAN konteks (crop
+  tombol + label teks) VLM bisa konfirmasi semantik ("measuring
+  tool, universally signifies Scale tool"). Otoritas final tetap:
+  DOM SVG attributes (exact) + pixel ASCII (≥8x zoom).
+- Timing re-render React saat thread sibuk (three.js dev, toolbar
+  baru dibuka): getComputedStyle setelah eval .click() bisa butuh
+  >500ms — pakai wait 1200ms, atau verifikasi via 2-step evaluate.
+  (Debug isolasi M1: click JS → aktif @700ms; M2 mouse real → toggle
+  unequip — keduanya BUKTI handler jalan.)
+- Playwright sync API tersedia via /home/z/.venv/bin/python — pola
+  navigasi: goto 5173 → click button 'START LEARNING' → click div
+  text 'Shapes' (childElementCount 0, dispatchEvent MouseEvent
+  bubbles) → click '3D Block Simulator v2' → sleep 9s → click div
+  'Build Tools' → verifikasi. deviceScaleFactor=2 utk ASCII pixel
+  presisi.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 34). Icon meteran saku
+terverifikasi DOM-exact + ASCII + VLM-konteks. Zero regression (Size,
+gizmo, urutan, toast, marker grep semua PASS).

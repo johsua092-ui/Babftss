@@ -2940,3 +2940,73 @@ menyenggol pekerjaan lain, dilarang force push, wajib push biasa.
   Shift+click wajib diuji via canvas.dispatchEvent(new MouseEvent(
   ..., {shiftKey: true})) mousedown+mouseup pair (target canvas,
   bubbles: true → window handler menerima).
+
+## Bagian 71 — Icon Tombol Scale: Meteran Saku Custom SVG (Task ID 34)
+
+### 71.1 Latar (permintaan user)
+
+User: ganti icon tombol "Scale" menjadi sebuah METERAN SAKU (pocket
+tape measure — kasing bulat + pita ukur yang ditarik keluar + kaitan
+logam di ujung pita). Wajib hati-hati, jangan menyenggol pekerjaan
+lain yang sudah sempurna, fokus pada tugas yang diperintahkan, kerjakan
+dengan benar, dilarang force push, wajib push biasa.
+
+### 71.2 Perubahan (1 file, 3 hunk, +36/−3)
+
+1. **Icon Scale** — `<Maximize size={15} />` (lucide) diganti custom SVG
+   inline, gaya stroke IDENTIK dengan icon Info (kaca pembesar) &
+   Property (obeng): 15×15, viewBox 0 0 24 24, fill none,
+   stroke=currentColor, strokeWidth 2, strokeLinecap/join round,
+   flexShrink 0. Alasan custom: lucide TIDAK punya ikon tape measure
+   (ruler = penggaris, bukan meteran saku).
+2. **Anatomi icon meteran saku (final, iterasi 3×)**:
+   - Kasing: `<circle cx="6.5" cy="12" r="4.5" />` (rumahan pita)
+   - Pita pipih RIBBON 2 garis paralel: `y=9.3` & `y=14.7` dari
+     x=10.5 (rim kasing, start point jatuh tepat di annulus stroke
+     circle → junction mulus "pita keluar dari kasing") sampai x=20
+   - Kaitan logam: pelat vertikal `x=20, y 8.2→15.8` (melebihi lebar
+     pita — khas hook meteran saku)
+   - Tanda ukur (tick): 2 garis pendek `x=13.5` & `x=16.5`, `y 11→13`
+     di antara 2 garis pita
+   - Orientasi HORIZONTAL — sengaja beda kuadran dari Info (diagonal
+     kanan-bawah) dan Property (diagonal kanan-atas) supaya tidak
+     kembar.
+3. **Komentar dokumentasi** — blok komentar Task 34 di atas tombol
+   Scale + komentar tombol Size di-update (komentar SAJA, nol kode):
+   "Icon = Maximize identik Scale" sudah tidak akurat sejak Scale
+   ganti meteran → catat historis Task 33 vs Task 34.
+
+### 71.3 Iterasi desain (pelajaran ikon "meteran saku")
+
+- **v1** (circle r5.5 besar + pita tunggal pendek + kait kecil):
+  ASCII pixel OK tapi proporsi circle-dominan → terbaca kaca
+  pembesar (VLM: "magnifying glass" — kritik proporsi VALID).
+- **v2** (circle kecil + pita tunggal panjang): masih pola
+  circle+garis-tunggal = handle magnifier (VLM tetap magnifier).
+- **v3 FINAL** (pita RIBBON 2 garis paralel + tick ukur): pola
+  magnifier PECAH (magnifier tidak punya 2 garis paralel bertanda);
+  VLM dengan konteks label mengenali "measuring tool / scale rule —
+  universally signifies the Scale tool in 3D software". Tanpa konteks
+  VLM tetap acak (4 tebakan beda utk 4 desain) → VLM TIDAK boleh
+  jadi otoritas ikon; otoritas = DOM SVG attrs + pixel ASCII.
+
+### 71.4 Hasil verifikasi (browser 1280×577, 10/10 PASS)
+
+- Urutan 17 tombol Build utuh: Info, Undo, Redo, Delete, Place,
+  Paint, Binding, SCALE, Property, Move, Rotate, Clone, Mirror,
+  Size, Shape, Object, Decal (consecutive & berurutan di DOM) ✓
+- DOM SVG Scale EXACT: circle [6.5,12,4.5]; lines [[10.5,9.3,20,9.3],
+  [10.5,14.7,20,14.7],[20,8.2,20,15.8],[13.5,11,13.5,13],
+  [16.5,11,16.5,13]]; stroke=currentColor sw=2; 0 path 0 rect ✓
+- Tombol Size TIDAK tersentuh: SVG Maximize (0 circle, 4 path) ✓
+- Scale aktif: bg rgb(139,92,246) #8b5cf6 + teks putih ✓ (toggle
+  unequip juga diverifikasi via debug click M1/M2)
+- ASCII pixel 8x: kasing + 2 garis pita + rim + 2 tick + pelat
+  kaitan semua ter-render jelas ✓
+- 0 page error; 7 console error pre-existing (CORS sandbox) ✓
+- Marker grep: Maximize15 = 1 (hanya Size, EXPECTED turun dari 2);
+  stroke currentColor = 5 (naik dari 4: +Scale custom); toggleTool
+  13 tombol semua = 1; Hammer/Undo2/Redo2/Trash2/Paintbrush/
+  RotateCw/Shapes/Copy = 1 semua; Wrench = 2; Info circle = 1;
+  toast.warning = 2; mode-noise = 0 ✓
+- Build: npx vite build 20.72s sukses.

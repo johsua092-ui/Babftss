@@ -14404,6 +14404,16 @@ Now you can apply Displacement for detailed effect.`);
               <Wrench size={15} />
               Binding
             </button>
+            {/* ── SCALE TOOL — icon METERAN SAKU custom SVG (Task ID 34,
+                2026-09-01, request user): kasing bulat + pita ukur
+                ditarik keluar ke kanan + kaitan logam di ujung pita.
+                lucide TIDAK punya ikon tape measure (ruler = penggaris,
+                bukan meteran saku) → custom SVG, gaya stroke sama dengan
+                icon Info (kaca pembesar) & Property (obeng). Sebelumnya
+                <Maximize> lucide (kini hanya dipakai tombol Size).
+                Orientasi HORIZONTAL agar tidak kembar dengan obeng
+                Property yang diagonal. Fungsi/warna aktif ungu #8b5cf6/
+                urutan tombol TIDAK berubah sama sekali. ── */}
             <button
               onClick={() => toggleTool('scale')}
               title="Scale (S)"
@@ -14418,7 +14428,28 @@ Now you can apply Displacement for detailed effect.`);
                 fontFamily: 'Inter, sans-serif',
               }}
             >
-              <Maximize size={15} />
+              <svg
+                width={15} height={15} viewBox="0 0 24 24"
+                fill="none" stroke="currentColor"
+                strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                style={{ flexShrink: 0 }}
+              >
+                {/* kasing meteran saku: lingkaran (rumahan pita).
+                    Pita digambar RIBBON 2 garis paralel (side-view pita
+                    pipih) supaya TIDAK terbaca sebagai kaca pembesar
+                    (pola circle+garis-tunggal = handle magnifier). */}
+                <circle cx="6.5" cy="12" r="4.5" />
+                {/* pita ukur: tepi atas & bawah pita pipih keluar kasing */}
+                <line x1="10.5" y1="9.3" x2="20" y2="9.3" />
+                <line x1="10.5" y1="14.7" x2="20" y2="14.7" />
+                {/* kaitan logam: pelat vertikal di ujung pita (melebihi
+                    lebar pita sedikit — khas hook meteran) */}
+                <line x1="20" y1="8.2" x2="20" y2="15.8" />
+                {/* tanda ukur (tick) di pita — sinyal semantik "mengukur":
+                    magnifier tidak punya tick, meteran punya */}
+                <line x1="13.5" y1="11" x2="13.5" y2="13" />
+                <line x1="16.5" y1="11" x2="16.5" y2="13" />
+              </svg>
               Scale
             </button>
             <button
@@ -14521,8 +14552,10 @@ Now you can apply Displacement for detailed effect.`);
             </button>
             {/* ── SIZE TOOL (Task ID 33, 2026-09-01) — instant resize
                 block. Posisi: TEPAT di bawah Mirror (tepat di atas
-                Shape). Icon = <Maximize> SAMA PERSIS dengan tombol Scale
-                (request user: "mirip 100% dari scale, ambil aja") —
+                Shape). Icon = <Maximize> (Task 33: identik dengan Scale
+                per request user "mirip 100% dari scale, ambil aja";
+                SEJAK Task 34 Scale memakai icon meteran saku custom —
+                Size kini Maximize terakhir & mudah dibedakan) —
                 dibedakan via warna aktif PINK #ec4899 (Scale = ungu
                 #8b5cf6; pink tidak dipakai tombol manapun di kolom
                 Build). Interaksi: L-Click block = besarkan x1.5 INSTAN
