@@ -14405,15 +14405,17 @@ Now you can apply Displacement for detailed effect.`);
               Binding
             </button>
             {/* ── SCALE TOOL — icon METERAN SAKU custom SVG (Task ID 34,
-                2026-09-01, request user): kasing bulat + pita ukur
-                ditarik keluar ke kanan + kaitan logam di ujung pita.
+                2026-09-01, REDESIGN request user): kasing rounded rect
+                fill kuning-hijau gradient + pita ukur pipih keluar ke
+                kanan + kaitan logam MERAH di ujung pita + 2 arc
+                konsentris (mekanisme spring) di dalam kasing. Mengikuti
+                referensi visual dari user (Screenshot 2026-09-01 185805).
                 lucide TIDAK punya ikon tape measure (ruler = penggaris,
-                bukan meteran saku) → custom SVG, gaya stroke sama dengan
-                icon Info (kaca pembesar) & Property (obeng). Sebelumnya
-                <Maximize> lucide (kini hanya dipakai tombol Size).
-                Orientasi HORIZONTAL agar tidak kembar dengan obeng
-                Property yang diagonal. Fungsi/warna aktif ungu #8b5cf6/
-                urutan tombol TIDAK berubah sama sekali. ── */}
+                bukan meteran saku) → custom SVG. Sebelumnya <Maximize>
+                lucide (kini hanya dipakai tombol Size). Orientasi
+                HORIZONTAL agar tidak kembar dengan obeng Property yang
+                diagonal. Fungsi/warna aktif ungu #8b5cf6/urutan tombol
+                TIDAK berubah sama sekali. ── */}
             <button
               onClick={() => toggleTool('scale')}
               title="Scale (S)"
@@ -14430,25 +14432,42 @@ Now you can apply Displacement for detailed effect.`);
             >
               <svg
                 width={15} height={15} viewBox="0 0 24 24"
-                fill="none" stroke="currentColor"
-                strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                 style={{ flexShrink: 0 }}
               >
-                {/* kasing meteran saku: lingkaran (rumahan pita).
-                    Pita digambar RIBBON 2 garis paralel (side-view pita
-                    pipih) supaya TIDAK terbaca sebagai kaca pembesar
-                    (pola circle+garis-tunggal = handle magnifier). */}
-                <circle cx="6.5" cy="12" r="4.5" />
-                {/* pita ukur: tepi atas & bawah pita pipih keluar kasing */}
-                <line x1="10.5" y1="9.3" x2="20" y2="9.3" />
-                <line x1="10.5" y1="14.7" x2="20" y2="14.7" />
-                {/* kaitan logam: pelat vertikal di ujung pita (melebihi
-                    lebar pita sedikit — khas hook meteran) */}
-                <line x1="20" y1="8.2" x2="20" y2="15.8" />
-                {/* tanda ukur (tick) di pita — sinyal semantik "mengukur":
-                    magnifier tidak punya tick, meteran punya */}
-                <line x1="13.5" y1="11" x2="13.5" y2="13" />
-                <line x1="16.5" y1="11" x2="16.5" y2="13" />
+                <defs>
+                  {/* Gradient vertikal kasing: kuning muda di atas →
+                      hijau-kuning lebih dewasa di bawah (volume +
+                      kesan 3D ringan, sesuai referensi). ID unik
+                      supaya tidak bentrok dengan SVG id lain. */}
+                  <linearGradient id="scaleCaseGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#eef592" />
+                    <stop offset="100%" stopColor="#c9d440" />
+                  </linearGradient>
+                </defs>
+                {/* Pita ukur (tape blade): pipih horizontal keluar dari
+                    kasing ke kanan. Digambar SEBELUM kasing supaya
+                    bagian pita yang "di dalam" kasing tertutup oleh
+                    kasing → efek visual pita muncul dari celah kasing. */}
+                <rect x="11" y="14.4" width="11" height="2.4" rx="0.3"
+                  fill="#3f3f46" stroke="#1e293b" strokeWidth="0.5" />
+                {/* Kaitan logam (hook tab) MERAH di ujung kanan pita —
+                    khas meteran saku: pelat vertikal melebihi lebar pita
+                    sedikit. Warna merah kontras → sinyal kuat "ini hook". */}
+                <rect x="20.4" y="13.6" width="2.3" height="4" rx="0.4"
+                  fill="#ef4444" stroke="#1e293b" strokeWidth="0.5" />
+                {/* Kasing meteran saku: rounded rect, fill gradient
+                    kuning-hijau, stroke dark slate (bukan currentColor
+                    supaya ikon tetap kaya warna baik saat tombol aktif
+                    maupun inactive). */}
+                <rect x="3" y="2.5" width="15" height="14.5" rx="3.5"
+                  fill="url(#scaleCaseGrad)" stroke="#1e293b" strokeWidth="1.2" />
+                {/* Mekanisme internal: 2 arc konsentris (sinyal rumahan
+                    pita / spring coil). Warna olive gelap supaya kontras
+                    dengan fill kuning-hijau tapi tidak dominan. */}
+                <path d="M7 7.5 Q10.5 5.5 14 7.5" fill="none"
+                  stroke="#65712a" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M7.8 10 Q10.5 8.5 13.2 10" fill="none"
+                  stroke="#65712a" strokeWidth="0.7" strokeLinecap="round" />
               </svg>
               Scale
             </button>
