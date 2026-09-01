@@ -2857,3 +2857,86 @@ lain yang sudah sempurna, dilarang force push, wajib push biasa.
   M/R/S/G (handler keydown tidak berubah — tombol hanya pindah
   posisi), panel Decal settings & Mirror axis selector (tetap setelah
   Decal), section Groups/Display/Bloom/IO/Material, inspector, modal.
+
+## Bagian 70 — Tombol "Size": Instant Resize Block (Task ID 33)
+
+### 70.1 Latar (permintaan user)
+
+User: ciptakan tombol baru bernama "Size" dengan icon mirip 100% dari
+Scale (atau ambil saja icon Scale ke sini). Jika user menekan Size, tool
+ini dapat membesarkan atau mengecilkan ukuran block secara instant dan
+cepat. Lokasi tombol: tepat di bawah "Mirror". Wajib hati-hati, jangan
+menyenggol pekerjaan lain, dilarang force push, wajib push biasa.
+
+### 70.2 Perubahan (1 file, 6 hunk, +67/−5)
+
+1. **Tombol Size** — disisipkan TEPAT di antara Mirror dan Shape (kolom
+   utama Build). Icon = `<Maximize size={15} />` SAMA PERSIS dengan
+   Scale (verifikasi outerHTML SVG 100% identik + konfirmasi VLM) —
+   sesuai request eksplisit user. Diferensiasi visual via warna aktif
+   PINK #ec4899 (Scale = ungu #8b5cf6; pink tidak dipakai tombol kolom
+   Build manapun — hanya Symmetry di section Display yang pink).
+2. **Tool mode baru 'size'** — union type state `tool` ditambah 'size'
+   (komentar baris state diupdate). toggleTool('size') standar.
+3. **Dispatch branch baru** di onWindowMouseUp chain (antara decal dan
+   move/rotate/scale): raycast blocks → INSTANT resize tanpa gizmo —
+   L-Click = besarkan ×1.5; Shift+L-Click = kecilkan ×1.5 (baca
+   e.shiftKey native — pola identik multi-select Shift di branch
+   move/rotate/scale). Clamp magnitude scale [0.25, 5]; magnitude =
+   max(|sx|,|sy|,|sz|) supaya aman untuk block mirror (komponen
+   negatif; multiplyScalar menjaga tanda ±). Recovery: grow dari
+   scale degenerate (<0.25 hasil gizmo) snap ke 0.25.
+4. **Undo integration** — recordHistory() setiap resize applied
+   (snapshotState menyimpan sx,sy,sz → undo/redo jalan otomatis).
+   Klik di batas (no-op) TIDAK recordHistory (anti entri undo sampah)
+   + toast.info sonner "Ukuran block sudah di batas maksimal/minimal
+   (5x/0.25x)".
+5. **Help text** — 2 baris hint (Build Mode bar + panel Controls)
+   ditambah entry 'size': "resize instant (Shift = kecilkan)" /
+   "Size: L-Click besarkan x1.5 • Shift+L-Click kecilkan".
+6. **TIDAK disentuh**: TransformControls/gizmo (line gating 4402 &
+   branch 12516 move/rotate/scale murni), pointermove hover handler
+   (size jatuh ke else branch aman = hide ghost), keyboard shortcut
+   (Size sengaja TANPA shortcut — S sudah dipakai Scale; user tidak
+   minta), union type Paint/dll, semua tombol lain, inspector, modal.
+
+### 70.3 Hasil verifikasi (browser 1280×577, SEMUA PASS)
+
+- Urutan toolbar 17 tombol: Info, Undo, Redo, Delete, Place, Paint,
+  Binding, Scale, Property, Move, Rotate, Clone, Mirror, **SIZE**,
+  Shape, Object, Decal; posisi y: Mirror 676 → Size 720 → Shape 763 ✓
+- Icon: outerHTML SVG Size === Scale (identik 100%) + VLM "identical" ✓;
+  Size aktif pink rgb(236,72,153), non-aktif transparent ✓
+- GROW: block 1x → klik → w 37→59px (ratio 1.59 ≈ ×1.5 perspektif),
+  area 304→959px ✓
+- SHRINK (Shift+L-click via synthetic MouseEvent): mag 2.25 → 1.5
+  EXACT (2563px/w91 → 959px/w59, identik state grow-1) ✓
+- CLAMP deterministik: dari mag 1.5, klik grow ke-3 = 5.0 (clamp dari
+  5.06), klik ke-4 & ke-5 = toast info "batas maksimal (5x)"
+  data-type=info ✓ (bukti matematis branch + step + clamp + toast)
+- UNDO: ctrl+z → mag 5 → 3.375 (w 139px ≈ 136.5 expected, EXACT) ✓
+- Regresi: Scale klik aktif ungu + gizmo RGB ter-attach block (VLM
+  konfirmasi + "1 Selected") ✓; Shape cyan ✓; Info mode → inspector
+  200×240 @ (655,302) fullyInside + close on move-away ✓; Binding/
+  Property toast warning ✓; 0 console error ✓
+- Marker grep: toggleTool ×13 semua=1 (size baru=1); dispatch branch
+  size=1 (+1 mention comment); Maximize15 = 2 (Scale + Size SESUAI
+  request); toast.info=1; #ec4899 Build-column hanya Size; transform
+  markers 0 ✓; geo markers=1/1 ✓
+- Build: npx vite build 23.57s sukses.
+
+### 70.4 Catatan desain
+
+- Tool Size = "instant" berbeda filosofi dari Scale (gizmo presisi):
+  Size untuk iterasi cepat via klik berulang (1 klik = ×1.5; 2 klik =
+  ×2.25), Scale untuk kontrol presisi via drag gizmo. Keduanya
+  koexisten by design — user minta keduanya eksplisit.
+- Icon duplikat disengaja (request user "mirip 100%") —
+  diferensiasi via warna aktif pink; risiko confusion minimized
+  karena label teks + warna beda.
+- Resize in-place (scale.multiplyScalar) = zero garbage geometry
+  (tidak rebuild BoxGeometry) → cepat & aman untuk imported mesh.
+- Testing harness: CDP mouse events TIDAK membawa modifier state —
+  Shift+click wajib diuji via canvas.dispatchEvent(new MouseEvent(
+  ..., {shiftKey: true})) mousedown+mouseup pair (target canvas,
+  bubbles: true → window handler menerima).

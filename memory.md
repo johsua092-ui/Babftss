@@ -7300,3 +7300,49 @@ screwdriver miring kanan, keduanya toast.warning dev-stage.
 Commit + push NORMAL (lihat worklog Task ID 32). Semua fungsi tool,
 toast dev-stage, inspector, place/undo terverifikasi utuh pasca
 reorder. 0 page error.
+
+## Bagian 95 — Tombol Size: Instant Resize Tanpa Gizmo (Task ID 33)
+
+### Perubahan
+- 1 file, 6 hunk, +67/−5: tombol "Size" TEPAT di bawah Mirror (antara
+  Mirror dan Shape), icon <Maximize> identik 100% dengan Scale (request
+  user eksplisit), warna aktif pink #ec4899. Tool mode 'size' baru di
+  union type + dispatch branch di onWindowMouseUp (antara decal dan
+  move/rotate/scale): L-Click block = grow ×1.5 instan, Shift+L-Click =
+  shrink ×1.5, clamp magnitude [0.25, 5] (magnitude = max |scale
+  component| — aman utk mirror negative scale), recordHistory per resize
+  applied (undoable), klik di batas = toast.info tanpa history entry.
+- Urutan toolbar Build final (17 tombol): Info, Undo, Redo, Delete,
+  Place, Paint, Binding, Scale, Property, Move, Rotate, Clone, Mirror,
+  SIZE, Shape, Object, Decal.
+- Step ×1.5 dipilih utk "instant dan cepat": 2 klik = 2.25x, 4 klik
+  dari 1x = clamp 5x. Recovery otomatis dari scale degenerate < 0.25.
+
+### Pelajaran teknis (PENTING untuk task berikutnya)
+- CDP/synthetic mouse click (agent-browser mouse down/up) TIDAK membawa
+  modifier state — Shift+click HARUS diuji via canvas.dispatchEvent(new
+  MouseEvent('mousedown'/'mouseup', {button:0, bubbles:true,
+  clientX, clientY, shiftKey:true, view:window})). Target = canvas
+  (propagasi ke window handler; handler cek e.target === canvas).
+  Sama persis pola KeyboardEvent ctrl+z (memo lama).
+- Verifikasi resize presisi = hitung pixel warna block di screenshot
+  (mask biru #3b82f6: b>150, b-r>60, b-g>50) → bandingkan bbox width
+  antar state; ratio width ≈ ratio magnitude (perspektif menambah ~5%).
+  Toast boundary = bukti deterministik branch jalan (hanya muncul saat
+  newMag === mag tepat di clamp).
+- Resize in-place via scale.multiplyScalar + recordHistory = pola Paint
+  (bukan clone geometry baru) — zero garbage, undo otomatis via
+  snapshot sx,sy,sz.
+- agent-browser eval + rapid click storm: kadang getComputedStyle read
+  race/ throttle — jika hasil aneh (state tidak berubah padahal toast
+  jalan), RE-RUN eval bersih step-by-step sebelum menyimpulkan bug.
+  Anomali sesi ini = glitch harness, bukan bug app (bukti: re-run bersih
+  semua PASS).
+- Icon duplikat antar tombol (Maximize 2x: Scale + Size) = SESUAI
+  request user — marker grep "Maximize size={15} = 2" EXPECTED jangan
+  dianggap duplikat bug.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 33). Size tool fungsional
+penuh: grow/shrink instan terverifikasi presisi pixel + toast boundary
++ undo. Zero regression (gizmo Scale, inspector, toast 31, urutan 32).

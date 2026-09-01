@@ -185,7 +185,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // null aman di semua konsumen: click handler tidak ada branch yang match
   // (klik canvas = no-op), semua highlight tombol `tool === '...'` false,
   // ghost preview masuk branch else (hide), mouse LEFT tetap PAN.
-  const [tool, setTool] = useState(null); // null | 'place' | 'delete' | 'move' | 'rotate' | 'scale' | 'paint' | 'eyedropper' | 'shape' | 'clone' | 'mirror' | 'object' | 'decal' | 'info' — Task ID 29: 'info' = mode inspeksi READ-ONLY (hover block → Material Inspector; klik canvas = no-op)
+  const [tool, setTool] = useState(null); // null | 'place' | 'delete' | 'move' | 'rotate' | 'scale' | 'paint' | 'eyedropper' | 'shape' | 'clone' | 'mirror' | 'object' | 'decal' | 'info' | 'size' — Task ID 29: 'info' = mode inspeksi READ-ONLY (hover block → Material Inspector; klik canvas = no-op); Task ID 33: 'size' = instant resize (L-click besarkan x1.5, Shift+L-click kecilkan, clamp 0.25–5)
   const [currentColor, setCurrentColor] = useState('#3b82f6');
   const toolRef = useRef(null);
   const colorRef = useRef('#3b82f6');
@@ -12513,6 +12513,41 @@ Now you can apply Displacement for detailed effect.`);
           normal.transformDirection(hit.object.matrixWorld);
           applyDecalAt(hit.point, normal);
         }
+      } else if (currentTool === 'size') {
+        // ── SIZE TOOL (Task ID 33, 2026-09-01) — INSTANT resize block,
+        // tanpa gizmo/drag (beda dari tool Scale yang pakai TransformControls).
+        // L-Click block = besarkan x1.5; Shift+L-Click = kecilkan x1.5
+        // (step 1.5: 2 klik = 2.25x — cepat, sesuai request "instant dan
+        // cepat"). Clamp magnitude [0.25, 5]: magnitude = komponen |scale|
+        // terbesar (aman utk block mirror dgn komponen negatif;
+        // multiplyScalar menjaga tanda ± komponen). Pola = Paint/Clone:
+        // raycast block → mutasi in-place → recordHistory (undo/redo
+        // otomatis via snapshot sx,sy,sz). Klik di batas = no-op +
+        // toast info, TIDAK recordHistory (anti entri undo sampah).
+        const blockMeshes = threeRef.current.blocks;
+        const hits = raycaster.intersectObjects(blockMeshes, true);
+        if (hits.length > 0) {
+          const target = hits[0].object;
+          const mag = Math.max(Math.abs(target.scale.x), Math.abs(target.scale.y), Math.abs(target.scale.z));
+          if (mag > 0) {
+            const SIZE_STEP = 1.5, SIZE_MIN = 0.25, SIZE_MAX = 5;
+            let newMag;
+            if (e.shiftKey) {
+              newMag = Math.max(mag / SIZE_STEP, SIZE_MIN); // kecilkan
+            } else {
+              newMag = Math.min(mag * SIZE_STEP, SIZE_MAX); // besarkan
+              if (newMag < SIZE_MIN) newMag = SIZE_MIN; // recover dari scale degenerate (gizmo < 0.25)
+            }
+            if (Math.abs(newMag - mag) < 1e-6) {
+              toast.info(e.shiftKey
+                ? 'Ukuran block sudah di batas minimal (0.25x)'
+                : 'Ukuran block sudah di batas maksimal (5x)');
+            } else {
+              target.scale.multiplyScalar(newMag / mag);
+              if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+            }
+          }
+        }
       } else if (currentTool === 'move' || currentTool === 'rotate' || currentTool === 'scale') {
         // Phase 5: Multi-select support.
         // - Click blok (no modifier): clear selection, select blok itu, attach gizmo.
@@ -14349,9 +14384,9 @@ Now you can apply Displacement for detailed effect.`);
                 - Property = custom SVG screwdriver (obeng; lucide tidak punya
                   ikon screwdriver): handle rect 45° di kiri-bawah + shaft +
                   mata flat crossbar di kanan-atas.
-                Urutan toolbar final (Task ID 32, 2026-09-01): Info, Undo,
+                Urutan toolbar final (Task ID 33, 2026-09-01): Info, Undo,
                 Redo, Delete, Place, Paint, BINDING, SCALE, PROPERTY, MOVE,
-                ROTATE, Clone, Mirror, SHAPE, Object, Decal. ── */}
+                ROTATE, Clone, Mirror, SIZE, SHAPE, Object, Decal. ── */}
             <button
               onClick={() => toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon')}
               title="Binding — tool masih dalam tahap pengembangan (coming soon)"
@@ -14483,6 +14518,33 @@ Now you can apply Displacement for detailed effect.`);
             >
               <FlipHorizontal size={15} />
               Mirror
+            </button>
+            {/* ── SIZE TOOL (Task ID 33, 2026-09-01) — instant resize
+                block. Posisi: TEPAT di bawah Mirror (tepat di atas
+                Shape). Icon = <Maximize> SAMA PERSIS dengan tombol Scale
+                (request user: "mirip 100% dari scale, ambil aja") —
+                dibedakan via warna aktif PINK #ec4899 (Scale = ungu
+                #8b5cf6; pink tidak dipakai tombol manapun di kolom
+                Build). Interaksi: L-Click block = besarkan x1.5 INSTAN
+                (tanpa gizmo/drag), Shift+L-Click = kecilkan x1.5, clamp
+                0.25–5x — lihat branch dispatch currentTool === 'size'
+                di onWindowMouseUp. ── */}
+            <button
+              onClick={() => toggleTool('size')}
+              title="Size — L-Click: besarkan block instan (x1.5) • Shift+L-Click: kecilkan • batas 0.25x–5x"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'size' ? '#ec4899' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'size' ? '#ec4899' : 'transparent',
+                color: tool === 'size' ? '#fff' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Maximize size={15} />
+              Size
             </button>
             <button
               onClick={() => toggleTool('shape')}
@@ -17500,7 +17562,7 @@ Now you can apply Displacement for detailed effect.`);
             Build Mode
           </div>
           <div style={{ color: textSecondary, fontSize: 11 }}>
-            <strong style={{color:'#e2e8f0'}}>L-Click</strong> {tool === 'place' ? 'place' : tool === 'delete' ? 'delete' : tool === 'move' ? 'select & move' : tool === 'rotate' ? 'select & rotate' : tool === 'scale' ? 'select & scale' : tool === 'paint' ? 'paint block' : tool === 'info' ? 'inspect block (read-only)' : 'pick color'} • <strong style={{color:'#e2e8f0'}}>R-Click</strong> orbit • <strong style={{color:'#e2e8f0'}}>Mid-Click</strong> pan • <strong style={{color:'#e2e8f0'}}>WASD</strong> move
+            <strong style={{color:'#e2e8f0'}}>L-Click</strong> {tool === 'place' ? 'place' : tool === 'delete' ? 'delete' : tool === 'move' ? 'select & move' : tool === 'rotate' ? 'select & rotate' : tool === 'scale' ? 'select & scale' : tool === 'size' ? 'resize instant (Shift = kecilkan)' : tool === 'paint' ? 'paint block' : tool === 'info' ? 'inspect block (read-only)' : 'pick color'} • <strong style={{color:'#e2e8f0'}}>R-Click</strong> orbit • <strong style={{color:'#e2e8f0'}}>Mid-Click</strong> pan • <strong style={{color:'#e2e8f0'}}>WASD</strong> move
           </div>
         </div>
         )}
@@ -17602,7 +17664,7 @@ Now you can apply Displacement for detailed effect.`);
             zIndex: 5,
           }}>
             <strong style={{ color: '#e2e8f0' }}>Controls</strong><br/>
-            <span><strong>L-Click</strong> = {tool === 'place' ? 'Place block' : tool === 'delete' ? 'Delete block' : tool === 'move' ? 'Select & move' : tool === 'rotate' ? 'Select & rotate' : tool === 'scale' ? 'Select & scale' : tool === 'paint' ? 'Paint block' : tool === 'clone' ? 'Clone block (identik)' : tool === 'mirror' ? `Mirror block (axis ${mirrorAxis.toUpperCase()})` : tool === 'object' ? `Place ${selectedObj || 'object'}` : tool === 'info' ? 'Inspect block (read-only) — hover block untuk Material Inspector' : 'Pick color from block'}{symmetryMode ? ' (auto-mirror ON)' : ''}</span><br/>
+            <span><strong>L-Click</strong> = {tool === 'place' ? 'Place block' : tool === 'delete' ? 'Delete block' : tool === 'move' ? 'Select & move' : tool === 'rotate' ? 'Select & rotate' : tool === 'scale' ? 'Select & scale' : tool === 'size' ? 'Size: L-Click besarkan x1.5 • Shift+L-Click kecilkan' : tool === 'paint' ? 'Paint block' : tool === 'clone' ? 'Clone block (identik)' : tool === 'mirror' ? `Mirror block (axis ${mirrorAxis.toUpperCase()})` : tool === 'object' ? `Place ${selectedObj || 'object'}` : tool === 'info' ? 'Inspect block (read-only) — hover block untuk Material Inspector' : 'Pick color from block'}{symmetryMode ? ' (auto-mirror ON)' : ''}</span><br/>
             <span><strong>R-Click Drag</strong> = Orbit camera</span><br/>
             <span><strong>Mid-Click Drag</strong> = Pan camera</span><br/>
             <span><strong>Scroll</strong> = Zoom in/out</span><br/>
