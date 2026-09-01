@@ -139,7 +139,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const [openSections, setOpenSections] = useState(() => {
     const DEFAULT_SECTIONS = {
       build: false,    // MASTER toggle — SELALU false saat masuk halaman (tidak dipersist)
-      transform: true, // Move / Rotate / Scale
+      transform: true, // Section "Transform" DIHAPUS 2026-09-01 (Task ID 32): tombol Move/Rotate/Scale pindah ke kolom utama Build; key TETAP ADA utk compat localStorage lama (tidak dibaca JSX lagi)
       paint: false,    // Section "Paint" DIHAPUS 2026-08-31 (Task ID 28): tombol Paint pindah ke Build (bawah Place), Pick Color dihapus permanen; key TETAP ADA utk compat localStorage lama (tidak dibaca JSX lagi)
       display: false,  // Grid / Snap / Shadows / Symmetry
       bloom: false,    // Bloom + sliders
@@ -14336,8 +14336,10 @@ Now you can apply Displacement for detailed effect.`);
                 (sistem notifikasi yang SUDAH ada di app: import line atas +
                 <Toaster position="top-center" richColors theme="dark"> di
                 App.jsx → warning = amber, auto-hide default 4 detik).
-                Posisi: Binding TEPAT di bawah Paint, Property TEPAT di bawah
-                Binding (toolbar = kolom vertikal, 1 tombol per baris).
+                Posisi: Binding TEPAT di bawah Paint (toolbar = kolom
+                vertikal, 1 tombol per baris). Task ID 32 (2026-09-01):
+                Scale kini disisipkan TEPAT di antara Binding dan Property —
+                lihat urutan toolbar final di bawah.
                 Icon keduanya MIRING KE KANAN — konvensi sama dgn icon Info
                 Task 30 (kepala/mata alat di KANAN-ATAS, handle ke KIRI-BAWAH):
                 - Binding = lucide <Wrench> (kunci inggris): jaw/kepala di
@@ -14347,8 +14349,9 @@ Now you can apply Displacement for detailed effect.`);
                 - Property = custom SVG screwdriver (obeng; lucide tidak punya
                   ikon screwdriver): handle rect 45° di kiri-bawah + shaft +
                   mata flat crossbar di kanan-atas.
-                Urutan toolbar final: Info, Undo, Redo, Delete, Place, Paint,
-                BINDING, PROPERTY, Shape, Clone, Mirror, Object, Decal. ── */}
+                Urutan toolbar final (Task ID 32, 2026-09-01): Info, Undo,
+                Redo, Delete, Place, Paint, BINDING, SCALE, PROPERTY, MOVE,
+                ROTATE, Clone, Mirror, SHAPE, Object, Decal. ── */}
             <button
               onClick={() => toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon')}
               title="Binding — tool masih dalam tahap pengembangan (coming soon)"
@@ -14365,6 +14368,23 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Wrench size={15} />
               Binding
+            </button>
+            <button
+              onClick={() => toggleTool('scale')}
+              title="Scale (S)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'scale' ? '#8b5cf6' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'scale' ? '#8b5cf6' : 'transparent',
+                color: tool === 'scale' ? '#fff' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Maximize size={15} />
+              Scale
             </button>
             <button
               onClick={() => toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon')}
@@ -14396,21 +14416,38 @@ Now you can apply Displacement for detailed effect.`);
               Property
             </button>
             <button
-              onClick={() => toggleTool('shape')}
-              title="Shape (G)"
+              onClick={() => toggleTool('move')}
+              title="Move (M)"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'shape' ? '#06b6d4' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'shape' ? '#06b6d4' : 'transparent',
-                color: tool === 'shape' ? '#0e1420' : '#e2e8f0',
+                border: `1px solid ${tool === 'move' ? '#22c55e' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'move' ? '#22c55e' : 'transparent',
+                color: tool === 'move' ? '#0e1420' : '#e2e8f0',
                 fontSize: 13, fontWeight: 500, cursor: 'pointer',
                 transition: 'all 0.15s ease',
                 fontFamily: 'Inter, sans-serif',
               }}
             >
-              <Shapes size={15} />
-              Shape
+              <Move size={15} />
+              Move
+            </button>
+            <button
+              onClick={() => toggleTool('rotate')}
+              title="Rotate (R)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'rotate' ? '#3b82f6' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'rotate' ? '#3b82f6' : 'transparent',
+                color: tool === 'rotate' ? '#fff' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <RotateCw size={15} />
+              Rotate
             </button>
             {/* Clone & Mirror tools */}
             <button
@@ -14446,6 +14483,23 @@ Now you can apply Displacement for detailed effect.`);
             >
               <FlipHorizontal size={15} />
               Mirror
+            </button>
+            <button
+              onClick={() => toggleTool('shape')}
+              title="Shape (G)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'shape' ? '#06b6d4' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'shape' ? '#06b6d4' : 'transparent',
+                color: tool === 'shape' ? '#0e1420' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Shapes size={15} />
+              Shape
             </button>
             {/* Phase 18: Object Library tool */}
             <button
@@ -14556,77 +14610,16 @@ Now you can apply Displacement for detailed effect.`);
             </div>
           )}
           {/* (fragment master wrapper TIDAK ditutup di sini — berlanjut ke
-              section Transform dst. sampai akhir toolbar) */}
+              section Groups dst. sampai akhir toolbar) */}
 
-          {/* ── Section: TRANSFORM (Move/Rotate/Scale) ── */}
-          <div onClick={() => toggleSection('transform')} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            cursor: 'pointer', padding: '4px 2px', marginTop: 6, marginBottom: 2,
-            borderTop: '1px solid rgba(148,163,184,0.12)', paddingTop: 8,
-            userSelect: 'none',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: textSecondary,
-              textTransform: 'uppercase', letterSpacing: '1px',
-              fontFamily: 'Orbitron, sans-serif',
-            }}>Transform</div>
-            {openSections.transform
-              ? <ChevronDown size={14} color="#64748b" />
-              : <ChevronRight size={14} color="#64748b" />}
-          </div>
-          {openSections.transform && (<>
-            <button
-              onClick={() => toggleTool('move')}
-              title="Move (M)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'move' ? '#22c55e' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'move' ? '#22c55e' : 'transparent',
-                color: tool === 'move' ? '#0e1420' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <Move size={15} />
-              Move
-            </button>
-            <button
-              onClick={() => toggleTool('rotate')}
-              title="Rotate (R)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'rotate' ? '#3b82f6' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'rotate' ? '#3b82f6' : 'transparent',
-                color: tool === 'rotate' ? '#fff' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <RotateCw size={15} />
-              Rotate
-            </button>
-            <button
-              onClick={() => toggleTool('scale')}
-              title="Scale (S)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'scale' ? '#8b5cf6' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'scale' ? '#8b5cf6' : 'transparent',
-                color: tool === 'scale' ? '#fff' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <Maximize size={15} />
-              Scale
-            </button>
-          </>)}
+          {/* ── Section "TRANSFORM" DIHAPUS (2026-09-01, Task ID 32, request
+              user): tombol Move/Rotate/Scale DIPINDAH ke kolom utama Build
+              Tools — Scale TEPAT di bawah Binding, Move TEPAT di bawah
+              Property, Rotate TEPAT di atas Clone (Shape juga dipindah ke
+              TEPAT di bawah Mirror). Section jadi kosong → header + wrapper
+              dihapus total. Key `transform` di state openSections sengaja
+              TETAP ADA untuk compat localStorage lama (tidak dibaca JSX
+              lagi) — sama seperti precedent key `paint` dan `history`. ── */}
 
           {/* ── Section "PAINT" DIHAPUS (2026-08-31, Task ID 28, request
               user): tombol Paint DIPINDAH ke section Build (tepat di bawah

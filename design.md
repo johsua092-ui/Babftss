@@ -2777,3 +2777,83 @@ juga; (4) Property juga menampilkan peringatan yang sama saat dipencet.
   tetap 100% konten murni.
 - Tidak menyentuh: semua tombol tool lain, union type tool state,
   toggleTool, semua section panel, inspector, modal, preset system.
+
+## Bagian 69 — Reorder Toolbar: Scale/Move/Rotate Masuk Kolom Build + Shape ke Bawah Mirror (Task ID 32)
+
+### 69.1 Latar (permintaan user)
+
+User: (1) pindahkan tombol "Scale" tepat di bawah "Binding" dan tepat
+di atas "Property"; (2) pindahkan "Shape" tepat di bawah "Mirror";
+(3) pindahkan "Move" tepat di bawah "Property"; (4) pindahkan "Rotate"
+tepat di atas "Clone". Wajib hati-hati, jangan menyenggol pekerjaan
+lain yang sudah sempurna, dilarang force push, wajib push biasa.
+
+### 69.2 Perubahan (1 file, 7 hunk, +76/−83)
+
+1. **Konteks struktural** — Move/Rotate/Scale tadinya tinggal di section
+   collapsible "TRANSFORM" (header + wrapper `{openSections.transform && (<>…</>)}`)
+   SETELAH tombol Decal, terpisah dari kolom utama Build. Keempat tombol
+   dipindah JSX-nya VERBATIM (onClick/toggleTool, title, warna aktif,
+   icon, style — nol perubahan atribut) sehingga logic tool tidak tersentuh.
+2. **Posisi baru (urutan toolbar final, 16 tombol)**: Info, Undo, Redo,
+   Delete, Place, Paint, Binding, **Scale**, Property, **Move**,
+   **Rotate**, Clone, Mirror, **Shape**, Object, Decal.
+3. **Section "TRANSFORM" DIHAPUS TOTAL** — ketiga tombolnya pindah →
+   section kosong → header + wrapper dihapus (preseden persis section
+   Paint Task ID 28 dan History: section kosong tidak dibiarkan
+   menggantung). Key `transform: true` di DEFAULT_SECTIONS sengaja TETAP
+   ADA utk compat localStorage lama (tidak dibaca JSX lagi) — comment
+   di baris state diupdate.
+4. **Comment maintenance** — blok doc Binding/Property (Task 31)
+   diupdate: baris "Posisi" (Property tidak lagi tepat di bawah
+   Binding — Scale menyisip di antaranya) + baris "Urutan toolbar final";
+   comment fragment master wrapper "berlanjut ke section Transform dst."
+   → "section Groups dst."; comment penghapusan section ditambah di
+   lokasi lama (mengikuti pola comment Paint/History).
+
+### 69.3 Hasil verifikasi (browser 1280×577, SEMUA PASS)
+
+- Urutan DOM (eval): Info, Undo, Redo, Delete, Place, Paint, Binding,
+  Scale, Property, Move, Rotate, Clone, Mirror, Shape, Object, Decal ✓
+- Posisi vertikal (getBoundingClientRect): Paint 372 → Binding 415 →
+  Scale 459 → Property 502 → Move 546 → Rotate 589 → Clone 633 →
+  Mirror 676 → Shape 720 → Object 763 → Decal 807 (tangga 1
+  tombol/baris, jarak konsisten ±43px) ✓
+- Header "Transform" = 0 di DOM; setelah Decal langsung GROUPS →
+  DISPLAY → BLOOM ✓; toolbar column scrollable (scrollH 1158 /
+  clientH 475) ✓
+- Tool state: Scale aktif ungu #8b5cf6, Move hijau #22c55e, Rotate
+  biru #3b82f6, Shape cyan #06b6d4; switching antar tool benar
+  (non-aktif balik transparent) ✓
+- Regresi Task 31: klik Binding/Property → toast warning "masih dalam
+  tahap pengembangan" (2 toast stack) + tool aktif tidak terganggu ✓
+- Regresi inti: Place + klik canvas (640,535) → "1 Blocks" ✓; Undo
+  (KeyboardEvent ctrl+z) → "0 Blocks" ✓; Info + hover block (639,493)
+  → Material Inspector 200×240 @ (655,302) fullyInside ✓; move away →
+  inspector tutup ✓; 0 page error (12 console warning semuanya
+  pre-existing: ingest fetch sandbox + deprecation three.js) ✓
+- VLM konfirmasi visual screenshot: top = s/d Property, bottom =
+  Property, Move, Rotate, Clone, Mirror, Shape, Object, Decal →
+  GROUPS/DISPLAY/BLOOM ✓
+- Marker grep: 12 toggleTool semua = 1; toggleSection('transform')=0;
+  openSections.transform=0; >Transform</div>=0; >History</div>=0;
+  Hammer/Undo2/Redo2/Trash2/Paintbrush/RotateCw/Maximize/Shapes/Copy=1;
+  Move & FlipHorizontal = 2 (1 tombol tool + 1 tombol Snap/Symmetry di
+  section Display — pre-existing, count tidak berubah); Wrench=2;
+  toast.warning 2 call; currentColor=4; circle 14.5,9.5 r7=1;
+  Search=0; Pipette=0; geo markers=1/1 ✓
+- Build: npx vite build 21.35s sukses (warning chunk-size pre-existing).
+
+### 69.4 Catatan desain
+
+- Pemindahan murni JSX (cut-paste verbatim) = strategi anti-regresi:
+  tidak ada satu pun atribut/id/handler yang ditulis ulang, jadi
+  tidak ada permukaan untuk typo. Hukum yang sama dengan swap
+  Place↔Delete (Task 27) dan pindah Paint ke Build (Task 28).
+- Section kosong WAJIB dihapus header+wrappernya (jangan dibiarkan
+  chevron membuka kekosongan) — preseden Paint/History; key state
+  tetap dipertahankan agar localStorage user lama tidak terganggu.
+- Tidak menyentuh: union type tool, toggleTool, keyboard shortcut
+  M/R/S/G (handler keydown tidak berubah — tombol hanya pindah
+  posisi), panel Decal settings & Mirror axis selector (tetap setelah
+  Decal), section Groups/Display/Bloom/IO/Material, inspector, modal.

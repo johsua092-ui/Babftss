@@ -7265,3 +7265,38 @@ Commit + push NORMAL (lihat worklog Task ID 31). Toolbar Build final:
 Info, Undo, Redo, Delete, Place, Paint, Binding, Property, Shape, Clone,
 Mirror, Object, Decal. Binding = wrench miring kanan, Property =
 screwdriver miring kanan, keduanya toast.warning dev-stage.
+
+## Bagian 94 — Reorder Toolbar: Scale/Move/Rotate ke Kolom Build + Shape Bawah Mirror (Task ID 32)
+
+### Perubahan
+- 1 file, 7 hunk, +76/−83: Scale disisipkan antara Binding dan
+  Property; Move+Rotate disisipkan setelah Property (Rotate tepat di
+  atas Clone); Shape dipindah dari antara Property/Clone ke TEPAT di
+  bawah Mirror. Semua tombol cut-paste VERBATIM (nol atribut berubah).
+  Section "TRANSFORM" (header + wrapper openSections.transform) DIHAPUS
+  TOTAL karena kosong — preseden section Paint/History; key
+  `transform: true` tetap di DEFAULT_SECTIONS utk compat localStorage.
+- Urutan toolbar Build final (16 tombol): Info, Undo, Redo, Delete,
+  Place, Paint, Binding, Scale, Property, Move, Rotate, Clone, Mirror,
+  Shape, Object, Decal. Setelah Decal langsung GROUPS/DISPLAY/BLOOM.
+
+### Pelajaran teknis (PENTING untuk task berikutnya)
+- Marker `<Move size={15}` = 2 dan `<FlipHorizontal size={15}` = 2
+  itu NORMAL pre-existing: masing-masing dipakai juga tombol "Snap"
+  dan "Symmetry" di section Display — jangan panic-check sebagai
+  duplikat toolbar. Count TIDAK berubah oleh reorder.
+- Reorder tombol toolbar = selalu cut-paste verbatim + hapus section
+  kosong (header+wrapper) + key state dibiarkan (compat localStorage);
+  comment "urutan final" di blok doc WAJIB ikut diupdate agar tidak
+  menyesatkan task berikutnya.
+- Verifikasi urutan paling otoritatatif = eval querySelectorAll button
+  textContent + getBoundingClientRect().y (tangga 1 tombol/baris
+  ±43px); VLM cukup akurat untuk LABEL tombol (bukan icon kecil).
+- Toolbar column = scrollable (scrollH 1158 / clientH 475 pada
+  1280×577) — tombol di bawah fold diuji via eval click, bukan mouse
+  koordinat.
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 32). Semua fungsi tool,
+toast dev-stage, inspector, place/undo terverifikasi utuh pasca
+reorder. 0 page error.
