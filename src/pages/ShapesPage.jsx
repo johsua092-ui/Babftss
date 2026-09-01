@@ -88,14 +88,17 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                             </div>
                         }
                     />
-                    {/* 3D Block Simulator v2 — Coming Soon. Pakai warna amber/oranye biar
-                        kontras dengan pink v1 + teal Calculator. Icon: kubus isometric dengan
-                        badge "V2" di pojok, supaya jelas beda dengan v1. Klik → toast "Coming Soon". */}
+                    {/* 3D Block Simulator v2 — login-required (locked=!user), sama persis
+                        seperti v1. Guest klik → onGuestClick (banner merah "harap sign in").
+                        Login klik → page 'block-simulator-3d-v2'. Pakai warna amber/oranye
+                        biar kontras dengan pink v1 + teal Calculator. Icon: kubus isometric
+                        dengan badge "V2" di pojok, supaya jelas beda dengan v1. */}
                     <MenuButton3D
                         label="3D Block Simulator v2"
                         subtitle="three.js engine"
                         top="hsl(38,90%,60%)" bottom="hsl(38,85%,40%)" lip="hsl(38,85%,26%)"
-                        onClick={() => setPage('block-simulator-3d-v2')}
+                        onClick={() => user ? setPage('block-simulator-3d-v2') : (onGuestClick && onGuestClick())}
+                        locked={!user}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
