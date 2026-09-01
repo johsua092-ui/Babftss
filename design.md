@@ -2698,3 +2698,82 @@ viewBox 24 (0.54× radius) — proporsi "stubby" → dinilai jelek.
 - Tidak menyentuh: semua tombol lain, icon lain, gating logic, smart
   clamp logic, semua section panel. Hanya 3 lokasi: import, comment,
   JSX icon.
+
+## Bagian 68 — Tombol Binding & Property (Placeholder Dev-Stage) + Toast Peringatan (Task ID 31)
+
+### 68.1 Latar (permintaan user)
+
+User: (1) tepat di bawah "Paint" tombol baru "Binding" dengan icon kunci
+inggris (wrench) yang miring ke arah kanan; (2) jika dipencet muncul
+peringatan tool masih dalam tahap pengembangan; (3) tepat di bawah
+Binding tombol "Property" dengan icon screwdriver yang miring ke kanan
+juga; (4) Property juga menampilkan peringatan yang sama saat dipencet.
+
+### 68.2 Perubahan (1 file, 1 hunk kontinu, +66 baris, 0 baris diubah)
+
+1. **Tombol Binding** — `<Wrench size={15} />` (lucide, SUDAH terimport):
+   orientasi asli lucide = jaw/kepala di KANAN-ATAS + handle ke
+   KIRI-BAWAH = miring ke kanan (konsensus konvensi icon Info Task 30;
+   TIDAK dirotasi). Catatan: <Wrench> lain hanya dipakai icon chip
+   header BUILD TOOLS — bukan tombol toolbar, jadi tidak duplikat visual
+   di kolom tombol.
+2. **Tombol Property** — custom SVG inline (lucide tidak punya ikon
+   screwdriver): handle rounded-rect 45° path M8.2 10.8 L12.2 14.8
+   L6.2 20.8 L2.2 16.8 Z (kiri-bawah) + shaft line (10.2,12.8)→(20.5,2.5)
+   + mata flat crossbar (19.1,1.1)→(21.9,3.9) di kanan-atas = miring
+   ke kanan; proporsi handle 8.49 : shaft 14.56 (~37% total) + gaya
+   stroke lucide (strokeWidth 2, round caps, currentColor).
+3. **Handler klik** — `toast.warning('Tool "Binding" masih dalam tahap
+   pengembangan — coming soon')` (dan Property): REUSE sonner yang
+   sudah terimport (line atas file) + <Toaster position="top-center"
+   richColors theme="dark"> di App.jsx → warning amber, auto-hide
+   default 4 detik. NOL infrastruktur baru (tidak ada state/timer/
+   render-block/import baru).
+4. Klik TIDAK memanggil toggleTool → tool aktif TIDAK berubah (Binding/
+   Property bukan tool — placeholder dev-stage; union type `tool` state
+   TIDAK disentuh).
+
+### 68.3 Verifikasi (SEMUA PASS)
+
+- Urutan DOM: Info, Undo, Redo, Delete, Place, Paint, Binding,
+  Property, Shape, Clone, Mirror, Object, Decal ✓; posisi vertikal
+  terukur: Paint y=372 → Binding y=415 → Property y=459 (pitch 43-44px
+  = 1 tombol/baris, TEPAT di bawah) ✓
+- Icon Binding: DOM = path lucide wrench asli ✓; pixel ASCII: kepala
+  jaw blob di kanan-atas + handle stroke ke kiri-bawah ("/") ✓; VLM
+  zoom: "head top-right, handle bottom-left" ✓
+- Icon Property: DOM = path M8.2 10.8... + 2 line ✓; pixel ASCII: mata
+  tip kanan-atas + shaft diagonal + handle rect kiri-bawah ✓; VLM zoom:
+  "tip top-right, handle bottom-left, recognizable screwdriver, thin
+  shaft + flat tip + thicker handle" ✓
+- Toast Binding: count=1, data-type=warning, teks 'Tool "Binding"
+  masih dalam tahap pengembangan — coming soon', x=462 y=32 (top-center
+  1280: centered persis), w=356 ✓; auto-hide: 0 toast setelah 4.5s ✓
+- Toast Property: data-type=warning, teks dengan "Property" ✓; klik
+  berurutan → 2 toast bertumpuk (stack sonner normal) ✓
+- Tool state PRESERVED: Place diaktifkan (amber rgb(245,158,11)) →
+  klik Binding + Property → Place MASIH amber ✓; canvas klik → 1 Blocks
+  ter-place (Place tetap fungsional) ✓
+- Regresi: delete (1→0) + undo (0→1) + redo (1→0) ✓; mode Info →
+  hover block → Material Inspector panel (655,302) 200×240
+  fullyInside=true bottom=542 — IDENTIK hasil Task 30 ✓; panel tutup
+  saat move away ✓; modal Build Area "COMING SOON" + tombol "Oke,
+  Mengerti" normal ✓; 0 console error ✓
+- Marker grep: Hammer/Undo/Redo/Trash/Paintbrush15=1; Wrench15 1→2
+  (chip header + Binding); toast.warning 0→2 panggilan (+1 sebutan di
+  komentar); stroke currentColor 3→4; Pipette=0; Search import=0 ✓
+
+### 68.4 Catatan desain
+
+- Peringatan via sonner toast.warning = keputusan REUSE sistem
+  notifikasi eksisting (dipakai 10+ kali utk preset material) →
+  konsistensi visual app + nol kode infrastruktur + auto-hide gratis.
+- Sandbox session baru ternyata me-reap background process antar Bash
+  call → dev server wajib di-spawn via node child_process detached +
+  unref (double-fork orphan ke init); nohup/setsid langsung TIDAK
+  survive.
+- Mode-noise 236 file (flip 644→755) terjadi antar sesi (infra),
+  di-restore semua via git diff --summary → chmod old-mode; commit
+  tetap 100% konten murni.
+- Tidak menyentuh: semua tombol tool lain, union type tool state,
+  toggleTool, semua section panel, inspector, modal, preset system.

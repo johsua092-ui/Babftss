@@ -7226,3 +7226,42 @@ Commit + push NORMAL (lihat worklog Task ID 30). Icon Info = custom
 SVG miring ke kanan, handle 1.15× radius, gaya stroke lucide
 (currentColor + strokeWidth 2 + round caps). Fungsi Task 29 utuh
 terverifikasi penuh (panel, clamp, gating, penutupan).
+
+## Bagian 93 — Tombol Binding & Property + Toast Dev-Stage (Task ID 31)
+
+### Perubahan
+- 1 hunk kontinu +66 baris, 0 baris diubah, antara tombol Paint dan
+  Shape: tombol Binding (lucide Wrench asli = miring kanan) + tombol
+  Property (custom SVG screwdriver: handle rect 45° kiri-bawah, shaft,
+  mata flat crossbar kanan-atas). Klik keduanya = toast.warning sonner
+  "Tool X masih dalam tahap pengembangan — coming soon" — tanpa
+  toggleTool (tool aktif di-preserve).
+
+### Pelajaran teknis (PENTING untuk task berikutnya)
+- sonner toast.warning ADA di v1.7.4 (d.ts line 133); Toaster mount di
+  App.jsx position top-center richColors theme dark → warning amber,
+  default duration 4000ms, stack otomatis kalau dipencet berurutan.
+  Selector DOM: [data-sonner-toast], type via attr data-type.
+- lucide-react TIDAK punya ikon screwdriver → custom SVG inline
+  (pola Task 30). Custom SVG 3 elemen: rect-outline handle + shaft +
+  tip crossbar terbaca jelas di 15px (pixel ASCII + VLM konfirmasi).
+- lucide Wrench asli SUDAH miring kanan (jaw kanan-atas, handle
+  kiri-bawah) — tidak perlu rotasi. <Wrench> juga dipakai chip header
+  BUILD TOOLS (color="#fff") — bukan duplikat visual di toolbar.
+- Dev server vite di-reap sandbox antar Bash call (sesi baru) → spawn
+  wajib: node -e "spawn('node',['node_modules/vite/bin/vite.js',
+  '--port','5173','--host'],{detached:true,stdio:'ignore'}).unref()".
+  nohup/setsid langsung mati antar call.
+- Mode flip 644→754 massal (236 file) terjadi antar sesi infra;
+  restore: git diff --summary | grep "^ mode change" | awk '{old=$3;
+  sub(/^10/,"",old); print $6, old}' | while read f m; do chmod $m $f;
+  done → 0 mode change.
+- Tombol placeholder dev-stage: JANGAN tambahkan ke union type tool /
+  JANGAN panggil toggleTool → tool aktif user tidak terganggu (terukur:
+  Place tetap amber + masih bisa place block setelah klik tombol dev).
+
+### Status
+Commit + push NORMAL (lihat worklog Task ID 31). Toolbar Build final:
+Info, Undo, Redo, Delete, Place, Paint, Binding, Property, Shape, Clone,
+Mirror, Object, Decal. Binding = wrench miring kanan, Property =
+screwdriver miring kanan, keduanya toast.warning dev-stage.

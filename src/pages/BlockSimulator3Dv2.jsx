@@ -14329,6 +14329,72 @@ Now you can apply Displacement for detailed effect.`);
               <Paintbrush size={15} />
               Paint
             </button>
+            {/* ── BINDING & PROPERTY (Task ID 31, 2026-09-01) — tombol
+                PLACEHOLDER "masih dalam tahap pengembangan" per request user.
+                Klik TIDAK memanggil toggleTool / TIDAK mengubah tool aktif —
+                hanya memunculkan toast peringatan lewat sonner toast.warning
+                (sistem notifikasi yang SUDAH ada di app: import line atas +
+                <Toaster position="top-center" richColors theme="dark"> di
+                App.jsx → warning = amber, auto-hide default 4 detik).
+                Posisi: Binding TEPAT di bawah Paint, Property TEPAT di bawah
+                Binding (toolbar = kolom vertikal, 1 tombol per baris).
+                Icon keduanya MIRING KE KANAN — konvensi sama dgn icon Info
+                Task 30 (kepala/mata alat di KANAN-ATAS, handle ke KIRI-BAWAH):
+                - Binding = lucide <Wrench> (kunci inggris): jaw/kepala di
+                  kanan-atas + handle ke kiri-bawah (orientasi ASLI lucide,
+                  tidak dirotasi). Catatan: <Wrench> lain hanya dipakai icon
+                  chip header BUILD TOOLS (bukan tombol toolbar).
+                - Property = custom SVG screwdriver (obeng; lucide tidak punya
+                  ikon screwdriver): handle rect 45° di kiri-bawah + shaft +
+                  mata flat crossbar di kanan-atas.
+                Urutan toolbar final: Info, Undo, Redo, Delete, Place, Paint,
+                BINDING, PROPERTY, Shape, Clone, Mirror, Object, Decal. ── */}
+            <button
+              onClick={() => toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon')}
+              title="Binding — tool masih dalam tahap pengembangan (coming soon)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: '1px solid rgba(148,163,184,0.12)',
+                backgroundColor: 'transparent',
+                color: '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Wrench size={15} />
+              Binding
+            </button>
+            <button
+              onClick={() => toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon')}
+              title="Property — tool masih dalam tahap pengembangan (coming soon)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: '1px solid rgba(148,163,184,0.12)',
+                backgroundColor: 'transparent',
+                color: '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <svg
+                width={15} height={15} viewBox="0 0 24 24"
+                fill="none" stroke="currentColor"
+                strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                style={{ flexShrink: 0 }}
+              >
+                {/* handle obeng: rounded-rect miring 45° */}
+                <path d="M8.2 10.8 L12.2 14.8 L6.2 20.8 L2.2 16.8 Z" />
+                {/* shaft: dari tengah leading-edge handle ke kanan-atas */}
+                <line x1="10.2" y1="12.8" x2="20.5" y2="2.5" />
+                {/* mata flat: crossbar tegak-lurus shaft di ujung kanan-atas */}
+                <line x1="19.1" y1="1.1" x2="21.9" y2="3.9" />
+              </svg>
+              Property
+            </button>
             <button
               onClick={() => toggleTool('shape')}
               title="Shape (G)"
