@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { ArrowLeft, User, LogOut, RotateCcw } from 'lucide-react';
+import { ArrowLeft, User, LogOut, RotateCcw, Lock } from 'lucide-react';
 import MenuButton3D from './components/MenuButton3D';
 import LoginModal from './components/LoginModal';
 import NotFoundPage from './components/NotFoundPage';
@@ -277,7 +277,75 @@ export default function App() {
                 <Suspense fallback={pageFallback}><BlockSimulator3D setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "block-simulator-3d-v2" && <motion.div key="block-simulator-3d-v2" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
-                <Suspense fallback={pageFallback}><BlockSimulator3Dv2 setPage={setPage} /></Suspense>
+                {/* Route guard defense-in-depth: jika somehow (mis. via devtools state
+                    manipulation) `page` diset ke 'block-simulator-3d-v2' padahal user
+                    belum login, jangan render <BlockSimulator3Dv2 />. Tampilkan layar
+                    akses-ditolak inline + tombol Sign In yang membuka LoginModal. */}
+                {user
+                    ? <Suspense fallback={pageFallback}><BlockSimulator3Dv2 setPage={setPage} /></Suspense>
+                    : (
+                        <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
+                            <motion.div
+                                initial={{ opacity: 0, y: 16, scale: 0.97 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{ duration: 0.35, ease: 'easeOut' }}
+                                style={{
+                                    width: '100%', maxWidth: 460, textAlign: 'center',
+                                    padding: '40px 28px', backgroundColor: '#0e1420',
+                                    border: '1px solid #3f1d1d', borderRadius: 20,
+                                    boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+                                }}
+                            >
+                                <div style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    width: 56, height: 56, borderRadius: 14,
+                                    backgroundColor: '#1a0f0f', border: '1px solid #3f1d1d',
+                                    color: '#ef4444', marginBottom: 18,
+                                }}>
+                                    <Lock size={26} />
+                                </div>
+                                <h1 style={{
+                                    fontFamily: 'Orbitron, sans-serif', fontWeight: 800, fontSize: 20,
+                                    color: '#f1f5f9', margin: '0 0 8px', letterSpacing: '0.02em',
+                                }}>
+                                    AKSES DIKUNCI
+                                </h1>
+                                <p style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.6, margin: '0 0 24px' }}>
+                                    3D Block Simulator v2 hanya tersedia untuk pengguna yang sudah masuk.
+                                    Silakan sign in untuk melanjutkan.
+                                </p>
+                                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                                    <button
+                                        onClick={() => setShowLogin(true)}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                                            padding: '11px 18px', borderRadius: 10,
+                                            backgroundColor: '#22c55e', border: 'none', cursor: 'pointer',
+                                            fontFamily: 'Orbitron, sans-serif', fontWeight: 700, fontSize: 12,
+                                            color: '#052e16', letterSpacing: 1,
+                                        }}
+                                    >
+                                        <User size={15} /> SIGN IN
+                                    </button>
+                                    <button
+                                        onClick={() => setPage('shapes')}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                                            padding: '11px 18px', borderRadius: 10,
+                                            backgroundColor: '#0f172a', border: '1px solid #1e293b',
+                                            cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: 600,
+                                            fontSize: 12, color: '#cbd5e1',
+                                        }}
+                                    >
+                                        <ArrowLeft size={15} /> KEMBALI
+                                    </button>
+                                </div>
+                                <p style={{ marginTop: 22, color: '#475569', fontSize: 11, lineHeight: 1.5 }}>
+                                    Error code: AUTH_REQUIRED
+                                </p>
+                            </motion.div>
+                        </div>
+                    )}
             </motion.div>}
             {page === "menu" && <motion.div key="menu" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, position: 'relative' }}>
                 <CreditsBox />
