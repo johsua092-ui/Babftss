@@ -14573,23 +14573,101 @@ Now you can apply Displacement for detailed effect.`);
               {renderMode.toUpperCase()}
             </button>
           </div>
-          {/* Phase 37: Performance stats — compact 1-line display under toggle.
+          {/* Phase 37: Performance stats — enlarged for readability (fontSize 9→12).
               Shows FPS (color-coded), draw calls, block count, effective mode.
-              Helps user verify that INSTANCED mode actually reduces draw calls. */}
+              Updated once per second to avoid per-frame React re-render spam. */}
           <div style={{
-            display: 'flex', gap: 10, padding: '4px 2px',
-            fontSize: 9, fontFamily: 'monospace', color: '#64748b',
-            flexWrap: 'wrap',
+            display: 'flex', gap: 14, padding: '6px 2px',
+            fontSize: 12, fontFamily: 'monospace', color: '#94a3b8',
+            flexWrap: 'wrap', alignItems: 'center',
           }}>
             <span>FPS: <strong style={{
               color: perfStats.fps > 50 ? '#22c55e' : perfStats.fps > 30 ? '#f59e0b' : '#ef4444',
+              fontSize: 13, fontWeight: 700,
             }}>{perfStats.fps}</strong></span>
-            <span>Draws: <strong style={{ color: '#06b6d4' }}>{perfStats.drawCalls}</strong></span>
-            <span>Blocks: <strong style={{ color: '#e2e8f0' }}>{perfStats.blocks}</strong></span>
+            <span>Draws: <strong style={{ color: '#06b6d4', fontSize: 13, fontWeight: 700 }}>{perfStats.drawCalls}</strong></span>
+            <span>Blocks: <strong style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700 }}>{perfStats.blocks}</strong></span>
             <span>Mode: <strong style={{
               color: perfStats.effectiveMode === 'instanced' ? '#7c3aed' : '#94a3b8',
+              fontSize: 13, fontWeight: 700,
             }}>{perfStats.effectiveMode.toUpperCase()}</strong></span>
           </div>
+          {/* Phase 38, 2026-09-02: Info box dinamis — menjelaskan mode render
+              yang sedang aktif (MESH / AUTO / INSTANCED). Warna box ikut mode:
+              MESH = amber, AUTO = cyan, INSTANCED = purple. Konten menyesuaikan
+              mode yang dipilih user. Per request teman user: 'kasih kotak informasi
+              yang berwarna, penjelasan mengenai jika render mode mesh itu apasih
+              sebenarnya itu, dan buat apa, manfaatnya apa, sistemnya gimana'. */}
+          {(() => {
+            // Mode-specific info content + color theme
+            const modeInfo = {
+              mesh: {
+                bg: 'rgba(251, 191, 36, 0.08)',
+                border: 'rgba(251, 191, 36, 0.3)',
+                titleColor: '#fbbf24',
+                textColor: '#fef3c7',
+                title: 'MESH MODE',
+                whatIs: 'Setiap balok dirender sebagai objek 3D terpisah (THREE.Mesh individual).',
+                purpose: 'Mode default untuk visual fidelity maksimal — semua properti material tampil.',
+                benefit: 'Material lengkap: metalness, roughness, emissive, textures, shadows per-block. Debugging mudah (1 mesh = 1 block di scene graph).',
+                system: '1 draw call per block — GPU render satu-satu. Optimal untuk < 2000 block. Di atas itu FPS bisa drop.',
+              },
+              auto: {
+                bg: 'rgba(8, 145, 178, 0.08)',
+                border: 'rgba(8, 145, 178, 0.3)',
+                titleColor: '#22d3ee',
+                textColor: '#cffafe',
+                title: 'AUTO MODE',
+                whatIs: 'Hybrid — sistem otomatis memilih mode terbaik berdasarkan jumlah block.',
+                purpose: 'Performance otomatis tanpa perlu mikir switch manual.',
+                benefit: 'MESH saat block sedikit (fidelity maksimal), INSTANCED saat banyak (FPS stabil 60+).',
+                system: 'Switch otomatis di threshold 2000 block. Hysteresis 1500 block (anti-oscillasi).',
+              },
+              instanced: {
+                bg: 'rgba(124, 58, 237, 0.08)',
+                border: 'rgba(124, 58, 237, 0.3)',
+                titleColor: '#a78bfa',
+                textColor: '#ede9fe',
+                title: 'INSTANCED MODE',
+                whatIs: 'Semua balok di-render via InstancedMesh per chunk (25×25 block per chunk).',
+                purpose: 'Performance maksimal untuk ribuan hingga puluhan ribu block.',
+                benefit: '1 draw call per chunk (10-50x lebih sedikit dari MESH). 60+ FPS di 10k block. Frustum culling per-chunk.',
+                system: 'Meshes set invisible (tapi raycastable — three.js raycaster ignore visible flag). Material shared: per-instance color only (metalness/roughness/emissive tidak tampil).',
+              },
+            };
+            const info = modeInfo[renderMode] || modeInfo.mesh;
+            return (
+              <div style={{
+                marginTop: 6, marginBottom: 8,
+                padding: '10px 12px',
+                backgroundColor: info.bg,
+                border: `1px solid ${info.border}`,
+                borderRadius: 8,
+                fontSize: 11,
+                lineHeight: 1.6,
+                color: info.textColor,
+                fontFamily: 'Inter, sans-serif',
+              }}>
+                <div style={{
+                  fontWeight: 700, color: info.titleColor, fontSize: 11,
+                  marginBottom: 6, letterSpacing: 0.5,
+                  fontFamily: 'Orbitron, sans-serif',
+                }}>{info.title}</div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong style={{ color: info.titleColor }}>Apa itu:</strong> {info.whatIs}
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong style={{ color: info.titleColor }}>Buat apa:</strong> {info.purpose}
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <strong style={{ color: info.titleColor }}>Manfaat:</strong> {info.benefit}
+                </div>
+                <div>
+                  <strong style={{ color: info.titleColor }}>Sistem:</strong> {info.system}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── Section: DISPLAY (Grid/Snap/Shadows) ── */}
           <div onClick={() => toggleSection('display')} style={{
