@@ -94,13 +94,15 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <line x1="12" y1="7" x2="12" y2="-1" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M9 -1 L15 -1 L12 -5 Z" fill="#22c55e"/>
                                     {/* X-axis (merah) — dari right face center (16.5,14.5), pointing KANAN-BAWAH
-                                        (mengikuti arah normal right face di isometric projection, slope ~30°) */}
+                                        (mengikuti arah normal right face di isometric projection, slope ~30°).
+                                        Cone diperbesar (base 6, height 4) supaya sebanding dengan hijau. */}
                                     <line x1="16.5" y1="14.5" x2="23" y2="18" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M22 19 L24 17 L25 19 Z" fill="#ef4444"/>
+                                    <path d="M22 21 L24 15 L27 20 Z" fill="#ef4444"/>
                                     {/* Z-axis (biru) — dari left face center (7.5,14.5), pointing KIRI-BAWAH
-                                        (mirror dari X-axis, mengikuti arah normal left face) */}
+                                        (mirror dari X-axis, mengikuti arah normal left face).
+                                        Cone diperbesar (base 6, height 4) supaya sebanding dengan hijau. */}
                                     <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M2 19 L0 17 L-1 19 Z" fill="#3b82f6"/>
+                                    <path d="M0 15 L2 21 L-3 20 Z" fill="#3b82f6"/>
                                     {/* Badge 3D — geser KIRI dekat kubus (x:19→13), perbesar (fontSize 5→6, rect w:11→13) */}
                                     <rect x="13" y="0" width="13" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
                                     <text x="19.5" y="6" textAnchor="middle" fill="#fbbf24" fontSize="6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
@@ -131,9 +133,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <line x1="12" y1="7" x2="12" y2="-1" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M9 -1 L15 -1 L12 -5 Z" fill="#22c55e"/>
                                     <line x1="16.5" y1="14.5" x2="23" y2="18" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M22 19 L24 17 L25 19 Z" fill="#ef4444"/>
+                                    <path d="M22 21 L24 15 L27 20 Z" fill="#ef4444"/>
                                     <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M2 19 L0 17 L-1 19 Z" fill="#3b82f6"/>
+                                    <path d="M0 15 L2 21 L-3 20 Z" fill="#3b82f6"/>
                                     {/* Badge TEST — pink, perbesar (fontSize 4.5→5, rect w:15→17). viewBox 30 supaya muat tanpa terpotong. */}
                                     <rect x="13" y="0" width="17" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
                                     <text x="21.5" y="6" textAnchor="middle" fill="#ec4899" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
