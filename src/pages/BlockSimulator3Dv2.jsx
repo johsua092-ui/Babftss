@@ -214,11 +214,6 @@ export default function BlockSimulator3Dv2({ setPage }) {
   useEffect(() => { shapeSizeRef.current = shapeSize; }, [shapeSize]);
   useEffect(() => { shapeSegRef.current = shapeSegments; }, [shapeSegments]);
 
-  // Clone & Mirror tools — mirrorAxis = 'x' | 'y' | 'z' (sumbu yang di-flip)
-  const [mirrorAxis, setMirrorAxis] = useState('x');
-  const mirrorAxisRef = useRef('x');
-  useEffect(() => { mirrorAxisRef.current = mirrorAxis; }, [mirrorAxis]);
-
   // Symmetry Mode — TOGGLE MODE (bukan tool). Saat ON, setiap block yang di-place/clone/shape
   // otomatis di-mirror di axis terpilih. Mode persist sampai dimatikan.
   // Bedanya sama Mirror tool: Mirror tool = per-klik, Symmetry Mode = persistent.
@@ -12417,15 +12412,17 @@ Now you can apply Displacement for detailed effect.`);
           if (threeRef.current.recordHistory) threeRef.current.recordHistory();
         }
       } else if (currentTool === 'mirror') {
-        // Mirror tool — klik block → duplikat yang di-FLIP di sumbu mirrorAxis.
-        // Position baru = posisi lama dengan komponen axis di-negate-kan.
-        // Geometri di-flip via scale.set(axisKomponen = -1, lain = 1).
-        // Contoh: cube di (3, 1, 2), mirrorAxis='x' → clone di (-3, 1, 2) + scale.x = -1.
+        // Mirror tool — klik block → duplikat yang di-FLIP di sumbu X (hardcode,
+        // pilihan axis X/Y/Z sudah dihapus 2026-09-02 per request user — hanya
+        // butuh 1 Mirror asli).
+        // Position baru = posisi lama dengan komponen X di-negate-kan.
+        // Geometri di-flip via scale.set(-1, 1, 1).
+        // Contoh: cube di (3, 1, 2) → clone di (-3, 1, 2) + scale.x = -1.
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
         if (hits.length > 0) {
           const source = hits[0].object;
-          const axis = mirrorAxisRef.current; // 'x' | 'y' | 'z'
+          const axis = 'x'; // hardcode — axis selector X/Y/Z dihapus 2026-09-02
           const newGeo = source.geometry.clone();
           const newMat = Array.isArray(source.material)
             ? source.material.map(m => m.clone())
@@ -14475,7 +14472,7 @@ Now you can apply Displacement for detailed effect.`);
             </button>
             <button
               onClick={() => toggleTool('mirror')}
-              title="Mirror (V) — klik block → duplikat yang di-flip di axis terpilih"
+              title="Mirror (V) — klik block → duplikat yang di-flip di axis X"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 14px', borderRadius: 10,
@@ -14594,27 +14591,6 @@ Now you can apply Displacement for detailed effect.`);
             </div>
           )}
 
-          {/* ── Mirror Axis selector — muncul saat tool=mirror aktif ── */}
-          {tool === 'mirror' && (
-            <div style={{
-              display: 'flex', gap: 4, marginTop: 2, padding: '4px 0',
-            }}>
-              {['x', 'y', 'z'].map(ax => (
-                <button key={ax} onClick={() => setMirrorAxis(ax)}
-                  style={{
-                    flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${mirrorAxis === ax ? '#06b6d4' : 'rgba(148,163,184,0.12)'}`,
-                    backgroundColor: mirrorAxis === ax ? '#06b6d4' : 'transparent',
-                    color: mirrorAxis === ax ? '#0e1420' : '#94a3b8',
-                    borderRadius: 8, cursor: 'pointer',
-                    fontFamily: 'Inter, sans-serif',
-                    textTransform: 'uppercase',
-                  }}>
-                  Mirror {ax}
-                </button>
-              ))}
-            </div>
-          )}
           {/* (fragment master wrapper TIDAK ditutup di sini — berlanjut ke
               section Groups dst. sampai akhir toolbar) */}
 
@@ -17608,7 +17584,7 @@ Now you can apply Displacement for detailed effect.`);
             zIndex: 5,
           }}>
             <strong style={{ color: '#e2e8f0' }}>Controls</strong><br/>
-            <span><strong>L-Click</strong> = {tool === 'place' ? 'Place block' : tool === 'delete' ? 'Delete block' : tool === 'move' ? 'Select & move' : tool === 'rotate' ? 'Select & rotate' : tool === 'scale' ? 'Select & scale' : tool === 'paint' ? 'Paint block' : tool === 'clone' ? 'Clone block (identik)' : tool === 'mirror' ? `Mirror block (axis ${mirrorAxis.toUpperCase()})` : tool === 'object' ? `Place ${selectedObj || 'object'}` : tool === 'info' ? 'Inspect block (read-only) — hover block untuk Material Inspector' : 'Pick color from block'}{symmetryMode ? ' (auto-mirror ON)' : ''}</span><br/>
+            <span><strong>L-Click</strong> = {tool === 'place' ? 'Place block' : tool === 'delete' ? 'Delete block' : tool === 'move' ? 'Select & move' : tool === 'rotate' ? 'Select & rotate' : tool === 'scale' ? 'Select & scale' : tool === 'paint' ? 'Paint block' : tool === 'clone' ? 'Clone block (identik)' : tool === 'mirror' ? 'Mirror block (axis X)' : tool === 'object' ? `Place ${selectedObj || 'object'}` : tool === 'info' ? 'Inspect block (read-only) — hover block untuk Material Inspector' : 'Pick color from block'}{symmetryMode ? ' (auto-mirror ON)' : ''}</span><br/>
             <span><strong>R-Click Drag</strong> = Orbit camera</span><br/>
             <span><strong>Mid-Click Drag</strong> = Pan camera</span><br/>
             <span><strong>Scroll</strong> = Zoom in/out</span><br/>
@@ -17629,7 +17605,6 @@ Now you can apply Displacement for detailed effect.`);
             <span style={{ display: 'block', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(148,163,184,0.15)', color: '#06b6d4' }}>
               <strong>Clone</strong> = Duplikat identik di +1 unit X<br/>
               <strong>Mirror</strong> = Duplikat yang di-flip<br/>
-              (pilih axis: Mirror X / Y / Z di toolbar)<br/>
               Mirror berguna untuk bikin simetri<br/>
               (separuh → jadi utuh)
             </span>
