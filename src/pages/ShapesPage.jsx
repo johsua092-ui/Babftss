@@ -83,9 +83,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Badge 3D — diperbesar utk readability (fontSize 3.6→5) */}
-                                    <rect x="19" y="0" width="11" height="7" rx="1.5" fill="rgba(0,0,0,0.65)"/>
-                                    <text x="24.5" y="5.2" textAnchor="middle" fill="#fbbf24" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
+                                    {/* Badge 3D — geser KIRI dekat kubus (x:19→13), perbesar (fontSize 5→6, rect w:11→13) */}
+                                    <rect x="13" y="0" width="13" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
+                                    <text x="19.5" y="6" textAnchor="middle" fill="#fbbf24" fontSize="6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
                                 </svg>
                             </div>
                         }
@@ -108,12 +108,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Badge TEST — pink, diperbesar utk readability (fontSize 3.2→4.5).
-                                        viewBox extend ke 30 supaya rect width 15 (x:15-30) muat
-                                        tanpa terpotong. Sebelumnya rect x=9 w=18 extend ke x=27,
-                                        melewati viewBox 24 → terpotong. */}
-                                    <rect x="15" y="0" width="15" height="7" rx="1.5" fill="rgba(0,0,0,0.65)"/>
-                                    <text x="22.5" y="5.2" textAnchor="middle" fill="#ec4899" fontSize="4.5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
+                                    {/* Badge TEST — pink, perbesar (fontSize 4.5→5, rect w:15→17). viewBox 30 supaya muat tanpa terpotong. */}
+                                    <rect x="13" y="0" width="17" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
+                                    <text x="21.5" y="6" textAnchor="middle" fill="#ec4899" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
                                 </svg>
                             </div>
                         }
