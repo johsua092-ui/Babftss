@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Group, Ungroup, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -144,7 +144,6 @@ export default function BlockSimulator3Dv2({ setPage }) {
       display: false,  // Grid / Snap / Shadows / Symmetry
       bloom: false,    // Bloom + sliders
       io: false,       // Import / Export
-      groups: false,   // Group / Ungroup
       material: true,  // PBR + Emissive (auto-open saat ada selection)
       history: false,  // Undo/Redo — SECTION "History" dihapus 2026-08-31 (tombolnya pindah ke atas Place di Build); key sengaja TETAP ADA untuk compat localStorage lama (tidak dibaca JSX lagi)
     };
@@ -3924,25 +3923,6 @@ Now you can apply Displacement for detailed effect.`);
   const [ktx2Preloading, setKtx2Preloading] = useState(false);
   const [ktx2Preloaded, setKtx2Preloaded] = useState(false);
   const [ktx2PreloadError, setKtx2PreloadError] = useState('');
-
-  // Phase 16: Block Groups — persistent group (beda dengan multi-select sementara).
-  // - Setiap block bisa punya userData.groupId (string) — kalau undefined = tidak di grup.
-  // - Group di-store di threeRef.current.groups = Map<groupId, {id, color, blockSet}>
-  // - Klik 1 block di grup → auto-select semua block di grup itu.
-  // - Ungroup: hapus groupId dari semua block di grup tersebut.
-  const [groupCount, setGroupCount] = useState(0); // untuk UI button label
-  const [hasSelectionInGroup, setHasSelectionInGroup] = useState(false); // untuk enable/disable Ungroup button
-  // Update hasSelectionInGroup tiap kali selection berubah (selectedCount trigger)
-  useEffect(() => {
-    const sel = threeRef.current.selectedBlocks;
-    if (!sel || sel.size === 0) {
-      setHasSelectionInGroup(false);
-      return;
-    }
-    let inGroup = false;
-    sel.forEach(b => { if (b.userData.groupId) { inGroup = true; } });
-    setHasSelectionInGroup(inGroup);
-  }, [selectedCount]);
 
   // Phase 17: Environment Map — untuk reflective material (metalness > 0).
   // Modes:
@@ -11831,11 +11811,6 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         threeRef.current._lastFrameTime = now;
       }
-      // Phase 19: Update group bounding box helpers tiap frame
-      // (supaya ngikutin block yang di-move/di-transform)
-      if (threeRef.current.updateGroupHelpers) {
-        threeRef.current.updateGroupHelpers();
-      }
       if (blackHoleOpenRef.current && threeRef.current.blackHole) {
         const bh = threeRef.current.blackHole;
         const particles = bh.userData.particles;
@@ -11945,8 +11920,6 @@ Now you can apply Displacement for detailed effect.`);
       scene, camera, renderer, controls,
       composer, bloomPass, renderPass, outputPass,
       blocks: [],
-      groups: new Map(), // Phase 16: groupId → {id, color, blockSet: Set<Mesh>}
-      nextGroupId: 1,
       raycaster, mouse,
       ground, grid,
       symmetryPlane: null, // akan di-assign setelah plane dibuat
@@ -12219,10 +12192,6 @@ Now you can apply Displacement for detailed effect.`);
           if (threeRef.current.selectedBlocks.has(targetMesh)) {
             threeRef.current.selectedBlocks.delete(targetMesh);
             setSelectedCount(threeRef.current.selectedBlocks.size);
-          }
-          // Phase 16: remove from group juga (kalau block ada di grup)
-          if (targetMesh.userData.groupId && threeRef.current.removeBlockFromGroups) {
-            threeRef.current.removeBlockFromGroups(targetMesh);
           }
           // removeFromParent = remove dari parent apapun (scene ATAU gltf.scene group)
           targetMesh.removeFromParent();
@@ -12609,174 +12578,6 @@ Now you can apply Displacement for detailed effect.`);
       setSelectedCount(0);
     };
 
-    // Phase 19: Group Bounding Box Helper — visual box 3D mengelilingi grup.
-    // Pakai THREE.Box3 + THREE.Box3Helper. Tiap grup punya 1 helper sendiri.
-    // Update tiap frame di animate loop supaya ngikutin block yang di-move.
-    const groupHelpers = new Map(); // groupId → THREE.Box3Helper
-    const updateGroupHelpers = () => {
-      const groups = threeRef.current.groups;
-      // Hapus helper untuk grup yang udah ga ada
-      groupHelpers.forEach((helper, gid) => {
-        if (!groups.has(gid)) {
-          scene.remove(helper);
-          helper.geometry.dispose();
-          helper.material.dispose();
-          groupHelpers.delete(gid);
-        }
-      });
-      // Tambah/update helper untuk grup yang ada
-      groups.forEach((groupData, gid) => {
-        let helper = groupHelpers.get(gid);
-        // Compute box dari semua block di grup
-        const box = new THREE.Box3();
-        let validBox = false;
-        groupData.blockSet.forEach(b => {
-          if (b.parent) { // block masih di scene
-            box.expandByObject(b);
-            validBox = true;
-          }
-        });
-        if (!validBox) {
-          if (helper) helper.visible = false;
-          return;
-        }
-        if (!helper) {
-          // Buat helper baru
-          helper = new THREE.Box3Helper(box, new THREE.Color(groupData.color));
-          scene.add(helper);
-          groupHelpers.set(gid, helper);
-        } else {
-          // Update box existing
-          helper.box.copy(box);
-          helper.material.color.setHex(groupData.color);
-        }
-        helper.visible = true;
-      });
-    };
-    // Expose ke threeRef biar bisa dipanggil di animate loop
-    threeRef.current.updateGroupHelpers = updateGroupHelpers;
-
-    // Phase 16: Block Groups — persistent multi-select.
-    // - createGroupFromSelection(): ambil semua selected blocks, assign groupId baru, kasih
-    //   emissive color unik (rainbow palette supaya tiap grup kelihatan beda).
-    // - ungroupSelected(): ambil grup dari block pertama yang terpilih, hapus groupId dari semua.
-    // - removeBlockFromGroups(block): kalau block dihapus dari scene, hapus dari grup juga.
-    const GROUP_COLORS = [
-      0xfbbf24, // amber
-      0x10b981, // emerald
-      0xf43f5e, // rose
-      0xa855f7, // purple
-      0x06b6d4, // cyan
-      0xf97316, // orange
-      0xec4899, // pink
-      0x84cc16, // lime
-    ];
-    const createGroupFromSelection = () => {
-      const selected = threeRef.current.selectedBlocks;
-      if (selected.size < 2) {
-        return;
-      }
-      const groupId = `group-${threeRef.current.nextGroupId++}`;
-      const colorIdx = (threeRef.current.groups.size) % GROUP_COLORS.length;
-      const groupColor = GROUP_COLORS[colorIdx];
-      const blockSet = new Set();
-      selected.forEach(b => {
-        // Kalau block sudah di grup lain, hapus dari grup lama dulu (1 block cuma 1 grup)
-        if (b.userData.groupId) {
-          const oldGroup = threeRef.current.groups.get(b.userData.groupId);
-          if (oldGroup) oldGroup.blockSet.delete(b);
-        }
-        b.userData.groupId = groupId;
-        // Tandai emissive dengan warna grup supaya user bisa lihat block mana yang di-grup
-        const mats = Array.isArray(b.material) ? b.material : [b.material];
-        mats.forEach(m => {
-          if (m.emissive) {
-            m.emissive.setHex(groupColor);
-            m.emissiveIntensity = 0.3; // soft glow
-          }
-        });
-        blockSet.add(b);
-      });
-      threeRef.current.groups.set(groupId, {
-        id: groupId,
-        color: groupColor,
-        blockSet,
-      });
-      setGroupCount(threeRef.current.groups.size);
-      setHasSelectionInGroup(true);
-    };
-    const ungroupSelected = () => {
-      const selected = threeRef.current.selectedBlocks;
-      if (selected.size === 0) return;
-      // Ambil semua groupId yang ada di selection
-      const groupIdsToDissolve = new Set();
-      selected.forEach(b => {
-        if (b.userData.groupId) groupIdsToDissolve.add(b.userData.groupId);
-      });
-      if (groupIdsToDissolve.size === 0) {
-        return;
-      }
-      groupIdsToDissolve.forEach(gid => {
-        const groupData = threeRef.current.groups.get(gid);
-        if (groupData) {
-          // Hapus groupId + reset emissive dari semua block di grup
-          groupData.blockSet.forEach(b => {
-            delete b.userData.groupId;
-            const mats = Array.isArray(b.material) ? b.material : [b.material];
-            mats.forEach(m => {
-              if (m.emissive) {
-                m.emissive.setHex(0x000000);
-                m.emissiveIntensity = 0;
-              }
-            });
-          });
-          threeRef.current.groups.delete(gid);
-        }
-      });
-      setGroupCount(threeRef.current.groups.size);
-      setHasSelectionInGroup(false);
-      // Re-apply selection highlight (karena emissive grup tadi di-reset)
-      selected.forEach(b => highlightSelected(b));
-    };
-    const removeBlockFromGroups = (block) => {
-      if (!block.userData.groupId) return;
-      const gid = block.userData.groupId;
-      const groupData = threeRef.current.groups.get(gid);
-      if (groupData) {
-        groupData.blockSet.delete(block);
-        // Kalau grup tinggal 0 atau 1 block, auto-dissolve (grup butuh min 2 block)
-        if (groupData.blockSet.size <= 1) {
-          groupData.blockSet.forEach(b => delete b.userData.groupId);
-          threeRef.current.groups.delete(gid);
-          setGroupCount(threeRef.current.groups.size);
-        }
-      }
-    };
-
-    const selectBlock = (block, additive) => {
-      if (!additive) {
-        clearSelection();
-      }
-      // Phase 16: jika block punya groupId, auto-select semua block di grup itu
-      // (kecuali user explicit Ctrl+click untuk toggle individual).
-      // Ini supaya klik 1 block di grup = select seluruh grup (behaviour seperti DCC tools).
-      const groupId = block.userData.groupId;
-      if (groupId) {
-        const groupData = threeRef.current.groups.get(groupId);
-        if (groupData) {
-          groupData.blockSet.forEach(b => {
-            threeRef.current.selectedBlocks.add(b);
-            highlightSelected(b);
-          });
-          setSelectedCount(threeRef.current.selectedBlocks.size);
-          return;
-        }
-      }
-      threeRef.current.selectedBlocks.add(block);
-      highlightSelected(block);
-      setSelectedCount(threeRef.current.selectedBlocks.size);
-    };
-
     const toggleSelectBlock = (block) => {
       if (threeRef.current.selectedBlocks.has(block)) {
         threeRef.current.selectedBlocks.delete(block);
@@ -13028,10 +12829,6 @@ Now you can apply Displacement for detailed effect.`);
     threeRef.current.recordHistory = recordHistory;
     threeRef.current.doUndo = doUndo;
     threeRef.current.doRedo = doRedo;
-    // Phase 16: expose group functions
-    threeRef.current.createGroupFromSelection = createGroupFromSelection;
-    threeRef.current.ungroupSelected = ungroupSelected;
-    threeRef.current.removeBlockFromGroups = removeBlockFromGroups;
 
     // Clear All function — accessible dari JSX via threeRef.current
     // Cleanup semua block + imported objects + selection + transformControls + highlightedBlock
@@ -13046,10 +12843,6 @@ Now you can apply Displacement for detailed effect.`);
       threeRef.current.selectedBlocks.clear();
       // Hapus SEMUA block tanpa terkecuali (regular + imported + phase objects)
       threeRef.current.blocks.forEach(b => {
-        // Remove from group kalau ada
-        if (b.userData.groupId && threeRef.current.removeBlockFromGroups) {
-          threeRef.current.removeBlockFromGroups(b);
-        }
         // Remove from scene (aman untuk block biasa maupun imported mesh)
         b.removeFromParent();
         // Dispose material (handle array material untuk multi-material mesh)
@@ -14080,7 +13873,7 @@ Now you can apply Displacement for detailed effect.`);
       <div ref={containerRef} style={{
         flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0,
       }}>
-        {/* Toolbar — Build: Info / Undo / Redo / Delete / Place / Paint / Shape / Clone / Mirror / Object / Decal — lalu section Transform / Groups / Display / Bloom / IO / Material */}
+        {/* Toolbar — Build: Info / Undo / Redo / Delete / Place / Paint / Shape / Clone / Mirror / Object / Decal — lalu section Transform / Display / Bloom / IO / Material */}
         <div style={{
           position: 'absolute', top: 16, left: 16,
           display: 'flex', flexDirection: 'column', gap: 6,
@@ -14592,7 +14385,7 @@ Now you can apply Displacement for detailed effect.`);
           )}
 
           {/* (fragment master wrapper TIDAK ditutup di sini — berlanjut ke
-              section Groups dst. sampai akhir toolbar) */}
+              section Display dst. sampai akhir toolbar) */}
 
           {/* ── Section "TRANSFORM" DIHAPUS (2026-09-01, Task ID 32, request
               user): tombol Move/Rotate/Scale DIPINDAH ke kolom utama Build
@@ -14616,83 +14409,6 @@ Now you can apply Displacement for detailed effect.`);
               (urutan: Undo, Redo, Delete, Place, Shape, dst — Task ID 27 swap
               Place↔Delete). Jangan bikin section History terpisah lagi —
               sudah masuk bagian Build. ── */}
-
-          {/* ── Section: GROUPS (Group/Ungroup) ── */}
-          <div onClick={() => toggleSection('groups')} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            cursor: 'pointer', padding: '4px 2px', marginTop: 6, marginBottom: 2,
-            borderTop: '1px solid rgba(148,163,184,0.12)', paddingTop: 8,
-            userSelect: 'none',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: textSecondary,
-              textTransform: 'uppercase', letterSpacing: '1px',
-              fontFamily: 'Orbitron, sans-serif',
-            }}>Groups {groupCount > 0 && <span style={{ color: '#fbbf24', marginLeft: 4 }}>({groupCount})</span>}</div>
-            {openSections.groups
-              ? <ChevronDown size={14} color="#64748b" />
-              : <ChevronRight size={14} color="#64748b" />}
-          </div>
-          {openSections.groups && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {/* Group button — enabled saat selectedCount >= 2 */}
-              <button
-                onClick={() => threeRef.current.createGroupFromSelection && threeRef.current.createGroupFromSelection()}
-                disabled={selectedCount < 2}
-                title="Group selected blocks (min 2 blocks)"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px', borderRadius: 10,
-                  border: `1px solid ${selectedCount >= 2 ? 'rgba(251,191,36,0.4)' : 'rgba(148,163,184,0.12)'}`,
-                  backgroundColor: selectedCount >= 2 ? 'rgba(251,191,36,0.12)' : 'transparent',
-                  color: selectedCount >= 2 ? '#fbbf24' : '#475569',
-                  fontSize: 13, fontWeight: 500,
-                  cursor: selectedCount >= 2 ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
-                  opacity: selectedCount >= 2 ? 1 : 0.5,
-                }}
-              >
-                <Group size={15} />
-                Group {selectedCount > 0 ? `(${selectedCount})` : ''}
-              </button>
-              {/* Ungroup button — enabled saat ada selection yang di grup */}
-              <button
-                onClick={() => threeRef.current.ungroupSelected && threeRef.current.ungroupSelected()}
-                disabled={!hasSelectionInGroup}
-                title="Ungroup selected blocks"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px', borderRadius: 10,
-                  border: `1px solid ${hasSelectionInGroup ? 'rgba(244,63,94,0.4)' : 'rgba(148,163,184,0.12)'}`,
-                  backgroundColor: hasSelectionInGroup ? 'rgba(244,63,94,0.12)' : 'transparent',
-                  color: hasSelectionInGroup ? '#f43f5e' : '#475569',
-                  fontSize: 13, fontWeight: 500,
-                  cursor: hasSelectionInGroup ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
-                  opacity: hasSelectionInGroup ? 1 : 0.5,
-                }}
-              >
-                <Ungroup size={15} />
-                Ungroup
-              </button>
-              {/* Info text */}
-              {selectedCount > 0 && (
-                <div style={{
-                  fontSize: 10, color: '#64748b', fontStyle: 'italic',
-                  padding: '4px 6px', background: 'rgba(148,163,184,0.05)',
-                  borderRadius: 6, border: '1px solid rgba(148,163,184,0.1)',
-                }}>
-                  {selectedCount < 2
-                    ? 'Select 2+ blocks to Group'
-                    : !hasSelectionInGroup
-                      ? 'Click Group to bind selected blocks'
-                      : 'Selected blocks are grouped'}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ── Section: DISPLAY (Grid/Snap/Shadows) ── */}
           <div onClick={() => toggleSection('display')} style={{
@@ -17596,11 +17312,6 @@ Now you can apply Displacement for detailed effect.`);
               Shift+Click = add to selection<br/>
               Ctrl+Click = toggle selection<br/>
               Click empty = deselect all<br/>
-              <span style={{ color: '#fbbf24' }}>
-                <strong>Groups</strong>: select 2+ blocks → Group<br/>
-                Klik 1 block di grup = auto-select semua<br/>
-                Ungroup untuk bubarin grup
-              </span>
             </span>
             <span style={{ display: 'block', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(148,163,184,0.15)', color: '#06b6d4' }}>
               <strong>Clone</strong> = Duplikat identik di +1 unit X<br/>
