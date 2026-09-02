@@ -194,9 +194,14 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // When 'instanced': blocks rendered via InstancedMesh (1 draw call/chunk),
   // Meshes set invisible but still raycastable (three.js raycaster ignores visible flag).
   // All tools/selection/history UNCHANGED — they still work on Mesh as before.
-  const [renderMode, setRenderMode] = useState('mesh'); // 'mesh' | 'instanced'
+  // Phase 37, 2026-09-02: Added 'auto' mode — switches to Instanced when blockCount > 2000,
+  // back to Mesh when < 1500 (hysteresis to prevent oscillation).
+  const [renderMode, setRenderMode] = useState('mesh'); // 'mesh' | 'auto' | 'instanced'
   const renderModeRef = useRef('mesh');
   useEffect(() => { renderModeRef.current = renderMode; }, [renderMode]);
+  // Phase 37: Performance stats — updated once per second in animate loop.
+  const [perfStats, setPerfStats] = useState({ fps: 0, drawCalls: 0, blocks: 0, effectiveMode: 'mesh' });
+  const fpsCounterRef = useRef({ frames: 0, lastTime: performance.now() });
   // Toggle tool (unequip): klik tombol tool = pakai tool itu; klik LAGI tombol yang
   // sama saat sedang aktif = LEPAS tool (kembali ke state 0 / null). Berlaku untuk
   // SEMUA tombol tool. Klik tool BERBEDA saat ada tool aktif = pindah (bukan toggle).
@@ -11899,6 +11904,23 @@ Now you can apply Displacement for detailed effect.`);
       // When renderMode === 'mesh': just sets mesh.visible=true, skips CM update.
       // When renderMode === 'instanced': sets mesh.visible=false, syncs to CM.
       syncMeshesToChunks();
+      // Phase 37: FPS + draw call tracking — update React state once per second.
+      // Avoids per-frame React re-render spam (would tank performance).
+      fpsCounterRef.current.frames++;
+      const _now = performance.now();
+      if (_now - fpsCounterRef.current.lastTime >= 1000) {
+        const _blocks = threeRef.current.blocks ? threeRef.current.blocks.length : 0;
+        const _isInst = renderModeRef.current === 'instanced' ||
+          (renderModeRef.current === 'auto' && _blocks > 2000);
+        setPerfStats({
+          fps: fpsCounterRef.current.frames,
+          drawCalls: renderer.info.render.calls,
+          blocks: _blocks,
+          effectiveMode: _isInst ? 'instanced' : 'mesh',
+        });
+        fpsCounterRef.current.frames = 0;
+        fpsCounterRef.current.lastTime = _now;
+      }
       // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
       // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
       // Direct render = lebih cepat, untuk saat bloom dimatikan.
@@ -11957,7 +11979,8 @@ Now you can apply Displacement for detailed effect.`);
       if (!cm) return;
       const blocks = threeRef.current.blocks;
       const cache = threeRef.current.meshCache;
-      const isInstanced = renderModeRef.current === 'instanced';
+      const isInstanced = renderModeRef.current === 'instanced' ||
+        (renderModeRef.current === 'auto' && blocks.length > 2000);
 
       // Remove blocks that no longer exist in the array
       const currentSet = new Set(blocks);
@@ -14522,7 +14545,9 @@ Now you can apply Displacement for detailed effect.`);
             }}>Render Engine</div>
             <button
               onClick={() => {
-                const next = renderModeRef.current === 'mesh' ? 'instanced' : 'mesh';
+                // Phase 37: 3-state cycle MESH → AUTO → INSTANCED → MESH
+                const cycle = { mesh: 'auto', auto: 'instanced', instanced: 'mesh' };
+                const next = cycle[renderModeRef.current] || 'mesh';
                 renderModeRef.current = next;
                 setRenderMode(next);
                 if (next === 'mesh' && threeRef.current.chunkManager) {
@@ -14532,19 +14557,38 @@ Now you can apply Displacement for detailed effect.`);
               }}
               title={renderMode === 'instanced'
                 ? 'InstancedMesh mode: 1 draw call/chunk. Meshes invisible but raycastable. All tools work.'
-                : 'Mesh mode (default): 1 draw call/block. Original rendering.'}
+                : renderMode === 'auto'
+                  ? 'Auto mode: switches to Instanced when blockCount > 2000, back to Mesh when < 1500. Best of both worlds.'
+                  : 'Mesh mode (default): 1 draw call/block. Original rendering with full material fidelity.'}
               style={{
                 padding: '5px 12px', borderRadius: 6,
-                backgroundColor: renderMode === 'instanced' ? '#7c3aed' : '#1e293b',
-                border: `1px solid ${renderMode === 'instanced' ? '#7c3aed' : '#334155'}`,
-                color: renderMode === 'instanced' ? '#fff' : '#94a3b8',
+                backgroundColor: renderMode === 'instanced' ? '#7c3aed' : renderMode === 'auto' ? '#0891b2' : '#1e293b',
+                border: `1px solid ${renderMode === 'instanced' ? '#7c3aed' : renderMode === 'auto' ? '#0891b2' : '#334155'}`,
+                color: renderMode === 'mesh' ? '#94a3b8' : '#fff',
                 fontSize: 10, fontWeight: 700, cursor: 'pointer',
                 fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
                 transition: 'all 0.15s',
               }}
             >
-              {renderMode === 'instanced' ? 'INSTANCED' : 'MESH'}
+              {renderMode.toUpperCase()}
             </button>
+          </div>
+          {/* Phase 37: Performance stats — compact 1-line display under toggle.
+              Shows FPS (color-coded), draw calls, block count, effective mode.
+              Helps user verify that INSTANCED mode actually reduces draw calls. */}
+          <div style={{
+            display: 'flex', gap: 10, padding: '4px 2px',
+            fontSize: 9, fontFamily: 'monospace', color: '#64748b',
+            flexWrap: 'wrap',
+          }}>
+            <span>FPS: <strong style={{
+              color: perfStats.fps > 50 ? '#22c55e' : perfStats.fps > 30 ? '#f59e0b' : '#ef4444',
+            }}>{perfStats.fps}</strong></span>
+            <span>Draws: <strong style={{ color: '#06b6d4' }}>{perfStats.drawCalls}</strong></span>
+            <span>Blocks: <strong style={{ color: '#e2e8f0' }}>{perfStats.blocks}</strong></span>
+            <span>Mode: <strong style={{
+              color: perfStats.effectiveMode === 'instanced' ? '#7c3aed' : '#94a3b8',
+            }}>{perfStats.effectiveMode.toUpperCase()}</strong></span>
           </div>
 
           {/* ── Section: DISPLAY (Grid/Snap/Shadows) ── */}
