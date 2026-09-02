@@ -113,6 +113,31 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                             </div>
                         }
                     />
+                    {/* 3D Block Simulator v2 TEST — ChunkManager engine test page.
+                        Open access (no auth lock) for easy performance testing.
+                        Placed TEPAT di bawah v2 button per request user.
+                        Warna cyan/teal (hsl 180) supaya kontras dengan amber v2
+                        + pink v1 + teal Calculator. Icon: kubus isometric sama
+                        dengan v2 tapi badge "T" (Test) cyan, bukan "V2" amber. */}
+                    <MenuButton3D
+                        label="3D Block Simulator v2 TEST"
+                        subtitle="ChunkManager engine"
+                        top="hsl(180,80%,52%)" bottom="hsl(180,80%,32%)" lip="hsl(180,80%,22%)"
+                        onClick={() => setPage('block-sim-test')}
+                        icon={
+                            <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                    {/* Kubus isometric — sama dengan v2 */}
+                                    <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                    <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                    <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                    {/* Badge T — cyan supaya jelas beda dengan V2 */}
+                                    <rect x="14" y="1" width="9" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
+                                    <text x="18.5" y="5.2" textAnchor="middle" fill="#22d3ee" fontSize="4.2" fontWeight="700" fontFamily="Inter,sans-serif">T</text>
+                                </svg>
+                            </div>
+                        }
+                    />
                 </div>
 
                 <button

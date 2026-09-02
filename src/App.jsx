@@ -23,6 +23,7 @@ const KNOWN_PAGES = new Set([
     'shapes-calculator',
     'block-simulator-3d',
     'block-simulator-3d-v2',
+    'block-sim-test',
     'menu',
     'logic-gates',
     'basic-logic-gates',
@@ -35,6 +36,7 @@ const KNOWN_PAGES = new Set([
 const ShapesCalculator = lazy(() => import('./pages/ShapesCalculator'));
 const BlockSimulator3D = lazy(() => import('./pages/BlockSimulator3D'));
 const BlockSimulator3Dv2 = lazy(() => import('./pages/BlockSimulator3Dv2'));
+const BlockSimulatorTest = lazy(() => import('./components/BlockSimulatorTest'));
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
 const CircuitGenerator = lazy(() => import('./pages/CircuitGenerator'));
@@ -346,6 +348,12 @@ export default function App() {
                             </motion.div>
                         </div>
                     )}
+            </motion.div>}
+            {page === "block-sim-test" && <motion.div key="block-sim-test" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+                {/* Test page — open access (no auth lock) for easy performance testing.
+                    Uses ChunkManager engine (src/lib/ChunkManager.js) instead of per-block Mesh.
+                    Isolated from BlockSimulator3Dv2.jsx — does not modify it. */}
+                <Suspense fallback={pageFallback}><BlockSimulatorTest setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "menu" && <motion.div key="menu" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, position: 'relative' }}>
                 <CreditsBox />
