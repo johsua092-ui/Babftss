@@ -59,7 +59,7 @@ const COLORS = [
   '#64748b', '#1e293b', '#ffffff', '#84cc16',
 ];
 
-const GRID_SIZE = 50; // grid = GRID_SIZE * 2 = 100 unit → 100x100 cell (Task ID 26; dulu 30 = 60x60)
+const GRID_SIZE = 250; // grid = GRID_SIZE * 2 = 500 unit → 500x500 cell (Task ID 35, 2026-09-02: 100→500 per request user; sebelumnya 50 = 100x100, sebelumnya 30 = 60x60)
 
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
    (GridHelper 60x60) + block isometrik hijau di atasnya. 3 sisi kubus
@@ -11574,7 +11574,7 @@ Now you can apply Displacement for detailed effect.`);
     // Scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#1b2536');
-    scene.fog = new THREE.Fog('#1b2536', 35, 90);
+    // Fog DIHAPUS 2026-09-02 per request user: 'dari kejauhan tidak ada seperti kabut sama sekali yang dapat menghalangi pandangan, jadi clear bisa melihat semuanya disitu'. Sebelumnya THREE.Fog('#1b2536', 35, 90) — terlalu dekat utk grid 500x500. Phase 55 toggle masih tersedia jika user mau enable fog manual.
 
     // Camera — perspective, angled view like v1
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
@@ -11622,15 +11622,13 @@ Now you can apply Displacement for detailed effect.`);
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
     dirLight.shadow.camera.near = 0.5;
-    dirLight.shadow.camera.far = 120;
-    // Task ID 26: shadow frustum ±50→±75 — grid 100x100: pojok grid (±49.5)
-    // diproyeksikan ke light-space mencapai ±70 (light dari (20,35,15), arah
-    // miring) — dengan ±50 bayangan block di pojok grid baru terpotong.
-    // near/far (0.5/120) tetap cukup: depth terjauh ~84.
-    dirLight.shadow.camera.left = -75;
-    dirLight.shadow.camera.right = 75;
-    dirLight.shadow.camera.top = 75;
-    dirLight.shadow.camera.bottom = -75;
+    dirLight.shadow.camera.far = 600; // Task ID 35, 2026-09-02: 120→600 — grid kini 500x500, depth terjauh ~420 utk pojok grid
+    // Task ID 35, 2026-09-02: shadow frustum ±75→±400 — grid 500x500: pojok grid (±249.5) diproyeksikan ke light-space mencapai ~±360 (light dari (20,35,15), arah miring). Dengan ±75 bayangan block di pojok grid akan terpotong. near (0.5) tetap, far dinaikkan ke 600.
+    // Task ID 26 (lama): ±50→±75 utk grid 100x100 (pojok ±49.5 → ±70 di light space).
+    dirLight.shadow.camera.left = -400;
+    dirLight.shadow.camera.right = 400;
+    dirLight.shadow.camera.top = 400;
+    dirLight.shadow.camera.bottom = -400;
     dirLight.shadow.bias = -0.0005;
     scene.add(dirLight);
 
@@ -11638,7 +11636,7 @@ Now you can apply Displacement for detailed effect.`);
     const hemiLight = new THREE.HemisphereLight(0x4a6fa5, 0x1a1a2e, 0.3);
     scene.add(hemiLight);
 
-    // Grid — 100x100 units (GRID_SIZE * 2), 100 divisions (Task ID 26: dulu 60x60)
+    // Grid — 500x500 units (GRID_SIZE * 2), 500 divisions (Task ID 35, 2026-09-02: 100x100→500x500 per request user; dulu 100x100 / 60x60)
     const grid = new THREE.GridHelper(GRID_SIZE * 2, GRID_SIZE * 2, 0x64748b, 0x334155);
     grid.material.opacity = 0.5;
     grid.material.transparent = true;
@@ -11670,7 +11668,7 @@ Now you can apply Displacement for detailed effect.`);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 0.5; // Allow extreme close-up zoom
-    controls.maxDistance = 150; // Task ID 26: 80→150 — grid kini 100x100 (diagonal ~141), 80 tidak cukup untuk melihat grid penuh
+    controls.maxDistance = 900; // Task ID 35, 2026-09-02: 150→900 — grid kini 500x500 (diagonal ~707), 150 tidak cukup untuk melihat grid penuh. Sebelumnya 150 utk grid 100x100.
     controls.maxPolarAngle = Math.PI / 2 - 0.02; // prevent going below ground
     controls.target.set(0, 0, 0);
     // Mouse buttons: LEFT dinamis berdasarkan tool.
