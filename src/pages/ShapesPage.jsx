@@ -85,18 +85,22 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     {/* Move tool gizmo arrows — 3 axis dengan cone tips (kerucut).
                                         Origin di CENTER FACE (tengah sisi), BUKAN vertex/pojok.
-                                        Hijau = Y-axis dari top face center (12,7) pointing up
-                                        Merah = X-axis dari right face center (16.5,14.5) pointing right
-                                        Biru = Z-axis dari left face center (7.5,14.5) pointing left */}
-                                    {/* Y-axis (hijau) — dari top face center (12,7), pointing up */}
+                                        Arah panah MENGIKUTI ARAH SISI KUBUS (isometric 30° projection):
+                                        - Hijau = Y-axis dari top face center (12,7) pointing UP (vertical)
+                                        - Merah = X-axis dari right face center (16.5,14.5) pointing KANAN-BAWAH (slope ~30°)
+                                        - Biru = Z-axis dari left face center (7.5,14.5) pointing KIRI-BAWAH (slope ~30°)
+                                        Sebelumnya merah/biru horizontal lurus — tidak wajar untuk isometric. */}
+                                    {/* Y-axis (hijau) — dari top face center (12,7), pointing UP (vertical) */}
                                     <line x1="12" y1="7" x2="12" y2="-1" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M9 -1 L15 -1 L12 -5 Z" fill="#22c55e"/>
-                                    {/* X-axis (merah) — dari right face center (16.5,14.5), pointing right */}
-                                    <line x1="16.5" y1="14.5" x2="25" y2="14.5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M25 12 L29 14.5 L25 17 Z" fill="#ef4444"/>
-                                    {/* Z-axis (biru) — dari left face center (7.5,14.5), pointing left */}
-                                    <line x1="7.5" y1="14.5" x2="-1" y2="14.5" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M-1 12 L-5 14.5 L-1 17 Z" fill="#3b82f6"/>
+                                    {/* X-axis (merah) — dari right face center (16.5,14.5), pointing KANAN-BAWAH
+                                        (mengikuti arah normal right face di isometric projection, slope ~30°) */}
+                                    <line x1="16.5" y1="14.5" x2="23" y2="18" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M22 19 L24 17 L25 19 Z" fill="#ef4444"/>
+                                    {/* Z-axis (biru) — dari left face center (7.5,14.5), pointing KIRI-BAWAH
+                                        (mirror dari X-axis, mengikuti arah normal left face) */}
+                                    <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M2 19 L0 17 L-1 19 Z" fill="#3b82f6"/>
                                     {/* Badge 3D — geser KIRI dekat kubus (x:19→13), perbesar (fontSize 5→6, rect w:11→13) */}
                                     <rect x="13" y="0" width="13" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
                                     <text x="19.5" y="6" textAnchor="middle" fill="#fbbf24" fontSize="6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
@@ -123,13 +127,13 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     {/* Move tool gizmo arrows — sama dengan v2 (3 axis cone-tipped,
-                                        origin di center face bukan vertex). */}
+                                        origin di center face, arah mengikuti sisi kubus isometric). */}
                                     <line x1="12" y1="7" x2="12" y2="-1" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M9 -1 L15 -1 L12 -5 Z" fill="#22c55e"/>
-                                    <line x1="16.5" y1="14.5" x2="25" y2="14.5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M25 12 L29 14.5 L25 17 Z" fill="#ef4444"/>
-                                    <line x1="7.5" y1="14.5" x2="-1" y2="14.5" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <path d="M-1 12 L-5 14.5 L-1 17 Z" fill="#3b82f6"/>
+                                    <line x1="16.5" y1="14.5" x2="23" y2="18" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M22 19 L24 17 L25 19 Z" fill="#ef4444"/>
+                                    <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M2 19 L0 17 L-1 19 Z" fill="#3b82f6"/>
                                     {/* Badge TEST — pink, perbesar (fontSize 4.5→5, rect w:15→17). viewBox 30 supaya muat tanpa terpotong. */}
                                     <rect x="13" y="0" width="17" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
                                     <text x="21.5" y="6" textAnchor="middle" fill="#ec4899" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
