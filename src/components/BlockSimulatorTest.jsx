@@ -77,6 +77,15 @@ export default function BlockSimulatorTest({ setPage }) {
 
         // ── OrbitControls — full pan/zoom/rotate for frustum cull verification ──
         const controls = new OrbitControls(camera, renderer.domElement);
+        // Mouse button mapping (per request user 2026-09-02):
+        //   LEFT  = PAN   (geser area pandang)
+        //   RIGHT = ROTATE (orbit camera)
+        // Default three.js: LEFT=ROTATE, RIGHT=PAN — swapped here.
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.PAN,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.ROTATE,
+        };
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
         controls.minDistance = 1;       // extreme close-up
@@ -379,8 +388,8 @@ export default function BlockSimulatorTest({ setPage }) {
                     borderTop: '1px solid rgba(148,163,184,0.15)',
                 }}>
                     <strong style={{ color: '#e2e8f0' }}>Camera Controls:</strong><br/>
-                    L-Drag = Orbit<br/>
-                    R-Drag = Pan<br/>
+                    L-Drag = Pan<br/>
+                    R-Drag = Orbit<br/>
                     Scroll = Zoom<br/>
                 </div>
                 <div style={{
