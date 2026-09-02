@@ -21852,7 +21852,11 @@ Now you can apply Displacement for detailed effect.`);
         </div>
       )}
 
-      {/* Build Area — Coming Soon Modal */}
+      {/* Build Area — Gallery Modal (Phase 41, 2026-09-02)
+          Per request user: ganti 'Coming Soon' modal jadi Build Area gallery.
+          User bisa lihat daftar build area (preview screenshot + nama) dan klik
+          untuk pilih. Saat ini hanya 1 kotak: 'Default' (placeholder preview).
+          Nanti bisa ditambah lebih banyak build area. */}
       {showBuildAreaSoon && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -21867,7 +21871,10 @@ Now you can apply Displacement for detailed effect.`);
             border: '2px solid #10b981',
             borderRadius: 16,
             padding: '24px 32px',
-            maxWidth: 480,
+            width: '90vw',
+            maxWidth: 720,  // diperbesar dari 480 → 720 (utk muat grid kotak)
+            maxHeight: '85vh',
+            overflowY: 'auto',
             boxShadow: '0 20px 60px rgba(16, 185, 129, 0.3), 0 0 100px rgba(16, 185, 129, 0.15)',
             fontFamily: 'Inter, sans-serif',
             animation: 'slideUp 0.3s ease-out',
@@ -21898,19 +21905,129 @@ Now you can apply Displacement for detailed effect.`);
                   margin: '4px 0 0 0', fontSize: 12,
                   color: '#34d399', fontWeight: 700, letterSpacing: 0.5,
                 }}>
-                  COMING SOON — MASIH DALAM PENGERJAAN
+                  PILIH BUILD AREA — KLIK UNTUK BUKA
                 </p>
               </div>
             </div>
 
-            <p style={{
-              margin: '0 0 24px 0', fontSize: 14,
-              color: '#cbd5e1', lineHeight: 1.6,
+            {/* ── Grid kotak build area (preview screenshot + nama) ──
+                Layout: grid responsif, tiap kotak = 1 build area.
+                Kotak berisi: preview image (atau placeholder gradient kalau
+                belum ada screenshot) + nama di bawah.
+                Clickable → trigger handler (saat ini toast info, nanti load area). */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: 16,
+              marginBottom: 24,
             }}>
-              Fitur <strong style={{ color: '#34d399' }}>Build Area</strong> masih dalam
-              proses pengerjaan dan akan segera hadir. Bersiap untuk pengalaman membangun
-              yang lebih seru — nantikan update selanjutnya ya!
-            </p>
+              {/* ── Kotak 1: Default ──
+                  Placeholder preview: gradient hijau dengan icon kubus di tengah.
+                  Nanti diganti screenshot real dari build area Default.
+                  Clickable → toast info (Phase 41 — handler sementara). */}
+              <div
+                onClick={() => {
+                  toast.info('Build Area "Default" dipilih — loading area... (placeholder)');
+                  setShowBuildAreaSoon(false);
+                }}
+                style={{
+                  cursor: 'pointer',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#10b981';
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(16, 185, 129, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                {/* Preview screenshot area — 16:9 aspect ratio.
+                    Placeholder: gradient hijau gelap dengan icon kubus di tengah.
+                    Nanti diganti <img src="screenshot-default.png" /> */}
+                <div style={{
+                  width: '100%',
+                  aspectRatio: '16 / 9',
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.4) 100%)',
+                  display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  position: 'relative',
+                }}>
+                  <div style={{
+                    width: 48, height: 48,
+                    color: 'rgba(52, 211, 153, 0.6)',
+                  }}>
+                    <BuildAreaIcon size={48} />
+                  </div>
+                  {/* Badge "Active" di pojok kanan atas — Default selalu active */}
+                  <div style={{
+                    position: 'absolute', top: 8, right: 8,
+                    padding: '2px 8px', borderRadius: 4,
+                    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                    color: '#fff', fontSize: 9, fontWeight: 700,
+                    fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
+                  }}>
+                    ACTIVE
+                  </div>
+                </div>
+                {/* Nama build area di bawah preview */}
+                <div style={{
+                  padding: '10px 12px',
+                }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 700, color: '#e2e8f0',
+                    fontFamily: 'Inter, sans-serif',
+                  }}>
+                    Default
+                  </div>
+                  <div style={{
+                    fontSize: 11, color: '#64748b', marginTop: 2,
+                  }}>
+                    Build area utama — 500×500 grid
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Slot "Add New" — placeholder untuk add build area baru ──
+                  User bisa klik ini untuk buat build area baru (Phase 42 — coming soon).
+                  Visual: dashed border + icon + . */}
+              <div
+                onClick={() => toast.info('Tambah Build Area baru — coming soon (Phase 42)')}
+                style={{
+                  cursor: 'pointer',
+                  borderRadius: 12,
+                  minHeight: 160,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                  border: '2px dashed rgba(148, 163, 184, 0.3)',
+                  color: '#64748b',
+                  transition: 'all 0.2s ease',
+                  gap: 8,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#10b981';
+                  e.currentTarget.style.color = '#34d399';
+                  e.currentTarget.style.backgroundColor = 'rgba(16, 185, 129, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.3)';
+                  e.currentTarget.style.color = '#64748b';
+                  e.currentTarget.style.backgroundColor = 'rgba(15, 23, 42, 0.4)';
+                }}
+              >
+                <div style={{ fontSize: 32, fontWeight: 300, lineHeight: 1 }}>+</div>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Add New Build Area</div>
+                <div style={{ fontSize: 10, opacity: 0.7 }}>Coming Soon</div>
+              </div>
+            </div>
 
             <div style={{
               display: 'flex', justifyContent: 'flex-end', gap: 12,
@@ -21939,7 +22056,7 @@ Now you can apply Displacement for detailed effect.`);
                   e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
                 }}
               >
-                Oke, Mengerti
+                Tutup
               </button>
             </div>
           </div>
