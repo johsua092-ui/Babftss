@@ -2688,30 +2688,30 @@ User menyatakan "saya salah total disitu" — kemungkinan merujuk pada gambar ra
 
 ---
 
-## Bagian 40 — Fix Layout Full-Screen BlockSimulator3D (15 Aug 2026)
+## Bagian 40 — Fix Layout Full-Screen BlockSimulator3Dv2 (15 Aug 2026)
 
 ### Latar belakang masalah
 
-User melaporkan: saat buka menu Shapes → "3D Block Simulator", area render jauh lebih kecil dari layar desktop (canvas collapse kecil di tengah/pojok), dan banyak bug visual terkait resize. Investigation menemukan 3 akar masalah — semua di layout & resize handling, BUKAN di 3D engine logic.
+User melaporkan: saat buka menu Shapes → "3D Block Simulator v2", area render jauh lebih kecil dari layar desktop (canvas collapse kecil di tengah/pojok), dan banyak bug visual terkait resize. Investigation menemukan 3 akar masalah — semua di layout & resize handling, BUKAN di 3D engine logic.
 
 ### File yang diubah (HANYA 2 file, sesuai scope prompt kerja)
 
-1. `src/App.jsx` — 1 baris route `block-simulator-3d`
-2. `src/pages/BlockSimulator3D.jsx` — bagian `containerRef` + resize `useEffect`
+1. `src/App.jsx` — 1 baris route `block-simulator-3d-v2`
+2. `src/pages/BlockSimulator3Dv2.jsx` — bagian `containerRef` + resize `useEffect`
 
 ### Perubahan
 
 **Perbaikan #1 — `src/App.jsx` (root cause "layar kecil"):**
-- Route `block-simulator-3d` sebelumnya pakai style `alignItems: "center", justifyContent: "center", padding: 24` — itu pola halaman kartu kecil (welcome/menu/shapes), BUKAN pola tool full-screen.
-- Akibatnya komponen `BlockSimulator3D` collapse ke ukuran konten internalnya, alih-alih memenuhi viewport.
+- Route `block-simulator-3d-v2` sebelumnya pakai style `alignItems: "center", justifyContent: "center", padding: 24` — itu pola halaman kartu kecil (welcome/menu/shapes), BUKAN pola tool full-screen.
+- Akibatnya komponen `BlockSimulator3Dv2` collapse ke ukuran konten internalnya, alih-alih memenuhi viewport.
 - Ganti ke `flexDirection: "column"` (tanpa centering, tanpa padding) — persis pola yang sudah dipakai `logic-gates-simulator`.
 
-**Perbaikan #2 — `BlockSimulator3D.jsx`: pindah `containerRef`:**
+**Perbaikan #2 — `BlockSimulator3Dv2.jsx`: pindah `containerRef`:**
 - Sebelumnya `ref={containerRef}` dipasang di div ROOT paling luar (yang juga memuat Header). Resize handler ikut mengukur tinggi Header → ukuran canvas jadi salah/ter-clip.
 - Hapus `ref={containerRef}` dari div root, pasang ke div "Main Canvas Area" (parent langsung `<canvas>`).
 - Sekarang `containerRef` mengukur wadah asli canvas, tanpa ikut Header — pola sama dengan `LogicGatesSimulator.jsx`.
 
-**Perbaikan #3 — `BlockSimulator3D.jsx`: tambah `ResizeObserver`:**
+**Perbaikan #3 — `BlockSimulator3Dv2.jsx`: tambah `ResizeObserver`:**
 - Sebelumnya resize hanya dipicu `window.addEventListener('resize', ...)`. Kalau kontainer berubah ukuran tanpa window resize (misal karena perubahan layout flex / sidebar collapse), canvas tidak ikut menyesuaikan.
 - Tambah `ResizeObserver` yang observe `containerRef.current`, pertahankan `window.addEventListener('resize')` sebagai fallback. Cleanup `ro.disconnect()` + `removeEventListener` di return.
 - Persis pola yang sudah terbukti benar di `LogicGatesSimulator.jsx`.
@@ -2726,27 +2726,27 @@ User melaporkan: saat buka menu Shapes → "3D Block Simulator", area render jau
 
 ### Verifikasi
 
-- `git diff --stat` konfirmasi HANYA 2 file berubah: `src/App.jsx` (+1/-1 baris), `src/pages/BlockSimulator3D.jsx` (+8/-3 baris). File mode changes dari operasi sebelumnya sudah di-reset.
+- `git diff --stat` konfirmasi HANYA 2 file berubah: `src/App.jsx` (+1/-1 baris), `src/pages/BlockSimulator3Dv2.jsx` (+8/-3 baris). File mode changes dari operasi sebelumnya sudah di-reset.
 - `npm run build` sukses 0 error.
-- Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri: buka menu Shapes → 3D Block Simulator, pastikan canvas memenuhi viewport, resize browser window, dan tool/orbit/zoom tetap berfungsi.
+- Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri: buka menu Shapes → 3D Block Simulator v2, pastikan canvas memenuhi viewport, resize browser window, dan tool/orbit/zoom tetap berfungsi.
 
 ### Catatan untuk task berikutnya (temuan opsional, BELUM dikerjakan — di luar scope task ini)
 
-`BlockSimulator3D.jsx` saat ini HANYA punya mouse event handlers (`mousedown/mousemove/mouseup/wheel`). TIDAK ADA touch event (`touchstart/touchmove/touchend/touchcancel`). Beda dengan `LogicGatesSimulator.jsx` yang sudah full touch support.
+`BlockSimulator3Dv2.jsx` saat ini HANYA punya mouse event handlers (`mousedown/mousemove/mouseup/wheel`). TIDAK ADA touch event (`touchstart/touchmove/touchend/touchcancel`). Beda dengan `LogicGatesSimulator.jsx` yang sudah full touch support.
 
 Akibatnya: tool ini kemungkinan BESAR tidak bisa dipakai di HP/tablet — orbit kamera & place block tidak akan respon ke sentuhan. Ini perlu dipecahkan di task terpisah kalau user ingin support mobile. **Tidak dikerjakan otomatis di task ini** karena di luar scope (task ini fokus ke ukuran layar).
 
 ---
 
-## Bagian 41 — Fix BlockSimulator3D: Kamera, Bentuk Block, Background (15 Aug 2026)
+## Bagian 41 — Fix BlockSimulator3Dv2: Kamera, Bentuk Block, Background (15 Aug 2026)
 
 ### Latar belakang masalah
 
-Task V1 (layout full-screen + resize, Bagian 40) SUDAH selesai dan terverifikasi — tidak diulang. Task ini fokus ke 4 bug baru yang SUDAH diverifikasi lewat simulasi matematika terpisah (bukan dugaan). Semua perubahan HANYA di `src/pages/BlockSimulator3D.jsx` — tidak menyentuh `App.jsx` atau file lain.
+Task V1 (layout full-screen + resize, Bagian 40) SUDAH selesai dan terverifikasi — tidak diulang. Task ini fokus ke 4 bug baru yang SUDAH diverifikasi lewat simulasi matematika terpisah (bukan dugaan). Semua perubahan HANYA di `src/pages/BlockSimulator3Dv2.jsx` — tidak menyentuh `App.jsx` atau file lain.
 
 ### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
 
-- `src/pages/BlockSimulator3D.jsx` — 4 fix (A, B, C, D)
+- `src/pages/BlockSimulator3Dv2.jsx` — 4 fix (A, B, C, D)
 
 ### Perubahan
 
@@ -2788,8 +2788,8 @@ Task V1 (layout full-screen + resize, Bagian 40) SUDAH selesai dan terverifikasi
 
 ### Verifikasi
 
-- `git diff --stat src/` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+68/-39 baris). Tidak ada file `src/` lain berubah.
-- `npm run build` sukses 0 error: `2186 modules transformed`, `built in 10.62s`. BlockSimulator3D chunk: 17.34 KB (gzip 6.07 KB).
+- `git diff --stat src/` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3Dv2.jsx` (+68/-39 baris). Tidak ada file `src/` lain berubah.
+- `npm run build` sukses 0 error: `2186 modules transformed`, `built in 10.62s`. BlockSimulator3Dv2 chunk: 17.34 KB (gzip 6.07 KB).
 - Review diff manual: semua 4 fix cocok persis dengan spesifikasi prompt kerja (winding order, backface cull sign, y=0.5, gradient, help text, contextmenu listener, dependency array).
 - Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri sesuai checklist prompt kerja:
   1. Klik biasa (tanpa drag) di area kosong dengan tool "Place" aktif → block muncul, ALAS-nya pas di garis grid (tidak kebenam, tidak melayang).
@@ -2866,15 +2866,15 @@ User melaporkan beberapa issue:
 - Commit & push.
 ---
 
-## Bagian 43 — Fitur Ghost/Preview Block di Mode Place BlockSimulator3D (16 Aug 2026)
+## Bagian 43 — Fitur Ghost/Preview Block di Mode Place BlockSimulator3Dv2 (16 Aug 2026)
 
 ### Latar belakang
 
-Task V1 (layout) & V2 (kamera/bentuk/background) SUDAH selesai dan terverifikasi — tidak diulang. Task V3 ini fitur baru: ghost block transparan yang ngikutin kursor pas mode "Place" aktif, jadi user lihat dulu di mana block bakal ke-taruh sebelum klik. Semua perubahan HANYA di `src/pages/BlockSimulator3D.jsx` — tidak menyentuh `App.jsx` atau file lain.
+Task V1 (layout) & V2 (kamera/bentuk/background) SUDAH selesai dan terverifikasi — tidak diulang. Task V3 ini fitur baru: ghost block transparan yang ngikutin kursor pas mode "Place" aktif, jadi user lihat dulu di mana block bakal ke-taruh sebelum klik. Semua perubahan HANYA di `src/pages/BlockSimulator3Dv2.jsx` — tidak menyentuh `App.jsx` atau file lain.
 
 ### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
 
-- `src/pages/BlockSimulator3D.jsx` — 3 langkah (state + render + mouse events)
+- `src/pages/BlockSimulator3Dv2.jsx` — 3 langkah (state + render + mouse events)
 
 ### Perubahan
 
@@ -2917,8 +2917,8 @@ Task V1 (layout) & V2 (kamera/bentuk/background) SUDAH selesai dan terverifikasi
 
 ### Verifikasi
 
-- `git diff --stat src/` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+95/-3 baris). Tidak ada file `src/` lain berubah.
-- `npm run build` sukses 0 error: `built in 9.67s`. BlockSimulator3D chunk: 17.42 KB (gzip 6.10 KB — naik tipis dari V2 17.34 KB, wajar karena tambah ghost logic).
+- `git diff --stat src/` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3Dv2.jsx` (+95/-3 baris). Tidak ada file `src/` lain berubah.
+- `npm run build` sukses 0 error: `built in 9.67s`. BlockSimulator3Dv2 chunk: 17.42 KB (gzip 6.10 KB — naik tipis dari V2 17.34 KB, wajar karena tambah ghost logic).
 - Review diff manual: semua 3 langkah cocok persis dengan spesifikasi prompt kerja V3 (state init, ghost drawing dengan alpha 0.35 + dashed stroke, getPlacementY helper, hover tracking dengan optimisasi "render cuma kalau berubah", onMouseLeave baru, hoverGrid=null saat orbit, dependency array tetap sama).
 - Verifikasi visual manual (live di browser) BELUM dilakukan di sesi ini — user perlu verify sendiri sesuai checklist prompt kerja V3:
   1. Tool "Place" aktif, gerakkan kursor di atas grid → muncul block transparan garis putus-putus ngikutin kursor, snap ke grid.
@@ -3238,17 +3238,17 @@ Plus:
 
 ---
 
-## Bagian 45 — 3D Block Simulator: 3 Fix Fondasi (Bagian 1) (20 Aug 2026)
+## Bagian 45 — 3D Block Simulator v2: 3 Fix Fondasi (Bagian 1) (20 Aug 2026)
 
 **Task ID:** 45
 **Agent:** main (Super Z)
-**Task:** Perbaiki 3 bug fondasi di `src/pages/BlockSimulator3D.jsx` sesuai `PROMPT_KERJA_3DBlockSim_Bagian1_FixFondasi.md` — orbit kamera terbalik, hitTest salah pilih blok saat tumpang-tindih, dan rotasi sumbu Z pakai rumus sumbu Y (rotZ belum pernah dibuat).
+**Task:** Perbaiki 3 bug fondasi di `src/pages/BlockSimulator3Dv2.jsx` sesuai `PROMPT_KERJA_3DBlockSim_Bagian1_FixFondasi.md` — orbit kamera terbalik, hitTest salah pilih blok saat tumpang-tindih, dan rotasi sumbu Z pakai rumus sumbu Y (rotZ belum pernah dibuat).
 
 ### Latar belakang
 Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) sudah selesai di Bagian 40, 41, 43 — tidak diulang. Task ini Bagian 1 dari 2 (Bagian 2 = gizmo Move/Rotate/Scale 3-axis ala Roblox Studio + porting Paint dari 2D, akan dikerjakan sebagai prompt terpisah nanti — JANGAN dikerjakan di sini). Scope HANYA 3 fix ini di 1 file saja.
 
 ### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
-- `src/pages/BlockSimulator3D.jsx` — 3 fix (BUG #1, #2, #3), total +16/-5 baris.
+- `src/pages/BlockSimulator3Dv2.jsx` — 3 fix (BUG #1, #2, #3), total +16/-5 baris.
 
 ### Perubahan
 
@@ -3302,8 +3302,8 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 - Gizmo Move/Rotate/Scale 3-axis ala Roblox Studio dan porting Paint dari 2D — TIDAK dikerjakan di sini, itu Bagian 2 (prompt terpisah, menunggu konfirmasi Bagian 1 beres).
 
 ### Verifikasi (checklist dari prompt kerja)
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.78s`. BlockSimulator3D chunk: 20.00 KB (gzip 6.43 KB — naik tipis dari V3 17.42 KB karena tambah fungsi `rotZ` + logika sort di `hitTest`).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+16/-5 baris). Tidak ada file `src/` lain berubah, tidak ada file lain di repo yang ikut tersenggol.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.78s`. BlockSimulator3Dv2 chunk: 20.00 KB (gzip 6.43 KB — naik tipis dari V3 17.42 KB karena tambah fungsi `rotZ` + logika sort di `hitTest`).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3Dv2.jsx` (+16/-5 baris). Tidak ada file `src/` lain berubah, tidak ada file lain di repo yang ikut tersenggol.
 3. ⚠️ **Verifikasi manual per bug** — sesuai RULES_AUTONOMI_QWEN Bagian 2 poin 4, aku JUJUR lapor: tidak bisa verifikasi visual langsung di browser di environment CLI ini (tidak ada Chrome/Playwright/Puppeteer yang ter-install di sesi ini). Yang dilakukan:
    - **BUG #1 (kamera):** verifikasi lewat kode — sign `+` di kedua sumbu (yaw & pitch) sesuai spesifikasi prompt. Verifikasi natural feel drag kanan/kiri butuh live browser, user perlu verify sendiri.
    - **BUG #2 (hitTest):** verifikasi lewat logic check — sort depth pakai rumus persis sama dengan `render()`, iterasi dari belakang array sorted = cek blok paling depan duluan. Cocok 100% dengan spesifikasi.
@@ -3324,7 +3324,7 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 - Branch: `main`, sync dengan `origin/main` (0 commit ahead, 0 commit behind).
 
 ### Stage Summary
-- 3 bug fondasi di `BlockSimulator3D.jsx` sudah diperbaiki sesuai spesifikasi prompt kerja Bagian 1.
+- 3 bug fondasi di `BlockSimulator3Dv2.jsx` sudah diperbaiki sesuai spesifikasi prompt kerja Bagian 1.
 - Build sukses 0 error, scope terjaga (1 file saja).
 - Verifikasi matematis `rotZ` lulus 10/10 test case. Verifikasi live di browser TIDAK bisa dilakukan di sesi ini — user perlu verify sendiri saat Bagian 2 mulai (atau lewat preview Vercel setelah push).
 - Tidak ada inisiatif di luar scope: gizmo, porting Paint, atau perubahan file lain TIDAK dikerjakan — menunggu prompt terpisah.
@@ -3332,14 +3332,14 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 
 ---
 
-## Bagian 46 — 3D Block Simulator: Bagian 2 — Gizmo 3-Axis + Paint Port (20 Aug 2026)
+## Bagian 46 — 3D Block Simulator v2: Bagian 2 — Gizmo 3-Axis + Paint Port (20 Aug 2026)
 
 **Task ID:** 46
 **Agent:** main (Super Z)
 **Task:** Implementasi 4 fitur sesuai `PROMPT_KERJA_3DBlockSim_Bagian2_Gizmo_Paint.md` — Move/Rotate/Scale gizmo 3-axis ala Roblox Studio + porting Paint dari 2D (`ColorWheelPicker` modal). Dibangun di atas Bagian 1 (fix orbit sign, hitTest depth-sort, rotZ function — semua SUDAH terverifikasi & ter-push sebagai commit `9cd1542`).
 
 ### File yang diubah (HANYA 1 file, sesuai scope prompt kerja)
-- `src/pages/BlockSimulator3D.jsx` — 4 fitur, total +293/-17 baris.
+- `src/pages/BlockSimulator3Dv2.jsx` — 4 fitur, total +293/-17 baris.
 
 ### File yang DIBACA (referensi, TIDAK diubah)
 - `src/components/ColorWheelPicker.jsx` — baca props (`hex`, `onChange`, `onPickColor` opsional) untuk pakai komponen yang sudah ada tanpa duplikat.
@@ -3425,8 +3425,8 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
    - ⚠️ Verifikasi live di browser BELUM dilakukan. User perlu verify: buka modal, pilih warna bebas via wheel/slider/input hex, Confirm → `currentColor` berubah, swatch di palet tidak ikut highlight (karena bukan preset), tombol "Pilih Warna Lain" berubah warna bg = warna baru.
    - ⚠️ FITUR 4 poin 2 (tombol di dalam `paintConfirm` popup) DI-SKIP sesuai izin opsional. Lihat alasan di bagian "Perubahan" di atas.
 
-5. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.22s`. BlockSimulator3D chunk: 24.77 KB (gzip 7.57 KB — naik dari 20.00 KB karena tambah gizmo render + handle logic + ColorWheelPicker modal import).
-6. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+293/-17 baris). Tidak ada file lain tersenggol.
+5. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.22s`. BlockSimulator3Dv2 chunk: 24.77 KB (gzip 7.57 KB — naik dari 20.00 KB karena tambah gizmo render + handle logic + ColorWheelPicker modal import).
+6. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3Dv2.jsx` (+293/-17 baris). Tidak ada file lain tersenggol.
 7. ✅ **Update `memory.md`** — entri ini ditambahkan (append, BUKAN overwrite) di Bagian 46.
 8. ✅ **STOP setelah task ini** — tidak cari perbaikan tambahan sendiri di luar 4 fitur ini.
 9. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa akan dilakukan di task terpisah setelah token dari user diterima.
@@ -3441,7 +3441,7 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 - Saat task push dijalankan, kedua commit ini WAJIB di-push bersama-sama (push biasa, fast-forward).
 
 ### Stage Summary
-- 4 fitur Bagian 2 di `BlockSimulator3D.jsx` sudah dikerjakan sesuai spesifikasi prompt kerja.
+- 4 fitur Bagian 2 di `BlockSimulator3Dv2.jsx` sudah dikerjakan sesuai spesifikasi prompt kerja.
 - Build sukses 0 error, scope terjaga (1 file saja, +293/-17 baris).
 - Verifikasi matematis (9/9 test di `verify_gizmo.mjs`) lulus untuk dragAxisDelta, scale kompensasi, snap per-axis. Verifikasi live di browser TIDAK bisa dilakukan di sesi ini — user perlu verify sendiri saat preview Vercel setelah push.
 - Tidak ada inisiatif di luar scope. FITUR 4 poin 2 (tombol di dalam `paintConfirm` popup) di-skip sesuai izin opsional di prompt kerja — alasan dicatat di atas.
@@ -3449,17 +3449,17 @@ Task V1 (layout), V2 (kamera/bentuk/background), dan V3 (ghost/preview block) su
 
 ---
 
-## Bagian 47 — 3D Block Simulator: Copy Sistem Paint dari LogicGatesSimulator 2D (21 Aug 2026)
+## Bagian 47 — 3D Block Simulator v2: Copy Sistem Paint dari LogicGatesSimulator 2D (21 Aug 2026)
 
 **Task ID:** 47
 **Agent:** main (Super Z)
-**Task:** Copy-paste sistem paint dari `src/pages/LogicGatesSimulator.jsx` (2D) ke `src/pages/BlockSimulator3D.jsx` (3D). Hanya copy, tanpa menyentuh sistem lain (gizmo, place, delete, clone, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx).
+**Task:** Copy-paste sistem paint dari `src/pages/LogicGatesSimulator.jsx` (2D) ke `src/pages/BlockSimulator3Dv2.jsx` (3D). Hanya copy, tanpa menyentuh sistem lain (gizmo, place, delete, clone, App.jsx, ColorWheelPicker.jsx, LogicGatesSimulator.jsx).
 
 ### Latar belakang
 User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & klik blok → muncul modal overlay full-screen (bukan popup kecil) berisi `ColorWheelPicker` + tombol Pick Color (eyedropper) / Confirm / Cancel. Sistem lama (`paintConfirm` popup kecil dengan preview Before/After) dihapus, diganti dengan sistem 2D yang lebih lengkap.
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — copy sistem paint dari 2D, +249/-114 baris.
+- `src/pages/BlockSimulator3Dv2.jsx` — copy sistem paint dari 2D, +249/-114 baris.
 
 ### File yang DIBACA (referensi, TIDAK diubah)
 - `src/pages/LogicGatesSimulator.jsx` baris 1945-1954 (state), 1945-2020 (refs + eyedropper cursor helper), 3581-3629 (marching ants di render), 4192-4259 (PC mousedown paint mode), 4886-4945 (mobile touch paint mode), 8296-8430 (modal colorPicker JSX).
@@ -3552,8 +3552,8 @@ User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & kli
 
 ### Verifikasi
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.04s`. BlockSimulator3D chunk: 26.84 KB (gzip 8.12 KB — naik dari 24.77 KB karena tambah modal colorPicker + marching ants render + rAF loop).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3D.jsx` (+249/-114 baris). Tidak ada file lain tersenggol.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.04s`. BlockSimulator3Dv2 chunk: 26.84 KB (gzip 8.12 KB — naik dari 24.77 KB karena tambah modal colorPicker + marching ants render + rAF loop).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA 1 file berubah: `src/pages/BlockSimulator3Dv2.jsx` (+249/-114 baris). Tidak ada file lain tersenggol.
 3. ✅ **Code verification** — grep konfirmasi:
    - `paintConfirm` & `setPaintConfirm`: 0 occurrence (terhapus penuh).
    - State baru `colorPicker`, `pickFromWorkspace`, refs, `dashOffsetRef`, `rafRef`: semua ada.
@@ -3562,7 +3562,7 @@ User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & kli
    - Handler eyedropper (`pickFromWorkspaceRef.current`) di onMouseDown: ada.
    - Modal colorPicker overlay full-screen (`Block Color` title, `onPickColor`, `pickFromWorkspace`): ada.
 4. ⚠️ **Verifikasi live di browser** BELUM dilakukan (environment CLI tidak ada browser). User perlu verify di preview Vercel setelah push:
-   - Buka menu Shapes → 3D Block Simulator → tool Paint.
+   - Buka menu Shapes → 3D Block Simulator v2 → tool Paint.
    - Klik blok → modal full-screen muncul dengan ColorWheelPicker + tombol Pick Color/Confirm/Cancel.
    - Marching ants (dashed rect animasi) berputar di sekitar blok yang lagi di-paint.
    - Pilih warna di wheel → preview hex update di modal (BELUM apply ke blok).
@@ -3578,7 +3578,7 @@ User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & kli
 - Branch: `main`, 1 commit ahead of `origin/main`.
 
 ### Stage Summary
-- Sistem paint di `BlockSimulator3D.jsx` sekarang identik dengan `LogicGatesSimulator` (2D): modal overlay full-screen, ColorWheelPicker, tombol Pick Color (eyedropper) / Confirm / Cancel, marching ants animasi di sekitar blok target.
+- Sistem paint di `BlockSimulator3Dv2.jsx` sekarang identik dengan `LogicGatesSimulator` (2D): modal overlay full-screen, ColorWheelPicker, tombol Pick Color (eyedropper) / Confirm / Cancel, marching ants animasi di sekitar blok target.
 - Sistem lama (`paintConfirm` popup kecil + auto-trigger dari klik swatch & showColorWheel Confirm) dihapus penuh.
 - Palet warna sekarang tampil hanya saat tool='place' (konsisten dengan 2D — saat Paint mode, user pilih warna lewat modal, bukan palet).
 - Build sukses 0 error, scope terjaga (1 file saja, +249/-114 baris).
@@ -3587,17 +3587,17 @@ User minta sistem paint di 3D identik dengan 2D: saat user buka tool Paint & kli
 
 ---
 
-## Bagian 48 — 3D Block Simulator: Fitur "Scale Step" — Snap Resize ke Kelipatan (21 Aug 2026)
+## Bagian 48 — 3D Block Simulator v2: Fitur "Scale Step" — Snap Resize ke Kelipatan (21 Aug 2026)
 
 **Task ID:** 48
 **Agent:** main (Super Z)
-**Task:** Implementasi fitur "Scale Step" di `src/pages/BlockSimulator3D.jsx` sesuai `PROMPT_KERJA_3DBlockSim_ScaleStep.md`. User bisa ketik angka bebas (1, 0.5, 0.1, 0.05, dst) sebagai kelipatan snap saat drag handle Scale — ukuran hasil selalu kelipatan dari angka itu, bukan desimal bebas.
+**Task:** Implementasi fitur "Scale Step" di `src/pages/BlockSimulator3Dv2.jsx` sesuai `PROMPT_KERJA_3DBlockSim_ScaleStep.md`. User bisa ketik angka bebas (1, 0.5, 0.1, 0.05, dst) sebagai kelipatan snap saat drag handle Scale — ukuran hasil selalu kelipatan dari angka itu, bukan desimal bebas.
 
 ### Latar belakang
 Terinspirasi dari game building 3D populer (sistem "Scale" mereka, dianalisis dari screenshot user — BUKAN kode/aset apapun yang disalin). User minta kontrol presisi: tentukan sendiri "kelipatan berapa" tiap tarikan handle Scale mengubah ukuran. Sebelumnya resize menghasilkan ukuran desimal bebas dari drag mouse mentah (misal 2.347). Sekarang dengan Scale Step = 2 → hasil selalu 2, 4, 6, 8... Dengan Scale Step = 0.05 → hasil 2.00, 2.05, 2.10...
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — +56/-1 baris.
+- `src/pages/BlockSimulator3Dv2.jsx` — +56/-1 baris.
 
 ### Perubahan
 
@@ -3611,7 +3611,7 @@ Terinspirasi dari game building 3D populer (sistem "Scale" mereka, dianalisis da
 - Posisi: di dalam toolbar Tools, di bawah daftar tombol tool, dengan divider tipis (`borderTop: 1px solid rgba(148,163,184,0.15)`) supaya visual terpisah dari tombol-tombol tool di atasnya.
 - Label "Step:" (font Orbitron, uppercase, letterSpacing 1px, 10px, color textSecondary — gaya konsisten dengan label "Tools" di atas).
 - Input `<input type="number" step="0.01" min="0.01" value={scaleStep}>`:
-  - Width 56px, bg #1e293b, border pink (#f472b6 supaya konsisten dengan tema BlockSimulator3D), borderRadius 4, padding 3px 6px, color #e2e8f0, font Inter 12px.
+  - Width 56px, bg #1e293b, border pink (#f472b6 supaya konsisten dengan tema BlockSimulator3Dv2), borderRadius 4, padding 3px 6px, color #e2e8f0, font Inter 12px.
   - `MozAppearance: 'textfield'` — sembunyikan spinner arrows default browser (biar UI bersih, user ketik manual).
   - `onChange`: parse value, clamp minimum ke 0.01 kalau input 0/negatif/NaN (bisa bikin Math.round(rawSize/step) jadi NaN/Infinity → size stuck/negatif).
   - `title` attribute: tooltip penjelasan singkat.
@@ -3648,8 +3648,8 @@ const newSize = Math.max(step, Math.round(rawSize / step) * step);
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.99s`. BlockSimulator3D chunk: 28.99 KB (gzip 8.71 KB — naik dari 26.84 KB karena tambah UI input + logic snap).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah (+56/-1 baris). Ada 5 file lain dengan mode-changes (0 insertions, 0 deletions — cuma permission bits dari operasi clone) — sesuai instruksi prompt: "JANGAN disentuh/direvert, itu wajar — tim paralel kerja modul lain". Hanya `BlockSimulator3D.jsx` yang di-add ke commit.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 9.99s`. BlockSimulator3Dv2 chunk: 28.99 KB (gzip 8.71 KB — naik dari 26.84 KB karena tambah UI input + logic snap).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah (+56/-1 baris). Ada 5 file lain dengan mode-changes (0 insertions, 0 deletions — cuma permission bits dari operasi clone) — sesuai instruksi prompt: "JANGAN disentuh/direvert, itu wajar — tim paralel kerja modul lain". Hanya `BlockSimulator3Dv2.jsx` yang di-add ke commit.
 3. ✅ **Logic check manual** (verify_scale_step.mjs, 19/19 test lulus):
    - Scale Step = 1: raw=2.347 → snap=2; raw=2.6 → snap=3; raw=3.5 → snap=4 (round 0.5 ke atas). ✓
    - Scale Step = 0.5: raw=2.347 → snap=2.5; raw=2.7 → snap=2.5 (closer to 2.5); raw=2.8 → snap=3.0. ✓
@@ -3668,7 +3668,7 @@ const newSize = Math.max(step, Math.round(rawSize / step) * step);
 - Branch: `main`, N commit ahead of `origin/main`.
 
 ### Stage Summary
-- Fitur "Scale Step" di `BlockSimulator3D.jsx` sudah dikerjakan sesuai spesifikasi prompt kerja.
+- Fitur "Scale Step" di `BlockSimulator3Dv2.jsx` sudah dikerjakan sesuai spesifikasi prompt kerja.
 - User bisa ketik angka bebas (1, 0.5, 0.1, 0.05, dst) sebagai kelipatan snap saat resize handle Scale.
 - Build sukses 0 error, scope terjaga (1 file saja, +56/-1 baris).
 - Verifikasi matematis (19/19 test di `verify_scale_step.mjs`) lulus untuk semua edge case: step=1, 0.5, 0.05, 2, plus kompensasi posisi (sisi berlawanan tetap diam) dengan snap.
@@ -3677,7 +3677,7 @@ const newSize = Math.max(step, Math.round(rawSize / step) * step);
 
 ---
 
-## Bagian 49 — 3D Block Simulator: Gizmo Move Bentuk Panah (Tahap 1/3) (21 Aug 2026)
+## Bagian 49 — 3D Block Simulator v2: Gizmo Move Bentuk Panah (Tahap 1/3) (21 Aug 2026)
 
 **Task ID:** 49
 **Agent:** main (Super Z)
@@ -3687,7 +3687,7 @@ const newSize = Math.max(step, Math.round(rawSize / step) * step);
 Tahap 1 dari 3 rencana besar gizmo profesional. Tahap 2 (banyak jenis primitif) & Tahap 3 (split-screen dual camera) = prompt terpisah nanti, JANGAN dikerjakan di sini. Referensi: screenshot software 3D profesional, dianalisis user — BUKAN aset/kode apapun disalin, murni referensi visual gizmo standar.
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — +35/-2 baris.
+- `src/pages/BlockSimulator3Dv2.jsx` — +35/-2 baris.
 
 ### Perubahan
 
@@ -3732,8 +3732,8 @@ if (tool === 'move') {
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.27s`. BlockSimulator3D chunk: 29.34 KB (gzip 8.85 KB — naik tipis dari 28.99 KB karena tambah logika segitiga kepala panah).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah (+35/-2 baris). Tidak ada file lain tersenggol.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.27s`. BlockSimulator3Dv2 chunk: 29.34 KB (gzip 8.85 KB — naik tipis dari 28.99 KB karena tambah logika segitiga kepala panah).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah (+35/-2 baris). Tidak ada file lain tersenggol.
 3. ⚠️ **Verifikasi manual visual** BELUM dilakukan (env CLI tidak ada browser). User perlu verify di preview Vercel setelah push:
    - Tool **Move**: handle sekarang tampil sebagai **panah** (garis + kepala segitiga mengarah keluar dari pusat blok ke ujung handle). Untuk handle -axis (merah/hijau/biru opacity 0.55), kepala panah otomatis mengarah ke arah berlawanan juga (ke arah -X/-Y/-Z).
    - Tool **Scale**: TETAP lingkaran solid seperti sebelumnya (tidak berubah).
@@ -3751,7 +3751,7 @@ if (tool === 'move') {
 
 ---
 
-## Bagian 50 — 3D Block Simulator: Shape Generator (Tahap 2/3) (21 Aug 2026)
+## Bagian 50 — 3D Block Simulator v2: Shape Generator (Tahap 2/3) (21 Aug 2026)
 
 **Task ID:** 50
 **Agent:** main (Super Z)
@@ -3761,7 +3761,7 @@ if (tool === 'move') {
 SEMUA bentuk yang dihasilkan TETAP berupa objek kubus biasa (elemen array `s.blocks`, struktur `{pos, rot, size, color, id}` — SAMA PERSIS seperti kubus yang sudah ada). TIDAK ADA geometri baru, TIDAK ADA field `shape` di data block, TIDAK ADA perubahan ke `getBlockCorners`/`render`/`hitTest`. Setelah di-generate, tiap kubus bisa di-Move/Rotate/Scale/Paint/Delete satu-satu seperti kubus biasa.
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — + banyak baris (8 fungsi generator + data polyhedron + UI panel + handler).
+- `src/pages/BlockSimulator3Dv2.jsx` — + banyak baris (8 fungsi generator + data polyhedron + UI panel + handler).
 
 ### Perubahan
 
@@ -3832,8 +3832,8 @@ SEMUA bentuk yang dihasilkan TETAP berupa objek kubus biasa (elemen array `s.blo
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 12.05s`. BlockSimulator3D chunk: 38.10 KB (gzip 11.14 KB — naik signifikan dari 29.34 KB karena tambah 8 fungsi generator + data polyhedron + UI panel + handler).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. Ada 5 file lain dengan mode-changes dari clone (lib/auditLog.js, lib/marketplace.js, src/components/CartPanel.jsx, src/components/MenuButton3D.jsx, src/pages/MarketplacePage.jsx) — TIDAK disentuh, hanya mode bits dari operasi git clone, bukan konten.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 12.05s`. BlockSimulator3Dv2 chunk: 38.10 KB (gzip 11.14 KB — naik signifikan dari 29.34 KB karena tambah 8 fungsi generator + data polyhedron + UI panel + handler).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah. Ada 5 file lain dengan mode-changes dari clone (lib/auditLog.js, lib/marketplace.js, src/components/CartPanel.jsx, src/components/MenuButton3D.jsx, src/pages/MarketplacePage.jsx) — TIDAK disentuh, hanya mode bits dari operasi git clone, bukan konten.
 3. ⚠️ **Verifikasi visual tiap bentuk** BELUM dilakukan (env CLI tidak ada browser). User perlu verify di preview Vercel setelah push:
    - Generate tiap dari 8 pilihan, cek visual kasar mendekati target.
    - Sphere: bulat (UV-sphere).
@@ -3919,8 +3919,8 @@ const tangentHint = { x: -Math.sin(sudutAzimuth), y: 0, z: Math.cos(sudutAzimuth
 
 ### Verifikasi
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.43s`. BlockSimulator3D chunk: 38.66 KB (gzip 11.35 KB — naik tipis dari 38.10 KB karena fungsi `solveFullOrientation` lebih besar sedikit dari `alignPlateToNormal` lama: ada Gram-Schmidt + cross product + 3 sudut).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.43s`. BlockSimulator3Dv2 chunk: 38.66 KB (gzip 11.35 KB — naik tipis dari 38.10 KB karena fungsi `solveFullOrientation` lebih besar sedikit dari `alignPlateToNormal` lama: ada Gram-Schmidt + cross product + 3 sudut).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
 3. ✅ **Verifikasi matematis** (`verify_solve_full_orientation.mjs`, 10/10 test lulus):
    - SPHERE equator phi=0: normal (0,0,1)→(1,0,0) ✓, tangent (1,0,0)→(0,0,1) ✓.
    - SPHERE equator phi=π/2: normal (0,0,1)→(0,0,1) ✓, tangent (1,0,0)→(-1,0,0) ✓.
@@ -3966,7 +3966,7 @@ const tangentHint = { x: -Math.sin(sudutAzimuth), y: 0, z: Math.cos(sudutAzimuth
 User mau kontrol resolusi bebas + hasil visual lebih rapi/konsisten (gaya building game asli yang pakai voxel). Pendekatan panel-rotasi terlalu rumit (perlu `solveFullOrientation` 3-sudut + Gram-Schmidt + cross product + per-bentuk tangentHint) dan hasilnya masih bisa menyilang di beberapa edge case. Voxel-fill jauh lebih sederhana: isi permukaan bentuk target dengan BANYAK kubus kecil **axis-aligned (rot 0,0,0 — TIDAK ada rotasi sama sekali)**, ukuran seragam sebesar "Voxel Size" yang user tentukan bebas (0.05, 0.1, 0.2, 0.5, 1, 2, dst — INPUT ANGKA BEBAS, bukan dropdown preset).
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — hapus sistem panel-rotasi lama, ganti total dengan sistem voxel-fill baru.
+- `src/pages/BlockSimulator3Dv2.jsx` — hapus sistem panel-rotasi lama, ganti total dengan sistem voxel-fill baru.
 
 ### Yang di-HAPUS (sistem lama, sudah tidak dipakai)
 - Konstanta `TETRAHEDRON`, `OCTAHEDRON`, `ICOSAHEDRON` lama (renamed jadi `TETRAHEDRON_VF`, `OCTAHEDRON_VF`, `ICOSAHEDRON_VF` — data vertex/face tetap dipakai untuk `computePlanes`).
@@ -4018,8 +4018,8 @@ User mau kontrol resolusi bebas + hasil visual lebih rapi/konsisten (gaya buildi
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.58s`. BlockSimulator3D chunk: 38.23 KB (gzip 11.43 KB — TURUN dari 38.66 KB karena sistem voxel-fill lebih kompak dari panel-rotasi yang punya 8 fungsi generator besar).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.58s`. BlockSimulator3Dv2 chunk: 38.23 KB (gzip 11.43 KB — TURUN dari 38.66 KB karena sistem voxel-fill lebih kompak dari panel-rotasi yang punya 8 fungsi generator besar).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
 3. ⚠️ **Verifikasi visual WAJIB** semua 8 bentuk dengan minimal 2 Voxel Size berbeda — BELUM dilakukan di env CLI (tidak ada browser). User perlu verify di preview Vercel setelah push:
    - Coba 2 Voxel Size per bentuk: misal 0.5 (kasar) dan 0.2 (halus).
    - Sphere: bulat (voxel shell).
@@ -4066,14 +4066,14 @@ User mau kontrol resolusi bebas + hasil visual lebih rapi/konsisten (gaya buildi
 
 ---
 
-## Bagian 53 — 3D Block Simulator: 6 Perbaikan Bundel (21 Aug 2026)
+## Bagian 53 — 3D Block Simulator v2: 6 Perbaikan Bundel (21 Aug 2026)
 
 **Task ID:** 53
 **Agent:** main (Super Z)
 **Task:** 6 perbaikan independen sesuai `PROMPT_KERJA_3DBlockSim_6Perbaikan.md`. Verifikasi tiap poin selesai sebelum lanjut.
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — semua 6 poin.
+- `src/pages/BlockSimulator3Dv2.jsx` — semua 6 poin.
 
 ### POIN A — Tombol "Clear All" (merah, konfirmasi 2-tahap)
 - Tambah tool baru `clear` di array TOOLS (icon `Eraser` dari lucide-react, shortcut `l` — `x` sudah dipakai Delete).
@@ -4141,7 +4141,7 @@ Voxel yang DIROTASI (hasil Sphere/Cyl/Cone/Torus Shape Generator) **TIDAK IKUT D
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 11.10s`. BlockSimulator3D chunk: 42.20 KB (gzip 12.43 KB — naik dari 38.23 KB karena tambah face culling logic + UI Clear All + solveFullOrientation + computeSurfaceNormal).
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 11.10s`. BlockSimulator3Dv2 chunk: 42.20 KB (gzip 12.43 KB — naik dari 38.23 KB karena tambah face culling logic + UI Clear All + solveFullOrientation + computeSurfaceNormal).
 2. ✅ **POIN A** — Tombol Clear All muncul saat `tool='clear'`. Konfirmasi 2-tahap: klik "Clear All" → masuk mode konfirmasi → klik "Yakin? Hapus SEMUA" → semua blok hilang, `s.selected` di-reset. Tombol disabled kalau `blockCount=0`. Reset `confirmClearAll=false` saat user pindah tool (useEffect).
 3. ✅ **POIN B** — Face culling logic-confirmed via code reading:
    - `blockLookup` diisi cuma blok axis-aligned (rot ≈ 0).
@@ -4211,8 +4211,8 @@ Voxel yang DIPUTAR (Poin F di Bagian 53) individual berputar sedikit beda arah m
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.11s`. BlockSimulator3D chunk: 42.22 KB (gzip 12.45 KB — naik tipis dari 42.20 KB karena tambah konstanta + sedikit logic).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.11s`. BlockSimulator3Dv2 chunk: 42.22 KB (gzip 12.45 KB — naik tipis dari 42.20 KB karena tambah konstanta + sedikit logic).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
 3. ⚠️ **Verifikasi visual WAJIB** — BELUM dilakukan di env CLI (tidak ada browser). User perlu verify di preview Vercel setelah push:
    - Generate ulang Sphere & Cone (2 kasus di screenshot).
    - Celah/bolong gelap HARUS hilang atau MINIMAL jauh berkurang.
@@ -4238,7 +4238,7 @@ Voxel yang DIPUTAR (Poin F di Bagian 53) individual berputar sedikit beda arah m
 
 ---
 
-## Bagian 55 — 3D Block Simulator: Dual Camera View (Tahap 3/3 — TASK TERAKHIR) (21 Aug 2026)
+## Bagian 55 — 3D Block Simulator v2: Dual Camera View (Tahap 3/3 — TASK TERAKHIR) (21 Aug 2026)
 
 **Task ID:** 55
 **Agent:** main (Super Z)
@@ -4258,7 +4258,7 @@ Sebagai gantinya, buat sistem Camera B sendiri:
 Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" sistem yang sudah ada.
 
 ### File yang diubah (HANYA 1 file)
-- `src/pages/BlockSimulator3D.jsx` — semua perubahan.
+- `src/pages/BlockSimulator3Dv2.jsx` — semua perubahan.
 
 ### Perubahan
 
@@ -4308,8 +4308,8 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
 
 ### Verifikasi (checklist dari prompt kerja)
 
-1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.77s`. BlockSimulator3D chunk: 46.90 KB (gzip 13.29 KB — naik dari 42.22 KB karena tambah sistem Camera B: projectB, getBlockCornersB, renderB, resizeB, orbit handlers, useEffect).
-2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3D.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
+1. ✅ **Build check** — `npm run build` sukses 0 error, `built in 10.77s`. BlockSimulator3Dv2 chunk: 46.90 KB (gzip 13.29 KB — naik dari 42.22 KB karena tambah sistem Camera B: projectB, getBlockCornersB, renderB, resizeB, orbit handlers, useEffect).
+2. ✅ **Scope check** — `git diff --stat` konfirmasi HANYA `src/pages/BlockSimulator3Dv2.jsx` berubah. File lain (lib/, CartPanel, MenuButton3D, MarketplacePage) cuma mode-changes dari clone, tidak disentuh.
 3. ✅ **Verifikasi Camera A TIDAK BERUBAH SAMA SEKALI** — code reading check:
    - `project` (line 467), `getBlockCorners` (line 484), `render` (line 509), `hitTest` (line 1132), `getGridPos` (line 1163), `runPlace` (line 1228), `runGenerate` (line 1256) — semua tetap di lokasi yang sama, tidak ada satu baris pun diubah.
    - 16 reference ke `s.camB`/`canvasBRef`/`containerBRef` — semua di dalam useEffect Camera B yang isolated (dependency array hanya `[dualView]`).
@@ -4325,7 +4325,7 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
    - Edit blok di Camera A (Place/Move/Rotate/dst) → Camera B otomatis update (5fps, 200ms delay wajar untuk viewer pasif).
 6. ✅ **Update `memory.md`** — entri ini ditambahkan (append) di Bagian 55. Jelaskan arsitektur (sistem terpisah, alasan duplikasi kode disengaja demi keamanan Camera A).
 7. ✅ **`git push --force` TIDAK dilakukan** — sesuai `RULES_KESELAMATAN_GIT.md` Aturan 1. Push biasa.
-8. ✅ **Task TERAKHIR dari rencana 3-tahap** — setelah ini selesai & terverifikasi, seluruh rencana besar 3D Block Simulator (gizmo panah → shape generator → dual camera) tuntas.
+8. ✅ **Task TERAKHIR dari rencana 3-tahap** — setelah ini selesai & terverifikasi, seluruh rencana besar 3D Block Simulator v2 (gizmo panah → shape generator → dual camera) tuntas.
 
 ### Catatan untuk task berikutnya (push commit)
 - Commit lokal dibuat dengan pesan: `feat(3d-block-sim): Tahap 3/3 — Dual Camera View (Camera B viewer pasif, sistem terpisah)`.
@@ -4340,7 +4340,7 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
 - Build sukses 0 error, scope terjaga (1 file saja).
 - Verifikasi matematis tidak diperlukan (Camera B reuse rumus yang sudah terverifikasi — project/getBlockCorners/painter's algorithm/backface cull).
 - Verifikasi visual live TUNGGU user — verify di Vercel setelah push: toggle Dual View, cek Camera B orbit+zoom, blok sinkron, Camera A tetap utuh.
-- Rencana besar 3D Block Simulator (gizmo panah → shape generator → dual camera) TUNTAS setelah task ini.
+- Rencana besar 3D Block Simulator v2 (gizmo panah → shape generator → dual camera) TUNTAS setelah task ini.
 - Commit lokal siap di-push setelah token dari user diterima.
 
 ---
@@ -4421,7 +4421,7 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
 - Build sukses 0 error (Vite). Lint warning untuk chunk size > 500kB sudah ada sebelumnya
   (bukan dari task ini).
 - Scope terjaga: 4 file disentuh (MenuButton3D.jsx, App.jsx, design.md, memory.md).
-  Tidak menyentuh sistem lain (LogicGatesSimulator, BlockSimulator3D, backend, auth, dll).
+  Tidak menyentuh sistem lain (LogicGatesSimulator, BlockSimulator3Dv2, backend, auth, dll).
 - Push normal (NO force push) — sesuai checklist Bagian 6 prompt kerja.
 
 ---
@@ -4590,7 +4590,7 @@ Duplikasi kode kecil ini SENGAJA — lebih aman daripada coba "generalize" siste
 ## Bagian 59 — SHAPES CALCULATOR & 3D BLOCK SIMULATOR DISERAGAMKAN + FIX SLOT ICON OVERFLOW
 
 > Task: `PROMPT_KERJA_ShapesCalculator_3DBlockSim_StandarDesain.md`. 2 tombol submenu
-> Shapes (Shapes Calculator & 3D Block Simulator) sebelumnya masih pakai gaya lama
+> Shapes (Shapes Calculator & 3D Block Simulator v2) sebelumnya masih pakai gaya lama
 > (dark card + border glow neon + `<button>` mentah di `ShapesPage.jsx`). Task ini
 > menyeragamkannya ke standar `MenuButton3D` (Bagian 56) + FIX overflow di slot icon
 > `MenuButton3D.jsx` supaya icon custom-size tidak kepotong.
@@ -4604,7 +4604,7 @@ array `TOOLS` + `.map()` untuk generate 2 `<button>` mentah dengan inline style.
 | Tombol | requiresAuth | locked lama | onClick lama |
 |--------|--------------|-------------|---------------|
 | Shapes Calculator | (undefined → false) | `false` (selalu unlocked) | `setPage('shapes-calculator')` |
-| 3D Block Simulator | `true` | `!user` (guest locked, user unlocked) | `locked ? onGuestClick() : setPage('block-simulator-3d')` |
+| 3D Block Simulator v2 | `true` | `!user` (guest locked, user unlocked) | `locked ? onGuestClick() : setPage('block-simulator-3d-v2')` |
 
 Pola onClick lama: `() => locked ? (onGuestClick && onGuestClick()) : setPage(t.id)`.
 
@@ -4612,7 +4612,7 @@ Pola onClick lama: `() => locked ? (onGuestClick && onGuestClick()) : setPage(t.
 | Tombol | onClick baru | locked baru |
 |--------|--------------|-------------|
 | Shapes Calculator | `() => setPage('shapes-calculator')` | (default false, tidak dispesifikasi) |
-| 3D Block Simulator | `() => user ? setPage('block-simulator-3d') : (onGuestClick && onGuestClick())` | `!user` |
+| 3D Block Simulator v2 | `() => user ? setPage('block-simulator-3d-v2') : (onGuestClick && onGuestClick())` | `!user` |
 
 Identik dengan kode lama — grep-verified. Pola sama dengan submenu Logic Gates tombol
 ke-4 (Bagian 58): guard `user ? ... : onGuestClick()` untuk handle guest + prop
@@ -4623,7 +4623,7 @@ ke-4 (Bagian 58): guard `user ? ... : onGuestClick()` untuk handle guest + prop
 **Bug ditemukan saat inspeksi `MenuButton3D.jsx`** sebelum ganti 2 tombol ini:
 - Button parent punya `overflow: 'hidden'` (dari task Bagian 56) — ini akan
   **MEMOTONG icon yang lebih besar dari slot 56×56**.
-- Icon wrapper 3D Block Simulator = 124×124 — overflow 34px each side dari slot
+- Icon wrapper 3D Block Simulator v2 = 124×124 — overflow 34px each side dari slot
   56×56. Dengan button overflow:hidden, akan terpotong di batas tombol.
 - Icon wrapper Shapes Calculator = 50×50 — masih muat di slot 56×56, tidak
   kena issue.
@@ -4645,7 +4645,7 @@ ke-4 (Bagian 58): guard `user ? ... : onGuestClick()` untuk handle guest + prop
 Slot icon di MenuButton3D = `width: 56, height: 56` (TETAP) + `flexShrink: 0`.
 - Tombol 1 (Shapes Calculator): icon wrapper 50×50 muat di slot 56×56 → label mulai
   di x = 20 (padding) + 56 (slot) + 14 (gap) = **90px** dari kiri tombol.
-- Tombol 2 (3D Block Simulator): icon wrapper 124×124 meluber keluar slot
+- Tombol 2 (3D Block Simulator v2): icon wrapper 124×124 meluber keluar slot
   (overflow:visible), tapi **slot width tetap 56px** → label mulai di
   x = 20 + 56 + 14 = **90px** dari kiri tombol.
 - **Kedua tombol label-nya mulai di x=90px → sejajar lurus** ✓
@@ -4654,7 +4654,7 @@ Slot icon di MenuButton3D = `width: 56, height: 56` (TETAP) + `flexShrink: 0`.
 - **Tombol 1 (Shapes Calculator)**: wrapper 50×50, SVG isi `viewBox="0 0 24 24"`
   `width="100%" height="100%"`. Bentuk: calculator (rounded rect + screen display
   + 9 button dots 3×3 grid). Warna teal `hsl(170,80%,52%→32%→22%)`.
-- **Tombol 2 (3D Block Simulator)**: wrapper 124×124, SVG isi `viewBox="-10 -13 50 50"`
+- **Tombol 2 (3D Block Simulator v2)**: wrapper 124×124, SVG isi `viewBox="-10 -13 50 50"`
   `width="100%" height="100%"`. Bentuk: kubus 3D isometric (3 face: top putih bright,
   left putih medium, right pakai `url(#menuIconGrad)` for shading) + 3 axis gizmo
   panah (Y hijau `#4ade80` atas, X merah `#f87171` kanan, Z biru `#60a5fa` kiri).
@@ -4695,11 +4695,11 @@ cuma sekarang di-comment supaya next dev tidak sengaja balikin `hidden`.
 ### Yang DIPERTAHANKAN (Tidak Boleh Regresi)
 - `onClick` 2 tombol — grep-verified identik dengan kode lama (pola conditional
   `user ? setPage : onGuestClick` di tombol ke-2 dipertahankan).
-- `locked={!user}` di tombol 3D Block Simulator — reuse mekanisme locked bawaan
+- `locked={!user}` di tombol 3D Block Simulator v2 — reuse mekanisme locked bawaan
   `MenuButton3D`, TIDAK ada logika baru.
 - Tombol Back (ke menu utama) — TIDAK diubah, masih pakai `<button>` mentah
   dengan style sendiri (bukan MenuButton3D, karena tombol secondary kecil).
-- Page routing di App.jsx (`'shapes-calculator'`, `'block-simulator-3d'`) —
+- Page routing di App.jsx (`'shapes-calculator'`, `'block-simulator-3d-v2'`) —
   tidak diubah, masih di KNOWN_PAGES.
 - 8 tombol sebelumnya (6 menu utama + 4 submenu Logic Gates) — tidak tersentuh,
   standar desain mereka tidak berubah.
@@ -4710,7 +4710,7 @@ cuma sekarang di-comment supaya next dev tidak sengaja balikin `hidden`.
    (ganti 2 tombol) + `memory.md` (entri ini). Tidak sentuh file lain.
 3. `onClick` kedua tombol MASIH BERFUNGSI PERSIS — grep-verified identik dengan
    kode lama.
-4. Label "Shapes Calculator" dan "3D Block Simulator" SEJAJAR LURUS — code
+4. Label "Shapes Calculator" dan "3D Block Simulator v2" SEJAJAR LURUS — code
    review: slot icon fixed 56px, label mulai di x=90px untuk kedua tombol.
 5. Icon kubus+gizmo 124×124 TIDAK KEPOTONG — button overflow:visible, icon
    extends 14px ke kiri dan 18px ke atas dari tombol, tapi tidak terpotong.
@@ -5707,7 +5707,7 @@ multi-line + 3 inline manual (WebXR VR/AR support + toggleBloom case).
   di `/home/z/my-project/scripts/` (ephemeral, di luar repo).
 - **Comment `// Phase N: ...`** TETAP dipertahankan apa adanya (dokumentasi internal
   file, bukan debug code).
-- **`BlockSimulator3D.jsx` (v1)** TIDAK disentuh sama sekali.
+- **`BlockSimulator3Dv2.jsx` (v1)** TIDAK disentuh sama sekali.
 
 ### Stage Summary
 - 2 commit terpisah sesuai RULES_KESELAMATAN_GIT.md:
@@ -6034,7 +6034,7 @@ di-auto-fix tanpa persetujuan — lihat instruction.md Bagian 3)
 
 ## Bagian 69 — BLOCK SIM V2: FIX BUG TOGGLE SECTION BUILD TIDAK BISA TUTUP
 
-> Task (request user, brief rinci): di 3D Block Simulator V2, klik header section
+> Task (request user, brief rinci): di 3D Block Simulator v2 V2, klik header section
 > "Build" tidak bisa menutup menu — Build tetap terbuka. Brief menyertakan analisis:
 > state/toggle/conditional render terlihat benar; dugaan root cause event propagation,
 > localStorage corruption, CSS conflict, fragment issue, z-index/pointer-events.

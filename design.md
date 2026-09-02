@@ -1296,8 +1296,8 @@ Behavior ini WAJIB tidak regresi setiap kali komponen di-rewrite.
 
 ### 41.3 Aturan Pemakaian
 
-- Halaman tool full-screen yang punya background solid sendiri (BlockSimulator3D /
-  v2, CanvasPage, CircuitGenerator, LogicGatesSimulator, dll.) TIDAK diubah —
+- Halaman tool full-screen yang punya background solid sendiri (BlockSimulator3Dv2,
+  CanvasPage, CircuitGenerator, LogicGatesSimulator, dll.) TIDAK diubah —
   mereka menutupi layer ini by design.
 - Kalau mau ganti gambar background: replace `public/bg-island.webp` saja
   (nama file sama), jangan ubah struktur layer-nya.
@@ -2414,7 +2414,7 @@ proyeksi klik dihitung manual (fov 60, aspect 2.51):
 - Modal Build Area open/close normal; 0 console error.
 - Marker regresi utuh: Hammer 1; Undo2/Redo2 1/1; fill gelap BuildAreaIcon
   3×1; marginLeft:8 kode 3; toolbar order [Undo,Redo,Place,Delete,Shape,
-  Clone,Mirror,Object,Decal]; v1 BlockSimulator3D.jsx 0 diff.
+  Clone,Mirror,Object,Decal]; BlockSimulator3Dv2.jsx 0 diff.
 
 ### 63.4 Catatan
 
