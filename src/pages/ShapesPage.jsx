@@ -78,7 +78,7 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         locked={!user}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="-5 -8 35 32" fill="none" width="84" height="84">
+                                <svg viewBox="-5 -8 35 32" fill="none" width="96" height="96">
                                     {/* Kubus isometric */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
@@ -123,7 +123,7 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         onClick={() => setPage('block-sim-test')}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="-5 -8 35 32" fill="none" width="84" height="84">
+                                <svg viewBox="-5 -8 35 32" fill="none" width="96" height="96">
                                     {/* Kubus isometric — sama dengan v2 */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
