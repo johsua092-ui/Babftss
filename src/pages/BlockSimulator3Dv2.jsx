@@ -12750,6 +12750,20 @@ Now you can apply Displacement for detailed effect.`);
       setSelectedCount(0);
     };
 
+    // selectBlock — restored 2026-09-02 (was accidentally deleted during Group/Ungroup
+    // removal in commit 62adcc4). Without this function, clicking a block with Move/
+    // Rotate/Scale tool throws ReferenceError → attachGizmoToSelection never reached
+    // → gizmo never appears. Basic version without group auto-select (removed with
+    // Group/Ungroup feature).
+    const selectBlock = (block, additive) => {
+      if (!additive) {
+        clearSelection();
+      }
+      threeRef.current.selectedBlocks.add(block);
+      highlightSelected(block);
+      setSelectedCount(threeRef.current.selectedBlocks.size);
+    };
+
     const toggleSelectBlock = (block) => {
       if (threeRef.current.selectedBlocks.has(block)) {
         threeRef.current.selectedBlocks.delete(block);
