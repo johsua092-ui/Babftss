@@ -27,7 +27,9 @@ import { toast } from 'sonner';
 import { ChunkManager } from '../lib/ChunkManager.js';
 
 /* ================================================================
-   3D BLOCK SIMULATOR v2 — Three.js Engine
+   3D BLOCK SIMULATOR — Three.js Engine
+   (sebelumnya 'v2' — dihapus dari judul UI 2026-09-02 per request user.
+   Tombol menu Shapes tetap '3D Block Simulator v2' utk beda dengan TEST button.)
    Phase 1: 3D Viewport Proper (WebGL)
    ================================================================
 
@@ -13916,7 +13918,7 @@ Now you can apply Displacement for detailed effect.`);
               letterSpacing: '-0.01em',
               margin: 0,
             }}>
-              3D BLOCK SIMULATOR v2
+              3D BLOCK SIMULATOR
             </h1>
             <span style={{
               fontSize: 10, fontWeight: 700, color: '#f59e0b',
