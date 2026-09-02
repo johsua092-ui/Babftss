@@ -196,8 +196,11 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // All tools/selection/history UNCHANGED — they still work on Mesh as before.
   // Phase 37, 2026-09-02: Added 'auto' mode — switches to Instanced when blockCount > 2000,
   // back to Mesh when < 1500 (hysteresis to prevent oscillation).
-  const [renderMode, setRenderMode] = useState('mesh'); // 'mesh' | 'auto' | 'instanced'
-  const renderModeRef = useRef('mesh');
+  // Phase 40, 2026-09-02: Default renderMode = 'auto' per request user.
+  // Saat user buka v2 dalam keadaan apapun, langsung terpakai 'auto' mode
+  // (smart switching: MESH saat block sedikit, INSTANCED saat banyak).
+  const [renderMode, setRenderMode] = useState('auto'); // 'mesh' | 'auto' | 'instanced'
+  const renderModeRef = useRef('auto');
   useEffect(() => { renderModeRef.current = renderMode; }, [renderMode]);
   // Phase 37: Performance stats — updated once per second in animate loop.
   const [perfStats, setPerfStats] = useState({ fps: 0, drawCalls: 0, blocks: 0, effectiveMode: 'mesh' });
@@ -14655,10 +14658,10 @@ Now you can apply Displacement for detailed effect.`);
             // Mode-specific info content + color theme
             const modeInfo = {
               mesh: {
-                bg: 'rgba(251, 191, 36, 0.08)',
-                border: 'rgba(251, 191, 36, 0.3)',
-                titleColor: '#fbbf24',
-                textColor: '#fef3c7',
+                bg: 'rgba(59, 130, 246, 0.10)',
+                border: 'rgba(59, 130, 246, 0.35)',
+                titleColor: '#60a5fa',
+                textColor: '#dbeafe',
                 title: 'MESH MODE',
                 whatIs: 'Setiap balok dirender sebagai objek 3D terpisah (THREE.Mesh individual).',
                 purpose: 'Mode default untuk visual fidelity maksimal — semua properti material tampil.',
