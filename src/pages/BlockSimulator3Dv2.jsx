@@ -219,6 +219,14 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
   // Build Area "Coming Soon" modal state
   const [showBuildAreaSoon, setShowBuildAreaSoon] = useState(false);
+  // Phase 42, 2026-09-02: Active Build Area state.
+  // 'default' = 500×500 grid | 'babft' = 149×118 grid (Babft map).
+  // Refs store half-extents for boundary checks (updated by switchBuildArea).
+  // X symmetric (|x| ≤ halfX). Z asymmetric for even dimensions (Babft: -59 to +58 = 118 cells).
+  const [activeBuildArea, setActiveBuildArea] = useState('default');
+  const gridSizeXRef = useRef(250);     // half-extent X (Default 250, Babft 74)
+  const gridSizeZPosRef = useRef(250);  // positive Z extent (Default 250, Babft 58)
+  const gridSizeZNegRef = useRef(250);  // negative Z extent (Default 250, Babft 59)
 
   // Phase 9: Primitives
   const [shapeType, setShapeType] = useState('sphere');
@@ -11681,6 +11689,75 @@ Now you can apply Displacement for detailed effect.`);
     ground.userData.isGround = true;
     scene.add(ground);
 
+    // Phase 42, 2026-09-02: switchBuildArea — ganti dimensi grid + ground saat user
+    // pilih area berbeda di Build Area gallery. Dispose old grid+ground, create new.
+    // Boundary checks (4 sites) pakai gridSizeXRef/ZPosRef/ZNegRef via isOutsideBuildArea.
+    function isOutsideBuildArea(x, z) {
+      return Math.abs(x) > gridSizeXRef.current ||
+             z > gridSizeZPosRef.current ||
+             z < -gridSizeZNegRef.current;
+    }
+    threeRef.current.isOutsideBuildArea = isOutsideBuildArea;
+
+    function switchBuildArea(area) {
+      if (area === 'babft') {
+        // Babft map: 149×118 blocks. X symmetric (-74 to +74 = 149 cells).
+        // Z asymmetric (-59 to +58 = 118 cells exact, even number constraint).
+        gridSizeXRef.current = 74;
+        gridSizeZPosRef.current = 58;
+        gridSizeZNegRef.current = 59;
+      } else {
+        // Default: 500×500 blocks, symmetric.
+        gridSizeXRef.current = 250;
+        gridSizeZPosRef.current = 250;
+        gridSizeZNegRef.current = 250;
+      }
+
+      // Dispose old grid
+      const oldGrid = threeRef.current.grid;
+      if (oldGrid) {
+        scene.remove(oldGrid);
+        oldGrid.geometry.dispose();
+        oldGrid.material.dispose();
+      }
+      // Dispose old ground
+      const oldGround = threeRef.current.ground;
+      if (oldGround) {
+        scene.remove(oldGround);
+        oldGround.geometry.dispose();
+        oldGround.material.dispose();
+      }
+
+      // Create new grid + ground with correct dimensions
+      const sizeX = gridSizeXRef.current * 2;  // 149 for Babft, 500 for Default
+      const sizeZ = gridSizeZPosRef.current + gridSizeZNegRef.current;  // 117 for Babft, 500 for Default
+      // GridHelper creates square grid (size×size divisions). Use sizeX for both.
+      // For non-square area, grid lines extend slightly beyond ground — acceptable visual.
+      const newGrid = new THREE.GridHelper(sizeX, sizeX, 0x64748b, 0x334155);
+      newGrid.material.opacity = 0.5;
+      newGrid.material.transparent = true;
+      scene.add(newGrid);
+      threeRef.current.grid = newGrid;
+
+      const newGroundGeo = new THREE.PlaneGeometry(sizeX, sizeZ);
+      const newGroundMat = new THREE.MeshStandardMaterial({
+        color: 0x0e1420,
+        transparent: true,
+        opacity: 0.5,
+        receiveShadow: true,
+        metalness: 0,
+        roughness: 1,
+      });
+      const newGround = new THREE.Mesh(newGroundGeo, newGroundMat);
+      newGround.rotation.x = -Math.PI / 2;
+      newGround.position.y = -0.01;
+      newGround.receiveShadow = true;
+      newGround.userData.isGround = true;
+      scene.add(newGround);
+      threeRef.current.ground = newGround;
+    }
+    threeRef.current.switchBuildArea = switchBuildArea;
+
     // OrbitControls — basic orbit + zoom (Phase 2 will add WASD fly camera)
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -12383,7 +12460,7 @@ Now you can apply Displacement for detailed effect.`);
         const hits = raycaster.intersectObjects(targets, false);
         if (hits.length > 0) {
           const { posX, posY, posZ } = calcPlacePos(hits[0]);
-          if (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE || posY < 0) return;
+          if ((threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) || posY < 0) return;
           const geo = new THREE.BoxGeometry(1, 1, 1);
           const mat = new THREE.MeshStandardMaterial({
             color: new THREE.Color(color),
@@ -12432,7 +12509,7 @@ Now you can apply Displacement for detailed effect.`);
             posX = Math.floor(placePoint.x) + 0.5;
             posZ = Math.floor(placePoint.z) + 0.5;
           }
-          if (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE) return;
+          if (threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) return;
 
           const st = shapeTypeRef.current;
           const sz = Math.max(0.5, shapeSizeRef.current);
@@ -12611,7 +12688,7 @@ Now you can apply Displacement for detailed effect.`);
           let posX = Math.floor(hit.point.x) + 0.5;
           let posZ = Math.floor(hit.point.z) + 0.5;
           // Clamp ke grid
-          if (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE) return;
+          if (threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) return;
           const kind = selectedObjRef.current;
           if (!kind) {
             return;
@@ -13065,7 +13142,7 @@ Now you can apply Displacement for detailed effect.`);
         const hits = raycaster.intersectObjects(targets, true);
         if (hits.length > 0) {
           const { posX, posY, posZ } = calcPlacePos(hits[0]);
-          if (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE || posY < 0) {
+          if ((threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) || posY < 0) {
             ghostBlock.visible = false;
             ghostEdges.visible = false;
             return;
@@ -21927,7 +22004,11 @@ Now you can apply Displacement for detailed effect.`);
                   Clickable → toast info (Phase 41 — handler sementara). */}
               <div
                 onClick={() => {
-                  toast.info('Build Area "Default" dipilih — loading area... (placeholder)');
+                  if (threeRef.current.switchBuildArea) {
+                    threeRef.current.switchBuildArea('default');
+                    setActiveBuildArea('default');
+                    toast.success('Build Area: Default (500×500)');
+                  }
                   setShowBuildAreaSoon(false);
                 }}
                 style={{
@@ -21966,16 +22047,18 @@ Now you can apply Displacement for detailed effect.`);
                   }}>
                     <BuildAreaIcon size={48} />
                   </div>
-                  {/* Badge "Active" di pojok kanan atas — Default selalu active */}
-                  <div style={{
-                    position: 'absolute', top: 8, right: 8,
-                    padding: '2px 8px', borderRadius: 4,
-                    backgroundColor: 'rgba(16, 185, 129, 0.9)',
-                    color: '#fff', fontSize: 9, fontWeight: 700,
-                    fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
-                  }}>
-                    ACTIVE
-                  </div>
+                  {/* Badge "Active" — tampilkan kalau area ini yang aktif */}
+                  {activeBuildArea === 'default' && (
+                    <div style={{
+                      position: 'absolute', top: 8, right: 8,
+                      padding: '2px 8px', borderRadius: 4,
+                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                      color: '#fff', fontSize: 9, fontWeight: 700,
+                      fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
+                    }}>
+                      ACTIVE
+                    </div>
+                  )}
                 </div>
                 {/* Nama build area di bawah preview */}
                 <div style={{
@@ -21991,6 +22074,82 @@ Now you can apply Displacement for detailed effect.`);
                     fontSize: 11, color: '#64748b', marginTop: 2,
                   }}>
                     Build area utama — 500×500 grid
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Kotak 2: Babft (149×118) — Phase 42, 2026-09-02 ──
+                  Map custom dengan dimensi 149 panjang × 118 lebar block.
+                  X symmetric (-74 to +74 = 149 cells).
+                  Z asymmetric (-59 to +58 = 118 cells exact, even number constraint).
+                  Clickable → switchBuildArea('babft') + close modal. */}
+              <div
+                onClick={() => {
+                  if (threeRef.current.switchBuildArea) {
+                    threeRef.current.switchBuildArea('babft');
+                    setActiveBuildArea('babft');
+                    toast.success('Build Area: Babft (149×118)');
+                  }
+                  setShowBuildAreaSoon(false);
+                }}
+                style={{
+                  cursor: 'pointer',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#f59e0b';
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(245, 158, 11, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div style={{
+                  width: '100%',
+                  aspectRatio: '16 / 9',
+                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.4) 100%)',
+                  display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  position: 'relative',
+                }}>
+                  <div style={{
+                    width: 48, height: 48,
+                    color: 'rgba(251, 191, 36, 0.6)',
+                  }}>
+                    <BuildAreaIcon size={48} />
+                  </div>
+                  {activeBuildArea === 'babft' && (
+                    <div style={{
+                      position: 'absolute', top: 8, right: 8,
+                      padding: '2px 8px', borderRadius: 4,
+                      backgroundColor: 'rgba(245, 158, 11, 0.9)',
+                      color: '#fff', fontSize: 9, fontWeight: 700,
+                      fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
+                    }}>
+                      ACTIVE
+                    </div>
+                  )}
+                </div>
+                <div style={{
+                  padding: '10px 12px',
+                }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 700, color: '#e2e8f0',
+                    fontFamily: 'Inter, sans-serif',
+                  }}>
+                    Babft
+                  </div>
+                  <div style={{
+                    fontSize: 11, color: '#64748b', marginTop: 2,
+                  }}>
+                    Map custom — 149×118 grid
                   </div>
                 </div>
               </div>
