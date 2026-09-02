@@ -83,9 +83,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Badge V2 */}
-                                    <rect x="14" y="1" width="9" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
-                                    <text x="18.5" y="5.2" textAnchor="middle" fill="#fbbf24" fontSize="4.2" fontWeight="700" fontFamily="Inter,sans-serif">V2</text>
+                                    {/* Badge 3D */}
+                                    <rect x="12" y="1" width="12" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
+                                    <text x="18" y="5.2" textAnchor="middle" fill="#fbbf24" fontSize="3.6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
                                 </svg>
                             </div>
                         }
@@ -108,9 +108,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Badge T — pink supaya jelas beda dengan V2 */}
-                                    <rect x="14" y="1" width="9" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
-                                    <text x="18.5" y="5.2" textAnchor="middle" fill="#ec4899" fontSize="4.2" fontWeight="700" fontFamily="Inter,sans-serif">T</text>
+                                    {/* Badge TEST — pink supaya jelas beda dengan 3D */}
+                                    <rect x="9" y="1" width="18" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
+                                    <text x="18" y="5.2" textAnchor="middle" fill="#ec4899" fontSize="3.2" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
                                 </svg>
                             </div>
                         }
