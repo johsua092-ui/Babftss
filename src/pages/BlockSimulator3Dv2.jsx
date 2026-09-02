@@ -11974,6 +11974,10 @@ Now you can apply Displacement for detailed effect.`);
     // Only updates ChunkManager for changed/added/removed blocks (incremental).
     // Zero changes to tool handlers — they still work on Mesh as before.
     const _syncDummy = new THREE.Object3D();
+    // Phase 39: Scratch color objects — allocated ONCE outside loop, reused per block.
+    // Zero GC pressure across thousands of blocks per frame.
+    const _phase39_base = new THREE.Color();
+    const _phase39_tmp = new THREE.Color();
     function syncMeshesToChunks() {
       const cm = threeRef.current.chunkManager;
       if (!cm) return;
@@ -12003,11 +12007,60 @@ Now you can apply Displacement for detailed effect.`);
         const y = Math.round(mesh.position.y);
         const z = Math.round(mesh.position.z);
 
-        // Get color from material
+        // Phase 39, 2026-09-02: Visual approximation — emulate Mesh material
+        // properties (emissive, metalness, roughness) via enhanced instanceColor.
+        // Limitation: InstancedMesh only supports per-instance color (no built-in
+        // buffers for metalness/roughness/emissive). Full parity would require
+        // onBeforeCompile shader injection — risky & version-dependent, deferred.
+        //
+        // Approximation strategy (3 layers, blended into single RGB):
+        //   1. Base color = material.color (or white if missing)
+        //   2. Emissive add: if material.emissive non-zero, add emissive ×
+        //      intensity (clamped to prevent whiteout). Simulates glow blocks.
+        //   3. Metallic brightness: if metalness > 0.5, multiply RGB by
+        //      (1 + metalness × 0.4). Simulates metallic shine reflection.
+        //   4. Roughness saturation: roughness < 0.3 → boost saturation 20%;
+        //      roughness > 0.7 → reduce saturation 15%. Simulates surface finish.
+        //
+        // Uses THREE.Color math (clone, addScaledColor, multiplyScalar, getHex).
+        // Scratch color objects allocated ONCE outside loop — zero GC pressure.
         let color = 0xffffff;
         if (mesh.material) {
           const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-          if (mat.color) color = mat.color.getHex();
+          if (mat.color) {
+            _phase39_base.copy(mat.color);
+            // Layer 2: emissive add (glow blocks — neon, animated, etc.)
+            if (mat.emissive && mat.emissiveIntensity > 0) {
+              _phase39_tmp.copy(mat.emissive);
+              _phase39_tmp.multiplyScalar(Math.min(mat.emissiveIntensity, 2.0)); // clamp
+              _phase39_base.add(_phase39_tmp); // additive blend
+            }
+            // Layer 3: metallic brightness boost
+            if (mat.metalness > 0.5) {
+              _phase39_base.multiplyScalar(1 + (mat.metalness - 0.5) * 0.8);
+            }
+            // Layer 4: roughness saturation tweak
+            if (mat.roughness < 0.3) {
+              // Boost saturation: shift towards max channel, away from average
+              const r = _phase39_base.r, g = _phase39_base.g, b = _phase39_base.b;
+              const avg = (r + g + b) / 3;
+              _phase39_base.r = r + (r - avg) * 0.2;
+              _phase39_base.g = g + (g - avg) * 0.2;
+              _phase39_base.b = b + (b - avg) * 0.2;
+            } else if (mat.roughness > 0.7) {
+              // Reduce saturation: blend towards grey average
+              const r = _phase39_base.r, g = _phase39_base.g, b = _phase39_base.b;
+              const avg = (r + g + b) / 3;
+              _phase39_base.r = r + (avg - r) * 0.15;
+              _phase39_base.g = g + (avg - g) * 0.15;
+              _phase39_base.b = b + (avg - b) * 0.15;
+            }
+            // Clamp to valid RGB range (additive emissive can exceed 1.0)
+            _phase39_base.r = Math.min(_phase39_base.r, 1);
+            _phase39_base.g = Math.min(_phase39_base.g, 1);
+            _phase39_base.b = Math.min(_phase39_base.b, 1);
+            color = _phase39_base.getHex();
+          }
         }
 
         // Check if transform/color changed (fast — 13 float comparisons)
@@ -14631,8 +14684,8 @@ Now you can apply Displacement for detailed effect.`);
                 title: 'INSTANCED MODE',
                 whatIs: 'Semua balok di-render via InstancedMesh per chunk (25×25 block per chunk).',
                 purpose: 'Performance maksimal untuk ribuan hingga puluhan ribu block.',
-                benefit: '1 draw call per chunk (10-50x lebih sedikit dari MESH). 60+ FPS di 10k block. Frustum culling per-chunk.',
-                system: 'Meshes set invisible (tapi raycastable — three.js raycaster ignore visible flag). Material shared: per-instance color only (metalness/roughness/emissive tidak tampil).',
+                benefit: '1 draw call per chunk (10-50x lebih sedikit dari MESH). 60+ FPS di 10k block. Frustum culling per-chunk. Phase 39: instanceColor enhanced — emissive glow, metallic shine, roughness saturation di-approximate.',
+                system: 'Meshes set invisible (tapi raycastable — three.js raycaster ignore visible flag). Material shared: per-instance color enhanced (Phase 39) tapi bukan full parity — textures/normalMap/displacement tetap tidak tampil di INSTANCED mode.',
               },
             };
             const info = modeInfo[renderMode] || modeInfo.mesh;
