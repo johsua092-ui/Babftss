@@ -386,7 +386,7 @@ export default function BlockSimulatorTest({ setPage }) {
                     margin: 0, fontSize: 14, fontFamily: 'Orbitron, sans-serif',
                     fontWeight: 800, color: '#22d3ee', letterSpacing: '0.02em',
                 }}>
-                    3D Block Simulator v2 — TEST
+                    3D Block Simulator — TEST
                     <span style={{ color: '#64748b', fontWeight: 400, fontSize: 11, marginLeft: 8 }}>
                         ChunkManager Engine
                     </span>
