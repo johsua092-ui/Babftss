@@ -24,6 +24,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
+import { ChunkManager } from '../lib/ChunkManager.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR v2 — Three.js Engine
@@ -189,6 +190,13 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const toolRef = useRef(null);
   const colorRef = useRef('#3b82f6');
   useEffect(() => { toolRef.current = tool; }, [tool]);
+  // Phase 36, 2026-09-02: Render Engine toggle — Mesh (default) | Instanced (ChunkManager).
+  // When 'instanced': blocks rendered via InstancedMesh (1 draw call/chunk),
+  // Meshes set invisible but still raycastable (three.js raycaster ignores visible flag).
+  // All tools/selection/history UNCHANGED — they still work on Mesh as before.
+  const [renderMode, setRenderMode] = useState('mesh'); // 'mesh' | 'instanced'
+  const renderModeRef = useRef('mesh');
+  useEffect(() => { renderModeRef.current = renderMode; }, [renderMode]);
   // Toggle tool (unequip): klik tombol tool = pakai tool itu; klik LAGI tombol yang
   // sama saat sedang aktif = LEPAS tool (kembali ke state 0 / null). Berlaku untuk
   // SEMUA tombol tool. Klik tool BERBEDA saat ada tool aktif = pindah (bukan toggle).
@@ -11886,6 +11894,11 @@ Now you can apply Displacement for detailed effect.`);
           mat.needsUpdate = true;
         });
       }
+      // Phase 36: Sync Mesh data to ChunkManager InstancedMesh render layer.
+      // Runs every frame — watcher pattern with incremental updates.
+      // When renderMode === 'mesh': just sets mesh.visible=true, skips CM update.
+      // When renderMode === 'instanced': sets mesh.visible=false, syncs to CM.
+      syncMeshesToChunks();
       // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
       // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
       // Direct render = lebih cepat, untuk saat bloom dimatikan.
@@ -11918,10 +11931,90 @@ Now you can apply Displacement for detailed effect.`);
       scene, camera, renderer, controls,
       composer, bloomPass, renderPass, outputPass,
       blocks: [],
+      chunkManager: null,    // Phase 36: InstancedMesh render layer (parallel to blocks)
+      meshCache: new Map(),  // Phase 36: cache Mesh state for incremental sync
       raycaster, mouse,
       ground, grid,
       symmetryPlane: null, // akan di-assign setelah plane dibuat
     };
+
+    // Phase 36: Create ChunkManager — shared geometry + material for all chunks.
+    // Geometry = unit box (same as block default). Per-instance scale handles size variety.
+    // Material = MeshStandardMaterial with FrontSide (backface culling active, per spec).
+    threeRef.current.chunkManager = new ChunkManager(scene, {
+      chunkSize: 25,
+      capacity: 25 * 25 * 64,
+      chunkHeightMax: 64,
+    });
+
+    // Phase 36: Sync function — mirrors Mesh data to ChunkManager InstancedMesh.
+    // Watcher pattern: compares each Mesh's pos/rot/scale/color to cached state.
+    // Only updates ChunkManager for changed/added/removed blocks (incremental).
+    // Zero changes to tool handlers — they still work on Mesh as before.
+    const _syncDummy = new THREE.Object3D();
+    function syncMeshesToChunks() {
+      const cm = threeRef.current.chunkManager;
+      if (!cm) return;
+      const blocks = threeRef.current.blocks;
+      const cache = threeRef.current.meshCache;
+      const isInstanced = renderModeRef.current === 'instanced';
+
+      // Remove blocks that no longer exist in the array
+      const currentSet = new Set(blocks);
+      for (const [mesh, cached] of cache) {
+        if (!currentSet.has(mesh)) {
+          cm.removeBlock(cached.x, cached.y, cached.z);
+          cache.delete(mesh);
+        }
+      }
+
+      // Add/update blocks + toggle visibility
+      for (let i = 0; i < blocks.length; i++) {
+        const mesh = blocks[i];
+        // When Instanced: hide Mesh (raycaster still hits it — three.js ignores visible).
+        // InstancedMesh renders the block instead.
+        mesh.visible = !isInstanced;
+        if (!isInstanced) continue;
+
+        const x = Math.round(mesh.position.x);
+        const y = Math.round(mesh.position.y);
+        const z = Math.round(mesh.position.z);
+
+        // Get color from material
+        let color = 0xffffff;
+        if (mesh.material) {
+          const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+          if (mat.color) color = mat.color.getHex();
+        }
+
+        // Check if transform/color changed (fast — 13 float comparisons)
+        const cached = cache.get(mesh);
+        const changed = !cached ||
+          cached.x !== x || cached.y !== y || cached.z !== z ||
+          cached.px !== mesh.position.x || cached.py !== mesh.position.y || cached.pz !== mesh.position.z ||
+          cached.sx !== mesh.scale.x || cached.sy !== mesh.scale.y || cached.sz !== mesh.scale.z ||
+          cached.rx !== mesh.rotation.x || cached.ry !== mesh.rotation.y || cached.rz !== mesh.rotation.z ||
+          cached.color !== color;
+
+        if (changed) {
+          if (cached) cm.removeBlock(cached.x, cached.y, cached.z);
+          _syncDummy.position.copy(mesh.position);
+          _syncDummy.rotation.copy(mesh.rotation);
+          _syncDummy.scale.copy(mesh.scale);
+          _syncDummy.updateMatrix();
+          cm.setBlock(x, y, z, { matrix: _syncDummy.matrix, color });
+          cache.set(mesh, {
+            x, y, z, color,
+            px: mesh.position.x, py: mesh.position.y, pz: mesh.position.z,
+            sx: mesh.scale.x, sy: mesh.scale.y, sz: mesh.scale.z,
+            rx: mesh.rotation.x, ry: mesh.rotation.y, rz: mesh.rotation.z,
+          });
+        }
+      }
+
+      // Flush pending matrix/color updates to GPU (1 needsUpdate per dirty chunk)
+      cm.update();
+    }
 
     // ── Phase 3: Place/Delete Blocks + Ghost Preview ──
 
@@ -13641,6 +13734,11 @@ Now you can apply Displacement for detailed effect.`);
       composer.dispose();
       bloomPass.dispose();
       renderPass.dispose?.();
+      // Phase 36: dispose ChunkManager (frees all InstancedMesh GPU buffers)
+      if (threeRef.current.chunkManager) {
+        threeRef.current.chunkManager.dispose();
+        threeRef.current.chunkManager = null;
+      }
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('keydown', onUndoKeyDown);
@@ -14407,6 +14505,47 @@ Now you can apply Displacement for detailed effect.`);
               (urutan: Undo, Redo, Delete, Place, Shape, dst — Task ID 27 swap
               Place↔Delete). Jangan bikin section History terpisah lagi —
               sudah masuk bagian Build. ── */}
+
+          {/* ── Section: RENDER ENGINE (Phase 36, 2026-09-02) — toggle between
+              Mesh-per-block (default, original) and ChunkManager InstancedMesh.
+              When Instanced: 1 draw call per chunk (vs 1 per block),
+              Meshes invisible but raycastable. All tools unchanged. ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '4px 2px', marginTop: 6, marginBottom: 2,
+            borderTop: '1px solid rgba(148,163,184,0.12)', paddingTop: 8,
+          }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, color: textSecondary,
+              textTransform: 'uppercase', letterSpacing: '1px',
+              fontFamily: 'Orbitron, sans-serif',
+            }}>Render Engine</div>
+            <button
+              onClick={() => {
+                const next = renderModeRef.current === 'mesh' ? 'instanced' : 'mesh';
+                renderModeRef.current = next;
+                setRenderMode(next);
+                if (next === 'mesh' && threeRef.current.chunkManager) {
+                  threeRef.current.chunkManager.clear();
+                  threeRef.current.meshCache.clear();
+                }
+              }}
+              title={renderMode === 'instanced'
+                ? 'InstancedMesh mode: 1 draw call/chunk. Meshes invisible but raycastable. All tools work.'
+                : 'Mesh mode (default): 1 draw call/block. Original rendering.'}
+              style={{
+                padding: '5px 12px', borderRadius: 6,
+                backgroundColor: renderMode === 'instanced' ? '#7c3aed' : '#1e293b',
+                border: `1px solid ${renderMode === 'instanced' ? '#7c3aed' : '#334155'}`,
+                color: renderMode === 'instanced' ? '#fff' : '#94a3b8',
+                fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
+                transition: 'all 0.15s',
+              }}
+            >
+              {renderMode === 'instanced' ? 'INSTANCED' : 'MESH'}
+            </button>
+          </div>
 
           {/* ── Section: DISPLAY (Grid/Snap/Shadows) ── */}
           <div onClick={() => toggleSection('display')} style={{
