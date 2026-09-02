@@ -14618,9 +14618,9 @@ Now you can apply Displacement for detailed effect.`);
                   : 'Mesh mode (default): 1 draw call/block. Original rendering with full material fidelity.'}
               style={{
                 padding: '5px 12px', borderRadius: 6,
-                backgroundColor: renderMode === 'instanced' ? '#7c3aed' : renderMode === 'auto' ? '#0891b2' : '#1e293b',
-                border: `1px solid ${renderMode === 'instanced' ? '#7c3aed' : renderMode === 'auto' ? '#0891b2' : '#334155'}`,
-                color: renderMode === 'mesh' ? '#94a3b8' : '#fff',
+                backgroundColor: renderMode === 'instanced' ? '#7c3aed' : renderMode === 'auto' ? '#0891b2' : '#15803d',
+                border: `1px solid ${renderMode === 'instanced' ? '#7c3aed' : renderMode === 'auto' ? '#0891b2' : '#15803d'}`,
+                color: '#fff',
                 fontSize: 10, fontWeight: 700, cursor: 'pointer',
                 fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
                 transition: 'all 0.15s',
@@ -14644,13 +14644,13 @@ Now you can apply Displacement for detailed effect.`);
             <span>Draws: <strong style={{ color: '#06b6d4', fontSize: 13, fontWeight: 700 }}>{perfStats.drawCalls}</strong></span>
             <span>Blocks: <strong style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700 }}>{perfStats.blocks}</strong></span>
             <span>Mode: <strong style={{
-              color: perfStats.effectiveMode === 'instanced' ? '#7c3aed' : '#94a3b8',
+              color: perfStats.effectiveMode === 'instanced' ? '#7c3aed' : '#4ade80',
               fontSize: 13, fontWeight: 700,
             }}>{perfStats.effectiveMode.toUpperCase()}</strong></span>
           </div>
           {/* Phase 38, 2026-09-02: Info box dinamis — menjelaskan mode render
               yang sedang aktif (MESH / AUTO / INSTANCED). Warna box ikut mode:
-              MESH = amber, AUTO = cyan, INSTANCED = purple. Konten menyesuaikan
+              MESH = green, AUTO = cyan, INSTANCED = purple. Konten menyesuaikan
               mode yang dipilih user. Per request teman user: 'kasih kotak informasi
               yang berwarna, penjelasan mengenai jika render mode mesh itu apasih
               sebenarnya itu, dan buat apa, manfaatnya apa, sistemnya gimana'. */}
@@ -14658,10 +14658,10 @@ Now you can apply Displacement for detailed effect.`);
             // Mode-specific info content + color theme
             const modeInfo = {
               mesh: {
-                bg: 'rgba(59, 130, 246, 0.10)',
-                border: 'rgba(59, 130, 246, 0.35)',
-                titleColor: '#60a5fa',
-                textColor: '#dbeafe',
+                bg: 'rgba(34, 197, 94, 0.12)',
+                border: 'rgba(34, 197, 94, 0.4)',
+                titleColor: '#4ade80',
+                textColor: '#dcfce7',
                 title: 'MESH MODE',
                 whatIs: 'Setiap balok dirender sebagai objek 3D terpisah (THREE.Mesh individual).',
                 purpose: 'Mode default untuk visual fidelity maksimal — semua properti material tampil.',
