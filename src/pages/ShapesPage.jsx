@@ -4,14 +4,13 @@ import MenuButton3D from '../components/MenuButton3D';
 /**
  * ShapesPage — submenu dari "Shapes" (menu utama).
  *
- * 2 tombol submenu:
+ * Tombol submenu:
  *   1. Shapes Calculator — public, langsung ke page 'shapes-calculator'.
- *   2. 3D Block Simulator — login-required (locked=!user). Guest klik → onGuestClick
- *      (banner merah "harap sign in"). Login klik → page 'block-simulator-3d'.
+ *   2. 3D Block Simulator v2 — login-required (locked=!user). Guest klik → onGuestClick
+ *      (banner merah "harap sign in"). Login klik → page 'block-simulator-3d-v2'.
+ *   3. 3D Block Simulator v2 TEST — open access, page 'block-sim-test' (ChunkManager engine).
  *
  * Task Bagian 59: diseragamkan ke standar `MenuButton3D` (lihat design.md Bagian 39).
- * onClick & locked DIPERTAHANKAN PERSIS seperti kode lama (pola array TOOLS + .map()
- * lama), cuma tampilannya yang diganti.
  *
  * Icon wrapper 50px (calculator) & 124px (3D kubus+gizmo) SENGAJA lebih besar dari
  * slot standar 56x56 — supaya icon boleh tampil lebih besar tanpa menggeser posisi
@@ -66,33 +65,11 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                             </div>
                         }
                     />
-                    <MenuButton3D
-                        label="3D Block Simulator"
-                        subtitle="build in 3D space"
-                        top="hsl(330,85%,68%)" bottom="hsl(330,80%,46%)" lip="hsl(330,80%,32%)"
-                        onClick={() => user ? setPage('block-simulator-3d') : (onGuestClick && onGuestClick())}
-                        locked={!user}
-                        icon={
-                            <div style={{ width: 124, height: 124, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="-10 -13 50 50" fill="none" width="100%" height="100%">
-                                    <path d="M12.00 1.50 L20.66 6.50 L12.00 11.50 L3.34 6.50 Z" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.4" strokeLinejoin="round"/>
-                                    <path d="M3.34 6.50 L12.00 11.50 L12.00 21.50 L3.34 16.50 Z" fill="rgba(255,255,255,0.55)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.4" strokeLinejoin="round"/>
-                                    <path d="M20.66 6.50 L12.00 11.50 L12.00 21.50 L20.66 16.50 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.4" strokeLinejoin="round"/>
-                                    <path d="M12.00 1.50 L12.00 -7.50" stroke="#4ade80" strokeWidth="1.1" strokeLinecap="butt"/>
-                                    <path d="M12.00 -7.50 L14.10 -3.30 L9.90 -3.30 Z" fill="#4ade80"/>
-                                    <path d="M20.66 16.50 L28.45 21.00" stroke="#f87171" strokeWidth="1.1" strokeLinecap="butt"/>
-                                    <path d="M28.45 21.00 L23.77 20.72 L25.87 17.08 Z" fill="#f87171"/>
-                                    <path d="M3.34 16.50 L-4.45 21.00" stroke="#60a5fa" strokeWidth="1.1" strokeLinecap="butt"/>
-                                    <path d="M-4.45 21.00 L-1.87 17.08 L0.23 20.72 Z" fill="#60a5fa"/>
-                                </svg>
-                            </div>
-                        }
-                    />
-                    {/* 3D Block Simulator v2 — login-required (locked=!user), sama persis
-                        seperti v1. Guest klik → onGuestClick (banner merah "harap sign in").
+                    {/* 3D Block Simulator v2 — login-required (locked=!user).
+                        Guest klik → onGuestClick (banner merah "harap sign in").
                         Login klik → page 'block-simulator-3d-v2'. Pakai warna amber/oranye
-                        biar kontras dengan pink v1 + teal Calculator. Icon: kubus isometric
-                        dengan badge "V2" di pojok, supaya jelas beda dengan v1. */}
+                        biar kontras dengan teal Calculator. Icon: kubus isometric
+                        dengan badge "V2" di pojok. */}
                     <MenuButton3D
                         label="3D Block Simulator v2"
                         subtitle="three.js engine"
