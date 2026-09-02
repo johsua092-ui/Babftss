@@ -78,14 +78,14 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         locked={!user}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                <svg viewBox="0 0 30 24" fill="none" width="48" height="48">
                                     {/* Kubus isometric */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Badge 3D */}
-                                    <rect x="12" y="1" width="12" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
-                                    <text x="18" y="5.2" textAnchor="middle" fill="#fbbf24" fontSize="3.6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
+                                    {/* Badge 3D — diperbesar utk readability (fontSize 3.6→5) */}
+                                    <rect x="19" y="0" width="11" height="7" rx="1.5" fill="rgba(0,0,0,0.65)"/>
+                                    <text x="24.5" y="5.2" textAnchor="middle" fill="#fbbf24" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
                                 </svg>
                             </div>
                         }
@@ -103,14 +103,17 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         onClick={() => setPage('block-sim-test')}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
+                                <svg viewBox="0 0 30 24" fill="none" width="48" height="48">
                                     {/* Kubus isometric — sama dengan v2 */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Badge TEST — pink supaya jelas beda dengan 3D */}
-                                    <rect x="9" y="1" width="18" height="6" rx="1.5" fill="rgba(0,0,0,0.55)"/>
-                                    <text x="18" y="5.2" textAnchor="middle" fill="#ec4899" fontSize="3.2" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
+                                    {/* Badge TEST — pink, diperbesar utk readability (fontSize 3.2→4.5).
+                                        viewBox extend ke 30 supaya rect width 15 (x:15-30) muat
+                                        tanpa terpotong. Sebelumnya rect x=9 w=18 extend ke x=27,
+                                        melewati viewBox 24 → terpotong. */}
+                                    <rect x="15" y="0" width="15" height="7" rx="1.5" fill="rgba(0,0,0,0.65)"/>
+                                    <text x="22.5" y="5.2" textAnchor="middle" fill="#ec4899" fontSize="4.5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
                                 </svg>
                             </div>
                         }
