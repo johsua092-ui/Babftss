@@ -103,11 +103,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                         Cone diperbesar (base 6, height 4) supaya sebanding dengan hijau. */}
                                     <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M0 15 L2 21 L-3 20 Z" fill="#3b82f6"/>
-                                    {/* Badge 3D — dipindah ke vertical center SVG (y=4) supaya
-                                        sejajar horizontal dengan teks label menu. Sebelumnya y=0
-                                        (pojok atas) → tidak sejajar dengan label di slot center. */}
-                                    <rect x="13" y="4" width="13" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
-                                    <text x="19.5" y="10" textAnchor="middle" fill="#fbbf24" fontSize="6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
+                                    {/* Badge 3D — geser KIRI dekat kubus (x:19→13), perbesar (fontSize 5→6, rect w:11→13) */}
+                                    <rect x="13" y="0" width="13" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
+                                    <text x="19.5" y="6" textAnchor="middle" fill="#fbbf24" fontSize="6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
                                 </svg>
                             </div>
                         }
@@ -138,10 +136,9 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                                     <path d="M22 21 L24 15 L27 20 Z" fill="#ef4444"/>
                                     <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M0 15 L2 21 L-3 20 Z" fill="#3b82f6"/>
-                                    {/* Badge TEST — pink, dipindah ke vertical center SVG (y=4)
-                                        supaya sejajar horizontal dengan teks label menu. */}
-                                    <rect x="13" y="4" width="17" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
-                                    <text x="21.5" y="10" textAnchor="middle" fill="#ec4899" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
+                                    {/* Badge TEST — pink, perbesar (fontSize 4.5→5, rect w:15→17). viewBox 30 supaya muat tanpa terpotong. */}
+                                    <rect x="13" y="0" width="17" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
+                                    <text x="21.5" y="6" textAnchor="middle" fill="#ec4899" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
                                 </svg>
                             </div>
                         }
