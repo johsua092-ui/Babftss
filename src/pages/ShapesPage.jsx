@@ -78,11 +78,23 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         locked={!user}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="0 0 30 24" fill="none" width="48" height="48">
+                                <svg viewBox="-5 -8 35 32" fill="none" width="48" height="48">
                                     {/* Kubus isometric */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                    {/* Move tool gizmo arrows — 3 axis dengan cone tips (kerucut).
+                                        Hijau = Y-axis (up), Merah = X-axis (right), Biru = Z-axis (left).
+                                        Cone tip = triangle yang melebar dari shaft ke ujung pointed. */}
+                                    {/* Y-axis (hijau) — dari top vertex (12,2) pointing up */}
+                                    <line x1="12" y1="2" x2="12" y2="-3" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M9 -3 L15 -3 L12 -7 Z" fill="#22c55e"/>
+                                    {/* X-axis (merah) — dari right vertex (21,7) pointing right */}
+                                    <line x1="21" y1="7" x2="26" y2="7" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M26 4.5 L29 7 L26 9.5 Z" fill="#ef4444"/>
+                                    {/* Z-axis (biru) — dari left vertex (3,7) pointing left */}
+                                    <line x1="3" y1="7" x2="-2" y2="7" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M-2 4.5 L-5 7 L-2 9.5 Z" fill="#3b82f6"/>
                                     {/* Badge 3D — geser KIRI dekat kubus (x:19→13), perbesar (fontSize 5→6, rect w:11→13) */}
                                     <rect x="13" y="0" width="13" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
                                     <text x="19.5" y="6" textAnchor="middle" fill="#fbbf24" fontSize="6" fontWeight="700" fontFamily="Inter,sans-serif">3D</text>
@@ -103,11 +115,18 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         onClick={() => setPage('block-sim-test')}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="0 0 30 24" fill="none" width="48" height="48">
+                                <svg viewBox="-5 -8 35 32" fill="none" width="48" height="48">
                                     {/* Kubus isometric — sama dengan v2 */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
+                                    {/* Move tool gizmo arrows — sama dengan v2 (3 axis cone-tipped). */}
+                                    <line x1="12" y1="2" x2="12" y2="-3" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M9 -3 L15 -3 L12 -7 Z" fill="#22c55e"/>
+                                    <line x1="21" y1="7" x2="26" y2="7" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M26 4.5 L29 7 L26 9.5 Z" fill="#ef4444"/>
+                                    <line x1="3" y1="7" x2="-2" y2="7" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M-2 4.5 L-5 7 L-2 9.5 Z" fill="#3b82f6"/>
                                     {/* Badge TEST — pink, perbesar (fontSize 4.5→5, rect w:15→17). viewBox 30 supaya muat tanpa terpotong. */}
                                     <rect x="13" y="0" width="17" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
                                     <text x="21.5" y="6" textAnchor="middle" fill="#ec4899" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">TEST</text>
