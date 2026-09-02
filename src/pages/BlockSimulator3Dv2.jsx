@@ -14405,17 +14405,15 @@ Now you can apply Displacement for detailed effect.`);
               Binding
             </button>
             {/* ── SCALE TOOL — icon METERAN SAKU custom SVG (Task ID 34,
-                2026-09-01, REDESIGN request user): kasing rounded rect
-                fill kuning-hijau gradient + pita ukur pipih keluar ke
-                kanan + kaitan logam MERAH di ujung pita + 2 arc
-                konsentris (mekanisme spring) di dalam kasing. Mengikuti
-                referensi visual dari user (Screenshot 2026-09-01 185805).
-                lucide TIDAK punya ikon tape measure (ruler = penggaris,
-                bukan meteran saku) → custom SVG. Sebelumnya <Maximize>
-                lucide (kini hanya dipakai tombol Size). Orientasi
-                HORIZONTAL agar tidak kembar dengan obeng Property yang
-                diagonal. Fungsi/warna aktif ungu #8b5cf6/urutan tombol
-                TIDAK berubah sama sekali. ── */}
+                2026-09-01, REDESIGN #3 request user via teman): icon Scale
+                dibuat MIRIP / identik dengan tombol Size (yang juga pakai
+                <Maximize>). Sebelumnya custom SVG meteran saku (Task 34
+                iterasi #1 stroke-only dan #2 fill warna) sudah tidak
+                dipakai. Sesuai instruksi: "ganti iconnya scale itu mirip
+                banget dengan 'size' kalau ambil langsung pun juga boleh".
+                Pembeda Scale vs Size sekarang HANYA warna aktif + label
+                (Scale = ungu #8b5cf6; Size = pink #ec4899) — behavior &
+                urutan tombol TIDAK berubah. ── */}
             <button
               onClick={() => toggleTool('scale')}
               title="Scale (S)"
@@ -14430,31 +14428,7 @@ Now you can apply Displacement for detailed effect.`);
                 fontFamily: 'Inter, sans-serif',
               }}
             >
-              <svg
-                width={15} height={15} viewBox="0 0 24 24"
-                fill="none" stroke="currentColor"
-                strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                style={{ flexShrink: 0 }}
-              >
-                {/* Kasing meteran saku: rounded rect (body case). Rounded
-                    radius 3 — sedikit lebih soft dari rect biasa supaya
-                    tidak terbaca sebagai card/box generik. */}
-                <rect x="2" y="5" width="12" height="14" rx="3" />
-                {/* Gulungan pita di dalam kasing: arc tunggal melengkung
-                    ke atas. Sinyal semantik "ini meteran, bukan rect
-                    kosong" — tanpa arc, icon bisa tertukar dengan card/
-                    tag. Tetap ringkas (1 path) supaya tidak noisy di 15px. */}
-                <path d="M6 12 Q8 9 11 12" />
-                {/* Pita ukur: 2 garis paralel pipih keluar dari sisi
-                    kanan kasing ke arah kanan. Side-view pita pipih
-                    (bukan garis tunggal) supaya TIDAK terbaca sebagai
-                    kaca pembesar (pola circle+garis-tunggal = magnifier). */}
-                <line x1="14" y1="10" x2="20" y2="10" />
-                <line x1="14" y1="14" x2="20" y2="14" />
-                {/* Kaitan logam (hook tab): vertikal di ujung kanan pita,
-                    melebihi lebar pita sedikit — khas hook meteran saku. */}
-                <line x1="20" y1="8" x2="20" y2="16" />
-              </svg>
+              <Maximize size={15} />
               Scale
             </button>
             <button
