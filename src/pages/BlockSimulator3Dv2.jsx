@@ -11870,16 +11870,19 @@ Now you can apply Displacement for detailed effect.`);
             toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon');
           } else if (toolName === 'property') {
             toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon');
+          } else if (toolName === 'paint') {
+            // Phase 48: Keybinds '3' — ALWAYS buka modal (infinite), bukan first-time only.
+            // Klik tombol manual (kursor) tetap first-time only — jangan diubah.
+            // Hanya keybinds yang always buka modal setiap kali ditekan.
+            // Set tool paint active (SET, bukan toggle) supaya tidak toggle OFF saat tekan '3' lagi.
+            setTool('paint');
+            setColorPicker({
+              targetMeshes: null,
+              hex: paintCustomColorRef.current || colorRef.current,
+              originalHex: paintCustomColorRef.current || colorRef.current,
+              mode: 'picker',
+            });
           } else {
-            // Untuk paint: buka modal jika first time (sama seperti klik tombol)
-            if (toolName === 'paint' && toolRef.current !== 'paint' && !paintCustomColorRef.current) {
-              setColorPicker({
-                targetMeshes: null,
-                hex: colorRef.current,
-                originalHex: colorRef.current,
-                mode: 'picker',
-              });
-            }
             toggleTool(toolName);
           }
         }
@@ -14427,7 +14430,7 @@ Now you can apply Displacement for detailed effect.`);
               <Trash2 size={15} />
               Delete
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[1]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[1]</span>
               )}
             </button>
             <button
@@ -14447,7 +14450,7 @@ Now you can apply Displacement for detailed effect.`);
               <Hammer size={15} />
               Place
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[2]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[2]</span>
               )}
             </button>
             {/* ── PAINT (Phase 46, 2026-09-03) — tombol tunggal dengan gerigi di dalam.
@@ -14492,7 +14495,7 @@ Now you can apply Displacement for detailed effect.`);
                   cursor: 'pointer',
                   opacity: 0.7,
                   flexShrink: 0,
-                  marginLeft: 8,
+                  marginLeft: 16,
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -14508,7 +14511,7 @@ Now you can apply Displacement for detailed effect.`);
               />
               {/* Keybind [3] di ujung kanan — PC only */}
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[3]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[3]</span>
               )}
             </button>
             {/* ── BINDING & PROPERTY (Task ID 31, 2026-09-01) — tombol
@@ -14551,7 +14554,7 @@ Now you can apply Displacement for detailed effect.`);
               <Wrench size={15} />
               Binding
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[4]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[4]</span>
               )}
             </button>
             {/* ── SCALE TOOL — icon <Maximize> lucide (Task ID 34,
@@ -14577,7 +14580,7 @@ Now you can apply Displacement for detailed effect.`);
               <Maximize size={15} />
               Scale
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[5]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[5]</span>
               )}
             </button>
             <button
@@ -14609,7 +14612,7 @@ Now you can apply Displacement for detailed effect.`);
               </svg>
               Property
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[6]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[6]</span>
               )}
             </button>
             <button
@@ -14629,7 +14632,7 @@ Now you can apply Displacement for detailed effect.`);
               <Move size={15} />
               Move
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[7]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[7]</span>
               )}
             </button>
             <button
@@ -14649,7 +14652,7 @@ Now you can apply Displacement for detailed effect.`);
               <RotateCw size={15} />
               Rotate
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[8]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[8]</span>
               )}
             </button>
             {/* Clone & Mirror tools */}
@@ -14670,7 +14673,7 @@ Now you can apply Displacement for detailed effect.`);
               <Copy size={15} />
               Clone
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[9]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[9]</span>
               )}
             </button>
             <button
@@ -14690,7 +14693,7 @@ Now you can apply Displacement for detailed effect.`);
               <FlipHorizontal size={15} />
               Mirror
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[0]</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[0]</span>
               )}
             </button>
             <button
