@@ -11909,15 +11909,21 @@ Now you can apply Displacement for detailed effect.`);
             const center = (bb.min[axisKey] + bb.max[axisKey]) / 2;
             if (center < 0) continue; // skip kalau masih ada negatif
 
-            // Clone geometry, flip sumbu axis → mirror 100% identik
+            // Clone geometry, flip 2 axis perpendicular → mirror 100% identik
+            // CATATAN PENTING: tidak cukup flip 1 axis saja!
+            // X cone (plane YZ) → flip Y+Z | Y cone (plane XZ) → flip X+Z | Z cone (plane XY) → flip X+Y
             const flippedGeo = handle.geometry.clone();
             const posArr = flippedGeo.getAttribute('position');
             const arr = posArr.array;
             const stride = posArr.itemSize; // 3 (x,y,z)
+            // Flip 2 axis perpendicular terhadap axis utama
+            const flipX = axisKey !== 'x';
+            const flipY = axisKey !== 'y';
+            const flipZ = axisKey !== 'z';
             for (let i = 0; i < arr.length; i += stride) {
-              if (axisKey === 'x') arr[i] = -arr[i];
-              else if (axisKey === 'y') arr[i + 1] = -arr[i + 1];
-              else if (axisKey === 'z') arr[i + 2] = -arr[i + 2];
+              if (flipX) arr[i] = -arr[i];
+              if (flipY) arr[i + 1] = -arr[i + 1];
+              if (flipZ) arr[i + 2] = -arr[i + 2];
             }
             posArr.needsUpdate = true;
             flippedGeo.computeBoundingSphere();
