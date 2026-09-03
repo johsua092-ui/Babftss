@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -218,6 +218,11 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // targetMeshes = array of Mesh yang akan di-paint (clicked + selected).
   // hex = live preview (update real-time saat drag wheel). originalHex = cancel revert.
   const [colorPicker, setColorPicker] = useState(null);
+  // Phase 46, 2026-09-03: paintCustomColor — warna custom yang dipilih user via modal.
+  // null = belum pernah confirm (pakai default orange #f59e0b). String hex = custom color.
+  // Tombol Paint background follow paintCustomColor (100% match ke warna user).
+  // Modal tidak muncul lagi setelah Confirm sampai user klik gerigi icon.
+  const [paintCustomColor, setPaintCustomColor] = useState(null);
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
@@ -12557,30 +12562,34 @@ Now you can apply Displacement for detailed effect.`);
           if (threeRef.current.recordHistory) threeRef.current.recordHistory();
         }
       } else if (currentTool === 'paint') {
-        // Phase 45, 2026-09-03: Paint — klik blok → buka ColorWheelPicker modal
-        // (copy sistem dari LogicGatesSimulator 2D — plek ketiplek).
-        // Sebelumnya: klik blok → langsung apply currentColor ke material.
-        // Sekarang: klik blok → buka modal dengan warna blok tersebut sebagai hex awal.
-        // Confirm → apply hex ke blok (+ selected blocks). Cancel → close tanpa apply.
+        // Phase 46, 2026-09-03: Paint — klik blok → langsung apply currentColor.
+        // Warna sudah dipilih via modal (klik tombol Paint atau gerigi → buka modal).
+        // Setelah Confirm di modal, currentColor = warna user, tombol Paint berubah warna.
+        // Klik block → apply currentColor ke material (TANPA buka modal lagi).
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
         if (hits.length > 0) {
           const hit = hits[0].object;
-          // Ambil warna blok saat ini jadi hex awal picker
-          let currentHex = '#ffffff';
-          const mat = Array.isArray(hit.material) ? hit.material[0] : hit.material;
-          if (mat && mat.color) {
-            currentHex = '#' + mat.color.getHexString();
-          }
-          // Kumpulkan target meshes: clicked + selected (untuk multi-paint)
-          const targetMeshes = [hit];
-          if (threeRef.current.selectedBlocks.size > 1) {
-            threeRef.current.selectedBlocks.forEach(b => {
-              if (b !== hit) targetMeshes.push(b);
+          // Helper untuk apply paint ke material
+          const applyPaint = (mesh) => {
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach(m => {
+              if (!m) return;
+              if (m.color) m.color.set(color);
+              // Hapus pattern texture kalau ada (paint solid color)
+              if (m.map) {
+                m.map = null;
+                m.needsUpdate = true;
+              }
             });
+          };
+          // Paint blok yang diklik
+          applyPaint(hit);
+          // Jika ada blok lain yang ter-selected, paint mereka juga
+          if (threeRef.current.selectedBlocks.size > 1) {
+            threeRef.current.selectedBlocks.forEach(b => applyPaint(b));
           }
-          // Buka modal
-          setColorPicker({ targetMeshes, hex: currentHex, originalHex: currentHex });
+          if (threeRef.current.recordHistory) threeRef.current.recordHistory();
         }
       } else if (currentTool === 'eyedropper') {
         // Phase 6: Eyedropper — klik blok → ambil warnanya jadi currentColor.
@@ -14401,23 +14410,74 @@ Now you can apply Displacement for detailed effect.`);
                 Task ID 28, 2026-08-31) ke SINI, tepat di bawah tombol Place
                 per request user. Tombol "Pick Color" (eyedropper) dihapus
                 permanen dari toolbar. Properti tombol tidak berubah. ── */}
-            <button
-              onClick={() => toggleTool('paint')}
-              title="Paint (C)"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'paint' ? '#f59e0b' : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'paint' ? '#f59e0b' : 'transparent',
-                color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              <Paintbrush size={15} />
-              Paint
-            </button>
+            {/* ── PAINT (Phase 46, 2026-09-03) — tombol dengan 2 area interaktif:
+                1. Main button (klik Paintbrush/teks) → toggle tool + buka modal
+                   (modal hanya muncul jika paintCustomColor null, setelah Confirm
+                   tidak muncul lagi sampai gerigi diklik).
+                2. Gerigi icon (klik) → selalu buka modal (ganti warna).
+                Warna tombol follow paintCustomColor (100% match ke warna user).
+                Default orange #f59e0b kalau belum ada custom color. ── */}
+            <div style={{ display: 'flex', alignItems: 'stretch', borderRadius: 10, overflow: 'hidden' }}>
+              {/* Main Paint button — toggle tool + buka modal if first time */}
+              <button
+                onClick={() => {
+                  toggleTool('paint');
+                  // Buka modal hanya jika belum pernah confirm custom color
+                  if (tool !== 'paint' && !paintCustomColor) {
+                    setColorPicker({
+                      targetMeshes: null,  // null = picker mode (bukan paint-to-block mode)
+                      hex: currentColor,
+                      originalHex: currentColor,
+                      mode: 'picker',  // picker mode: Confirm sets paintCustomColor, tidak apply ke block
+                    });
+                  }
+                }}
+                title="Paint (C)"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 14px',
+                  border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
+                  borderRight: 'none',
+                  borderRadius: '10px 0 0 10px',
+                  backgroundColor: tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'transparent',
+                  color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
+                  fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                <Paintbrush size={15} />
+                Paint
+              </button>
+              {/* Gerigi icon — selalu buka modal (ganti warna) */}
+              <button
+                onClick={() => {
+                  setColorPicker({
+                    targetMeshes: null,
+                    hex: paintCustomColor || currentColor,
+                    originalHex: paintCustomColor || currentColor,
+                    mode: 'picker',
+                  });
+                }}
+                title="Pilih warna custom untuk Paint"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 10px',
+                  border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
+                  borderLeft: 'none',
+                  borderRadius: '0 10px 10px 0',
+                  backgroundColor: tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'transparent',
+                  color: tool === 'paint' ? '#0e1420' : '#94a3b8',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                <Settings size={14} />
+              </button>
+            </div>
             {/* ── BINDING & PROPERTY (Task ID 31, 2026-09-01) — tombol
                 PLACEHOLDER "masih dalam tahap pengembangan" per request user.
                 Klik TIDAK memanggil toggleTool / TIDAK mengubah tool aktif —
@@ -22031,9 +22091,11 @@ Now you can apply Displacement for detailed effect.`);
                 fontSize: 12, fontWeight: 700, color: '#e2e8f0',
                 textAlign: 'center',
               }}>
-                {colorPicker.targetMeshes && colorPicker.targetMeshes.length > 1
-                  ? `Block Color (${colorPicker.targetMeshes.length} blocks)`
-                  : 'Block Color'}
+                {colorPicker.mode === 'picker'
+                  ? 'Paint Color'
+                  : colorPicker.targetMeshes && colorPicker.targetMeshes.length > 1
+                    ? `Block Color (${colorPicker.targetMeshes.length} blocks)`
+                    : 'Block Color'}
               </div>
               <ColorWheelPicker
                 hex={colorPicker.hex}
@@ -22060,23 +22122,32 @@ Now you can apply Displacement for detailed effect.`);
               <button
                 onClick={() => {
                   const hex = colorPicker.hex;
-                  // Apply hex ke semua targetMeshes (clicked + selected)
-                  if (colorPicker.targetMeshes) {
-                    colorPicker.targetMeshes.forEach(mesh => {
-                      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-                      mats.forEach(m => {
-                        if (!m) return;
-                        if (m.color) m.color.set(hex);
-                        m.needsUpdate = true;
+                  // Phase 46: 2 mode — 'picker' (set paintCustomColor) vs default (paint-to-block)
+                  if (colorPicker.mode === 'picker') {
+                    // Picker mode: set paintCustomColor + currentColor, tidak apply ke block
+                    setPaintCustomColor(hex);
+                    setCurrentColor(hex);
+                    setColorPicker(null);
+                    toast.success('Warna Paint siap dipakai!', { description: hex.toUpperCase() });
+                  } else {
+                    // Paint-to-block mode: apply hex ke semua targetMeshes (clicked + selected)
+                    if (colorPicker.targetMeshes) {
+                      colorPicker.targetMeshes.forEach(mesh => {
+                        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                        mats.forEach(m => {
+                          if (!m) return;
+                          if (m.color) m.color.set(hex);
+                          m.needsUpdate = true;
+                        });
                       });
-                    });
+                    }
+                    // Sync currentColor supaya place tool pakai warna yang sama
+                    setCurrentColor(hex);
+                    // Record history untuk undo/redo
+                    if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+                    setColorPicker(null);
+                    toast.success('Warna block berhasil diubah!', { description: hex.toUpperCase() });
                   }
-                  // Sync currentColor supaya place tool pakai warna yang sama
-                  setCurrentColor(hex);
-                  // Record history untuk undo/redo
-                  if (threeRef.current.recordHistory) threeRef.current.recordHistory();
-                  setColorPicker(null);
-                  toast.success('Warna block berhasil diubah!', { description: hex.toUpperCase() });
                 }}
                 style={{
                   flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
