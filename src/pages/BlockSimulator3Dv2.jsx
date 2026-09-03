@@ -11889,6 +11889,57 @@ Now you can apply Displacement for detailed effect.`);
           }
         }
         console.log(`[Phase 49 v7] Kerucut ngambang dihapus: ${removed.length} (${removed.join(', ')}) — sisa: ${kept.join(', ')}`);
+
+        // Phase 49 v8: Tambah 3 panah di sisi negatif (shaft + cone = mirror dari positif)
+        // Total jadi 6 panah — tiap sumbu X/Y/Z ada panah ke arah + DAN −.
+        // Setiap panah = 1 shaft (silinder tipis) + 1 cone (kerucut), identik gaya visual positif.
+        try {
+          const NEG_SETUP = {
+            X: [
+              // shaft: CylinderGeometry r=0.0075 h=0.5 → rotate -PI/2 di Z → X axis, center origin
+              [new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0xff4444, toneMapped: false }), [0, 0, -Math.PI / 2]],
+              // cone: CylinderGeometry r=0.04→0 h=0.1 → rotate +PI/2 di Z → pointing −X, pos (-0.5,0,0)
+              [new THREE.ConeGeometry(0.04, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0xff4444, toneMapped: false }), [-0.5, 0, 0], [0, 0, Math.PI / 2]],
+            ],
+            Y: [
+              // shaft: rotate PI/2 di X → Y axis
+              [new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0x44ff44, toneMapped: false }), [0, 0, 0], [Math.PI / 2, 0, 0]],
+              // cone: rotate PI di X → pointing −Y, pos (0,-0.5,0)
+              [new THREE.ConeGeometry(0.04, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x44ff44, toneMapped: false }), [0, -0.5, 0], [Math.PI, 0, 0]],
+            ],
+            Z: [
+              // shaft: rotate PI/2 di X → Z axis
+              [new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0x4444ff, toneMapped: false }), [0, 0, 0], [Math.PI / 2, 0, 0]],
+              // cone: rotate -PI/2 di X → pointing −Z, pos (0,0,-0.5)
+              [new THREE.ConeGeometry(0.04, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x4444ff, toneMapped: false }), [0, 0, -0.5], [-Math.PI / 2, 0, 0]],
+            ],
+          };
+
+          const added = [];
+          for (const axisName of ['X', 'Y', 'Z']) {
+            const entries = NEG_SETUP[axisName];
+            for (const [geo, mat, pos, rot] of entries) {
+              const mesh = new THREE.Mesh(geo, mat);
+              mesh.name = axisName;
+              if (pos) mesh.position.set(pos[0], pos[1], pos[2]);
+              if (rot) mesh.rotation.set(rot[0], rot[1], rot[2]);
+              mesh.updateMatrix();
+              // Bake transform ke geometry (seperti setupGizmo)
+              const tempGeo = mesh.geometry.clone();
+              tempGeo.applyMatrix4(mesh.matrix);
+              mesh.geometry = tempGeo;
+              mesh.renderOrder = Infinity;
+              mesh.position.set(0, 0, 0);
+              mesh.rotation.set(0, 0, 0);
+              mesh.scale.set(1, 1, 1);
+              translateObj.add(mesh);
+              added.push(`${axisName}${pos && pos[0] + pos[1] + pos[2] < 0 ? '−' : '+'}`);
+            }
+          }
+          console.log(`[Phase 49 v8] Panah negatif ditambahkan: ${added.length} mesh (${added.join(', ')}) — total 6 panah`);
+        } catch (e2) {
+          console.warn('[Phase 49 v8] Gagal menambah panah negatif:', e2);
+        }
       } else {
         console.warn('[Phase 49 v7] Gizmo translate Object3D tidak ditemukan — fallback: hide negative via animation loop');
         // Fallback: hide negative cones via per-frame check in animation loop
@@ -12038,41 +12089,8 @@ Now you can apply Displacement for detailed effect.`);
       }
 
       controls.update();
-      // Phase 49 v7 fallback: hide negative cones via geometry manipulation
-      // (visibility di-override oleh updateMatrixWorld, jadi kita modifikasi geometry langsung)
-      if (threeRef.current.hideNegativeCones && threeRef.current.transformControls) {
-        try {
-          const tc = threeRef.current.transformControls;
-          const gizmo = tc._gizmo || (tc.getHelper && (() => {
-            const h = tc.getHelper();
-            for (const c of h.children) { if (c.gizmo) return c; }
-            return null;
-          })());
-          if (gizmo && gizmo.gizmo && gizmo.gizmo.translate && !threeRef.current._negConesHidden) {
-            const AXIS_KEY = { X: 'x', Y: 'y', Z: 'z' };
-            let hiddenCount = 0;
-            for (const child of gizmo.gizmo.translate.children) {
-              const axisKey = AXIS_KEY[child.name];
-              if (!axisKey || !child.geometry) continue;
-              child.geometry.computeBoundingBox();
-              const bb = child.geometry.boundingBox;
-              if (!bb) continue;
-              const sizeY = bb.max.y - bb.min.y;
-              if (sizeY > 0.3) continue; // shaft, skip
-              const center = (bb.min[axisKey] + bb.max[axisKey]) / 2;
-              if (center < -1e-6) {
-                // Sembunyikan mesh dengan setDrawRange(0, 0) → renderer tidak render apapun
-                child.geometry.setDrawRange(0, 0);
-                hiddenCount++;
-              }
-            }
-            if (hiddenCount > 0) {
-              threeRef.current._negConesHidden = true;
-              console.log(`[Phase 49 v7 fallback] ${hiddenCount} kerucut ngambang di-hidden via geometry`);
-            }
-          }
-        } catch (_) { /* silent */ }
-      }
+      // Phase 49 v7 fallback DIHAPUS — v7+ sudah handle hapus + tambah 6 panah.
+      // Tidak perlu lagi per-frame hide.
       // Phase 48: Update particle systems tiap frame
       const now = performance.now() / 1000;
       if (particleSystemsRef.current.size > 0) {
