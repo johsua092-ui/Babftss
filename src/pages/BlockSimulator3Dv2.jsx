@@ -11923,7 +11923,11 @@ Now you can apply Displacement for detailed effect.`);
             flippedGeo.computeBoundingSphere();
 
             // Clone mesh — SAMA PERSIS dari positif (material, renderOrder, dll)
-            const negMesh = new THREE.Mesh(flippedGeo, handle.material);
+            // DoubleSide WAJIB: flip koordinat mengubah winding order triangle,
+            // tanpa DoubleSide, sisi belakang ter-cull → invisible (terutama sumbu Y)
+            const flippedMat = handle.material.clone();
+            flippedMat.side = THREE.DoubleSide;
+            const negMesh = new THREE.Mesh(flippedGeo, flippedMat);
             negMesh.name = handle.name;
             negMesh.renderOrder = Infinity;
             translateObj.add(negMesh);
