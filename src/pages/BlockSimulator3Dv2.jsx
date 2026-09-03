@@ -14406,10 +14406,6 @@ Now you can apply Displacement for detailed effect.`);
               <Hammer size={15} />
               Place
             </button>
-            {/* ── PAINT — dipindah dari section "Paint" (section itu dihapus
-                Task ID 28, 2026-08-31) ke SINI, tepat di bawah tombol Place
-                per request user. Tombol "Pick Color" (eyedropper) dihapus
-                permanen dari toolbar. Properti tombol tidak berubah. ── */}
             {/* ── PAINT (Phase 46, 2026-09-03) — tombol dengan 2 area interaktif:
                 1. Main button (klik Paintbrush/teks) → toggle tool + buka modal
                    (modal hanya muncul jika paintCustomColor null, setelah Confirm
@@ -14417,18 +14413,17 @@ Now you can apply Displacement for detailed effect.`);
                 2. Gerigi icon (klik) → selalu buka modal (ganti warna).
                 Warna tombol follow paintCustomColor (100% match ke warna user).
                 Default orange #f59e0b kalau belum ada custom color. ── */}
-            <div style={{ display: 'flex', alignItems: 'stretch', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
               {/* Main Paint button — toggle tool + buka modal if first time */}
               <button
                 onClick={() => {
                   toggleTool('paint');
-                  // Buka modal hanya jika belum pernah confirm custom color
                   if (tool !== 'paint' && !paintCustomColor) {
                     setColorPicker({
-                      targetMeshes: null,  // null = picker mode (bukan paint-to-block mode)
+                      targetMeshes: null,
                       hex: currentColor,
                       originalHex: currentColor,
-                      mode: 'picker',  // picker mode: Confirm sets paintCustomColor, tidak apply ke block
+                      mode: 'picker',
                     });
                   }
                 }}
@@ -14444,6 +14439,7 @@ Now you can apply Displacement for detailed effect.`);
                   fontSize: 13, fontWeight: 500, cursor: 'pointer',
                   transition: 'all 0.15s ease',
                   fontFamily: 'Inter, sans-serif',
+                  flexShrink: 0,
                 }}
               >
                 <Paintbrush size={15} />
@@ -14451,7 +14447,8 @@ Now you can apply Displacement for detailed effect.`);
               </button>
               {/* Gerigi icon — selalu buka modal (ganti warna) */}
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setColorPicker({
                     targetMeshes: null,
                     hex: paintCustomColor || currentColor,
@@ -14462,7 +14459,7 @@ Now you can apply Displacement for detailed effect.`);
                 title="Pilih warna custom untuk Paint"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 10px',
+                  padding: '8px 10px',
                   border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
                   borderLeft: 'none',
                   borderRadius: '0 10px 10px 0',
@@ -14471,9 +14468,8 @@ Now you can apply Displacement for detailed effect.`);
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
                   fontFamily: 'Inter, sans-serif',
+                  flexShrink: 0,
                 }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
               >
                 <Settings size={14} />
               </button>
