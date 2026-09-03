@@ -11811,31 +11811,36 @@ Now you can apply Displacement for detailed effect.`);
     transformControls.showXZ = false;
     const transformHelper = transformControls.getHelper(); // Object3D yang berisi gizmo visual
     scene.add(transformHelper);
-    // Phase 49 v2: Fix "floating cones" di sisi negatif. Default three.js hanya
-    // menampilkan shaft (garis) di sisi positif — sisi negatif cuma cone tanpa
-    // shaft (terlihat ngambang). Traverse PUBLIC helper (bukan private _gizmo)
-    // untuk find shaft meshes, clone dengan rotasi 180° supaya pointing negatif.
-    // Approach: collect shafts first, then add clones (avoid traverse-during-modify).
+    // Phase 49 v3, 2026-09-03: Fix "floating cones" di sisi negatif.
+    // Root cause v1/v2 fail: BufferGeometry.clone() tidak preserve .parameters —
+    // cloned shafts report height=1 (default) bukan 0.5 (actual), jadi filter
+    // p.height < 0.3 || > 0.7 salah tolak SEMUA shafts.
+    // Fix v3: identify shafts SOLELY by position (at origin) + name (X/Y/Z).
+    // Shafts = name X/Y/Z + position ≈ origin. Cones = name X/Y/Z + position at ±0.5.
+    // User idea: "delete floating cones, copy full arrows (cone+shaft), mirror ke sisi seberang".
+    // Implementasi: clone shaft yang benar, rotate 180° supaya pointing negatif.
     try {
       const shaftsToClone = [];
       transformHelper.traverse(obj => {
-        if (!obj.geometry || !obj.geometry.parameters) return;
+        // Must have name X, Y, or Z (axis identifier set by setupGizmo)
         if (obj.name !== 'X' && obj.name !== 'Y' && obj.name !== 'Z') return;
-        if (obj.position.length() > 0.001) return; // shafts are at origin, cones at ±0.5
-        const p = obj.geometry.parameters;
-        // Shaft = CylinderGeometry height ~0.5 (cones have height 0.1, handles 0.08)
-        if (!p.height || p.height < 0.3 || p.height > 0.7) return;
+        // Shaft = at origin (position ≈ 0). Cone = at ±0.5 (position.length() ≈ 0.5)
+        if (obj.position.length() > 0.001) return;
+        // Must have geometry (skip Object3D groups)
+        if (!obj.geometry) return;
+        // Must have parent to add clone to
         if (!obj.parent) return;
         shaftsToClone.push(obj);
       });
+      // Clone each shaft, rotate 180° to point negative direction
       shaftsToClone.forEach(obj => {
         const negShaft = obj.clone();
-        // Rotate 180° to point negative direction
         if (obj.name === 'X') negShaft.rotation.z += Math.PI;
         else if (obj.name === 'Y') negShaft.rotation.x += Math.PI;
         else if (obj.name === 'Z') negShaft.rotation.x += Math.PI;
         obj.parent.add(negShaft);
       });
+      console.log('[Phase 49] Negative shafts added:', shaftsToClone.length);
     } catch (e) {
       console.warn('[Phase 49] Failed to add negative shafts:', e);
     }
