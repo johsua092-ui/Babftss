@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -24,6 +24,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
+import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
 
 /* ================================================================
@@ -212,6 +213,9 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // SEMUA tombol tool. Klik tool BERBEDA saat ada tool aktif = pindah (bukan toggle).
   const toggleTool = (nextTool) => setTool(t => (t === nextTool ? null : nextTool));
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
+  // Phase 44, 2026-09-03: Custom Color Picker modal state (copy dari CanvasPage).
+  // null = closed; { hex, originalHex } = open. hex = live preview, originalHex = cancel revert.
+  const [customColorPicker, setCustomColorPicker] = useState(null);
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
@@ -17501,15 +17505,39 @@ Now you can apply Displacement for detailed effect.`);
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
             }}>Colors</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 30px)', gap: 6 }}>
+            {/* Phase 44, 2026-09-03: Quick palette + Custom Color Picker button (copy dari CanvasPage).
+                Sebelumnya: fixed 12-color grid 4x3. Sekarang: 12 quick colors (inline row, wrap)
+                + 1 "+" button yang buka ColorWheelPicker modal (full HSV picker dengan eyedropper). */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               {COLORS.map(c => (
-                <div key={c} onClick={() => setCurrentColor(c)}
-                  style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: c, cursor: 'pointer',
-                    border: `2px solid ${currentColor === c ? '#f59e0b' : 'transparent'}`,
-                    transition: 'transform 0.1s', boxShadow: currentColor === c ? `0 0 8px ${c}66` : 'none' }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.12)'}
+                <button key={c} onClick={() => setCurrentColor(c)}
+                  style={{
+                    width: 24, height: 24, borderRadius: '50%',
+                    border: currentColor === c ? `2px solid #f59e0b` : `1px solid rgba(148,163,184,0.3)`,
+                    backgroundColor: c, cursor: 'pointer',
+                    transition: 'transform 0.1s, border 0.15s',
+                    boxShadow: currentColor === c ? `0 0 8px ${c}66` : 'none',
+                    padding: 0,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
               ))}
+              {/* Custom Color Picker button — buka modal ColorWheelPicker */}
+              <button
+                onClick={() => setCustomColorPicker({ hex: currentColor, originalHex: currentColor })}
+                title="Custom Color Picker"
+                style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  border: '1px dashed rgba(148,163,184,0.5)',
+                  backgroundColor: 'transparent', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 0, transition: 'border 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = '#f59e0b'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(148,163,184,0.5)'}
+              >
+                <span style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1 }}>+</span>
+              </button>
             </div>
             {/* Phase 27: Multi-color Painter — Pattern selector (muncul saat tool=paint) */}
             {tool === 'paint' && (
@@ -17617,6 +17645,111 @@ Now you can apply Displacement for detailed effect.`);
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Phase 44, 2026-09-03: Custom Color Picker Modal (copy plek ketiplek dari CanvasPage).
+            ColorWheelPicker = Windows-style HSV picker (color wheel + sliders + eyedropper).
+            Mobile: scroll arrows ‹ › muncul di overlay. Confirm/Cancel fixed di bawah. */}
+        {customColorPicker && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}>
+            {/* Mobile scroll arrows — FIXED on overlay */}
+            {typeof window !== 'undefined' && window.innerWidth < 768 && (
+              <>
+                <div style={{
+                  position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
+                  zIndex: 51, pointerEvents: 'none',
+                  animation: 'cp-blink 1.2s ease-in-out infinite',
+                  color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+                }}>‹</div>
+                <div style={{
+                  position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                  zIndex: 51, pointerEvents: 'none',
+                  animation: 'cp-blink 1.2s ease-in-out infinite',
+                  color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+                }}>›</div>
+              </>
+            )}
+            <div style={{
+              padding: 8, borderRadius: 8,
+              backgroundColor: 'rgba(15, 23, 42, 0.98)',
+              border: '1px solid #475569',
+              display: 'flex', flexDirection: 'column', gap: 6,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              maxHeight: 'calc(100dvh - 32px)',
+              maxWidth: typeof window !== 'undefined' && window.innerWidth < 768 ? 'calc(100vw - 20px)' : undefined,
+              boxSizing: 'border-box',
+            }}>
+              {/* Scrollable area */}
+              <div style={{
+                overflowY: 'auto', overflowX: 'auto',
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+                flex: 1, minHeight: 0,
+              }}>
+                <div style={{
+                  fontSize: 12, fontWeight: 700, color: '#e2e8f0',
+                  fontFamily: 'Inter,sans-serif', textAlign: 'center',
+                }}>Custom Color</div>
+                <ColorWheelPicker
+                  hex={customColorPicker.hex}
+                  onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+                  onPickColor={() => {
+                    const saved = { ...customColorPicker };
+                    setCustomColorPicker(null);
+                    if (window.EyeDropper) {
+                      const dropper = new window.EyeDropper();
+                      dropper.open().then(result => {
+                        setCustomColorPicker({ ...saved, hex: result.sRGBHex });
+                      }).catch(() => {
+                        setCustomColorPicker(saved);
+                      });
+                    } else {
+                      setCustomColorPicker(saved);
+                    }
+                  }}
+                />
+              </div>
+              {/* Buttons — OUTSIDE scrollable area, stays fixed */}
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button
+                  onClick={() => {
+                    setCurrentColor(customColorPicker.hex);
+                    setCustomColorPicker(null);
+                    toast.success('Warna berhasil diubah!', { description: customColorPicker.hex.toUpperCase() });
+                  }}
+                  style={{
+                    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
+                    background: 'linear-gradient(135deg, #059669, #10b981)',
+                    border: '1px solid #34d399',
+                    borderRadius: 4, color: '#fff', cursor: 'pointer',
+                    fontFamily: 'Inter,sans-serif',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  }}
+                >
+                  <Check size={12} strokeWidth={2.5} /> Confirm
+                </button>
+                <button
+                  onClick={() => setCustomColorPicker(null)}
+                  style={{
+                    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
+                    background: '#1e293b', border: '1px solid #475569',
+                    borderRadius: 4, color: '#FFFFFF', cursor: 'pointer',
+                    fontFamily: 'Inter,sans-serif',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
