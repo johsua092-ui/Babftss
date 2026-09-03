@@ -11811,38 +11811,49 @@ Now you can apply Displacement for detailed effect.`);
     transformControls.showXZ = false;
     const transformHelper = transformControls.getHelper(); // Object3D yang berisi gizmo visual
     scene.add(transformHelper);
-    // Phase 49 v3, 2026-09-03: Fix "floating cones" di sisi negatif.
-    // Root cause v1/v2 fail: BufferGeometry.clone() tidak preserve .parameters —
-    // cloned shafts report height=1 (default) bukan 0.5 (actual), jadi filter
-    // p.height < 0.3 || > 0.7 salah tolak SEMUA shafts.
-    // Fix v3: identify shafts SOLELY by position (at origin) + name (X/Y/Z).
-    // Shafts = name X/Y/Z + position ≈ origin. Cones = name X/Y/Z + position at ±0.5.
-    // User idea: "delete floating cones, copy full arrows (cone+shaft), mirror ke sisi seberang".
-    // Implementasi: clone shaft yang benar, rotate 180° supaya pointing negatif.
+    // Phase 49 v4, 2026-09-03: Fix "floating cones" di sisi negatif.
+    // v1/v2/v3 all failed because: clone approach doesn't work (geometry params lost,
+    // visibility managed by TC internal update loop).
+    // v4 approach: CREATE NEW shaft meshes from scratch (not clone), add to gizmo.
+    // User idea: "delete kerucut ngambang, copy kerucut+shaft yang benar, mirror ke sisi seberang".
+    // Instead of cloning, create fresh CylinderGeometry shafts pointing negative direction.
+    // Access gizmo via PUBLIC tree: transformHelper → children → find TransformControlsGizmo → .gizmo.translate
     try {
-      const shaftsToClone = [];
-      transformHelper.traverse(obj => {
-        // Must have name X, Y, or Z (axis identifier set by setupGizmo)
-        if (obj.name !== 'X' && obj.name !== 'Y' && obj.name !== 'Z') return;
-        // Shaft = at origin (position ≈ 0). Cone = at ±0.5 (position.length() ≈ 0.5)
-        if (obj.position.length() > 0.001) return;
-        // Must have geometry (skip Object3D groups)
-        if (!obj.geometry) return;
-        // Must have parent to add clone to
-        if (!obj.parent) return;
-        shaftsToClone.push(obj);
-      });
-      // Clone each shaft, rotate 180° to point negative direction
-      shaftsToClone.forEach(obj => {
-        const negShaft = obj.clone();
-        if (obj.name === 'X') negShaft.rotation.z += Math.PI;
-        else if (obj.name === 'Y') negShaft.rotation.x += Math.PI;
-        else if (obj.name === 'Z') negShaft.rotation.x += Math.PI;
-        obj.parent.add(negShaft);
-      });
-      console.log('[Phase 49] Negative shafts added:', shaftsToClone.length);
+      // Find TransformControlsGizmo (has .gizmo property) in transformHelper children
+      let gizmoRoot = null;
+      for (const child of transformHelper.children) {
+        if (child.gizmo) { gizmoRoot = child; break; }
+      }
+      if (gizmoRoot && gizmoRoot.gizmo && gizmoRoot.gizmo.translate) {
+        const translateObj = gizmoRoot.gizmo.translate;
+        // Create new shaft geometry: cylinder 0.0075 radius, 0.5 height, translated to -0.25
+        // (so it spans from 0 to -0.5 in local Y, before rotation)
+        const negShaftGeo = new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3);
+        negShaftGeo.translate(0, -0.25, 0); // shift down so shaft goes 0 → -0.5
+        // Materials match existing gizmo colors
+        const matRed = new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false, transparent: true });
+        const matGreen = new THREE.MeshBasicMaterial({ color: 0x22c55e, depthTest: false, transparent: true });
+        const matBlue = new THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false, transparent: true });
+        // X negative: rotate Z by -π/2 (pointing -X direction)
+        const negShaftX = new THREE.Mesh(negShaftGeo, matRed);
+        negShaftX.name = 'X';
+        negShaftX.rotation.z = -Math.PI / 2;
+        translateObj.add(negShaftX);
+        // Y negative: no rotation needed (geometry already points -Y)
+        const negShaftY = new THREE.Mesh(negShaftGeo, matGreen);
+        negShaftY.name = 'Y';
+        translateObj.add(negShaftY);
+        // Z negative: rotate X by -π/2 (pointing -Z direction)
+        const negShaftZ = new THREE.Mesh(negShaftGeo, matBlue);
+        negShaftZ.name = 'Z';
+        negShaftZ.rotation.x = -Math.PI / 2;
+        translateObj.add(negShaftZ);
+        console.log('[Phase 49 v4] Negative shafts created: 3 (X, Y, Z)');
+      } else {
+        console.warn('[Phase 49 v4] Gizmo translate Object3D not found');
+      }
     } catch (e) {
-      console.warn('[Phase 49] Failed to add negative shafts:', e);
+      console.warn('[Phase 49 v4] Failed to add negative shafts:', e);
     }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
