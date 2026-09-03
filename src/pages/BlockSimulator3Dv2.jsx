@@ -213,9 +213,11 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // SEMUA tombol tool. Klik tool BERBEDA saat ada tool aktif = pindah (bukan toggle).
   const toggleTool = (nextTool) => setTool(t => (t === nextTool ? null : nextTool));
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
-  // Phase 44, 2026-09-03: Custom Color Picker modal state (copy dari CanvasPage).
-  // null = closed; { hex, originalHex } = open. hex = live preview, originalHex = cancel revert.
-  const [customColorPicker, setCustomColorPicker] = useState(null);
+  // Phase 45, 2026-09-03: Paint modal state (copy dari LogicGatesSimulator 2D).
+  // null = closed; { targetMeshes, hex, originalHex } = open.
+  // targetMeshes = array of Mesh yang akan di-paint (clicked + selected).
+  // hex = live preview (update real-time saat drag wheel). originalHex = cancel revert.
+  const [colorPicker, setColorPicker] = useState(null);
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
@@ -12555,38 +12557,30 @@ Now you can apply Displacement for detailed effect.`);
           if (threeRef.current.recordHistory) threeRef.current.recordHistory();
         }
       } else if (currentTool === 'paint') {
-        // Phase 6: Paint — klik blok → ganti warna ke currentColor.
-        // Kalau ada multi-select, paint SEMUA blok terpilih.
-        // Phase 27: Multi-color Painter — apply pattern texture kalau patternType != 'solid'
+        // Phase 45, 2026-09-03: Paint — klik blok → buka ColorWheelPicker modal
+        // (copy sistem dari LogicGatesSimulator 2D — plek ketiplek).
+        // Sebelumnya: klik blok → langsung apply currentColor ke material.
+        // Sekarang: klik blok → buka modal dengan warna blok tersebut sebagai hex awal.
+        // Confirm → apply hex ke blok (+ selected blocks). Cancel → close tanpa apply.
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
         if (hits.length > 0) {
           const hit = hits[0].object;
-          const patternTexture = getPatternTexture();
-          // Helper untuk apply paint ke material
-          const applyPaint = (mesh) => {
-            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            mats.forEach(m => {
-              if (!m) return;
-              if (m.color) m.color.set(color);
-              // Phase 27: apply pattern texture ke material
-              if (patternTexture) {
-                m.map = patternTexture;
-                m.needsUpdate = true;
-              } else if (m.map) {
-                // Pattern 'solid' → hapus texture yang ada
-                m.map = null;
-                m.needsUpdate = true;
-              }
-            });
-          };
-          // Paint blok yang diklik
-          applyPaint(hit);
-          // Jika ada blok lain yang ter-selected, paint mereka juga
-          if (threeRef.current.selectedBlocks.size > 1) {
-            threeRef.current.selectedBlocks.forEach(b => applyPaint(b));
+          // Ambil warna blok saat ini jadi hex awal picker
+          let currentHex = '#ffffff';
+          const mat = Array.isArray(hit.material) ? hit.material[0] : hit.material;
+          if (mat && mat.color) {
+            currentHex = '#' + mat.color.getHexString();
           }
-          if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+          // Kumpulkan target meshes: clicked + selected (untuk multi-paint)
+          const targetMeshes = [hit];
+          if (threeRef.current.selectedBlocks.size > 1) {
+            threeRef.current.selectedBlocks.forEach(b => {
+              if (b !== hit) targetMeshes.push(b);
+            });
+          }
+          // Buka modal
+          setColorPicker({ targetMeshes, hex: currentHex, originalHex: currentHex });
         }
       } else if (currentTool === 'eyedropper') {
         // Phase 6: Eyedropper — klik blok → ambil warnanya jadi currentColor.
@@ -17488,8 +17482,11 @@ Now you can apply Displacement for detailed effect.`);
           </div>
         )}
 
-        {/* Color palette — pojok kanan atas agak bawah */}
-        {(tool === 'place' || tool === 'paint') && (
+        {/* Color palette — pojok kanan atas agak bawah.
+            Phase 45, 2026-09-03: Hanya tampil untuk tool 'place'.
+            Untuk tool 'paint', palette dihapus — user klik block → buka ColorWheelPicker modal
+            (sistem copy dari LogicGatesSimulator 2D — plek ketiplek). */}
+        {tool === 'place' && (
           <div style={{
             position: 'absolute', top: 80, right: 16,
             display: 'flex', flexDirection: 'column', gap: 6,
@@ -17505,39 +17502,15 @@ Now you can apply Displacement for detailed effect.`);
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
             }}>Colors</div>
-            {/* Phase 44, 2026-09-03: Quick palette + Custom Color Picker button (copy dari CanvasPage).
-                Sebelumnya: fixed 12-color grid 4x3. Sekarang: 12 quick colors (inline row, wrap)
-                + 1 "+" button yang buka ColorWheelPicker modal (full HSV picker dengan eyedropper). */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 30px)', gap: 6 }}>
               {COLORS.map(c => (
-                <button key={c} onClick={() => setCurrentColor(c)}
-                  style={{
-                    width: 24, height: 24, borderRadius: '50%',
-                    border: currentColor === c ? `2px solid #f59e0b` : `1px solid rgba(148,163,184,0.3)`,
-                    backgroundColor: c, cursor: 'pointer',
-                    transition: 'transform 0.1s, border 0.15s',
-                    boxShadow: currentColor === c ? `0 0 8px ${c}66` : 'none',
-                    padding: 0,
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
+                <div key={c} onClick={() => setCurrentColor(c)}
+                  style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: c, cursor: 'pointer',
+                    border: `2px solid ${currentColor === c ? '#f59e0b' : 'transparent'}`,
+                    transition: 'transform 0.1s', boxShadow: currentColor === c ? `0 0 8px ${c}66` : 'none' }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.12)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
               ))}
-              {/* Custom Color Picker button — buka modal ColorWheelPicker */}
-              <button
-                onClick={() => setCustomColorPicker({ hex: currentColor, originalHex: currentColor })}
-                title="Custom Color Picker"
-                style={{
-                  width: 24, height: 24, borderRadius: '50%',
-                  border: '1px dashed rgba(148,163,184,0.5)',
-                  backgroundColor: 'transparent', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 0, transition: 'border 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = '#f59e0b'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(148,163,184,0.5)'}
-              >
-                <span style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1 }}>+</span>
-              </button>
             </div>
             {/* Phase 27: Multi-color Painter — Pattern selector (muncul saat tool=paint) */}
             {tool === 'paint' && (
@@ -17645,111 +17618,6 @@ Now you can apply Displacement for detailed effect.`);
                 )}
               </div>
             )}
-          </div>
-        )}
-
-        {/* Phase 44, 2026-09-03: Custom Color Picker Modal (copy plek ketiplek dari CanvasPage).
-            ColorWheelPicker = Windows-style HSV picker (color wheel + sliders + eyedropper).
-            Mobile: scroll arrows ‹ › muncul di overlay. Confirm/Cancel fixed di bawah. */}
-        {customColorPicker && (
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            zIndex: 50, backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16,
-          }}>
-            {/* Mobile scroll arrows — FIXED on overlay */}
-            {typeof window !== 'undefined' && window.innerWidth < 768 && (
-              <>
-                <div style={{
-                  position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
-                  zIndex: 51, pointerEvents: 'none',
-                  animation: 'cp-blink 1.2s ease-in-out infinite',
-                  color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
-                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
-                }}>‹</div>
-                <div style={{
-                  position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-                  zIndex: 51, pointerEvents: 'none',
-                  animation: 'cp-blink 1.2s ease-in-out infinite',
-                  color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
-                  textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
-                }}>›</div>
-              </>
-            )}
-            <div style={{
-              padding: 8, borderRadius: 8,
-              backgroundColor: 'rgba(15, 23, 42, 0.98)',
-              border: '1px solid #475569',
-              display: 'flex', flexDirection: 'column', gap: 6,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-              maxHeight: 'calc(100dvh - 32px)',
-              maxWidth: typeof window !== 'undefined' && window.innerWidth < 768 ? 'calc(100vw - 20px)' : undefined,
-              boxSizing: 'border-box',
-            }}>
-              {/* Scrollable area */}
-              <div style={{
-                overflowY: 'auto', overflowX: 'auto',
-                overscrollBehavior: 'contain',
-                WebkitOverflowScrolling: 'touch',
-                flex: 1, minHeight: 0,
-              }}>
-                <div style={{
-                  fontSize: 12, fontWeight: 700, color: '#e2e8f0',
-                  fontFamily: 'Inter,sans-serif', textAlign: 'center',
-                }}>Custom Color</div>
-                <ColorWheelPicker
-                  hex={customColorPicker.hex}
-                  onChange={newHex => setCustomColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
-                  onPickColor={() => {
-                    const saved = { ...customColorPicker };
-                    setCustomColorPicker(null);
-                    if (window.EyeDropper) {
-                      const dropper = new window.EyeDropper();
-                      dropper.open().then(result => {
-                        setCustomColorPicker({ ...saved, hex: result.sRGBHex });
-                      }).catch(() => {
-                        setCustomColorPicker(saved);
-                      });
-                    } else {
-                      setCustomColorPicker(saved);
-                    }
-                  }}
-                />
-              </div>
-              {/* Buttons — OUTSIDE scrollable area, stays fixed */}
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button
-                  onClick={() => {
-                    setCurrentColor(customColorPicker.hex);
-                    setCustomColorPicker(null);
-                    toast.success('Warna berhasil diubah!', { description: customColorPicker.hex.toUpperCase() });
-                  }}
-                  style={{
-                    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
-                    background: 'linear-gradient(135deg, #059669, #10b981)',
-                    border: '1px solid #34d399',
-                    borderRadius: 4, color: '#fff', cursor: 'pointer',
-                    fontFamily: 'Inter,sans-serif',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
-                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-                  }}
-                >
-                  <Check size={12} strokeWidth={2.5} /> Confirm
-                </button>
-                <button
-                  onClick={() => setCustomColorPicker(null)}
-                  style={{
-                    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
-                    background: '#1e293b', border: '1px solid #475569',
-                    borderRadius: 4, color: '#FFFFFF', cursor: 'pointer',
-                    fontFamily: 'Inter,sans-serif',
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
           </div>
         )}
 
@@ -22089,6 +21957,147 @@ Now you can apply Displacement for detailed effect.`);
                 }}
               >
                 Ya, Reset Kamera
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Color Picker Modal (Phase 45, 2026-09-03) ──
+          Copy plek ketiplek dari LogicGatesSimulator 2D.
+          Muncul saat user klik block dengan Paint tool aktif.
+          ColorWheelPicker = Windows-style HSV picker (wheel + sliders + eyedropper).
+          Confirm → apply hex ke targetMeshes. Cancel → close tanpa apply. */}
+      {colorPicker && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            zIndex: 1000,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setColorPicker(null)}
+        >
+          {/* Mobile scroll arrows — FIXED on screen, outside modal */}
+          {typeof window !== 'undefined' && window.innerWidth < 768 && (
+            <>
+              <div style={{
+                position: 'absolute', left: 4, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 1001, pointerEvents: 'none',
+                animation: 'cp-blink 1.2s ease-in-out infinite',
+                color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+              }}>‹</div>
+              <div style={{
+                position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 1001, pointerEvents: 'none',
+                animation: 'cp-blink 1.2s ease-in-out infinite',
+                color: '#fff', fontSize: 72, fontWeight: 900, lineHeight: 1,
+                textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.5)',
+              }}>›</div>
+            </>
+          )}
+          <div
+            style={{
+              backgroundColor: typeof window !== 'undefined' && window.innerWidth < 768
+                ? 'rgba(100, 116, 139, 0.97)'
+                : 'rgba(15, 23, 42, 0.98)',
+              border: '1px solid #475569',
+              borderRadius: 8,
+              padding: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              fontFamily: 'Inter, sans-serif',
+              display: 'flex', flexDirection: 'column', gap: 6,
+              maxHeight: 'calc(100dvh - 32px)',
+              maxWidth: typeof window !== 'undefined' && window.innerWidth < 768
+                ? 'calc(100vw - 20px)' : undefined,
+              boxSizing: 'border-box',
+            }}
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+          >
+            {/* Scrollable area — contains title + color picker */}
+            <div style={{
+              overflowY: 'auto',
+              overflowX: 'auto',
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+              flex: 1, minHeight: 0,
+            }}>
+              <div style={{
+                fontSize: 12, fontWeight: 700, color: '#e2e8f0',
+                textAlign: 'center',
+              }}>
+                {colorPicker.targetMeshes && colorPicker.targetMeshes.length > 1
+                  ? `Block Color (${colorPicker.targetMeshes.length} blocks)`
+                  : 'Block Color'}
+              </div>
+              <ColorWheelPicker
+                hex={colorPicker.hex}
+                onChange={newHex => setColorPicker(cp => cp ? { ...cp, hex: newHex } : cp)}
+                onPickColor={() => {
+                  // EyeDropper API (Chrome only) — pick color dari screen mana saja
+                  const saved = { ...colorPicker };
+                  setColorPicker(null);
+                  if (window.EyeDropper) {
+                    const dropper = new window.EyeDropper();
+                    dropper.open().then(result => {
+                      setColorPicker({ ...saved, hex: result.sRGBHex });
+                    }).catch(() => {
+                      setColorPicker(saved);
+                    });
+                  } else {
+                    setColorPicker(saved);
+                  }
+                }}
+              />
+            </div>
+            {/* Action buttons: Confirm | Cancel — OUTSIDE scrollable area, stays fixed */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 2, flexShrink: 0 }}>
+              <button
+                onClick={() => {
+                  const hex = colorPicker.hex;
+                  // Apply hex ke semua targetMeshes (clicked + selected)
+                  if (colorPicker.targetMeshes) {
+                    colorPicker.targetMeshes.forEach(mesh => {
+                      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                      mats.forEach(m => {
+                        if (!m) return;
+                        if (m.color) m.color.set(hex);
+                        m.needsUpdate = true;
+                      });
+                    });
+                  }
+                  // Sync currentColor supaya place tool pakai warna yang sama
+                  setCurrentColor(hex);
+                  // Record history untuk undo/redo
+                  if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+                  setColorPicker(null);
+                  toast.success('Warna block berhasil diubah!', { description: hex.toUpperCase() });
+                }}
+                style={{
+                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 700,
+                  background: 'linear-gradient(135deg, #059669, #10b981)',
+                  border: '1px solid #34d399',
+                  borderRadius: 4, color: '#ffffff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                }}
+              >
+                <Check size={12} strokeWidth={2.5} /> Confirm
+              </button>
+              <button
+                onClick={() => setColorPicker(null)}
+                style={{
+                  flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 600,
+                  background: '#1e293b', border: '1px solid #475569',
+                  borderRadius: 4, color: '#FFFFFF', cursor: 'pointer',
+                }}
+              >
+                Cancel
               </button>
             </div>
           </div>
