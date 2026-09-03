@@ -49,6 +49,17 @@
  *    flip koordinat manual dengan determinan -1, winding terbalik
  *    dan mesh ter-cull (invisible) tanpa DoubleSide.
  *
+ * ── GARIS PUTIH PANJANG (helper) ────────────────────────────────
+ * Selain gizmo, TransformControls juga punya `_gizmo.helper[mode]`
+ * berisi garis bantu PUTIH yang terpisah dari 6 panah:
+ *   X / Y / Z  → Line putih opacity 0.5, panjang 1.000.000 unit,
+ *                muncul saat sumbu aktif (hover atau drag)
+ *   DELTA      → garis jejak dari titik awal ke titik sekarang
+ *   START/END  → titik kecil penanda posisi awal & akhir drag
+ * Kalau tidak diinginkan, pakai hideTranslateHelperLines() di bawah.
+ * Aman dihapus: helper TIDAK dipakai untuk raycast/drag sama sekali
+ * (pointerHover memakai `picker[mode]`, pointerMove memakai `_plane`).
+ *
  * ── CATATAN KEAMANAN ────────────────────────────────────────────
  * - Picking/drag TIDAK tersentuh. TransformControls melakukan raycast
  *   ke `_gizmo.picker[mode]`, bukan ke `_gizmo.gizmo[mode]`. Picker
@@ -250,6 +261,60 @@ export function makeSixArrows(transformControls, helperRoot = null) {
   }
 
   return { ok: true, added, arrows };
+}
+
+/**
+ * Menyembunyikan garis bantu PUTIH pada gizmo Move.
+ *
+ * Three.js menaruh garis bantu di `_gizmo.helper.translate`, TERPISAH dari
+ * 6 panah berwarna di `_gizmo.gizmo.translate`. Isinya:
+ *   - X / Y / Z : Line putih (opacity 0.5) sepanjang 1.000.000 unit yang
+ *                 muncul begitu sebuah sumbu aktif (saat hover maupun drag).
+ *                 Klik kotak tengah (axis 'XYZ') membuat KETIGA garis muncul
+ *                 sekaligus, karena pengecekannya `this.axis.search(handle.name)`.
+ *   - DELTA     : garis jejak dari posisi awal ke posisi sekarang saat drag.
+ *   - START/END : dua titik kecil penanda posisi awal & akhir drag.
+ *
+ * Hasil akhir: yang tampil hanya 6 panah merah/hijau/biru dengan kerucutnya.
+ *
+ * AMAN: helper murni dekorasi visual. TransformControls me-raycast
+ * `_gizmo.picker[mode]` untuk hover dan `_plane` untuk drag — helper tidak
+ * pernah ikut. `updateMatrixWorld()` juga meng-iterasi `children` secara
+ * dinamis (`handles.concat(...)`), jadi mengosongkan children tidak memicu
+ * error index out of range.
+ *
+ * Geometry di-dispose karena setiap handle helper punya geometry sendiri
+ * (sudah diverifikasi: 10 handle = 10 geometry unik). Material JANGAN
+ * di-dispose karena satu `matHelper` dipakai bersama oleh helper translate,
+ * rotate, dan scale.
+ *
+ * @param {THREE.Controls} transformControls instance TransformControls
+ * @param {Object} [options]
+ * @param {boolean} [options.keepDragTrail=false] biarkan DELTA/START/END tetap ada
+ *   (garis jejak saat drag), hanya sembunyikan 3 garis panjang X/Y/Z.
+ * @returns {{ ok: boolean, hidden: string[], reason?: string }}
+ */
+export function hideTranslateHelperLines(transformControls, options = {}) {
+  const { keepDragTrail = false } = options;
+
+  const gizmoRoot = transformControls && transformControls._gizmo;
+  const helperTranslate = gizmoRoot && gizmoRoot.helper && gizmoRoot.helper.translate;
+  if (!helperTranslate) {
+    return { ok: false, hidden: [], reason: 'helper translate tidak ditemukan' };
+  }
+
+  // Hanya garis panjang yang bikin "garis tipis putih keluar jauh".
+  const LONG_LINES = ['X', 'Y', 'Z'];
+  const hidden = [];
+
+  for (const child of [...helperTranslate.children]) {
+    if (keepDragTrail && !LONG_LINES.includes(child.name)) continue;
+    helperTranslate.remove(child);
+    if (child.geometry) child.geometry.dispose(); // geometry unik per handle
+    hidden.push(child.name);
+  }
+
+  return { ok: true, hidden };
 }
 
 export default makeSixArrows;

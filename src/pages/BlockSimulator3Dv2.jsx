@@ -26,7 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
-import { makeSixArrows } from '../utils/gizmoSixArrows.js';
+import { makeSixArrows, hideTranslateHelperLines } from '../utils/gizmoSixArrows.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -11844,10 +11844,30 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         console.warn('[Phase 49 v9] Gizmo translate tidak ditemukan:', sixArrows.reason);
       }
+
+      // Phase 49 v10, 2026-09-03: Hapus garis bantu PUTIH bawaan Three.js.
+      //
+      // MASALAH: saat block digerakkan (atau cuma di-hover), muncul garis tipis
+      // putih memanjang jauh keluar dari block. Itu BUKAN bagian dari 6 panah —
+      // itu `_gizmo.helper.translate`, objek terpisah berisi:
+      //   X/Y/Z     → Line putih opacity 0.5 sepanjang 1.000.000 unit
+      //   DELTA     → garis jejak dari posisi awal ke posisi sekarang
+      //   START/END → titik kecil penanda awal & akhir drag
+      // Klik kotak tengah (axis 'XYZ') memunculkan ketiga garis sekaligus.
+      //
+      // User hanya mau 6 panah merah/hijau/biru dengan kerucutnya, jadi semua
+      // helper translate dihapus. AMAN: helper murni visual, tidak pernah
+      // dipakai untuk raycast (hover pakai picker, drag pakai _plane).
+      const helperLines = hideTranslateHelperLines(transformControls);
+      if (helperLines.ok) {
+        console.log(`[Phase 49 v10] Garis bantu putih dihapus: ${helperLines.hidden.join(', ')}`);
+      } else {
+        console.warn('[Phase 49 v10] Garis bantu tidak ditemukan:', helperLines.reason);
+      }
     } catch (e) {
       // Kegagalan di sini TIDAK boleh menggagalkan inisialisasi scene.
       // Gizmo tetap berfungsi normal, cuma tampilannya kembali ke bawaan Three.js.
-      console.warn('[Phase 49 v9] Gagal melengkapi 6 panah gizmo:', e);
+      console.warn('[Phase 49 v9/v10] Gagal merapikan gizmo:', e);
     }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
