@@ -26,6 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
+import { makeSixArrows } from '../utils/gizmoSixArrows.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -11811,146 +11812,42 @@ Now you can apply Displacement for detailed effect.`);
     transformControls.showXZ = false;
     const transformHelper = transformControls.getHelper(); // Object3D yang berisi gizmo visual
     scene.add(transformHelper);
-    // Simpan reference untuk fallback per-frame (Phase 49 v7)
+    // Simpan reference untuk keperluan lain (mis. debug / cleanup)
     threeRef.current.transformControls = transformControls;
-    // Phase 49 v7, 2026-09-03: Fix "kerucut ngambang" — HAPUS 3 kerucut sisi negatif.
+    // ── Phase 49 v9, 2026-09-03: Move gizmo = 6 PANAH UTUH ──
     //
-    // MASALAH: gizmo Move bawaan Three.js menggambar 6 kerucut (2 per sumbu: + dan −)
-    // tapi cuma 3 batang garis (hanya sisi +). Hasilnya: 3 arrow utuh (garis + kerucut)
-    // dan 3 kerucut yang menggantung tanpa garis penghubung → jelek.
+    // MASALAH: gizmo Move bawaan Three.js menggambar 6 kerucut (2 per sumbu:
+    // sisi + dan sisi −) TAPI cuma 3 batang garis (hanya sisi +). Hasilnya:
+    // 3 panah utuh di sisi positif, dan 3 kerucut "ngambang" tanpa garis
+    // penghubung di sisi negatif → jelek.
     //
-    // CARA: Cari translate gizmo dengan traversal fleksibel, lalu untuk setiap axis
-    // (X/Y/Z) identifikasi shaft (silinder tipis) vs arrowheads (kerucut) berdasarkan
-    // bounding box tinggi: shaft punya tinggi ≈0.5, arrowhead punya tinggi ≈0.1.
-    // Hapus SEMUA arrowheads, lalu tambah ULANG 1 arrowhead per axis (sisi +)
-    // supaya 3 arrow utuh tersisa (garis + kerucut).
+    // SOLUSI v9: yang hilang sebenarnya HANYA GARIS-nya. Jadi kita TIDAK
+    // menghapus apa pun — cukup TAMBAH 3 garis sisi negatif dengan cara
+    // me-mirror garis sisi positif yang sudah ada (geometry di-clone lalu
+    // dirotasi 180° terhadap sumbu perpendicular, material di-share) →
+    // dijamin 100% identik: bentuk, ukuran, warna, dan highlight kuning
+    // saat axis aktif.
     //
-    // AMAN: updateMatrixWorld() meng-iterasi `this.gizmo[mode].children` secara
-    // dinamis tanpa index access → menghapus anak aman. Picker tidak disentuh.
+    // Detail teknis + alasan kenapa v7/v8 gagal terdokumentasi lengkap di
+    // src/utils/gizmoSixArrows.js (ringkasnya: heuristik tinggi bounding-box
+    // Y salah karena rotasi sudah di-bake ke geometry, dan flip 2 sumbu
+    // perpendicular = rotasi terhadap sumbu itu sendiri → kerucut tidak
+    // pindah sisi, malah menumpuk di kerucut positif).
+    //
+    // AMAN: picker (jalur raycast untuk drag) tidak disentuh sama sekali,
+    // gizmo rotate & scale tidak disentuh, dan fungsinya idempoten.
     try {
-      // Cari translate gizmo — coba beberapa cara untuk robustness
-      let translateObj = null;
-      // Cara 1: via _gizmo internal (Three.js 0.185+)
-      if (!translateObj && transformControls._gizmo && transformControls._gizmo.gizmo) {
-        translateObj = transformControls._gizmo.gizmo.translate;
-      }
-      // Cara 2: via transformHelper children traversal (Three.js 0.150-0.184)
-      if (!translateObj) {
-        for (const child of transformHelper.children) {
-          if (child.gizmo && child.gizmo.translate) {
-            translateObj = child.gizmo.translate;
-            break;
-          }
-        }
-      }
-      // Cara 3: deep traversal (fallback)
-      if (!translateObj) {
-        const findTranslate = (obj) => {
-          if (obj.gizmo && obj.gizmo.translate) return obj.gizmo.translate;
-          for (const c of obj.children) {
-            const found = findTranslate(c);
-            if (found) return found;
-          }
-          return null;
-        };
-        translateObj = findTranslate(transformHelper);
-      }
-
-      if (translateObj) {
-        const AXIS_KEY = { X: 'x', Y: 'y', Z: 'z' };
-        const removed = [];
-        const kept = [];
-        // Salin array — kita memodifikasi children saat iterasi
-        for (const handle of [...translateObj.children]) {
-          const axisKey = AXIS_KEY[handle.name];
-          if (!axisKey) continue; // lewati XYZ/XY/YZ/XZ
-          if (!handle.geometry) continue;
-          const geo = handle.geometry;
-          geo.computeBoundingBox();
-          const bb = geo.boundingBox;
-          if (!bb) continue;
-          // Hitung tinggi bounding box pada sumbu lokal Y (sebelum rotasi)
-          // Shaft (CylinderGeometry 0.0075, 0.0075, 0.5) → tinggi ≈0.5
-          // Arrowhead (CylinderGeometry 0, 0.04, 0.1) → tinggi ≈0.1
-          const sizeY = bb.max.y - bb.min.y;
-          const isShaft = sizeY > 0.3; // shaft ≈0.5, arrowhead ≈0.1
-          if (!isShaft) {
-            // Ini adalah kerucut (arrowhead) — cek apakah sisi negatif
-            const centerOnAxis = (bb.min[axisKey] + bb.max[axisKey]) / 2;
-            if (centerOnAxis < -1e-6) {
-              translateObj.remove(handle);
-              geo.dispose();
-              removed.push(`${handle.name}−`);
-            } else {
-              kept.push(`${handle.name}+`);
-            }
-          } else {
-            kept.push(`${handle.name}shaft`);
-          }
-        }
-        console.log(`[Phase 49 v7] Kerucut ngambang dihapus: ${removed.length} (${removed.join(', ')}) — sisa: ${kept.join(', ')}`);
-
-        // Phase 49 v8: Clone PERSIS 100% dari panah positif ke sisi negatif
-        // CARA: Untuk setiap axis (X/Y/Z), cari cone positif yang tersisa,
-        // clone geometry-nya, flip koordinat pada sumbu axis → panah negatif
-        // 100% identik dari positif (sama geometry, sama material, sama ukuran).
-        try {
-          const childrenNow = [...translateObj.children];
-          const cloned = [];
-          for (const handle of childrenNow) {
-            const axisKey = AXIS_KEY[handle.name];
-            if (!axisKey || !handle.geometry) continue;
-            handle.geometry.computeBoundingBox();
-            const bb = handle.geometry.boundingBox;
-            if (!bb) continue;
-            // Hanya clone cone positif (bukan shaft, bukan negatif)
-            const sizeY = bb.max.y - bb.min.y;
-            if (sizeY > 0.3) continue; // skip shaft
-            const center = (bb.min[axisKey] + bb.max[axisKey]) / 2;
-            if (center < 0) continue; // skip kalau masih ada negatif
-
-            // Clone geometry, flip 2 axis perpendicular → mirror 100% identik
-            // CATATAN PENTING: tidak cukup flip 1 axis saja!
-            // X cone (plane YZ) → flip Y+Z | Y cone (plane XZ) → flip X+Z | Z cone (plane XY) → flip X+Y
-            const flippedGeo = handle.geometry.clone();
-            const posArr = flippedGeo.getAttribute('position');
-            const arr = posArr.array;
-            const stride = posArr.itemSize; // 3 (x,y,z)
-            // Flip 2 axis perpendicular terhadap axis utama
-            const flipX = axisKey !== 'x';
-            const flipY = axisKey !== 'y';
-            const flipZ = axisKey !== 'z';
-            for (let i = 0; i < arr.length; i += stride) {
-              if (flipX) arr[i] = -arr[i];
-              if (flipY) arr[i + 1] = -arr[i + 1];
-              if (flipZ) arr[i + 2] = -arr[i + 2];
-            }
-            posArr.needsUpdate = true;
-            flippedGeo.computeBoundingSphere();
-
-            // Clone mesh — SAMA PERSIS dari positif (material, renderOrder, dll)
-            // DoubleSide WAJIB: flip koordinat mengubah winding order triangle,
-            // tanpa DoubleSide, sisi belakang ter-cull → invisible (terutama sumbu Y)
-            const flippedMat = handle.material.clone();
-            flippedMat.side = THREE.DoubleSide;
-            const negMesh = new THREE.Mesh(flippedGeo, flippedMat);
-            negMesh.name = handle.name;
-            negMesh.renderOrder = Infinity;
-            translateObj.add(negMesh);
-            cloned.push(`${handle.name}−(clone)`);
-          }
-          console.log(`[Phase 49 v8] Panah negatif (clone 100% identik): ${cloned.length} mesh (${cloned.join(', ')}) — total 6 panah`);
-        } catch (e2) {
-          console.warn('[Phase 49 v8] Gagal clone panah negatif:', e2);
-        }
+      const sixArrows = makeSixArrows(transformControls, transformHelper);
+      if (sixArrows.ok) {
+        const info = sixArrows.added.length ? `(${sixArrows.added.join(', ')})` : '(sudah lengkap)';
+        console.log(`[Phase 49 v9] Move gizmo 6 panah utuh — mesh ditambah: ${sixArrows.added.length} ${info}`);
       } else {
-        console.warn('[Phase 49 v7] Gizmo translate Object3D tidak ditemukan — fallback: hide negative via animation loop');
-        // Fallback: hide negative cones via per-frame check in animation loop
-        threeRef.current.hideNegativeCones = true;
+        console.warn('[Phase 49 v9] Gizmo translate tidak ditemukan:', sixArrows.reason);
       }
     } catch (e) {
-      console.warn('[Phase 49 v7] Gagal menghapus kerucut ngambang:', e);
-      threeRef.current.hideNegativeCones = true;
+      // Kegagalan di sini TIDAK boleh menggagalkan inisialisasi scene.
+      // Gizmo tetap berfungsi normal, cuma tampilannya kembali ke bawaan Three.js.
+      console.warn('[Phase 49 v9] Gagal melengkapi 6 panah gizmo:', e);
     }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
@@ -12092,8 +11989,8 @@ Now you can apply Displacement for detailed effect.`);
       }
 
       controls.update();
-      // Phase 49 v7 fallback DIHAPUS — v7+ sudah handle hapus + tambah 6 panah.
-      // Tidak perlu lagi per-frame hide.
+      // Phase 49 v9: tidak ada logika gizmo per-frame. Pelengkapan 6 panah
+      // dilakukan sekali saat setup (lihat makeSixArrows di atas).
       // Phase 48: Update particle systems tiap frame
       const now = performance.now() / 1000;
       if (particleSystemsRef.current.size > 0) {
