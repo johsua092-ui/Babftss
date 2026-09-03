@@ -223,6 +223,9 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // Tombol Paint background follow paintCustomColor (100% match ke warna user).
   // Modal tidak muncul lagi setelah Confirm sampai user klik gerigi icon.
   const [paintCustomColor, setPaintCustomColor] = useState(null);
+  // Phase 47: Ref mirror untuk akses instant di keyboard handler (onKeyDown).
+  const paintCustomColorRef = useRef(null);
+  useEffect(() => { paintCustomColorRef.current = paintCustomColor; }, [paintCustomColor]);
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
@@ -11846,6 +11849,41 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'q') keys.q = true;
       else if (k === 'e') keys.e = true;
       else if (e.key === 'Shift') keys.shift = true;
+      // Phase 47, 2026-09-03: Tool keybinds (PC only, window.innerWidth >= 768).
+      // 1=delete, 2=place, 3=paint, 4=binding, 5=scale, 6=property,
+      // 7=move, 8=rotate, 9=clone, 0=mirror.
+      // Auto-open Build Tools section supaya tombol terlihat.
+      // Mobile (<768px) TIDAK terpengaruh — keybinds hanya PC.
+      if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+        const keybindMap = {
+          '1': 'delete', '2': 'place', '3': 'paint', '4': 'binding',
+          '5': 'scale', '6': 'property', '7': 'move', '8': 'rotate',
+          '9': 'clone', '0': 'mirror',
+        };
+        if (keybindMap[e.key]) {
+          e.preventDefault();
+          const toolName = keybindMap[e.key];
+          // Auto-open Build Tools section
+          setOpenSections(s => ({ ...s, build: true }));
+          // Binding & Property masih coming soon — pakai toast warning
+          if (toolName === 'binding') {
+            toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon');
+          } else if (toolName === 'property') {
+            toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon');
+          } else {
+            // Untuk paint: buka modal jika first time (sama seperti klik tombol)
+            if (toolName === 'paint' && toolRef.current !== 'paint' && !paintCustomColorRef.current) {
+              setColorPicker({
+                targetMeshes: null,
+                hex: colorRef.current,
+                originalHex: colorRef.current,
+                mode: 'picker',
+              });
+            }
+            toggleTool(toolName);
+          }
+        }
+      }
     };
     const onKeyUp = (e) => {
       // Skip kalau user sedang fokus di input field (chat, search, dll)
@@ -14388,6 +14426,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Trash2 size={15} />
               Delete
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[1]</span>
+              )}
             </button>
             <button
               onClick={() => toggleTool('place')}
@@ -14405,6 +14446,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Hammer size={15} />
               Place
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[2]</span>
+              )}
             </button>
             {/* ── PAINT (Phase 46, 2026-09-03) — tombol tunggal dengan gerigi di dalam.
                 1 tombol = sama ukuran dengan teman-temannya (Place, Shape, Clone, dll).
@@ -14438,15 +14482,17 @@ Now you can apply Displacement for detailed effect.`);
               }}
             >
               <Paintbrush size={15} />
-              <span style={{ flex: 1, textAlign: 'left' }}>Paint</span>
-              {/* Gerigi icon — klik = buka modal (ganti warna).
-                  stopPropagation supaya tidak trigger parent onClick (toggle tool). */}
+              <span>Paint</span>
+              {/* Gerigi icon — di TENGAH (antara text dan keybind number).
+                  Klik = buka modal (ganti warna). stopPropagation supaya tidak
+                  trigger parent onClick (toggle tool). */}
               <Settings
                 size={14}
                 style={{
                   cursor: 'pointer',
                   opacity: 0.7,
                   flexShrink: 0,
+                  marginLeft: 8,
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -14460,6 +14506,10 @@ Now you can apply Displacement for detailed effect.`);
                 onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; }}
               />
+              {/* Keybind [3] di ujung kanan — PC only */}
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[3]</span>
+              )}
             </button>
             {/* ── BINDING & PROPERTY (Task ID 31, 2026-09-01) — tombol
                 PLACEHOLDER "masih dalam tahap pengembangan" per request user.
@@ -14500,6 +14550,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Wrench size={15} />
               Binding
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[4]</span>
+              )}
             </button>
             {/* ── SCALE TOOL — icon <Maximize> lucide (Task ID 34,
                 2026-09-01, REDESIGN #3 request user via teman): icon Scale
@@ -14523,6 +14576,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Maximize size={15} />
               Scale
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[5]</span>
+              )}
             </button>
             <button
               onClick={() => toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon')}
@@ -14552,6 +14608,9 @@ Now you can apply Displacement for detailed effect.`);
                 <line x1="19.1" y1="1.1" x2="21.9" y2="3.9" />
               </svg>
               Property
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[6]</span>
+              )}
             </button>
             <button
               onClick={() => toggleTool('move')}
@@ -14569,6 +14628,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Move size={15} />
               Move
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[7]</span>
+              )}
             </button>
             <button
               onClick={() => toggleTool('rotate')}
@@ -14586,6 +14648,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <RotateCw size={15} />
               Rotate
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[8]</span>
+              )}
             </button>
             {/* Clone & Mirror tools */}
             <button
@@ -14604,6 +14669,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Copy size={15} />
               Clone
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[9]</span>
+              )}
             </button>
             <button
               onClick={() => toggleTool('mirror')}
@@ -14621,6 +14689,9 @@ Now you can apply Displacement for detailed effect.`);
             >
               <FlipHorizontal size={15} />
               Mirror
+              {typeof window !== 'undefined' && window.innerWidth >= 768 && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5, fontFamily: 'monospace' }}>[0]</span>
+              )}
             </button>
             <button
               onClick={() => toggleTool('shape')}
