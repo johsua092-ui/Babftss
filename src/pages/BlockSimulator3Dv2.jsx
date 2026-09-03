@@ -13974,7 +13974,40 @@ Now you can apply Displacement for detailed effect.`);
         backgroundColor: panelBg,
         zIndex: 10,
         flexShrink: 0,
-      }}>
+      }}
+      className="header-toolbar">
+      <style>{`
+        /* Phase 43, 2026-09-03: Mobile-only horizontal scroll untuk header toolbar.
+           PC (min-width 769px) TIDAK terpengaruh — tetap flex space-between normal.
+           Mobile (max-width 768px): toolbar jadi scrollable horizontal supaya
+           tombol kanan (Build Area, Reset Camera, Clear All) tidak terpotong.
+           Per request user: 'khusus mobile bisa scroll geser samping kanan kiri,
+           PC jangan diotak atik'. */
+        @media (max-width: 768px) {
+          .header-toolbar {
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            flex-wrap: nowrap !important;
+            justify-content: flex-start !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148,163,184,0.3) transparent;
+          }
+          .header-toolbar > * {
+            flex-shrink: 0 !important;
+          }
+          .header-toolbar::-webkit-scrollbar {
+            height: 4px;
+          }
+          .header-toolbar::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .header-toolbar::-webkit-scrollbar-thumb {
+            background: rgba(148,163,184,0.3);
+            border-radius: 2px;
+          }
+        }
+      `}</style>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={() => setPage('shapes')}
