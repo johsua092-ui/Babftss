@@ -11803,6 +11803,43 @@ Now you can apply Displacement for detailed effect.`);
     // mesh yang di-scale besar (20×), gizmo bisa terlalu kecil/njelimet.
     // Set size eksplisit supaya gizmo konsisten (besar dan mudah drag).
     transformControls.size = 2;
+    // Phase 49, 2026-09-03: Hapus flat planes (lempengan pipih merah/hijau/biru)
+    // yang mengganggu pandangan. showXY/YZ/XZ = false menyembunyikan 3 quad
+    // transparan untuk 2-axis drag. User masih bisa drag per-axis via arrow shafts.
+    transformControls.showXY = false;
+    transformControls.showYZ = false;
+    transformControls.showXZ = false;
+    // Phase 49: Fix "floating cones" di sisi negatif. Default three.js hanya
+    // menampilkan shaft (garis) di sisi positif — sisi negatif cuma cone tanpa
+    // shaft (terlihat ngambang). Clone shaft untuk tiap axis, rotasi 180° supaya
+    // pointing ke arah negatif. Sekarang kedua sisi punya shaft + cone = full arrow.
+    try {
+      const gizmo = transformControls._gizmo;
+      if (gizmo && gizmo.gizmo && gizmo.gizmo.translate) {
+        const translateObj = gizmo.gizmo.translate;
+        const shaftsToAdd = [];
+        translateObj.children.forEach(child => {
+          // Shaft = CylinderGeometry dengan radius kecil (0.0075), name = 'X'/'Y'/'Z'
+          if ((child.name === 'X' || child.name === 'Y' || child.name === 'Z') &&
+              child.geometry && child.geometry.type === 'CylinderGeometry' &&
+              child.geometry.parameters && child.geometry.parameters.radiusTop < 0.02) {
+            // Clone shaft, rotasi 180° di sumbu yang tegak lurus axis-nya
+            // supaya pointing ke arah negatif (dari 0 ke -0.5)
+            const negShaft = child.clone();
+            // Untuk X axis (rotation z = -π/2): tambah π → z = π/2 (pointing -X)
+            // Untuk Y axis (rotation = 0): tambah π di x → pointing -Y
+            // Untuk Z axis (rotation x = π/2): tambah π di x → x = 3π/2 (pointing -Z)
+            if (child.name === 'X') negShaft.rotation.z += Math.PI;
+            else if (child.name === 'Y') negShaft.rotation.x += Math.PI;
+            else if (child.name === 'Z') negShaft.rotation.x += Math.PI;
+            shaftsToAdd.push(negShaft);
+          }
+        });
+        shaftsToAdd.forEach(s => translateObj.add(s));
+      }
+    } catch (e) {
+      console.warn('[Phase 49] Failed to add negative shafts to gizmo:', e);
+    }
     const transformHelper = transformControls.getHelper(); // Object3D yang berisi gizmo visual
     scene.add(transformHelper);
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
