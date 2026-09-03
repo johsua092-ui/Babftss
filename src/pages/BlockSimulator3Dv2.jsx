@@ -14406,47 +14406,48 @@ Now you can apply Displacement for detailed effect.`);
               <Hammer size={15} />
               Place
             </button>
-            {/* ── PAINT (Phase 46, 2026-09-03) — tombol dengan 2 area interaktif:
-                1. Main button (klik Paintbrush/teks) → toggle tool + buka modal
-                   (modal hanya muncul jika paintCustomColor null, setelah Confirm
-                   tidak muncul lagi sampai gerigi diklik).
-                2. Gerigi icon (klik) → selalu buka modal (ganti warna).
+            {/* ── PAINT (Phase 46, 2026-09-03) — tombol tunggal dengan gerigi di dalam.
+                1 tombol = sama ukuran dengan teman-temannya (Place, Shape, Clone, dll).
+                Layout: [🖌 Paint ⚙️] — gerigi sebagai icon kedua di kanan teks.
+                Klik area Paintbrush/teks → toggle tool + buka modal (first time only).
+                Klik area gerigi → selalu buka modal (ganti warna).
                 Warna tombol follow paintCustomColor (100% match ke warna user).
                 Default orange #f59e0b kalau belum ada custom color. ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-              {/* Main Paint button — toggle tool + buka modal if first time */}
-              <button
-                onClick={() => {
-                  toggleTool('paint');
-                  if (tool !== 'paint' && !paintCustomColor) {
-                    setColorPicker({
-                      targetMeshes: null,
-                      hex: currentColor,
-                      originalHex: currentColor,
-                      mode: 'picker',
-                    });
-                  }
-                }}
-                title="Paint (C)"
+            <button
+              onClick={() => {
+                toggleTool('paint');
+                if (tool !== 'paint' && !paintCustomColor) {
+                  setColorPicker({
+                    targetMeshes: null,
+                    hex: currentColor,
+                    originalHex: currentColor,
+                    mode: 'picker',
+                  });
+                }
+              }}
+              title="Paint (C) — klik gerigi untuk ganti warna"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'transparent',
+                color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              <Paintbrush size={15} />
+              <span style={{ flex: 1, textAlign: 'left' }}>Paint</span>
+              {/* Gerigi icon — klik = buka modal (ganti warna).
+                  stopPropagation supaya tidak trigger parent onClick (toggle tool). */}
+              <Settings
+                size={14}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px',
-                  border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
-                  borderRight: 'none',
-                  borderRadius: '10px 0 0 10px',
-                  backgroundColor: tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'transparent',
-                  color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
-                  fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
+                  cursor: 'pointer',
+                  opacity: 0.7,
                   flexShrink: 0,
                 }}
-              >
-                <Paintbrush size={15} />
-                Paint
-              </button>
-              {/* Gerigi icon — selalu buka modal (ganti warna) */}
-              <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setColorPicker({
@@ -14456,24 +14457,10 @@ Now you can apply Displacement for detailed effect.`);
                     mode: 'picker',
                   });
                 }}
-                title="Pilih warna custom untuk Paint"
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '8px 10px',
-                  border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
-                  borderLeft: 'none',
-                  borderRadius: '0 10px 10px 0',
-                  backgroundColor: tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'transparent',
-                  color: tool === 'paint' ? '#0e1420' : '#94a3b8',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  fontFamily: 'Inter, sans-serif',
-                  flexShrink: 0,
-                }}
-              >
-                <Settings size={14} />
-              </button>
-            </div>
+                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; }}
+              />
+            </button>
             {/* ── BINDING & PROPERTY (Task ID 31, 2026-09-01) — tombol
                 PLACEHOLDER "masih dalam tahap pengembangan" per request user.
                 Klik TIDAK memanggil toggleTool / TIDAK mengubah tool aktif —
