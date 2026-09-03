@@ -11890,55 +11890,48 @@ Now you can apply Displacement for detailed effect.`);
         }
         console.log(`[Phase 49 v7] Kerucut ngambang dihapus: ${removed.length} (${removed.join(', ')}) — sisa: ${kept.join(', ')}`);
 
-        // Phase 49 v8: Tambah 3 panah di sisi negatif (shaft + cone = mirror dari positif)
-        // Total jadi 6 panah — tiap sumbu X/Y/Z ada panah ke arah + DAN −.
-        // Setiap panah = 1 shaft (silinder tipis) + 1 cone (kerucut), identik gaya visual positif.
+        // Phase 49 v8: Clone PERSIS 100% dari panah positif ke sisi negatif
+        // CARA: Untuk setiap axis (X/Y/Z), cari cone positif yang tersisa,
+        // clone geometry-nya, flip koordinat pada sumbu axis → panah negatif
+        // 100% identik dari positif (sama geometry, sama material, sama ukuran).
         try {
-          const NEG_SETUP = {
-            X: [
-              // shaft: CylinderGeometry r=0.0075 h=0.5 → rotate -PI/2 di Z → X axis, center origin
-              [new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0xff4444, toneMapped: false }), [0, 0, -Math.PI / 2]],
-              // cone: CylinderGeometry r=0.04→0 h=0.1 → rotate +PI/2 di Z → pointing −X, pos (-0.5,0,0)
-              [new THREE.ConeGeometry(0.04, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0xff4444, toneMapped: false }), [-0.5, 0, 0], [0, 0, Math.PI / 2]],
-            ],
-            Y: [
-              // shaft: rotate PI/2 di X → Y axis
-              [new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0x44ff44, toneMapped: false }), [0, 0, 0], [Math.PI / 2, 0, 0]],
-              // cone: rotate PI di X → pointing −Y, pos (0,-0.5,0)
-              [new THREE.ConeGeometry(0.04, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x44ff44, toneMapped: false }), [0, -0.5, 0], [Math.PI, 0, 0]],
-            ],
-            Z: [
-              // shaft: rotate PI/2 di X → Z axis
-              [new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0x4444ff, toneMapped: false }), [0, 0, 0], [Math.PI / 2, 0, 0]],
-              // cone: rotate -PI/2 di X → pointing −Z, pos (0,0,-0.5)
-              [new THREE.ConeGeometry(0.04, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x4444ff, toneMapped: false }), [0, 0, -0.5], [-Math.PI / 2, 0, 0]],
-            ],
-          };
+          const childrenNow = [...translateObj.children];
+          const cloned = [];
+          for (const handle of childrenNow) {
+            const axisKey = AXIS_KEY[handle.name];
+            if (!axisKey || !handle.geometry) continue;
+            handle.geometry.computeBoundingBox();
+            const bb = handle.geometry.boundingBox;
+            if (!bb) continue;
+            // Hanya clone cone positif (bukan shaft, bukan negatif)
+            const sizeY = bb.max.y - bb.min.y;
+            if (sizeY > 0.3) continue; // skip shaft
+            const center = (bb.min[axisKey] + bb.max[axisKey]) / 2;
+            if (center < 0) continue; // skip kalau masih ada negatif
 
-          const added = [];
-          for (const axisName of ['X', 'Y', 'Z']) {
-            const entries = NEG_SETUP[axisName];
-            for (const [geo, mat, pos, rot] of entries) {
-              const mesh = new THREE.Mesh(geo, mat);
-              mesh.name = axisName;
-              if (pos) mesh.position.set(pos[0], pos[1], pos[2]);
-              if (rot) mesh.rotation.set(rot[0], rot[1], rot[2]);
-              mesh.updateMatrix();
-              // Bake transform ke geometry (seperti setupGizmo)
-              const tempGeo = mesh.geometry.clone();
-              tempGeo.applyMatrix4(mesh.matrix);
-              mesh.geometry = tempGeo;
-              mesh.renderOrder = Infinity;
-              mesh.position.set(0, 0, 0);
-              mesh.rotation.set(0, 0, 0);
-              mesh.scale.set(1, 1, 1);
-              translateObj.add(mesh);
-              added.push(`${axisName}${pos && pos[0] + pos[1] + pos[2] < 0 ? '−' : '+'}`);
+            // Clone geometry, flip sumbu axis → mirror 100% identik
+            const flippedGeo = handle.geometry.clone();
+            const posArr = flippedGeo.getAttribute('position');
+            const arr = posArr.array;
+            const stride = posArr.itemSize; // 3 (x,y,z)
+            for (let i = 0; i < arr.length; i += stride) {
+              if (axisKey === 'x') arr[i] = -arr[i];
+              else if (axisKey === 'y') arr[i + 1] = -arr[i + 1];
+              else if (axisKey === 'z') arr[i + 2] = -arr[i + 2];
             }
+            posArr.needsUpdate = true;
+            flippedGeo.computeBoundingSphere();
+
+            // Clone mesh — SAMA PERSIS dari positif (material, renderOrder, dll)
+            const negMesh = new THREE.Mesh(flippedGeo, handle.material);
+            negMesh.name = handle.name;
+            negMesh.renderOrder = Infinity;
+            translateObj.add(negMesh);
+            cloned.push(`${handle.name}−(clone)`);
           }
-          console.log(`[Phase 49 v8] Panah negatif ditambahkan: ${added.length} mesh (${added.join(', ')}) — total 6 panah`);
+          console.log(`[Phase 49 v8] Panah negatif (clone 100% identik): ${cloned.length} mesh (${cloned.join(', ')}) — total 6 panah`);
         } catch (e2) {
-          console.warn('[Phase 49 v8] Gagal menambah panah negatif:', e2);
+          console.warn('[Phase 49 v8] Gagal clone panah negatif:', e2);
         }
       } else {
         console.warn('[Phase 49 v7] Gizmo translate Object3D tidak ditemukan — fallback: hide negative via animation loop');
