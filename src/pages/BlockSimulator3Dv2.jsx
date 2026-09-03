@@ -11809,39 +11809,36 @@ Now you can apply Displacement for detailed effect.`);
     transformControls.showXY = false;
     transformControls.showYZ = false;
     transformControls.showXZ = false;
-    // Phase 49: Fix "floating cones" di sisi negatif. Default three.js hanya
-    // menampilkan shaft (garis) di sisi positif — sisi negatif cuma cone tanpa
-    // shaft (terlihat ngambang). Clone shaft untuk tiap axis, rotasi 180° supaya
-    // pointing ke arah negatif. Sekarang kedua sisi punya shaft + cone = full arrow.
-    try {
-      const gizmo = transformControls._gizmo;
-      if (gizmo && gizmo.gizmo && gizmo.gizmo.translate) {
-        const translateObj = gizmo.gizmo.translate;
-        const shaftsToAdd = [];
-        translateObj.children.forEach(child => {
-          // Shaft = CylinderGeometry dengan radius kecil (0.0075), name = 'X'/'Y'/'Z'
-          if ((child.name === 'X' || child.name === 'Y' || child.name === 'Z') &&
-              child.geometry && child.geometry.type === 'CylinderGeometry' &&
-              child.geometry.parameters && child.geometry.parameters.radiusTop < 0.02) {
-            // Clone shaft, rotasi 180° di sumbu yang tegak lurus axis-nya
-            // supaya pointing ke arah negatif (dari 0 ke -0.5)
-            const negShaft = child.clone();
-            // Untuk X axis (rotation z = -π/2): tambah π → z = π/2 (pointing -X)
-            // Untuk Y axis (rotation = 0): tambah π di x → pointing -Y
-            // Untuk Z axis (rotation x = π/2): tambah π di x → x = 3π/2 (pointing -Z)
-            if (child.name === 'X') negShaft.rotation.z += Math.PI;
-            else if (child.name === 'Y') negShaft.rotation.x += Math.PI;
-            else if (child.name === 'Z') negShaft.rotation.x += Math.PI;
-            shaftsToAdd.push(negShaft);
-          }
-        });
-        shaftsToAdd.forEach(s => translateObj.add(s));
-      }
-    } catch (e) {
-      console.warn('[Phase 49] Failed to add negative shafts to gizmo:', e);
-    }
     const transformHelper = transformControls.getHelper(); // Object3D yang berisi gizmo visual
     scene.add(transformHelper);
+    // Phase 49 v2: Fix "floating cones" di sisi negatif. Default three.js hanya
+    // menampilkan shaft (garis) di sisi positif — sisi negatif cuma cone tanpa
+    // shaft (terlihat ngambang). Traverse PUBLIC helper (bukan private _gizmo)
+    // untuk find shaft meshes, clone dengan rotasi 180° supaya pointing negatif.
+    // Approach: collect shafts first, then add clones (avoid traverse-during-modify).
+    try {
+      const shaftsToClone = [];
+      transformHelper.traverse(obj => {
+        if (!obj.geometry || !obj.geometry.parameters) return;
+        if (obj.name !== 'X' && obj.name !== 'Y' && obj.name !== 'Z') return;
+        if (obj.position.length() > 0.001) return; // shafts are at origin, cones at ±0.5
+        const p = obj.geometry.parameters;
+        // Shaft = CylinderGeometry height ~0.5 (cones have height 0.1, handles 0.08)
+        if (!p.height || p.height < 0.3 || p.height > 0.7) return;
+        if (!obj.parent) return;
+        shaftsToClone.push(obj);
+      });
+      shaftsToClone.forEach(obj => {
+        const negShaft = obj.clone();
+        // Rotate 180° to point negative direction
+        if (obj.name === 'X') negShaft.rotation.z += Math.PI;
+        else if (obj.name === 'Y') negShaft.rotation.x += Math.PI;
+        else if (obj.name === 'Z') negShaft.rotation.x += Math.PI;
+        obj.parent.add(negShaft);
+      });
+    } catch (e) {
+      console.warn('[Phase 49] Failed to add negative shafts:', e);
+    }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
     // Juga men-disable orbitControls selama drag gizmo aktif — prevents conflict.
