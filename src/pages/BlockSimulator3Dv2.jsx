@@ -11811,49 +11811,92 @@ Now you can apply Displacement for detailed effect.`);
     transformControls.showXZ = false;
     const transformHelper = transformControls.getHelper(); // Object3D yang berisi gizmo visual
     scene.add(transformHelper);
-    // Phase 49 v4, 2026-09-03: Fix "floating cones" di sisi negatif.
-    // v1/v2/v3 all failed because: clone approach doesn't work (geometry params lost,
-    // visibility managed by TC internal update loop).
-    // v4 approach: CREATE NEW shaft meshes from scratch (not clone), add to gizmo.
-    // User idea: "delete kerucut ngambang, copy kerucut+shaft yang benar, mirror ke sisi seberang".
-    // Instead of cloning, create fresh CylinderGeometry shafts pointing negative direction.
-    // Access gizmo via PUBLIC tree: transformHelper → children → find TransformControlsGizmo → .gizmo.translate
+    // Simpan reference untuk fallback per-frame (Phase 49 v7)
+    threeRef.current.transformControls = transformControls;
+    // Phase 49 v7, 2026-09-03: Fix "kerucut ngambang" — HAPUS 3 kerucut sisi negatif.
+    //
+    // MASALAH: gizmo Move bawaan Three.js menggambar 6 kerucut (2 per sumbu: + dan −)
+    // tapi cuma 3 batang garis (hanya sisi +). Hasilnya: 3 arrow utuh (garis + kerucut)
+    // dan 3 kerucut yang menggantung tanpa garis penghubung → jelek.
+    //
+    // CARA: Cari translate gizmo dengan traversal fleksibel, lalu untuk setiap axis
+    // (X/Y/Z) identifikasi shaft (silinder tipis) vs arrowheads (kerucut) berdasarkan
+    // bounding box tinggi: shaft punya tinggi ≈0.5, arrowhead punya tinggi ≈0.1.
+    // Hapus SEMUA arrowheads, lalu tambah ULANG 1 arrowhead per axis (sisi +)
+    // supaya 3 arrow utuh tersisa (garis + kerucut).
+    //
+    // AMAN: updateMatrixWorld() meng-iterasi `this.gizmo[mode].children` secara
+    // dinamis tanpa index access → menghapus anak aman. Picker tidak disentuh.
     try {
-      // Find TransformControlsGizmo (has .gizmo property) in transformHelper children
-      let gizmoRoot = null;
-      for (const child of transformHelper.children) {
-        if (child.gizmo) { gizmoRoot = child; break; }
+      // Cari translate gizmo — coba beberapa cara untuk robustness
+      let translateObj = null;
+      // Cara 1: via _gizmo internal (Three.js 0.185+)
+      if (!translateObj && transformControls._gizmo && transformControls._gizmo.gizmo) {
+        translateObj = transformControls._gizmo.gizmo.translate;
       }
-      if (gizmoRoot && gizmoRoot.gizmo && gizmoRoot.gizmo.translate) {
-        const translateObj = gizmoRoot.gizmo.translate;
-        // Create new shaft geometry: cylinder 0.0075 radius, 0.5 height, translated to -0.25
-        // (so it spans from 0 to -0.5 in local Y, before rotation)
-        const negShaftGeo = new THREE.CylinderGeometry(0.0075, 0.0075, 0.5, 3);
-        negShaftGeo.translate(0, -0.25, 0); // shift down so shaft goes 0 → -0.5
-        // Materials match existing gizmo colors
-        const matRed = new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false, transparent: true });
-        const matGreen = new THREE.MeshBasicMaterial({ color: 0x22c55e, depthTest: false, transparent: true });
-        const matBlue = new THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false, transparent: true });
-        // X negative: rotate Z by -π/2 (pointing -X direction)
-        const negShaftX = new THREE.Mesh(negShaftGeo, matRed);
-        negShaftX.name = 'X';
-        negShaftX.rotation.z = -Math.PI / 2;
-        translateObj.add(negShaftX);
-        // Y negative: no rotation needed (geometry already points -Y)
-        const negShaftY = new THREE.Mesh(negShaftGeo, matGreen);
-        negShaftY.name = 'Y';
-        translateObj.add(negShaftY);
-        // Z negative: rotate X by -π/2 (pointing -Z direction)
-        const negShaftZ = new THREE.Mesh(negShaftGeo, matBlue);
-        negShaftZ.name = 'Z';
-        negShaftZ.rotation.x = -Math.PI / 2;
-        translateObj.add(negShaftZ);
-        console.log('[Phase 49 v4] Negative shafts created: 3 (X, Y, Z)');
+      // Cara 2: via transformHelper children traversal (Three.js 0.150-0.184)
+      if (!translateObj) {
+        for (const child of transformHelper.children) {
+          if (child.gizmo && child.gizmo.translate) {
+            translateObj = child.gizmo.translate;
+            break;
+          }
+        }
+      }
+      // Cara 3: deep traversal (fallback)
+      if (!translateObj) {
+        const findTranslate = (obj) => {
+          if (obj.gizmo && obj.gizmo.translate) return obj.gizmo.translate;
+          for (const c of obj.children) {
+            const found = findTranslate(c);
+            if (found) return found;
+          }
+          return null;
+        };
+        translateObj = findTranslate(transformHelper);
+      }
+
+      if (translateObj) {
+        const AXIS_KEY = { X: 'x', Y: 'y', Z: 'z' };
+        const removed = [];
+        const kept = [];
+        // Salin array — kita memodifikasi children saat iterasi
+        for (const handle of [...translateObj.children]) {
+          const axisKey = AXIS_KEY[handle.name];
+          if (!axisKey) continue; // lewati XYZ/XY/YZ/XZ
+          if (!handle.geometry) continue;
+          const geo = handle.geometry;
+          geo.computeBoundingBox();
+          const bb = geo.boundingBox;
+          if (!bb) continue;
+          // Hitung tinggi bounding box pada sumbu lokal Y (sebelum rotasi)
+          // Shaft (CylinderGeometry 0.0075, 0.0075, 0.5) → tinggi ≈0.5
+          // Arrowhead (CylinderGeometry 0, 0.04, 0.1) → tinggi ≈0.1
+          const sizeY = bb.max.y - bb.min.y;
+          const isShaft = sizeY > 0.3; // shaft ≈0.5, arrowhead ≈0.1
+          if (!isShaft) {
+            // Ini adalah kerucut (arrowhead) — cek apakah sisi negatif
+            const centerOnAxis = (bb.min[axisKey] + bb.max[axisKey]) / 2;
+            if (centerOnAxis < -1e-6) {
+              translateObj.remove(handle);
+              geo.dispose();
+              removed.push(`${handle.name}−`);
+            } else {
+              kept.push(`${handle.name}+`);
+            }
+          } else {
+            kept.push(`${handle.name}shaft`);
+          }
+        }
+        console.log(`[Phase 49 v7] Kerucut ngambang dihapus: ${removed.length} (${removed.join(', ')}) — sisa: ${kept.join(', ')}`);
       } else {
-        console.warn('[Phase 49 v4] Gizmo translate Object3D not found');
+        console.warn('[Phase 49 v7] Gizmo translate Object3D tidak ditemukan — fallback: hide negative via animation loop');
+        // Fallback: hide negative cones via per-frame check in animation loop
+        threeRef.current.hideNegativeCones = true;
       }
     } catch (e) {
-      console.warn('[Phase 49 v4] Failed to add negative shafts:', e);
+      console.warn('[Phase 49 v7] Gagal menghapus kerucut ngambang:', e);
+      threeRef.current.hideNegativeCones = true;
     }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
@@ -11995,6 +12038,41 @@ Now you can apply Displacement for detailed effect.`);
       }
 
       controls.update();
+      // Phase 49 v7 fallback: hide negative cones via geometry manipulation
+      // (visibility di-override oleh updateMatrixWorld, jadi kita modifikasi geometry langsung)
+      if (threeRef.current.hideNegativeCones && threeRef.current.transformControls) {
+        try {
+          const tc = threeRef.current.transformControls;
+          const gizmo = tc._gizmo || (tc.getHelper && (() => {
+            const h = tc.getHelper();
+            for (const c of h.children) { if (c.gizmo) return c; }
+            return null;
+          })());
+          if (gizmo && gizmo.gizmo && gizmo.gizmo.translate && !threeRef.current._negConesHidden) {
+            const AXIS_KEY = { X: 'x', Y: 'y', Z: 'z' };
+            let hiddenCount = 0;
+            for (const child of gizmo.gizmo.translate.children) {
+              const axisKey = AXIS_KEY[child.name];
+              if (!axisKey || !child.geometry) continue;
+              child.geometry.computeBoundingBox();
+              const bb = child.geometry.boundingBox;
+              if (!bb) continue;
+              const sizeY = bb.max.y - bb.min.y;
+              if (sizeY > 0.3) continue; // shaft, skip
+              const center = (bb.min[axisKey] + bb.max[axisKey]) / 2;
+              if (center < -1e-6) {
+                // Sembunyikan mesh dengan setDrawRange(0, 0) → renderer tidak render apapun
+                child.geometry.setDrawRange(0, 0);
+                hiddenCount++;
+              }
+            }
+            if (hiddenCount > 0) {
+              threeRef.current._negConesHidden = true;
+              console.log(`[Phase 49 v7 fallback] ${hiddenCount} kerucut ngambang di-hidden via geometry`);
+            }
+          }
+        } catch (_) { /* silent */ }
+      }
       // Phase 48: Update particle systems tiap frame
       const now = performance.now() / 1000;
       if (particleSystemsRef.current.size > 0) {
