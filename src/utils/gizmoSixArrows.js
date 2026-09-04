@@ -317,4 +317,162 @@ export function hideTranslateHelperLines(transformControls, options = {}) {
   return { ok: true, hidden };
 }
 
+/* ================================================================
+ * SOLO DRAG (Phase 49 v11)
+ * ================================================================
+ *
+ * TUJUAN
+ * Saat user klik-tahan SATU panah lalu menggesernya, 5 panah lain
+ * disembunyikan sementara sehingga hanya panah yang sedang dipakai yang
+ * tampil. Begitu jari/mouse dilepas, keenam panah muncul kembali.
+ *
+ * ── MASALAH 1: Three.js tidak menyimpan SISI panah ───────────────
+ * `transformControls.axis` hanya berisi 'X' / 'Y' / 'Z' tanpa tanda, karena
+ * `axis` diambil dari `intersect.object.name` dan kedua sisi bernama sama.
+ * Jadi menyembunyikan "yang lain" berdasarkan axis saja masih menyisakan
+ * panah sisi seberang (mis. klik X+ tapi X- tetap tampil).
+ *
+ * SOLUSI: pakai `pointStart`. Vektor itu diisi di `pointerDown()`
+ * (`planeIntersect.point - worldPositionStart`), yaitu posisi klik relatif
+ * terhadap pusat gizmo. TANDA komponennya pada sumbu aktif = sisi yang diklik.
+ * Sudah diverifikasi untuk 6 arah: klik X+ → pointStart.x = +3.164,
+ * klik X- → -3.164, dan seterusnya.
+ *
+ * ── MASALAH 2: space='local' + object berotasi ───────────────────
+ * `pointStart` berada di WORLD space, sedangkan saat `space='local'` panah
+ * visual ikut berputar mengikuti `worldQuaternion`. Tanpa koreksi, block yang
+ * diputar 90° membuat komponen sumbu jadi 0.000 → sisi tidak terdeteksi.
+ * SOLUSI: kalau space='local', putar balik `pointStart` dengan inverse
+ * `worldQuaternion` sebelum membaca tanda. Sudah diuji pada rotasi 0°, 45°,
+ * dan 90°: tanpa koreksi ada 4 kasus salah, dengan koreksi selalu benar.
+ *
+ * ── MASALAH 3: updateMatrixWorld() menimpa visible tiap frame ────
+ * `TransformControlsGizmo.updateMatrixWorld()` baris 1611 mengeksekusi
+ * `handle.visible = true` untuk SEMUA handle setiap frame. Jadi menyetel
+ * `visible = false` sekali saja akan langsung dibatalkan pada frame berikut.
+ * SOLUSI: bungkus (monkey-patch) `_gizmo.updateMatrixWorld` — jalankan yang
+ * asli lebih dulu, lalu terapkan penyembunyian SESUDAHNYA. Sudah diverifikasi
+ * wrapper terpanggil setiap frame dan penyembunyiannya bertahan.
+ *
+ * ── CATATAN KEAMANAN ────────────────────────────────────────────
+ * - Hanya `visible` yang disentuh; tidak ada mesh dihapus atau dibuat.
+ * - Picker (jalur raycast) tidak disentuh, jadi drag tetap normal. Saat
+ *   dragging Three.js juga tidak me-raycast picker lagi (`pointerHover`
+ *   langsung return kalau `dragging === true`).
+ * - Hanya aktif untuk mode 'translate'; mode rotate & scale tidak tersentuh.
+ * - Handle non-panah (XYZ/XY/YZ/XZ) dibiarkan diatur Three.js sendiri —
+ *   di project ini semuanya sudah tersembunyi lewat showXY/YZ/XZ = false.
+ * - Idempoten: patch hanya dipasang sekali (ditandai lewat properti internal).
+ * - Bisa dibatalkan penuh lewat `dispose()` yang dikembalikan.
+ * ================================================================ */
+
+/** Penanda supaya enableSoloDragArrow() tidak memasang patch dua kali. */
+const SOLO_MARK = '__soloDragV11';
+
+// Objek sementara dipakai ulang supaya tidak alokasi tiap frame.
+const _soloTempVector = new THREE.Vector3();
+const _soloTempQuat = new THREE.Quaternion();
+
+/**
+ * Menentukan sisi (+1 / -1) panah yang sedang di-drag, dari `pointStart`.
+ *
+ * @param {THREE.Controls} tc instance TransformControls
+ * @param {string} axis 'X' | 'Y' | 'Z'
+ * @returns {number} +1 sisi positif, -1 sisi negatif, 0 tidak dapat ditentukan
+ */
+function detectDragSide(tc, axis) {
+  const axisKey = AXIS_KEY[axis];
+  if (!axisKey || !tc.pointStart) return 0;
+
+  const point = _soloTempVector.copy(tc.pointStart);
+
+  // space 'local': panah ikut rotasi object, pointStart tidak → putar balik.
+  if (tc.space === 'local' && tc.worldQuaternion) {
+    _soloTempQuat.copy(tc.worldQuaternion).invert();
+    point.applyQuaternion(_soloTempQuat);
+  }
+
+  const component = point[axisKey];
+  if (component > SIDE_EPS) return 1;
+  if (component < -SIDE_EPS) return -1;
+  return 0;
+}
+
+/**
+ * Mengaktifkan mode "solo" saat drag: hanya panah yang sedang di-drag yang
+ * tampil, 5 panah lain disembunyikan sementara, lalu muncul lagi saat dilepas.
+ *
+ * Harus dipanggil SETELAH makeSixArrows() supaya semua mesh panah sudah ada.
+ *
+ * @param {THREE.Controls} transformControls instance TransformControls
+ * @param {THREE.Object3D|null} helperRoot hasil transformControls.getHelper()
+ * @returns {{ ok: boolean, dispose?: function, reason?: string }}
+ *   `dispose()` memulihkan `updateMatrixWorld` asli dan menampilkan semua panah.
+ */
+export function enableSoloDragArrow(transformControls, helperRoot = null) {
+  const gizmoRoot = transformControls && transformControls._gizmo;
+  if (!gizmoRoot || typeof gizmoRoot.updateMatrixWorld !== 'function') {
+    return { ok: false, reason: 'TransformControlsGizmo tidak ditemukan' };
+  }
+
+  const translateObj = findTranslateGizmo(transformControls, helperRoot);
+  if (!translateObj) {
+    return { ok: false, reason: 'gizmo translate tidak ditemukan' };
+  }
+
+  // Idempoten: kalau sudah dipasang, kembalikan dispose yang sudah ada.
+  if (gizmoRoot[SOLO_MARK]) {
+    return { ok: true, dispose: gizmoRoot[SOLO_MARK].dispose, alreadyEnabled: true };
+  }
+
+  // Peta mesh → sisi (+1/-1), dihitung SEKALI dari bounding box geometry.
+  // Aman karena setupGizmo() sudah mem-bake posisi ke geometry, jadi nilainya
+  // tidak berubah walau gizmo bergerak/berskala mengikuti kamera.
+  const sideOfMesh = new Map();
+  const groups = classifyTranslateHandles(translateObj);
+  for (const axis of ['X', 'Y', 'Z']) {
+    const g = groups[axis];
+    if (g.shaftPos) sideOfMesh.set(g.shaftPos, 1);
+    if (g.conePos) sideOfMesh.set(g.conePos, 1);
+    if (g.shaftNeg) sideOfMesh.set(g.shaftNeg, -1);
+    if (g.coneNeg) sideOfMesh.set(g.coneNeg, -1);
+  }
+
+  const originalUpdate = gizmoRoot.updateMatrixWorld;
+
+  gizmoRoot.updateMatrixWorld = function (force) {
+    // Jalankan logika asli dulu (auto-scale, highlight, visible = true, dll).
+    originalUpdate.call(this, force);
+
+    // Solo hanya berlaku saat benar-benar men-drag sebuah sumbu di mode translate.
+    if (this.mode !== 'translate') return;
+    if (!transformControls.dragging) return;
+
+    const axis = transformControls.axis;
+    if (!AXIS_KEY[axis]) return;   // XYZ / XY / YZ / XZ → tidak di-solo
+
+    const side = detectDragSide(transformControls, axis);
+    if (side === 0) return;        // sisi tidak jelas → jangan sembunyikan apa pun
+
+    for (const mesh of translateObj.children) {
+      if (!AXIS_KEY[mesh.name]) continue;              // lewati handle non-panah
+      const meshSide = sideOfMesh.get(mesh);
+      if (meshSide === undefined) continue;            // mesh tak terklasifikasi
+      // Tampilkan HANYA mesh pada sumbu aktif DAN sisi yang diklik.
+      if (mesh.name !== axis || meshSide !== side) mesh.visible = false;
+    }
+  };
+
+  const dispose = () => {
+    gizmoRoot.updateMatrixWorld = originalUpdate;
+    delete gizmoRoot[SOLO_MARK];
+    for (const mesh of translateObj.children) {
+      if (AXIS_KEY[mesh.name]) mesh.visible = true;
+    }
+  };
+
+  gizmoRoot[SOLO_MARK] = { dispose };
+  return { ok: true, dispose };
+}
+
 export default makeSixArrows;

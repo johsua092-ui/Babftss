@@ -26,7 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
-import { makeSixArrows, hideTranslateHelperLines } from '../utils/gizmoSixArrows.js';
+import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow } from '../utils/gizmoSixArrows.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -11864,10 +11864,31 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         console.warn('[Phase 49 v10] Garis bantu tidak ditemukan:', helperLines.reason);
       }
+
+      // Phase 49 v11, 2026-09-04: Solo drag — saat user klik-tahan SATU panah
+      // lalu menggesernya, 5 panah lain disembunyikan SEMENTARA sehingga hanya
+      // panah yang sedang dipakai yang tampil. Begitu dilepas, 6 panah muncul lagi.
+      //
+      // Tiga hal yang harus diatasi (detail lengkap di gizmoSixArrows.js):
+      //   1. transformControls.axis cuma 'X'/'Y'/'Z' tanpa tanda, jadi sisi panah
+      //      yang diklik dideteksi dari TANDA komponen pointStart pada sumbu itu.
+      //   2. Saat space='local' dan block berotasi, pointStart (world space) harus
+      //      diputar balik dengan inverse worldQuaternion dulu.
+      //   3. updateMatrixWorld() bawaan menyetel handle.visible = true tiap frame,
+      //      jadi penyembunyian harus diterapkan SESUDAH fungsi asli dijalankan
+      //      (lewat wrapper pada _gizmo.updateMatrixWorld).
+      const soloDrag = enableSoloDragArrow(transformControls, transformHelper);
+      if (soloDrag.ok) {
+        // Simpan dispose supaya wrapper dilepas saat komponen unmount.
+        threeRef.current.soloDragDispose = soloDrag.dispose;
+        console.log('[Phase 49 v11] Solo drag aktif — hanya panah yang di-drag yang tampil');
+      } else {
+        console.warn('[Phase 49 v11] Solo drag tidak bisa diaktifkan:', soloDrag.reason);
+      }
     } catch (e) {
       // Kegagalan di sini TIDAK boleh menggagalkan inisialisasi scene.
       // Gizmo tetap berfungsi normal, cuma tampilannya kembali ke bawaan Three.js.
-      console.warn('[Phase 49 v9/v10] Gagal merapikan gizmo:', e);
+      console.warn('[Phase 49 v9/v10/v11] Gagal merapikan gizmo:', e);
     }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
@@ -14010,6 +14031,12 @@ Now you can apply Displacement for detailed effect.`);
       }
       ro.disconnect();
       controls.dispose();
+      // Phase 49 v11: lepas wrapper updateMatrixWorld sebelum dispose gizmo,
+      // supaya tidak ada closure yang menahan referensi ke gizmo/scene.
+      if (threeRef.current.soloDragDispose) {
+        threeRef.current.soloDragDispose();
+        threeRef.current.soloDragDispose = null;
+      }
       transformControls.dispose();
       renderer.dispose();
       // Phase 25: dispose DRACOLoader untuk prevent memory leak
