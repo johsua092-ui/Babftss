@@ -11,6 +11,12 @@
  *   - 6 BOLA solid sebagai handle, 2 per cincin di ujung berseberangan,
  *     warnanya mengikuti warna cincinnya
  *   - TIDAK ada cincin abu-abu dan TIDAK ada cincin kuning besar
+ *   - Posisi bola TERKUNCI pada sumbunya, tidak bergeser walau kamera
+ *     digerakkan (hijau di kiri-kanan, merah di depan-belakang,
+ *     biru di atas-bawah)
+ *   - Saat sebuah bola di-drag: 2 bola sumbu itu MENGORBIT pusat mengikuti
+ *     lintasan cincinnya, sedangkan 2 cincin lain beserta bolanya
+ *     disembunyikan sementara; muncul lagi begitu drag dilepas
  *
  * ── KONDISI BAWAAN YANG DIPERBAIKI ──────────────────────────────
  * `_gizmo.gizmo.rotate` bawaan Three.js 0.185 punya 5 handle:
@@ -117,15 +123,32 @@ const EXTRA_ROTATION = {
 /**
  * Arah letak 2 bola pada tiap cincin. Harus berada DI BIDANG cincinnya
  * (komponen sumbu normal = 0) supaya bola menempel di lingkaran.
- *   cincin X (bidang YZ) → bola di ±Z
- *   cincin Y (bidang XZ) → bola di ±X
- *   cincin Z (bidang XY) → bola di ±Y
+ *
+ * Penempatan dipilih siklik supaya tiap sumbu dipakai tepat sekali, dan
+ * cocok dengan permintaan user:
+ *   cincin Y (hijau, bidang XZ) → bola di ±X  = kiri & kanan (horizontal)
+ *   cincin X (merah, bidang YZ) → bola di ±Z  = depan & belakang
+ *   cincin Z (biru,  bidang XY) → bola di ±Y  = atas & bawah
+ * Untuk cincin Z hanya ±X atau ±Y yang mungkin (±Z adalah sumbu normalnya,
+ * bola akan lepas dari lingkaran), dan ±X sudah dipakai hijau — jadi ±Y.
  */
 const BALL_DIRECTION = {
   X: [0, 0, 1],
   Y: [1, 0, 0],
   Z: [0, 1, 0],
 };
+
+/** Vektor satuan per sumbu, dipakai untuk orbit bola saat drag. */
+const UNIT_AXIS = {
+  X: new THREE.Vector3(1, 0, 0),
+  Y: new THREE.Vector3(0, 1, 0),
+  Z: new THREE.Vector3(0, 0, 1),
+};
+
+/** Objek sementara dipakai ulang supaya tidak alokasi tiap frame. */
+const _tmpQuatBase = new THREE.Quaternion();
+const _tmpQuatOrbit = new THREE.Quaternion();
+const _identityQuat = new THREE.Quaternion();
 
 /** Material sumbu pada materialLib, dipakai untuk share ke bola. */
 const MATERIAL_KEY = { X: 'xAxis', Y: 'yAxis', Z: 'zAxis' };
@@ -281,7 +304,82 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
     }
   }
 
+  // ── 4. Kunci posisi bola & solo-orbit saat drag ──
+  //
+  // MASALAH: `updateMatrixWorld()` untuk mode rotate memutar SETIAP handle
+  // terhadap sumbunya sendiri agar busur 180 derajat bawaan selalu menghadap
+  // kamera (baris 1831-1853). Cincin PENUH tidak terlihat berubah karena
+  // simetri rotasi, TAPI bola yang menempel padanya jadi ikut bergeser setiap
+  // kali kamera digerakkan. Sudah diukur: memindahkan kamera dari (6,5,7) ke
+  // (2,9,3) menggeser arah bola sampai 0.618 unit — jelas terlihat mata.
+  //
+  // SOLUSI: setelah fungsi asli dijalankan, quaternion setiap BOLA di-set ulang
+  //   - saat idle : ke basis gizmo (identitas untuk space 'world', atau
+  //                 worldQuaternion untuk space 'local') → posisi TERKUNCI,
+  //                 tidak terpengaruh kamera sama sekali
+  //   - saat drag : 2 bola milik sumbu aktif ikut MENGORBIT pusat mengikuti
+  //                 lintasan cincinnya, sementara cincin lain beserta bolanya
+  //                 disembunyikan sementara
+  //
+  // CATATAN 1: orbit hanya perlu ditambahkan manual saat space = 'world'.
+  // Pada space = 'local', basis bola adalah `worldQuaternion` yang SUDAH
+  // memuat rotasi yang sedang diterapkan ke object, jadi bola otomatis
+  // mengorbit. Menambah rotasi lagi akan membuat orbitnya 2x lipat.
+  //
+  // CATATAN 2: `super.updateMatrixWorld()` dipanggil di AKHIR fungsi asli
+  // (baris 1902), jadi mengubah quaternion sesudahnya TIDAK otomatis masuk ke
+  // matrixWorld. Karena itu `rotateObj.updateMatrixWorld(true)` dipanggil lagi
+  // untuk menghitung ulang matriks anak-anaknya.
+  const gizmoRoot = transformControls._gizmo;
+  const originalUpdate = (gizmoRoot && typeof gizmoRoot.updateMatrixWorld === 'function')
+    ? gizmoRoot.updateMatrixWorld
+    : null;
+
+  if (originalUpdate) {
+    gizmoRoot.updateMatrixWorld = function (force) {
+      originalUpdate.call(this, force);
+      if (this.mode !== 'rotate') return;
+
+      const isLocal = this.space === 'local' && !!this.worldQuaternion;
+      // Basis gizmo: sama seperti yang dipakai Three.js untuk mode non-rotate.
+      _tmpQuatBase.copy(isLocal ? this.worldQuaternion : _identityQuat);
+
+      const activeAxis = transformControls.axis;
+      const soloing = transformControls.dragging && AXES.includes(activeAxis);
+
+      for (const child of rotateObj.children) {
+        const isBall = child.userData[BALL_MARK] === true;
+
+        // Saat drag: sembunyikan cincin & bola milik sumbu LAIN.
+        if (soloing && AXES.includes(child.name) && child.name !== activeAxis) {
+          child.visible = false;
+          continue;
+        }
+        if (!isBall) continue;   // cincin sumbu aktif: biarkan Three.js atur
+
+        // Kunci ke basis gizmo (buang rotasi camera-align).
+        child.quaternion.copy(_tmpQuatBase);
+
+        // Sumbu aktif saat drag di space 'world': putar bola → mengorbit.
+        if (soloing && !isLocal && child.name === activeAxis) {
+          const angle = transformControls.rotationAngle || 0;
+          if (angle) {
+            _tmpQuatOrbit.setFromAxisAngle(UNIT_AXIS[activeAxis], angle);
+            child.quaternion.multiply(_tmpQuatOrbit);
+          }
+        }
+      }
+
+      // Quaternion diubah SETELAH super.updateMatrixWorld() → hitung ulang.
+      rotateObj.updateMatrixWorld(true);
+    };
+  }
+
   const dispose = () => {
+    // Lepas wrapper updateMatrixWorld lebih dulu.
+    if (originalUpdate && gizmoRoot.updateMatrixWorld !== originalUpdate) {
+      gizmoRoot.updateMatrixWorld = originalUpdate;
+    }
     // Kembalikan cincin ke busur aslinya.
     for (const { mesh, originalGeometry } of replacedRings) {
       const replacement = mesh.geometry;
