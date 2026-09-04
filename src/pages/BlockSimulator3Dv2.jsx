@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow } from '../utils/gizmoSixArrows.js';
+import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -11885,10 +11886,33 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         console.warn('[Phase 49 v11] Solo drag tidak bisa diaktifkan:', soloDrag.reason);
       }
+
+      // Phase 50, 2026-09-04: Rombak tampilan gizmo ROTATE sesuai gambar
+      // referensi user — 3 cincin PENUH (merah/hijau/biru) + 6 bola handle.
+      //
+      // MASALAH: gizmo rotate bawaan Three.js menampilkan 5 cincin sekaligus —
+      // 3 busur berwarna yang cuma SETENGAH lingkaran, 1 cincin abu-abu (XYZE),
+      // dan 1 cincin kuning besar di luar (E). Itulah yang terlihat sebagai
+      // "banyak cincin" dan terasa berantakan.
+      //
+      // DESAIN BARU: cincin abu-abu & kuning dimatikan, ketiga busur diubah
+      // jadi lingkaran PENUH 360 derajat, lalu tiap cincin diberi 2 bola solid
+      // di ujung berseberangan sebagai pegangan visual (warna mengikuti cincin).
+      //
+      // CATATAN: hanya menyentuh gizmo.rotate. Mode Move (6 panah Phase 49
+      // v9-v11) dan Scale tidak disentuh sama sekali.
+      const rotateRings = restyleRotateGizmo(transformControls, transformHelper);
+      if (rotateRings.ok) {
+        threeRef.current.rotateRingsDispose = rotateRings.dispose;
+        console.log(`[Phase 50] Gizmo rotate dirombak — cincin penuh: ${rotateRings.rings.length}, `
+          + `bola: ${rotateRings.balls.length}, dimatikan: ${rotateRings.hiddenRings.join(' & ')}`);
+      } else {
+        console.warn('[Phase 50] Gizmo rotate tidak bisa dirombak:', rotateRings.reason);
+      }
     } catch (e) {
       // Kegagalan di sini TIDAK boleh menggagalkan inisialisasi scene.
       // Gizmo tetap berfungsi normal, cuma tampilannya kembali ke bawaan Three.js.
-      console.warn('[Phase 49 v9/v10/v11] Gagal merapikan gizmo:', e);
+      console.warn('[Phase 49/50] Gagal merapikan gizmo:', e);
     }
     // Phase 8: Record history saat gizmo selesai drag (e.value=false).
     // Debounce: cuma record FINAL state, bukan tiap pixel.
@@ -14036,6 +14060,11 @@ Now you can apply Displacement for detailed effect.`);
       if (threeRef.current.soloDragDispose) {
         threeRef.current.soloDragDispose();
         threeRef.current.soloDragDispose = null;
+      }
+      // Phase 50: pulihkan gizmo rotate & bebaskan geometry cincin/bola custom.
+      if (threeRef.current.rotateRingsDispose) {
+        threeRef.current.rotateRingsDispose();
+        threeRef.current.rotateRingsDispose = null;
       }
       transformControls.dispose();
       renderer.dispose();
