@@ -225,22 +225,19 @@ function enableCursorLockedRotation(transformControls) {
     const giz = transformControls._gizmo && transformControls._gizmo.gizmo &&
                 transformControls._gizmo.gizmo.rotate;
     if (!giz || !transformControls.camera) return null;
+    giz.updateMatrixWorld(true);
     let best = null;
     let bestD = Infinity;
     for (const ball of giz.children) {
       if (!ball.userData || ball.userData[BALL_MARK] !== true) continue;
       if (!ball.geometry || !ball.geometry.boundingSphere) continue;
       const center = ball.geometry.boundingSphere.center.clone();
-      ball.updateWorldMatrix(true, false);
       center.applyMatrix4(ball.matrixWorld);
       const v = center.project(transformControls.camera);
-      // NDC pointer sudah y ke atas; project() juga y ke atas
       const d = Math.hypot(v.x - pointer.x, v.y - pointer.y);
       if (d < bestD) { bestD = d; best = ball; }
     }
-    // Threshold: 0.035 NDC ≈ 32px di 900px — jauh lebih besar dari bola (~7px)
-    // tapi tidak mencuri hover cincin yang jauh dari bola.
-    return (best && bestD < 0.035) ? best : null;
+    return (best && bestD < 0.08) ? best : null;
   };
 
   const lockedPointerHover = function (pointer) {
@@ -284,47 +281,106 @@ function enableCursorLockedRotation(transformControls) {
       _lockAxis.set(axis === 'X' ? 1 : 0, axis === 'Y' ? 1 : 0, axis === 'Z' ? 1 : 0);
       if (isLocal) _lockAxis.applyQuaternion(this.worldQuaternion);
 
-      // 3) SUDUT LAYAR: hitung sudut kursor terhadap pusat DI LAYAR, lalu
-      // terjemahkan ke rotasi 3D di sekitar sumbu sehingga bola mengikuti
-      // kursor SECARA VISUAL (bukan hanya sudut world yang kecil).
-      // Proyeksikan worldPositionStart (pusat) dan pointStart/pointEnd ke NDC:
-      const proj = (v) => {
-        const p = v.clone().project(this.camera);
-        return p;
+      // 3) target & ITERASI NUMERIK: cari rotationAngle sedemikian sehingga
+      // proyeksi layar bola yg di-grab = arah kursor terhadap pusat.
+      // (bola terikat lingkaran; proyeksi layar ≠ linear thd angle, jadi
+      //  iterasi Newton-lite: tebak → apply → ukur → koreksi.)
+      const gizForBall = transformControls._gizmo && transformControls._gizmo.gizmo && transformControls._gizmo.gizmo.rotate;
+      const ballDirFromCenter = (ball) => {
+        // posisi visual bola (anak gizmo) — boundingSphere.center di-bake
+        // ke geometry, dikali matrixWorld → world.
+        ball.updateWorldMatrix(true, false);
+        if (!ball.geometry || !ball.geometry.boundingSphere) return null;
+        const c = ball.geometry.boundingSphere.center.clone();
+        c.applyMatrix4(ball.matrixWorld);
+        // vektor dari worldPositionStart
+        return c.sub(this.worldPositionStart);
       };
-      const cNDC = proj(this.worldPositionStart);
-      const sNDC = proj(this.worldPositionStart.clone().add(this.pointStart));
-      const eNDC = proj(this.worldPositionStart.clone().add(this.pointEnd));
-      const a0 = Math.atan2(sNDC.y - cNDC.y, sNDC.x - cNDC.x);
-      const a1 = Math.atan2(eNDC.y - cNDC.y, eNDC.x - cNDC.x);
-      let sweepScreen = a1 - a0;
-      while (sweepScreen > Math.PI) sweepScreen -= 2 * Math.PI;
-      while (sweepScreen < -Math.PI) sweepScreen += 2 * Math.PI;
-      // Terjemahkan sweep layar ke rotasi 3D: rotasi object sebesar
-      // `rotationAngle` menggerakkan bola di layar sebesar `sweepScreen`.
-      // Faktor koreksi bergantung orientasi sumbu terhadap kamera:
-      //   untuk sumbu yang TEGAK LURUS layar → 1:1
-      //   untuk sumbu yang SEJAJAR layar → 0 (rotasi tak terlihat)
-      // Rumus eksak: dot(axisWorld, eye) memberi kemiringan.
-      //   angle3D * (1 - |dot(axis, eye)|^2) ... pendekatan pertama:
-      // Kita pakai koreksi proyeksi: angle3D = sweepScreen / sin(phi)
-      // dengan phi = sudut antara axis & eye (dot = cos(phi)).
-      const axisDotEye = _lockAxis.dot(this.eye);
-      const sinPhi = Math.sqrt(Math.max(0, 1 - axisDotEye * axisDotEye));
-      let rotation3D = sweepScreen;
-      if (sinPhi > 0.15) {
-        rotation3D = sweepScreen / sinPhi;
-      } else {
-        // sumbu nyaris sejajar kamera → rotasi tak terlihat → pakai sweep
-        // dalam bidang kamera (identik dengan asli in-plane)
-        rotation3D = sweepScreen;
+      const screenAngleOf = (worldVec) => {
+        const p = this.worldPositionStart.clone().add(worldVec).project(this.camera);
+        const c = this.worldPositionStart.clone().project(this.camera);
+        return Math.atan2(p.y - c.y, p.x - c.x);
+      };
+      // target: sudut layar kursor
+      const projEnd = this.worldPositionStart.clone().add(this.pointEnd).project(this.camera);
+      const projCen = this.worldPositionStart.clone().project(this.camera);
+      const targetAngle = Math.atan2(projEnd.y - projCen.y, projEnd.x - projCen.x);
+
+      // pilih bola yg paling dekat dengan pointer saat ini (grab)
+      const ballsArr = (gizForBall ? gizForBall.children : []).filter(b => b.userData && b.userData[BALL_MARK] === true);
+      let grabBall = null, minD = Infinity;
+      if (pointer) {
+        for (const b of ballsArr) {
+          const c = b.geometry.boundingSphere.center.clone();
+          b.updateWorldMatrix(true, false);
+          c.applyMatrix4(b.matrixWorld);
+          const v = c.project(this.camera);
+          const d = Math.hypot(v.x - pointer.x, v.y - pointer.y);
+          if (d < minD) { minD = d; grabBall = b; }
+        }
       }
-      this.rotationAngle = rotation3D;
+      if (!grabBall) return origPointerMove.call(this, pointer);
+      const startAngle = screenAngleOf(ballDirFromCenter(grabBall));
+
+      // Newton-lite: cari Δ sehingga screenAngleOf(R(axis, Δ)·startVec) = targetAngle
+      const startVec = ballDirFromCenter(grabBall);
+      if (!startVec || startVec.length() < 1e-6) return origPointerMove.call(this, pointer);
+
+      // delta dari arah kursor (tanpa asumsi linear)
+      let sweepTarget = targetAngle - startAngle;
+      while (sweepTarget > Math.PI) sweepTarget -= Math.PI * 2;
+      while (sweepTarget < -Math.PI) sweepTarget += Math.PI * 2;
+
+      // fungsi: angle → screenAngle( R(axis, angle)·startVec di world? )
+      // ROTASI object = R(axisParent, angle) (world) — bola menggantung di
+      // gizmo yang MENGIKUTI object (local). Saat object berotasi, wq berubah,
+      // gizmo ikut, bola mengorbit. Jadi bola world ≈ R(axis, angle)·startVec.
+      // (di world space; untuk local basis ganda — pendekatan yang sama krn
+      //  axis sudah di-rotate ke worldQuaternion.)
+      const applyAngle = (angle) => {
+        // apply rotasi ke object seperti langkah 5
+        if (isLocal) {
+          object.quaternion.copy(this._quaternionStart);
+          object.quaternion.multiply(_lockQuat.setFromAxisAngle(_lockAxis, angle)).normalize();
+        } else {
+          _lockAxisParent.copy(_lockAxis).applyQuaternion(this._parentQuaternionInv);
+          object.quaternion.copy(_lockQuat.setFromAxisAngle(_lockAxisParent, angle));
+          object.quaternion.multiply(this._quaternionStart).normalize();
+        }
+      };
+      const screenAngleAt = (angle) => {
+        // world pos bola setelah object dirotasi angle = R(axisWorld, angle)·startVec
+        const rotated = startVec.clone().applyAxisAngle(_lockAxis, angle);
+        return screenAngleOf(rotated);
+      };
+
+      let angleEst = sweepTarget;
+      for (let iter = 0; iter < 5; iter++) {
+        const cur = screenAngleAt(angleEst);
+        let err = targetAngle - cur;
+        while (err > Math.PI) err -= Math.PI * 2;
+        while (err < -Math.PI) err += Math.PI * 2;
+        if (Math.abs(err) < 0.02) break; // ~1.1°
+        // turunan numerik
+        const h = 0.05;
+        const der = (screenAngleAt(angleEst + h) - cur) / h;
+        if (!isFinite(der) || Math.abs(der) < 1e-6) break;
+        const step = err / der;
+        angleEst += Math.max(-0.5, Math.min(0.5, step)); // clamp step
+      }
+      // clamp delta per langkah (≤30°) — hindari teleport
+      const prevAngle = this.rotationAngle || 0;
+      let delta = angleEst - prevAngle;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      const MAX_STEP = Math.PI / 6; // 30°
+      if (delta > MAX_STEP) delta = MAX_STEP;
+      if (delta < -MAX_STEP) delta = -MAX_STEP;
+      this.rotationAngle = prevAngle + delta;
       _lockProjA.copy(this.pointStart).addScaledVector(_lockAxis, -this.pointStart.dot(_lockAxis));
       _lockProjB.copy(this.pointEnd).addScaledVector(_lockAxis, -this.pointEnd.dot(_lockAxis));
-      // Jika proyeksi pointStart/pointEnd ke bidang ⊥ sumbu nyaris nol,
-      // fallback ke asli (degenerasi).
       if (_lockProjA.length() < 1e-6 || _lockProjB.length() < 1e-6) {
+        // Degenerasi (kursor tepat di sumbu/pusat) — serahkan ke asli.
         return origPointerMove.call(this, pointer);
       }
 
@@ -476,6 +532,16 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
     hiddenRings.push('XYZE (cincin abu-abu)', 'E (cincin kuning)');
   }
 
+  // ── 1b. Mode rotate pakai space LOCAL supaya bola + cincin MENGIKUTI
+  // arah/sisi block (bukan kaku di sumbu dunia).
+  // Permintaan user (Phase 50 v3): saat block dirotasikan, 6 bola + garis
+  // cincinnya ikut berputar mengikuti sisi block. Space default 'world'
+  // membuat gizmo kaku di sumbu dunia. Wrapper updateMatrixWorld di bawah
+  // sudah mendukung local (isLocal → basis = worldQuaternion, bola otomatis
+  // mengikuti tanpa orbit manual / tidak dobel).
+  const prevSpace = transformControls.space;
+  transformControls.space = 'local';
+
   const materialLib = transformControls._gizmo && transformControls._gizmo.materialLib;
 
   for (const axis of AXES) {
@@ -575,13 +641,16 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
           child.visible = false;
           continue;
         }
-        if (!isBall) continue;   // cincin sumbu aktif: biarkan Three.js atur
 
-        // Kunci ke basis gizmo (buang rotasi camera-align).
+        // Kunci SEMUA handle (cincin & bola) ke basis gizmo — buang rotasi
+        // camera-align. Cincin ikut orientasi block (space local) sehingga
+        // garis melingkar + bola MENGIKUTI sisi block saat block dirotasi.
+        // Orientasi bidang cincin sudah di-bake ke geometry (makeRingGeometry),
+        // jadi menimpa quaternion object aman.
         child.quaternion.copy(_tmpQuatBase);
 
         // Sumbu aktif saat drag di space 'world': putar bola → mengorbit.
-        if (soloing && !isLocal && child.name === activeAxis) {
+        if (isBall && soloing && !isLocal && child.name === activeAxis) {
           const angle = transformControls.rotationAngle || 0;
           if (angle) {
             _tmpQuatOrbit.setFromAxisAngle(UNIT_AXIS[activeAxis], angle);
@@ -635,6 +704,7 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       transformControls.showE = prevShowE;
       transformControls.showXYZE = prevShowXYZE;
     }
+    transformControls.space = prevSpace;
     delete rotateObj.userData[GIZMO_MARK];
   };
 
