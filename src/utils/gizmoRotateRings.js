@@ -251,9 +251,9 @@ function enableCursorLockedRotation(transformControls) {
     }
   };
 
-  // State anti-teleport: sudut rotasi pada langkah sebelumnya.
+  // State anti-teleport: raw (sudut seketika) pada langkah sebelumnya.
   // Di-reset setiap kali drag dimulai (dragging berubah false→true).
-  let prevDragAngle = 0;
+  let prevRawAngle = 0;
 
   // Objek sementara untuk versi drag "licin bawaan".
   const _lockTangent = new THREE.Vector3();
@@ -277,7 +277,7 @@ function enableCursorLockedRotation(transformControls) {
     try {
       // Reset baseline saat drag baru mulai (drag sebelumnya sudah selesai).
       if (!this._dragAngleInit) {
-        prevDragAngle = this.rotationAngle || 0;
+        prevRawAngle = this.rotationAngle || 0;
         this._dragAngleInit = true;
       }
       // 1) pointEnd dari intersect _plane (sama seperti asli)
@@ -287,39 +287,54 @@ function enableCursorLockedRotation(transformControls) {
       this.pointEnd.copy(planeIntersect.point).sub(this.worldPositionStart);
       this._offset.copy(this.pointEnd).sub(this.pointStart);
 
-      // 2) RotationAngle — RUMUS ASLI (baris 708-729):
+      // 2) RotationAngle — RUMUS ASLI (baris 708-731):
       //    rotationAngle = _offset.dot(_tempVector.normalize()) * ROTATION_SPEED
       //    dengan _tempVector = (unitAxis [×wq kalau local]) × eye
+      //    PENTING: tangent memakai worldQuaternion SAAT INI (perilaku asli),
+      //    TAPI rotasi yang DI-APPLY selalu pakai UNIT (sumbu lokal polos).
+      //    (Kesalahan v3.3 sebelumnya: apply memakai sumbu world yang ikut
+      //     berubah tiap frame → saat block sudah diputar lalu rotate balik,
+      //     sumbu "melayang" → kacau / tidak ada sumbu.)
       const rotSpeed = 20 / this.worldPosition.distanceTo(_lockRay.ray.origin);
       _lockAxis.set(axis === 'X' ? 1 : 0, axis === 'Y' ? 1 : 0, axis === 'Z' ? 1 : 0);
-      if (this.space === 'local' && axis !== 'E' && axis !== 'XYZE') {
-        _lockAxis.applyQuaternion(this.worldQuaternion);
-      }
-      _lockTangent.copy(_lockAxis).cross(this.eye);
+      const isLocal = this.space === 'local' && axis !== 'E' && axis !== 'XYZE';
+      // tangent: lakukan copy agar _lockAxis polos tetap utuh utk apply
+      _lockTangent.copy(_lockAxis);
+      if (isLocal) _lockTangent.applyQuaternion(this.worldQuaternion);
+      _lockTangent.cross(this.eye);
+
+      let raw;
       if (_lockTangent.length() === 0) {
-        // Sumbu sejajar kamera → pakai jalur in-plane bawaan (baris 736-746)
-        this.rotationAngle = this.pointEnd.angleTo(this.pointStart);
+        // Sumbu sejajar kamera → jalur in-plane bawaan (baris 736-746),
+        // lengkap dengan tanda dari cross·eye (mencegah arah terbalik).
+        const sN = this.pointStart.clone().normalize();
+        const eN = this.pointEnd.clone().normalize();
+        raw = eN.angleTo(sN) * (eN.cross(sN).dot(this.eye) < 0 ? 1 : -1);
       } else {
         _lockTangent.normalize();
-        const raw = this._offset.dot(_lockTangent) * rotSpeed;
-        // Clamp anti-teleport: perubahan sudut per langkah ≤30°
-        let delta = raw - (prevDragAngle || 0);
-        while (delta > Math.PI) delta -= Math.PI * 2;
-        while (delta < -Math.PI) delta += Math.PI * 2;
-        const MAX_STEP = Math.PI / 6; // 30°
-        if (delta > MAX_STEP) delta = MAX_STEP;
-        if (delta < -MAX_STEP) delta = -MAX_STEP;
-        this.rotationAngle = (prevDragAngle || 0) + delta;
+        raw = this._offset.dot(_lockTangent) * rotSpeed;
       }
-      prevDragAngle = this.rotationAngle;
+      // Clamp anti-teleport: perubahan RAW (sudut sesaat) per langkah ≤30°.
+      // rotationAngle = raw sesaat (object = qStart * R(axis, rotationAngle)).
+      // Tanpa clamp, pointer lompat jauh → raw meledak → objek terpelintir.
+      let delta = raw - prevRawAngle;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      const MAX_STEP = Math.PI / 6; // 30°
+      if (delta > MAX_STEP) delta = MAX_STEP;
+      if (delta < -MAX_STEP) delta = -MAX_STEP;
+      this.rotationAngle = prevRawAngle + delta;
+      prevRawAngle = this.rotationAngle;
 
       // 3) rotationSnap (sama seperti asli baris 750)
       if (this.rotationSnap) {
         this.rotationAngle = Math.round(this.rotationAngle / this.rotationSnap) * this.rotationSnap;
       }
 
-      // 4) apply rotasi ke object (mengikuti pola asli baris 752-764)
-      const isLocal = this.space === 'local' && axis !== 'E' && axis !== 'XYZE';
+      // 4) apply rotasi ke object — PERSIS pola asli (baris 752-764):
+      //    local  → object.quaternion = qStart * R(unitAxis, angle)
+      //    world  → object.quaternion = R(unitAxis × parentInv, angle) * qStart
+      //    (bukan sumbu world-bergerak! → ini yang memperbaiki rotate-balik)
       if (isLocal) {
         object.quaternion.copy(this._quaternionStart);
         object.quaternion.multiply(_lockQuat.setFromAxisAngle(_lockAxis, this.rotationAngle)).normalize();
