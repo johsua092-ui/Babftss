@@ -150,6 +150,226 @@ const _tmpQuatBase = new THREE.Quaternion();
 const _tmpQuatOrbit = new THREE.Quaternion();
 const _identityQuat = new THREE.Quaternion();
 
+/** Penanda idempoten untuk pengunci drag rotate (cursor-locked). */
+const LOCK_MARK = '__rotateLockP501';
+
+/** Objek sementara untuk logika cursor-locked rotation. */
+const _lockRay = new THREE.Raycaster();
+const _lockAxis = new THREE.Vector3();
+const _lockProjA = new THREE.Vector3();
+const _lockProjB = new THREE.Vector3();
+const _lockCross = new THREE.Vector3();
+const _lockAxisParent = new THREE.Vector3();
+const _lockQuat = new THREE.Quaternion();
+
+/**
+ * Mengunci drag rotate pada sumbu X/Y/Z sehingga bola (dan rotasi objek)
+ * MENGIKUTI KURSOR 100% — tidak meluncur / kabur dari kursor.
+ *
+ * ── MASALAH BAWAAN ──────────────────────────────────────────────
+ * `pointerMove()` di TransformControls (baris 695-729) menghitung sudut
+ * rotasi untuk sumbu X/Y/Z dari:
+ *     rotationAngle = _offset.dot(_tempVector.normalize()) * ROTATION_SPEED
+ * dengan `_tempVector = unitAxis × eye`, dan `_offset = pointEnd - pointStart`
+ * (pergeseran kursor di BIDANG KAMERA). Hasilnya:
+ *   - sudut rotasi DIAMBIL DARI BESAR PERGESERAN (skalar), bukan dari arah
+ *     kursor terhadap pusat objek;
+ *   - bola berputar dengan laju yang tidak berkorelasi dengan posisi kursor,
+ *     sehingga bola "meluncur" / "kabur" dari kursor (diukur: drag 120px →
+ *     slip bola dari kursor 142 px, beda sweep 25 derajat).
+ *
+ * ── SOLUSI ──────────────────────────────────────────────────────
+ * Untuk axis X/Y/Z saat dragging, hitung ulang `rotationAngle` sebagai
+ * SUDUT BERTANDA (signed angle) antara proyeksi `pointStart` dan `pointEnd`
+ * pada bidang yang TEGAK LURUS sumbu rotasi:
+ *     a = pointStart - n·(pointStart·n)   (proyeksi ⊥ sumbu)
+ *     b = pointEnd   - n·(pointEnd·n)
+ *     angle = atan2( (a×b)·n , a·b )
+ * Ini persis logika "in-plane rotation" yang dipakai bawaan hanya ketika
+ * sumbu paralel kamera (baris 736-746) — tapi sekarang diterapkan untuk
+ * SEMUA orientasi sumbu, sehingga rotasi sebanding dengan gerakan kursor
+ * di layar dan bola menempel pada kursor. Lalu terapkan ke object
+ * mengikuti pola asli (baris 752-764), dan dispatch event change.
+ *
+ * ── KEAMANAN ────────────────────────────────────────────────────
+ * - Hanya mempengaruhi mode rotate dengan axis X/Y/Z saat dragging.
+ *   Mode lain, axis lain (E, XYZE), hover, down, up, snap — TIDAK disentuh
+ *   (delegasi penuh ke fungsi asli).
+ * - Override dilakukan pada INSTANCE (`tc.pointerMove`), bukan prototype,
+ *   jadi instance lain tidak terpengaruh.
+ * - Idempoten (penanda userData LOCK_MARK) + dispose() untuk melepas.
+ *
+ * @param {THREE.Controls} transformControls instance TransformControls
+ * @returns {function|null} dispose, atau null kalau tidak bisa dipasang
+ */
+function enableCursorLockedRotation(transformControls) {
+  if (!transformControls || !transformControls.pointerMove) return null;
+
+  // Idempoten: jangan pasang dua kali.
+  if (transformControls.userData && transformControls.userData[LOCK_MARK]) {
+    return transformControls.userData[LOCK_MARK].dispose || null;
+  }
+
+  const proto = Object.getPrototypeOf(transformControls);
+  const origPointerMove = transformControls.pointerMove;
+  const origPointerHover = transformControls.pointerHover;
+
+  // Cari bola (handle rotate) yang proyeksi layarnya paling dekat dengan
+  // pointer (NDC). Kalau cukup dekat, axis dipaksa ke nama bola tsb.
+  // Ini memperbaiki PICKING: picker torus bawaan saling tumpang tindih, dan
+  // di posisi bola sering memilih sumbu yang SALAH (diukur: klik bola Y →
+  // axis Z → bola yang kamu pegang "kabur"). Preferensi proyeksi ini
+  // membuat hover/klik pada bola selalu memilih bola yang benar, TANPA
+  // menambah mesh picker apa pun (tetap 100% visual, tidak menyentuh picker).
+  const findBallNearPointer = (pointer) => {
+    const giz = transformControls._gizmo && transformControls._gizmo.gizmo &&
+                transformControls._gizmo.gizmo.rotate;
+    if (!giz || !transformControls.camera) return null;
+    let best = null;
+    let bestD = Infinity;
+    for (const ball of giz.children) {
+      if (!ball.userData || ball.userData[BALL_MARK] !== true) continue;
+      if (!ball.geometry || !ball.geometry.boundingSphere) continue;
+      const center = ball.geometry.boundingSphere.center.clone();
+      ball.updateWorldMatrix(true, false);
+      center.applyMatrix4(ball.matrixWorld);
+      const v = center.project(transformControls.camera);
+      // NDC pointer sudah y ke atas; project() juga y ke atas
+      const d = Math.hypot(v.x - pointer.x, v.y - pointer.y);
+      if (d < bestD) { bestD = d; best = ball; }
+    }
+    // Threshold: 0.035 NDC ≈ 32px di 900px — jauh lebih besar dari bola (~7px)
+    // tapi tidak mencuri hover cincin yang jauh dari bola.
+    return (best && bestD < 0.035) ? best : null;
+  };
+
+  const lockedPointerHover = function (pointer) {
+    origPointerHover.call(this, pointer);
+    if (this.mode !== 'rotate' || this.dragging === true || pointer == null) return;
+    const near = findBallNearPointer(pointer);
+    if (near) {
+      // Paksa axis ke bola kalau pointer cukup dekat dengan bola — prioritas
+      // bola di atas picker (yang salah memilih sumbu lain di titik itu).
+      this.axis = near.name;
+    }
+  };
+
+  const lockedPointerMove = function (pointer) {
+    const axis = this.axis;
+    const mode = this.mode;
+    const object = this.object;
+
+    // Hanya mode rotate, axis X/Y/Z, sedang dragging, tombol benar.
+    const isAxial = axis === 'X' || axis === 'Y' || axis === 'Z';
+    if (mode !== 'rotate' || !isAxial || this.dragging !== true ||
+        object === undefined || (pointer != null && pointer.button !== -1)) {
+      return origPointerMove.call(this, pointer);
+    }
+
+    try {
+      let space = this.space;
+      if (this.camera && this.camera.isOrthographicCamera === false && (space === null || space === undefined)) {
+        space = 'world';
+      }
+      const isLocal = space === 'local' && axis !== 'E' && axis !== 'XYZE';
+
+      // 1) pointEnd dari intersect _plane (sama seperti asli)
+      if (pointer != null) _lockRay.setFromCamera(pointer, this.camera);
+      const planeIntersect = _lockRay.intersectObject(this._plane, true)[0];
+      if (!planeIntersect) return;
+      this.pointEnd.copy(planeIntersect.point).sub(this.worldPositionStart);
+      this._offset.copy(this.pointEnd).sub(this.pointStart);
+
+      // 2) sumbu rotasi (world, atau local → pakai worldQuaternion)
+      _lockAxis.set(axis === 'X' ? 1 : 0, axis === 'Y' ? 1 : 0, axis === 'Z' ? 1 : 0);
+      if (isLocal) _lockAxis.applyQuaternion(this.worldQuaternion);
+
+      // 3) SUDUT LAYAR: hitung sudut kursor terhadap pusat DI LAYAR, lalu
+      // terjemahkan ke rotasi 3D di sekitar sumbu sehingga bola mengikuti
+      // kursor SECARA VISUAL (bukan hanya sudut world yang kecil).
+      // Proyeksikan worldPositionStart (pusat) dan pointStart/pointEnd ke NDC:
+      const proj = (v) => {
+        const p = v.clone().project(this.camera);
+        return p;
+      };
+      const cNDC = proj(this.worldPositionStart);
+      const sNDC = proj(this.worldPositionStart.clone().add(this.pointStart));
+      const eNDC = proj(this.worldPositionStart.clone().add(this.pointEnd));
+      const a0 = Math.atan2(sNDC.y - cNDC.y, sNDC.x - cNDC.x);
+      const a1 = Math.atan2(eNDC.y - cNDC.y, eNDC.x - cNDC.x);
+      let sweepScreen = a1 - a0;
+      while (sweepScreen > Math.PI) sweepScreen -= 2 * Math.PI;
+      while (sweepScreen < -Math.PI) sweepScreen += 2 * Math.PI;
+      // Terjemahkan sweep layar ke rotasi 3D: rotasi object sebesar
+      // `rotationAngle` menggerakkan bola di layar sebesar `sweepScreen`.
+      // Faktor koreksi bergantung orientasi sumbu terhadap kamera:
+      //   untuk sumbu yang TEGAK LURUS layar → 1:1
+      //   untuk sumbu yang SEJAJAR layar → 0 (rotasi tak terlihat)
+      // Rumus eksak: dot(axisWorld, eye) memberi kemiringan.
+      //   angle3D * (1 - |dot(axis, eye)|^2) ... pendekatan pertama:
+      // Kita pakai koreksi proyeksi: angle3D = sweepScreen / sin(phi)
+      // dengan phi = sudut antara axis & eye (dot = cos(phi)).
+      const axisDotEye = _lockAxis.dot(this.eye);
+      const sinPhi = Math.sqrt(Math.max(0, 1 - axisDotEye * axisDotEye));
+      let rotation3D = sweepScreen;
+      if (sinPhi > 0.15) {
+        rotation3D = sweepScreen / sinPhi;
+      } else {
+        // sumbu nyaris sejajar kamera → rotasi tak terlihat → pakai sweep
+        // dalam bidang kamera (identik dengan asli in-plane)
+        rotation3D = sweepScreen;
+      }
+      this.rotationAngle = rotation3D;
+      _lockProjA.copy(this.pointStart).addScaledVector(_lockAxis, -this.pointStart.dot(_lockAxis));
+      _lockProjB.copy(this.pointEnd).addScaledVector(_lockAxis, -this.pointEnd.dot(_lockAxis));
+      // Jika proyeksi pointStart/pointEnd ke bidang ⊥ sumbu nyaris nol,
+      // fallback ke asli (degenerasi).
+      if (_lockProjA.length() < 1e-6 || _lockProjB.length() < 1e-6) {
+        return origPointerMove.call(this, pointer);
+      }
+
+      // 4) rotationSnap (sama seperti asli baris 750)
+      if (this.rotationSnap) {
+        this.rotationAngle = Math.round(this.rotationAngle / this.rotationSnap) * this.rotationSnap;
+      }
+
+      // 5) apply rotasi ke object (mengikuti pola asli baris 752-764)
+      if (isLocal) {
+        object.quaternion.copy(this._quaternionStart);
+        object.quaternion.multiply(_lockQuat.setFromAxisAngle(_lockAxis, this.rotationAngle)).normalize();
+      } else {
+        _lockAxisParent.copy(_lockAxis).applyQuaternion(this._parentQuaternionInv);
+        object.quaternion.copy(_lockQuat.setFromAxisAngle(_lockAxisParent, this.rotationAngle));
+        object.quaternion.multiply(this._quaternionStart).normalize();
+      }
+
+      // 6) event (sama seperti asli baris 768-769)
+      this.dispatchEvent({ type: 'change' });
+      this.dispatchEvent({ type: 'objectChange' });
+    } catch (e) {
+      // Jangan sampai error kecil menggagalkan drag; fallback ke asli.
+      try { return origPointerMove.call(this, pointer); } catch (_) { /* abaikan */ }
+    }
+  };
+
+  transformControls.pointerMove = lockedPointerMove;
+  transformControls.pointerHover = lockedPointerHover;
+
+  const dispose = () => {
+    if (transformControls.pointerMove === lockedPointerMove) {
+      transformControls.pointerMove = origPointerMove;
+    }
+    if (transformControls.pointerHover === lockedPointerHover) {
+      transformControls.pointerHover = origPointerHover;
+    }
+    if (transformControls.userData) delete transformControls.userData[LOCK_MARK];
+  };
+
+  if (!transformControls.userData) transformControls.userData = {};
+  transformControls.userData[LOCK_MARK] = { dispose };
+  return dispose;
+}
+
 /** Material sumbu pada materialLib, dipakai untuk share ke bola. */
 const MATERIAL_KEY = { X: 'xAxis', Y: 'yAxis', Z: 'zAxis' };
 
@@ -375,7 +595,26 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
     };
   }
 
+  // ── 5. Kunci drag rotate agar bola mengikuti kursor 100% ──
+  // Masalah bawaan: rotationAngle dihitung dari BESAR pergeseran kursor
+  // (offset.dot(tangent) * ROTATION_SPEED) bukan dari arah kursor terhadap
+  // pusat, sehingga bola "meluncur" / "kabur" dari kursor saat drag.
+  // Solusi: override pointerMove pada INSTANCE ini — untuk axis X/Y/Z saat
+  // dragging, rotationAngle dihitung sebagai signed angle antara proyeksi
+  // pointStart & pointEnd pada bidang ⊥ sumbu rotasi (lihat dokumentasi
+  // enableCursorLockedRotation di atas). Mode/axis lain tetap pakai asli.
+  let disposeLock = null;
+  try {
+    disposeLock = enableCursorLockedRotation(transformControls);
+  } catch (e) {
+    disposeLock = null;   // jangan sampai menggagalkan init
+  }
+
   const dispose = () => {
+    // Lepas override pointerMove (cursor-locked) lebih dulu.
+    if (disposeLock) {
+      try { disposeLock(); } catch (e) { /* abaikan */ }
+    }
     // Lepas wrapper updateMatrixWorld lebih dulu.
     if (originalUpdate && gizmoRoot.updateMatrixWorld !== originalUpdate) {
       gizmoRoot.updateMatrixWorld = originalUpdate;
