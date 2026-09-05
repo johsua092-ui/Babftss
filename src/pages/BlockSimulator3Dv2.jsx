@@ -11951,11 +11951,12 @@ Now you can apply Displacement for detailed effect.`);
           // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
           // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
           // DIBATALKAN (klik empty / ganti tool sebelum drag).
-          // FIX (request user): setelah clone/mirror SELESAI, gizmo Move TIDAK
-          // boleh tetap menempel (bikin kesan "tool jadi move"). Lepas gizmo
-          // supaya tool clone/mirror tetap aktif — user bisa langsung klik
-          // block lain untuk clone/mirror lagi.
-          transformControls.detach();
+          // FIX Phase 50 v5: setelah clone/mirror SELESAI, gizmo TETAP attach ke
+          // block baru (jangan detach) supaya 6 arrow tetap muncul. Tool mode
+          // otomatis pindah ke "move" supaya user bisa langsung move block baru
+          // atau klik block lain untuk clone/mirror lagi.
+          // transformControls.detach(); ← DIHAPUS
+          setTool('move');
         }
         if (threeRef.current.recordHistory) {
           threeRef.current.recordHistory();
