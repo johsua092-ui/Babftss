@@ -213,7 +213,24 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // Toggle tool (unequip): klik tombol tool = pakai tool itu; klik LAGI tombol yang
   // sama saat sedang aktif = LEPAS tool (kembali ke state 0 / null). Berlaku untuk
   // SEMUA tombol tool. Klik tool BERBEDA saat ada tool aktif = pindah (bukan toggle).
-  const toggleTool = (nextTool) => setTool(t => (t === nextTool ? null : nextTool));
+  // FIX Phase 50 v4: kalau pindah ke tool LAIN dari clone/mirror & ada ghost yang
+  // belum di-finalkan → buang ghost (kalau tidak, ghost nyangkut jadi block permanen).
+  const toggleTool = (nextTool) => setTool(t => {
+    // Ghost clone/mirror dibatalkan saat tool diganti / dimatikan.
+    if (threeRef.current && threeRef.current.cloneGhost) {
+      try {
+        const scene3 = threeRef.current.scene;
+        if (scene3) scene3.remove(threeRef.current.cloneGhost);
+        threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== threeRef.current.cloneGhost);
+        const g = threeRef.current.cloneGhost;
+        if (g.geometry) g.geometry.dispose();
+        if (Array.isArray(g.material)) g.material.forEach(m => m.dispose());
+        else if (g.material) g.material.dispose();
+        threeRef.current.cloneGhost = null;
+      } catch (e) { /* jangan ganggu toggleTool */ }
+    }
+    return t === nextTool ? null : nextTool;
+  });
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
   // Phase 45, 2026-09-03: Paint modal state (copy dari LogicGatesSimulator 2D).
   // null = closed; { targetMeshes, hex, originalHex } = open.
@@ -11919,8 +11936,25 @@ Now you can apply Displacement for detailed effect.`);
     // Juga men-disable orbitControls selama drag gizmo aktif — prevents conflict.
     const onTransformDraggingChanged = (e) => {
       controls.enabled = !e.value;
-      if (!e.value && threeRef.current.recordHistory) {
-        threeRef.current.recordHistory();
+      if (e.value) {
+        // Drag DIMULAI pada tool clone/mirror → ghost sementara dibuat di klik.
+        // Tidak ada aksi khusus; block asli tetap aman (gizmo attach ke ghost).
+      } else {
+        // Drag SELESAI.
+        // Kalau tool clone/mirror & ada ghost → finalkan jadi block PERMANEN:
+        // hapus penanda ghost (tidak akan dibuang cleanup), gizmo sudah
+        // ter-attach ke ghost → 6 panah langsung pindah ke block baru.
+        if ((toolRef.current === 'clone' || toolRef.current === 'mirror') && threeRef.current.cloneGhost) {
+          const g = threeRef.current.cloneGhost;
+          delete g.userData.cloneGhost;
+          threeRef.current.cloneGhost = null;
+          // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
+          // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
+          // DIBATALKAN (klik empty / ganti tool sebelum drag).
+        }
+        if (threeRef.current.recordHistory) {
+          threeRef.current.recordHistory();
+        }
       }
     };
     transformControls.addEventListener('dragging-changed', onTransformDraggingChanged);
@@ -12760,33 +12794,45 @@ Now you can apply Displacement for detailed effect.`);
           }
         }
       } else if (currentTool === 'clone') {
-        // Clone tool — klik block → duplikat identik muncul di offset 1 unit ke X
-        // (arah bebas, user bisa move manual setelah itu pakai tool Move).
-        // Clone = geometri+material+posisi+rotasi+scale identik. Tidak ada flip.
+        // ── Phase 50 v4: CLONE pakai gizmo Move penuh (usulan tim) ──
+        // Klik block → gizmo 6 panah muncul PERSIS seperti Move, block TIDAK
+        // langsung di-clone. User klik-tahan 1 panah → drag → block baru
+        // (ghost clone) MENGIKUTI drag; block asli tetap di tempat. Saat
+        // drag selesai, gizmo pindah ke block baru (6 panah di block baru).
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
-        if (hits.length > 0) {
+        if (hits.length > 0 && hits[0].object !== threeRef.current.cloneGhost) {
           const source = hits[0].object;
-          // Clone mesh — clone geometry & material supaya ga share reference
-          // (kalau share, delete salah satu bakal dispose geometry yang masih dipakai satunya)
+          // Hapus ghost clone lama (kalau ada) supaya tidak numpuk.
+          if (threeRef.current.cloneGhost) {
+            scene.remove(threeRef.current.cloneGhost);
+            threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== threeRef.current.cloneGhost);
+            if (threeRef.current.cloneGhost.geometry) threeRef.current.cloneGhost.geometry.dispose();
+            threeRef.current.cloneGhost = null;
+          }
+          // Buat ghost = duplikat IDENTIK source (geometri & material di-clone).
           const newGeo = source.geometry.clone();
           const newMat = Array.isArray(source.material)
             ? source.material.map(m => m.clone())
             : source.material.clone();
-          const cloneMesh = new THREE.Mesh(newGeo, newMat);
-          // Offset position 1 unit ke X (arah bebas), Y & Z sama
-          cloneMesh.position.copy(source.position);
-          cloneMesh.position.x += 1;
-          cloneMesh.rotation.copy(source.rotation);
-          cloneMesh.scale.copy(source.scale);
-          cloneMesh.castShadow = true;
-          cloneMesh.receiveShadow = true;
-          cloneMesh.userData.isBlock = true;
-          cloneMesh.userData.importedGlb = !!source.userData.importedGlb;
-          scene.add(cloneMesh);
-          threeRef.current.blocks.push(cloneMesh);
+          const ghost = new THREE.Mesh(newGeo, newMat);
+          ghost.position.copy(source.position);
+          ghost.rotation.copy(source.rotation);
+          ghost.scale.copy(source.scale);
+          ghost.castShadow = true;
+          ghost.receiveShadow = true;
+          ghost.userData.isBlock = true;
+          ghost.userData.importedGlb = !!source.userData.importedGlb;
+          ghost.userData.cloneGhost = true;   // penanda ghost sementara
+          scene.add(ghost);
+          threeRef.current.blocks.push(ghost);
+          threeRef.current.cloneGhost = ghost;
           setBlockCount(threeRef.current.blocks.length);
-          if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+          // Gizmo Move 6 panah attach ke GHOST (bukan asli → asli aman).
+          transformControls.attach(ghost);
+          transformControls.setMode('translate');
+          // Highlight ghost supaya terlihat mana yang sedang di-drag.
+          highlightSelected(ghost);
         }
       } else if (currentTool === 'mirror') {
         // Mirror tool — klik block → duplikat yang di-FLIP di sumbu X (hardcode,
@@ -12797,20 +12843,28 @@ Now you can apply Displacement for detailed effect.`);
         // Contoh: cube di (3, 1, 2) → clone di (-3, 1, 2) + scale.x = -1.
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
-        if (hits.length > 0) {
+        if (hits.length > 0 && hits[0].object !== threeRef.current.cloneGhost) {
           const source = hits[0].object;
           const axis = 'x'; // hardcode — axis selector X/Y/Z dihapus 2026-09-02
+          // Hapus ghost mirror lama (kalau ada).
+          if (threeRef.current.cloneGhost) {
+            scene.remove(threeRef.current.cloneGhost);
+            threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== threeRef.current.cloneGhost);
+            if (threeRef.current.cloneGhost.geometry) threeRef.current.cloneGhost.geometry.dispose();
+            threeRef.current.cloneGhost = null;
+          }
+          // Ghost = MIRROR dari source (flip di sumbu X), dimulai di posisi source.
+          // Gizmo Move 6 panah → drag → ghost MENGIKUTI kursor; hasilnya mirror
+          // permanen di posisi yang digeser.
           const newGeo = source.geometry.clone();
           const newMat = Array.isArray(source.material)
             ? source.material.map(m => m.clone())
             : source.material.clone();
           const mirrorMesh = new THREE.Mesh(newGeo, newMat);
-          // Position: flip komponen axis
           mirrorMesh.position.copy(source.position);
           if (axis === 'x') mirrorMesh.position.x = -mirrorMesh.position.x;
           else if (axis === 'y') mirrorMesh.position.y = -mirrorMesh.position.y;
           else if (axis === 'z') mirrorMesh.position.z = -mirrorMesh.position.z;
-          // Rotation: mirror juga (Y rotasi axis = 180° balik)
           mirrorMesh.rotation.copy(source.rotation);
           if (axis === 'x') {
             mirrorMesh.rotation.y = -mirrorMesh.rotation.y;
@@ -12822,7 +12876,6 @@ Now you can apply Displacement for detailed effect.`);
             mirrorMesh.rotation.x = -mirrorMesh.rotation.x;
             mirrorMesh.rotation.y = -mirrorMesh.rotation.y;
           }
-          // Scale: flip komponen axis (negate → geometri di-flip di axis itu)
           mirrorMesh.scale.copy(source.scale);
           if (axis === 'x') mirrorMesh.scale.x = -mirrorMesh.scale.x;
           else if (axis === 'y') mirrorMesh.scale.y = -mirrorMesh.scale.y;
@@ -12831,10 +12884,15 @@ Now you can apply Displacement for detailed effect.`);
           mirrorMesh.receiveShadow = true;
           mirrorMesh.userData.isBlock = true;
           mirrorMesh.userData.importedGlb = !!source.userData.importedGlb;
+          mirrorMesh.userData.cloneGhost = true;   // penanda ghost (juga untuk mirror)
           scene.add(mirrorMesh);
           threeRef.current.blocks.push(mirrorMesh);
+          threeRef.current.cloneGhost = mirrorMesh;
           setBlockCount(threeRef.current.blocks.length);
-          if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+          // Gizmo Move 6 panah attach ke ghost mirror → drag → mirror pindah.
+          transformControls.attach(mirrorMesh);
+          transformControls.setMode('translate');
+          highlightSelected(mirrorMesh);
         }
       } else if (currentTool === 'object') {
         // Phase 18: Object Library — klik grid → taruh pre-built model.
@@ -12979,6 +13037,17 @@ Now you can apply Displacement for detailed effect.`);
         });
         scene.remove(selectionGroup);
         selectionGroup = null;
+      }
+      // Phase 50 v4: buang ghost clone/mirror yang belum di-finalkan (drag belum selesai)
+      if (threeRef.current.cloneGhost) {
+        const g = threeRef.current.cloneGhost;
+        scene.remove(g);
+        threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== g);
+        // Geometry AMAN di-dispose: ghost ini benar2 sementara (belum jadi block permanen)
+        if (g.geometry) g.geometry.dispose();
+        if (Array.isArray(g.material)) g.material.forEach(m => m.dispose());
+        else if (g.material) g.material.dispose();
+        threeRef.current.cloneGhost = null;
       }
       threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
       threeRef.current.selectedBlocks.clear();
