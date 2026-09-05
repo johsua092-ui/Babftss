@@ -251,25 +251,35 @@ function enableCursorLockedRotation(transformControls) {
     }
   };
 
+  // State anti-teleport: sudut rotasi pada langkah sebelumnya.
+  // Di-reset setiap kali drag dimulai (dragging berubah false→true).
+  let prevDragAngle = 0;
+
+  // Objek sementara untuk versi drag "licin bawaan".
+  const _lockTangent = new THREE.Vector3();
+
   const lockedPointerMove = function (pointer) {
     const axis = this.axis;
     const mode = this.mode;
     const object = this.object;
 
-    // Hanya mode rotate, axis X/Y/Z, sedang dragging, tombol benar.
-    const isAxial = axis === 'X' || axis === 'Y' || axis === 'Z';
-    if (mode !== 'rotate' || !isAxial || this.dragging !== true ||
-        object === undefined || (pointer != null && pointer.button !== -1)) {
+    // Mengikuti KEPUTUSAN TIM: pakai rasa drag BAWAAN (licin), bukan iterasi
+    // Newton yang bergetar. Rumusnya persis TransformControls asli:
+    //   rotationAngle = offset.dot(unitAxis × eye) * ROTATION_SPEED
+    // Tapi dihitung sendiri supaya bisa di-clamp per langkah (≤30°) —
+    // mencegah "teleport / berbelok terpelintir" saat pointer melompat jauh.
+    if (mode !== 'rotate' || !(axis === 'X' || axis === 'Y' || axis === 'Z') ||
+        this.dragging !== true || object === undefined ||
+        (pointer != null && pointer.button !== -1)) {
       return origPointerMove.call(this, pointer);
     }
 
     try {
-      let space = this.space;
-      if (this.camera && this.camera.isOrthographicCamera === false && (space === null || space === undefined)) {
-        space = 'world';
+      // Reset baseline saat drag baru mulai (drag sebelumnya sudah selesai).
+      if (!this._dragAngleInit) {
+        prevDragAngle = this.rotationAngle || 0;
+        this._dragAngleInit = true;
       }
-      const isLocal = space === 'local' && axis !== 'E' && axis !== 'XYZE';
-
       // 1) pointEnd dari intersect _plane (sama seperti asli)
       if (pointer != null) _lockRay.setFromCamera(pointer, this.camera);
       const planeIntersect = _lockRay.intersectObject(this._plane, true)[0];
@@ -277,119 +287,39 @@ function enableCursorLockedRotation(transformControls) {
       this.pointEnd.copy(planeIntersect.point).sub(this.worldPositionStart);
       this._offset.copy(this.pointEnd).sub(this.pointStart);
 
-      // 2) sumbu rotasi (world, atau local → pakai worldQuaternion)
+      // 2) RotationAngle — RUMUS ASLI (baris 708-729):
+      //    rotationAngle = _offset.dot(_tempVector.normalize()) * ROTATION_SPEED
+      //    dengan _tempVector = (unitAxis [×wq kalau local]) × eye
+      const rotSpeed = 20 / this.worldPosition.distanceTo(_lockRay.ray.origin);
       _lockAxis.set(axis === 'X' ? 1 : 0, axis === 'Y' ? 1 : 0, axis === 'Z' ? 1 : 0);
-      if (isLocal) _lockAxis.applyQuaternion(this.worldQuaternion);
-
-      // 3) target & ITERASI NUMERIK: cari rotationAngle sedemikian sehingga
-      // proyeksi layar bola yg di-grab = arah kursor terhadap pusat.
-      // (bola terikat lingkaran; proyeksi layar ≠ linear thd angle, jadi
-      //  iterasi Newton-lite: tebak → apply → ukur → koreksi.)
-      const gizForBall = transformControls._gizmo && transformControls._gizmo.gizmo && transformControls._gizmo.gizmo.rotate;
-      const ballDirFromCenter = (ball) => {
-        // posisi visual bola (anak gizmo) — boundingSphere.center di-bake
-        // ke geometry, dikali matrixWorld → world.
-        ball.updateWorldMatrix(true, false);
-        if (!ball.geometry || !ball.geometry.boundingSphere) return null;
-        const c = ball.geometry.boundingSphere.center.clone();
-        c.applyMatrix4(ball.matrixWorld);
-        // vektor dari worldPositionStart
-        return c.sub(this.worldPositionStart);
-      };
-      const screenAngleOf = (worldVec) => {
-        const p = this.worldPositionStart.clone().add(worldVec).project(this.camera);
-        const c = this.worldPositionStart.clone().project(this.camera);
-        return Math.atan2(p.y - c.y, p.x - c.x);
-      };
-      // target: sudut layar kursor
-      const projEnd = this.worldPositionStart.clone().add(this.pointEnd).project(this.camera);
-      const projCen = this.worldPositionStart.clone().project(this.camera);
-      const targetAngle = Math.atan2(projEnd.y - projCen.y, projEnd.x - projCen.x);
-
-      // pilih bola yg paling dekat dengan pointer saat ini (grab)
-      const ballsArr = (gizForBall ? gizForBall.children : []).filter(b => b.userData && b.userData[BALL_MARK] === true);
-      let grabBall = null, minD = Infinity;
-      if (pointer) {
-        for (const b of ballsArr) {
-          const c = b.geometry.boundingSphere.center.clone();
-          b.updateWorldMatrix(true, false);
-          c.applyMatrix4(b.matrixWorld);
-          const v = c.project(this.camera);
-          const d = Math.hypot(v.x - pointer.x, v.y - pointer.y);
-          if (d < minD) { minD = d; grabBall = b; }
-        }
+      if (this.space === 'local' && axis !== 'E' && axis !== 'XYZE') {
+        _lockAxis.applyQuaternion(this.worldQuaternion);
       }
-      if (!grabBall) return origPointerMove.call(this, pointer);
-      const startAngle = screenAngleOf(ballDirFromCenter(grabBall));
-
-      // Newton-lite: cari Δ sehingga screenAngleOf(R(axis, Δ)·startVec) = targetAngle
-      const startVec = ballDirFromCenter(grabBall);
-      if (!startVec || startVec.length() < 1e-6) return origPointerMove.call(this, pointer);
-
-      // delta dari arah kursor (tanpa asumsi linear)
-      let sweepTarget = targetAngle - startAngle;
-      while (sweepTarget > Math.PI) sweepTarget -= Math.PI * 2;
-      while (sweepTarget < -Math.PI) sweepTarget += Math.PI * 2;
-
-      // fungsi: angle → screenAngle( R(axis, angle)·startVec di world? )
-      // ROTASI object = R(axisParent, angle) (world) — bola menggantung di
-      // gizmo yang MENGIKUTI object (local). Saat object berotasi, wq berubah,
-      // gizmo ikut, bola mengorbit. Jadi bola world ≈ R(axis, angle)·startVec.
-      // (di world space; untuk local basis ganda — pendekatan yang sama krn
-      //  axis sudah di-rotate ke worldQuaternion.)
-      const applyAngle = (angle) => {
-        // apply rotasi ke object seperti langkah 5
-        if (isLocal) {
-          object.quaternion.copy(this._quaternionStart);
-          object.quaternion.multiply(_lockQuat.setFromAxisAngle(_lockAxis, angle)).normalize();
-        } else {
-          _lockAxisParent.copy(_lockAxis).applyQuaternion(this._parentQuaternionInv);
-          object.quaternion.copy(_lockQuat.setFromAxisAngle(_lockAxisParent, angle));
-          object.quaternion.multiply(this._quaternionStart).normalize();
-        }
-      };
-      const screenAngleAt = (angle) => {
-        // world pos bola setelah object dirotasi angle = R(axisWorld, angle)·startVec
-        const rotated = startVec.clone().applyAxisAngle(_lockAxis, angle);
-        return screenAngleOf(rotated);
-      };
-
-      let angleEst = sweepTarget;
-      for (let iter = 0; iter < 5; iter++) {
-        const cur = screenAngleAt(angleEst);
-        let err = targetAngle - cur;
-        while (err > Math.PI) err -= Math.PI * 2;
-        while (err < -Math.PI) err += Math.PI * 2;
-        if (Math.abs(err) < 0.02) break; // ~1.1°
-        // turunan numerik
-        const h = 0.05;
-        const der = (screenAngleAt(angleEst + h) - cur) / h;
-        if (!isFinite(der) || Math.abs(der) < 1e-6) break;
-        const step = err / der;
-        angleEst += Math.max(-0.5, Math.min(0.5, step)); // clamp step
+      _lockTangent.copy(_lockAxis).cross(this.eye);
+      if (_lockTangent.length() === 0) {
+        // Sumbu sejajar kamera → pakai jalur in-plane bawaan (baris 736-746)
+        this.rotationAngle = this.pointEnd.angleTo(this.pointStart);
+      } else {
+        _lockTangent.normalize();
+        const raw = this._offset.dot(_lockTangent) * rotSpeed;
+        // Clamp anti-teleport: perubahan sudut per langkah ≤30°
+        let delta = raw - (prevDragAngle || 0);
+        while (delta > Math.PI) delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        const MAX_STEP = Math.PI / 6; // 30°
+        if (delta > MAX_STEP) delta = MAX_STEP;
+        if (delta < -MAX_STEP) delta = -MAX_STEP;
+        this.rotationAngle = (prevDragAngle || 0) + delta;
       }
-      // clamp delta per langkah (≤30°) — hindari teleport
-      const prevAngle = this.rotationAngle || 0;
-      let delta = angleEst - prevAngle;
-      while (delta > Math.PI) delta -= Math.PI * 2;
-      while (delta < -Math.PI) delta += Math.PI * 2;
-      const MAX_STEP = Math.PI / 6; // 30°
-      if (delta > MAX_STEP) delta = MAX_STEP;
-      if (delta < -MAX_STEP) delta = -MAX_STEP;
-      this.rotationAngle = prevAngle + delta;
-      _lockProjA.copy(this.pointStart).addScaledVector(_lockAxis, -this.pointStart.dot(_lockAxis));
-      _lockProjB.copy(this.pointEnd).addScaledVector(_lockAxis, -this.pointEnd.dot(_lockAxis));
-      if (_lockProjA.length() < 1e-6 || _lockProjB.length() < 1e-6) {
-        // Degenerasi (kursor tepat di sumbu/pusat) — serahkan ke asli.
-        return origPointerMove.call(this, pointer);
-      }
+      prevDragAngle = this.rotationAngle;
 
-      // 4) rotationSnap (sama seperti asli baris 750)
+      // 3) rotationSnap (sama seperti asli baris 750)
       if (this.rotationSnap) {
         this.rotationAngle = Math.round(this.rotationAngle / this.rotationSnap) * this.rotationSnap;
       }
 
-      // 5) apply rotasi ke object (mengikuti pola asli baris 752-764)
+      // 4) apply rotasi ke object (mengikuti pola asli baris 752-764)
+      const isLocal = this.space === 'local' && axis !== 'E' && axis !== 'XYZE';
       if (isLocal) {
         object.quaternion.copy(this._quaternionStart);
         object.quaternion.multiply(_lockQuat.setFromAxisAngle(_lockAxis, this.rotationAngle)).normalize();
@@ -399,7 +329,7 @@ function enableCursorLockedRotation(transformControls) {
         object.quaternion.multiply(this._quaternionStart).normalize();
       }
 
-      // 6) event (sama seperti asli baris 768-769)
+      // 5) event (sama seperti asli baris 768-769)
       this.dispatchEvent({ type: 'change' });
       this.dispatchEvent({ type: 'objectChange' });
     } catch (e) {
@@ -408,8 +338,20 @@ function enableCursorLockedRotation(transformControls) {
     }
   };
 
+  // Reset anti-teleport baseline saat drag selesai (pointerUp) agar drag
+  // berikutnya mulai dari sudut object saat ini.
+  const origPointerUp = transformControls.pointerUp || Object.getPrototypeOf(transformControls).pointerUp;
+  const lockedPointerUp = function (pointer) {
+    const r = origPointerUp.call(this, pointer);
+    if (this.dragging === false) {
+      this._dragAngleInit = false;
+    }
+    return r;
+  };
+
   transformControls.pointerMove = lockedPointerMove;
   transformControls.pointerHover = lockedPointerHover;
+  transformControls.pointerUp = lockedPointerUp;
 
   const dispose = () => {
     if (transformControls.pointerMove === lockedPointerMove) {
@@ -418,6 +360,10 @@ function enableCursorLockedRotation(transformControls) {
     if (transformControls.pointerHover === lockedPointerHover) {
       transformControls.pointerHover = origPointerHover;
     }
+    if (transformControls.pointerUp === lockedPointerUp) {
+      transformControls.pointerUp = origPointerUp;
+    }
+    delete transformControls._dragAngleInit;
     if (transformControls.userData) delete transformControls.userData[LOCK_MARK];
   };
 
