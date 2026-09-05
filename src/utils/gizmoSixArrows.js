@@ -475,4 +475,83 @@ export function enableSoloDragArrow(transformControls, helperRoot = null) {
   return { ok: true, dispose };
 }
 
+/**
+ * Mengubah warna SEMUA handle gizmo translate menjadi 1 warna solid.
+ * Digunakan untuk mode Clone (biru muda) dan Mirror (ungu) supaya user
+ * bisa membedakan mode dengan cepat dari warna panah.
+ * 
+ * Original colors di-simpan di userData supaya bisa di-restore.
+ * Material TIDAK di-clone — warna diubah langsung di material existing.
+ *
+ * @param {THREE.Controls} transformControls instance TransformControls
+ * @param {THREE.Object3D|null} helperRoot hasil transformControls.getHelper()
+ * @param {string|number} color warna hex (misal '#0096FF' atau 0x0096FF)
+ * @returns {{ ok: boolean, changed: number, error?: string }}
+ */
+export function setGizmoColor(transformControls, helperRoot, color) {
+  try {
+    const translateObj = findTranslateGizmo(transformControls, helperRoot);
+    if (!translateObj || !translateObj.children) {
+      return { ok: false, changed: 0, error: 'translate gizmo not found' };
+    }
+
+    const threeColor = new THREE.Color(color);
+    let changed = 0;
+
+    for (const handle of translateObj.children) {
+      if (!AXIS_KEY[handle.name]) continue; // lewati XYZ/XY/YZ/XZ
+      if (!handle.material) continue;
+
+      const mat = handle.material;
+      
+      // Simpan original color SEKALI SAJA (saat pertama kali dipanggil)
+      if (!handle.userData.__originalColor && mat.color) {
+        handle.userData.__originalColor = mat.color.clone();
+      }
+
+      // Ubah warna LANGSUNG di material existing (tidak clone material)
+      if (mat.color) {
+        mat.color.copy(threeColor);
+        changed++;
+      }
+    }
+
+    return { ok: true, changed };
+  } catch (e) {
+    return { ok: false, changed: 0, error: e.message };
+  }
+}
+
+/**
+ * Mengembalikan warna gizmo ke default (merah/hijau/biru).
+ *
+ * @param {THREE.Controls} transformControls instance TransformControls
+ * @param {THREE.Object3D|null} helperRoot hasil transformControls.getHelper()
+ * @returns {{ ok: boolean, restored: number, error?: string }}
+ */
+export function resetGizmoColors(transformControls, helperRoot) {
+  try {
+    const translateObj = findTranslateGizmo(transformControls, helperRoot);
+    if (!translateObj || !translateObj.children) {
+      return { ok: false, restored: 0, error: 'translate gizmo not found' };
+    }
+
+    let restored = 0;
+
+    for (const handle of translateObj.children) {
+      if (!AXIS_KEY[handle.name]) continue;
+      if (!handle.userData.__originalColor) continue;
+      if (!handle.material || !handle.material.color) continue;
+
+      // Restore original color
+      handle.material.color.copy(handle.userData.__originalColor);
+      restored++;
+    }
+
+    return { ok: true, restored };
+  } catch (e) {
+    return { ok: false, restored: 0, error: e.message };
+  }
+}
+
 export default makeSixArrows;

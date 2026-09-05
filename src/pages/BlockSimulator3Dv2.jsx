@@ -26,7 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
-import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow } from '../utils/gizmoSixArrows.js';
+import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 
 /* ================================================================
@@ -195,6 +195,23 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const toolRef = useRef(null);
   const colorRef = useRef('#3b82f6');
   useEffect(() => { toolRef.current = tool; }, [tool]);
+  
+  // Phase 50 v8: Ubah warna gizmo berdasarkan mode tool
+  // Clone = biru muda (#0096FF), Mirror = ungu (#9D00FF), lainnya = default (merah/hijau/biru)
+  useEffect(() => {
+    if (!threeRef.current || !threeRef.current.transformControls) return;
+    
+    const tc = threeRef.current.transformControls;
+    const helper = threeRef.current.transformHelper;
+    
+    if (tool === 'clone') {
+      setGizmoColor(tc, helper, '#0096FF'); // biru muda
+    } else if (tool === 'mirror') {
+      setGizmoColor(tc, helper, '#9D00FF'); // ungu
+    } else {
+      resetGizmoColors(tc, helper); // kembali ke default merah/hijau/biru
+    }
+  }, [tool]);
   // Phase 36, 2026-09-02: Render Engine toggle — Mesh (default) | Instanced (ChunkManager).
   // When 'instanced': blocks rendered via InstancedMesh (1 draw call/chunk),
   // Meshes set invisible but still raycastable (three.js raycaster ignores visible flag).
@@ -11832,6 +11849,7 @@ Now you can apply Displacement for detailed effect.`);
     scene.add(transformHelper);
     // Simpan reference untuk keperluan lain (mis. debug / cleanup)
     threeRef.current.transformControls = transformControls;
+    threeRef.current.transformHelper = transformHelper; // untuk setGizmoColor/resetGizmoColors
     // ── Phase 49 v9, 2026-09-03: Move gizmo = 6 PANAH UTUH ──
     //
     // MASALAH: gizmo Move bawaan Three.js menggambar 6 kerucut (2 per sumbu:
