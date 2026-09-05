@@ -11951,6 +11951,11 @@ Now you can apply Displacement for detailed effect.`);
           // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
           // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
           // DIBATALKAN (klik empty / ganti tool sebelum drag).
+          // FIX (request user): setelah clone/mirror SELESAI, gizmo Move TIDAK
+          // boleh tetap menempel (bikin kesan "tool jadi move"). Lepas gizmo
+          // supaya tool clone/mirror tetap aktif — user bisa langsung klik
+          // block lain untuk clone/mirror lagi.
+          transformControls.detach();
         }
         if (threeRef.current.recordHistory) {
           threeRef.current.recordHistory();
