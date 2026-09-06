@@ -214,6 +214,43 @@ export default function BlockSimulator3Dv2({ setPage }) {
     if (tool === 'clone' || tool === 'mirror' || tool === 'move') {
       tc.setMode('translate');
       console.log('[Phase 50 v9] setMode translate untuk tool:', tool);
+      
+      // FIX Phase 50 v9 FINAL: Saat switch ke Clone/Mirror
+      // - Detach gizmo dari block asli supaya TransformControls tidak intercept drag
+      // - AUTO-CREATE ghost di posisi block yang sama → 6 panah tetap muncul (di ghost)
+      // - Attach gizmo ke ghost → user bisa langsung drag ghost untuk clone
+      if ((tool === 'clone' || tool === 'mirror') && tc.object) {
+        const sourceBlock = tc.object;
+        tc.detach();
+        
+        // Auto-create ghost di block yang sedang di-select
+        if (sourceBlock && sourceBlock.userData.isBlock && !sourceBlock.userData.cloneGhost) {
+          const scene = threeRef.current.scene;
+          if (scene) {
+            // Buat ghost = duplikat IDENTIK source
+            const newGeo = sourceBlock.geometry.clone();
+            const newMat = Array.isArray(sourceBlock.material)
+              ? sourceBlock.material.map(m => m.clone())
+              : sourceBlock.material.clone();
+            const ghost = new THREE.Mesh(newGeo, newMat);
+            ghost.position.copy(sourceBlock.position);
+            ghost.rotation.copy(sourceBlock.rotation);
+            ghost.scale.copy(sourceBlock.scale);
+            ghost.castShadow = true;
+            ghost.receiveShadow = true;
+            ghost.userData.isBlock = true;
+            ghost.userData.importedGlb = !!sourceBlock.userData.importedGlb;
+            ghost.userData.cloneGhost = true;
+            scene.add(ghost);
+            threeRef.current.blocks.push(ghost);
+            threeRef.current.cloneGhost = ghost;
+            
+            // Attach gizmo ke ghost → 6 panah muncul di ghost
+            tc.attach(ghost);
+            console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
+          }
+        }
+      }
     } else if (tool === 'rotate') {
       tc.setMode('rotate');
       console.log('[Phase 50 v9] setMode rotate');
