@@ -196,20 +196,28 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const colorRef = useRef('#3b82f6');
   useEffect(() => { toolRef.current = tool; }, [tool]);
   
-  // Phase 50 v8: Ubah warna gizmo berdasarkan mode tool
+  // Phase 50 v9: Ubah warna gizmo berdasarkan mode tool
   // Clone = biru muda (#0096FF), Mirror = ungu (#9D00FF), lainnya = default (merah/hijau/biru)
   useEffect(() => {
-    if (!threeRef.current || !threeRef.current.transformControls) return;
-    
+    if (!threeRef.current || !threeRef.current.transformControls) {
+      console.log('[Phase 50 v9] useEffect skip: threeRef atau transformControls belum siap');
+      return;
+    }
+
     const tc = threeRef.current.transformControls;
     const helper = threeRef.current.transformHelper;
-    
+
+    console.log('[Phase 50 v9] Tool berubah:', tool, '| transformHelper:', !!helper);
+
     if (tool === 'clone') {
-      setGizmoColor(tc, helper, '#0096FF'); // biru muda
+      const result = setGizmoColor(tc, helper, '#0096FF'); // biru muda
+      console.log('[Phase 50 v9] setGizmoColor clone:', result);
     } else if (tool === 'mirror') {
-      setGizmoColor(tc, helper, '#9D00FF'); // ungu
+      const result = setGizmoColor(tc, helper, '#9D00FF'); // ungu
+      console.log('[Phase 50 v9] setGizmoColor mirror:', result);
     } else {
-      resetGizmoColors(tc, helper); // kembali ke default merah/hijau/biru
+      const result = resetGizmoColors(tc, helper); // kembali ke default merah/hijau/biru
+      console.log('[Phase 50 v9] resetGizmoColors:', result);
     }
   }, [tool]);
   // Phase 36, 2026-09-02: Render Engine toggle — Mesh (default) | Instanced (ChunkManager).
@@ -11969,14 +11977,13 @@ Now you can apply Displacement for detailed effect.`);
           // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
           // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
           // DIBATALKAN (klik empty / ganti tool sebelum drag).
-          // FIX Phase 50 v6: setelah clone/mirror SELESAI, gizmo TETAP attach ke
+          // FIX Phase 50 v9: setelah clone/mirror SELESAI, gizmo TETAP attach ke
           // block baru (jangan detach) supaya 6 arrow tetap muncul. Tool mode
-          // TETAP di clone/mirror (jangan pindah ke move) supaya user bisa
-          // langsung klik block lain untuk clone/mirror lagi tanpa harus klik
-          // tombol clone/mirror ulang. User bisa toggle off tool dengan klik
-          // tombol clone/mirror lagi di UI.
+          // PINDAH ke move supaya user bisa langsung move block baru atau klik
+          // block lain untuk operasi lain. User bisa klik tombol clone/mirror
+          // lagi di UI untuk aktifkan ulang tool tersebut.
           // transformControls.detach(); ← DIHAPUS
-          // setTool('move'); ← DIHAPUS (Phase 50 v6)
+          setTool('move');
         }
         if (threeRef.current.recordHistory) {
           threeRef.current.recordHistory();
@@ -12855,6 +12862,11 @@ Now you can apply Displacement for detailed effect.`);
           threeRef.current.cloneGhost = ghost;
           setBlockCount(threeRef.current.blocks.length);
           // Gizmo Move 6 panah attach ke GHOST (bukan asli → asli aman).
+          // FIX Phase 50 v9: Detach dulu dari object lama sebelum attach ke ghost baru
+          // supaya gizmo tidak "terkunci" ke block hasil clone sebelumnya.
+          if (transformControls.object) {
+            transformControls.detach();
+          }
           transformControls.attach(ghost);
           transformControls.setMode('translate');
           // Highlight ghost supaya terlihat mana yang sedang di-drag.
