@@ -214,6 +214,13 @@ export default function BlockSimulator3Dv2({ setPage }) {
     if (tool === 'clone' || tool === 'mirror' || tool === 'move') {
       tc.setMode('translate');
       console.log('[Phase 50 v9] setMode translate untuk tool:', tool);
+      
+      // FIX Phase 50 v9: Saat switch ke Clone/Mirror, detach gizmo dari block lama
+      // supaya saat user klik block baru, gizmo tidak drag block lama
+      if ((tool === 'clone' || tool === 'mirror') && tc.object) {
+        tc.detach();
+        console.log('[Phase 50 v9] Detach gizmo dari block lama saat switch ke', tool);
+      }
     } else if (tool === 'rotate') {
       tc.setMode('rotate');
       console.log('[Phase 50 v9] setMode rotate');
