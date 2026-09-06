@@ -198,6 +198,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
   
   // Phase 50 v9: Ubah warna gizmo berdasarkan mode tool
   // Clone = biru muda (#0096FF), Mirror = ungu (#9D00FF), lainnya = default (merah/hijau/biru)
+  // FIX Phase 50 v9: Juga ubah MODE gizmo sesuai tool (translate/rotate/scale)
   useEffect(() => {
     if (!threeRef.current || !threeRef.current.transformControls) {
       console.log('[Phase 50 v9] useEffect skip: threeRef atau transformControls belum siap');
@@ -209,6 +210,19 @@ export default function BlockSimulator3Dv2({ setPage }) {
 
     console.log('[Phase 50 v9] Tool berubah:', tool, '| transformHelper:', !!helper);
 
+    // Ubah MODE gizmo sesuai tool
+    if (tool === 'clone' || tool === 'mirror' || tool === 'move') {
+      tc.setMode('translate');
+      console.log('[Phase 50 v9] setMode translate untuk tool:', tool);
+    } else if (tool === 'rotate') {
+      tc.setMode('rotate');
+      console.log('[Phase 50 v9] setMode rotate');
+    } else if (tool === 'scale') {
+      tc.setMode('scale');
+      console.log('[Phase 50 v9] setMode scale');
+    }
+
+    // Ubah WARNA gizmo sesuai tool
     if (tool === 'clone') {
       const result = setGizmoColor(tc, helper, '#0096FF'); // biru muda
       console.log('[Phase 50 v9] setGizmoColor clone:', result);
