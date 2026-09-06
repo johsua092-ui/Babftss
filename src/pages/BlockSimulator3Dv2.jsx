@@ -12920,8 +12920,14 @@ Now you can apply Displacement for detailed effect.`);
           }
           transformControls.attach(ghost);
           transformControls.setMode('translate');
+          // Phase 50 v10: Unhighlight source block (block asal) sebelum highlight ghost
+          // Bug fix: source block masih ter-highlight dari operasi Move sebelumnya
+          // Kalau tidak di-unhighlight, akan ada banyak block yang ter-highlight
+          threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
+          threeRef.current.selectedBlocks.clear();
           // Highlight ghost supaya terlihat mana yang sedang di-drag.
           highlightSelected(ghost);
+          threeRef.current.selectedBlocks.add(ghost);
         }
       } else if (currentTool === 'mirror') {
         // Mirror tool — klik block → duplikat yang di-FLIP di sumbu X (hardcode,
@@ -12978,10 +12984,18 @@ Now you can apply Displacement for detailed effect.`);
           threeRef.current.blocks.push(mirrorMesh);
           threeRef.current.cloneGhost = mirrorMesh;
           setBlockCount(threeRef.current.blocks.length);
+          
+          // Phase 50 v10: Unhighlight source block (block asal) sebelum highlight mirror
+          // Bug fix: source block masih ter-highlight dari operasi Move sebelumnya
+          // Kalau tidak di-unhighlight, akan ada banyak block yang ter-highlight
+          threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
+          threeRef.current.selectedBlocks.clear();
+          
           // Gizmo Move 6 panah attach ke ghost mirror → drag → mirror pindah.
           transformControls.attach(mirrorMesh);
           transformControls.setMode('translate');
           highlightSelected(mirrorMesh);
+          threeRef.current.selectedBlocks.add(mirrorMesh);
         }
       } else if (currentTool === 'object') {
         // Phase 18: Object Library — klik grid → taruh pre-built model.
