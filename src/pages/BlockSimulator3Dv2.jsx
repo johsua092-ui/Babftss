@@ -223,6 +223,12 @@ export default function BlockSimulator3Dv2({ setPage }) {
         const sourceBlock = tc.object;
         tc.detach();
         
+        // Phase 50 v10: Unhighlight source block SEBELUM auto-create ghost
+        // Bug fix: source block masih ter-highlight dari operasi Move sebelumnya
+        // Kalau tidak di-unhighlight di sini, block asal akan tetap biru
+        threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
+        threeRef.current.selectedBlocks.clear();
+        
         // Auto-create ghost di block yang sedang di-select
         if (sourceBlock && sourceBlock.userData.isBlock && !sourceBlock.userData.cloneGhost) {
           const scene = threeRef.current.scene;
@@ -247,6 +253,9 @@ export default function BlockSimulator3Dv2({ setPage }) {
             
             // Attach gizmo ke ghost → 6 panah muncul di ghost
             tc.attach(ghost);
+            // Highlight ghost supaya terlihat mana yang akan di-drag
+            highlightSelected(ghost);
+            threeRef.current.selectedBlocks.add(ghost);
             console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
           }
         }
