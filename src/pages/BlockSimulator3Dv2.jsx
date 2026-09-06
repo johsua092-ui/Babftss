@@ -226,7 +226,18 @@ export default function BlockSimulator3Dv2({ setPage }) {
         // Phase 50 v10: Unhighlight source block SEBELUM auto-create ghost
         // Bug fix: source block masih ter-highlight dari operasi Move sebelumnya
         // Kalau tidak di-unhighlight di sini, block asal akan tetap biru
-        threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
+        // FIX v10.1: Inline emissive logic karena unhighlightSelected tidak ada di scope ini
+        threeRef.current.selectedBlocks.forEach(b => {
+          if (b && b.material) {
+            const mats = Array.isArray(b.material) ? b.material : [b.material];
+            mats.forEach(m => {
+              if (m.emissive) {
+                m.emissive.setHex(0x000000);
+                m.emissiveIntensity = 1;
+              }
+            });
+          }
+        });
         threeRef.current.selectedBlocks.clear();
         
         // Auto-create ghost di block yang sedang di-select
@@ -254,7 +265,16 @@ export default function BlockSimulator3Dv2({ setPage }) {
             // Attach gizmo ke ghost → 6 panah muncul di ghost
             tc.attach(ghost);
             // Highlight ghost supaya terlihat mana yang akan di-drag
-            highlightSelected(ghost);
+            // FIX v10.1: Inline emissive logic karena highlightSelected tidak ada di scope ini
+            if (ghost && ghost.material) {
+              const mats = Array.isArray(ghost.material) ? ghost.material : [ghost.material];
+              mats.forEach(m => {
+                if (m.emissive) {
+                  m.emissive.setHex(0x1a8cff);
+                  m.emissiveIntensity = 0.6;
+                }
+              });
+            }
             threeRef.current.selectedBlocks.add(ghost);
             console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
           }
