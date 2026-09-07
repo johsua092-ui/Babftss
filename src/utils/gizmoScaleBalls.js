@@ -67,6 +67,51 @@ import * as THREE from 'three';
 /** Penanda idempoten pada gizmo scale. */
 const SCALE_MARK = '__scaleBallsP51';
 
+/** Penanda bola buatan modul ini (dipakai wrapper + tes). */
+export const BALL_MARK_NAME = '__scaleBallsP51';
+
+/**
+ * Flag mode "world align" (Phase 52 — checkbox "arrow match rotation").
+ * false → bola TEGAK LURUS dunia (uncheck), true → ikut sisi block (check).
+ * Disimpan per-instance TransformControls; default = true (tercentang).
+ */
+const worldAlignByTc = new WeakMap();
+
+/**
+ * Mengatur mode align bola scale + ruang gizmo untuk 5 tool transform.
+ *
+ * Mode scale DIPAKSA space='local' oleh TransformControls (baris 1585) —
+ * jadi untuk membuat bola scale TEGAK LURUS dunia (uncheck), visualnya
+ * harus di-OVERRIDE di wrapper modul ini (identitas), dan deteksi sisi
+ * solo drag TIDAK boleh un-rotate pointStart.
+ * Untuk move/rotate, pemanggil cukup set tc.space ('local'/'world') —
+ * perilaku bawaan Three.js + wrapper rotate sudah dinamis (terukur).
+ *
+ * @param {THREE.Controls} transformControls
+ * @param {boolean} match true = ikut sisi block (checkbox tercentang),
+ *                        false = tegak lurus dunia (checkbox kosong)
+ * @returns {{ ok: boolean, match: boolean, reason?: string }}
+ */
+export function setScaleWorldAlign(transformControls, match) {
+  if (!transformControls) return { ok: false, match: undefined, reason: 'TransformControls tidak ada' };
+  try {
+    worldAlignByTc.set(transformControls, !!match);
+    return { ok: true, match: !!match };
+  } catch (e) {
+    return { ok: false, match: undefined, reason: e.message };
+  }
+}
+
+/**
+ * Membaca mode align saat ini (default true = tercentang).
+ * @param {THREE.Controls} transformControls
+ * @returns {boolean}
+ */
+export function getScaleWorldAlign(transformControls) {
+  const v = worldAlignByTc.get(transformControls);
+  return v === undefined ? true : v;
+}
+
 /** Wajib: semua bola satu warna ini (permintaan user). */
 const BALL_COLOR = '#EFBF04';
 
@@ -142,7 +187,9 @@ function detectDragSide(tc, axis) {
 
   _tmpVec.copy(tc.pointStart);
   // Scale selalu local → un-rotate SELALU (beda dengan Move yang bersyarat).
-  if (tc.worldQuaternion) {
+  // PENGECUALIAN Phase 52: saat mode world-align (checkbox kosong), bola
+  // TEGAK LURUS dunia → pointStart world TIDAK boleh un-rotate.
+  if (tc.worldQuaternion && getScaleWorldAlign(tc) !== false) {
     _tmpQuat.copy(tc.worldQuaternion).invert();
     _tmpVec.applyQuaternion(_tmpQuat);
   }
@@ -260,6 +307,20 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
   gizmoRoot.updateMatrixWorld = function (force) {
     // Jalankan rantai sebelumnya dulu (rotate wrapper → solo arrow → asli).
     originalUpdate.call(this, force);
+
+    // PHASE 52 — mode world-align (checkbox "arrow match rotation" kosong):
+    // Three.js memaksa scale selalu local (baris 1585) sehingga bola ikut
+    // worldQuaternion block. Override visual SETELAH fungsi asli (pola
+    // Phase 50 wrapper rotate): kunci quaternion bola ke IDENTITAS agar
+    // TEGAK LURUS dunia meski block miring. matrixWorld anak tidak otomatis
+    // ter-update (super sudah jalan di akhir fungsi asli baris 1902) →
+    // panggil scaleObj.updateMatrixWorld(true) untuk memaksa hitung ulang.
+    if (this.mode === 'scale' && getScaleWorldAlign(transformControls) === false) {
+      for (const ball of addedBalls) {
+        ball.quaternion.identity();
+      }
+      scaleObj.updateMatrixWorld(true);
+    }
 
     // Solo hanya untuk mode scale + sedang drag sumbu tunggal.
     if (this.mode !== 'scale') return;

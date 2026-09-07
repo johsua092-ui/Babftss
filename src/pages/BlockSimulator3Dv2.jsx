@@ -28,7 +28,7 @@ import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
-import { restyleScaleGizmoBalls } from '../utils/gizmoScaleBalls.js';
+import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -194,6 +194,14 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const [tool, setTool] = useState(null); // null | 'place' | 'delete' | 'move' | 'rotate' | 'scale' | 'paint' | 'eyedropper' | 'shape' | 'clone' | 'mirror' | 'object' | 'decal' | 'info' — Task ID 29: 'info' = mode inspeksi READ-ONLY (hover block → Material Inspector; klik canvas = no-op).
   const [currentColor, setCurrentColor] = useState('#3b82f6');
   const toolRef = useRef(null);
+  // Phase 52, 2026-09-07: "arrow match rotation" — 1 keluarga untuk 5 tool
+  // (move, rotate, scale, clone, mirror). ATURAN MUTLAK: default = true
+  // (TERCENTANG) setiap user masuk web — tidak dipersist, jadi fresh entry
+  // selalu kembali tercentang. true = panah/bola ikut sisi block (local),
+  // false = tegak lurus dunia walau block miring (world).
+  const [arrowMatchRotation, setArrowMatchRotation] = useState(true);
+  const arrowMatchRef = useRef(true);
+  useEffect(() => { arrowMatchRef.current = arrowMatchRotation; }, [arrowMatchRotation]);
   const colorRef = useRef('#3b82f6');
   useEffect(() => { toolRef.current = tool; }, [tool]);
   
@@ -352,6 +360,29 @@ export default function BlockSimulator3Dv2({ setPage }) {
       console.log('[Phase 50 v9] resetGizmoColors:', result);
     }
   }, [tool]);
+  // Phase 52, 2026-09-07: Terapkan mode "arrow match rotation" ke SEMUA gizmo
+  // (1 keluarga untuk move/rotate/scale/clone/mirror). Efek instan begitu
+  // checkbox diklik — tanpa perlu ganti tool atau re-select block.
+  // - Move/Clone/Mirror (translate) + Rotate: via API publik tc.space
+  //   ('local' = ikut sisi block, 'world' = tegak lurus). Terverifikasi
+  //   numerik: space world → handle quaternion = identity; wrapper bola
+  //   rotate membaca space dinamis.
+  // - Scale: Three.js MEMAKSA space='local' (baris 1585) → flag
+  //   setScaleWorldAlign() di modul gizmoScaleBalls meng-override visual
+  //   bola ke tegak lurus + deteksi sisi solo drag tanpa un-rotate.
+  useEffect(() => {
+    const tc = threeRef.current && threeRef.current.transformControls;
+    if (!tc) return;
+    const match = arrowMatchRotation;
+    setScaleWorldAlign(tc, match);   // flag bola scale (jebakan #5b)
+    tc.space = match ? 'local' : 'world'; // translate + rotate
+    console.log('[Phase 52] arrowMatchRotation =', match, '→ space', tc.space);
+    // dep [tool] juga: re-apply setiap ganti tool — menjamin flag vs checkbox
+    // selalu sinkron (menutup race: init scene bisa selesai SETELAH render
+    // pertama; restyleRotateGizmo juga men-set tc.space='local' saat init,
+    // jadi re-apply diperlukan agar uncheck yang dilakukan user tidak
+    // tertimpa balik oleh init).
+  }, [arrowMatchRotation, tool]);
   // Phase 36, 2026-09-02: Render Engine toggle — Mesh (default) | Instanced (ChunkManager).
   // When 'instanced': blocks rendered via InstancedMesh (1 draw call/chunk),
   // Meshes set invisible but still raycastable (three.js raycaster ignores visible flag).
@@ -18018,6 +18049,77 @@ Now you can apply Displacement for detailed effect.`);
                   onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.12)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Phase 52, 2026-09-07: Panel "arrow match rotation" — 1 keluarga
+            untuk 5 tool (move, rotate, scale, clone, mirror). Muncul saat
+            SALAH SATU dari 5 tool itu aktif; efek checkbox langsung ke
+            SEMUANYA (ganti tool tidak mengubah centang).
+            POSISI: persis koordinat panel Colors/Shape/Object
+            (position absolute, top: 80, right: 16) — permintaan user:
+            "tepat disitu lokasinya, tidak bergeser sedikitpun".
+            DESAIN: jiplakan 100% dari 2 gambar referensi user
+            (folder image/01.png = tercentang, 02.png = kosong):
+            panel gelap ber-border hitam + checkbox abu-abu FLUSH-KIRI
+            penuh tinggi dengan garis batas hitam di sisi kanannya + teks
+            "(arrow match rotation)" terang. Analisis pixel: bg panel
+            #303030, border #0d0503, kotak checkbox #848484, garis
+            pemisah hitam, teks #ebebeb.
+            ATURAN MUTLAK: default TERCENTANG setiap user masuk web. */}
+        {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror') && (
+          <div
+            onClick={() => setArrowMatchRotation(v => !v)}
+            title="Arrow Match Rotation — ON: panah/bola mengikuti sisi block yang dirotasi. OFF: panah/bola selalu tegak lurus dunia."
+            style={{
+              position: 'absolute', top: 80, right: 16,
+              display: 'flex', alignItems: 'stretch',
+              backgroundColor: '#303030',
+              border: '2px solid #0d0503',
+              borderRadius: 4,
+              cursor: 'pointer',
+              userSelect: 'none',
+              zIndex: 5,
+              overflow: 'hidden',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+              height: 47, // jiplak rasio gambar referensi 02.png (320x47)
+            }}
+          >
+            {/* Kotak checkbox abu-abu — flush kiri, penuh tinggi panel.
+                Garis batas hitam di sisi kanan kotak (dari analisis pixel:
+                pemisah checkbox→teks adalah garis gelap ~4px). */}
+            <div style={{
+              width: 46,
+              backgroundColor: '#848484',
+              borderRight: '4px solid #0d0503',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              {/* Centang: muncul hanya saat tercentang — gaya check tebal
+                  gelap seperti gambar referensi (01.png: centang gelap di
+                  dalam kotak abu). */}
+              {arrowMatchRotation && (
+                <svg width="26" height="26" viewBox="0 0 26 26" style={{ display: 'block' }}>
+                  <path d="M5 13.5 L10.5 19 L21 7"
+                    stroke="#0d0503" strokeWidth="4.5"
+                    strokeLinecap="square" fill="none" />
+                </svg>
+              )}
+            </div>
+            {/* Label teks — persis dari gambar: "(arrow match rotation)"
+                warna #EBEBEB, tinggi huruf besar (49px pada gambar 135px
+                tinggi → rasio ~36% tinggi panel → font ~17px di sini). */}
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              padding: '0 16px',
+              color: '#ebebeb',
+              fontSize: 17,
+              fontFamily: 'Inter, sans-serif',
+              letterSpacing: 0.2,
+              whiteSpace: 'nowrap',
+            }}>
+              (arrow match rotation)
             </div>
           </div>
         )}
