@@ -18053,82 +18053,99 @@ Now you can apply Displacement for detailed effect.`);
           </div>
         )}
 
-        {/* Phase 52, 2026-09-07 (REDESAIN v2, 2026-09-07 sore): Panel
-            "arrow match rotation" — 1 keluarga untuk 5 tool (move, rotate,
-            scale, clone, mirror). Muncul saat SALAH SATU aktif; efek checkbox
-            langsung ke SEMUANYA.
+        {/* Phase 52 (REDESAIN v3, pakai skill claude-design + ui-ux-design-system):
+            Panel "arrow match rotation" — 1 keluarga untuk 5 tool (move,
+            rotate, scale, clone, mirror). Muncul saat SALAH SATU aktif;
+            efek checkbox langsung ke SEMUANYA.
             POSISI: koordinat PERSIS panel Colors (top: 80, right: 16).
-            DESAIN: jiplak 100% dari 2 gambar referensi user — diukur ulang
-            menyeluruh per-pixel (analyze-ref.py):
-            • 01.png = state TERCENTANG (945x135), 02.png = state KOSONG
-              (320x47) — panel sama, skala 2.9x; SEMUA rasio cocok:
-              checkbox 46px, pemisah 12px, gap 24px, teks glyph 17px,
-              padding kanan 22px, interior 33px.
-            • Border hitam #190904 TIDAK simetris (ukur nyata):
-              atas 8px / kanan 6px / bawah 6px / kiri 2px. Sudut PERSEGI
-              (pixel 0,0 solid gelap — TIDAK rounded).
-            • Checkbox abu #848484 flush-kiri 46px penuh tinggi.
-            • Pemisah hitam #0A0503 12px, lalu gap 24px ke teks.
-            • Teks "(arrow match rotation)" #E8E8E8, glyph 17px pada
-              interior 33px → font-size 23px Inter, padding kanan 22px.
-            • Centang HITAM #000 BESAR memenuhi kotak (mask terukur:
-              garis pendek kiri → sudut → garis panjang naik; stroke 4.5px).
+            DESAIN: mengikuti DESIGN SYSTEM APP SENDIRI (source-code
+            fidelity — skill claude-design: "jangan bangun dari ingatan
+            kalau source tersedia, angkat nilai persis dari tema repo"):
+            • Wadah = gaya panel Colors/Shape/Object: bg rgba(14,20,32,
+              0.92), border 1px #1e293b, radius 14, blur(10px), shadow,
+              padding 12, header Orbitron 10px uppercase #94a3b8.
+            • Surface = CONFIGURE (skill claude-design): panel OPSI —
+              baris-baris checkbox yang extensible; opsi baru nanti
+              tinggal menambah baris di dalam panel ini.
+            • Checkbox custom (bukan native): kotak 20px radius 5;
+              UNCHECKED = abu transparan (tidak aktif), CHECKED = solid
+              accent #f59e0b + centang gelap — konsisten dgn warna
+              "selected" app (tool aktif & warna terpilih di Colors).
+            • Label Inter 12px; terang+semibold saat aktif, muted saat
+              tidak — hierarki via state, bukan dekorasi.
+            • Hover feedback (pola onMouseEnter/Leave spt swatch Colors).
             ATURAN MUTLAK: default TERCENTANG setiap user masuk web. */}
         {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror') && (
-          <div
-            onClick={() => setArrowMatchRotation(v => !v)}
-            title="Arrow Match Rotation — ON: panah/bola mengikuti sisi block yang dirotasi. OFF: panah/bola selalu tegak lurus dunia."
-            style={{
-              position: 'absolute', top: 80, right: 16,
-              display: 'flex', alignItems: 'stretch',
-              backgroundColor: '#303030',
-              borderStyle: 'solid',
-              borderColor: '#190904',
-              borderTopWidth: 8, borderRightWidth: 6,
-              borderBottomWidth: 6, borderLeftWidth: 2,
-              borderRadius: 0,
-              cursor: 'pointer',
-              userSelect: 'none',
-              zIndex: 5,
-              overflow: 'hidden',
-              boxSizing: 'border-box',
-            }}
-          >
-            {/* Checkbox abu-abu — flush kiri, lebar 46px, penuh tinggi
-                interior 33px (persis gambar 02.png). */}
+          <div style={{
+            position: 'absolute', top: 80, right: 16,
+            display: 'flex', flexDirection: 'column', gap: 4,
+            backgroundColor: 'rgba(14, 20, 32, 0.92)',
+            padding: 12, borderRadius: 14,
+            border: `1px solid ${panelBorder}`,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            zIndex: 5,
+            minWidth: 208,
+          }}>
+            {/* Header — identik dgn header "Colors" (Orbitron uppercase) */}
             <div style={{
-              width: 46,
-              backgroundColor: '#848484',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-              position: 'relative',
-            }}>
-              {/* Centang jiplakan: mask pixel 01.png diskalakan ke 46x33 —
-                  garis pendek kiri turun ke sudut, garis panjang naik ke
-                  kanan-atas. Hitam pekat #000, stroke 4.5px (terukur). */}
-              {arrowMatchRotation && (
-                <svg width="46" height="33" viewBox="0 0 46 33" style={{ display: 'block', position: 'absolute', inset: 0 }}>
-                  <path d="M13 18 L22 21.5 L32.5 5"
-                    stroke="#000000" strokeWidth="4.5"
-                    strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </svg>
-              )}
+              fontSize: 10, fontWeight: 700, color: textSecondary,
+              textTransform: 'uppercase', letterSpacing: '1px',
+              marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
+            }}>Gizmo Options</div>
+
+            {/* ── Baris opsi (pola reusable — opsi baru tinggal copy pola ini) ── */}
+            <div
+              onClick={() => setArrowMatchRotation(v => !v)}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(148,163,184,0.08)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = arrowMatchRotation ? 'rgba(245,158,11,0.08)' : 'transparent'; }}
+              title="ON: panah/bola mengikuti sisi block yang dirotasi. OFF: panah/bola selalu tegak lurus dunia."
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '7px 8px', borderRadius: 8,
+                cursor: 'pointer', userSelect: 'none',
+                border: `1px solid ${arrowMatchRotation ? 'rgba(245,158,11,0.4)' : 'rgba(148,163,184,0.14)'}`,
+                backgroundColor: arrowMatchRotation ? 'rgba(245,158,11,0.08)' : 'transparent',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {/* Kotak checkbox custom 20px — accent #f59e0b saat tercentang */}
+              <div style={{
+                width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: arrowMatchRotation ? '#f59e0b' : 'rgba(148,163,184,0.1)',
+                border: `1.5px solid ${arrowMatchRotation ? '#f59e0b' : 'rgba(148,163,184,0.35)'}`,
+                boxShadow: arrowMatchRotation ? '0 0 8px rgba(245,158,11,0.45)' : 'none',
+                transition: 'all 0.15s ease',
+              }}>
+                {arrowMatchRotation && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" style={{ display: 'block' }}>
+                    <path d="M2.2 6.4 L4.8 8.8 L9.8 3.2"
+                      stroke="#0e1420" strokeWidth="2.4"
+                      strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                )}
+              </div>
+              {/* Label — terang & semibold saat aktif, muted saat tidak */}
+              <div style={{
+                color: arrowMatchRotation ? '#e2e8f0' : textSecondary,
+                fontSize: 12,
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: arrowMatchRotation ? 600 : 400,
+                transition: 'color 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}>
+                Arrow Match Rotation
+              </div>
             </div>
-            {/* Pemisah hitam 12px — garis batas antara checkbox dan teks
-                (terukur: segmen HITAM x48-59 di 02.png). */}
-            <div style={{ width: 12, backgroundColor: '#0A0503', flexShrink: 0 }} />
-            {/* Label teks — jarak dari pemisah 24px (gap terukur x60-83),
-                warna #E8E8E8, glyph 17px → font 23px, padding kanan 22px. */}
+            {/* ── Akhir baris opsi — opsi baru ditambah di bawah sini ── */}
+
+            {/* Hint kecil — progressive disclosure (surface Configure) */}
             <div style={{
-              display: 'flex', alignItems: 'center',
-              paddingLeft: 24, paddingRight: 22,
-              color: '#e8e8e8',
-              fontSize: 23,
-              fontFamily: 'Inter, sans-serif',
-              whiteSpace: 'nowrap',
-              height: 33,
+              marginTop: 2, fontSize: 9.5, color: 'rgba(148,163,184,0.55)',
+              fontFamily: 'Inter, sans-serif', lineHeight: 1.4,
             }}>
-              (arrow match rotation)
+              {arrowMatchRotation ? 'Gizmo mengikuti rotasi block' : 'Gizmo selalu tegak lurus dunia'}
             </div>
           </div>
         )}
