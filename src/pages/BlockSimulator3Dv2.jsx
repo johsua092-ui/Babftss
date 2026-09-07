@@ -219,8 +219,21 @@ export default function BlockSimulator3Dv2({ setPage }) {
       // - Detach gizmo dari block asli supaya TransformControls tidak intercept drag
       // - AUTO-CREATE ghost di posisi block yang sama → 6 panah tetap muncul (di ghost)
       // - Attach gizmo ke ghost → user bisa langsung drag ghost untuk clone
+      //
+      // FIX Phase 50 v12 (2026-09-07): kasus pindah clone ↔ mirror.
+      // Sebelumnya: tc.object = ghost ber-flag cloneGhost → detach() jalan,
+      // tapi kondisi !cloneGhost menolak buat ghost baru → gizmo TANPA target
+      // → 6 panah hilang + block tidak ter-highlight.
+      // Sekarang: kalau tc.object adalah ghost clone/mirror yang MASIH HIDUP
+      // (== threeRef.current.cloneGhost), gizmo TETAP attach ke ghost itu —
+      // cukup re-highlight supaya block terlihat. Warna panah diatur di bawah.
       if ((tool === 'clone' || tool === 'mirror') && tc.object) {
         const sourceBlock = tc.object;
+        const isLiveGhost = sourceBlock
+          && sourceBlock.userData.cloneGhost
+          && threeRef.current.cloneGhost === sourceBlock;
+
+        if (!isLiveGhost) {
         tc.detach();
         
         // Phase 50 v10: Unhighlight source block SEBELUM auto-create ghost
@@ -279,7 +292,23 @@ export default function BlockSimulator3Dv2({ setPage }) {
             console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
           }
         }
-      }
+        } else {
+          // FIX Phase 50 v12: ghost hidup dipertahankan — gizmo tetap attach,
+          // re-highlight ghost supaya block tetap terlihat siap di-drag.
+          if (sourceBlock && sourceBlock.material) {
+            const mats = Array.isArray(sourceBlock.material) ? sourceBlock.material : [sourceBlock.material];
+            mats.forEach(m => {
+              if (m.emissive) {
+                m.emissive.setHex(0x1a8cff);
+                m.emissiveIntensity = 0.6;
+              }
+            });
+          }
+          threeRef.current.selectedBlocks.clear();
+          threeRef.current.selectedBlocks.add(sourceBlock);
+          console.log('[Phase 50 v12] Ghost dipertahankan saat pindah ke', tool);
+        }
+        }
     } else if (tool === 'rotate') {
       tc.setMode('rotate');
       console.log('[Phase 50 v9] setMode rotate');
@@ -321,8 +350,15 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // FIX Phase 50 v4: kalau pindah ke tool LAIN dari clone/mirror & ada ghost yang
   // belum di-finalkan → buang ghost (kalau tidak, ghost nyangkut jadi block permanen).
   const toggleTool = (nextTool) => setTool(t => {
+    const finalTool = t === nextTool ? null : nextTool;
+    // FIX Phase 50 v12 (2026-09-07): ghost dibuang HANYA kalau tool AKHIR bukan
+    // clone/mirror. Pindah clone ↔ mirror kini MEMPERTAHANKAN ghost yang masih
+    // hidup. Sebelumnya ghost di-dispose di sini, lalu useEffect[tool] menemukan
+    // tc.object = ghost ber-flag cloneGhost → detach() jalan TANPA membuat ghost
+    // baru (kondisi !cloneGhost = false) → 6 panah hilang + block tak ter-highlight.
+    const keepGhost = finalTool === 'clone' || finalTool === 'mirror';
     // Ghost clone/mirror dibatalkan saat tool diganti / dimatikan.
-    if (threeRef.current && threeRef.current.cloneGhost) {
+    if (!keepGhost && threeRef.current && threeRef.current.cloneGhost) {
       try {
         const scene3 = threeRef.current.scene;
         if (scene3) scene3.remove(threeRef.current.cloneGhost);
