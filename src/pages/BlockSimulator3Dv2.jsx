@@ -28,6 +28,7 @@ import ColorWheelPicker from '../components/ColorWheelPicker';
 import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
+import { restyleScaleGizmoBalls } from '../utils/gizmoScaleBalls.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12101,6 +12102,29 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         console.warn('[Phase 50] Gizmo rotate tidak bisa dirombak:', rotateRings.reason);
       }
+
+      // Phase 51, 2026-09-07: Rombak gizmo SCALE — 6 BOLA #EFBF04 (permintaan
+      // user "tier very hard" dari notepad lama).
+      //
+      // MASALAH: gizmo scale bawaan Three.js masih jadul — 6 KOTAK kecil di
+      // ujung sumbu ±0.54 + 3 GARIS shaft yang CUMA digambar di sisi positif
+      // (sisi negatif tidak ada garisnya).
+      //
+      // DESAIN BARU: hanya 6 BOLA #EFBF04 di ±0.5 tiap sumbu — PERSIS bola
+      // rotate Phase 50 TETAPI TANPA cincin penghubung. Solo drag: genggam
+      // 1 bola → 5 lain sembunyi, lepas → 6 muncul lagi (pola Phase 49 v11).
+      // Detail lengkap + jebakan yang sudah diuji: lihat header gizmoScaleBalls.js.
+      //
+      // CATATAN: hanya menyentuh visual gizmo scale + helper garis putihnya.
+      // Picker (raycast/drag), gizmo rotate, 6 panah Move tidak tersentuh.
+      const scaleBalls = restyleScaleGizmoBalls(transformControls, transformHelper);
+      if (scaleBalls.ok) {
+        threeRef.current.scaleBallsDispose = scaleBalls.dispose;
+        console.log(`[Phase 51] Gizmo scale dirombak — ${scaleBalls.balls.length} bola #EFBF04, `
+          + `${scaleBalls.removed} handle lama dilepas, helper: ${scaleBalls.hiddenHelpers.join(',') || 'none'}`);
+      } else {
+        console.warn('[Phase 51] Gizmo scale tidak bisa dirombak:', scaleBalls.reason);
+      }
     } catch (e) {
       // Kegagalan di sini TIDAK boleh menggagalkan inisialisasi scene.
       // Gizmo tetap berfungsi normal, cuma tampilannya kembali ke bawaan Three.js.
@@ -14337,6 +14361,11 @@ Now you can apply Displacement for detailed effect.`);
       if (threeRef.current.rotateRingsDispose) {
         threeRef.current.rotateRingsDispose();
         threeRef.current.rotateRingsDispose = null;
+      }
+      // Phase 51: pulihkan gizmo scale (kembalikan handle asli, lepas wrapper).
+      if (threeRef.current.scaleBallsDispose) {
+        threeRef.current.scaleBallsDispose();
+        threeRef.current.scaleBallsDispose = null;
       }
       transformControls.dispose();
       renderer.dispose();
