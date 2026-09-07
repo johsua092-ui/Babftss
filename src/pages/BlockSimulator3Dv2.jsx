@@ -210,11 +210,32 @@ export default function BlockSimulator3Dv2({ setPage }) {
 
     console.log('[Phase 50 v9] Tool berubah:', tool, '| transformHelper:', !!helper);
 
+    // FIX Phase 50 v13 (2026-09-07): kalau baru saja KELUAR dari clone/mirror
+    // (toggleTool membuang ghost + detach gizmo), RESTORE gizmo ke block ASAL
+    // supaya panah/bola tetap muncul + block tetap ter-highlight — sama mulusnya
+    // seperti pindah move↔rotate (gejala: rotate→clone→rotate = bola hilang).
+    // ghostSource diambil & dikosongkan sekali jalan; berlaku untuk SEMUA tool
+    // tujuan (move/rotate/scale), cukup sekali di sini sebelum pengaturan mode.
+    if (tool !== 'clone' && tool !== 'mirror' && !tc.object && threeRef.current.ghostSource) {
+      const src = threeRef.current.ghostSource;
+      threeRef.current.ghostSource = null;
+      if (src && src.parent && src.userData.isBlock) {
+        tc.attach(src);
+        if (src.material) {
+          const mats = Array.isArray(src.material) ? src.material : [src.material];
+          mats.forEach(m => { if (m.emissive) { m.emissive.setHex(0x1a8cff); m.emissiveIntensity = 0.6; } });
+        }
+        threeRef.current.selectedBlocks.clear();
+        threeRef.current.selectedBlocks.add(src);
+        console.log('[Phase 50 v13] Gizmo di-restore ke block asal setelah keluar clone/mirror →', tool);
+      }
+    }
+
     // Ubah MODE gizmo sesuai tool
     if (tool === 'clone' || tool === 'mirror' || tool === 'move') {
       tc.setMode('translate');
       console.log('[Phase 50 v9] setMode translate untuk tool:', tool);
-      
+
       // FIX Phase 50 v9 FINAL: Saat switch ke Clone/Mirror
       // - Detach gizmo dari block asli supaya TransformControls tidak intercept drag
       // - AUTO-CREATE ghost di posisi block yang sama → 6 panah tetap muncul (di ghost)
@@ -271,6 +292,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
             ghost.userData.isBlock = true;
             ghost.userData.importedGlb = !!sourceBlock.userData.importedGlb;
             ghost.userData.cloneGhost = true;
+            ghost.userData.ghostSource = sourceBlock; // FIX v13: block ASAL — untuk restore gizmo saat keluar clone/mirror
             scene.add(ghost);
             threeRef.current.blocks.push(ghost);
             threeRef.current.cloneGhost = ghost;
@@ -360,10 +382,21 @@ export default function BlockSimulator3Dv2({ setPage }) {
     // Ghost clone/mirror dibatalkan saat tool diganti / dimatikan.
     if (!keepGhost && threeRef.current && threeRef.current.cloneGhost) {
       try {
-        const scene3 = threeRef.current.scene;
-        if (scene3) scene3.remove(threeRef.current.cloneGhost);
-        threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== threeRef.current.cloneGhost);
         const g = threeRef.current.cloneGhost;
+        // FIX Phase 50 v13 (2026-09-07): simpan block ASAL ghost supaya
+        // useEffect[tool] bisa me-restore gizmo + highlight ke block asli
+        // saat user keluar dari clone/mirror. Tanpa ini, gizmo tetap attach
+        // ke ghost yang sudah di-dispose → bola/panah hilang + tak ada
+        // highlight saat pindah ke rotate/move/scale (gejala: rotate→clone→rotate).
+        threeRef.current.ghostSource = (g.userData && g.userData.ghostSource) || null;
+        // FIX v13: DETACH gizmo dari ghost SEBELUM dispose — menghilangkan
+        // warning "attached object must be part of scene graph" + mencegah
+        // gizmo menempel pada objek mati.
+        const tc13 = threeRef.current.transformControls;
+        if (tc13 && tc13.object === g) tc13.detach();
+        const scene3 = threeRef.current.scene;
+        if (scene3) scene3.remove(g);
+        threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== g);
         if (g.geometry) g.geometry.dispose();
         if (Array.isArray(g.material)) g.material.forEach(m => m.dispose());
         else if (g.material) g.material.dispose();
@@ -12973,6 +13006,7 @@ Now you can apply Displacement for detailed effect.`);
           ghost.userData.isBlock = true;
           ghost.userData.importedGlb = !!source.userData.importedGlb;
           ghost.userData.cloneGhost = true;   // penanda ghost sementara
+          ghost.userData.ghostSource = source; // FIX v13: block ASAL — untuk restore gizmo saat keluar clone/mirror
           scene.add(ghost);
           threeRef.current.blocks.push(ghost);
           threeRef.current.cloneGhost = ghost;
@@ -13045,6 +13079,7 @@ Now you can apply Displacement for detailed effect.`);
           mirrorMesh.userData.isBlock = true;
           mirrorMesh.userData.importedGlb = !!source.userData.importedGlb;
           mirrorMesh.userData.cloneGhost = true;   // penanda ghost (juga untuk mirror)
+          mirrorMesh.userData.ghostSource = source; // FIX v13: block ASAL — untuk restore gizmo saat keluar clone/mirror
           scene.add(mirrorMesh);
           threeRef.current.blocks.push(mirrorMesh);
           threeRef.current.cloneGhost = mirrorMesh;
