@@ -479,78 +479,82 @@ export function enableSoloDragArrow(transformControls, helperRoot = null) {
  * Mengubah warna SEMUA handle gizmo translate menjadi 1 warna solid.
  * Digunakan untuk mode Clone (biru muda) dan Mirror (ungu) supaya user
  * bisa membedakan mode dengan cepat dari warna panah.
- * 
- * Original colors di-simpan di userData supaya bisa di-restore.
- * Material TIDAK di-clone — warna diubah langsung di material existing.
+ *
+ * ── KENAPA CARA LAMA GAGAL (terbukti ukur 2026-09-07) ───────────────
+ * Versi awal fungsi ini mengubah `handle.material.color` langsung.
+ * Tes headless membuktikan: warna berubah TEPAT SETELAH dipanggil, tapi
+ * `TransformControlsGizmo.updateMatrixWorld()` baris 1874-1877 melakukannya:
+ *   material._color = material._color || material.color.clone();  // cache
+ *   material.color.copy( material._color );                        // TIAP FRAME
+ * Cache `_color` menyimpan warna LAMA (merah/hijau/biru), jadi satu frame
+ * kemudian warna panah DITIMPA BALIK. Pola yang sama persis dengan
+ * `handle.position` yang ditimpa `worldPosition` tiap frame (kontrak,
+ * jebakan #1/#2). `changed: 12` yang dilaporkan versi lama = lulus palsu.
+ *
+ * ── SOLUSI: API PUBLIK setColors() ────────────────────────────────
+ * Three.js 0.185 punya `transformControls.setColors(x, y, z, active)`
+ * (TransformControls.js baris 947). Selain mengubah `materialLib.*.color`,
+ * ia JUGA memperbarui cache `_color` (baris 962-969) — satu-satunya jalur
+ * resmi yang tidak akan ditimpa balik. Karena ke-12 handle panah (6 asli +
+ * 6 mirror buatan makeSixArrows) semuanya share material dari materialLib,
+ * satu panggilan mewarnai semuanya sekaligus, termasuk bola rotate dari
+ * gizmoRotateRings.js yang ikut share materialLib (saat mode translate
+ * bola tidak tampak — gizmo.rotate.visible = false, baris 1591-1593 —
+ * dan useEffect tool di halaman memanggil resetGizmoColors() saat user
+ * berpindah ke tool lain, jadi tidak ada kebocoran warna ke mode Rotate).
+ *
+ * `active` (warna highlight saat hover/drag) ikut di-set sama agar panah
+ * tidak "balik kuning" saat di-hover/drag di mode Clone/Mirror.
+ *
+ * CATATAN: tidak ada material yang di-clone/di-dispose; hanya memakai API
+ * publik. Aman dipanggil berulang. Versi lama menyimpan warna asli di
+ * userData — diabaikan di sini karena setColors() meng-handle semuanya.
  *
  * @param {THREE.Controls} transformControls instance TransformControls
  * @param {THREE.Object3D|null} helperRoot hasil transformControls.getHelper()
  * @param {string|number} color warna hex (misal '#0096FF' atau 0x0096FF)
- * @returns {{ ok: boolean, changed: number, error?: string }}
+ * @returns {{ ok: boolean, changed: number, reason?: string }}
  */
 export function setGizmoColor(transformControls, helperRoot, color) {
   try {
-    const translateObj = findTranslateGizmo(transformControls, helperRoot);
-    if (!translateObj || !translateObj.children) {
-      return { ok: false, changed: 0, error: 'translate gizmo not found' };
+    if (!transformControls || typeof transformControls.setColors !== 'function') {
+      return { ok: false, changed: 0, reason: 'TransformControls.setColors tidak tersedia' };
     }
 
-    const threeColor = new THREE.Color(color);
-    let changed = 0;
-
-    for (const handle of translateObj.children) {
-      if (!AXIS_KEY[handle.name]) continue; // lewati XYZ/XY/YZ/XZ
-      if (!handle.material) continue;
-
-      const mat = handle.material;
-      
-      // Simpan original color SEKALI SAJA (saat pertama kali dipanggil)
-      if (!handle.userData.__originalColor && mat.color) {
-        handle.userData.__originalColor = mat.color.clone();
-      }
-
-      // Ubah warna LANGSUNG di material existing (tidak clone material)
-      if (mat.color) {
-        mat.color.copy(threeColor);
-        changed++;
-      }
-    }
-
-    return { ok: true, changed };
+    // setColors(xAxis, yAxis, zAxis, active) — 4 slot diisi warna yang sama
+    // supaya KEENAM panah solid satu warna dan highlight hover/drag ikut
+    // warna itu (bukan kuning bawaan).
+    transformControls.setColors(color, color, color, color);
+    return { ok: true, changed: 8 }; // 8 slot material di materialLib
   } catch (e) {
-    return { ok: false, changed: 0, error: e.message };
+    return { ok: false, changed: 0, reason: e.message };
   }
 }
 
 /**
- * Mengembalikan warna gizmo ke default (merah/hijau/biru).
+ * Mengembalikan warna gizmo ke default (merah/hijau/biru, active kuning).
+ *
+ * Wajib dipanggil saat keluar dari tool Clone/Mirror. Tanpa ini, bola &
+ * busur gizmo rotate (yang share materialLib dengan panah) akan tetap
+ * biru/ungu saat user pindah ke tool Rotate.
  *
  * @param {THREE.Controls} transformControls instance TransformControls
  * @param {THREE.Object3D|null} helperRoot hasil transformControls.getHelper()
- * @returns {{ ok: boolean, restored: number, error?: string }}
+ * @returns {{ ok: boolean, restored: number, reason?: string }}
  */
 export function resetGizmoColors(transformControls, helperRoot) {
   try {
-    const translateObj = findTranslateGizmo(transformControls, helperRoot);
-    if (!translateObj || !translateObj.children) {
-      return { ok: false, restored: 0, error: 'translate gizmo not found' };
+    if (!transformControls || typeof transformControls.setColors !== 'function') {
+      return { ok: false, restored: 0, reason: 'TransformControls.setColors tidak tersedia' };
     }
 
-    let restored = 0;
-
-    for (const handle of translateObj.children) {
-      if (!AXIS_KEY[handle.name]) continue;
-      if (!handle.userData.__originalColor) continue;
-      if (!handle.material || !handle.material.color) continue;
-
-      // Restore original color
-      handle.material.color.copy(handle.userData.__originalColor);
-      restored++;
-    }
-
-    return { ok: true, restored };
+    // Default persis seperti konstruktor TransformControlsGizmo:
+    // matRed 0xff0000 / matGreen 0x00ff00 / matBlue 0x0000ff /
+    // matYellow 0xffff00 (active) — lihat baris 1225-1254.
+    transformControls.setColors(0xff0000, 0x00ff00, 0x0000ff, 0xffff00);
+    return { ok: true, restored: 8 };
   } catch (e) {
-    return { ok: false, restored: 0, error: e.message };
+    return { ok: false, restored: 0, reason: e.message };
   }
 }
 
