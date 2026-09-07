@@ -18053,20 +18053,26 @@ Now you can apply Displacement for detailed effect.`);
           </div>
         )}
 
-        {/* Phase 52, 2026-09-07: Panel "arrow match rotation" — 1 keluarga
-            untuk 5 tool (move, rotate, scale, clone, mirror). Muncul saat
-            SALAH SATU dari 5 tool itu aktif; efek checkbox langsung ke
-            SEMUANYA (ganti tool tidak mengubah centang).
-            POSISI: persis koordinat panel Colors/Shape/Object
-            (position absolute, top: 80, right: 16) — permintaan user:
-            "tepat disitu lokasinya, tidak bergeser sedikitpun".
-            DESAIN: jiplakan 100% dari 2 gambar referensi user
-            (folder image/01.png = tercentang, 02.png = kosong):
-            panel gelap ber-border hitam + checkbox abu-abu FLUSH-KIRI
-            penuh tinggi dengan garis batas hitam di sisi kanannya + teks
-            "(arrow match rotation)" terang. Analisis pixel: bg panel
-            #303030, border #0d0503, kotak checkbox #848484, garis
-            pemisah hitam, teks #ebebeb.
+        {/* Phase 52, 2026-09-07 (REDESAIN v2, 2026-09-07 sore): Panel
+            "arrow match rotation" — 1 keluarga untuk 5 tool (move, rotate,
+            scale, clone, mirror). Muncul saat SALAH SATU aktif; efek checkbox
+            langsung ke SEMUANYA.
+            POSISI: koordinat PERSIS panel Colors (top: 80, right: 16).
+            DESAIN: jiplak 100% dari 2 gambar referensi user — diukur ulang
+            menyeluruh per-pixel (analyze-ref.py):
+            • 01.png = state TERCENTANG (945x135), 02.png = state KOSONG
+              (320x47) — panel sama, skala 2.9x; SEMUA rasio cocok:
+              checkbox 46px, pemisah 12px, gap 24px, teks glyph 17px,
+              padding kanan 22px, interior 33px.
+            • Border hitam #190904 TIDAK simetris (ukur nyata):
+              atas 8px / kanan 6px / bawah 6px / kiri 2px. Sudut PERSEGI
+              (pixel 0,0 solid gelap — TIDAK rounded).
+            • Checkbox abu #848484 flush-kiri 46px penuh tinggi.
+            • Pemisah hitam #0A0503 12px, lalu gap 24px ke teks.
+            • Teks "(arrow match rotation)" #E8E8E8, glyph 17px pada
+              interior 33px → font-size 23px Inter, padding kanan 22px.
+            • Centang HITAM #000 BESAR memenuhi kotak (mask terukur:
+              garis pendek kiri → sudut → garis panjang naik; stroke 4.5px).
             ATURAN MUTLAK: default TERCENTANG setiap user masuk web. */}
         {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror') && (
           <div
@@ -18076,48 +18082,51 @@ Now you can apply Displacement for detailed effect.`);
               position: 'absolute', top: 80, right: 16,
               display: 'flex', alignItems: 'stretch',
               backgroundColor: '#303030',
-              border: '2px solid #0d0503',
-              borderRadius: 4,
+              borderStyle: 'solid',
+              borderColor: '#190904',
+              borderTopWidth: 8, borderRightWidth: 6,
+              borderBottomWidth: 6, borderLeftWidth: 2,
+              borderRadius: 0,
               cursor: 'pointer',
               userSelect: 'none',
               zIndex: 5,
               overflow: 'hidden',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-              height: 47, // jiplak rasio gambar referensi 02.png (320x47)
+              boxSizing: 'border-box',
             }}
           >
-            {/* Kotak checkbox abu-abu — flush kiri, penuh tinggi panel.
-                Garis batas hitam di sisi kanan kotak (dari analisis pixel:
-                pemisah checkbox→teks adalah garis gelap ~4px). */}
+            {/* Checkbox abu-abu — flush kiri, lebar 46px, penuh tinggi
+                interior 33px (persis gambar 02.png). */}
             <div style={{
               width: 46,
               backgroundColor: '#848484',
-              borderRight: '4px solid #0d0503',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
+              position: 'relative',
             }}>
-              {/* Centang: muncul hanya saat tercentang — gaya check tebal
-                  gelap seperti gambar referensi (01.png: centang gelap di
-                  dalam kotak abu). */}
+              {/* Centang jiplakan: mask pixel 01.png diskalakan ke 46x33 —
+                  garis pendek kiri turun ke sudut, garis panjang naik ke
+                  kanan-atas. Hitam pekat #000, stroke 4.5px (terukur). */}
               {arrowMatchRotation && (
-                <svg width="26" height="26" viewBox="0 0 26 26" style={{ display: 'block' }}>
-                  <path d="M5 13.5 L10.5 19 L21 7"
-                    stroke="#0d0503" strokeWidth="4.5"
-                    strokeLinecap="square" fill="none" />
+                <svg width="46" height="33" viewBox="0 0 46 33" style={{ display: 'block', position: 'absolute', inset: 0 }}>
+                  <path d="M13 18 L22 21.5 L32.5 5"
+                    stroke="#000000" strokeWidth="4.5"
+                    strokeLinecap="round" strokeLinejoin="round" fill="none" />
                 </svg>
               )}
             </div>
-            {/* Label teks — persis dari gambar: "(arrow match rotation)"
-                warna #EBEBEB, tinggi huruf besar (49px pada gambar 135px
-                tinggi → rasio ~36% tinggi panel → font ~17px di sini). */}
+            {/* Pemisah hitam 12px — garis batas antara checkbox dan teks
+                (terukur: segmen HITAM x48-59 di 02.png). */}
+            <div style={{ width: 12, backgroundColor: '#0A0503', flexShrink: 0 }} />
+            {/* Label teks — jarak dari pemisah 24px (gap terukur x60-83),
+                warna #E8E8E8, glyph 17px → font 23px, padding kanan 22px. */}
             <div style={{
               display: 'flex', alignItems: 'center',
-              padding: '0 16px',
-              color: '#ebebeb',
-              fontSize: 17,
+              paddingLeft: 24, paddingRight: 22,
+              color: '#e8e8e8',
+              fontSize: 23,
               fontFamily: 'Inter, sans-serif',
-              letterSpacing: 0.2,
               whiteSpace: 'nowrap',
+              height: 33,
             }}>
               (arrow match rotation)
             </div>
