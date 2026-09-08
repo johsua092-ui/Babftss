@@ -4648,15 +4648,29 @@ Now you can apply Displacement for detailed effect.`);
   // - place/delete/paint/dll → LEFT=PAN supaya user bisa pan camera dengan
   //   left-drag di empty space. Click detection (place/delete action) tetap
   //   jalan via window mousedown/mouseup (window events tidak bisa di-suppress).
+  // FIX Phase 53 v3 (2026-09-07, bug report user): dulu keluarga-3
+  // (move/rotate/scale) SELALU LEFT=null tanpa peduli Select Box → saat
+  // Select Box dimatikan, drag kiri tidak melakukan APA PUN (kamera mati),
+  // padahal tool lain kamera jalan. Sekarang: LEFT=null HANYA saat Select
+  // Box tercentang (drag dipakai marquee); Select Box OFF → LEFT=PAN
+  // (drag kiri = pan kamera, konsisten dengan semua tool lain).
+  // v3.1: kondisi diperluas ke KELUARGA-5 (move/rotate/scale/clone/mirror)
+  // — konsisten dengan guard engine marquee & panel. Tanpa ini, clone/mirror
+  // + Select Box ON mengandalkan race pointerdown-vs-mousedown (OrbitControls
+  // sempat mulai PAN sebelum marquee mematikan controls) → kamera bisa
+  // bergeser 1 frame. Dengan LEFT=null sejak awal, drag kiri pasti murni
+  // marquee di SEMUA keluarga-5.
   useEffect(() => {
     const s = threeRef.current;
     if (!s.controls) return;
-    if (tool === 'move' || tool === 'rotate' || tool === 'scale') {
-      s.controls.mouseButtons.LEFT = null;
+    const inFamily5 = tool === 'move' || tool === 'rotate' || tool === 'scale'
+      || tool === 'clone' || tool === 'mirror';
+    if (inFamily5 && selectBoxEnabled) {
+      s.controls.mouseButtons.LEFT = null;   // drag kiri = marquee
     } else {
-      s.controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      s.controls.mouseButtons.LEFT = THREE.MOUSE.PAN; // drag kiri = kamera
     }
-  }, [tool]);
+  }, [tool, selectBoxEnabled]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Phase 182-191: 10 New Features (DNA Music, Ocean Currents, Brain NN,
