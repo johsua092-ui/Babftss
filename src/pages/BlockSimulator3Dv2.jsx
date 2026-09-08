@@ -231,6 +231,27 @@ export default function BlockSimulator3Dv2({ setPage }) {
 
     console.log('[Phase 50 v9] Tool berubah:', tool, '| transformHelper:', !!helper);
 
+    // ── Phase 54, 2026-09-07: GIZMO AUTO-HIDE ──
+    // Permintaan user: kalau user UNEQUIP tool atau pindah ke tool NON
+    // keluarga-5 (bukan move/rotate/scale/clone/mirror — mis. paint),
+    // gizmo harus LANGSUNG hilang + block TIDAK ter-highlight.
+    // Pindah ANTAR anggota keluarga (move→clone→mirror→rotate→scale)
+    // → gizmo TETAP (jangan dihilangkan — masih 1 keluarga).
+    // clearSelection() menangani semuanya sekaligus: unhighlight semua
+    // block, buang multi-select group (reparent world-preserved), buang
+    // ghost clone/mirror belum-final, detach gizmo, reset count.
+    // ghostSource juga DIBATALKAN supaya restore v13 di bawah tidak
+    // meng-attach ulang gizmo yang barusan kita sembunyikan (tanpa ini:
+    // keluar clone→paint akan attach balik ke block asal = bug).
+    const inFamily5 = tool === 'move' || tool === 'rotate' || tool === 'scale'
+      || tool === 'clone' || tool === 'mirror';
+    if (!inFamily5) {
+      threeRef.current.ghostSource = null;      // batalkan restore v13
+      if (threeRef.current.clearSelection) {
+        try { threeRef.current.clearSelection(); } catch (e) { /* jangan gagalkan ganti tool */ }
+      }
+    }
+
     // FIX Phase 50 v13 (2026-09-07): kalau baru saja KELUAR dari clone/mirror
     // (toggleTool membuang ghost + detach gizmo), RESTORE gizmo ke block ASAL
     // supaya panah/bola tetap muncul + block tetap ter-highlight — sama mulusnya
@@ -13696,6 +13717,13 @@ Now you can apply Displacement for detailed effect.`);
     threeRef.current.recordHistory = recordHistory;
     threeRef.current.doUndo = doUndo;
     threeRef.current.doRedo = doRedo;
+    // Phase 54, 2026-09-07: ekspos clearSelection ke threeRef — dipakai
+    // useEffect [tool] untuk auto-hide gizmo + unhighlight saat user
+    // unequip / pindah ke tool NON-keluarga-5 (move/rotate/scale/clone/
+    // mirror). clearSelection() sudah menangani SEMUANYA: unhighlight
+    // block, buang multi-select group (reparent ke scene), buang ghost
+    // clone/mirror yang belum final, detach gizmo, reset selectedCount.
+    threeRef.current.clearSelection = clearSelection;
 
     // Clear All function — accessible dari JSX via threeRef.current
     // Cleanup semua block + imported objects + selection + transformControls + highlightedBlock
