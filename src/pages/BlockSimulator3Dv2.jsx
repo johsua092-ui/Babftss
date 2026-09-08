@@ -205,10 +205,14 @@ export default function BlockSimulator3Dv2({ setPage }) {
   useEffect(() => { arrowMatchRef.current = arrowMatchRotation; }, [arrowMatchRotation]);
   // Phase 53, 2026-09-07: "Select Box" — marquee selection 3D (klik kiri
   // tahan + geser → kotak transparan; semua block yang proyeksinya kena
-  // kotak terpilih banyak, jarak tidak relevan). Default FALSE: fitur
-  // aktif hanya jika user mencentang (agar klik-tahan biasa tidak kaget).
-  const [selectBoxEnabled, setSelectBoxEnabled] = useState(false);
-  const selectBoxRef = useRef(false);
+  // kotak terpilih banyak, jarak tidak relevan).
+  // ATURAN MUTLAK (user, 2026-09-07 v2): default WAJIB TERCENTANG setiap
+  // user masuk / membuka 3D Block Simulator — state tidak dipersist, jadi
+  // fresh entry selalu kembali tercentang. Syarat pakai: tool aktif harus
+  // anggota keluarga-5 (move/rotate/scale/clone/mirror) — dijaga guard di
+  // engine marquee.
+  const [selectBoxEnabled, setSelectBoxEnabled] = useState(true);
+  const selectBoxRef = useRef(true);
   useEffect(() => { selectBoxRef.current = selectBoxEnabled; }, [selectBoxEnabled]);
   const colorRef = useRef('#3b82f6');
   useEffect(() => { toolRef.current = tool; }, [tool]);
@@ -13440,6 +13444,13 @@ Now you can apply Displacement for detailed effect.`);
     const onMarqueeMouseDown = (e) => {
       // Hanya saat opsi tercentang + tombol kiri + mulai di canvas
       if (!selectBoxRef.current) return;
+      // SYARAT GANDA (user, 2026-09-07): Select Box hanya bisa dipakai saat
+      // tool AKTIF adalah anggota keluarga-5 (move/rotate/scale/clone/mirror).
+      // Tool unequip (null) atau tool lain (place/delete/paint/dll) → fitur
+      // otomatis OFF — panel Gizmo Options memang hanya tampil di keluarga-5,
+      // jadi guard ini menjamin engine juga menolak di semua jalur lain.
+      const t = toolRef.current;
+      if (t !== 'move' && t !== 'rotate' && t !== 'scale' && t !== 'clone' && t !== 'mirror') return;
       if (e.button !== 0) return;
       if (e.target !== renderer.domElement) return;
       // Jangan curi drag dari gizmo (hover axis) — biarkan TC kerja

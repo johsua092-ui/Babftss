@@ -143,11 +143,15 @@ export function getBlocksInScreenRect(blocks, camera, rect, viewW, viewH) {
 
 /**
  * Warna marquee per tool — sesuai permintaan user:
- * move #0047AB, rotate #32CD32, scale #EFBF04,
+ * move #00308F (royal blue GELAP — dibuat lebih tua dari #0047AB supaya
+ *   JELAS beda dari clone #0096FF yang terang, permintaan user 2026-09-07:
+ *   "untuk move select boxnya jadikan sedikit lebih tua jadi bisa
+ *   membedakan antara si clone"),
+ * rotate #32CD32, scale #EFBF04,
  * clone #0096FF (warna gizmo clone), mirror #9D00FF (warna gizmo mirror).
  */
 export const MARQUEE_COLOR_BY_TOOL = {
-  move: '#0047AB',
+  move: '#00308F',
   rotate: '#32CD32',
   scale: '#EFBF04',
   clone: '#0096FF',
