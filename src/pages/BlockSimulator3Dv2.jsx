@@ -13312,8 +13312,17 @@ Now you can apply Displacement for detailed effect.`);
           else if (currentTool === 'rotate') transformControls.setMode('rotate');
           else if (currentTool === 'scale') transformControls.setMode('scale');
         } else {
-          // Click empty → deselect all
-          clearSelection();
+          // FIX Phase 54 v2 (2026-09-07, permintaan user): klik kiri ke
+          // AREA KOSONG saat pakai move/rotate/scale → gizmo TIDAK boleh
+          // hilang + block tetap ter-highlight — konsisten dengan perilaku
+          // clone/mirror (di tool itu branch klik-kosong memang tidak
+          // menyentuh selection sama sekali, gizmo selamat walau user
+          // klik-klik kosong berkali-kali).
+          // DULU: clearSelection() tanpa syarat → gizmo & highlight hilang.
+          // SEKARANG: no-op (tidak melakukan apa-apa). Gizmo hanya hilang
+          // lewat jalur yang memang sengaja: unequip / pindah tool
+          // non-keluarga (Phase 54 auto-hide) — bukan klik kosong.
+          // clearSelection();
         }
       }
     };
