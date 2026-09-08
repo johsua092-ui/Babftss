@@ -29,6 +29,7 @@ import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
+import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL } from '../utils/marqueeSelect.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -202,6 +203,13 @@ export default function BlockSimulator3Dv2({ setPage }) {
   const [arrowMatchRotation, setArrowMatchRotation] = useState(true);
   const arrowMatchRef = useRef(true);
   useEffect(() => { arrowMatchRef.current = arrowMatchRotation; }, [arrowMatchRotation]);
+  // Phase 53, 2026-09-07: "Select Box" — marquee selection 3D (klik kiri
+  // tahan + geser → kotak transparan; semua block yang proyeksinya kena
+  // kotak terpilih banyak, jarak tidak relevan). Default FALSE: fitur
+  // aktif hanya jika user mencentang (agar klik-tahan biasa tidak kaget).
+  const [selectBoxEnabled, setSelectBoxEnabled] = useState(false);
+  const selectBoxRef = useRef(false);
+  useEffect(() => { selectBoxRef.current = selectBoxEnabled; }, [selectBoxEnabled]);
   const colorRef = useRef('#3b82f6');
   useEffect(() => { toolRef.current = tool; }, [tool]);
   
@@ -13370,9 +13378,94 @@ Now you can apply Displacement for detailed effect.`);
       }
     };
 
-    // Daftar di WINDOW — tidak bisa di-suppress oleh OrbitControls/TransformControls
+    // Daftar di WINDOW — tidak bisa di-suppressed oleh OrbitControls/TransformControls
     window.addEventListener('mousedown', onWindowMouseDown);
     window.addEventListener('mouseup', onWindowMouseUp);
+
+    // ── Phase 53: SELECT BOX (marquee selection 3D) ──
+    // Klik kiri TAHAN + geser di canvas (saat opsi Select Box tercentang)
+    // → kotak transparan muncul; block yang proyeksinya kena kotak
+    // terpilih banyak (jarak tidak relevan — seleksi ruang layar).
+    // Warna kotak per tool (user): move #0047AB, rotate #32CD32,
+    // scale #EFBF04, clone #0096FF, mirror #9D00FF.
+    let marqueeEl = null;
+    let marqueeStart = null;   // {x,y} client-space awal drag
+    const marqueeState = { active: false };
+
+    const getMarqueeColor = () => MARQUEE_COLOR_BY_TOOL[toolRef.current] || '#0047AB';
+
+    const marqueeUpdate = (e) => {
+      if (!marqueeEl || !marqueeStart) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = Math.max(rect.left, Math.min(e.clientX, rect.right)) - rect.left;
+      const y = Math.max(rect.top, Math.min(e.clientY, rect.bottom)) - rect.top;
+      const w = x - marqueeStart.x;
+      const h = y - marqueeStart.y;
+      marqueeEl.style.left = `${marqueeStart.x + Math.min(0, w)}px`;
+      marqueeEl.style.top = `${marqueeStart.y + Math.min(0, h)}px`;
+      marqueeEl.style.width = `${Math.abs(w)}px`;
+      marqueeEl.style.height = `${Math.abs(h)}px`;
+    };
+
+    const marqueeFinish = (e) => {
+      if (!marqueeState.active) return;
+      marqueeState.active = false;
+      window.removeEventListener('mousemove', marqueeUpdate);
+      const startX = marqueeStart ? marqueeStart.x : 0;
+      const startY = marqueeStart ? marqueeStart.y : 0;
+      if (marqueeEl && marqueeStart) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const x = Math.max(rect.left, Math.min(e.clientX, rect.right)) - rect.left;
+        const y = Math.max(rect.top, Math.min(e.clientY, rect.bottom)) - rect.top;
+        const mx = Math.min(startX, x), my = Math.min(startY, y);
+        const mw = Math.abs(x - startX), mh = Math.abs(y - startY);
+        // Seleksi hanya kalau drag cukup besar (bukan klik)
+        if (mw > 5 && mh > 5) {
+          const hits = getBlocksInScreenRect(
+            threeRef.current.blocks, camera,
+            { x: mx, y: my, w: mw, h: mh },
+            rect.width, rect.height,
+          );
+          clearSelection();
+          hits.forEach(b => { selectBlock(b, true); });
+          attachGizmoToSelection();
+        }
+      }
+      if (marqueeEl) { marqueeEl.remove(); marqueeEl = null; }
+      marqueeStart = null;
+      // Pulihkan kontrol orbit (didisable saat marquee mulai)
+      controls.enabled = true;
+    };
+
+    const onMarqueeMouseDown = (e) => {
+      // Hanya saat opsi tercentang + tombol kiri + mulai di canvas
+      if (!selectBoxRef.current) return;
+      if (e.button !== 0) return;
+      if (e.target !== renderer.domElement) return;
+      // Jangan curi drag dari gizmo (hover axis) — biarkan TC kerja
+      if (transformControls.dragging) return;
+      const hoverAxis = transformControls.axis;
+      if (hoverAxis) return; // pointer di atas panah/bola → drag gizmo
+      marqueeState.active = true;
+      const rect = renderer.domElement.getBoundingClientRect();
+      marqueeStart = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+      // Matikan orbit SEBELUM menggeser supaya drag tidak memutar kamera
+      controls.enabled = false;
+      marqueeEl = document.createElement('div');
+      marqueeEl.style.cssText = `
+        position:absolute; pointer-events:none; z-index:6;
+        border:2px solid ${getMarqueeColor()};
+        background:${getMarqueeColor()}26;`;
+      renderer.domElement.parentElement.appendChild(marqueeEl);
+      window.addEventListener('mousemove', marqueeUpdate);
+    };
+
+    window.addEventListener('mousedown', onMarqueeMouseDown);
+    window.addEventListener('mouseup', marqueeFinish);
+
 
     // ── Phase 8: Undo/Redo ──
     // FIX 2026-08-31 (Task ID 24 — "undo harus MAHAKUASA"):
@@ -14420,6 +14513,11 @@ Now you can apply Displacement for detailed effect.`);
       renderer.domElement.removeEventListener('mouseleave', onCanvasMouseLeave);
       window.removeEventListener('mousedown', onWindowMouseDown);
       window.removeEventListener('mouseup', onWindowMouseUp);
+      // Phase 53: lepas listener marquee + bersihkan elemen kotak kalau masih ada
+      window.removeEventListener('mousedown', onMarqueeMouseDown);
+      window.removeEventListener('mouseup', marqueeFinish);
+      window.removeEventListener('mousemove', marqueeUpdate);
+      if (marqueeEl) { marqueeEl.remove(); marqueeEl = null; }
       transformControls.removeEventListener('dragging-changed', onTransformDraggingChanged);
       transformControls.removeEventListener('objectChange', onTransformObjectChange);
       fileInputRef.removeEventListener('change', onFileInputChange);
@@ -18140,12 +18238,59 @@ Now you can apply Displacement for detailed effect.`);
             </div>
             {/* ── Akhir baris opsi — opsi baru ditambah di bawah sini ── */}
 
+            {/* Phase 53: opsi SELECT BOX — marquee selection 3D.
+                Pola baris sama (extensible); default TIDAK tercentang:
+                aktif hanya kalau user mau (klik-kiri-tahan biasa tidak
+                berubah perilaku). Saat aktif: drag kiri = kotak pilih. */}
+            <div
+              onClick={() => setSelectBoxEnabled(v => !v)}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(148,163,184,0.08)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = selectBoxEnabled ? 'rgba(245,158,11,0.08)' : 'transparent'; }}
+              title="ON: klik kiri tahan + geser = kotak seleksi (block yang kena kotak terpilih banyak, jarak tidak relevan). OFF: fitur tidak aktif."
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '7px 8px', borderRadius: 8,
+                cursor: 'pointer', userSelect: 'none',
+                border: `1px solid ${selectBoxEnabled ? 'rgba(245,158,11,0.4)' : 'rgba(148,163,184,0.14)'}`,
+                backgroundColor: selectBoxEnabled ? 'rgba(245,158,11,0.08)' : 'transparent',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{
+                width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: selectBoxEnabled ? '#f59e0b' : 'rgba(148,163,184,0.1)',
+                border: `1.5px solid ${selectBoxEnabled ? '#f59e0b' : 'rgba(148,163,184,0.35)'}`,
+                boxShadow: selectBoxEnabled ? '0 0 8px rgba(245,158,11,0.45)' : 'none',
+                transition: 'all 0.15s ease',
+              }}>
+                {selectBoxEnabled && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" style={{ display: 'block' }}>
+                    <path d="M2.2 6.4 L4.8 8.8 L9.8 3.2"
+                      stroke="#0e1420" strokeWidth="2.4"
+                      strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                )}
+              </div>
+              <div style={{
+                color: selectBoxEnabled ? '#e2e8f0' : textSecondary,
+                fontSize: 12,
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: selectBoxEnabled ? 600 : 400,
+                transition: 'color 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}>
+                Select Box
+              </div>
+            </div>
+
             {/* Hint kecil — progressive disclosure (surface Configure) */}
             <div style={{
               marginTop: 2, fontSize: 9.5, color: 'rgba(148,163,184,0.55)',
               fontFamily: 'Inter, sans-serif', lineHeight: 1.4,
             }}>
               {arrowMatchRotation ? 'Gizmo mengikuti rotasi block' : 'Gizmo selalu tegak lurus dunia'}
+              {selectBoxEnabled ? ' • Select Box aktif: drag kiri = kotak pilih' : ''}
             </div>
           </div>
         )}
