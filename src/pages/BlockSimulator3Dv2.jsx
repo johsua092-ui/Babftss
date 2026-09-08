@@ -13535,7 +13535,10 @@ Now you can apply Displacement for detailed effect.`);
     //     logika marqueeFinish: clearSelection + selectBlock + attach gizmo).
     const isMobileViewport = typeof window !== 'undefined'
       && window.innerWidth < 768 && ('ontouchstart' in window);
-    let pinchState = null; // { active, prevDist, boxRect:{x,y,w,h}, el }
+    let pinchState = null; // { active, anchorDist, el, boxRect }
+    // v2: ukuran awal kotak — dikali scale (dist/anchorDist) tiap move.
+    // 80px cukup terlihat di layar HP dan langsung terasa responsif.
+    const PINCH_BOX_INITIAL = 80;
 
     const pinchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const pinchCenter = (t) => ({
@@ -13554,14 +13557,13 @@ Now you can apply Displacement for detailed effect.`);
 
     const onPinchTouchStart = (e) => {
       if (e.touches.length !== 2) return;
-      // State gesture baru — evaluatePinchSelectBox yang menentukan aktif/nya
       const rect = renderer.domElement.getBoundingClientRect();
       const c = pinchCenter(e.touches);
       const inside = c.x >= rect.left && c.x <= rect.right && c.y >= rect.top && c.y <= rect.bottom;
       if (!inside) { pinchState = null; return; }
       pinchState = {
         active: false,
-        prevDist: pinchDist(e.touches),
+        anchorDist: pinchDist(e.touches),
         el: null,
         boxRect: { x: 0, y: 0, w: 0, h: 0 },
       };
@@ -13572,34 +13574,38 @@ Now you can apply Displacement for detailed effect.`);
       const dist = pinchDist(e.touches);
       const r = evaluatePinchSelectBox(pinchState, {
         dist,
-        prevDist: pinchState.prevDist,
+        prevDist: pinchState.anchorDist,
         tool: toolRef.current,
         checked: selectBoxRef.current,
       });
-      pinchState.prevDist = dist;
 
       if (r.cameraOnly) return; // pinch murni kamera — jangan sentuh apa pun
 
       if (r.boxVisible && !pinchState.el) {
-        // Kotak BARU aktif → buat di posisi tengah 2 jari, ukuran awal kecil
+        // Kotak BARU aktif → buat elemen; posisi/ukuran di-set di bawah
+        // supaya SEKETIKA tampil di tengah 2 jari.
         controls.enabled = false; // kamera diam selama kotak aktif
-        const rect = renderer.domElement.getBoundingClientRect();
-        const c = pinchCenter(e.touches);
         const color = MARQUEE_COLOR_BY_TOOL[toolRef.current] || '#0044E0';
         pinchState.el = document.createElement('div');
         pinchState.el.style.cssText = `position:absolute; pointer-events:none; z-index:6;
           border:2px solid ${color}; background:${color}26;`;
         renderer.domElement.parentElement.appendChild(pinchState.el);
-        const cx = c.x - rect.left, cy = c.y - rect.top;
-        pinchState.boxRect = { x: cx - 20, y: cy - 20, w: 40, h: 40 };
-        applyPinchBoxStyle();
-      } else if (r.boxVisible && pinchState.el) {
-        // Resize kotak mengikuti arah pinch (out = besar, in = kecil)
-        const b = pinchState.boxRect;
-        const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-        let w = b.w * r.scale, h = b.h * r.scale;
-        w = Math.max(4, Math.min(w, 4000)); h = Math.max(4, Math.min(h, 4000));
-        pinchState.boxRect = { x: cx - w / 2, y: cy - h / 2, w, h };
+      }
+
+      if (r.boxVisible && pinchState.el) {
+        // v2 DIRECT TRACKING: kotak SELALU di tengah 2 jari (midpoint) —
+        // geser 2 jari tanpa melepas = kotak ikut PINDAH (kamera tetap
+        // diam, controls.enabled sudah false). Ukuran = INITIAL × scale
+        // (scale = dist/anchorDist) — ringan, instan, tanpa usaha ekstra.
+        const rect = renderer.domElement.getBoundingClientRect();
+        const c = pinchCenter(e.touches);
+        const size = Math.max(4, PINCH_BOX_INITIAL * r.scale);
+        pinchState.boxRect = {
+          x: c.x - rect.left - size / 2,
+          y: c.y - rect.top - size / 2,
+          w: size,
+          h: size,
+        };
         applyPinchBoxStyle();
       }
     };
@@ -18380,28 +18386,33 @@ Now you can apply Displacement for detailed effect.`);
             onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.5)'; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e293b'; }}
           >
-            {/* Color wheel icon — conic gradient penuh warna */}
-            <svg width="22" height="22" viewBox="0 0 22 22" style={{ flexShrink: 0, display: 'block' }}>
-              <defs>
-                <linearGradient id="cwSpec" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(255,255,255,0.9)" />
-                  <stop offset="100%" stopColor="rgba(255,255,255,0.35)" />
-                </linearGradient>
-                <clipPath id="cwClip"><circle cx="11" cy="11" r="9" /></clipPath>
-              </defs>
-              <g clipPath="url(#cwClip)">
-                <rect x="2" y="2" width="18" height="18" fill="conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)" />
-                <circle cx="11" cy="7" r="3.2" fill="url(#cwSpec)" opacity="0.55" />
-              </g>
-              <circle cx="11" cy="11" r="9" fill="none" stroke="#1e293b" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="3.4" fill="#0e1420" stroke="rgba(148,163,184,0.5)" strokeWidth="1" />
-            </svg>
+            {/* Color wheel icon — v2 FIX: SVG `fill` TIDAK mendukung
+                conic-gradient (itu nilai CSS background) → v1 render
+                HITAM (keluhan user: "cuman hitam doang"). Solusi: elemen
+                div ber-background CSS conic-gradient (spec lengkap 7 warna)
+                di dalam mask lingkaran SVG — rainbow penuh ter-render. */}
             <span style={{
-              color: '#f59e0b',
+              width: 22, height: 22, flexShrink: 0, display: 'inline-block', position: 'relative',
+            }}>
+              <span style={{
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                background: 'conic-gradient(from 0deg, #ff0000, #ff8000, #ffff00, #80ff00, #00ff00, #00ff80, #00ffff, #0080ff, #0000ff, #8000ff, #ff00ff, #ff0080, #ff0000)',
+                boxShadow: 'inset 0 0 0 1px rgba(148,163,184,0.4)',
+              }} />
+              <span style={{
+                position: 'absolute', left: '50%', top: '50%',
+                width: 7, height: 7, marginLeft: -3.5, marginTop: -3.5,
+                borderRadius: '50%', backgroundColor: '#0e1420',
+                border: '1px solid rgba(148,163,184,0.5)',
+              }} />
+            </span>
+            <span style={{
+              color: '#FFA500',
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               letterSpacing: 0.3,
               whiteSpace: 'nowrap',
+              textShadow: '0 0 10px rgba(255,165,0,0.55), 0 0 3px rgba(255,165,0,0.4)',
             }}>
               Color Settings
             </span>
