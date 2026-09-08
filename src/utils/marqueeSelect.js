@@ -159,4 +159,67 @@ export const MARQUEE_COLOR_BY_TOOL = {
   mirror: '#9D00FF',
 };
 
+// ══════════════════════════════════════════════════════════════════════
+// Phase 55 (2026-09-07): PINCH SELECT BOX — MOBILE ONLY.
+// User tidak punya mouse di mobile → pengganti drag marquee:
+//   • Zoom-OUT 2 jari (jari MENJAUH) saat tool keluarga-5 + checkbox
+//     Select Box tercentang → kotak MUNCUL SEKETIKA.
+//   • Setelah kotak aktif: zoom-out = MEMBESAR, zoom-in = MENGECIL.
+//   • Kalau belum ada kotak lalu user zoom-IN (mencubit) duluan →
+//     kotak TIDAK muncul — hanya zoom kamera biasa.
+//   • Checkbox OFF atau tool non-keluarga → pinch hanya kamera.
+//
+// Fungsi ini MURNI (state machine tanpa DOM/scene) supaya mudah dites.
+// state = objek gesture (dipertahankan antar touchmove oleh pemanggil):
+//   { active: boolean } — apakah kotak pinch sedang tampil.
+// ══════════════════════════════════════════════════════════════════════
+
+const PINCH_EPS = 2; // px — perubahan jarak di bawah ini dianggap diam
+
+/**
+ * Evaluasi satu langkah pinch (touchmove) untuk fitur Select Box mobile.
+ *
+ * @param {{active:boolean}} state state gesture (mutable, persist antar event)
+ * @param {{dist:number, prevDist:number, tool:string|null, checked:boolean}} p
+ *   dist = jarak 2 jari SEKARANG (px); prevDist = jarak langkah sebelumnya;
+ *   tool = tool aktif; checked = checkbox Select Box tercentang?
+ * @returns {{boxVisible:boolean, scale:number, cameraOnly:boolean, activated:boolean}}
+ *   boxVisible = kotak harus tampil; scale = faktor ubah ukuran kotak
+ *   (1 = tak berubah, >1 membesar, <1 mengecil); cameraOnly = pinch ini
+ *   murni urusan kamera (kotak tak boleh muncul / kamera jalan normal);
+ *   activated = kotak BARU saja diaktifkan gesture ini (pemanggil boleh
+ *   men-set posisi awal kotak sekali).
+ */
+export function evaluatePinchSelectBox(state, p) {
+  const { dist, prevDist, tool, checked } = p;
+  const inFamily5 = tool === 'move' || tool === 'rotate' || tool === 'scale'
+    || tool === 'clone' || tool === 'mirror';
+
+  // Syarat pakai (sama dengan engine mouse): keluarga-5 + tercentang.
+  if (!inFamily5 || !checked) {
+    return { boxVisible: false, scale: 1, cameraOnly: true, activated: false };
+  }
+
+  const delta = dist - prevDist;
+  const growing = delta > PINCH_EPS;   // jari menjauh = zoom-out
+  const shrinking = delta < -PINCH_EPS;
+
+  // Kotak BELUM aktif:
+  //   - zoom-IN duluan → kamera saja (kotak tak boleh muncul, permanen
+  //     sampai gesture selesai), ZOOM-OUT → kotak MUNCUL SEKETIKA.
+  if (!state.active) {
+    if (growing) {
+      state.active = true;
+      return { boxVisible: true, scale: 1, cameraOnly: false, activated: true };
+    }
+    return { boxVisible: false, scale: 1, cameraOnly: true, activated: false };
+  }
+
+  // Kotak sudah aktif: ikuti arah pinch (out = besar, in = kecil),
+  // tetap tampil (mengecil TIDAK menutup kotak).
+  if (growing) return { boxVisible: true, scale: 1 + delta / Math.max(prevDist, 1), cameraOnly: false, activated: false };
+  if (shrinking) return { boxVisible: true, scale: 1 + delta / Math.max(prevDist, 1), cameraOnly: false, activated: false };
+  return { boxVisible: true, scale: 1, cameraOnly: false, activated: false };
+}
+
 export default getBlocksInScreenRect;

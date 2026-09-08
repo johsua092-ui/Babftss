@@ -29,7 +29,7 @@ import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
-import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL } from '../utils/marqueeSelect.js';
+import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox } from '../utils/marqueeSelect.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -13521,6 +13521,116 @@ Now you can apply Displacement for detailed effect.`);
     window.addEventListener('mousedown', onMarqueeMouseDown);
     window.addEventListener('mouseup', marqueeFinish);
 
+    // ── Phase 55: PINCH SELECT BOX — MOBILE ONLY ──
+    // (PC tidak tersentuh: handler hanya dipasang jika layar sempit <768px
+    //  DAN perangkat punya touch. Kebalikan keybinds [1]-[0] yang PC-only.)
+    // Perilaku (permintaan user):
+    //   • Zoom-OUT 2 jari (jari menjauh) saat tool keluarga-5 + checkbox
+    //     Select Box tercentang → kotak MUNCUL SEKETIKA di tengah 2 jari.
+    //   • Setelah muncul: zoom-out = MEMBESAR, zoom-in = MENGECIL.
+    //   • Zoom-IN duluan (mencubit) tanpa kotak → kamera saja, kotak tak muncul.
+    //   • Checkbox OFF / tool non-keluarga → pinch = zoom kamera normal.
+    //   • Saat kotak aktif, OrbitControls dinonaktifkan supaya pinch tidak
+    //     menggerakkan kamera; seleksi dijalankan saat touchend (persis
+    //     logika marqueeFinish: clearSelection + selectBlock + attach gizmo).
+    const isMobileViewport = typeof window !== 'undefined'
+      && window.innerWidth < 768 && ('ontouchstart' in window);
+    let pinchState = null; // { active, prevDist, boxRect:{x,y,w,h}, el }
+
+    const pinchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const pinchCenter = (t) => ({
+      x: (t[0].clientX + t[1].clientX) / 2,
+      y: (t[0].clientY + t[1].clientY) / 2,
+    });
+
+    const applyPinchBoxStyle = () => {
+      if (!pinchState || !pinchState.el) return;
+      const r = pinchState.boxRect;
+      pinchState.el.style.left = `${r.x}px`;
+      pinchState.el.style.top = `${r.y}px`;
+      pinchState.el.style.width = `${r.w}px`;
+      pinchState.el.style.height = `${r.h}px`;
+    };
+
+    const onPinchTouchStart = (e) => {
+      if (e.touches.length !== 2) return;
+      // State gesture baru — evaluatePinchSelectBox yang menentukan aktif/nya
+      const rect = renderer.domElement.getBoundingClientRect();
+      const c = pinchCenter(e.touches);
+      const inside = c.x >= rect.left && c.x <= rect.right && c.y >= rect.top && c.y <= rect.bottom;
+      if (!inside) { pinchState = null; return; }
+      pinchState = {
+        active: false,
+        prevDist: pinchDist(e.touches),
+        el: null,
+        boxRect: { x: 0, y: 0, w: 0, h: 0 },
+      };
+    };
+
+    const onPinchTouchMove = (e) => {
+      if (!pinchState || e.touches.length !== 2) return;
+      const dist = pinchDist(e.touches);
+      const r = evaluatePinchSelectBox(pinchState, {
+        dist,
+        prevDist: pinchState.prevDist,
+        tool: toolRef.current,
+        checked: selectBoxRef.current,
+      });
+      pinchState.prevDist = dist;
+
+      if (r.cameraOnly) return; // pinch murni kamera — jangan sentuh apa pun
+
+      if (r.boxVisible && !pinchState.el) {
+        // Kotak BARU aktif → buat di posisi tengah 2 jari, ukuran awal kecil
+        controls.enabled = false; // kamera diam selama kotak aktif
+        const rect = renderer.domElement.getBoundingClientRect();
+        const c = pinchCenter(e.touches);
+        const color = MARQUEE_COLOR_BY_TOOL[toolRef.current] || '#0044E0';
+        pinchState.el = document.createElement('div');
+        pinchState.el.style.cssText = `position:absolute; pointer-events:none; z-index:6;
+          border:2px solid ${color}; background:${color}26;`;
+        renderer.domElement.parentElement.appendChild(pinchState.el);
+        const cx = c.x - rect.left, cy = c.y - rect.top;
+        pinchState.boxRect = { x: cx - 20, y: cy - 20, w: 40, h: 40 };
+        applyPinchBoxStyle();
+      } else if (r.boxVisible && pinchState.el) {
+        // Resize kotak mengikuti arah pinch (out = besar, in = kecil)
+        const b = pinchState.boxRect;
+        const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+        let w = b.w * r.scale, h = b.h * r.scale;
+        w = Math.max(4, Math.min(w, 4000)); h = Math.max(4, Math.min(h, 4000));
+        pinchState.boxRect = { x: cx - w / 2, y: cy - h / 2, w, h };
+        applyPinchBoxStyle();
+      }
+    };
+
+    const onPinchTouchEnd = (e) => {
+      if (!pinchState) return;
+      const st = pinchState;
+      pinchState = null;
+      if (st.el && st.boxRect.w > 5 && st.boxRect.h > 5) {
+        // Seleksi final — persis logika marqueeFinish
+        const rect = renderer.domElement.getBoundingClientRect();
+        const br = st.boxRect;
+        const hits = getBlocksInScreenRect(
+          threeRef.current.blocks, camera,
+          { x: br.x, y: br.y, w: br.w, h: br.h },
+          rect.width, rect.height,
+        );
+        clearSelection();
+        hits.forEach(b => { selectBlock(b, true); });
+        attachGizmoToSelection();
+      }
+      if (st.el) { st.el.remove(); }
+      controls.enabled = true; // kamera pulih
+    };
+
+    if (isMobileViewport) {
+      window.addEventListener('touchstart', onPinchTouchStart, { passive: true });
+      window.addEventListener('touchmove', onPinchTouchMove, { passive: true });
+      window.addEventListener('touchend', onPinchTouchEnd);
+    }
+
 
     // ── Phase 8: Undo/Redo ──
     // FIX 2026-08-31 (Task ID 24 — "undo harus MAHAKUASA"):
@@ -14580,6 +14690,13 @@ Now you can apply Displacement for detailed effect.`);
       window.removeEventListener('mouseup', marqueeFinish);
       window.removeEventListener('mousemove', marqueeUpdate);
       if (marqueeEl) { marqueeEl.remove(); marqueeEl = null; }
+      // Phase 55: lepas listener pinch mobile + bersihkan kotak pinch
+      if (isMobileViewport) {
+        window.removeEventListener('touchstart', onPinchTouchStart);
+        window.removeEventListener('touchmove', onPinchTouchMove);
+        window.removeEventListener('touchend', onPinchTouchEnd);
+      }
+      if (pinchState && pinchState.el) { pinchState.el.remove(); pinchState = null; }
       transformControls.removeEventListener('dragging-changed', onTransformDraggingChanged);
       transformControls.removeEventListener('objectChange', onTransformObjectChange);
       fileInputRef.removeEventListener('change', onFileInputChange);
@@ -15100,29 +15217,38 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Paintbrush size={15} />
               <span>Paint</span>
-              {/* Gerigi icon — di TENGAH (antara text dan keybind number).
-                  Klik = buka modal (ganti warna). stopPropagation supaya tidak
-                  trigger parent onClick (toggle tool). */}
-              <Settings
-                size={14}
-                style={{
-                  cursor: 'pointer',
-                  opacity: 0.7,
-                  flexShrink: 0,
-                  marginLeft: 16,
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setColorPicker({
-                    targetMeshes: null,
-                    hex: paintCustomColor || currentColor,
-                    originalHex: paintCustomColor || currentColor,
-                    mode: 'picker',
-                  });
-                }}
-                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-                onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; }}
-              />
+              {/* Phase 55 (MOBILE ONLY, <768px): gerigi icon dipindah ke
+                  LOKASI KEYBINDS — paling kanan tombol (di mobile slot
+                  keybind [3] memang tidak dirender), dengan OUTLINE
+                  ORANYE supaya terlihat seperti tombol kecil terpisah
+                  "di atas" tombol Paint.
+                  PC (>=768px): gerigi TIDAK dirender di tombol — fungsinya
+                  pindah ke tombol "Color Settings" (panel kanan atas). */}
+              {typeof window !== 'undefined' && window.innerWidth < 768 ? (
+                <Settings
+                  size={16}
+                  style={{
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    marginLeft: 'auto',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 26, height: 20,
+                    borderRadius: 5,
+                    border: '1.5px solid #f59e0b',
+                    color: tool === 'paint' ? '#0e1420' : '#f59e0b',
+                    backgroundColor: 'rgba(245,158,11,0.12)',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setColorPicker({
+                      targetMeshes: null,
+                      hex: paintCustomColor || currentColor,
+                      originalHex: paintCustomColor || currentColor,
+                      mode: 'picker',
+                    });
+                  }}
+                />
+              ) : null}
               {/* Keybind [3] di ujung kanan — PC only */}
               {typeof window !== 'undefined' && window.innerWidth >= 768 && (
                 <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 1, color: '#ffffff', fontFamily: 'monospace', fontWeight: 700, textShadow: '0 0 4px rgba(255,255,255,0.5)' }}>[3]</span>
@@ -18213,7 +18339,76 @@ Now you can apply Displacement for detailed effect.`);
           </div>
         )}
 
-        {/* Phase 52 (REDESAIN v3, pakai skill claude-design + ui-ux-design-system):
+        {/* Phase 55 (PC ONLY, >=768px): Tombol "Color Settings" —
+            MENGGANTIKAN icon gear di tombol Paint (gear sudah dihapus
+            dari tombol di PC). Muncul HANYA saat tool = paint.
+            POSISI: koordinat PERSIS panel Colors (top: 80, right: 16) —
+            koordinat yang sama dengan yang pernah user minta untuk
+            panel-panel kanan.
+            FUNGSI: PERSIS sama dengan gear lama — buka ColorWheelPicker
+            modal (setColorPicker mode 'picker'). Awas keliru: bukan
+            toggle tool, bukan set warna langsung — hanya buka modal.
+            DESAIN: mengikuti design system app (skill design — dark
+            panel, border #1e293b, radius, blur, Orbitron/Inter) +
+            color wheel icon SVG conic-gradient (seluruh warna indah)
+            + teks ORANYE #f59e0b. */}
+        {typeof window !== 'undefined' && window.innerWidth >= 768 && tool === 'paint' && (
+          <button
+            onClick={() => {
+              setColorPicker({
+                targetMeshes: null,
+                hex: paintCustomColor || currentColor,
+                originalHex: paintCustomColor || currentColor,
+                mode: 'picker',
+              });
+            }}
+            title="Color Settings — buka color wheel untuk ganti warna paint"
+            style={{
+              position: 'absolute', top: 80, right: 16,
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px',
+              backgroundColor: 'rgba(14, 20, 32, 0.92)',
+              border: '1px solid #1e293b',
+              borderRadius: 12,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+              cursor: 'pointer',
+              zIndex: 5,
+              fontFamily: 'Inter, sans-serif',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.5)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e293b'; }}
+          >
+            {/* Color wheel icon — conic gradient penuh warna */}
+            <svg width="22" height="22" viewBox="0 0 22 22" style={{ flexShrink: 0, display: 'block' }}>
+              <defs>
+                <linearGradient id="cwSpec" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.9)" />
+                  <stop offset="100%" stopColor="rgba(255,255,255,0.35)" />
+                </linearGradient>
+                <clipPath id="cwClip"><circle cx="11" cy="11" r="9" /></clipPath>
+              </defs>
+              <g clipPath="url(#cwClip)">
+                <rect x="2" y="2" width="18" height="18" fill="conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)" />
+                <circle cx="11" cy="7" r="3.2" fill="url(#cwSpec)" opacity="0.55" />
+              </g>
+              <circle cx="11" cy="11" r="9" fill="none" stroke="#1e293b" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="3.4" fill="#0e1420" stroke="rgba(148,163,184,0.5)" strokeWidth="1" />
+            </svg>
+            <span style={{
+              color: '#f59e0b',
+              fontSize: 13,
+              fontWeight: 600,
+              letterSpacing: 0.3,
+              whiteSpace: 'nowrap',
+            }}>
+              Color Settings
+            </span>
+          </button>
+        )}
+
+        {/* Phase 52 (REDESAIN v3, pakai skill claude-design + ui-ux-design-system): Panel
             Panel "arrow match rotation" — 1 keluarga untuk 5 tool (move,
             rotate, scale, clone, mirror). Muncul saat SALAH SATU aktif;
             efek checkbox langsung ke SEMUANYA.
