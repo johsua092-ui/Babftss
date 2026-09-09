@@ -29,7 +29,8 @@ import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
-import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox } from '../utils/marqueeSelect.js';
+import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
+import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -326,9 +327,21 @@ export default function BlockSimulator3Dv2({ setPage }) {
               ? sourceBlock.material.map(m => m.clone())
               : sourceBlock.material.clone();
             const ghost = new THREE.Mesh(newGeo, newMat);
+            // FIX Phase 56 (2026-09-09, klarifikasi user): pindah tool KE
+            // MIRROR → ghost wajib BAYANGAN KACA (sisi 100% berlawanan),
+            // BUKAN twin identik. Terukur: ghost identik punya det +1
+            // (rotasi biasa — bukan kaca). KE CLONE → tetap identik persis.
+            // applyMirrorGlass: posisi=persis source + konjugasi refleksi
+            // rotasi + scale.x=−1 → kaca sejati det −1. Block belum
+            // di-rotate → hasilnya tampak seperti clone (BENAR — kubus
+            // simetris; "kekuatan kaca" muncul saat block sudah miring).
             ghost.position.copy(sourceBlock.position);
-            ghost.rotation.copy(sourceBlock.rotation);
-            ghost.scale.copy(sourceBlock.scale);
+            if (tool === 'mirror') {
+              applyMirrorGlass(ghost, sourceBlock);
+            } else {
+              ghost.rotation.copy(sourceBlock.rotation);
+              ghost.scale.copy(sourceBlock.scale);
+            }
             ghost.castShadow = true;
             ghost.receiveShadow = true;
             ghost.userData.isBlock = true;
@@ -359,6 +372,25 @@ export default function BlockSimulator3Dv2({ setPage }) {
         } else {
           // FIX Phase 50 v12: ghost hidup dipertahankan — gizmo tetap attach,
           // re-highlight ghost supaya block tetap terlihat siap di-drag.
+          // FIX Phase 56 (2026-09-09): pindah clone↔mirror dengan ghost hidup
+          // → ORIENTASI ghost wajib mengikuti tool tujuan: ke MIRROR = bayangan
+          // kaca (sisi berlawanan), ke CLONE = identik persis. Posisi TIDAK
+          // disentuh (ghost bisa sudah user geser — jangan teleport). Sumber
+          // orientasi = block ASAL (userData.ghostSource, FIX v13), bukan
+          // orientasi ghost sekarang (bisa sudah ter-flip dari tool lama).
+          const srcOrigin = sourceBlock && sourceBlock.userData.ghostSource;
+          if (srcOrigin && srcOrigin.parent) {
+            try {
+              if (tool === 'mirror') {
+                mirrorQuaternionX(sourceBlock.quaternion, srcOrigin.quaternion);
+                sourceBlock.scale.copy(srcOrigin.scale);
+                sourceBlock.scale.x = -sourceBlock.scale.x; // kaca sejati det −1
+              } else {
+                sourceBlock.quaternion.copy(srcOrigin.quaternion);
+                sourceBlock.scale.copy(srcOrigin.scale);
+              }
+            } catch (e) { /* jangan gagalkan switch tool */ }
+          }
           if (sourceBlock && sourceBlock.material) {
             const mats = Array.isArray(sourceBlock.material) ? sourceBlock.material : [sourceBlock.material];
             mats.forEach(m => {
@@ -13149,33 +13181,23 @@ Now you can apply Displacement for detailed effect.`);
             if (threeRef.current.cloneGhost.geometry) threeRef.current.cloneGhost.geometry.dispose();
             threeRef.current.cloneGhost = null;
           }
-          // Ghost = MIRROR dari source (flip di sumbu X), dimulai di posisi source.
-          // Gizmo Move 6 panah → drag → ghost MENGIKUTI kursor; hasilnya mirror
-          // permanen di posisi yang digeser.
+          // Ghost = MIRROR KACA dari source (Phase 56, klarifikasi user
+          // 2026-09-09): fungsi mirror = MENGKLONING seperti clone (ghost
+          // mulai & mengikuti geseran), TAPI hasilnya bayangan kaca —
+          // sisi-sisi 100% berlawanan arah. Jalur lama menegasi position.x
+          // (ghost muncul di seberang area build — salah) + memflip angka
+          // rotasi Euler (det +1 — bukan kaca, cuma rotasi).
+          // applyMirrorGlass: posisi=persis source, rotasi=konjugasi
+          // refleksi S·R·S, scale.x=−1 → kaca sejati det −1 (terukur probe:
+          // yaw 90° → depan source (1,0,0) vs depan ghost (−1,0,0)).
+          // Gizmo Move 6 panah attach ke ghost → drag → ghost MENGIKUTI
+          // kursor; hasil mirror permanen di posisi yang digeser.
           const newGeo = source.geometry.clone();
           const newMat = Array.isArray(source.material)
             ? source.material.map(m => m.clone())
             : source.material.clone();
           const mirrorMesh = new THREE.Mesh(newGeo, newMat);
-          mirrorMesh.position.copy(source.position);
-          if (axis === 'x') mirrorMesh.position.x = -mirrorMesh.position.x;
-          else if (axis === 'y') mirrorMesh.position.y = -mirrorMesh.position.y;
-          else if (axis === 'z') mirrorMesh.position.z = -mirrorMesh.position.z;
-          mirrorMesh.rotation.copy(source.rotation);
-          if (axis === 'x') {
-            mirrorMesh.rotation.y = -mirrorMesh.rotation.y;
-            mirrorMesh.rotation.z = -mirrorMesh.rotation.z;
-          } else if (axis === 'y') {
-            mirrorMesh.rotation.x = -mirrorMesh.rotation.x;
-            mirrorMesh.rotation.z = -mirrorMesh.rotation.z;
-          } else if (axis === 'z') {
-            mirrorMesh.rotation.x = -mirrorMesh.rotation.x;
-            mirrorMesh.rotation.y = -mirrorMesh.rotation.y;
-          }
-          mirrorMesh.scale.copy(source.scale);
-          if (axis === 'x') mirrorMesh.scale.x = -mirrorMesh.scale.x;
-          else if (axis === 'y') mirrorMesh.scale.y = -mirrorMesh.scale.y;
-          else if (axis === 'z') mirrorMesh.scale.z = -mirrorMesh.scale.z;
+          applyMirrorGlass(mirrorMesh, source);
           mirrorMesh.castShadow = true;
           mirrorMesh.receiveShadow = true;
           mirrorMesh.userData.isBlock = true;
@@ -13419,7 +13441,19 @@ Now you can apply Displacement for detailed effect.`);
           selected.forEach(b => scene.attach(b));
           scene.remove(selectionGroup);
         }
+        // FIX Phase 56 (2026-09-09, permintaan user): gizmo multi-select
+        // wajib muncul TEPAT di TITIK TENGAH AREA semua block terpilih,
+        // bukan di pusat area build. Sebelumnya: Group polos → origin
+        // (0,0,0) → gizmo nempel di pusat build walaupun 2 block di ujung
+        // kiri-kanan (terukur harness: pivot (0,0,0) padahal block di ±8).
+        // Rumus (usulan user: "pake rumus aja buat nyari titik area tengah"):
+        // union bounding box WORLD semua block → center = (min+max)/2.
+        // Group.position diset ke center SEBELUM attach → gizmo nempel
+        // di titik tengah; attach() tetap preserve world position block.
+        // Berlaku untuk SEMUA keluarga-5 (fungsi shared attachGizmoToSelection).
         selectionGroup = new THREE.Group();
+        const pivot = getSelectionPivot([...selected]);
+        if (pivot) selectionGroup.position.copy(pivot);
         scene.add(selectionGroup);
         selected.forEach(b => selectionGroup.attach(b)); // preserve world position
         transformControls.attach(selectionGroup);
@@ -13536,6 +13570,9 @@ Now you can apply Displacement for detailed effect.`);
     const isMobileViewport = typeof window !== 'undefined'
       && window.innerWidth < 768 && ('ontouchstart' in window);
     let pinchState = null; // { active, anchorDist, el, boxRect }
+    // FIX Phase 56: pending re-enable kamera — kalau saat touchend pertama
+    // masih ada jari tersisa, enable ditunda ke touchend TERAKHIR.
+    let pinchControlsPending = false;
     // v2: ukuran awal kotak — dikali scale (dist/anchorDist) tiap move.
     // 80px cukup terlihat di layar HP dan langsung terasa responsif.
     const PINCH_BOX_INITIAL = 80;
@@ -13628,13 +13665,45 @@ Now you can apply Displacement for detailed effect.`);
         attachGizmoToSelection();
       }
       if (st.el) { st.el.remove(); }
-      controls.enabled = true; // kamera pulih
+      // FIX Phase 56 (2026-09-09, laporan user — "boom kamera meledak"):
+      // DULU: controls.enabled = true LANGSUNG di sini. Padahal saat jari
+      // PERTAMA dilepas, jari kedua sering masih menekan layar. OrbitControls
+      // onPointerUp TIDAK punya guard enabled (beda dengan onPointerMove):
+      // ia jalan terus → state-correction "case 1" men-set state TOUCH_ROTATE
+      // dengan _rotateStart = posisi jari kedua yang STALE (beku, karena
+      // onPointerMove selama ini ke-gate enabled=false → _pointerPositions
+      // tidak ter-update). Lalu enabled=true dinyalakan → jari kedua bergeser
+      // sedikit → _handleTouchMoveRotate menghitung delta = sekarang − BEKU
+      // (bisa ratusan px karena user tadi menggoyang kotak) → kamera tersentak
+      // ratusan derajat sekaligus (terukur harness: azimuth 48.9° + polar
+      // 100.3° dalam SATU move; di device nyata bisa jauh lebih liar).
+      // FIX: pulihkan kamera HANYA kalau SEMUA jari sudah lepas dari layar.
+      // Kalau masih ada jari tersisa → tandai pending; OrbitControls
+      // state-correction-nya sendiri sudah men-set state NONE saat pointer
+      // terakhir lepas, dan touchend TERAKHIR (pinchState sudah null) yang
+      // menuntaskan pending — kamera mati sementara, TIDAK meledak, lalu
+      // pulih normal begitu layar benar-benar kosong.
+      if (e.touches.length === 0) {
+        controls.enabled = true; // semua jari lepas → kamera pulih normal
+        pinchControlsPending = false;
+      } else {
+        pinchControlsPending = true; // masih ada jari → tunda ke touchend akhir
+      }
+    };
+    // Penuntasan pending: touchend TANPA pinchState aktif (gesture berikutnya /
+    // sisa jari terakhir yang dilepas setelah marquee selesai).
+    const onPinchTouchEndPending = (e) => {
+      if (e.touches.length === 0 && pinchControlsPending) {
+        controls.enabled = true;
+        pinchControlsPending = false;
+      }
     };
 
     if (isMobileViewport) {
       window.addEventListener('touchstart', onPinchTouchStart, { passive: true });
       window.addEventListener('touchmove', onPinchTouchMove, { passive: true });
       window.addEventListener('touchend', onPinchTouchEnd);
+      window.addEventListener('touchend', onPinchTouchEndPending); // Phase 56: penuntasan pending kamera
     }
 
 
@@ -18452,6 +18521,16 @@ Now you can apply Displacement for detailed effect.`);
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5,
             minWidth: 208,
+            // FIX Phase 56 (2026-09-09, laporan user — "panel memanjang ke kiri"):
+            // Panel absolute nempel KANAN (right:16) pakai lebar shrink-to-fit —
+            // teks hint gabungan "• Select Box aktif: drag kiri = kotak pilih"
+            // (satu baris) membuat panel melebar 79.7px ke KIRI saat Select Box
+            // dicentang (terukur harness: 234.0 → 313.7px). Dengan maxWidth
+            // = minWidth = 208, lebar panel KONSTAN — hint yang panjang WRAP ke
+            // baris baru, bukan melebarkan panel. Centang Arrow Match Rotation
+            // saja memang tidak pernah melebar (teksnya pendek) — cocok laporan
+            // user: bug hanya muncul saat centang Select Box.
+            maxWidth: 208,
           }}>
             {/* Header — identik dgn header "Colors" (Orbitron uppercase) */}
             <div style={{
@@ -18552,13 +18631,16 @@ Now you can apply Displacement for detailed effect.`);
               </div>
             </div>
 
-            {/* Hint kecil — progressive disclosure (surface Configure) */}
+            {/* Hint kecil — progressive disclosure (surface Configure).
+                FIX Phase 56: teks pendek per-keadaan (bukan 1 baris gabungan
+                panjang) supaya tidak pernah mendorong lebar panel; panel sudah
+                maxWidth 208 → hint wrap ke bawah, bukan melebar ke kiri. */}
             <div style={{
               marginTop: 2, fontSize: 9.5, color: 'rgba(148,163,184,0.55)',
               fontFamily: 'Inter, sans-serif', lineHeight: 1.4,
             }}>
-              {arrowMatchRotation ? 'Gizmo mengikuti rotasi block' : 'Gizmo selalu tegak lurus dunia'}
-              {selectBoxEnabled ? ' • Select Box aktif: drag kiri = kotak pilih' : ''}
+              <div>{arrowMatchRotation ? 'Gizmo mengikuti rotasi block' : 'Gizmo selalu tegak lurus dunia'}</div>
+              {selectBoxEnabled && <div>Select Box aktif: drag kiri = kotak pilih</div>}
             </div>
           </div>
         )}

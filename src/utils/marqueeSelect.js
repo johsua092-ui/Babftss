@@ -160,6 +160,46 @@ export const MARQUEE_COLOR_BY_TOOL = {
 };
 
 // ══════════════════════════════════════════════════════════════════════
+// Phase 56 (2026-09-09): PIVOT MULTI-SELECT — titik tengah area seleksi.
+// Permintaan user: gizmo multi-select harus muncul TEPAT di titik tengah
+// area SEMUA block terpilih (bukan di pusat area build). Rumus: union
+// bounding box WORLD semua block terpilih → center = (min+max)/2
+// (Box3.getCenter). Otomatis benar untuk 2 block berjauhan maupun 50
+// block tersebar, termasuk yang dirotasi/di-scale (setFromObject
+// menghitung bbox world akurat — mesin sama dengan getScreenBox).
+// Terukur harness: 2 block ±X + 1 block dirotasi → pivot (0, 1.25, −2.808)
+// = tepat tengah; sedangkan Group polos tanpa position → pivot (0,0,0)
+// = pusat build area (bug lama).
+// MURNI: tanpa efek samping, tanpa scene/gizmo — gampang dites headless.
+// Dipakai BlockSimulator3Dv2.jsx attachGizmoToSelection (keluarga-5).
+// ══════════════════════════════════════════════════════════════════════
+
+const _pivotBox = new THREE.Box3();
+const _pivotTmp = new THREE.Box3();
+
+/**
+ * Titik tengah area seleksi (world space) — pusat gizmo multi-select.
+ * @param {THREE.Object3D[]} blocks block terpilih (boleh berotasi/skala)
+ * @returns {THREE.Vector3|null} null kalau tidak ada block valid
+ */
+export function getSelectionPivot(blocks) {
+  if (!blocks || blocks.length === 0) return null;
+  _pivotBox.makeEmpty();
+  let any = false;
+  for (const b of blocks) {
+    if (!b || !b.parent) continue; // sudah dihapus/dibuang → skip
+    try {
+      _pivotTmp.setFromObject(b);
+      if (_pivotTmp.isEmpty()) continue;
+      _pivotBox.union(_pivotTmp);
+      any = true;
+    } catch (e) { /* block rusak → skip, jangan gagalkan seleksi */ }
+  }
+  if (!any || _pivotBox.isEmpty()) return null;
+  return _pivotBox.getCenter(new THREE.Vector3());
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // Phase 55 v2 (2026-09-07): PINCH SELECT BOX — MOBILE ONLY, direct-tracking.
 // User tidak punya mouse di mobile → pengganti drag marquee:
 //   • Zoom-OUT 2 jari (jari MENJAUH) saat tool keluarga-5 + checkbox
