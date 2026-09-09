@@ -33,7 +33,7 @@ const KNOWN_PAGES = new Set([
     'logic-gates-simulator',
 ]);
 const ShapesCalculator = lazy(() => import('./pages/ShapesCalculator'));
-const BlockSimulator3Dv2 = lazy(() => import('./pages/BlockSimulator3Dv2'));
+const BlockSimulator3D = lazy(() => import('./pages/BlockSimulator3D'));
 const BlockSimulatorTest = lazy(() => import('./components/BlockSimulatorTest'));
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
@@ -276,10 +276,10 @@ export default function App() {
             {page === "block-simulator-3d-v2" && <motion.div key="block-simulator-3d-v2" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
                 {/* Route guard defense-in-depth: jika somehow (mis. via devtools state
                     manipulation) `page` diset ke 'block-simulator-3d-v2' padahal user
-                    belum login, jangan render <BlockSimulator3Dv2 />. Tampilkan layar
+                    belum login, jangan render <BlockSimulator3D />. Tampilkan layar
                     akses-ditolak inline + tombol Sign In yang membuka LoginModal. */}
                 {user
-                    ? <Suspense fallback={pageFallback}><BlockSimulator3Dv2 setPage={setPage} /></Suspense>
+                    ? <Suspense fallback={pageFallback}><BlockSimulator3D setPage={setPage} /></Suspense>
                     : (
                         <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
                             <motion.div
@@ -308,7 +308,7 @@ export default function App() {
                                     AKSES DIKUNCI
                                 </h1>
                                 <p style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.6, margin: '0 0 24px' }}>
-                                    3D Block Simulator v2 hanya tersedia untuk pengguna yang sudah masuk.
+                                    3D Block Simulator hanya tersedia untuk pengguna yang sudah masuk.
                                     Silakan sign in untuk melanjutkan.
                                 </p>
                                 <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -347,7 +347,7 @@ export default function App() {
             {page === "block-sim-test" && <motion.div key="block-sim-test" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
                 {/* Test page — open access (no auth lock) for easy performance testing.
                     Uses ChunkManager engine (src/lib/ChunkManager.js) instead of per-block Mesh.
-                    Isolated from BlockSimulator3Dv2.jsx — does not modify it. */}
+                    Isolated from BlockSimulator3D.jsx — does not modify it. */}
                 <Suspense fallback={pageFallback}><BlockSimulatorTest setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "menu" && <motion.div key="menu" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, position: 'relative' }}>

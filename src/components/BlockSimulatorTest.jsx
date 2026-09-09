@@ -1,12 +1,12 @@
 /**
  * BlockSimulatorTest.jsx — Test page for ChunkManager engine.
  *
- * Isolated test environment that does NOT modify BlockSimulator3Dv2.jsx.
- * Duplicates basic UI from v2 (3D canvas, grid, camera controls) but uses
+ * Isolated test environment that does NOT modify BlockSimulator3D.jsx.
+ * Duplicates basic UI from the main simulator (3D canvas, grid, camera controls) but uses
  * src/lib/ChunkManager.js for rendering instead of per-block Mesh.
  *
  * Features:
- *   - 500×500 grid (matches v2)
+ *   - 500×500 grid (matches the simulator)
  *   - ChunkManager engine (InstancedMesh per 25×25 chunk)
  *   - Stress test: "Generate 10,000 Random Blocks" button
  *   - Real-time FPS / Block count / Chunk count / Draw calls
@@ -15,7 +15,7 @@
  *   - Camera far=2000 (covers 500×500 diagonal ~707)
  *
  * Self-contained — imports only three.js, OrbitControls, ChunkManager, lucide-react.
- * Zero dependencies on BlockSimulator3Dv2.jsx.
+ * Zero dependencies on BlockSimulator3D.jsx.
  */
 
 import { useRef, useEffect, useState } from 'react';
@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ChunkManager } from '../lib/ChunkManager.js';
 
-const GRID_SIZE = 250; // grid = GRID_SIZE * 2 = 500 units → 500×500 (matches v2)
+const GRID_SIZE = 250; // grid = GRID_SIZE * 2 = 500 units → 500×500 (matches the simulator)
 
 // Color palette for stress test blocks
 const STRESS_COLORS = [
@@ -100,7 +100,7 @@ export default function BlockSimulatorTest({ setPage }) {
         scene.add(dirLight);
         scene.add(new THREE.HemisphereLight(0x4a6fa5, 0x1a1a2e, 0.3));
 
-        // ── Grid — 500×500 units, 500 divisions (1 unit per cell, matches v2) ──
+        // ── Grid — 500×500 units, 500 divisions (1 unit per cell, matches the simulator) ──
         const grid = new THREE.GridHelper(GRID_SIZE * 2, GRID_SIZE * 2, 0x64748b, 0x334155);
         grid.material.opacity = 0.5;
         grid.material.transparent = true;

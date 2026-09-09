@@ -36,7 +36,7 @@
  *   identity → identity (block polos = kelihatan seperti clone, BENAR).
  *
  * Fungsi ini MURNI (tidak menyentuh scene/gizmo) — gampang dites
- * tanpa browser. Pemanggil (BlockSimulator3Dv2.jsx) bertanggung jawab
+ * tanpa browser. Pemanggil (BlockSimulator3D.jsx) bertanggung jawab
  * menambahkan ghost ke scene.
  * ================================================================
  */

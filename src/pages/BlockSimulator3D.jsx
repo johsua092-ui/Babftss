@@ -34,12 +34,10 @@ import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
-   (sebelumnya 'v2' — dihapus dari judul UI 2026-09-02 per request user.
-   Tombol menu Shapes tetap '3D Block Simulator v2' utk beda dengan TEST button.)
    Phase 1: 3D Viewport Proper (WebGL)
    ================================================================
 
-   Ini adalah sistem 3D BLOCKED SIMULATOR v2 yang pakai Three.js (WebGL),
+   Ini adalah sistem 3D BLOCKED SIMULATOR yang pakai Three.js (WebGL),
    BUKAN Canvas 2D manual seperti v1. Sistem ini terpisah penuh dari v1.
 
    Phase 1 (sekarang):
@@ -126,7 +124,7 @@ function BuildAreaIcon({ size = 20 }) {
   );
 }
 
-export default function BlockSimulator3Dv2({ setPage }) {
+export default function BlockSimulator3D({ setPage }) {
   const containerRef = useRef(null);
 
   const [blockCount, setBlockCount] = useState(0);
@@ -207,7 +205,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // Phase 53, 2026-09-07: "Select Box" — marquee selection 3D (klik kiri
   // tahan + geser → kotak transparan; semua block yang proyeksinya kena
   // kotak terpilih banyak, jarak tidak relevan).
-  // ATURAN MUTLAK (user, 2026-09-07 v2): default WAJIB TERCENTANG setiap
+  // ATURAN MUTLAK (user, 2026-09-07): default WAJIB TERCENTANG setiap
   // user masuk / membuka 3D Block Simulator — state tidak dipersist, jadi
   // fresh entry selalu kembali tercentang. Syarat pakai: tool aktif harus
   // anggota keluarga-5 (move/rotate/scale/clone/mirror) — dijaga guard di
@@ -455,7 +453,7 @@ export default function BlockSimulator3Dv2({ setPage }) {
   // Phase 37, 2026-09-02: Added 'auto' mode — switches to Instanced when blockCount > 2000,
   // back to Mesh when < 1500 (hysteresis to prevent oscillation).
   // Phase 40, 2026-09-02: Default renderMode = 'auto' per request user.
-  // Saat user buka v2 dalam keadaan apapun, langsung terpakai 'auto' mode
+  // Saat user buka simulator dalam keadaan apapun, langsung terpakai 'auto' mode
   // (smart switching: MESH saat block sedikit, INSTANCED saat banyak).
   const [renderMode, setRenderMode] = useState('auto'); // 'mesh' | 'auto' | 'instanced'
   const renderModeRef = useRef('auto');
@@ -7288,29 +7286,29 @@ Now you can apply Displacement for detailed effect.`);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // AI Helper v2 — Floating orange button + admin chat panel
+  // AI Helper — Floating orange button + admin chat panel
   // Credentials: VITE_AI_HELPER_URL + VITE_AI_HELPER_KEY (see .env.example)
   // ─────────────────────────────────────────────────────────────────────────
-  const [aiHelperV2Open, setAiHelperV2Open] = useState(false);
-  const [aiHelperV2Messages, setAiHelperV2Messages] = useState([
-    { role: 'system', content: 'Anda adalah AI asisten untuk 3D Block Simulator v2. Anda punya akses ke 212 phase features. Untuk eksekusi command, balas dengan format [[COMMAND:commandName(args)]] — contoh: [[COMMAND:placeBlock(5,0,3,red)]]' },
-    { role: 'assistant', content: 'Halo! Saya AI Helper v2 (admin mode). Saya bisa bantu apa saja. Coba: "generate castle", "tambah 10 block merah", atau "enable bloom".' },
+  const [aiHelperOpen, setAiHelperOpen] = useState(false);
+  const [aiHelperMessages, setAiHelperMessages] = useState([
+    { role: 'system', content: 'Anda adalah AI asisten untuk 3D Block Simulator. Anda punya akses ke 212 phase features. Untuk eksekusi command, balas dengan format [[COMMAND:commandName(args)]] — contoh: [[COMMAND:placeBlock(5,0,3,red)]]' },
+    { role: 'assistant', content: 'Halo! Saya AI Helper (admin mode). Saya bisa bantu apa saja. Coba: "generate castle", "tambah 10 block merah", atau "enable bloom".' },
   ]);
-  const [aiHelperV2Input, setAiHelperV2Input] = useState('');
-  const [aiHelperV2Loading, setAiHelperV2Loading] = useState(false);
-  const [aiHelperV2Model, setAiHelperV2Model] = useState('qwen-3.7');
-  const aiHelperV2ScrollRef = useRef(null);
+  const [aiHelperInput, setAiHelperInput] = useState('');
+  const [aiHelperLoading, setAiHelperLoading] = useState(false);
+  const [aiHelperModel, setAiHelperModel] = useState('qwen-3.7');
+  const aiHelperScrollRef = useRef(null);
 
-  const callAiHelperV2 = async (userMessage) => {
-    const newMessages = [...aiHelperV2Messages, { role: 'user', content: userMessage }];
-    setAiHelperV2Messages(newMessages);
-    setAiHelperV2Input('');
-    setAiHelperV2Loading(true);
+  const callAiHelper = async (userMessage) => {
+    const newMessages = [...aiHelperMessages, { role: 'user', content: userMessage }];
+    setAiHelperMessages(newMessages);
+    setAiHelperInput('');
+    setAiHelperLoading(true);
     try {
       const response = await fetch('/api/ai-helper-v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: aiHelperV2Model, messages: newMessages, temperature: 0.7, max_tokens: 1000 }),
+        body: JSON.stringify({ model: aiHelperModel, messages: newMessages, temperature: 0.7, max_tokens: 1000 }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -7318,22 +7316,22 @@ Now you can apply Displacement for detailed effect.`);
       }
       const data = await response.json();
       const aiContent = data.choices?.[0]?.message?.content || 'No response from AI.';
-      setAiHelperV2Messages(prev => [...prev, { role: 'assistant', content: aiContent }]);
+      setAiHelperMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
       const commandPattern = /\[\[COMMAND:([^\]]+)\]\]/g;
       let match;
       while ((match = commandPattern.exec(aiContent)) !== null) {
-        executeAiHelperV2Command(match[1].trim());
+        executeAiHelperCommand(match[1].trim());
       }
     } catch (err) {
-      const fallback = generateAiHelperV2Fallback(userMessage);
-      setAiHelperV2Messages(prev => [...prev, { role: 'assistant', content: fallback.text }]);
-      if (fallback.command) executeAiHelperV2Command(fallback.command);
+      const fallback = generateAiHelperFallback(userMessage);
+      setAiHelperMessages(prev => [...prev, { role: 'assistant', content: fallback.text }]);
+      if (fallback.command) executeAiHelperCommand(fallback.command);
     } finally {
-      setAiHelperV2Loading(false);
+      setAiHelperLoading(false);
     }
   };
 
-  const generateAiHelperV2Fallback = (userMsg) => {
+  const generateAiHelperFallback = (userMsg) => {
     const msg = userMsg.toLowerCase();
     if (msg.includes('castle') || msg.includes('kastil')) return { text: 'Saya akan generate castle!\n\n[[COMMAND:generateScene(castle)]]', command: 'generateScene(castle)' };
     if (msg.includes('tree') || msg.includes('pohon')) return { text: 'Saya akan tambahkan pohon!\n\n[[COMMAND:generateScene(tree)]]', command: 'generateScene(tree)' };
@@ -7343,7 +7341,7 @@ Now you can apply Displacement for detailed effect.`);
     return { text: 'Coba: "generate castle", "tambah tree", "enable bloom", atau "clear scene".', command: null };
   };
 
-  const executeAiHelperV2Command = (cmdStr) => {
+  const executeAiHelperCommand = (cmdStr) => {
     const s = threeRef.current;
     if (!s || !s.scene) return;
     const match = cmdStr.match(/^(\w+)\((.*)\)$/);
@@ -7411,10 +7409,10 @@ Now you can apply Displacement for detailed effect.`);
     }
   };
 
-  const handleAiHelperV2Submit = (e) => {
+  const handleAiHelperSubmit = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (aiHelperV2Input.trim() && !aiHelperV2Loading) callAiHelperV2(aiHelperV2Input.trim());
+      if (aiHelperInput.trim() && !aiHelperLoading) callAiHelper(aiHelperInput.trim());
     }
   };
 
@@ -13334,7 +13332,7 @@ Now you can apply Displacement for detailed effect.`);
           else if (currentTool === 'rotate') transformControls.setMode('rotate');
           else if (currentTool === 'scale') transformControls.setMode('scale');
         } else {
-          // FIX Phase 54 v2 (2026-09-07, permintaan user): klik kiri ke
+          // FIX Phase 54 revisi kedua (2026-09-07, permintaan user): klik kiri ke
           // AREA KOSONG saat pakai move/rotate/scale → gizmo TIDAK boleh
           // hilang + block tetap ter-highlight — konsisten dengan perilaku
           // clone/mirror (di tool itu branch klik-kosong memang tidak
@@ -13573,7 +13571,7 @@ Now you can apply Displacement for detailed effect.`);
     // FIX Phase 56: pending re-enable kamera — kalau saat touchend pertama
     // masih ada jari tersisa, enable ditunda ke touchend TERAKHIR.
     let pinchControlsPending = false;
-    // v2: ukuran awal kotak — dikali scale (dist/anchorDist) tiap move.
+    // revisi: ukuran awal kotak — dikali scale (dist/anchorDist) tiap move.
     // 80px cukup terlihat di layar HP dan langsung terasa responsif.
     const PINCH_BOX_INITIAL = 80;
 
@@ -13630,7 +13628,7 @@ Now you can apply Displacement for detailed effect.`);
       }
 
       if (r.boxVisible && pinchState.el) {
-        // v2 DIRECT TRACKING: kotak SELALU di tengah 2 jari (midpoint) —
+        // DIRECT TRACKING: kotak SELALU di tengah 2 jari (midpoint) —
         // geser 2 jari tanpa melepas = kotak ikut PINDAH (kamera tetap
         // diam, controls.enabled sudah false). Ukuran = INITIAL × scale
         // (scale = dist/anchorDist) — ringan, instan, tanpa usaha ekstra.
@@ -14275,7 +14273,7 @@ Now you can apply Displacement for detailed effect.`);
         a.click();
         URL.revokeObjectURL(url);
       };
-      const defaultName = `block-sim-v2-scene.${format}`;
+      const defaultName = `block-sim-scene.${format}`;
 
 
       try {
@@ -18455,7 +18453,7 @@ Now you can apply Displacement for detailed effect.`);
             onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.5)'; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e293b'; }}
           >
-            {/* Color wheel icon — v2 FIX: SVG `fill` TIDAK mendukung
+            {/* Color wheel icon — FIX: SVG `fill` TIDAK mendukung
                 conic-gradient (itu nilai CSS background) → v1 render
                 HITAM (keluhan user: "cuman hitam doang"). Solusi: elemen
                 div ber-background CSS conic-gradient (spec lengkap 7 warna)
@@ -20953,10 +20951,10 @@ Now you can apply Displacement for detailed effect.`);
         {phase117Open && (
           <div style={{position:'absolute',top:70,right:16,width:300,maxHeight:'85dvh',backgroundColor:'rgba(14,20,32,0.95)',border:'1px solid #a855f7',borderRadius:12,padding:14,zIndex:280,fontFamily:'Inter,sans-serif',display:'flex',flexDirection:'column',gap:6,overflowY:'auto',boxShadow:'0 8px 32px rgba(0,0,0,0.5)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingBottom:6,borderBottom:'1px solid #a855f744'}}>
-              <span style={{fontSize:13,fontWeight:700,color:'#a855f7',fontFamily:'Orbitron,sans-serif'}}>🗺 Templates v2</span>
+              <span style={{fontSize:13,fontWeight:700,color:'#a855f7',fontFamily:'Orbitron,sans-serif'}}>🗺 Templates</span>
               <button onClick={()=>setPhase117Open(false)} style={{background:'none',border:'none',color:'#64748b',cursor:'pointer',fontSize:16,lineHeight:1,padding:0}}>×</button>
             </div>
-            <div style={{fontSize:11,fontWeight:600,color:'#e2e8f0'}}>Templates v2</div>
+            <div style={{fontSize:11,fontWeight:600,color:'#e2e8f0'}}>Templates</div>
             <div style={{paddingTop:6,borderTop:'1px solid #a855f722'}}>
               <label style={{marginTop:6,fontSize:10,color:'#94a3b8',fontWeight:600,display:'block'}}>Size: {phase117Ctrl0}
                 <input type='range' min={5} max={50} value={phase117Ctrl0} onChange={e=>setPhase117Ctrl0(parseFloat(e.target.value))} style={{display:'block',width:'100%',marginTop:4,accentColor:'#a855f7',cursor:'pointer'}}/>
@@ -22711,7 +22709,7 @@ Now you can apply Displacement for detailed effect.`);
               <button onClick={() => { setAppsMenuOpen(false); setPhase114Open(true); }} title="Phase 114: Cannon.js" style={appsBtnStyle(phase114Open, '#0d9488')}>⚽</button>
               <button onClick={() => { setAppsMenuOpen(false); setPhase115Open(true); }} title="Phase 115: Recording" style={appsBtnStyle(phase115Open, '#dc2626')}>⏺</button>
               <button onClick={() => { setAppsMenuOpen(false); setPhase116Open(true); }} title="Phase 116: VR Hand" style={appsBtnStyle(phase116Open, '#06b6d4')}>🥽</button>
-              <button onClick={() => { setAppsMenuOpen(false); setPhase117Open(true); }} title="Phase 117: Templates v2" style={appsBtnStyle(phase117Open, '#8b5cf6')}>🏘</button>
+              <button onClick={() => { setAppsMenuOpen(false); setPhase117Open(true); }} title="Phase 117: Templates" style={appsBtnStyle(phase117Open, '#8b5cf6')}>🏘</button>
               <button onClick={() => { setAppsMenuOpen(false); setPhase118Open(true); }} title="Phase 118: Block Shapes" style={appsBtnStyle(phase118Open, '#22c55e')}>🧱</button>
               <button onClick={() => { setAppsMenuOpen(false); setPhase119Open(true); }} title="Phase 119: Lighting Studio" style={appsBtnStyle(phase119Open, '#f59e0b')}>💡</button>
               <button onClick={() => { setAppsMenuOpen(false); setPhase120Open(true); }} title="Phase 120: Particle Studio" style={appsBtnStyle(phase120Open, '#ec4899')}>🎆</button>
@@ -22812,24 +22810,24 @@ Now you can apply Displacement for detailed effect.`);
         </div>
       )}
 
-      {/* AI Helper v2 — Floating orange button */}
+      {/* AI Helper — Floating orange button */}
       <button
-        onClick={() => setAiHelperV2Open(v => !v)}
-        title="AI Helper v2 (qwen) — Admin Mode"
+        onClick={() => setAiHelperOpen(v => !v)}
+        title="AI Helper (qwen) — Admin Mode"
         style={{
           position: 'fixed', bottom: 24, right: 84, zIndex: 200,
           width: 52, height: 52, borderRadius: '50%',
-          backgroundColor: aiHelperV2Open ? '#fbbf24' : '#f59e0b',
+          backgroundColor: aiHelperOpen ? '#fbbf24' : '#f59e0b',
           border: '2px solid #fbbf24', color: '#fff', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 4px 16px rgba(245,158,11,0.5), 0 0 24px rgba(245,158,11,0.3)',
-          transition: 'all 0.2s', transform: aiHelperV2Open ? 'scale(1.1)' : 'scale(1)',
+          transition: 'all 0.2s', transform: aiHelperOpen ? 'scale(1.1)' : 'scale(1)',
         }}
       >
         <Sparkles size={22} />
       </button>
 
-      {aiHelperV2Open && (
+      {aiHelperOpen && (
         <div style={{
           position: 'fixed', top: 0, right: 0, height: '100dvh', width: 380,
           backgroundColor: 'rgba(14,20,32,0.98)', borderLeft: '2px solid #f59e0b',
@@ -22843,27 +22841,27 @@ Now you can apply Displacement for detailed effect.`);
                 <Sparkles size={18} />
               </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', fontFamily: 'Orbitron, sans-serif' }}>AI Helper v2</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', fontFamily: 'Orbitron, sans-serif' }}>AI Helper</div>
                 <div style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 3, backgroundColor: 'rgba(34,197,94,0.2)', color: '#22c55e', fontSize: 9, fontWeight: 700, border: '1px solid rgba(34,197,94,0.4)' }}>ADMIN</div>
               </div>
             </div>
-            <button onClick={() => setAiHelperV2Open(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4 }}>×</button>
+            <button onClick={() => setAiHelperOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4 }}>×</button>
           </div>
           <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(148,163,184,0.1)' }}>
             <div style={{ display: 'flex', gap: 6 }}>
               {['qwen-3.7', 'qwen-3.8'].map(model => (
-                <button key={model} onClick={() => setAiHelperV2Model(model)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${aiHelperV2Model === model ? '#f59e0b' : 'rgba(148,163,184,0.2)'}`, background: aiHelperV2Model === model ? 'rgba(245,158,11,0.15)' : 'transparent', color: aiHelperV2Model === model ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{model}</button>
+                <button key={model} onClick={() => setAiHelperModel(model)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${aiHelperModel === model ? '#f59e0b' : 'rgba(148,163,184,0.2)'}`, background: aiHelperModel === model ? 'rgba(245,158,11,0.15)' : 'transparent', color: aiHelperModel === model ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{model}</button>
               ))}
             </div>
-            <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>AI Helper v2 (admin mode)</div>
+            <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>AI Helper (admin mode)</div>
           </div>
-          <div ref={aiHelperV2ScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {aiHelperV2Messages.filter(m => m.role !== 'system').map((msg, i) => (
+          <div ref={aiHelperScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {aiHelperMessages.filter(m => m.role !== 'system').map((msg, i) => (
               <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
                 <div style={{ padding: '8px 12px', borderRadius: 12, backgroundColor: msg.role === 'user' ? '#f59e0b' : 'rgba(30,41,59,0.8)', color: msg.role === 'user' ? '#fff' : '#e2e8f0', fontSize: 12, lineHeight: 1.5, border: msg.role === 'user' ? 'none' : '1px solid rgba(148,163,184,0.15)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
               </div>
             ))}
-            {aiHelperV2Loading && (
+            {aiHelperLoading && (
               <div style={{ alignSelf: 'flex-start', maxWidth: '85%' }}>
                 <div style={{ padding: '8px 12px', borderRadius: 12, backgroundColor: 'rgba(30,41,59,0.8)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', fontSize: 12, fontStyle: 'italic' }}>AI sedang berpikir...</div>
               </div>
@@ -22871,13 +22869,13 @@ Now you can apply Displacement for detailed effect.`);
           </div>
           <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(148,163,184,0.1)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {['generate castle', 'tambah tree', 'enable bloom', 'clear scene'].map(s => (
-              <button key={s} onClick={() => { if (!aiHelperV2Loading) callAiHelperV2(s); }} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', cursor: aiHelperV2Loading ? 'not-allowed' : 'pointer', opacity: aiHelperV2Loading ? 0.5 : 1 }}>{s}</button>
+              <button key={s} onClick={() => { if (!aiHelperLoading) callAiHelper(s); }} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', cursor: aiHelperLoading ? 'not-allowed' : 'pointer', opacity: aiHelperLoading ? 0.5 : 1 }}>{s}</button>
             ))}
           </div>
           <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(148,163,184,0.1)' }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              <textarea value={aiHelperV2Input} onChange={e => setAiHelperV2Input(e.target.value)} onKeyDown={handleAiHelperV2Submit} placeholder="Ketik pesan... (Enter untuk kirim)" rows={2} disabled={aiHelperV2Loading} style={{ flex: 1, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid rgba(245,158,11,0.3)', color: '#e2e8f0', fontSize: 12, fontFamily: 'Inter, sans-serif', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
-              <button onClick={() => { if (aiHelperV2Input.trim() && !aiHelperV2Loading) callAiHelperV2(aiHelperV2Input.trim()); }} disabled={aiHelperV2Loading || !aiHelperV2Input.trim()} style={{ padding: '8px 14px', borderRadius: 8, background: aiHelperV2Loading || !aiHelperV2Input.trim() ? 'rgba(245,158,11,0.3)' : '#f59e0b', color: '#fff', border: 'none', cursor: aiHelperV2Loading || !aiHelperV2Input.trim() ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 12 }}>➤</button>
+              <textarea value={aiHelperInput} onChange={e => setAiHelperInput(e.target.value)} onKeyDown={handleAiHelperSubmit} placeholder="Ketik pesan... (Enter untuk kirim)" rows={2} disabled={aiHelperLoading} style={{ flex: 1, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid rgba(245,158,11,0.3)', color: '#e2e8f0', fontSize: 12, fontFamily: 'Inter, sans-serif', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+              <button onClick={() => { if (aiHelperInput.trim() && !aiHelperLoading) callAiHelper(aiHelperInput.trim()); }} disabled={aiHelperLoading || !aiHelperInput.trim()} style={{ padding: '8px 14px', borderRadius: 8, background: aiHelperLoading || !aiHelperInput.trim() ? 'rgba(245,158,11,0.3)' : '#f59e0b', color: '#fff', border: 'none', cursor: aiHelperLoading || !aiHelperInput.trim() ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 12 }}>➤</button>
             </div>
           </div>
         </div>

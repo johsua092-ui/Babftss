@@ -6,9 +6,9 @@ import MenuButton3D from '../components/MenuButton3D';
  *
  * Tombol submenu:
  *   1. Shapes Calculator — public, langsung ke page 'shapes-calculator'.
- *   2. 3D Block Simulator v2 — login-required (locked=!user). Guest klik → onGuestClick
+ *   2. 3D Block Simulator — login-required (locked=!user). Guest klik → onGuestClick
  *      (banner merah "harap sign in"). Login klik → page 'block-simulator-3d-v2'.
- *   3. 3D Block Simulator v2 TEST — open access, page 'block-sim-test' (ChunkManager engine).
+ *   3. 3D Block Simulator TEST — open access, page 'block-sim-test' (ChunkManager engine).
  *
  * Task Bagian 59: diseragamkan ke standar `MenuButton3D` (lihat design.md Bagian 39).
  *
@@ -65,13 +65,13 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                             </div>
                         }
                     />
-                    {/* 3D Block Simulator v2 — login-required (locked=!user).
+                    {/* 3D Block Simulator — login-required (locked=!user).
                         Guest klik → onGuestClick (banner merah "harap sign in").
                         Login klik → page 'block-simulator-3d-v2'. Pakai warna amber/oranye
                         biar kontras dengan teal Calculator. Icon: kubus isometric
-                        dengan badge "V2" di pojok. */}
+                        dengan badge "3D" di pojok. */}
                     <MenuButton3D
-                        label="3D Block Simulator v2"
+                        label="3D Block Simulator"
                         subtitle="three.js engine"
                         top="hsl(38,90%,60%)" bottom="hsl(38,85%,40%)" lip="hsl(38,85%,26%)"
                         onClick={() => user ? setPage('block-simulator-3d-v2') : (onGuestClick && onGuestClick())}
@@ -110,25 +110,25 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                             </div>
                         }
                     />
-                    {/* 3D Block Simulator v2 TEST — ChunkManager engine test page.
+                    {/* 3D Block Simulator TEST — ChunkManager engine test page.
                         Open access (no auth lock) for easy performance testing.
-                        Placed TEPAT di bawah v2 button per request user.
+                        Placed TEPAT di bawah tombol utama per request user.
                         Warna PINK (hsl 330) per request user 2026-09-02 — sebelumnya
-                        cyan/teal. Icon: kubus isometric sama dengan v2 tapi badge
-                        "T" (Test) pink, bukan "V2" amber. */}
+                        cyan/teal. Icon: kubus isometric sama dengan tombol utama tapi badge
+                        "T" (Test) pink, bukan "3D" amber. */}
                     <MenuButton3D
-                        label="3D Block Simulator v2 TEST"
+                        label="3D Block Simulator TEST"
                         subtitle="ChunkManager engine"
                         top="hsl(330,85%,68%)" bottom="hsl(330,80%,46%)" lip="hsl(330,80%,32%)"
                         onClick={() => setPage('block-sim-test')}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <svg viewBox="-5 -8 35 32" fill="none" width="96" height="96" style={{ transform: 'translateY(-3px)' }}>
-                                    {/* Kubus isometric — sama dengan v2 */}
+                                    {/* Kubus isometric — sama dengan tombol utama */}
                                     <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
                                     <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5" strokeLinejoin="round"/>
-                                    {/* Move tool gizmo arrows — sama dengan v2 (3 axis cone-tipped,
+                                    {/* Move tool gizmo arrows — sama dengan tombol utama (3 axis cone-tipped,
                                         origin di center face, arah mengikuti sisi kubus isometric). */}
                                     <line x1="12" y1="7" x2="12" y2="-1" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
                                     <path d="M9 -1 L15 -1 L12 -5 Z" fill="#22c55e"/>

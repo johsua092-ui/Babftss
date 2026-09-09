@@ -171,7 +171,7 @@ export const MARQUEE_COLOR_BY_TOOL = {
 // = tepat tengah; sedangkan Group polos tanpa position → pivot (0,0,0)
 // = pusat build area (bug lama).
 // MURNI: tanpa efek samping, tanpa scene/gizmo — gampang dites headless.
-// Dipakai BlockSimulator3Dv2.jsx attachGizmoToSelection (keluarga-5).
+// Dipakai BlockSimulator3D.jsx attachGizmoToSelection (keluarga-5).
 // ══════════════════════════════════════════════════════════════════════
 
 const _pivotBox = new THREE.Box3();
@@ -200,7 +200,7 @@ export function getSelectionPivot(blocks) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// Phase 55 v2 (2026-09-07): PINCH SELECT BOX — MOBILE ONLY, direct-tracking.
+// Phase 55 revisi (2026-09-07): PINCH SELECT BOX — MOBILE ONLY, direct-tracking.
 // User tidak punya mouse di mobile → pengganti drag marquee:
 //   • Zoom-OUT 2 jari (jari MENJAUH) saat tool keluarga-5 + checkbox
 //     Select Box tercentang → kotak MUNCUL SEKETIKA.
