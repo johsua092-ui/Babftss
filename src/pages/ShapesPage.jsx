@@ -7,7 +7,7 @@ import MenuButton3D from '../components/MenuButton3D';
  * Tombol submenu:
  *   1. Shapes Calculator — public, langsung ke page 'shapes-calculator'.
  *   2. 3D Block Simulator — login-required (locked=!user). Guest klik → onGuestClick
- *      (banner merah "harap sign in"). Login klik → page 'block-simulator-3d-v2'.
+ *      (banner merah "harap sign in"). Login klik → page 'block-simulator-3d'.
  *   3. 3D Block Simulator TEST — open access, page 'block-sim-test' (ChunkManager engine).
  *
  * Task Bagian 59: diseragamkan ke standar `MenuButton3D` (lihat design.md Bagian 39).
@@ -67,14 +67,14 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                     />
                     {/* 3D Block Simulator — login-required (locked=!user).
                         Guest klik → onGuestClick (banner merah "harap sign in").
-                        Login klik → page 'block-simulator-3d-v2'. Pakai warna amber/oranye
+                        Login klik → page 'block-simulator-3d'. Pakai warna amber/oranye
                         biar kontras dengan teal Calculator. Icon: kubus isometric
                         dengan badge "3D" di pojok. */}
                     <MenuButton3D
                         label="3D Block Simulator"
                         subtitle="three.js engine"
                         top="hsl(38,90%,60%)" bottom="hsl(38,85%,40%)" lip="hsl(38,85%,26%)"
-                        onClick={() => user ? setPage('block-simulator-3d-v2') : (onGuestClick && onGuestClick())}
+                        onClick={() => user ? setPage('block-simulator-3d') : (onGuestClick && onGuestClick())}
                         locked={!user}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

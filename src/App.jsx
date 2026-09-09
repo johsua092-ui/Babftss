@@ -21,7 +21,7 @@ const KNOWN_PAGES = new Set([
     'canvas',
     'shapes',
     'shapes-calculator',
-    'block-simulator-3d-v2',
+    'block-simulator-3d',
     'block-sim-test',
     'menu',
     'logic-gates',
@@ -67,7 +67,15 @@ export default function App() {
         if (user && !progressLoaded) {
             loadProgress().then(data => {
                 if (data && data.current_page && data.current_page !== 'welcome') {
-                    setPage(data.current_page);
+                    // Normalisasi id halaman simulator generasi lama yang tersimpan di DB
+                    // (id itu masih 'block-simulator-3d…' dengan embel-embel versi yang
+                    // sudah dihapus) — dipetakan ke id resmi 'block-simulator-3d' supaya
+                    // user lama tetap dipulihkan ke simulator, bukan 404.
+                    let restored = data.current_page;
+                    if (restored.startsWith('block-simulator-3d') && !KNOWN_PAGES.has(restored)) {
+                        restored = 'block-simulator-3d';
+                    }
+                    setPage(restored);
                     toast.success('Progress dipulihkan — melanjutkan dari sesi terakhir');
                 }
                 setProgressLoaded(true);
@@ -273,9 +281,9 @@ export default function App() {
             {page === "shapes-calculator" && <motion.div key="shapes-calculator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <Suspense fallback={pageFallback}><ShapesCalculator setPage={setPage} /></Suspense>
             </motion.div>}
-            {page === "block-simulator-3d-v2" && <motion.div key="block-simulator-3d-v2" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+            {page === "block-simulator-3d" && <motion.div key="block-simulator-3d" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
                 {/* Route guard defense-in-depth: jika somehow (mis. via devtools state
-                    manipulation) `page` diset ke 'block-simulator-3d-v2' padahal user
+                    manipulation) `page` diset ke 'block-simulator-3d' padahal user
                     belum login, jangan render <BlockSimulator3D />. Tampilkan layar
                     akses-ditolak inline + tombol Sign In yang membuka LoginModal. */}
                 {user

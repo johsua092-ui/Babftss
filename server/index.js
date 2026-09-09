@@ -16,7 +16,7 @@ dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 import favoritesHandler   from '../api/favorites.js';
 import myFavoritesHandler from '../api/my-favorites.js';
 import aiChatHandler      from '../api/ai-chat.js';
-import aiHelperV2Handler  from '../api/ai-helper-v2.js';
+import aiHelperHandler  from '../api/ai-helper.js';
 import getProgressHandler from '../api/get-progress.js';
 import saveProgressHandler from '../api/save-progress.js';
 import resetProgressHandler from '../api/reset-progress.js';
@@ -57,8 +57,8 @@ app.all('/api/my-favorites',  (req, res) => myFavoritesHandler(req, res));
 // AI Chat
 app.all('/api/ai-chat',       (req, res) => aiChatHandler(req, res));
 
-// AI Helper v2 (BlockSimulator3Dv2 — proxied, credentials hidden)
-app.all('/api/ai-helper-v2',  (req, res) => aiHelperV2Handler(req, res));
+// AI Helper (BlockSimulator3D — proxied, credentials hidden)
+app.all('/api/ai-helper',  (req, res) => aiHelperHandler(req, res));
 
 // User Progress
 app.all('/api/get-progress',  (req, res) => getProgressHandler(req, res));
@@ -92,7 +92,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[server] BABFT API running on port ${PORT}`);
   console.log(`[server] URL: http://0.0.0.0:${PORT}`);
   console.log(`[server] Health: http://0.0.0.0:${PORT}/health`);
-  console.log(`[server] Endpoints: favorites, my-favorites, ai-chat, ai-helper-v2, progress, profile, circuits, canvas`);
+  console.log(`[server] Endpoints: favorites, my-favorites, ai-chat, ai-helper, progress, profile, circuits, canvas`);
 
 });
 

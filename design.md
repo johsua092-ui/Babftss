@@ -1529,7 +1529,7 @@ background. Tombol master HARUS terlihat sebagai "kontrol utama":
 - Inisialisasi: `useState(null)` + `useRef(null)` untuk tool/toolRef
   (sebelumnya `'place'`). Komentar union type diupdate: `null | 'place' | ...`.
 - Tool TIDAK di-persist ke localStorage (memang tidak pernah) DAN komponen
-  di-conditional-render App.jsx (`{page === 'block-simulator-3d-v2' && ...}`)
+  di-conditional-render App.jsx (`{page === 'block-simulator-3d' && ...}`)
   → pindah halaman = unmount → remount otomatis mulai dari null. Dua jaminan
   ini membuat fresh entry SELALU state 0 tanpa perlu pengaman tambahan.
 
