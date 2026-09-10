@@ -7302,7 +7302,8 @@ Now you can apply Displacement for detailed effect.`);
   ]);
   const [aiHelperInput, setAiHelperInput] = useState('');
   const [aiHelperLoading, setAiHelperLoading] = useState(false);
-  const [aiHelperModel, setAiHelperModel] = useState('qwen-3.7');
+  // Model AI DISAMAKAN dengan AI biru Logic Gates (keputusan user 2026-09-10):
+  // qwen-3.7 hardcode, TANPA selector model — semua zona AI pakai AI yang sama.
   const aiHelperScrollRef = useRef(null);
 
   const callAiHelper = async (userMessage) => {
@@ -7315,7 +7316,7 @@ Now you can apply Displacement for detailed effect.`);
       const response = await fetch('/api/ai-helper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: aiHelperModel, messages: newMessages, temperature: 0.7, max_tokens: 1000 }),
+        body: JSON.stringify({ model: 'qwen-3.7', messages: newMessages, temperature: 0.7, max_tokens: 1000 }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -22861,14 +22862,10 @@ Now you can apply Displacement for detailed effect.`);
             <button onClick={() => setAiHelperOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4 }}>×</button>
           </div>
           <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(148,163,184,0.1)' }}>
-            {/* Satu mode (2026-09-10): tidak ada lagi toggle Simulator/Chat Umum —
-                panel kuning fokus 3D build; ngobrol bebas dipegang AI hitam di
-                halaman umum. Selector model tetap ada. */}
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['qwen-3.7', 'qwen-3.8'].map(model => (
-                <button key={model} onClick={() => setAiHelperModel(model)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${aiHelperModel === model ? '#f59e0b' : 'rgba(148,163,184,0.2)'}`, background: aiHelperModel === model ? 'rgba(245,158,11,0.15)' : 'transparent', color: aiHelperModel === model ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{model}</button>
-              ))}
-            </div>
+            {/* Satu mode + satu model (2026-09-10): tidak ada toggle mode dan
+                TIDAK ADA selector qwen-3.7/qwen-3.8 — model disamakan dengan AI
+                biru Logic Gates (qwen-3.7 hardcode, keputusan user). Panel
+                kuning fokus 3D build; ngobrol bebas dipegang AI hitam. */}
             <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>AI Helper 3D Simulator — rekomendasi build + eksekusi command scene</div>
           </div>
           <div ref={aiHelperScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
