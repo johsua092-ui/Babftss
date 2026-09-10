@@ -41,84 +41,108 @@ import * as THREE from 'three';
 // referensi; 0.13 = tengah rentang). Frame di SEMUA rusuk konsisten.
 export const DELETE_FRAME_WIDTH = 0.13;
 
-let sharedMat = null;
 let sharedGeo = null;
+// Cache material PER WARNA (uniform uColor per warna) — hitam outline
+// dipakai lintas block & lintas tool tanpa clone per block.
+const matCache = new Map();
 
 function getSharedGeometry() {
   if (!sharedGeo) {
-    // BoxGeometry UV: tiap wajah 0..1 — shader band tepi bekerja untuk
-    // block kubus standar. Untuk mesh import GLB (UV acak), band tetap
-    // bekerja relatif terhadap UV island masing-masing — cukup masuk akal.
     sharedGeo = new THREE.BoxGeometry(1, 1, 1);
   }
   return sharedGeo;
 }
 
-function getSharedMaterial() {
-  if (!sharedMat) {
-    sharedMat = new THREE.ShaderMaterial({
+const FRAME_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const FRAME_FRAG = /* glsl */ `
+  uniform float uFrame;
+  uniform vec3 uColor;
+  varying vec2 vUv;
+  void main() {
+    float edgeU = step(vUv.x, uFrame) + step(1.0 - uFrame, vUv.x);
+    float edgeV = step(vUv.y, uFrame) + step(1.0 - uFrame, vUv.y);
+    float frame = clamp(edgeU + edgeV, 0.0, 1.0);
+    if (frame < 0.5) discard;
+    gl_FragColor = vec4(uColor, 1.0);
+  }
+`;
+
+function getMaterial(hexColor) {
+  // Normalisasi ke key string
+  const key = (hexColor instanceof THREE.Color) ? '#' + hexColor.getHexString()
+    : typeof hexColor === 'number' ? '#' + new THREE.Color(hexColor).getHexString()
+    : String(hexColor);
+  if (!matCache.has(key)) {
+    let color;
+    if (typeof hexColor === 'number') color = new THREE.Color(hexColor);
+    else color = new THREE.Color(key);
+    matCache.set(key, new THREE.ShaderMaterial({
       uniforms: {
-        uFrame: { value: DELETE_FRAME_WIDTH },        // 0.13 lebar wajah
-        uColor: { value: new THREE.Color(0xff0a0a).multiplyScalar(4) }, // HDR merah darah
+        uFrame: { value: DELETE_FRAME_WIDTH },
+        uColor: { value: color },
       },
-      vertexShader: /* glsl */ `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform float uFrame;
-        uniform vec3 uColor;
-        varying vec2 vUv;
-        void main() {
-          // Band tepi: merah kalau u ATAU v jatuh dalam strip 0..uFrame atau
-          // (1-uFrame)..1 → membentuk bingkai persegi di tiap wajah.
-          float edgeU = step(vUv.x, uFrame) + step(1.0 - uFrame, vUv.x);
-          float edgeV = step(vUv.y, uFrame) + step(1.0 - uFrame, vUv.y);
-          float frame = clamp(edgeU + edgeV, 0.0, 1.0);
-          if (frame < 0.5) discard;               // tengah wajah = tembus
-          gl_FragColor = vec4(uColor, 1.0);        // bingkai merah solid
-        }
-      `,
+      vertexShader: FRAME_VERT,
+      fragmentShader: FRAME_FRAG,
       transparent: false,
       depthTest: true,
       depthWrite: true,
       toneMapped: false,
-      // polygonOffset: tarik frame SEDIKIT ke arah kamera supaya tidak
-      // z-fight dengan kulit block (dua permukaan coplanar).
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
-    });
+    }));
   }
-  return sharedMat;
+  return matCache.get(key);
 }
 
 /**
- * Pasang bingkai merah "painted frame" pada block — mesh shell child dengan
- * geometry box UV-standar (bukan geometry block; kita tidak butuh bentuk
- * asli — kita hanya melukis bingkai di bounding box-nya).
- * Catatan: untuk block kubus standar hasil = persis referensi. Untuk mesh
- * import GLB, shell box 1:1 scale block mengikuti bounding box — frame
- * mengelilingi seluruh objek (masuk akal untuk target delete).
- *
- * Idempoten: userData.__deleteOutline guard.
+ * Pasang bingkai painted-frame dengan WARNA APA PUN pada block.
+ * Dipakai: delete (merah) via attachDeleteWireframe + paint (putih/warna
+ * user) via attachPaintedFrame — teknik sama, warna beda.
+ * Idempoten: userData.__deleteOutline guard (satu frame per block;
+ * ganti tool menghapus dulu via detach).
  */
-export function attachDeleteWireframe(block) {
+export function attachPaintedFrame(block, hexColor) {
   if (!block) return null;
   if (block.userData.__deleteOutline) return block.userData.__deleteOutline;
-
-  const shell = new THREE.Mesh(getSharedGeometry(), getSharedMaterial());
-  // Scale 1.0 PERSIS — bingkai menempel di kulit block (flush), bukan
-  // mengambang di luar. Ikut position/rotation/scale block sebagai child.
+  const shell = new THREE.Mesh(getSharedGeometry(), getMaterial(hexColor));
+  // Ukuran: shell box 1x1x1 dibuat sama dengan UKURAN EFEKTIF geometry block
+  // supaya bingkai MENEMPEL di kulit (bukan 25% lebih besar kalau block
+  // punya ukuran beda — terukur di harness vision: block 0.8 + shell 1.0
+  // = bingkai tampak mengambang/menembus). Pakai bounding box GEOMETRY block
+  // (bukan world scale — shell child mengikuti scale block otomatis).
+  try {
+    block.geometry.computeBoundingBox();
+    const bb = block.geometry.boundingBox;
+    const sx = (bb.max.x - bb.min.x) || 1;
+    const sy = (bb.max.y - bb.min.y) || 1;
+    const sz = (bb.max.z - bb.min.z) || 1;
+    shell.scale.set(sx, sy, sz);
+    // geometry block mungkin tidak berpusat di origin — offset supaya
+    // bounding box shell ALIGN dengan bounding box block.
+    shell.position.set(
+      (bb.max.x + bb.min.x) / 2,
+      (bb.max.y + bb.min.y) / 2,
+      (bb.max.z + bb.min.z) / 2,
+    );
+  } catch (e) { /* geometry aneh → biarkan scale 1 (fallback aman) */ }
   block.add(shell);
-  shell.raycast = () => {};  // outline tidak ikut raycast
+  shell.raycast = () => {};
   shell.renderOrder = 2;
-  const handle = { line: shell, edges: null, sourceGeometry: null };
+  const handle = { line: shell };
   block.userData.__deleteOutline = handle;
   return handle;
+}
+
+/** Wrapper delete — merah darah HDR (perilaku v3 tidak berubah). */
+export function attachDeleteWireframe(block) {
+  return attachPaintedFrame(block, new THREE.Color(0xff0a0a).multiplyScalar(4));
 }
 
 /**
@@ -148,6 +172,10 @@ export function setDeleteWireframeResolution(_width, _height) { /* no-op v3 */ }
  * Dispose resource shared — dipanggil di cleanup unmount scene.
  */
 export function disposeDeleteWireframeMaterial() {
-  if (sharedMat) { try { sharedMat.dispose(); } catch (e) {} sharedMat = null; }
+  // v4: material sekarang cache per-warna (Map) — dispose SEMUA + kosongkan.
+  for (const mat of matCache.values()) {
+    try { mat.dispose(); } catch (e) { /* sudah disposed */ }
+  }
+  matCache.clear();
   if (sharedGeo) { try { sharedGeo.dispose(); } catch (e) {} sharedGeo = null; }
 }

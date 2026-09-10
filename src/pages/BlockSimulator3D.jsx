@@ -31,7 +31,7 @@ import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
-import { attachDeleteWireframe, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
+import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12841,16 +12841,21 @@ Now you can apply Displacement for detailed effect.`);
     const removeDeleteOutline = (block) => {
       detachDeleteWireframe(block || highlightedBlock);
     };
-    const highlightBlock = (block) => {
+    const highlightBlock = (block, mode = 'delete') => {
       // Guard idempoten: hover ke block yang sama → tidak recreate (menghemat
-      // EdgesGeometry build tiap mousemove; mousemove fire ~60x/detik).
+      // build tiap mousemove; mousemove fire ~60x/detik).
       if (highlightedBlock === block) return;
       if (highlightedBlock) detachDeleteWireframe(highlightedBlock);
       highlightedBlock = block;
       if (block) {
-        const w = threeRef.current.renderer?.domElement?.clientWidth || 1280;
-        const h = threeRef.current.renderer?.domElement?.clientHeight || 720;
-        attachDeleteWireframe(block);
+        if (mode === 'paint') {
+          // Hover PAINT: frame PUTIH saat user belum memilih warna / cancel
+          // modal (paint tetap jalan pakai currentColor), atau WARNA USER
+          // (paintCustomColorRef) kalau sudah dipilih — sinkron dengan tombol.
+          attachPaintedFrame(block, paintCustomColorRef.current || '#ffffff');
+        } else {
+          attachDeleteWireframe(block); // merah darah (delete v3, tidak berubah)
+        }
       }
     };
 
@@ -13984,8 +13989,23 @@ Now you can apply Displacement for detailed effect.`);
         } else {
           highlightBlock(null);
         }
+      } else if (currentTool === 'paint') {
+        // Hover PAINT (2026-09-10, user): outline painted-frame — teknik sama
+        // dengan delete v3, TAPI warnanya: PUTIH saat user belum memilih warna
+        // sama sekali / cancel modal (tetap bisa cat block), dan berubah
+        // mengikuti warna yang user pilih (paintCustomColorRef). highlightBlock
+        // dipakai ulang dengan flag paint supaya detach guard & idempoten jalan.
+        ghostBlock.visible = false;
+        ghostEdges.visible = false;
+        const blockMeshes = threeRef.current.blocks;
+        const hits = raycaster.intersectObjects(blockMeshes, true);
+        if (hits.length > 0) {
+          highlightBlock(hits[0].object, 'paint');
+        } else {
+          highlightBlock(null);
+        }
       } else {
-        // Tool move/rotate/scale/paint/eyedropper/shape — hide ghost + delete highlight
+        // Tool move/rotate/scale/eyedropper/shape — hide ghost + delete highlight
         ghostBlock.visible = false;
         ghostEdges.visible = false;
         highlightBlock(null);
@@ -15260,7 +15280,9 @@ Now you can apply Displacement for detailed effect.`);
                 Klik area Paintbrush/teks → toggle tool + buka modal (first time only).
                 Klik area gerigi → selalu buka modal (ganti warna).
                 Warna tombol follow paintCustomColor (100% match ke warna user).
-                Default orange #f59e0b kalau belum ada custom color. ── */}
+                Default "pink setengah ungu" #d946ef (fuchsia) kalau user baru
+                masuk simulator & belum pilih warna (2026-09-10, permintaan user
+                — mengganti orange #f59e0b). ── */}
             <button
               onClick={() => {
                 toggleTool('paint');
@@ -15277,8 +15299,8 @@ Now you can apply Displacement for detailed effect.`);
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 14px', borderRadius: 10,
-                border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'rgba(148,163,184,0.12)'}`,
-                backgroundColor: tool === 'paint' ? (paintCustomColor || '#f59e0b') : 'transparent',
+                border: `1px solid ${tool === 'paint' ? (paintCustomColor || '#d946ef') : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'paint' ? (paintCustomColor || '#d946ef') : 'transparent',
                 color: tool === 'paint' ? '#0e1420' : '#e2e8f0',
                 fontSize: 13, fontWeight: 500, cursor: 'pointer',
                 transition: 'all 0.15s ease',
