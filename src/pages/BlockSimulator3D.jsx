@@ -31,6 +31,7 @@ import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
+import { attachDeleteWireframe, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12547,6 +12548,10 @@ Now you can apply Displacement for detailed effect.`);
       // Phase 13: composer + bloom pass harus ikut resize supaya render target benar
       composer.setSize(w, h);
       bloomPass.setSize(w, h);
+      // Delete outline wireframe (2026-09-10): LineMaterial pixel-based —
+      // resolution WAJIB ikut renderer size, kalau tidak garis hilang/melenceng
+      // setelah resize window.
+      setDeleteWireframeResolution(w, h);
     };
     const ro = new ResizeObserver(handleResize);
     ro.observe(container);
@@ -12811,34 +12816,18 @@ Now you can apply Displacement for detailed effect.`);
       else if (axis === 'z') symmetryPlane.rotation.x = 0; // plane facing Z (vertical default)
     };
 
-    // Delete hover OUTLINE — outline TEBAL warna merah tua menyala pada object
-    // yang akan dihapus (menggantikan sistem emissive merah transparan lama
-    // per request user). Teknik "shell": mesh duplikat dirender BackSide
-    // sebagai CHILD dari mesh target, di-inflate sedikit → hanya tepi
-    // (outline) yang terlihat, warna asli object TIDAK berubah sama sekali.
+    // Delete hover OUTLINE — WIREFRAME GARIS RUSUK merah (2026-09-10, menggantikan
+    // teknik shell BackSide era lama yang "salah total": memeriksa gambar referensi
+    // user, outline yang benar = garis 12 rusuk kubus TEBAL ~1.28x block, block
+    // tetap warna asli murni — bukan permukaan merah yang membungkus block).
+    // Implementasi penuh + keputusan teknis: src/utils/deleteWireframe.js.
     // Berlaku untuk APAPUN target delete: block biasa + nested mesh hasil
-    // import GLB (persis mesh yang akan dihapus oleh click handler).
+    // import GLB (EdgesGeometry otomatis ambil rusuk tajam geometry itu).
     let highlightedBlock = null;
-    let deleteOutlineMesh = null;
-    const deleteOutlineMat = new THREE.MeshBasicMaterial({
-      // Warna HDR (channel > 1.0) supaya tetap TERANG di kedua jalur render:
-      // - bloom OFF (renderer.render + toneMapped:false) → clamp ke (255,10,10) terang penuh
-      // - bloom ON (composer + OutputPass ACES) → ACES(4.0) ≈ 0.97 → tetap terang menyala
-      // 0xff0a0a = MERAH DARAH terang (channel biru ≈ 0 — jangan dinaikkan,
-      // blue 60 di versi lama (0xff0a3c) ter-HDR×4 jadi (255,29,118) = PINK).
-      color: new THREE.Color(0xff0a0a).multiplyScalar(4), // merah darah terang menyala (HDR 4x)
-      side: THREE.BackSide,     // render sisi belakang shell → efek outline di tepi
-      // depthWrite WAJIB true: shell menulis depth supaya plane grid semi-transparan
-      // (yang dirender di pass transparent SETELAH opaque) GAGAL depth-test dan tidak
-      // menimpa/blend di atas ring — tanpa ini ring teredam ~50% oleh grid gelap.
-      depthWrite: true,
-      toneMapped: false,        // bypass tone mapping per-material (jalur direct render)
-      fog: false,               // bypass scene fog (FogExp2)
-    });
-    const DELETE_OUTLINE_SCALE = 1.3; // ketebalan outline (inflate 30% → 15% per sisi = tepi TEBAL di semua zoom)
-    // Helper aman untuk material yang mungkin array atau non-emissive (hasil import glb).
-    // Hanya apply emissive ke material yang support (MeshStandardMaterial, MeshPhysicalMaterial, MeshPhongMaterial).
-    // MASIH DIPAKAI oleh selection highlight (highlightSelected/unhighlightSelected) — jangan dihapus.
+    // Helper emissive — MASIH DIPAKAI oleh selection highlight
+    // (highlightSelected/unhighlightSelected, baris setEmissive(block, ...)).
+    // Dulunya satu blok dengan outline shell lama; dipertahankan PERSIS
+    // ketika shell diganti wireframe (2026-09-10) — tidak boleh hilang.
     const getEmissiveMaterials = (block) => {
       const mats = Array.isArray(block.material) ? block.material : [block.material];
       return mats.filter(m => m && m.emissive);
@@ -12849,29 +12838,19 @@ Now you can apply Displacement for detailed effect.`);
         m.emissiveIntensity = intensity;
       });
     };
-
-    const removeDeleteOutline = () => {
-      if (deleteOutlineMesh) {
-        if (deleteOutlineMesh.parent) deleteOutlineMesh.parent.remove(deleteOutlineMesh);
-        deleteOutlineMesh = null;
-      }
+    const removeDeleteOutline = (block) => {
+      detachDeleteWireframe(block || highlightedBlock);
     };
-
     const highlightBlock = (block) => {
-      // Lepas outline lama (jika ada)
-      removeDeleteOutline();
+      // Guard idempoten: hover ke block yang sama → tidak recreate (menghemat
+      // EdgesGeometry build tiap mousemove; mousemove fire ~60x/detik).
+      if (highlightedBlock === block) return;
+      if (highlightedBlock) detachDeleteWireframe(highlightedBlock);
+      highlightedBlock = block;
       if (block) {
-        // Pasang outline baru sebagai child mesh target → otomatis ikut
-        // position/rotation/scale target. Geometry di-share (tanpa clone).
-        deleteOutlineMesh = new THREE.Mesh(block.geometry, deleteOutlineMat);
-        deleteOutlineMesh.scale.setScalar(DELETE_OUTLINE_SCALE);
-        // Outline TIDAK boleh ikut kena raycast (delete hover / place ghost /
-        // material inspector) — disable raycast pada mesh outline.
-        deleteOutlineMesh.raycast = () => {};
-        block.add(deleteOutlineMesh);
-        highlightedBlock = block;
-      } else {
-        highlightedBlock = null;
+        const w = threeRef.current.renderer?.domElement?.clientWidth || 1280;
+        const h = threeRef.current.renderer?.domElement?.clientHeight || 720;
+        attachDeleteWireframe(block, w, h);
       }
     };
 
@@ -13793,7 +13772,6 @@ Now you can apply Displacement for detailed effect.`);
       // FIX Task ID 24: reset refs hover-highlight — block yang di-highlight
       // ikut ter-remove dari scene, referensi lama jadi dangling.
       highlightedBlock = null;
-      deleteOutlineMesh = null;
       // Remove all current blocks
       threeRef.current.blocks.forEach(b => {
         // removeFromParent aman untuk block biasa (parent=scene) maupun mesh import (parent=gltf.scene group)
@@ -13936,7 +13914,12 @@ Now you can apply Displacement for detailed effect.`);
       // Clear highlighted block + reset referensi hover outline
       // (outline adalah child block yang dihapus → ikut ter-remove dari scene)
       highlightedBlock = null;
-      deleteOutlineMesh = null;
+      // Wireframe 2026-09-10: outline hidup disimpan di userData block
+      // (__deleteOutline) — block dihapus semua → outline ikut ter-dispose
+      // lewat removeDeleteOutline/parent; tidak ada var mesh lama lagi.
+      if (threeRef.current.blocks) {
+        threeRef.current.blocks.forEach(b => detachDeleteWireframe(b));
+      }
       // Clear selection set
       threeRef.current.selectedBlocks.clear();
       // Hapus SEMUA block tanpa terkecuali (regular + imported + phase objects)
@@ -14787,8 +14770,11 @@ Now you can apply Displacement for detailed effect.`);
       // Dispose ghost
       ghostGeo.dispose();
       ghostMat.dispose();
-      // Dispose delete hover outline material
-      deleteOutlineMat.dispose();
+      // Dispose delete hover outline (wireframe 2026-09-10: material shared
+      // LineMaterial + lepas outline dari block manapun yang masih hidup)
+      if (highlightedBlock) detachDeleteWireframe(highlightedBlock);
+      threeRef.current.blocks.forEach(b => detachDeleteWireframe(b));
+      disposeDeleteWireframeMaterial();
       // Cleanup Phase 12: file input
       if (threeRef.current.fileInputRef) {
         document.body.removeChild(threeRef.current.fileInputRef);
