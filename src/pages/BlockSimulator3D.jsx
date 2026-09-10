@@ -32,6 +32,7 @@ import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
+import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath } from '../utils/blockMaterials.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -198,6 +199,12 @@ export default function BlockSimulator3D({ setPage }) {
   // setelah cancel/tanpa setting = block PUTIH. (Sebelumnya #3b82f6 biru.)
   // HANYA state default yang berubah — palet preset & fallback tetap.
   const [currentColor, setCurrentColor] = useState('#ffffff');
+  // Phase 63 (2026-09-11, user): PLACE memilih BLOCK, bukan warna.
+  // Panel kanan saat tool place = BLOCK LIBRARY (21 block dari dataset user
+  // di folder image — urutan 01..42). selectedBlockType = slug block aktif.
+  const [selectedBlockType, setSelectedBlockType] = useState(DEFAULT_BLOCK_SLUG);
+  const selectedBlockTypeRef = useRef(DEFAULT_BLOCK_SLUG);
+  useEffect(() => { selectedBlockTypeRef.current = selectedBlockType; }, [selectedBlockType]);
   const toolRef = useRef(null);
   // Phase 52, 2026-09-07: "arrow match rotation" — 1 keluarga untuk 5 tool
   // (move, rotate, scale, clone, mirror). ATURAN MUTLAK: default = true
@@ -12775,14 +12782,29 @@ Now you can apply Displacement for detailed effect.`);
     };
 
     // Ghost block — semi-transparent preview yang ikut mouse saat tool=place.
+    // Phase 63 (2026-09-11): preview menampilkan BLOCK TERPILIH dari Block
+    // Library (texture + PBR), bukan warna solid. Material di-update HANYA
+    // saat selectedBlockType ganti (idempoten — tidak rebuild tiap mousemove).
     const ghostGeo = new THREE.BoxGeometry(1, 1, 1);
-    const ghostMat = new THREE.MeshBasicMaterial({
-      color: 0x3b82f6,
-      transparent: true,
-      opacity: 0.4,
-      depthWrite: false,
-    });
-    const ghostBlock = new THREE.Mesh(ghostGeo, ghostMat);
+    const ghostBlock = new THREE.Mesh(ghostGeo, null);
+    let ghostCurrentSlug = null;
+    const syncGhostMaterial = () => {
+      const slug = selectedBlockTypeRef.current;
+      if (slug === ghostCurrentSlug) return; // idempoten
+      ghostCurrentSlug = slug;
+      if (ghostBlock.material && ghostBlock.material.dispose) ghostBlock.material.dispose();
+      const def = getBlockDef(slug);
+      ghostBlock.material = new THREE.MeshStandardMaterial({
+        map: getBlockTexture(THREE, def.slug),
+        color: 0xffffff,
+        roughness: def.roughness,
+        metalness: def.metalness,
+        ...(def.transparent ? { transparent: true, opacity: Math.min(0.75, def.opacity + 0.15) } : { transparent: true, opacity: 0.55 }),
+        ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity * 0.6 } : {}),
+        depthWrite: false,
+      });
+    };
+    syncGhostMaterial();
     ghostBlock.visible = false;
     scene.add(ghostBlock);
 
@@ -12972,11 +12994,19 @@ Now you can apply Displacement for detailed effect.`);
           const { posX, posY, posZ } = calcPlacePos(hits[0]);
           if ((threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) || posY < 0) return;
           const geo = new THREE.BoxGeometry(1, 1, 1);
+          // Phase 63 (2026-09-11): place menaruh BLOCK dari Block Library
+          // (dataset user) — material dari registry blockMaterials.js
+          // (texture tampak2D + PBR per jenis). Place TIDAK lagi set warna.
+          const blockDef = getBlockDef(selectedBlockTypeRef.current);
           const mat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(color),
-            metalness: 0.1,
-            roughness: 0.8,
+            map: getBlockTexture(THREE, blockDef.slug),
+            color: 0xffffff,               // putih = texture tampil apa adanya
+            roughness: blockDef.roughness,
+            metalness: blockDef.metalness,
+            ...(blockDef.transparent ? { transparent: true, opacity: blockDef.opacity } : {}),
+            ...(blockDef.emissive ? { emissive: blockDef.emissive, emissiveIntensity: blockDef.emissiveIntensity } : {}),
           });
+          mat.userData.blockType = blockDef.slug; // identitas jenis utk undo/snapshot
           const block = new THREE.Mesh(geo, mat);
           block.position.set(posX, posY, posZ);
           block.castShadow = true;
@@ -13975,7 +14005,7 @@ Now you can apply Displacement for detailed effect.`);
             return;
           }
           ghostBlock.position.set(posX, posY, posZ);
-          ghostBlock.material.color.set(color);
+          syncGhostMaterial(); // Phase 63: texture block terpilih (idempoten)
           ghostBlock.visible = true;
           ghostEdges.position.copy(ghostBlock.position);
           ghostEdges.visible = true;
@@ -14793,7 +14823,8 @@ Now you can apply Displacement for detailed effect.`);
       fileInputRef.removeEventListener('change', onFileInputChange);
       // Dispose ghost
       ghostGeo.dispose();
-      ghostMat.dispose();
+      // Ghost material Phase 63 = dynamic per block terpilih — dispose jika ada
+      if (ghostBlock.material && ghostBlock.material.dispose) ghostBlock.material.dispose();
       // Dispose delete hover outline (wireframe 2026-09-10: material shared
       // LineMaterial + lepas outline dari block manapun yang masih hidup)
       if (highlightedBlock) detachDeleteWireframe(highlightedBlock);
@@ -18681,20 +18712,51 @@ Now you can apply Displacement for detailed effect.`);
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5,
           }}>
+            {/* Phase 63 (2026-09-11, user): panel PLACE = BLOCK LIBRARY.
+                Bagian "Colors" DIHAPUS TOTAL — place tidak lagi mengubah
+                warna, tapi MEMILIH BLOCK dari dataset user (21 jenis,
+                urutan 01..42: tampak3D = ikon, tampak2D = texture 3D).
+                Pattern painter (tool paint, nested di bawah) TIDAK tersentuh. */}
             <div style={{
               fontSize: 10, fontWeight: 700, color: textSecondary,
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
-            }}>Colors</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 30px)', gap: 6 }}>
-              {COLORS.map(c => (
-                <div key={c} onClick={() => setCurrentColor(c)}
-                  style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: c, cursor: 'pointer',
-                    border: `2px solid ${currentColor === c ? '#f59e0b' : 'transparent'}`,
-                    transition: 'transform 0.1s', boxShadow: currentColor === c ? `0 0 8px ${c}66` : 'none' }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.12)'}
-                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
-              ))}
+            }}>Blocks</div>
+            {(() => {
+              const cols = typeof window !== 'undefined' && window.innerWidth < 768 ? 3 : 4;
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 6, maxWidth: cols === 3 ? 150 : 168 }}>
+                  {BLOCK_LIBRARY.map(b => (
+                    <button
+                      key={b.slug}
+                      onClick={() => setSelectedBlockType(b.slug)}
+                      title={b.name}
+                      style={{
+                        position: 'relative', padding: 0,
+                        width: 38, height: 38, borderRadius: 8,
+                        border: `2px solid ${selectedBlockType === b.slug ? '#f59e0b' : 'rgba(148,163,184,0.15)'}`,
+                        backgroundColor: 'rgba(30, 41, 59, 0.6)',
+                        cursor: 'pointer', overflow: 'hidden',
+                        boxShadow: selectedBlockType === b.slug ? '0 0 10px rgba(245,158,11,0.45)' : 'none',
+                        transition: 'border-color 0.15s, box-shadow 0.15s',
+                      }}
+                      onMouseEnter={e => { if (selectedBlockType !== b.slug) e.currentTarget.style.transform = 'scale(1.08)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      <img
+                        src={getBlockIconPath(b.slug)}
+                        alt={b.name}
+                        draggable={false}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', display: 'block' }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+            {/* Nama block terpilih — info kecil di bawah grid */}
+            <div style={{ fontSize: 9, color: '#f59e0b', fontWeight: 600, marginTop: 2 }}>
+              Selected: {getBlockDef(selectedBlockType).name}
             </div>
             {/* Phase 27: Multi-color Painter — Pattern selector (muncul saat tool=paint) */}
             {tool === 'paint' && (
