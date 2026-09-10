@@ -193,7 +193,11 @@ export default function BlockSimulator3D({ setPage }) {
   // (klik canvas = no-op), semua highlight tombol `tool === '...'` false,
   // ghost preview masuk branch else (hide), mouse LEFT tetap PAN.
   const [tool, setTool] = useState(null); // null | 'place' | 'delete' | 'move' | 'rotate' | 'scale' | 'paint' | 'eyedropper' | 'shape' | 'clone' | 'mirror' | 'object' | 'decal' | 'info' — Task ID 29: 'info' = mode inspeksi READ-ONLY (hover block → Material Inspector; klik canvas = no-op).
-  const [currentColor, setCurrentColor] = useState('#3b82f6');
+  // Default #ffffff (2026-09-10, user): state awal simulator = PUTIH —
+  // color wheel terbuka di TENGAH (RGB 255 rata, S=0, V=100), dan paint
+  // setelah cancel/tanpa setting = block PUTIH. (Sebelumnya #3b82f6 biru.)
+  // HANYA state default yang berubah — palet preset & fallback tetap.
+  const [currentColor, setCurrentColor] = useState('#ffffff');
   const toolRef = useRef(null);
   // Phase 52, 2026-09-07: "arrow match rotation" — 1 keluarga untuk 5 tool
   // (move, rotate, scale, clone, mirror). ATURAN MUTLAK: default = true
@@ -214,7 +218,7 @@ export default function BlockSimulator3D({ setPage }) {
   const [selectBoxEnabled, setSelectBoxEnabled] = useState(true);
   const selectBoxRef = useRef(true);
   useEffect(() => { selectBoxRef.current = selectBoxEnabled; }, [selectBoxEnabled]);
-  const colorRef = useRef('#3b82f6');
+  const colorRef = useRef('#ffffff'); // sinkron default putih (currentColor)
   useEffect(() => { toolRef.current = tool; }, [tool]);
   
   // Phase 50 v9: Ubah warna gizmo berdasarkan mode tool
