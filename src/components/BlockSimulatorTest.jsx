@@ -19,7 +19,7 @@
  */
 
 import { useRef, useEffect, useState } from 'react';
-import { ArrowLeft, Zap, Trash2, Activity, Boxes } from 'lucide-react';
+import { ArrowLeft, Zap, Trash2, Activity, Boxes, Sparkles, X, Send } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ChunkManager } from '../lib/ChunkManager.js';
@@ -247,6 +247,122 @@ export default function BlockSimulatorTest({ setPage }) {
         setChunkCount(0);
         setGenTime(null);
     };
+
+    // ════════════════════════════════════════════════════════════════════════
+    // AI Helper kuning (Sparkles) — kesepakatan tim 2026-09-10: AI dipecah 3
+    // (hitam umum / biru logic gates / KUNING 3D simulator). Halaman Test ini
+    // adalah bagian keluarga simulator → tombol AI hitam global disembunyikan
+    // App.jsx & digantikan tombol kuning di koordinat sama (bottom:24 right:24).
+    // Route backend: /api/ai-helper (share, tanpa env baru). Executor command
+    // disesuaikan engine ChunkManager (setBlock per koordinat, bukan Mesh per
+    // block seperti simulator utama). WAJIB PROAKTIF: greeting sodor
+    // rekomendasi build sejak panel dibuka.
+    // ════════════════════════════════════════════════════════════════════════
+    const [aiHelperOpen, setAiHelperOpen] = useState(false);
+    const AI_SYSTEM_PROMPT = { role: 'system', content: 'Anda adalah AI asisten untuk halaman TEST 3D Block Simulator (engine ChunkManager, grid 500×500, InstancedMesh per chunk 25×25). Balas dengan format [[COMMAND:commandName(args)]] untuk eksekusi. Command tersedia: placeBlock(x,y,z,colorHex), generateScene(castle|tree|pyramid), clearScene(). WAJIB PROAKTIF: sodorkan rekomendasi build yang seru beserta command-nya kalau user bingung mau mulai apa.' };
+    const [aiMessages, setAiMessages] = useState([
+        AI_SYSTEM_PROMPT,
+        { role: 'assistant', content: '✨ Hai! Saya AI Helper halaman TEST 3D Block Simulator (engine ChunkManager).\n\nRekomendasi build buat mulai:\n\n• Kastil 4 menara — "generate castle"\n• Taman pohon acak — "tambah tree"\n• Piramida bertingkat — "generate pyramid"\n• Stress test 10.000 block — tombol hijau di bawah\n\nKetik ide kamu atau klik chip rekomendasi — saya yang susun!' },
+    ]);
+    const [aiInput, setAiInput] = useState('');
+    const [aiLoading, setAiLoading] = useState(false);
+    const aiScrollRef = useRef(null);
+
+    // Executor command khusus ChunkManager — pola sama dengan simulator utama
+    // (placeBlock/generateScene/clearScene) tapi via cm.setBlock (InstancedMesh).
+    const executeAiCommand = (cmdStr) => {
+        const cm = cmRef.current;
+        if (!cm) return;
+        const match = cmdStr.match(/^(\w+)\((.*)\)$/);
+        if (!match) return;
+        const cmdName = match[1];
+        const args = match[2] ? match[2].split(',').map(a => a.trim().replace(/^['"]|['"]$/g, '')) : [];
+        const PALETTE = [0x3b82f6, 0xef4444, 0x22c55e, 0xf59e0b, 0xa855f7];
+        const put = (x, y, z, color) => cm.setBlock(x, y, z, { color, scale: [1, 1, 1], quaternion: [0, 0, 0, 1] });
+        switch (cmdName) {
+            case 'placeBlock': {
+                const [x, y, z, colorHex] = args;
+                const color = /^0x/.test(colorHex || '') ? parseInt(colorHex, 16)
+                    : /^#/.test(colorHex || '') ? parseInt(colorHex.slice(1), 16)
+                    : 0x3b82f6;
+                put(parseInt(x) || 0, parseInt(y) || 0, parseInt(z) || 0, color);
+                break;
+            }
+            case 'generateScene': {
+                const type = args[0] || 'castle';
+                if (type === 'castle') {
+                    // 4 menara 4 tingkat warna-warni
+                    for (let i = 0; i < 4; i++) {
+                        const x = (i % 2 === 0 ? -3 : 3), z = (i < 2 ? -3 : 3);
+                        for (let y = 0; y < 4; y++) put(x, y, z, PALETTE[i % PALETTE.length]);
+                    }
+                } else if (type === 'tree') {
+                    for (let i = 0; i < 5; i++) {
+                        const x = Math.floor((Math.random() - 0.5) * 12), z = Math.floor((Math.random() - 0.5) * 12);
+                        put(x, 0, z, 0x5d3a1a); put(x, 1, z, 0x5d3a1a); put(x, 2, z, 0x1a5e1a);
+                    }
+                } else if (type === 'pyramid') {
+                    for (let layer = 0; layer < 6; layer++) {
+                        const size = 6 - layer;
+                        for (let x = 0; x < size; x++) for (let z = 0; z < size; z++) {
+                            put(x - Math.floor(size / 2), layer, z - Math.floor(size / 2), 0xfbbf24);
+                        }
+                    }
+                }
+                break;
+            }
+            case 'clearScene': {
+                cm.clear();
+                setBlockCount(0);
+                setChunkCount(0);
+                setGenTime(null);
+                break;
+            }
+        }
+        setBlockCount(cm.totalBlocks);
+        setChunkCount(cm.totalChunks);
+    };
+
+    const callAi = async (userMessage) => {
+        const newMessages = [...aiMessages, { role: 'user', content: userMessage }];
+        setAiMessages(newMessages);
+        setAiInput('');
+        setAiLoading(true);
+        try {
+            const response = await fetch('/api/ai-helper', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'qwen-3.7', messages: newMessages, temperature: 0.7, max_tokens: 1000 }),
+            });
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || ('API error: ' + response.status));
+            }
+            const data = await response.json();
+            const aiContent = data.choices?.[0]?.message?.content || 'No response from AI.';
+            setAiMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
+            const commandPattern = /\[\[COMMAND:([^\]]+)\]\]/g;
+            let m;
+            while ((m = commandPattern.exec(aiContent)) !== null) executeAiCommand(m[1].trim());
+        } catch {
+            // Fallback offline — tetap proaktif + command lokal tetap jalan
+            const msg = userMessage.toLowerCase();
+            let text = '✨ (Offline) Koneksi AI belum tersedia — tapi rekomendasi build ini jalan lokal:\n\n• "generate castle" — kastil 4 menara\n• "tambah tree" — taman 5 pohon\n• "generate pyramid" — piramida 6 tingkat\n• "clear scene" — bersihkan papan';
+            let cmd = null;
+            if (msg.includes('castle') || msg.includes('kastil')) { text = 'Kastil 4 menara akan saya buat!\n\n[[COMMAND:generateScene(castle)]]'; cmd = 'generateScene(castle)'; }
+            else if (msg.includes('tree') || msg.includes('pohon')) { text = 'Taman pohon akan saya buat!\n\n[[COMMAND:generateScene(tree)]]'; cmd = 'generateScene(tree)'; }
+            else if (msg.includes('pyramid') || msg.includes('piramida')) { text = 'Piramida akan saya buat!\n\n[[COMMAND:generateScene(pyramid)]]'; cmd = 'generateScene(pyramid)'; }
+            else if (msg.includes('clear') || msg.includes('hapus')) { text = 'Scene dibersihkan!\n\n[[COMMAND:clearScene()]]'; cmd = 'clearScene()'; }
+            setAiMessages(prev => [...prev, { role: 'assistant', content: text }]);
+            if (cmd) executeAiCommand(cmd);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        aiScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [aiMessages, aiLoading]);
 
     // ════════════════════════════════════════════════════════════════════════════
     // ARCHITECTURE DEMO — Object3D Dummy Pattern
@@ -533,6 +649,83 @@ export default function BlockSimulatorTest({ setPage }) {
                     ✓ Random rotations<br/>
                 </div>
             </div>
+
+        {/* ── AI Helper kuning (Sparkles) — koordinat sama persis dengan tombol
+               hitam global (bottom:24 right:24) yang disembunyikan App.jsx di
+               halaman ini. Desain konsisten tombol simulator utama. ── */}
+        <button
+            onClick={() => setAiHelperOpen(v => !v)}
+            title="AI Helper 3D Simulator Test — rekomendasi build & command"
+            style={{
+                position: 'fixed', bottom: 24, right: 24, zIndex: 200,
+                width: 52, height: 52, borderRadius: '50%',
+                backgroundColor: aiHelperOpen ? '#fbbf24' : '#f59e0b',
+                border: '2px solid #fbbf24', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(245,158,11,0.5), 0 0 24px rgba(245,158,11,0.3)',
+                transition: 'all 0.2s', transform: aiHelperOpen ? 'scale(1.1)' : 'scale(1)',
+            }}
+        >
+            <Sparkles size={22} />
+        </button>
+
+        {aiHelperOpen && (
+            <div style={{
+                position: 'fixed', top: 0, right: 0, height: '100dvh', width: 380,
+                maxWidth: '100vw',
+                backgroundColor: 'rgba(14,20,32,0.98)', borderLeft: '2px solid #f59e0b',
+                boxShadow: '-8px 0 32px rgba(0,0,0,0.5)', zIndex: 250,
+                display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif',
+                backdropFilter: 'blur(12px)',
+            }}>
+                {/* Header — konsisten panel simulator utama */}
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(245,158,11,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(245,158,11,0.08)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 0 12px rgba(245,158,11,0.5)' }}>
+                            <Sparkles size={18} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', fontFamily: 'Orbitron, sans-serif' }}>AI Helper</div>
+                            <div style={{ fontSize: 10, color: '#64748b' }}>3D Simulator Test — ChunkManager</div>
+                        </div>
+                    </div>
+                    <button onClick={() => setAiHelperOpen(false)} aria-label="Tutup" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4, display: 'flex' }}><X size={18} /></button>
+                </div>
+
+                {/* Riwayat */}
+                <div ref={aiScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {aiMessages.filter(m => m.role !== 'system').map((msg, i) => (
+                        <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+                            <div style={{ padding: '8px 12px', borderRadius: 12, backgroundColor: msg.role === 'user' ? '#f59e0b' : 'rgba(30,41,59,0.8)', color: msg.role === 'user' ? '#fff' : '#e2e8f0', fontSize: 12, lineHeight: 1.5, border: msg.role === 'user' ? 'none' : '1px solid rgba(148,163,184,0.15)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+                        </div>
+                    ))}
+                    {aiLoading && (
+                        <div style={{ alignSelf: 'flex-start', maxWidth: '85%' }}>
+                            <div style={{ padding: '8px 12px', borderRadius: 12, backgroundColor: 'rgba(30,41,59,0.8)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', fontSize: 12, fontStyle: 'italic' }}>AI sedang berpikir...</div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Chips rekomendasi build (proaktif) */}
+                <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(148,163,184,0.1)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {['generate castle', 'tambah tree', 'generate pyramid', 'clear scene'].map(s => (
+                        <button key={s} onClick={() => { if (!aiLoading) callAi(s); }} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', cursor: aiLoading ? 'not-allowed' : 'pointer', opacity: aiLoading ? 0.5 : 1 }}>{s}</button>
+                    ))}
+                </div>
+
+                {/* Input */}
+                <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(148,163,184,0.1)' }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <textarea value={aiInput} onChange={e => setAiInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (aiInput.trim() && !aiLoading) callAi(aiInput.trim()); } }}
+                            placeholder="Ketik pesan... (Enter untuk kirim)" rows={2} disabled={aiLoading}
+                            style={{ flex: 1, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid rgba(245,158,11,0.3)', color: '#e2e8f0', fontSize: 12, fontFamily: 'Inter, sans-serif', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+                        <button onClick={() => { if (aiInput.trim() && !aiLoading) callAi(aiInput.trim()); }} disabled={aiLoading || !aiInput.trim()} aria-label="Kirim"
+                            style={{ padding: '8px 14px', borderRadius: 8, background: aiLoading || !aiInput.trim() ? 'rgba(245,158,11,0.3)' : '#f59e0b', color: '#fff', border: 'none', cursor: aiLoading || !aiInput.trim() ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center' }}><Send size={14} /></button>
+                    </div>
+                </div>
+            </div>
+        )}
         </div>
     );
 }

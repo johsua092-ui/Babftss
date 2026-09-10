@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -7286,26 +7286,19 @@ Now you can apply Displacement for detailed effect.`);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // AI Helper — 1 panel, 2 mode (permintaan user Phase 58, 2026-09-09):
-  //   'simulator' = khusus 3D Block Simulator — system prompt command, chip
-  //                 saran command, [[COMMAND:...]] dieksekusi ke scene.
-  //   'chat'      = asisten umum — ngobrol bebas, TANPA eksekusi command.
-  // Riwayat kedua mode DIPISAH (2 state) supaya pindah mode tidak kehilangan
-  // konteks. Route backend: /api/ai-helper (credentials: AI_HELPER_URL/KEY).
+  // AI Helper kuning (Sparkles) — SATU mode: asisten 3D Block Simulator.
+  // (Kesepakatan tim 2026-09-10: AI Helper dipecah 3 — hitam umum / biru logic
+  //  gates / KUNING simulator. Toggle chat-umum era Phase 58 DIHAPUS karena
+  //  tugas ngobrol bebas kini dipegang AI hitam di halaman umum.)
+  // Fokus: rekomendasi build 3D + command [[COMMAND:...]] dieksekusi ke scene.
+  // Route backend: /api/ai-helper (credentials: AI_HELPER_URL/KEY — tanpa
+  // env baru). WAJIB PROAKTIF: greeting langsung sodor rekomendasi build.
   // ─────────────────────────────────────────────────────────────────────────
   const [aiHelperOpen, setAiHelperOpen] = useState(false);
-  const [aiHelperMode, setAiHelperMode] = useState('simulator');
-  const AI_HELPER_SYSTEM_PROMPTS = {
-    simulator: { role: 'system', content: 'Anda adalah AI asisten untuk 3D Block Simulator. Anda punya akses ke 212 phase features. Untuk eksekusi command, balas dengan format [[COMMAND:commandName(args)]] — contoh: [[COMMAND:placeBlock(5,0,3,red)]]' },
-    chat: { role: 'system', content: 'Anda adalah AI asisten ramah yang menemani ngobrol santai di web Belajar Bareng TKT (Babft). Jawab pertanyaan apa saja dengan bahasa Indonesia yang enak dibaca, ringkas, dan membantu. Anda TIDAK bisa mengoperasikan 3D Block Simulator dari mode ini — kalau user minta aksi scene (place block, dsb.), sarankan pindah ke mode 3D Simulator.' },
-  };
-  const [aiHelperSimMessages, setAiHelperSimMessages] = useState([
-    AI_HELPER_SYSTEM_PROMPTS.simulator,
-    { role: 'assistant', content: 'Halo! Saya AI Helper mode 3D Simulator. Saya bisa bangun scene lewat command. Coba: "generate castle", "tambah 10 block merah", atau "enable bloom".' },
-  ]);
-  const [aiHelperChatMessages, setAiHelperChatMessages] = useState([
-    AI_HELPER_SYSTEM_PROMPTS.chat,
-    { role: 'assistant', content: 'Halo! Saya AI Helper mode Chat Umum — ngobrol santai soal apa aja. Mau tanya apa hari ini?' },
+  const AI_HELPER_SYSTEM_PROMPT = { role: 'system', content: 'Anda adalah AI asisten untuk 3D Block Simulator. Anda punya akses ke 212 phase features. Untuk eksekusi command, balas dengan format [[COMMAND:commandName(args)]] — contoh: [[COMMAND:placeBlock(5,0,3,red)]]. WAJIB PROAKTIF: kalau user masih bingung mau bangun apa, langsung sodorkan rekomendasi build 3D yang seru (kastil, piramida, taman pohon, puzzle maze, jembatan lengkung, dll) beserta command yang bisa dipakai.' };
+  const [aiHelperMessages, setAiHelperMessages] = useState([
+    AI_HELPER_SYSTEM_PROMPT,
+    { role: 'assistant', content: '✨ Hai! Saya AI Helper 3D Block Simulator — siap bangun scene bareng kamu lewat command.\n\nRekomendasi build buat mulai:\n\n• Kastil 4 menara warna-warni — "generate castle"\n• Taman 5 pohon acak — "tambah tree"\n• Piramida 6 tingkat — "generate pyramid"\n• Puzzle maze / tower of hanoi — dari menu Apps\n• Bloom biar scene aglow — "enable bloom"\n\nKetik ide kamu, atau klik chip rekomendasi di bawah — saya yang susun!' },
   ]);
   const [aiHelperInput, setAiHelperInput] = useState('');
   const [aiHelperLoading, setAiHelperLoading] = useState(false);
@@ -7313,13 +7306,9 @@ Now you can apply Displacement for detailed effect.`);
   const aiHelperScrollRef = useRef(null);
 
   const callAiHelper = async (userMessage) => {
-    const mode = aiHelperMode;
-    const isSim = mode === 'simulator';
-    // Ambil riwayat mode aktif; sisipkan ulang system prompt mode di depan
-    // supaya percakapan tetap terjaga konteksnya per-mode.
-    const baseMessages = isSim ? aiHelperSimMessages : aiHelperChatMessages;
-    const newMessages = [...baseMessages, { role: 'user', content: userMessage }];
-    if (isSim) setAiHelperSimMessages(newMessages); else setAiHelperChatMessages(newMessages);
+    // Satu riwayat saja (toggle mode era Phase 58 sudah dihapus).
+    const newMessages = [...aiHelperMessages, { role: 'user', content: userMessage }];
+    setAiHelperMessages(newMessages);
     setAiHelperInput('');
     setAiHelperLoading(true);
     try {
@@ -7334,46 +7323,32 @@ Now you can apply Displacement for detailed effect.`);
       }
       const data = await response.json();
       const aiContent = data.choices?.[0]?.message?.content || 'No response from AI.';
-      if (isSim) {
-        setAiHelperSimMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
-      } else {
-        setAiHelperChatMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
-      }
-      // [[COMMAND:...]] HANYA dieksekusi di mode simulator — mode chat murni
-      // ngobrol, teks command ditampilkan apa adanya (tidak dieksekusi).
-      if (isSim) {
-        const commandPattern = /\[\[COMMAND:([^\]]+)\]\]/g;
-        let match;
-        while ((match = commandPattern.exec(aiContent)) !== null) {
-          executeAiHelperCommand(match[1].trim());
-        }
+      setAiHelperMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
+      // [[COMMAND:...]] dieksekusi — panel ini memang mode simulator.
+      const commandPattern = /\[\[COMMAND:([^\]]+)\]\]/g;
+      let match;
+      while ((match = commandPattern.exec(aiContent)) !== null) {
+        executeAiHelperCommand(match[1].trim());
       }
     } catch (err) {
-      const fallback = generateAiHelperFallback(userMessage, mode);
-      if (isSim) {
-        setAiHelperSimMessages(prev => [...prev, { role: 'assistant', content: fallback.text }]);
-        if (fallback.command) executeAiHelperCommand(fallback.command);
-      } else {
-        setAiHelperChatMessages(prev => [...prev, { role: 'assistant', content: fallback.text }]);
-      }
+      const fallback = generateAiHelperFallback(userMessage);
+      setAiHelperMessages(prev => [...prev, { role: 'assistant', content: fallback.text }]);
+      if (fallback.command) executeAiHelperCommand(fallback.command);
     } finally {
       setAiHelperLoading(false);
     }
   };
 
-  const generateAiHelperFallback = (userMsg, mode = 'simulator') => {
-    // Fallback offline hanya punya kamus command untuk mode simulator;
-    // mode chat diberi balasan umum (tanpa command).
-    if (mode !== 'simulator') {
-      return { text: '(Offline) Maaf, koneksi AI sedang tidak tersedia. Coba lagi sebentar lagi ya!', command: null };
-    }
+  const generateAiHelperFallback = (userMsg) => {
+    // Fallback offline — tetap PROAKTIF: sodorkan rekomendasi build,
+    // bukan cuma "maaf offline". Command tetap bisa jalan (lokal).
     const msg = userMsg.toLowerCase();
     if (msg.includes('castle') || msg.includes('kastil')) return { text: 'Saya akan generate castle!\n\n[[COMMAND:generateScene(castle)]]', command: 'generateScene(castle)' };
     if (msg.includes('tree') || msg.includes('pohon')) return { text: 'Saya akan tambahkan pohon!\n\n[[COMMAND:generateScene(tree)]]', command: 'generateScene(tree)' };
     if (msg.includes('pyramid') || msg.includes('piramida')) return { text: 'Piramida akan saya buat!\n\n[[COMMAND:generateScene(pyramid)]]', command: 'generateScene(pyramid)' };
     if (msg.includes('bloom')) return { text: 'Bloom diaktifkan!\n\n[[COMMAND:toggleBloom()]]', command: 'toggleBloom()' };
     if (msg.includes('clear') || msg.includes('hapus')) return { text: 'Scene dibersihkan!\n\n[[COMMAND:clearScene()]]', command: 'clearScene()' };
-    return { text: 'Coba: "generate castle", "tambah tree", "enable bloom", atau "clear scene".', command: null };
+    return { text: '✨ (Offline) Koneksi AI belum tersedia — tapi coba rekomendasi build ini:\n\n• "generate castle" — kastil 4 menara\n• "tambah tree" — taman 5 pohon\n• "generate pyramid" — piramida 6 tingkat\n• "clear scene" — bersihkan papan\n\nCommand di atas jalan lokal, tanpa internet!', command: null };
   };
 
   const executeAiHelperCommand = (cmdStr) => {
@@ -22845,12 +22820,15 @@ Now you can apply Displacement for detailed effect.`);
         </div>
       )}
 
-      {/* AI Helper — Floating orange button */}
+      {/* AI Helper kuning — tombol Sparkles (kesepakatan 2026-09-10: AI dipecah 3).
+          Posisi bottom:24 right:24 — MENIMPA koordinat tombol hitam global yang
+          kini disembunyikan di halaman simulator (posisi lama era tombol hitam
+          masih ikut dirender sudah tidak dipakai lagi). */}
       <button
         onClick={() => setAiHelperOpen(v => !v)}
-        title="AI Helper (qwen) — Admin Mode"
+        title="AI Helper 3D Simulator — rekomendasi build & command"
         style={{
-          position: 'fixed', bottom: 24, right: 84, zIndex: 200,
+          position: 'fixed', bottom: 24, right: 24, zIndex: 200,
           width: 52, height: 52, borderRadius: '50%',
           backgroundColor: aiHelperOpen ? '#fbbf24' : '#f59e0b',
           border: '2px solid #fbbf24', color: '#fff', cursor: 'pointer',
@@ -22883,23 +22861,18 @@ Now you can apply Displacement for detailed effect.`);
             <button onClick={() => setAiHelperOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: 4 }}>×</button>
           </div>
           <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(148,163,184,0.1)' }}>
-            {/* Mode toggle — 1 tubuh AI Helper, 2 mode (Phase 58):
-                simulator = khusus 3D Block Simulator (command [[COMMAND:...]] dieksekusi),
-                chat = ngobrol umum tanpa command. Riwayat dipisah per mode. */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-              {[{ id: 'simulator', label: '3D Simulator' }, { id: 'chat', label: 'Chat Umum' }].map(m => (
-                <button key={m.id} onClick={() => setAiHelperMode(m.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 8px', borderRadius: 6, border: `1px solid ${aiHelperMode === m.id ? '#f59e0b' : 'rgba(148,163,184,0.2)'}`, background: aiHelperMode === m.id ? 'rgba(245,158,11,0.15)' : 'transparent', color: aiHelperMode === m.id ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{m.id === 'chat' ? <MessageCircle size={12} /> : <Sparkles size={12} />}{m.label}</button>
-              ))}
-            </div>
+            {/* Satu mode (2026-09-10): tidak ada lagi toggle Simulator/Chat Umum —
+                panel kuning fokus 3D build; ngobrol bebas dipegang AI hitam di
+                halaman umum. Selector model tetap ada. */}
             <div style={{ display: 'flex', gap: 6 }}>
               {['qwen-3.7', 'qwen-3.8'].map(model => (
                 <button key={model} onClick={() => setAiHelperModel(model)} style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${aiHelperModel === model ? '#f59e0b' : 'rgba(148,163,184,0.2)'}`, background: aiHelperModel === model ? 'rgba(245,158,11,0.15)' : 'transparent', color: aiHelperModel === model ? '#f59e0b' : '#94a3b8', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>{model}</button>
               ))}
             </div>
-            <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>{aiHelperMode === 'simulator' ? 'AI Helper — mode 3D Simulator (bisa command scene)' : 'AI Helper — mode Chat Umum (ngobrol santai)'}</div>
+            <div style={{ fontSize: 9, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>AI Helper 3D Simulator — rekomendasi build + eksekusi command scene</div>
           </div>
           <div ref={aiHelperScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(aiHelperMode === 'simulator' ? aiHelperSimMessages : aiHelperChatMessages).filter(m => m.role !== 'system').map((msg, i) => (
+            {aiHelperMessages.filter(m => m.role !== 'system').map((msg, i) => (
               <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
                 <div style={{ padding: '8px 12px', borderRadius: 12, backgroundColor: msg.role === 'user' ? '#f59e0b' : 'rgba(30,41,59,0.8)', color: msg.role === 'user' ? '#fff' : '#e2e8f0', fontSize: 12, lineHeight: 1.5, border: msg.role === 'user' ? 'none' : '1px solid rgba(148,163,184,0.15)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
               </div>
@@ -22911,10 +22884,8 @@ Now you can apply Displacement for detailed effect.`);
             )}
           </div>
           <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(148,163,184,0.1)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {(aiHelperMode === 'simulator'
-              ? ['generate castle', 'tambah tree', 'enable bloom', 'clear scene']
-              : ['Halo, apa kabar?', 'Jelaskan cara pakai 3D Block Simulator', 'Ide project keren buat belajar', 'ngobrol santai aja']
-            ).map(s => (
+            {/* Chips rekomendasi build (proaktif — sekali klik langsung dieksekusi) */}
+            {['generate castle', 'tambah tree', 'generate pyramid', 'enable bloom', 'clear scene'].map(s => (
               <button key={s} onClick={() => { if (!aiHelperLoading) callAiHelper(s); }} style={{ padding: '4px 8px', borderRadius: 4, fontSize: 10, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b', cursor: aiHelperLoading ? 'not-allowed' : 'pointer', opacity: aiHelperLoading ? 0.5 : 1 }}>{s}</button>
             ))}
           </div>

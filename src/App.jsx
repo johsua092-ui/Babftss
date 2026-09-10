@@ -6,6 +6,8 @@ import MenuButton3D from './components/MenuButton3D';
 import LoginModal from './components/LoginModal';
 import NotFoundPage from './components/NotFoundPage';
 import AIHelperButton from './components/AIHelperButton';
+import LogicCircuitHelperButton from './components/LogicCircuitHelperButton';
+const LogicCircuitHelperPanel = lazy(() => import('./components/LogicCircuitHelperPanel'));
 import CreditsBox from './components/CreditsBox';
 import { useAuth } from './contexts/AuthContext';
 import { trackVisit } from './lib/tracker';
@@ -32,6 +34,32 @@ const KNOWN_PAGES = new Set([
     'linkages',
     'logic-gates-simulator',
 ]);
+// ── Zona AI Helper (kesepakatan tim, 2026-09-10): sistem AI Helper dipecah 3 ──
+//   HITAM  (AIHelperButton global)  → semua halaman UMUM: welcome, menu,
+//          marketplace, canvas, shapes, shapes-calculator, gears, linkages.
+//   BIRU   (LogicCircuitHelperButton) → HANYA keluarga Logic Gates: logic-gates,
+//          basic-logic-gates, logic-gates-circuit, circuit-generator,
+//          logic-gates-simulator. Menimpa koordinat hitam (bottom:24 right:24).
+//   KUNING (tombol di dalam BlockSimulator3D & BlockSimulatorTest) → HANYA 2
+//          halaman simulator, juga di koordinat hitam yang disembunyikan.
+// Di halaman yang dikecualikan, tombol hitam TIDAK dirender sama sekali
+// (bukan cuma disembunyikan CSS) supaya tidak ada dobel tombol menumpuk.
+const AI_BLACK_HIDDEN_PAGES = new Set([
+    'logic-gates',
+    'basic-logic-gates',
+    'logic-gates-circuit',
+    'circuit-generator',
+    'logic-gates-simulator',
+    'block-simulator-3d',
+    'block-sim-test',
+]);
+const LOGIC_AI_PAGES = new Set([
+    'logic-gates',
+    'basic-logic-gates',
+    'logic-gates-circuit',
+    'circuit-generator',
+    'logic-gates-simulator',
+]);
 const ShapesCalculator = lazy(() => import('./pages/ShapesCalculator'));
 const BlockSimulator3D = lazy(() => import('./pages/BlockSimulator3D'));
 const BlockSimulatorTest = lazy(() => import('./components/BlockSimulatorTest'));
@@ -56,6 +84,10 @@ export default function App() {
     const [showLogin, setShowLogin] = useState(false);
     const [progressLoaded, setProgressLoaded] = useState(false);
     const [helperOpen, setHelperOpen] = useState(false);
+    // Panel biru (Logic Circuit Helper) punya state sendiri — terpisah total
+    // dari panel hitam supaya halaman logic gates tidak pernah menyentuh
+    // riwayat chat/gold milik panel umum.
+    const [logicHelperOpen, setLogicHelperOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState([]);
     const [chatId, setChatId] = useState(null);
     const [guestAnnouncement, setGuestAnnouncement] = useState(false);
@@ -566,7 +598,16 @@ export default function App() {
             )}
         </AnimatePresence>
         </main>
-        {!helperOpen && <AIHelperButton onClick={() => setHelperOpen(true)} />}
+        {/* AI Helper zona (lihat komentar AI_BLACK_HIDDEN_PAGES di atas):
+            hitam hanya di halaman umum; keluarga Logic Gates & simulator
+            masing-masing punya AI spesifik di koordinat yang sama. */}
+        {!helperOpen && !AI_BLACK_HIDDEN_PAGES.has(page) && <AIHelperButton onClick={() => setHelperOpen(true)} />}
+        {!logicHelperOpen && LOGIC_AI_PAGES.has(page) && <LogicCircuitHelperButton onClick={() => setLogicHelperOpen(true)} />}
+        {logicHelperOpen && (
+            <Suspense fallback={null}>
+                <LogicCircuitHelperPanel onClose={() => setLogicHelperOpen(false)} />
+            </Suspense>
+        )}
         {helperOpen && (
             <Suspense fallback={null}>
                 <AIHelperPanel
