@@ -12850,7 +12850,7 @@ Now you can apply Displacement for detailed effect.`);
       if (block) {
         const w = threeRef.current.renderer?.domElement?.clientWidth || 1280;
         const h = threeRef.current.renderer?.domElement?.clientHeight || 720;
-        attachDeleteWireframe(block, w, h);
+        attachDeleteWireframe(block);
       }
     };
 

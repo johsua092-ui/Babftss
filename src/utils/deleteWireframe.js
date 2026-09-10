@@ -1,136 +1,129 @@
 /**
- * deleteWireframe.js — Outline merah tool DELETE: WIREFRAME GARIS RUSUK.
+ * deleteWireframe.js — Outline hover tool DELETE: BINGKAI MERAH MENEMPEL
+ * DI KULIT BLOCK ("painted frame", bukan wireframe mengambang).
  *
  * ══════════════════════════════════════════════════════════════════════════
- * KONTEKS (keputusan user 2026-09-10, gambar referensi "folder image/Screenshot
- * 2026-09-09 112617.png" — dianalisis pixel 4 tahap, 60.828 px merah + 43.491
- * px biru):
- *   Outline yang BENAR = garis WIREFRAME 12 RUSUK kubus, TEBAL (±30px layar),
- *   kubus outline ~1.28x ukuran block (terukur: bbox merah 383px vs block
- *   298px), block tetap warna ASLI murni (biru tetap biru — tanpa emissive).
- *   Teknik LAMA (shell BackSide scale 1.3, Mesh permukaan penuh) = "salah
- *   total": yang dirender seluruh permukaan belakang kubus merah 130% →
- *   tampak seperti block dibungkus kantong merah menyala, bukan garis rusuk.
+ * SEJARAH SINGKAT (biar AI penerus tidak salah urutan):
+ *   v1 (era lama)        : shell BackSide scale 1.3 — permukaan merah raksasa
+ *                          membungkus block ("salah total" versi user).
+ *   v2 (Phase 60, 44700ee): EdgesGeometry + LineSegments2 wireframe garis
+ *                          rusuk tebal 1.28x DI LUAR block — "50% benar":
+ *                          bentuk rusuk sudah benar, TAPI mengambang/menempel
+ *                          di luar kulit block.
+ *   v3 (INI, hasil analisis Gemini vision terhadap gambar referensi user
+ *       "folder image/Screenshot 2026-09-09 112617.png" — konfirmasi 3x
+ *       konsisten): outline yang dimaksud user = BINGKAI MERAH MENEMPEL DI
+ *       PERMUKAAN block (seperti kubus biru dicat tepinya merah):
+ *         • SATU kubus, frame merah flush di kulit — TANPA celah udara,
+ *           TANPA bayangan kedalaman (bukan objek terpisah yang mengelilingi).
+ *         • Biru BERHENTI SEBELUM rusuk: tiap wajah = bingkai merah ~12-15%
+ *           lebar wajah mengelilingi panel biru inset (terukur visual Gemini).
+ *         • Ketebalan konsisten semua rusuk; flat/unlit (tanpa gradasi).
  *
- * TEKNIK (diprobe di Node, three r185 — jalan):
- *   - EdgesGeometry(geometry, thresholdAngle) → 12 rusuk kubus (24 vertex).
- *   - LineSegmentsGeometry + LineMaterial (linewidth dalam PIXEL layar,
- *     bukan world-unit) → garis TEBAL konsisten di semua zoom.
- *   - LineSegments2 dirender dengan shader khusus (bukan THREE.Line biasa
- *     yang hanya 1px dan RUSAK di SwiftShader — pelajaran kontrak: uji
- *     garis wajib GPU nyata).
+ * TEKNIK v3:
+ *   ShaderMaterial per-fragment berbasis UV BoxGeometry: setiap wajah kubus
+ *   BoxGeometry punya UV 0..1. Warna = merah jika koordinat UV berada dalam
+ *   "band tepi" (u atau v < FRAME atau > 1-FRAME); selain itu ALPHA 0
+ *   (tembus pandang) → block asli terlihat di tengah. DepthTest true +
+ *   polygonOffset supaya frame tidak z-fight dengan kulit block (frame
+ *   dirender persis di permukaan). Wireframe rusuk garis TIDAK dipakai lagi.
+ *   → Efek: block asli tampak "dibingkai merah" di tepinya, persis referensi.
  *
- * DESAIN:
- *   - attach sebagai CHILD block → otomatis ikut position/rotation/scale.
- *   - scale 1.28 di LOCAL space child (setelah rotasi block, rusuk tetap
- *     nempel di geometry block — world-scale tidak perlu dihitung manual).
- *   - depthTest: true, depthWrite: false → rusuk belakang TERTUTUP block
- *     secara natural (persis referensi: interior bersih), rusuk depan
- *     terlihat menembus di tepi.
- *   - HDR color 4x + toneMapped:false → merah darah menyala konsisten di
- *     jalur render langsung & bloom (warisan keputusan shell lama yang
- *     sudah terbukti baik — dipertahankan).
- *   - raycast disabled → outline tidak pernah menghalangi hit delete/hover.
- *   - Idempoten: tanda userData.deleteOutline; re-attach block sama = no-op.
- *   - dispose() lengkap: geometry line + material + EdgesGeometry sumber.
- *
- * BARIS SEJARAH: menggantikan shell BackSide di BlockSimulator3D.jsx
- * (dulu DELETE_OUTLINE_SCALE=1.3, Mesh BackSide, baris ~12814-12876 era
- * pra-2026-09-10). Fungsi setEmissive/highlightSelected TIDAK tersentuh.
+ *   Shell mesh child scale 1.0 PERSIS ukuran block (menempel kulit block,
+ *   bukan 1.28 di luar). Warna HDR 4x + toneMapped:false (warisan terbukti
+ *   baik untuk jalur bloom & direct render).
  * ══════════════════════════════════════════════════════════════════════════
  */
 
 import * as THREE from 'three';
-import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
-import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
-// Ketebalan garis dalam PIXEL layar (referensi: ~30px pada block ~300px layar
-// → rasio ~10%; pada layar 1280 viewport cukup 6px supaya tegas tapi tidak
-// menelan block kecil saat zoom out — angka final dari verifikasi pixel).
-export const DELETE_WIREFRAME_LINEWIDTH = 6;
-
-// Rasio inflate kubus outline vs block — 383/298 = 1.285 terukur dari gambar
-// referensi (outline menggreeting block dari luar, ada gap jelas).
-export const DELETE_WIREFRAME_SCALE = 1.28;
+// Ketebalan bingkai sebagai fraksi lebar wajah (12-15% terukur dari
+// referensi; 0.13 = tengah rentang). Frame di SEMUA rusuk konsisten.
+export const DELETE_FRAME_WIDTH = 0.13;
 
 let sharedMat = null;
+let sharedGeo = null;
+
+function getSharedGeometry() {
+  if (!sharedGeo) {
+    // BoxGeometry UV: tiap wajah 0..1 — shader band tepi bekerja untuk
+    // block kubus standar. Untuk mesh import GLB (UV acak), band tetap
+    // bekerja relatif terhadap UV island masing-masing — cukup masuk akal.
+    sharedGeo = new THREE.BoxGeometry(1, 1, 1);
+  }
+  return sharedGeo;
+}
 
 function getSharedMaterial() {
   if (!sharedMat) {
-    sharedMat = new LineMaterial({
-      // HDR 4x (channel > 1): bloom OFF → clamp merah terang penuh;
-      // bloom ON (ACES) → tetap menyala. Sama seperti shell lama — terbukti.
-      color: new THREE.Color(0xff0a0a).multiplyScalar(4),
-      linewidth: DELETE_WIREFRAME_LINEWIDTH, // pixel — tebal di semua zoom
-      // worldUnits:false = default; linewidth diinterpretasikan dalam pixel.
+    sharedMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uFrame: { value: DELETE_FRAME_WIDTH },        // 0.13 lebar wajah
+        uColor: { value: new THREE.Color(0xff0a0a).multiplyScalar(4) }, // HDR merah darah
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uFrame;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        void main() {
+          // Band tepi: merah kalau u ATAU v jatuh dalam strip 0..uFrame atau
+          // (1-uFrame)..1 → membentuk bingkai persegi di tiap wajah.
+          float edgeU = step(vUv.x, uFrame) + step(1.0 - uFrame, vUv.x);
+          float edgeV = step(vUv.y, uFrame) + step(1.0 - uFrame, vUv.y);
+          float frame = clamp(edgeU + edgeV, 0.0, 1.0);
+          if (frame < 0.5) discard;               // tengah wajah = tembus
+          gl_FragColor = vec4(uColor, 1.0);        // bingkai merah solid
+        }
+      `,
       transparent: false,
-      depthTest: true,   // rusuk belakang tertutup block (referensi: interior bersih)
-      depthWrite: false,
+      depthTest: true,
+      depthWrite: true,
       toneMapped: false,
-      fog: false,
+      // polygonOffset: tarik frame SEDIKIT ke arah kamera supaya tidak
+      // z-fight dengan kulit block (dua permukaan coplanar).
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
   }
   return sharedMat;
 }
 
 /**
- * Set resolution LineMaterial — WAJIB dipanggil (LineMaterial pixel-based
- * butuh tahu ukuran render target, kalau tidak garis HILANG).
- * Dipanggil: (1) tiap attach, (2) tiap resize renderer (via callback yang
- * simulator sediakan di threeRef).
- */
-export function setDeleteWireframeResolution(width, height) {
-  const mat = getSharedMaterial();
-  mat.resolution.set(width, height);
-}
-
-/**
- * Pasang outline wireframe merah pada block (menggantikan removeDeleteOutline
- * lama). Return instance handle { line, sourceGeometry } supaya caller bisa
- * detach/dispose. Mesh outline di-attach sebagai CHILD block → ikut
- * transform block otomatis.
+ * Pasang bingkai merah "painted frame" pada block — mesh shell child dengan
+ * geometry box UV-standar (bukan geometry block; kita tidak butuh bentuk
+ * asli — kita hanya melukis bingkai di bounding box-nya).
+ * Catatan: untuk block kubus standar hasil = persis referensi. Untuk mesh
+ * import GLB, shell box 1:1 scale block mengikuti bounding box — frame
+ * mengelilingi seluruh objek (masuk akal untuk target delete).
  *
- * @param {THREE.Object3D} block  mesh block yang di-hover (bisa nested mesh
- *                                hasil import GLB — EdgesGeometry dipakai dari
- *                                geometry mesh itu sendiri).
- * @param {number} rendererWidth   lebara render target (untuk resolution)
- * @param {number} rendererHeight  tinggi render target
+ * Idempoten: userData.__deleteOutline guard.
  */
-export function attachDeleteWireframe(block, rendererWidth, rendererHeight) {
-  if (!block || !block.geometry) return null;
-
-  // Idempoten: sudah ada outline di block ini → jangan dobel
+export function attachDeleteWireframe(block) {
+  if (!block) return null;
   if (block.userData.__deleteOutline) return block.userData.__deleteOutline;
 
-  setDeleteWireframeResolution(rendererWidth || 1, rendererHeight || 1);
-
-  // 12 rusuk dari geometry block (thresholdAngle 1° — kubus clean 90°).
-  // Catatan: untuk mesh import GLB dengan geometry kompleks, EdgesGeometry
-  // otomatis hanya ambil rusuk tajam (bukan semua segitiga) — tetap masuk akal
-  // secara visual sebagai "garis tepi objek".
-  const sourceGeometry = block.geometry.index
-    ? block.geometry.toNonIndexed() : block.geometry;
-  const edges = new THREE.EdgesGeometry(sourceGeometry, 1);
-
-  const lineGeo = new LineSegmentsGeometry();
-  lineGeo.setPositions(Array.from(edges.attributes.position.array));
-
-  const line = new LineSegments2(lineGeo, getSharedMaterial());
-  line.computeLineDistances();
-  line.scale.setScalar(DELETE_WIREFRAME_SCALE);
-  line.raycast = () => {}; // outline TIDAK ikut raycast (delete/gizmo/info)
-  line.renderOrder = 2;   // di atas block, di bawah UI/gizmo
-
-  block.add(line);
-  const handle = { line, edges, sourceGeometry };
+  const shell = new THREE.Mesh(getSharedGeometry(), getSharedMaterial());
+  // Scale 1.0 PERSIS — bingkai menempel di kulit block (flush), bukan
+  // mengambang di luar. Ikut position/rotation/scale block sebagai child.
+  block.add(shell);
+  shell.raycast = () => {};  // outline tidak ikut raycast
+  shell.renderOrder = 2;
+  const handle = { line: shell, edges: null, sourceGeometry: null };
   block.userData.__deleteOutline = handle;
   return handle;
 }
 
 /**
- * Lepas outline dari block (dipanggil saat hover keluar / ganti target /
- * cleanup). Idempoten + aman untuk block yang sudah di-dispose.
+ * Lepas bingkai dari block. Idempoten + aman untuk block yang sudah
+ * di-dispose.
  */
 export function detachDeleteWireframe(block) {
   if (!block) return;
@@ -138,22 +131,23 @@ export function detachDeleteWireframe(block) {
   if (!handle) return;
   try {
     if (handle.line.parent) handle.line.parent.remove(handle.line);
-    handle.line.geometry.dispose();
-    if (handle.edges !== handle.sourceGeometry) handle.edges.dispose();
-    if (handle.sourceGeometry !== block.geometry) handle.sourceGeometry.dispose();
-  } catch (e) {
-    // block mungkin sudah di-dispose — abaikan dengan aman
-  }
+    // geometry & material SHARED — jangan dispose per-block (dipakai lintas
+    // block); cukup lepas dari scene graph.
+  } catch (e) { /* block mungkin sudah di-dispose */ }
   delete block.userData.__deleteOutline;
 }
 
 /**
- * Dispose material shared (dipanggil di cleanup unmount scene, SEBELUM
- * renderer.dispose()). Aman dipanggil berulang.
+ * Kompatibilitas API lama (simulator memanggil ini di handleResize).
+ * Shader UV tidak butuh resolution — no-op, dipertahankan supaya
+ * pemanggil tidak rusak.
+ */
+export function setDeleteWireframeResolution(_width, _height) { /* no-op v3 */ }
+
+/**
+ * Dispose resource shared — dipanggil di cleanup unmount scene.
  */
 export function disposeDeleteWireframeMaterial() {
-  if (sharedMat) {
-    try { sharedMat.dispose(); } catch (e) { /* sudah disposed */ }
-    sharedMat = null;
-  }
+  if (sharedMat) { try { sharedMat.dispose(); } catch (e) {} sharedMat = null; }
+  if (sharedGeo) { try { sharedGeo.dispose(); } catch (e) {} sharedGeo = null; }
 }
