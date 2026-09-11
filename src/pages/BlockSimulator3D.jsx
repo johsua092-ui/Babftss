@@ -32,7 +32,7 @@ import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
-import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial } from '../utils/blockMaterials.js';
+import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow } from '../utils/blockMaterials.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -13011,6 +13011,9 @@ Now you can apply Displacement for detailed effect.`);
           block.castShadow = true;
           block.receiveShadow = true;
           block.userData.isBlock = true;
+          // GLOW (user 2026-09-11): block ber-flag glow (NEON) dapat aura
+          // merah memancar ke luar — persis dataset tampak3D neon.
+          if (blockDef.glow) attachBlockGlow(THREE, block);
           scene.add(block);
           threeRef.current.blocks.push(block);
           // ── Symmetry Mode: auto-mirror block baru ──

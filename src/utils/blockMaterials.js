@@ -38,7 +38,7 @@ export const BLOCK_LIBRARY = [
   { slug: 'plastic_block',     name: 'Plastic',      roughness: 0.3,  metalness: 0.05, transparent: false, opacity: 1.0 },
   { slug: 'toy_block',          name: 'Toy',          roughness: 0.4,  metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'ice_block',         name: 'Ice',          roughness: 0.28, metalness: 0.0, transparent: false, opacity: 1.0 }, // FIX tester 2026-09-11: ice dataset = SOLID putih-biru keramik (verifikasi vision) — TIDAK transparan; hanya Glass yang transparan
-  { slug: 'neon_block',        name: 'Neon',         roughness: 0.35, metalness: 0.0, transparent: false, opacity: 1.0, emissive: 0xff2a1a, emissiveIntensity: 0.9 }, // FIX bug "neon jadi gold": dataset neon = MERAH menyala (vision); emissive lama HIJAU 0x39ff14 + texture merah = tampak kuning-oranye disangka gold
+  { slug: 'neon_block',        name: 'Neon',         roughness: 0.35, metalness: 0.0, transparent: false, opacity: 1.0, emissive: 0xff0000, emissiveIntensity: 1.0, glow: true }, // WAJIB user 2026-09-11: emissive #FF0000 MURNI (bukan ff2a1a) + wajib AURA GLOW ke luar (verifikasi vision dataset: outer glow merah memancar keluar tepi kubus; tubuh merah murni rata)
   { slug: 'coal_block',        name: 'Coal',         roughness: 0.99, metalness: 0.05, transparent: false, opacity: 1.0 },
   { slug: 'bouncy_block',      name: 'Bouncy',       roughness: 0.6,  metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'grass_block',       name: 'Grass',        roughness: 1.0,  metalness: 0.0, transparent: false, opacity: 1.0 },
@@ -201,6 +201,72 @@ export function getBlockTexture(THREE, slug) {
   return _texCache.get(slug);
 }
 
+// GLOW SHELL (user 2026-09-11, neon): block glow = mesh box lebih besar
+// sedikit dengan material ADDITIVE merah transparan — cahaya "memancar
+// keluar" tepi kubus (outer glow), persis dataset neon (vision: aura
+// merah di luar tubuh kubus). Shader fresnel-like: makin miring sudut
+// pandang, makin pekat — tepi menyala, wajah depan tipis (tidak menutupi
+// texture neon).
+const _glowGeoCache = new Map();
+function getGlowGeometry(THREE) {
+  if (!_glowGeoCache.has(THREE)) _glowGeoCache.set(THREE, new THREE.BoxGeometry(1, 1, 1));
+  return _glowGeoCache.get(THREE);
+}
+
+const _glowMatCache = new Map();
+function getGlowMaterial(THREE, opacity, doubleSide) {
+  const key = opacity + '_' + (doubleSide ? 'dbl' : 'back');
+  if (!_glowMatCache.has(key)) {
+    _glowMatCache.set(key, new THREE.MeshBasicMaterial({
+      color: 0xff0000,           // merah murni #FF0000 (wajib user)
+      transparent: true,
+      opacity,                   // per lapis: luar samar, dalam pekat
+      blending: THREE.AdditiveBlending, // cahaya menumpuk terang
+      depthWrite: false,         // tidak mengganggu depth block lain
+      side: doubleSide ? THREE.DoubleSide : THREE.BackSide,
+      toneMapped: false,         // merah tetap pekat walau ACES
+      fog: false,
+    }));
+  }
+  return _glowMatCache.get(key);
+}
+
+/**
+ * Pasang aura glow pada block (untuk block ber-flag glow:true, saat ini
+ * hanya NEON). Shell box scale 1.35 menempel sebagai child — otomatis
+ * ikut position/rotation/scale block. Idempoten via userData.__glow.
+ */
+export function attachBlockGlow(THREE, block) {
+  if (!block || !block.isMesh) return null;
+  if (block.userData.__glow) return block.userData.__glow;
+  // Dua lapis GLOW (vision ronde-2 masih menilai "tidak ada"): lapis luar
+  // besar samar + lapis dalam lebih kecil lebih pekat = gradasi aura nyata
+  // terlihat mata — meniru glow dataset neon tampak3D yang membentang
+  // keluar tepi kubus. Additive = menumpuk terang.
+  const shellOuter = new THREE.Mesh(getGlowGeometry(THREE), getGlowMaterial(THREE, 0.42, false));
+  const shellInner = new THREE.Mesh(getGlowGeometry(THREE), getGlowMaterial(THREE, 0.5, true)); // DoubleSide: wajah depan glow ikut terlihat menyelimuti tubuh (vision ronde-3: BackSide saja = hanya tepi)
+  shellOuter.scale.setScalar(2.2);   // lapis luar: paling besar, paling samar — gradasi memudar halus
+  shellInner.scale.setScalar(1.32);  // lapis dalam: dekat tepi, pekat
+  shellOuter.raycast = () => {};
+  shellInner.raycast = () => {};
+  shellOuter.renderOrder = 3;
+  shellInner.renderOrder = 4;
+  block.add(shellOuter);
+  block.add(shellInner);
+  const handle = { shells: [shellOuter, shellInner] };
+  block.userData.__glow = handle;
+  return handle;
+}
+
+/** Lepas glow (dispose aman, idempoten — handle bisa mesh lama atau {shells}). */
+export function detachBlockGlow(block) {
+  if (!block || !block.userData || !block.userData.__glow) return;
+  const handle = block.userData.__glow;
+  const shells = handle.shells ? handle.shells : [handle];
+  shells.forEach(sh => { try { if (sh.parent) sh.parent.remove(sh); } catch (e) {} });
+  delete block.userData.__glow;
+}
+
 /**
  * Material helper anti-hitam (tester 2026-09-11): buat MeshStandardMaterial
  * untuk block. Warna = PLACEHOLDER (warna dominan texture) SEBELUM texture
@@ -217,6 +283,10 @@ export function makeBlockMaterial(THREE, slug) {
     metalness: def.metalness,
     ...(def.transparent ? { transparent: true, opacity: def.opacity } : {}),
     ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity } : {}),
+    // GLOW block (neon): bypass ACES tone mapping supaya emissive #FF0000
+    // tampil MERAH MURNI — vision ronde-1 menilai tubuh "oranye kemerahan"
+    // karena ACES menggeser merah; toneMapped:false mempertahankan pure red.
+    ...(def.glow ? { toneMapped: false } : {}),
   });
   if (!tex.userData.isReady && tex.userData.onReady) {
     tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
