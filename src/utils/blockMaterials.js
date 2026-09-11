@@ -37,8 +37,8 @@ export const BLOCK_LIBRARY = [
   { slug: 'brick_block',       name: 'Brick',        roughness: 0.9,  metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'plastic_block',     name: 'Plastic',      roughness: 0.3,  metalness: 0.05, transparent: false, opacity: 1.0 },
   { slug: 'toy_block',          name: 'Toy',          roughness: 0.4,  metalness: 0.0, transparent: false, opacity: 1.0 },
-  { slug: 'ice_block',         name: 'Ice',          roughness: 0.1,  metalness: 0.0, transparent: true,  opacity: 0.65 },
-  { slug: 'neon_block',        name: 'Neon',         roughness: 0.35, metalness: 0.0, transparent: false, opacity: 1.0, emissive: 0x39ff14, emissiveIntensity: 0.85 },
+  { slug: 'ice_block',         name: 'Ice',          roughness: 0.28, metalness: 0.0, transparent: false, opacity: 1.0 }, // FIX tester 2026-09-11: ice dataset = SOLID putih-biru keramik (verifikasi vision) — TIDAK transparan; hanya Glass yang transparan
+  { slug: 'neon_block',        name: 'Neon',         roughness: 0.35, metalness: 0.0, transparent: false, opacity: 1.0, emissive: 0xff2a1a, emissiveIntensity: 0.9 }, // FIX bug "neon jadi gold": dataset neon = MERAH menyala (vision); emissive lama HIJAU 0x39ff14 + texture merah = tampak kuning-oranye disangka gold
   { slug: 'coal_block',        name: 'Coal',         roughness: 0.99, metalness: 0.05, transparent: false, opacity: 1.0 },
   { slug: 'bouncy_block',      name: 'Bouncy',       roughness: 0.6,  metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'grass_block',       name: 'Grass',        roughness: 1.0,  metalness: 0.0, transparent: false, opacity: 1.0 },
@@ -115,6 +115,44 @@ function applyTexFix(img, fix) {
   return canvas;
 }
 
+// Placeholder warna per-block (dipakai material sebelum texture ready —
+// anti "hitam dulu": block tampil warna dominan texture-nya, bukan hitam).
+export const BLOCK_PLACEHOLDER = {
+  wood_block: 0xc8a24a, smooth_wood_block: 0xd8b06a, glass_block: 0x9fd4f2,
+  stone_block: 0x8a8a8a, rusted_block: 0x9c5f3f, metal_block: 0xb9c1cc,
+  concrete_block: 0xa8a49c, marble_block: 0xe8e4dc, titanium_block: 0xcdd6de,
+  obsidian_block: 0x2a2340, gold_block: 0xf5db42, fabric_block: 0xd97fa8,
+  brick_block: 0xb0603c, plastic_block: 0x74c7ec, toy_block: 0x64d487,
+  ice_block: 0x9de0f0, neon_block: 0xff2a1a, coal_block: 0x232323,
+  bouncy_block: 0xe86aa0, grass_block: 0x69c34c, sand_block: 0xe3d28f,
+};
+
+// PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
+// dulu texture di-load on-demand saat place pertama → block tampil HITAM
+// dulu baru texture muncul ("sangat lambat"). Sekarang SEMUA 21 texture
+// di-fetch SEKALI di init scene; place tinggal pakai texture yang sudah
+// di cache — tampil instan, tanpa jeda.
+// caller (init scene) menyediakan THREE.
+export function preloadBlockTextures(THREE) {
+  let loaded = 0;
+  BLOCK_LIBRARY.forEach(b => {
+    // getBlockTexture memulai fetch + caching; onLoad menghitung selesai.
+    const tex = getBlockTexture(THREE, b.slug);
+    if (tex.userData.__preloaded) return;
+    tex.userData.__preloaded = true;
+    const done = () => { loaded++; };
+    if (tex.image && tex.image.width > 0) done();
+    else {
+      tex.userData.__preloadDone = done; // dipanggil oleh applyTexFix path / loader
+      const check = setInterval(() => {
+        if (tex.image && tex.image.width > 0) { clearInterval(check); done(); }
+      }, 150);
+      setTimeout(() => clearInterval(check), 15000); // guard stop
+    }
+  });
+  return { get loadedCount() { return loaded; }, total: BLOCK_LIBRARY.length };
+}
+
 export function getBlockTexture(THREE, slug) {
   if (!_loader) _loader = new THREE.TextureLoader();
   if (!_texCache.has(slug)) {
@@ -124,12 +162,28 @@ export function getBlockTexture(THREE, slug) {
     tex.wrapT = THREE.RepeatWrapping;
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
+    // Sinyal texture-ready (anti-hitam tester 2026-09-11): material pemakai
+    // texture memasang callback di sini; saat texture termuat, material
+    // reset color placeholder → putih (texture tampil murni). Terukur:
+    // tint placeholder × texture = block oranye pekat gelap (129,81,16 →
+    // 76,29,3) — placeholder HANYA boleh hidup sebelum texture siap.
+    tex.userData.onReady = [];
+    tex.userData.isReady = !!(tex.image && tex.image.width > 0);
+    if (!tex.userData.isReady) {
+      const check = setInterval(() => {
+        if (tex.image && tex.image.width > 0) {
+          clearInterval(check);
+          tex.userData.isReady = true;
+          tex.userData.onReady.forEach(fn => { try { fn(); } catch (e) {} });
+          tex.userData.onReady = [];
+        }
+      }, 60);
+      setTimeout(() => clearInterval(check), 20000); // guard
+    }
     // Koreksi warna di memori (TEX_FIX) — file asli tak tersentuh.
     const fix = TEX_FIX[slug];
     if (fix) {
       tex.userData.pendingFix = fix;
-      // TextureLoader.load async → apply fix saat image siap
-      const imgEl = tex.image;
       const applyWhenReady = () => {
         if (tex.image && tex.image.width > 0) {
           const fixed = applyTexFix(tex.image, tex.userData.pendingFix);
@@ -140,9 +194,32 @@ export function getBlockTexture(THREE, slug) {
           setTimeout(applyWhenReady, 100);
         }
       };
-      if (imgEl && imgEl.width > 0) applyWhenReady(); else setTimeout(applyWhenReady, 100);
+      if (tex.image && tex.image.width > 0) applyWhenReady(); else setTimeout(applyWhenReady, 100);
     }
     _texCache.set(slug, tex);
   }
   return _texCache.get(slug);
+}
+
+/**
+ * Material helper anti-hitam (tester 2026-09-11): buat MeshStandardMaterial
+ * untuk block. Warna = PLACEHOLDER (warna dominan texture) SEBELUM texture
+ * siap — supaya block TIDAK pernah tampil hitam — dan OTOMATIS reset ke
+ * putih saat texture termuat (tint permanen terbukti merusak warna).
+ */
+export function makeBlockMaterial(THREE, slug) {
+  const def = getBlockDef(slug);
+  const tex = getBlockTexture(THREE, slug);
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: tex.userData.isReady ? 0xffffff : (BLOCK_PLACEHOLDER[slug] || 0xffffff),
+    roughness: def.roughness,
+    metalness: def.metalness,
+    ...(def.transparent ? { transparent: true, opacity: def.opacity } : {}),
+    ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity } : {}),
+  });
+  if (!tex.userData.isReady && tex.userData.onReady) {
+    tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
+  }
+  return mat;
 }

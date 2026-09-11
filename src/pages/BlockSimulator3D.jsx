@@ -32,7 +32,7 @@ import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
-import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath } from '../utils/blockMaterials.js';
+import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial } from '../utils/blockMaterials.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12001,6 +12001,12 @@ Now you can apply Displacement for detailed effect.`);
     const hemiLight = new THREE.HemisphereLight(0x4a6fa5, 0x1a1a2e, 0.3);
     scene.add(hemiLight);
 
+    // PRELOAD 21 texture Block Library (optimasi tester 2026-09-11):
+    // dulu texture load on-demand saat place pertama → block HITAM dulu
+    // baru texture muncul (lambat). Sekarang semua texture di-fetch SEKALI
+    // saat init scene → place tampil instan.
+    try { preloadBlockTextures(THREE); } catch (e) { /* preload gagal = fallback on-demand lama */ }
+
     // Grid — 500x500 units (GRID_SIZE * 2), 500 divisions (Task ID 35, 2026-09-02: 100x100→500x500 per request user; dulu 100x100 / 60x60)
     const grid = new THREE.GridHelper(GRID_SIZE * 2, GRID_SIZE * 2, 0x64748b, 0x334155);
     grid.material.opacity = 0.5;
@@ -12794,15 +12800,12 @@ Now you can apply Displacement for detailed effect.`);
       ghostCurrentSlug = slug;
       if (ghostBlock.material && ghostBlock.material.dispose) ghostBlock.material.dispose();
       const def = getBlockDef(slug);
-      ghostBlock.material = new THREE.MeshStandardMaterial({
-        map: getBlockTexture(THREE, def.slug),
-        color: 0xffffff,
-        roughness: def.roughness,
-        metalness: def.metalness,
-        ...(def.transparent ? { transparent: true, opacity: Math.min(0.75, def.opacity + 0.15) } : { transparent: true, opacity: 0.55 }),
-        ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity * 0.6 } : {}),
-        depthWrite: false,
-      });
+      // makeBlockMaterial + transparansi preview (tester 2026-09-11:
+      // anti-hitam idempoten — ghost ikut placeholder/auto-reset).
+      ghostBlock.material = makeBlockMaterial(THREE, def.slug);
+      ghostBlock.material.transparent = true;
+      ghostBlock.material.depthWrite = false;
+      ghostBlock.material.opacity = def.transparent ? Math.min(0.75, def.opacity + 0.15) : 0.55;
     };
     syncGhostMaterial();
     ghostBlock.visible = false;
@@ -12998,14 +13001,10 @@ Now you can apply Displacement for detailed effect.`);
           // (dataset user) — material dari registry blockMaterials.js
           // (texture tampak2D + PBR per jenis). Place TIDAK lagi set warna.
           const blockDef = getBlockDef(selectedBlockTypeRef.current);
-          const mat = new THREE.MeshStandardMaterial({
-            map: getBlockTexture(THREE, blockDef.slug),
-            color: 0xffffff,               // putih = texture tampil apa adanya
-            roughness: blockDef.roughness,
-            metalness: blockDef.metalness,
-            ...(blockDef.transparent ? { transparent: true, opacity: blockDef.opacity } : {}),
-            ...(blockDef.emissive ? { emissive: blockDef.emissive, emissiveIntensity: blockDef.emissiveIntensity } : {}),
-          });
+          // makeBlockMaterial (tester 2026-09-11): placeholder anti-hitam
+          // saat texture belum siap + AUTO-RESET putih saat texture termuat
+          // (tint permanen merusak warna — terukur 129,81,16 → 76,29,3).
+          const mat = makeBlockMaterial(THREE, blockDef.slug);
           mat.userData.blockType = blockDef.slug; // identitas jenis utk undo/snapshot
           const block = new THREE.Mesh(geo, mat);
           block.position.set(posX, posY, posZ);
