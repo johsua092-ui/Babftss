@@ -201,69 +201,75 @@ export function getBlockTexture(THREE, slug) {
   return _texCache.get(slug);
 }
 
-// GLOW SHELL (user 2026-09-11, neon): block glow = mesh box lebih besar
-// sedikit dengan material ADDITIVE merah transparan — cahaya "memancar
-// keluar" tepi kubus (outer glow), persis dataset neon (vision: aura
-// merah di luar tubuh kubus). Shader fresnel-like: makin miring sudut
-// pandang, makin pekat — tepi menyala, wajah depan tipis (tidak menutupi
-// texture neon).
-const _glowGeoCache = new Map();
-function getGlowGeometry(THREE) {
-  if (!_glowGeoCache.has(THREE)) _glowGeoCache.set(THREE, new THREE.BoxGeometry(1, 1, 1));
-  return _glowGeoCache.get(THREE);
+// AURA GLOW v2 (koreksi user 2026-09-11: "efek glow sangat salah, double,
+// kotak kaku" — shell kotak berlapis MEMANG SALAH). Dataset asli (profil
+// pixel diagonal & horizontal): glow = GRADASI SMOOTH KONTINU mengikuti
+// siluet kubus, lebar ~30-40px, memudar eksponensial — BUKAN kotak-kotak.
+// Solusi benar: SPRITE RADIAL-GRADIENT (bulat, blur alami, nol edge kaku)
+// yang menempel di block — teknik glow standar game (billboard selalu
+// menghadap kamera). Ini yang menghasilkan aura halus seperti dataset.
+let _glowSpriteMatCache = null;
+let _glowSpriteTexCache = null;
+
+function getGlowSpriteTexture(THREE) {
+  // Radial gradient via canvas: pusat merah murni → transparan mulus.
+  if (!_glowSpriteTexCache) {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    grad.addColorStop(0.0, 'rgba(255,0,0,0.85)');   // pusat: merah murni #FF0000
+    grad.addColorStop(0.35, 'rgba(255,0,0,0.45)');
+    grad.addColorStop(0.65, 'rgba(255,0,0,0.15)');
+    grad.addColorStop(1.0, 'rgba(255,0,0,0)');      // tepi: transparan total
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    _glowSpriteTexCache = new THREE.CanvasTexture(canvas);
+    _glowSpriteTexCache.colorSpace = THREE.SRGBColorSpace;
+  }
+  return _glowSpriteTexCache;
 }
 
-const _glowMatCache = new Map();
-function getGlowMaterial(THREE, opacity, doubleSide) {
-  const key = opacity + '_' + (doubleSide ? 'dbl' : 'back');
-  if (!_glowMatCache.has(key)) {
-    _glowMatCache.set(key, new THREE.MeshBasicMaterial({
-      color: 0xff0000,           // merah murni #FF0000 (wajib user)
+function getGlowSpriteMaterial(THREE) {
+  if (!_glowSpriteMatCache) {
+    _glowSpriteMatCache = new THREE.SpriteMaterial({
+      map: getGlowSpriteTexture(THREE),
+      color: 0xffffff,             // texture sudah merah murni
       transparent: true,
-      opacity,                   // per lapis: luar samar, dalam pekat
-      blending: THREE.AdditiveBlending, // cahaya menumpuk terang
-      depthWrite: false,         // tidak mengganggu depth block lain
-      side: doubleSide ? THREE.DoubleSide : THREE.BackSide,
-      toneMapped: false,         // merah tetap pekat walau ACES
+      blending: THREE.AdditiveBlending, // cahaya menumpuk
+      depthWrite: false,
+      toneMapped: false,           // merah murni selamat dari ACES
       fog: false,
-    }));
+    });
   }
-  return _glowMatCache.get(key);
+  return _glowSpriteMatCache;
 }
 
 /**
- * Pasang aura glow pada block (untuk block ber-flag glow:true, saat ini
- * hanya NEON). Shell box scale 1.35 menempel sebagai child — otomatis
- * ikut position/rotation/scale block. Idempoten via userData.__glow.
+ * Pasang AURA GLOW pada block (flag glow:true — hanya NEON).
+ * Sprite radial-gradient: bulat, gradasi mulus nol-edge-kaku, selalu
+ * menghadap kamera. Scale ~2.6× block = pendaran menyelimuti seperti
+ * dataset. Idempoten via userData.__glow.
  */
 export function attachBlockGlow(THREE, block) {
   if (!block || !block.isMesh) return null;
   if (block.userData.__glow) return block.userData.__glow;
-  // Dua lapis GLOW (vision ronde-2 masih menilai "tidak ada"): lapis luar
-  // besar samar + lapis dalam lebih kecil lebih pekat = gradasi aura nyata
-  // terlihat mata — meniru glow dataset neon tampak3D yang membentang
-  // keluar tepi kubus. Additive = menumpuk terang.
-  const shellOuter = new THREE.Mesh(getGlowGeometry(THREE), getGlowMaterial(THREE, 0.42, false));
-  const shellInner = new THREE.Mesh(getGlowGeometry(THREE), getGlowMaterial(THREE, 0.5, true)); // DoubleSide: wajah depan glow ikut terlihat menyelimuti tubuh (vision ronde-3: BackSide saja = hanya tepi)
-  shellOuter.scale.setScalar(2.2);   // lapis luar: paling besar, paling samar — gradasi memudar halus
-  shellInner.scale.setScalar(1.32);  // lapis dalam: dekat tepi, pekat
-  shellOuter.raycast = () => {};
-  shellInner.raycast = () => {};
-  shellOuter.renderOrder = 3;
-  shellInner.renderOrder = 4;
-  block.add(shellOuter);
-  block.add(shellInner);
-  const handle = { shells: [shellOuter, shellInner] };
-  block.userData.__glow = handle;
-  return handle;
+  const sprite = new THREE.Sprite(getGlowSpriteMaterial(THREE));
+  sprite.scale.setScalar(2.6);       // aura menyelimuti block (dataset: ±40px pd kubus ~280px ≈ 2.4-3x)
+  sprite.raycast = () => {};         // glow tidak boleh mengganggu klik
+  sprite.renderOrder = 3;
+  block.add(sprite);
+  block.userData.__glow = sprite;
+  return sprite;
 }
 
-/** Lepas glow (dispose aman, idempoten — handle bisa mesh lama atau {shells}). */
+/** Lepas glow (dispose aman, idempoten). */
 export function detachBlockGlow(block) {
   if (!block || !block.userData || !block.userData.__glow) return;
-  const handle = block.userData.__glow;
-  const shells = handle.shells ? handle.shells : [handle];
-  shells.forEach(sh => { try { if (sh.parent) sh.parent.remove(sh); } catch (e) {} });
+  const g = block.userData.__glow;
+  const items = g.shells ? g.shells : [g];
+  items.forEach(it => { try { if (it.parent) it.parent.remove(it); } catch (e) {} });
   delete block.userData.__glow;
 }
 
