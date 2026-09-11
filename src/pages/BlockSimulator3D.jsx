@@ -12546,6 +12546,10 @@ Now you can apply Displacement for detailed effect.`);
       // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
       // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
       // Direct render = lebih cepat, untuk saat bloom dimatikan.
+      // GLOW v4 (2026-09-11): aura neon = SPRITE radial (attachBlockGlow),
+      // bukan bloom — bloom diuji 7 ronde utk block besar = overexposed
+      // (menutupi block sendiri). Render loop kembali sederhana: composer
+      // hanya saat user menyalakan Bloom (perilaku Phase 13 asli).
       if (bloomOnRef.current) {
         composer.render();
       } else {
@@ -13011,8 +13015,9 @@ Now you can apply Displacement for detailed effect.`);
           block.castShadow = true;
           block.receiveShadow = true;
           block.userData.isBlock = true;
-          // GLOW (user 2026-09-11): block ber-flag glow (NEON) dapat aura
-          // merah memancar ke luar — persis dataset tampak3D neon.
+          // GLOW v4 hybrid (2026-09-11): block glow (NEON) dapat AURA SPRITE
+          // radial (terverifikasi vision 5/5 + profil pixel identik dataset)
+          // + material emissive flat ( spek Claude Vision: flat semua sisi).
           if (blockDef.glow) attachBlockGlow(THREE, block);
           scene.add(block);
           threeRef.current.blocks.push(block);
@@ -13388,9 +13393,18 @@ Now you can apply Displacement for detailed effect.`);
     let selectionGroup = null;
 
     const highlightSelected = (block) => {
+      // FIX BUG GIZMO-NEON (user 2026-09-11): block glow (neon) DILARANG
+      // kena highlight emissive — setEmissive akan TIMPA warna flat #FF0000
+      // jadi biru (saat dipilih) lalu HITAM saat dilepas = "merah kusam".
+      // Gizmo tetap muncul normal; identitas warna neon terjaga permanen.
+      const mats = Array.isArray(block.material) ? block.material : [block.material];
+      if (mats.some(m => m && m.userData && m.userData.isGlowBlock)) return;
       setEmissive(block, SELECT_COLOR, SELECT_INTENSITY);
     };
     const unhighlightSelected = (block) => {
+      // Neon juga DILARANG kena unhighlight (set emissive hitam = kusam).
+      const mats = Array.isArray(block.material) ? block.material : [block.material];
+      if (mats.some(m => m && m.userData && m.userData.isGlowBlock)) return;
       setEmissive(block, 0x000000, 1);
     };
 

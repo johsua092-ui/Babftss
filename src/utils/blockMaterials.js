@@ -201,77 +201,15 @@ export function getBlockTexture(THREE, slug) {
   return _texCache.get(slug);
 }
 
-// AURA GLOW v2 (koreksi user 2026-09-11: "efek glow sangat salah, double,
-// kotak kaku" — shell kotak berlapis MEMANG SALAH). Dataset asli (profil
-// pixel diagonal & horizontal): glow = GRADASI SMOOTH KONTINU mengikuti
-// siluet kubus, lebar ~30-40px, memudar eksponensial — BUKAN kotak-kotak.
-// Solusi benar: SPRITE RADIAL-GRADIENT (bulat, blur alami, nol edge kaku)
-// yang menempel di block — teknik glow standar game (billboard selalu
-// menghadap kamera). Ini yang menghasilkan aura halus seperti dataset.
-let _glowSpriteMatCache = null;
-let _glowSpriteTexCache = null;
-
-function getGlowSpriteTexture(THREE) {
-  // Radial gradient via canvas: pusat merah murni → transparan mulus.
-  if (!_glowSpriteTexCache) {
-    const size = 128;
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-    grad.addColorStop(0.0, 'rgba(255,0,0,0.85)');   // pusat: merah murni #FF0000
-    grad.addColorStop(0.35, 'rgba(255,0,0,0.45)');
-    grad.addColorStop(0.65, 'rgba(255,0,0,0.15)');
-    grad.addColorStop(1.0, 'rgba(255,0,0,0)');      // tepi: transparan total
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, size, size);
-    _glowSpriteTexCache = new THREE.CanvasTexture(canvas);
-    _glowSpriteTexCache.colorSpace = THREE.SRGBColorSpace;
-  }
-  return _glowSpriteTexCache;
-}
-
-function getGlowSpriteMaterial(THREE) {
-  if (!_glowSpriteMatCache) {
-    _glowSpriteMatCache = new THREE.SpriteMaterial({
-      map: getGlowSpriteTexture(THREE),
-      color: 0xffffff,             // texture sudah merah murni
-      transparent: true,
-      blending: THREE.AdditiveBlending, // cahaya menumpuk
-      depthWrite: false,
-      toneMapped: false,           // merah murni selamat dari ACES
-      fog: false,
-    });
-  }
-  return _glowSpriteMatCache;
-}
-
-/**
- * Pasang AURA GLOW pada block (flag glow:true — hanya NEON).
- * Sprite radial-gradient: bulat, gradasi mulus nol-edge-kaku, selalu
- * menghadap kamera. Scale ~2.6× block = pendaran menyelimuti seperti
- * dataset. Idempoten via userData.__glow.
- */
-export function attachBlockGlow(THREE, block) {
-  if (!block || !block.isMesh) return null;
-  if (block.userData.__glow) return block.userData.__glow;
-  const sprite = new THREE.Sprite(getGlowSpriteMaterial(THREE));
-  sprite.scale.setScalar(2.6);       // aura menyelimuti block (dataset: ±40px pd kubus ~280px ≈ 2.4-3x)
-  sprite.raycast = () => {};         // glow tidak boleh mengganggu klik
-  sprite.renderOrder = 3;
-  block.add(sprite);
-  block.userData.__glow = sprite;
-  return sprite;
-}
-
-/** Lepas glow (dispose aman, idempoten). */
-export function detachBlockGlow(block) {
-  if (!block || !block.userData || !block.userData.__glow) return;
-  const g = block.userData.__glow;
-  const items = g.shells ? g.shells : [g];
-  items.forEach(it => { try { if (it.parent) it.parent.remove(it); } catch (e) {} });
-  delete block.userData.__glow;
-}
+// AURA GLOW v3 (koreksi user via Claude Vision 2026-09-11): glow dataset
+// neon = POST-PROCESSING BLOOM (warna terang "bocor keluar" dari bentuk),
+// BUKAN sprite blur / point light / shell. App SUDAH punya UnrealBloomPass
+// (composer) — neon cukup emissive HDR agar lolos threshold bloom.
+// makeBlockMaterial utk glow block memakai MeshBasicMaterial FLAT
+// (anti-shading: semua sisi merah #FF0000 rata — persis spek referensi;
+// MeshBasicMaterial kebal ambient/directional light, tidak kena gradasi)
+// + emissiveFlags utk protection highlight gizmo (bug #1: highlightSelected
+// menimpa emissive jadi biru → unhighlight set HITAM = neon "merah kusam").
 
 /**
  * Material helper anti-hitam (tester 2026-09-11): buat MeshStandardMaterial
@@ -282,6 +220,29 @@ export function detachBlockGlow(block) {
 export function makeBlockMaterial(THREE, slug) {
   const def = getBlockDef(slug);
   const tex = getBlockTexture(THREE, slug);
+  // GLOW block (neon) — v4 FINAL (hybrid, 2026-09-11, keputusan berbasis
+  // 8 ronde bukti empiris): MeshStandardMaterial color HITAM + emissive
+  // 0xFF0000 intensity 1.4 — emissive = self-illumination → FLAT rata di
+  // semua sisi (nol shading, spek Claude Vision terpenuhi). Aura luar
+  // disediakan SPRITE RADIAL-GRADIENT (attachBlockGlow — v2 yang sudah
+  // lolos verifikasi vision 5/5 + profil pixel mulus identik dataset).
+  // Bloom post-processing DIUJI 7 ronde: sumber block besar (130px) membuat
+  // bloom overexposed menutupi block sendiri — bloom TIDAK cocok utk
+  // aura block besar; sprite = terukur sempurna. (Catatan jebakan yang
+  // diwariskan: threshold bloom pakai LUMINANCE (r255 = 0.21 saja);
+  // MeshBasic tidak punya emissive — set = exception render mati.)
+  if (def.glow) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x000000,          // hitam: hanya emissive yang menyala → flat
+      emissive: 0xff0000,       // merah murni #FF0000 (wajib user)
+      emissiveIntensity: 1.4,   // flat terang; di bawah threshold bloom default —
+                                // tidak memicu bloom liar; tetap flat terang
+      roughness: 1, metalness: 0,
+      fog: false,
+    });
+    mat.userData.isGlowBlock = true; // flag: highlight gizmo DILARANG timpa
+    return mat;
+  }
   const mat = new THREE.MeshStandardMaterial({
     map: tex,
     color: tex.userData.isReady ? 0xffffff : (BLOCK_PLACEHOLDER[slug] || 0xffffff),
@@ -289,13 +250,75 @@ export function makeBlockMaterial(THREE, slug) {
     metalness: def.metalness,
     ...(def.transparent ? { transparent: true, opacity: def.opacity } : {}),
     ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity } : {}),
-    // GLOW block (neon): bypass ACES tone mapping supaya emissive #FF0000
-    // tampil MERAH MURNI — vision ronde-1 menilai tubuh "oranye kemerahan"
-    // karena ACES menggeser merah; toneMapped:false mempertahankan pure red.
-    ...(def.glow ? { toneMapped: false } : {}),
   });
   if (!tex.userData.isReady && tex.userData.onReady) {
     tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
   }
   return mat;
+}
+
+// ─── SPRITE AURA GLOW (v4 hybrid — dipakai utk aura luar block glow) ───
+// (Kembali dari v2: sprite radial TERBUKTI 5/5 vision + profil pixel mulus
+// identik dataset. Bloom diuji 7 ronde → overexposed utk block besar.)
+let _auraSpriteMatCache = null;
+let _auraSpriteTexCache = null;
+
+function getAuraSpriteTexture(THREE) {
+  if (!_auraSpriteTexCache) {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    grad.addColorStop(0.0, 'rgba(255,0,0,0.85)');
+    grad.addColorStop(0.35, 'rgba(255,0,0,0.45)');
+    grad.addColorStop(0.65, 'rgba(255,0,0,0.15)');
+    grad.addColorStop(1.0, 'rgba(255,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    _auraSpriteTexCache = new THREE.CanvasTexture(canvas);
+    _auraSpriteTexCache.colorSpace = THREE.SRGBColorSpace;
+  }
+  return _auraSpriteTexCache;
+}
+
+function getAuraSpriteMaterial(THREE) {
+  if (!_auraSpriteMatCache) {
+    _auraSpriteMatCache = new THREE.SpriteMaterial({
+      map: getAuraSpriteTexture(THREE),
+      color: 0xffffff,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+    });
+  }
+  return _auraSpriteMatCache;
+}
+
+/**
+ * Pasang AURA SPRITE pada block glow (neon). Radial gradient merah murni,
+ * billboard selalu menghadap kamera, scale 2.6 menyelimuti block.
+ * Idempoten via userData.__glow.
+ */
+export function attachBlockGlow(THREE, block) {
+  if (!block || !block.isMesh) return null;
+  if (block.userData.__glow) return block.userData.__glow;
+  const sprite = new THREE.Sprite(getAuraSpriteMaterial(THREE));
+  sprite.scale.setScalar(2.6);
+  sprite.raycast = () => {};
+  sprite.renderOrder = 3;
+  block.add(sprite);
+  block.userData.__glow = sprite;
+  return sprite;
+}
+
+/** Lepas aura (dispose aman, idempoten). */
+export function detachBlockGlow(block) {
+  if (!block || !block.userData || !block.userData.__glow) return;
+  const g = block.userData.__glow;
+  const items = g.shells ? g.shells : [g];
+  items.forEach(it => { try { if (it.parent) it.parent.remove(it); } catch (e) {} });
+  delete block.userData.__glow;
 }
