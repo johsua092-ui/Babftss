@@ -349,8 +349,14 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
           // dengan factor = ball.scale.x (baru diset fungsi asli, seragam).
           // Tanpa ini bola OVERSHOOT melewati tepi (terukur: scale-4 → bola
           // di 2.53 padahal tepi 2.0, factor 2.057).
+          // PHASE 68 v2 (user 2026-09-11: "bola kedeketan, seperti menyatu
+          // di dalam sisi — harus TEPAT DI DEPAN sisi!"): tambah GAP margin
+          // di luar tepi supaya bola melayang DI DEPAN permukaan sisi,
+          // bukan menempel/numpuk. Gap konsisten visual = gap unit lokal
+          // × factor kamera (seragam di semua ukuran & zoom).
           const factor = ball.scale.x || 1;
-          const off = distance * (wsv - factor);
+          const BALL_GAP = 0.55; // unit lokal — gap 3D simetris; perspektif kamera mempersempit sisi dekat jadi ~5px pada 0.35 → 0.55 agar gap visual cukup di semua sudut
+          const off = distance * (wsv - factor) + BALL_GAP;
           ball.position.x += UNIT[axis].x * sign * off;
           ball.position.y += UNIT[axis].y * sign * off;
           ball.position.z += UNIT[axis].z * sign * off;
