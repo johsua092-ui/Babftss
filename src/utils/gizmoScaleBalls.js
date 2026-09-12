@@ -322,6 +322,45 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
       scaleObj.updateMatrixWorld(true);
     }
 
+    // PHASE 68 (user 2026-09-11, "gizmo bola bergerak seiring scale
+    // memanjang — jangan diam 1 tempat"): fungsi asli men-set
+    // handle.position = worldPosition (pusat block) + scale flat tiap
+    // frame (baris 1613/1624) → bola bake ±0.5 TAMPK DIAM saat block
+    // memanjang. Fix: SETELAH fungsi asli (pola Phase 52 quaternion
+    // identity — terbukti jalan), geser tiap bola ke TEPI block via
+    // offset = arah sumbu × sign × worldScale sumbu itu. worldScale
+    // live di controls._worldScale (baris 1143, ter-update tiap frame).
+    // Bola TETAP BULAT: scale seragam, hanya position yang digeser —
+    // tidak melar. Radius visual tetap konsisten dengan kamera.
+    if (this.mode === 'scale' && transformControls.object) {
+      const ws = transformControls._worldScale;
+      if (ws) {
+        for (const ball of addedBalls) {
+          const axis = ball.name;                      // 'X'|'Y'|'Z'
+          const sign = sideOfBall.get(ball);            // +1|-1
+          const wsv = AXIS_KEY[axis] ? Math.abs(ws[AXIS_KEY[axis]]) || 1 : 1;
+          // Fungsi asli sudah men-set ball.position = worldPosition (pusat)
+          // dan ball.scale = factor-kamera × size/4 (baris 1624). Bake geometry
+          // ±distance IKUT di-scale handle → world offset bake =
+          // distance × factor. Tepi block = distance × wsv (half-block × scale).
+          // Offset position (local, TIDAK ikut factor) yang benar:
+          //   tepi − bakeWorld = distance×wsv − distance×factor
+          //                    = distance × (wsv − factor)
+          // dengan factor = ball.scale.x (baru diset fungsi asli, seragam).
+          // Tanpa ini bola OVERSHOOT melewati tepi (terukur: scale-4 → bola
+          // di 2.53 padahal tepi 2.0, factor 2.057).
+          const factor = ball.scale.x || 1;
+          const off = distance * (wsv - factor);
+          ball.position.x += UNIT[axis].x * sign * off;
+          ball.position.y += UNIT[axis].y * sign * off;
+          ball.position.z += UNIT[axis].z * sign * off;
+        }
+        // Matrix anak tidak ter-update otomatis (super sudah jalan di
+        // akhir fungsi asli) — paksa hitung ulang (pola Phase 52).
+        scaleObj.updateMatrixWorld(true);
+      }
+    }
+
     // Solo hanya untuk mode scale + sedang drag sumbu tunggal.
     if (this.mode !== 'scale') return;
     if (!transformControls.dragging) return;
