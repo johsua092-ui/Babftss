@@ -97,7 +97,7 @@
  */
 
 import * as THREE from 'three';
-import { applyCenterDesignToMaterial } from './ballCenterDesign.js';
+import { attachCrystalCore } from './ballCenterDesign.js';
 
 /** Nama sumbu yang punya cincin berwarna. */
 const AXES = ['X', 'Y', 'Z'];
@@ -559,13 +559,15 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
         opacity: 1,
       });
       ballMat.color.copy(sharedMaterial.color);
-      applyCenterDesignToMaterial(ballMat);
       rotateBallMaterials.push(ballMat);
 
       const ball = new THREE.Mesh(ballGeometry, ballMat);
       ball.name = axis;              // wajib: highlight, showX/Y/Z, picking axis
-      ball.renderOrder = Infinity;   // sama seperti setupGizmo()
+      ball.renderOrder = 1000;   // Phase 69 v2: < sprite kristal (1001) supaya kristal tampak DI ATAS bola
       ball.userData[BALL_MARK] = true;
+      // Phase 69 v2 (user 2026-09-12 koreksi): SATU kristal billboard di
+      // pusat bola rotate (di dalam perutnya), sama seperti bola scale.
+      attachCrystalCore(ball, ballRadius);
       rotateObj.add(ball);
 
       addedBalls.push(ball);

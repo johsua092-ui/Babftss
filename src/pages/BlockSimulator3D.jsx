@@ -32,6 +32,7 @@ import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
+import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow } from '../utils/blockMaterials.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 
@@ -14966,6 +14967,7 @@ Now you can apply Displacement for detailed effect.`);
       if (highlightedBlock) detachDeleteWireframe(highlightedBlock);
       threeRef.current.blocks.forEach(b => detachDeleteWireframe(b));
       disposeDeleteWireframeMaterial();
+      disposeCrystalResources(); // Phase 69 v2: texture+material kristal bola gizmo
       // Cleanup Phase 12: file input
       if (threeRef.current.fileInputRef) {
         document.body.removeChild(threeRef.current.fileInputRef);

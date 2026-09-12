@@ -1,49 +1,32 @@
 /**
- * deleteWireframe.js — Outline hover tool DELETE: BINGKAI MERAH MENEMPEL
- * DI KULIT BLOCK ("painted frame", bukan wireframe mengambang).
+ * deleteWireframe.js — Outline painted-frame KETEBALAN KONSTAN DUNIA (v4).
  *
- * ══════════════════════════════════════════════════════════════════════════
- * SEJARAH SINGKAT (biar AI penerus tidak salah urutan):
- *   v1 (era lama)        : shell BackSide scale 1.3 — permukaan merah raksasa
- *                          membungkus block ("salah total" versi user).
- *   v2 (Phase 60, 44700ee): EdgesGeometry + LineSegments2 wireframe garis
- *                          rusuk tebal 1.28x DI LUAR block — "50% benar":
- *                          bentuk rusuk sudah benar, TAPI mengambang/menempel
- *                          di luar kulit block.
- *   v3 (INI, hasil analisis Gemini vision terhadap gambar referensi user
- *       "folder image/Screenshot 2026-09-09 112617.png" — konfirmasi 3x
- *       konsisten): outline yang dimaksud user = BINGKAI MERAH MENEMPEL DI
- *       PERMUKAAN block (seperti kubus biru dicat tepinya merah):
- *         • SATU kubus, frame merah flush di kulit — TANPA celah udara,
- *           TANPA bayangan kedalaman (bukan objek terpisah yang mengelilingi).
- *         • Biru BERHENTI SEBELUM rusuk: tiap wajah = bingkai merah ~12-15%
- *           lebar wajah mengelilingi panel biru inset (terukur visual Gemini).
- *         • Ketebalan konsisten semua rusuk; flat/unlit (tanpa gradasi).
+ * KOREKSI USER (2026-09-12): "outline oranye MELAR ikutan panjang saat
+ * block di-scale" — v3 pakai fraksi UV tetap (13%): band = 13% dari sisi
+ * yang memanjang = makin tebal saat block panjang. SALAH. Yang diminta:
+ * tebal outline KONSTAN di sisi, berapa pun block di-scale.
  *
- * TEKNIK v3:
- *   ShaderMaterial per-fragment berbasis UV BoxGeometry: setiap wajah kubus
- *   BoxGeometry punya UV 0..1. Warna = merah jika koordinat UV berada dalam
- *   "band tepi" (u atau v < FRAME atau > 1-FRAME); selain itu ALPHA 0
- *   (tembus pandang) → block asli terlihat di tengah. DepthTest true +
- *   polygonOffset supaya frame tidak z-fight dengan kulit block (frame
- *   dirender persis di permukaan). Wireframe rusuk garis TIDAK dipakai lagi.
- *   → Efek: block asli tampak "dibingkai merah" di tepinya, persis referensi.
+ * FIX v4: band dihitung di RUANG DUNIA, bukan fraksi UV. Vertex shader
+ * meng-extract scale dunia block dari modelMatrix (decompose kolom),
+ * fragment membandingkan JARAK LOKAL pixel ke tepi unit box dengan
+ * uFrameWorld / scaleAxis → band dunia konstan (0.045 unit) di semua
+ * sisi, semua ukuran, semua scale.
  *
- *   Shell mesh child scale 1.0 PERSIS ukuran block (menempel kulit block,
- *   bukan 1.28 di luar). Warna HDR 4x + toneMapped:false (warisan terbukti
- *   baik untuk jalur bloom & direct render).
- * ══════════════════════════════════════════════════════════════════════════
+ * Struktur v3 dipertahankan: shell box child block (scale menyesuaikan
+ * bounding box LOCAL geometry), shader band tepi + discard tengah,
+ * polygonOffset anti z-fight, material cache per warna, idempoten
+ * userData.__deleteOutline, dispose menyapu cache.
  */
 
 import * as THREE from 'three';
 
-// Ketebalan bingkai sebagai fraksi lebar wajah (12-15% terukur dari
-// referensi; 0.13 = tengah rentang). Frame di SEMUA rusuk konsisten.
-export const DELETE_FRAME_WIDTH = 0.13;
+// Ketebalan band outline dalam UNIT DUNIA (konstan — tidak melar).
+// 0.13 = 13% wajah block standar 1×1×1 — persis tampilan v3 yang sudah
+// disetujui user (verifikasi ganda vision 5/5); sebagai band DUNIA ia
+// tetap 0.13 unit di block 4x panjang (tidak ikut melar).
+export const FRAME_WORLD_WIDTH = 0.13;
 
 let sharedGeo = null;
-// Cache material PER WARNA (uniform uColor per warna) — hitam outline
-// dipakai lintas block & lintas tool tanpa clone per block.
 const matCache = new Map();
 
 function getSharedGeometry() {
@@ -54,22 +37,71 @@ function getSharedGeometry() {
 }
 
 const FRAME_VERT = /* glsl */ `
-  varying vec2 vUv;
+  varying vec3 vLocalPos;
+  varying vec3 vWorldScale;
   void main() {
-    vUv = uv;
+    vLocalPos = position;
+    // Extract world scale dari modelMatrix (panjang kolom = scale per sumbu)
+    vWorldScale = vec3(
+      length(modelMatrix[0].xyz),
+      length(modelMatrix[1].xyz),
+      length(modelMatrix[2].xyz)
+    );
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 const FRAME_FRAG = /* glsl */ `
-  uniform float uFrame;
+  uniform float uFrameWorld;
   uniform vec3 uColor;
-  varying vec2 vUv;
+  varying vec3 vLocalPos;
+  varying vec3 vWorldScale;
   void main() {
-    float edgeU = step(vUv.x, uFrame) + step(1.0 - uFrame, vUv.x);
-    float edgeV = step(vUv.y, uFrame) + step(1.0 - uFrame, vUv.y);
-    float frame = clamp(edgeU + edgeV, 0.0, 1.0);
-    if (frame < 0.5) discard;
-    gl_FragColor = vec4(uColor, 1.0);
+    // Posisi lokal unit box: -0.5..+0.5. Jarak ke tepi per sumbu:
+    // distToEdge.x = 0.5 - |vLocalPos.x| (di wajah manapun).
+    // Band dunia konstan: pixel di-dalam band jika jarak lokal ke tepi
+    // < uFrameWorld / scaleAxis (band dunia dibagi scale = band lokal).
+    // Pixel wajah hanya 2 sumbu relevan; sumbu wajah (normal) punya
+    // |pos| ~ 0.5 → jaraknya 0 → selalu band = BENAR (seluruh wajah
+    // tepi wajah adalah band jika wajah itu sendiri tepi? TIDAK —
+    // wajah unit box: sumbu normal kontribusi 0.5, dua sumbu lain bervariasi.
+    // Band wajah = TEPI wajah (2 sumbu non-normal dekat 0.5).
+    // Cara benar: band jika ADA satu sumbu non-normal dengan
+    // 0.5 - |pos_axis| < halfBand_axis. Sumbu normal otomatis tak kena
+    // karena |pos_normal| = 0.5 → 0.5 - 0.5 = 0 < halfBand → IKUT band?!
+    // Itu akan mengecat SELURUH wajah. Fix: pakai jarak ke tepi wajah
+    // berbasis koordinat 2D wajah — tapi lebih sederhana: hitung untuk
+    // TIAP sumbu jarak Dunia = (0.5 - |pos|) * scale, band jika
+    // min over non-normal axes < uFrameWorld. Normal axis dideteksi via
+    // pos terbesar absolut == 0.5 (wajah unit box).
+    vec3 distLocal = vec3(0.5) - abs(vLocalPos);          // jarak lokal ke tepi per sumbu
+    vec3 distWorld = distLocal * vWorldScale;               // jarak dunia
+    // Sumbu wajah (normal): |pos| == 0.5 → distLocal ~ 0 → distWorld ~ 0.
+    // Wajah X: pixel di tengah wajah punya pos.y/z bervariasi, distWorld.y/z
+    // menentukan band. distWorld.x ~ 0 selalu — MAKSUDNYA wajah ini sendiri
+    // adalah "tepi" di sumbu X → seluruh wajah X adalah kandidat band hanya
+    // jika distWorld.y ATAU distWorld.z juga kecil (dekat rusuk).
+    // Band = pixel dekat RUSUK (2 sumbu sekaligus ~0) ATAU dekat tepi
+    // wajah (1 sumbu non-normal ~0). Sederhana & benar: band jika
+    // KEDUA-duanya: minimal 1 sumbu distWorld < uFrameWorld (rusuk/wajah)
+    // DAN pixel di wajah terluar... — pendekatan UV-style yang terbukti:
+    // tiap wajah unit box UV-nya 0..1 di 2 sumbu non-normal.
+    // Konversi posisi lokal → "uv wajah": pilih 2 sumbu non-normal
+    // (dua distWorld TERBESAR = non-normal; terkecil = normal).
+    float d1 = distWorld.x, d2 = distWorld.y, d3 = distWorld.z;
+    // urutkan ascending: terkecil = sumbu normal
+    float m12 = min(d1, d2), mx12 = max(d1, d2);
+    float m3 = min(d3, mx12), mx3 = max(d3, mx12);
+    float smallest = min(m12, m3);          // sumbu normal (wajah)
+    float middle = (m12 < m3) ? min(mx12, m3) : min(m12, mx12); // non-normal terdepat tepi
+    float largest = max(mx12, mx3);         // non-normal jauh dari tepi
+    // Band dunia konstan: band jika middle < uFrameWorld (dekat rusuk
+    // wajah) — sumbu normal (smallest) diabaikan, sumbu jauh diabaikan.
+    // middle mencakup KEDUA tepi wajah (dekat 0.5+ dan 0.5-): benar.
+    if (middle < uFrameWorld) {
+      gl_FragColor = vec4(uColor, 1.0);
+    } else {
+      discard;
+    }
   }
 `;
 
@@ -84,7 +116,7 @@ function getMaterial(hexColor) {
     else color = new THREE.Color(key);
     matCache.set(key, new THREE.ShaderMaterial({
       uniforms: {
-        uFrame: { value: DELETE_FRAME_WIDTH },
+        uFrameWorld: { value: FRAME_WORLD_WIDTH },
         uColor: { value: color },
       },
       vertexShader: FRAME_VERT,
@@ -102,21 +134,16 @@ function getMaterial(hexColor) {
 }
 
 /**
- * Pasang bingkai painted-frame dengan WARNA APA PUN pada block.
- * Dipakai: delete (merah) via attachDeleteWireframe + paint (putih/warna
- * user) via attachPaintedFrame — teknik sama, warna beda.
- * Idempoten: userData.__deleteOutline guard (satu frame per block;
- * ganti tool menghapus dulu via detach).
+ * Pasang bingkai painted-frame (tebal konstan dunia) pada block.
+ * Dipakai: delete (merah #FF0A0A HDR), paint (putih/warna user),
+ * scale hover (oranye #f59e0b). Idempoten via userData.__deleteOutline.
  */
 export function attachPaintedFrame(block, hexColor) {
   if (!block) return null;
   if (block.userData.__deleteOutline) return block.userData.__deleteOutline;
   const shell = new THREE.Mesh(getSharedGeometry(), getMaterial(hexColor));
-  // Ukuran: shell box 1x1x1 dibuat sama dengan UKURAN EFEKTIF geometry block
-  // supaya bingkai MENEMPEL di kulit (bukan 25% lebih besar kalau block
-  // punya ukuran beda — terukur di harness vision: block 0.8 + shell 1.0
-  // = bingkai tampak mengambang/menembus). Pakai bounding box GEOMETRY block
-  // (bukan world scale — shell child mengikuti scale block otomatis).
+  // Ukuran shell = bounding box LOCAL geometry block (unit box standar
+  // untuk kubus library; mesh import GLB menyesuaikan bbox lokalnya).
   try {
     block.geometry.computeBoundingBox();
     const bb = block.geometry.boundingBox;
@@ -124,14 +151,12 @@ export function attachPaintedFrame(block, hexColor) {
     const sy = (bb.max.y - bb.min.y) || 1;
     const sz = (bb.max.z - bb.min.z) || 1;
     shell.scale.set(sx, sy, sz);
-    // geometry block mungkin tidak berpusat di origin — offset supaya
-    // bounding box shell ALIGN dengan bounding box block.
     shell.position.set(
       (bb.max.x + bb.min.x) / 2,
       (bb.max.y + bb.min.y) / 2,
       (bb.max.z + bb.min.z) / 2,
     );
-  } catch (e) { /* geometry aneh → biarkan scale 1 (fallback aman) */ }
+  } catch (e) { /* geometry aneh → fallback scale 1 */ }
   block.add(shell);
   shell.raycast = () => {};
   shell.renderOrder = 2;
@@ -140,14 +165,13 @@ export function attachPaintedFrame(block, hexColor) {
   return handle;
 }
 
-/** Wrapper delete — merah darah HDR (perilaku v3 tidak berubah). */
+/** Wrapper delete — merah darah HDR (perilaku lama tidak berubah). */
 export function attachDeleteWireframe(block) {
   return attachPaintedFrame(block, new THREE.Color(0xff0a0a).multiplyScalar(4));
 }
 
 /**
- * Lepas bingkai dari block. Idempoten + aman untuk block yang sudah
- * di-dispose.
+ * Lepas bingkai dari block (idempoten + aman untuk block sudah dispose).
  */
 export function detachDeleteWireframe(block) {
   if (!block) return;
@@ -155,24 +179,21 @@ export function detachDeleteWireframe(block) {
   if (!handle) return;
   try {
     if (handle.line.parent) handle.line.parent.remove(handle.line);
-    // geometry & material SHARED — jangan dispose per-block (dipakai lintas
-    // block); cukup lepas dari scene graph.
+    // geometry & material SHARED — jangan dispose per-block.
   } catch (e) { /* block mungkin sudah di-dispose */ }
   delete block.userData.__deleteOutline;
 }
 
 /**
  * Kompatibilitas API lama (simulator memanggil ini di handleResize).
- * Shader UV tidak butuh resolution — no-op, dipertahankan supaya
- * pemanggil tidak rusak.
+ * Shader scale-aware tidak butuh resolution — no-op.
  */
-export function setDeleteWireframeResolution(_width, _height) { /* no-op v3 */ }
+export function setDeleteWireframeResolution(_width, _height) { /* no-op */ }
 
 /**
  * Dispose resource shared — dipanggil di cleanup unmount scene.
  */
 export function disposeDeleteWireframeMaterial() {
-  // v4: material sekarang cache per-warna (Map) — dispose SEMUA + kosongkan.
   for (const mat of matCache.values()) {
     try { mat.dispose(); } catch (e) { /* sudah disposed */ }
   }

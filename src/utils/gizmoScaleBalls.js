@@ -63,7 +63,7 @@
  */
 
 import * as THREE from 'three';
-import { applyCenterDesignToMaterial } from './ballCenterDesign.js';
+import { attachCrystalCore } from './ballCenterDesign.js';
 
 /** Penanda idempoten pada gizmo scale. */
 const SCALE_MARK = '__scaleBallsP51';
@@ -271,10 +271,6 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
       opacity: 1,
     });
     ballMats[axis].color.set(color);
-    // Phase 69 (user 2026-09-11): desain visual TENGAH bola — diamond glow
-    // grid + titik pusat (struktur referensi design_visual_tengah_.png,
-    // warna TIDAK ditiru). Map polos dikali color → identitas kuning tetap.
-    applyCenterDesignToMaterial(ballMats[axis]);
   }
 
   const balls = [];
@@ -295,11 +291,15 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
 
       const ball = new THREE.Mesh(geo, ballMats[axis]);
       ball.name = axis;              // wajib: highlight, showX/Y/Z, hide-facing-camera
-      ball.renderOrder = Infinity;   // sama seperti setupGizmo()
+      ball.renderOrder = 1000;   // Phase 69 v2: < sprite kristal (1001) supaya kristal tampak DI ATAS bola
       ball.userData[SCALE_MARK] = true;
       scaleObj.add(ball);
       addedBalls.push(ball);
       sideOfBall.set(ball, sign);
+      // Phase 69 v2 (user 2026-09-12 koreksi): SATU kristal billboard di
+      // PUSAT bola (di dalam perutnya) — terlihat sama dari semua arah;
+      // bukan texture map permukaan (itu bikin titik hitam 6 sisi).
+      attachCrystalCore(ball, ballRadius);
       balls.push(`${axis}${sign > 0 ? '+' : '-'}`);
     }
   }
