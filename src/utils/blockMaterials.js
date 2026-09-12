@@ -236,9 +236,13 @@ export function makeBlockMaterial(THREE, slug) {
       color: 0x000000,          // hitam: hanya emissive yang menyala → flat
       emissive: 0xff0000,       // merah murni #FF0000 (wajib user)
       emissiveIntensity: 1.4,   // flat terang; di bawah threshold bloom default —
-                                // tidak memicu bloom liar; tetap flat terang
+                                // tidak memicu bloom liar
       roughness: 1, metalness: 0,
       fog: false,
+      // FIX BUG 3 (laporan-bug-neon-block, 2026-09-11): ACES mendesaturasi
+      // merah saturasi tinggi — badan kubus pudar padahal aura sprite sudah
+      // toneMapped:false. Samakan: badan JUGA toneMapped:false → #FF0000 solid.
+      toneMapped: false,
     });
     mat.userData.isGlowBlock = true; // flag: highlight gizmo DILARANG timpa
     return mat;

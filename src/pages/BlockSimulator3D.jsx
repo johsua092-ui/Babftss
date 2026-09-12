@@ -227,6 +227,35 @@ export default function BlockSimulator3D({ setPage }) {
   useEffect(() => { selectBoxRef.current = selectBoxEnabled; }, [selectBoxEnabled]);
   const colorRef = useRef('#ffffff'); // sinkron default putih (currentColor)
   useEffect(() => { toolRef.current = tool; }, [tool]);
+
+  // ── FIX BUG 2 (laporan-bug-neon-block, 2026-09-11): SATU fungsi terpusat
+  // untuk highlight/unhighlight emissive block. Sebelumnya logic ini
+  // di-copy-paste inline di banyak tempat (tool-switch ghost, klik-path,
+  // useEffect tool) — dan TIDAK SATUPUN cek isGlowBlock → neon block
+  // kena timpa emissive (biru saat dipilih, HITAM saat dilepas = bug
+  // "block asal jadi hitam, clone jadi biru permanen"). Semua pemanggilan
+  // inline WAJIB lewat fungsi ini; block neon (isGlowBlock) TIDAK
+  // DISENTUH SAMA SEKALI — warna #FF0000-nya permanen.
+  const setBlockHighlight = (block, mode /* 'select' | 'none' */) => {
+    if (!block || !block.material) return;
+    const mats = Array.isArray(block.material) ? block.material : [block.material];
+    mats.forEach(m => {
+      if (!m || !m.emissive) return;
+      if (m.userData && m.userData.isGlowBlock) return; // NEON: JANGAN DISENTUH
+      if (mode === 'select') {
+        m.emissive.setHex(0x1a8cff);
+        m.emissiveIntensity = 0.6;
+      } else {
+        m.emissive.setHex(0x000000);
+        m.emissiveIntensity = 1;
+      }
+    });
+  };
+  // Ref supaya fungsi bisa dipanggil dari dalam init-scene useEffect
+  // (restoreState dll) yang punya closure berbeda.
+  const setBlockHighlightRef = useRef(setBlockHighlight);
+  useEffect(() => { setBlockHighlightRef.current = setBlockHighlight; }, [setBlockHighlight]);
+  
   
   // Phase 50 v9: Ubah warna gizmo berdasarkan mode tool
   // Clone = biru muda (#0096FF), Mirror = ungu (#9D00FF), lainnya = default (merah/hijau/biru)
@@ -274,10 +303,7 @@ export default function BlockSimulator3D({ setPage }) {
       threeRef.current.ghostSource = null;
       if (src && src.parent && src.userData.isBlock) {
         tc.attach(src);
-        if (src.material) {
-          const mats = Array.isArray(src.material) ? src.material : [src.material];
-          mats.forEach(m => { if (m.emissive) { m.emissive.setHex(0x1a8cff); m.emissiveIntensity = 0.6; } });
-        }
+        setBlockHighlight(src, 'select'); // FIX BUG 2: terpusat + guard neon
         threeRef.current.selectedBlocks.clear();
         threeRef.current.selectedBlocks.add(src);
         console.log('[Phase 50 v13] Gizmo di-restore ke block asal setelah keluar clone/mirror →', tool);
@@ -313,18 +339,8 @@ export default function BlockSimulator3D({ setPage }) {
         // Phase 50 v10: Unhighlight source block SEBELUM auto-create ghost
         // Bug fix: source block masih ter-highlight dari operasi Move sebelumnya
         // Kalau tidak di-unhighlight di sini, block asal akan tetap biru
-        // FIX v10.1: Inline emissive logic karena unhighlightSelected tidak ada di scope ini
-        threeRef.current.selectedBlocks.forEach(b => {
-          if (b && b.material) {
-            const mats = Array.isArray(b.material) ? b.material : [b.material];
-            mats.forEach(m => {
-              if (m.emissive) {
-                m.emissive.setHex(0x000000);
-                m.emissiveIntensity = 1;
-              }
-            });
-          }
-        });
+        // FIX BUG 2 (laporan): pakai setBlockHighlight terpusat — guard neon
+        threeRef.current.selectedBlocks.forEach(b => setBlockHighlight(b, 'none'));
         threeRef.current.selectedBlocks.clear();
         
         // Auto-create ghost di block yang sedang di-select
@@ -365,16 +381,8 @@ export default function BlockSimulator3D({ setPage }) {
             // Attach gizmo ke ghost → 6 panah muncul di ghost
             tc.attach(ghost);
             // Highlight ghost supaya terlihat mana yang akan di-drag
-            // FIX v10.1: Inline emissive logic karena highlightSelected tidak ada di scope ini
-            if (ghost && ghost.material) {
-              const mats = Array.isArray(ghost.material) ? ghost.material : [ghost.material];
-              mats.forEach(m => {
-                if (m.emissive) {
-                  m.emissive.setHex(0x1a8cff);
-                  m.emissiveIntensity = 0.6;
-                }
-              });
-            }
+            // FIX BUG 2 (laporan): terpusat — clone NEON tetap merah (guard)
+            setBlockHighlight(ghost, 'select');
             threeRef.current.selectedBlocks.add(ghost);
             console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
           }
@@ -401,15 +409,9 @@ export default function BlockSimulator3D({ setPage }) {
               }
             } catch (e) { /* jangan gagalkan switch tool */ }
           }
-          if (sourceBlock && sourceBlock.material) {
-            const mats = Array.isArray(sourceBlock.material) ? sourceBlock.material : [sourceBlock.material];
-            mats.forEach(m => {
-              if (m.emissive) {
-                m.emissive.setHex(0x1a8cff);
-                m.emissiveIntensity = 0.6;
-              }
-            });
-          }
+          // FIX BUG 2 (laporan): re-highlight source via fungsi terpusat —
+          // block NEON tidak tersentuh (guard isGlowBlock).
+          setBlockHighlight(sourceBlock, 'select');
           threeRef.current.selectedBlocks.clear();
           threeRef.current.selectedBlocks.add(sourceBlock);
           console.log('[Phase 50 v12] Ghost dipertahankan saat pindah ke', tool);
@@ -12284,6 +12286,11 @@ Now you can apply Displacement for detailed effect.`);
           const g = threeRef.current.cloneGhost;
           delete g.userData.cloneGhost;
           threeRef.current.cloneGhost = null;
+          // FIX BUG 2 (laporan-bug-neon-block): commit ghost → kembalikan
+          // highlight ke tampilan normal. No-op untuk neon (guard isGlowBlock
+          // — sebelumnya ghost commit TIDAK PERNAH mengembalikan emissive
+          // biru → hasil clone "biru permanen").
+          setBlockHighlightRef.current(g, 'none');
           // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
           // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
           // DIBATALKAN (klik empty / ganti tool sebelum drag).
@@ -13015,6 +13022,11 @@ Now you can apply Displacement for detailed effect.`);
           block.castShadow = true;
           block.receiveShadow = true;
           block.userData.isBlock = true;
+          // FIX BUG 1 (laporan-bug-neon-block, 2026-09-11): simpan slug block
+          // library di userData — snapshotState membacanya supaya undo/redo
+          // bisa rebuild material block yang BENAR (neon: emissive+aura),
+          // bukan material generik warna-dari-color (neon color = hitam!).
+          block.userData.blockSlug = blockDef.slug;
           // GLOW v4 hybrid (2026-09-11): block glow (NEON) dapat AURA SPRITE
           // radial (terverifikasi vision 5/5 + profil pixel identik dataset)
           // + material emissive flat ( spek Claude Vision: flat semua sisi).
@@ -13810,12 +13822,21 @@ Now you can apply Displacement for detailed effect.`);
         // tidak pernah dimutasi oleh tool apapun (immutable, hanya dibaca
         // renderer). Material tetap disimpan sebagai NILAI warna supaya undo
         // paint tetap akurat.
+        // FIX BUG 1 (laporan-bug-neon-block, 2026-09-11): simpan JUGA slug
+        // block library + flag glow — untuk neon, color='#000000' (warnanya
+        // di emissive, tidak ter-capture) → restore generik = block HITAM.
+        // Dengan blockSlug, restoreState bisa rebuild via makeBlockMaterial
+        // (emissive+flag utuh) + attachBlockGlow (aura) — undo/redo aman.
+        const blockSlug = b.userData.blockSlug || null;
+        const isGlow = mats.some(m => m && m.userData && m.userData.isGlowBlock);
         return {
           px: worldPos.x, py: worldPos.y, pz: worldPos.z,
           rx: euler.x, ry: euler.y, rz: euler.z,
           sx: worldScale.x, sy: worldScale.y, sz: worldScale.z,
           color,
           geo: b.geometry,
+          blockSlug, // NEW (Bug 1)
+          isGlow,    // NEW (Bug 1)
         };
       });
     };
@@ -13869,11 +13890,21 @@ Now you can apply Displacement for detailed effect.`);
         // bola). Fallback BoxGeometry(1,1,1) hanya untuk snapshot lama tanpa
         // field geo (kompatibilitas mundur).
         const geo = s.geo || new THREE.BoxGeometry(1, 1, 1);
-        const mat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(s.color),
-          metalness: 0.1,
-          roughness: 0.8,
-        });
+        // FIX BUG 1 (laporan-bug-neon-block, 2026-09-11): block library
+        // (punya blockSlug) di-rebuild via makeBlockMaterial — material
+        // UTUH (texture+PBR, utk neon: emissive flat + flag isGlowBlock).
+        // Fallback generik hanya untuk block lama tanpa slug (kubus warna
+        // era pra-Block-Library + snapshot lama).
+        let mat;
+        if (s.blockSlug) {
+          mat = makeBlockMaterial(THREE, s.blockSlug);
+        } else {
+          mat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(s.color),
+            metalness: 0.1,
+            roughness: 0.8,
+          });
+        }
         const block = new THREE.Mesh(geo, mat);
         block.position.set(s.px, s.py, s.pz);
         block.rotation.set(s.rx, s.ry, s.rz);
@@ -13881,6 +13912,10 @@ Now you can apply Displacement for detailed effect.`);
         block.castShadow = true;
         block.receiveShadow = true;
         block.userData.isBlock = true;
+        // FIX BUG 1: simpan blockSlug lagi utk snapshot berikutnya (undo/redo
+        // berantai) + pasang ulang aura glow utk neon.
+        block.userData.blockSlug = s.blockSlug || null;
+        if (s.isGlow) attachBlockGlow(THREE, block);
         scene.add(block);
         threeRef.current.blocks.push(block);
       });
