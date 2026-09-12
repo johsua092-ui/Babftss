@@ -374,6 +374,16 @@ export default function BlockSimulator3D({ setPage }) {
             ghost.userData.importedGlb = !!sourceBlock.userData.importedGlb;
             ghost.userData.cloneGhost = true;
             ghost.userData.ghostSource = sourceBlock; // FIX v13: block ASAL — untuk restore gizmo saat keluar clone/mirror
+            // FIX BUG GLOW-CLONE (user 2026-09-11: "clone/mirror neon → glow
+            // hilang!"): ghost = geometry.clone() + material.clone() SAJA —
+            // sprite aura adalah CHILD source, TIDAK ikut ter-clone → ghost
+            // & hasil clone permanen TANPA aura. Juga blockSlug tidak
+            // di-copy → undo/redo hasil clone rusak. Fix: copy blockSlug +
+            // pasang aura lagi via attachBlockGlow (idempoten).
+            ghost.userData.blockSlug = sourceBlock.userData.blockSlug || null;
+            if (ghost.userData.blockSlug && getBlockDef(ghost.userData.blockSlug).glow) {
+              attachBlockGlow(THREE, ghost);
+            }
             scene.add(ghost);
             threeRef.current.blocks.push(ghost);
             threeRef.current.cloneGhost = ghost;
@@ -4560,6 +4570,10 @@ Now you can apply Displacement for detailed effect.`);
       const mats = Array.isArray(b.material) ? b.material : [b.material];
       mats.forEach(m => {
         if (!m.emissive) return;
+        // FIX (temuan Claude, cross-check laporan bug neon): guard neon —
+        // slider emissive panel TIDAK boleh menimpa warna #FF0000 block glow
+        // (pola bug yang sama dgn highlight/clone/mirror).
+        if (m.userData && m.userData.isGlowBlock) return;
         if (emissiveIntensity > 0) {
           m.emissive.set(emissiveColor);
           m.emissiveIntensity = emissiveIntensity;
@@ -13123,6 +13137,10 @@ Now you can apply Displacement for detailed effect.`);
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
             mats.forEach(m => {
               if (!m) return;
+              // FIX (temuan Claude): block neon (isGlowBlock) di-skip —
+              // mengecat color (hitam) dgn warna lain + emissive merah =
+              // campuran aneh; neon mempertahankan identitas glow-nya.
+              if (m.userData && m.userData.isGlowBlock) return;
               if (m.color) m.color.set(color);
               // Hapus pattern texture kalau ada (paint solid color)
               if (m.map) {
@@ -13187,6 +13205,12 @@ Now you can apply Displacement for detailed effect.`);
           ghost.userData.importedGlb = !!source.userData.importedGlb;
           ghost.userData.cloneGhost = true;   // penanda ghost sementara
           ghost.userData.ghostSource = source; // FIX v13: block ASAL — untuk restore gizmo saat keluar clone/mirror
+          // FIX BUG GLOW-CLONE (user 2026-09-11): copy blockSlug + pasang
+          // aura glow lagi (sprite child tidak ikut material.clone()).
+          ghost.userData.blockSlug = source.userData.blockSlug || null;
+          if (ghost.userData.blockSlug && getBlockDef(ghost.userData.blockSlug).glow) {
+            attachBlockGlow(THREE, ghost);
+          }
           scene.add(ghost);
           threeRef.current.blocks.push(ghost);
           threeRef.current.cloneGhost = ghost;
@@ -13250,6 +13274,12 @@ Now you can apply Displacement for detailed effect.`);
           mirrorMesh.userData.importedGlb = !!source.userData.importedGlb;
           mirrorMesh.userData.cloneGhost = true;   // penanda ghost (juga untuk mirror)
           mirrorMesh.userData.ghostSource = source; // FIX v13: block ASAL — untuk restore gizmo saat keluar clone/mirror
+          // FIX BUG GLOW-CLONE (user 2026-09-11): mirror neon juga wajib
+          // ber-aura + blockSlug (sprite child tidak ikut material.clone()).
+          mirrorMesh.userData.blockSlug = source.userData.blockSlug || null;
+          if (mirrorMesh.userData.blockSlug && getBlockDef(mirrorMesh.userData.blockSlug).glow) {
+            attachBlockGlow(THREE, mirrorMesh);
+          }
           scene.add(mirrorMesh);
           threeRef.current.blocks.push(mirrorMesh);
           threeRef.current.cloneGhost = mirrorMesh;
