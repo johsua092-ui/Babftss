@@ -299,6 +299,33 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
     }
   }
 
+  // ── 3b. FIX BUG B: map PICKER cone senama (hitbox klik harus ikut bola) ──
+  // Picker scale = 2 cone tak terlihat per sumbu (bake ±0.3 ke geometry,
+  // setupGizmo — nama object tetap 'X'/'Y'/'Z'). Tanpa digeser, klik tetap
+  // di area LAMA dekat pusat (bug user: "visual doang yang bergerak,
+  // kursor ke pusat block mendadak bisa klik").
+  const pickerRoot = (transformControls && transformControls._gizmo
+    && transformControls._gizmo.picker && transformControls._gizmo.picker.scale) || null;
+  const pickersByAxisSign = new Map(); // `${axis}${sign}` → cone mesh
+  if (pickerRoot) {
+    for (const cone of pickerRoot.children) {
+      if (!cone || !cone.geometry || !AXIS_KEY[cone.name]) continue;
+      if (!cone.geometry.boundingBox) cone.geometry.computeBoundingBox();
+      const bb = cone.geometry.boundingBox;
+      const centerOnAxis = (bb.max[AXIS_KEY[cone.name]] + bb.min[AXIS_KEY[cone.name]]) / 2;
+      const sign = centerOnAxis >= 0 ? 1 : -1;
+      pickersByAxisSign.set(`${cone.name}${sign}`, cone);
+    }
+  }
+
+  /**
+   * Cari picker cone untuk bola (axis, sign) tertentu.
+   * @returns {THREE.Mesh|null}
+   */
+  function findPickerFor(map, axis, sign) {
+    return map.get(`${axis}${sign}`) || null;
+  }
+
   // ── 4. SOLO DRAG via wrapper CHAIN pada updateMatrixWorld ──
   // (JEBAKAN #2: visible dipaksa true tiap frame → sembunyikan SETELAH
   //  fungsi asli; chain dengan wrapper rotate/six-arrows yang sudah ada.)
@@ -354,16 +381,71 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
           // di luar tepi supaya bola melayang DI DEPAN permukaan sisi,
           // bukan menempel/numpuk. Gap konsisten visual = gap unit lokal
           // × factor kamera (seragam di semua ukuran & zoom).
-          const factor = ball.scale.x || 1;
+          // Factor kamera: HATI-HATI — bola yang DI-HIDE oleh AXIS_HIDE
+          // punya scale 1e-10 (fungsi asli men-set saat hide). Ambil factor
+          // dari bola pertama yang TIDAK di-hide (selalu ada ≥4 bola yang
+          // menghadap non-kamera; worst case fallback hitung ulang).
+          let factor = ball.scale.x;
+          if (!factor || factor < 1e-4) {
+            const healthy = addedBalls.find(b => b.scale.x > 1e-4);
+            factor = healthy ? healthy.scale.x : 1;
+          }
           const BALL_GAP = 0.55; // unit lokal — gap 3D simetris; perspektif kamera mempersempit sisi dekat jadi ~5px pada 0.35 → 0.55 agar gap visual cukup di semua sudut
           const off = distance * (wsv - factor) + BALL_GAP;
           ball.position.x += UNIT[axis].x * sign * off;
           ball.position.y += UNIT[axis].y * sign * off;
           ball.position.z += UNIT[axis].z * sign * off;
+
+          // FIX BUG A (user 2026-09-11: "kamera tepat lurus di hadapan bola
+          // → bola MENGHILANG"): fungsi asli AXIS_HIDE_THRESHOLD 0.99
+          // (baris 1743) menyembunyikan handle yang sumbunya menghadap
+          // kamera — warisan perilaku GARIS (panah tipis tak terlihat
+          // dari ujung) yang TIDAK relevan untuk BOLA (terlihat dari
+          // semua sudut). Setelah fungsi asli jalan: paksa bola kembali
+          // TERLIHAT + scale dipulihkan (asli set 1e-10 saat hide).
+          if (ball.visible === false) {
+            ball.visible = true;
+          }
+          if (ball.scale.x < 1e-5) {
+            // dipulihkan dari hide-scale — set ulang factor seragam
+            ball.scale.set(factor, factor, factor);
+          }
+
+          // FIX BUG B (user 2026-09-11: "yang bergerak cuma VISUAL — klik
+          // bola tak bisa, tapi kursor ke pusat block MENDADAK bisa!"):
+          // picker cone (hitbox klik) bake ±0.3 DI GEOMETRY dan TIDAK ikut
+          // digeser → klik tetap nempel area lama dekat pusat. Solusi:
+          // geser picker cone YANG SENAMA (axis + sign) ke posisi bola.
+          // Picker cone punya bake position ±0.3 (baris 1459-1474) —
+          // offset picker = posisi bola baru − bake lama picker, tapi
+          // posisi cone bake IKUT matrix... cone di-scale factor juga;
+          // offset position yang benar = sama dengan offset bola
+          // (cone bake 0.3 vs bola 0.5 beda basis → pakai offset final
+          // bola sebagai target: posisi cone = posisi bola, karena
+          // keduanya local-space gizmo & scale handle seragam).
+          const pickerCone = findPickerFor(pickersByAxisSign, axis, sign);
+          if (pickerCone) {
+            // Cone bake ±0.3 di geometry, bola bake ±0.5 (distance). Agar
+            // CENTER cone = CENTER bola (hitbox menutup bola persis):
+            // offset cone = offset bola + selisih bake (distance − 0.3).
+            // Cone center world = 0.3 + offC; bola = 0.5 + offB →
+            // offC = offB + 0.2 membuat keduanya sama.
+            const offC = off + (distance - 0.3);
+            pickerCone.position.x += UNIT[axis].x * sign * offC;
+            pickerCone.position.y += UNIT[axis].y * sign * offC;
+            pickerCone.position.z += UNIT[axis].z * sign * offC;
+            // FIX BUG A lanjutan: cone picker JUGA kena AXIS_HIDE di
+            // fungsi asli (ikut loop handles) → klik bola sisi-dekat-
+            // kamera TIDAK BISA. Pulihkan visible + scale cone senama.
+            if (pickerCone.visible === false) pickerCone.visible = true;
+            if (pickerCone.scale.x < 1e-5) pickerCone.scale.set(factor, factor, factor);
+          }
         }
         // Matrix anak tidak ter-update otomatis (super sudah jalan di
         // akhir fungsi asli) — paksa hitung ulang (pola Phase 52).
         scaleObj.updateMatrixWorld(true);
+        // Picker juga harus di-update (matrix untuk raycast klik).
+        if (pickerRoot) pickerRoot.updateMatrixWorld(true);
       }
     }
 
