@@ -63,6 +63,7 @@
  */
 
 import * as THREE from 'three';
+import { applyCenterDesignToMaterial } from './ballCenterDesign.js';
 
 /** Penanda idempoten pada gizmo scale. */
 const SCALE_MARK = '__scaleBallsP51';
@@ -270,6 +271,10 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
       opacity: 1,
     });
     ballMats[axis].color.set(color);
+    // Phase 69 (user 2026-09-11): desain visual TENGAH bola — diamond glow
+    // grid + titik pusat (struktur referensi design_visual_tengah_.png,
+    // warna TIDAK ditiru). Map polos dikali color → identitas kuning tetap.
+    applyCenterDesignToMaterial(ballMats[axis]);
   }
 
   const balls = [];

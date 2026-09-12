@@ -97,6 +97,7 @@
  */
 
 import * as THREE from 'three';
+import { applyCenterDesignToMaterial } from './ballCenterDesign.js';
 
 /** Nama sumbu yang punya cincin berwarna. */
 const AXES = ['X', 'Y', 'Z'];
@@ -482,6 +483,7 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
   const balls = [];
   const addedBalls = [];
   const replacedRings = [];   // { mesh, originalGeometry } untuk dispose()
+  const rotateBallMaterials = []; // Phase 69: material bola per-desain (dispose)
 
   // ── 1. Matikan cincin abu-abu (XYZE) dan cincin kuning (E) ──
   // API publik; picker-nya ikut mati sehingga tidak ada klik hantu.
@@ -540,7 +542,27 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       ballGeometry.computeBoundingBox();
       ballGeometry.computeBoundingSphere();
 
-      const ball = new THREE.Mesh(ballGeometry, sharedMaterial);
+      // Phase 69 (user 2026-09-11): desain TENGAH bola (diamond glow grid
+      // + titik pusat — struktur referensi design_visual_tengah_.png).
+      // Material BARU per bola (BUKAN share materialLib — supaya map texture
+      // tidak menyebar ke cincin & handle lain). Warna diinisialisasi dari
+      // materialLib[axis] SEBELUM frame pertama supaya cache _color (jebakan
+      // kontrak #5: color direstore dari _color tiap frame) menyimpan warna
+      // asli bola — highlight hover tetap bekerja (library men-copy
+      // materialLib.active.color langsung ke material bola saat hover).
+      const ballMat = new THREE.MeshBasicMaterial({
+        depthTest: false,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+        transparent: true,
+        opacity: 1,
+      });
+      ballMat.color.copy(sharedMaterial.color);
+      applyCenterDesignToMaterial(ballMat);
+      rotateBallMaterials.push(ballMat);
+
+      const ball = new THREE.Mesh(ballGeometry, ballMat);
       ball.name = axis;              // wajib: highlight, showX/Y/Z, picking axis
       ball.renderOrder = Infinity;   // sama seperti setupGizmo()
       ball.userData[BALL_MARK] = true;
@@ -659,8 +681,13 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
     for (const ball of addedBalls) {
       rotateObj.remove(ball);
       if (ball.geometry) ball.geometry.dispose();
-      // material TIDAK di-dispose: di-share dengan cincin & handle lain
     }
+    // Phase 69: material bola sekarang BARU per bola (punya map desain) —
+    // WAJIB di-dispose (tidak lagi share materialLib).
+    for (const m of rotateBallMaterials) {
+      try { m.dispose(); } catch (e) { /* abaikan */ }
+    }
+    rotateBallMaterials.length = 0;
     if (hideExtraRings) {
       transformControls.showE = prevShowE;
       transformControls.showXYZE = prevShowXYZE;

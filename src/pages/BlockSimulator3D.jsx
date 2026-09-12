@@ -12931,6 +12931,13 @@ Now you can apply Displacement for detailed effect.`);
           // modal (paint tetap jalan pakai currentColor), atau WARNA USER
           // (paintCustomColorRef) kalau sudah dipilih — sinkron dengan tombol.
           attachPaintedFrame(block, paintCustomColorRef.current || '#ffffff');
+        } else if (mode === 'scale') {
+          // Hover SCALE (user 2026-09-11): outline tebal ORANYE — teknik
+          // painted-frame sama dgn paint/delete; muncul selalu saat kursor
+          // di atas block DI TOOL SCALE, WALAU gizmo sudah attach ke block
+          // itu (hover mousemove tetap jalan di tool scale karena cabang
+          // scale kini memanggil highlightBlock).
+          attachPaintedFrame(block, '#f59e0b');
         } else {
           attachDeleteWireframe(block); // merah darah (delete v3, tidak berubah)
         }
@@ -14136,6 +14143,21 @@ Now you can apply Displacement for detailed effect.`);
         } else {
           highlightBlock(null);
         }
+      } else if (currentTool === 'scale') {
+        // Hover SCALE (user 2026-09-11): outline tebal ORANYE #f59e0b saat
+        // kursor di atas block — muncul SELALU di tool scale, TERMASUK saat
+        // gizmo sudah attach ke block itu (mousemove hover tetap dieksekusi
+        // saat tidak drag → outline muncul walau block sedang terpilih).
+        // Teknik = painted-frame (sama seperti paint putih & delete merah).
+        ghostBlock.visible = false;
+        ghostEdges.visible = false;
+        const blockMeshes = threeRef.current.blocks;
+        const hits = raycaster.intersectObjects(blockMeshes, true);
+        if (hits.length > 0) {
+          highlightBlock(hits[0].object, 'scale');
+        } else {
+          highlightBlock(null);
+        }
       } else if (currentTool === 'paint') {
         // Hover PAINT (2026-09-10, user): outline painted-frame — teknik sama
         // dengan delete v3, TAPI warnanya: PUTIH saat user belum memilih warna
@@ -14152,7 +14174,8 @@ Now you can apply Displacement for detailed effect.`);
           highlightBlock(null);
         }
       } else {
-        // Tool move/rotate/scale/eyedropper/shape — hide ghost + delete highlight
+        // Tool move/rotate/eyedropper/shape — hide ghost + delete highlight
+        // (scale kini punya cabang sendiri dengan outline oranye di atas)
         ghostBlock.visible = false;
         ghostEdges.visible = false;
         highlightBlock(null);
