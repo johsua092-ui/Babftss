@@ -33,7 +33,7 @@ import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, g
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow } from '../utils/blockMaterials.js';
-import { clampBlockScale, syncBlockTextureTiling } from '../utils/blockScale.js';
+import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12292,7 +12292,19 @@ Now you can apply Displacement for detailed effect.`);
       if (e.value) {
         // Drag DIMULAI pada tool clone/mirror → ghost sementara dibuat di klik.
         // Tidak ada aksi khusus; block asli tetap aman (gizmo attach ke ghost).
+        // SCALE v2 (user 2026-09-11, "jebol ke arah lain lalu malah lanjut
+        // scale!"): snapshot tanda scale saat drag MULAI — clamp drag-aware
+        // mengunci tanda hasil ke tanda awal, crossing nol hanya mentok
+        // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
+        if (transformControls.getMode() === 'scale' && transformControls.object) {
+          snapshotScaleDragStart(transformControls.object);
+        }
       } else {
+        // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
+        // di place/restore pakai fallback tanda nilai saat itu).
+        if (transformControls.getMode() === 'scale' && transformControls.object) {
+          clearScaleDragStart(transformControls.object);
+        }
         // Drag SELESAI.
         // Kalau tool clone/mirror & ada ghost → finalkan jadi block PERMANEN:
         // hapus penanda ghost (tidak akan dibuang cleanup), gizmo sudah
@@ -12338,11 +12350,13 @@ Now you can apply Displacement for detailed effect.`);
         // Y tetap bebas (bisa di taruh di ketinggian berapa aja, misal 1.5, 2.5)
         obj.position.y = Math.round(obj.position.y * 2) / 2; // snap ke 0.5 increment
       }
-      // FIX SCALE BUG 1 (user 2026-09-11, absolut semua block): scale
-      // melewati 0 → negatif = block "tembus ke belakang, jebol, membesar
-      // lagi". Clamp MIN ABS 0.05, tanda dipertahankan (kaca -x sah).
+      // FIX SCALE BUG 1 v2 (user 2026-09-11 "masih jebol ke arah lain lalu
+      // malah lanjut scale!"): v1 mempertahankan tanda HASIL drag → crossing
+      // nol tetap menghasilkan -0.05 (block terbalik). v2 DRAG-AWARE: tanda
+      // DIKUNCI ke snapshot saat drag mulai (__scaleDragStart di-set di
+      // dragging-changed start) — crossing nol mentok di ±0.05 tanpa membalik.
       if (transformControls.getMode() === 'scale') {
-        clampBlockScale(obj.scale);
+        clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
         // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
         // memanjang, CROP saat mengecil; TIDAK melar (absolut semua block).
         syncBlockTextureTiling(obj);

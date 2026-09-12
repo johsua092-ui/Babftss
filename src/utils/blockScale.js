@@ -2,46 +2,86 @@
  * blockScale.js — Fix 2 bug tool Scale (user 2026-09-11, WAJIB ABSOLUT semua block).
  *
  * BUG 1 — "scale kecil → tembus ke belakang → jebol → membesar lagi":
- *   TransformControls membiarkan scale lewat 0 → negatif. Fix: clamp
- *   per-sumbu MIN_ABS, TANDA dipertahankan (scale.x negatif dari kaca/mirror sah).
+ *   TransformControls menghitung scale = _scaleStart × tempVector2 saat
+ *   drag (baris 671 TransformControls.js) — tempVector2 BEBAS melewati 0
+ *   (negatif) → block TERBALIK ("jebol ke arah lain") lalu makin negatif
+ *   makin membesar di sisi terbalik. v1 clamp mempertahankan tanda HASIL
+ *   → crossing nol tetap menghasilkan -0.05 (masih terbalik!) — BUG v1
+ *   yang ditemukan user "jebol ke arah lain lalu malah lanjut scale".
+ *   v2 BENAR: TANDA per-sumbu DIKUNCI ke tanda saat drag MULAI (snapshot
+ *   _scaleStart di dragging-start); crossing nol hanya mentok di ±0.05
+ *   (pipih), block TIDAK PERNAH terbalik selama drag. Block kaca/mirror
+ *   (-x dari modul mirror) tetap -x selama di-scale (tanda awalnya -).
  *
- * BUG 2 — "tekstur melar ketarik molor":
- *   BoxGeometry UV tiap wajah = 0..1 → scale memanjang MELAR texture.
- *   Fix: UV per-wajah dikali ukuran ABSOLUT sumbu block (basis disimpan
- *   sekali di userData — idemponen, tidak menumpuk antar frame):
- *     wajah ±X (plane YZ): repeat (|sz|, |sy|)
- *     wajah ±Y (plane XZ): repeat (|sx|, |sz|)
- *     wajah ±Z (plane XY): repeat (|sx|, |sy|)
- *   + wrapS/T RepeatWrapping (sudah di getBlockTexture).
- *   Efek (persis request user): memanjang = tekstur LOOP DIRINYA
- *   (tile kembar muncul berderet), mengecil = CROP (uv range < 1 =
- *   bagian texture, makin kecil makin banyak yang hilang).
- *   Tekstur TIDAK PERNAH melar lagi — absolut semua block kubus.
- *
- *   Kenapa UV bukan texture.repeat? Texture object SHARED lintas block
- *   (cache getBlockTexture) — repeat per-block di texture = semua block
- *   ikut berubah. BoxGeometry dibuat BARU per place → UV unik per block,
- *   aman dimutasi. Block non-Box (uv.count ≠ 24) di-skip otomatis.
- *
- *   Urutan wajah BoxGeometry r185: 0..5 = +X, -X, +Y, -Y, +Z, -Z,
- *   4 verts per wajah, uv basis quad (0/1, 0/1).
+ * BUG 2 — "tekstur melar ketarik molor": tiling UV per-wajah
+ *   (wajah ±X repeat |sz|,|sy|; ±Y |sx|,|sz|; ±Z |sx|,|sy|), basis UV
+ *   disimpan sekali (idempoten tiap frame), RepeatWrapping: >1 LOOP
+ *   (tile berderet), <1 CROP (makin kecil makin hilang). Terverifikasi
+ *   vision + unit (Phase 67) — tidak berubah di v2.
  */
 
 export const MIN_ABS_SCALE = 0.05; // 5% — "kecil pipih banget" sah, TIDAK jebol
 
-/** Clamp scale per-sumbu (absolut min, tanda dipertahankan). Mutasi in-place. */
-export function clampBlockScale(scale) {
+/**
+ * Clamp scale per-sumbu — versi DRAG-AWARE v2.1 "DINDING NOL".
+ * signRef = scale saat drag MULAI (snapshotScaleDragStart di dragging-start).
+ * Perilaku (permintaan user: "pipih banget TIDAK perlu jebol jadi membesar
+ * lagi? buat apa kocak!"):
+ *   - Tanda hasil DIKUNCI ke tanda signRef (block tidak pernah TERBALIK;
+ *     kaca tetap kaca).
+ *   - CROSSING NOL = DINDING: saat user drag melewati nol, nilai MENTOK di
+ *     signRef × MIN_ABS dan TIDAK membesar lagi selama drag masih di sisi
+ *     seberang — sampai user membalik arah drag (nilai balik mengikuti
+ *     |start×temp| secara normal).
+ *   - signRef null/0 (place/restore path, bukan drag) → fallback: clamp
+ *     abs-min mempertahankan tanda nilai saat itu.
+ */
+export function clampBlockScale(scale, signRef) {
   if (!scale) return false;
   let clamped = false;
   ['x', 'y', 'z'].forEach(axis => {
     const v = scale[axis];
     if (typeof v !== 'number' || Number.isNaN(v)) return;
-    if (Math.abs(v) < MIN_ABS_SCALE) {
-      scale[axis] = v < 0 ? -MIN_ABS_SCALE : MIN_ABS_SCALE;
-      clamped = true;
+    if (signRef) {
+      const refSign = signRef[axis] < 0 ? -1 : 1;
+      const crossed = (v < 0) !== (refSign < 0); // tanda beda = user lewati nol
+      if (crossed) {
+        // DINDING: mentok pipih di sisi ASAL — tidak terbalik, tidak
+        // membesar lagi selama masih di sisi seberang.
+        scale[axis] = refSign * MIN_ABS_SCALE;
+        clamped = true;
+      } else if (Math.abs(v) < MIN_ABS_SCALE) {
+        scale[axis] = refSign * MIN_ABS_SCALE;
+        clamped = true;
+      }
+    } else {
+      // Non-drag (place/restore): abs-min, tanda nilai dipertahankan.
+      if (Math.abs(v) < MIN_ABS_SCALE) {
+        scale[axis] = v < 0 ? -MIN_ABS_SCALE : MIN_ABS_SCALE;
+        clamped = true;
+      }
     }
   });
   return clamped;
+}
+
+/**
+ * Snapshot tanda+nilai scale saat drag MULAI — dipanggil dari
+ * 'dragging-changed' (e.value === true) sebelum drag berjalan.
+ * Disimpan di userData.__scaleDragStart.
+ */
+export function snapshotScaleDragStart(mesh) {
+  if (!mesh || !mesh.scale) return null;
+  mesh.userData.__scaleDragStart = { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z };
+  return mesh.userData.__scaleDragStart;
+}
+
+/**
+ * Bersihkan snapshot drag (dipanggil di drag end) — supaya place/restore
+ * path tidak memakai tanda drag lama.
+ */
+export function clearScaleDragStart(mesh) {
+  if (mesh && mesh.userData) delete mesh.userData.__scaleDragStart;
 }
 
 /** Simpan UV basis (0..1 quad asli) SEKALI di userData. */
@@ -55,7 +95,7 @@ function ensureUvBase(mesh, uv) {
 /**
  * Sinkron UV geometry block ke scale saat ini (tiling anti-melar).
  * BASIS-FIRST: selalu hitung dari basis tersimpan → idempoten, aman
- * dipanggil tiap frame drag. Return true kalau UV di-update (block kubus).
+ * dipanggil tiap frame drag. Return true kalau UV di-update (kubus Box).
  */
 export function syncBlockTextureTiling(mesh) {
   if (!mesh || !mesh.geometry || !mesh.scale) return false;
