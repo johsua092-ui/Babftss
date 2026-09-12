@@ -33,6 +33,7 @@ import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, g
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow } from '../utils/blockMaterials.js';
+import { clampBlockScale, syncBlockTextureTiling } from '../utils/blockScale.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12327,15 +12328,24 @@ Now you can apply Displacement for detailed effect.`);
     // 'objectChange' fire tiap frame saat object di-transform oleh gizmo.
     // Kalau snapMove aktif & mode=translate, snap posisi ke grid cell center (X.5).
     const onTransformObjectChange = () => {
-      if (!snapMoveRef.current) return;
       const obj = transformControls.object;
       if (!obj) return;
       if (transformControls.getMode() === 'translate') {
+        if (!snapMoveRef.current) return;
         // Snap ke cell center (Math.floor + 0.5)
         obj.position.x = Math.floor(obj.position.x) + 0.5;
         obj.position.z = Math.floor(obj.position.z) + 0.5;
         // Y tetap bebas (bisa di taruh di ketinggian berapa aja, misal 1.5, 2.5)
         obj.position.y = Math.round(obj.position.y * 2) / 2; // snap ke 0.5 increment
+      }
+      // FIX SCALE BUG 1 (user 2026-09-11, absolut semua block): scale
+      // melewati 0 → negatif = block "tembus ke belakang, jebol, membesar
+      // lagi". Clamp MIN ABS 0.05, tanda dipertahankan (kaca -x sah).
+      if (transformControls.getMode() === 'scale') {
+        clampBlockScale(obj.scale);
+        // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
+        // memanjang, CROP saat mengecil; TIDAK melar (absolut semua block).
+        syncBlockTextureTiling(obj);
       }
     };
     transformControls.addEventListener('objectChange', onTransformObjectChange);
@@ -13041,6 +13051,10 @@ Now you can apply Displacement for detailed effect.`);
           // bisa rebuild material block yang BENAR (neon: emissive+aura),
           // bukan material generik warna-dari-color (neon color = hitam!).
           block.userData.blockSlug = blockDef.slug;
+          // SCALE BUG 2 FIX: tiling awal (basis UV dicatat; scale 1,1,1 =
+          // uv 0..1 — pemanggilan ini menyiapkan basis supaya drag scale
+          // pertama langsung benar). Absolut semua block kubus.
+          syncBlockTextureTiling(block);
           // GLOW v4 hybrid (2026-09-11): block glow (NEON) dapat AURA SPRITE
           // radial (terverifikasi vision 5/5 + profil pixel identik dataset)
           // + material emissive flat ( spek Claude Vision: flat semua sisi).
@@ -13946,6 +13960,10 @@ Now you can apply Displacement for detailed effect.`);
         // berantai) + pasang ulang aura glow utk neon.
         block.userData.blockSlug = s.blockSlug || null;
         if (s.isGlow) attachBlockGlow(THREE, block);
+        // SCALE BUG 2 FIX: block hasil restore sering punya scale tersimpan
+        // (mis. pipih 0.5,2,3) — tiling WAJIB dihitung ulang supaya
+        // tekstur tidak melar setelah undo/redo. Absolut semua block.
+        syncBlockTextureTiling(block);
         scene.add(block);
         threeRef.current.blocks.push(block);
       });
