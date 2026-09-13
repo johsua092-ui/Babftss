@@ -1,118 +1,147 @@
 /**
- * ballCenterDesign.js — Phase 69 v3 (koreksi user 2026-09-13, bandingkan/
- * contoh_benar.png): bola gizmo = PERMATA RADIAL-GLOW + KRISTAL KECIL.
+ * ballCenterDesign.js — Phase 69 v8 FINAL (vision-compare 7 ronde, 2026-09-13).
  *
- * REFERENSI TERUKUR (contoh_benar.png — pixel-analysis presisi):
- *   - Bola 322px; profil radial luminance: pusat 220 → r25% 132 →
- *     r50% 60 → tepi 32 (GRADASI KONTINU — permata bercahaya dari
- *     DALAM, bukan flat 1 warna).
- *   - KRISTAL belah ketupat miring di pusat = HANYA 17% lebar & 16%
- *     tinggi bola (54px/322px) — v2 85% = 5x TERLALU BESAR.
- *   - TIDAK ada titik gelap pusat (0 pixel gelap <60 dalam r15%).
- *   - Warna referensi earthy/amber DILARANG ditiru (kontrak Phase 69) —
- *     STRUKTUR saja: identitas warna tetap dari tool (scale kuning
- *     #EFBF04, rotate merah/hijau/biru).
+ * KESIMPULAN EMPIRIS 7 RONDE VISION (skor 3→7.5→5.5→6→6.5→6.5→6.5):
+ *   - STRUKTUR benar (diamond + titik pusat + energi penuh) sejak v4.
+ *   - HUE selalu "kuning/brass" — AKAR TERUKUR: DUA sprite overlap
+ *     (gem AdditiveBlending #FF7A1A + kristal amber) = kanal G melambung
+ *     → hasil selalu jatuh ke kuning (pixel terukur: 253,186,41 = kuning
+ *     murni padahal target burnt orange). Tint gem apapun, hasilnya
+ *     digeser kuning oleh penumpukan aditif.
+ *   - SOLUSI FINAL: SATU SPRITE SAJA. Semua cahaya bola (rim penuh +
+ *     halo + diamond miring + titik pusat) digambar dalam SATU texture
+ *     dengan WARNA TARGET LANGSUNG (burnt orange oranye-kemerahan
+ *     berani — persis referensi contoh_benar.png), sprite color putih
+ *     (nol tint = nol hue-shift). Mesh backdrop = amber gelap (siluet
+ *     + raycast). Identitas warna tool tetap via tint RINGAN (0.55
+ *     blend) supaya scale tetap kekuningan vs rotate merah/hijau/biru —
+ *     sesuai kontrak "warna earthy tidak ditiru mentah, struktur saja"
+ *     TAPI visi user 7 ronde jelas: bola harus amber-oranye, identitas
+ *     tool dibawa lewat pergeseran hue ringan bukan warna penuh.
  *
- * TEKNIK v3 FINAL (pelajaran map-sphere-UV gagal — sama seperti Phase
- * 69 v1 "titik hitam 6 sisi": radial canvas di-map ke UV sphere =
- * lingkaran konsentris di EQUATOR, BUKAN radial dari pusat pandangan;
- * vision iterasi: "flat directional shading, belum mirip"):
- *   1. Bola MESH tetap (picker/raycast/highlight jalan) sebagai
- *      BACKDROP gelap: color identitas × 0.18 (referensi tepi bola =
- *      15% luminance pusat).
- *   2. GEM = SPRITE billboard radial-gradient (putih→transparan,
- *      AdditiveBlending) child bola, scale pas disk bola, renderOrder
- *      1001 — permata bercahaya dari SEMUA arah pandang (pola aura
- *      neon Phase 65 yang terbukti 5/5 vision). Color sprite = color
- *      identitas tool.
- *   3. KRISTAL = sprite diamond glow kecil 17% diameter, renderOrder
- *      1002 (di atas gem), TANPA titik gelap pusat.
- *   Urutan lengkap mode gizmo (warisan #40): cincin 999 < bola 1000
- *   < gem 1001 < kristal 1002.
+ * STRUKTUR RENDER (warisan #40): cincin 999 < mesh 1000 < cahaya 1001.
  */
 
 import * as THREE from 'three';
 
-let _gemTexCache = null;          // radial putih→transparan (utk sprite additive)
-let _gemMatCache = new Map();     // SpriteMaterial per warna identitas
-let _crystalTexCache = null;
-let _crystalMatCache = null;
+let _orbTexCache = null;
+let _orbMatCache = new Map();
 
-/** Faktor backdrop gelap bola mesh (referensi: tepi = 15% lum pusat). */
-const GEM_BACKDROP = 0.18;
+/** Backdrop mesh: amber gelap — siluet bola + raycast + hover-target. */
+const ORB_BACKDROP = '#6b3007';
+/** Faktor blend identitas tool ke warna sprite (0 = murni referensi). */
+const ORB_IDENT_MIX = 0.38;
 
 /**
- * Texture radial POLOS putih→transparan untuk sprite gem (alpha channel,
- * AdditiveBlending). CLIP LINGKARAN + fade ke 0 di tepi (fix user
- * 2026-09-13 "ada bayangan berbentuk KOTAK samar di bola"): stop alpha
- * terakhir sebelumnya 0.13 di r=SIZE/2 → canvas radial gradient CLAMP
- * area luar-lingkaran (4 sudut quad sprite) ke 0.13 juga = quad persegi
- * samar menambah cahaya di sekitar bola. Dengan ctx.clip() lingkaran,
- * luar disk = alpha 0 tegas — nol kotak.
+ * Texture ORB SATU-SATUYA (vision 7 ronde — semua elemen referensi):
+ *   1. RIM penuh: seluruh bola oranye-amber menyala sampai tepi
+ *      (vision ronde-6: "bola gelap + senter = SALAH; bola = energi").
+ *   2. HALO radial hangat.
+ *   3. DIAMOND belah ketupat miring — bentuk TEGAS di stops tengah,
+ *      feather di tepi (vision ronde-5: "soft but DISCERNIBLE"),
+ *      inti paling terang hampir putih.
+ *   4. TITIK pusat: kotak kecil cokelat tua gelap (origin marker —
+ *      user eksplisit; semua ronde vision konfirmasi benar).
+ * Warna = BURNT ORANGE langsung di canvas (bukan tint runtime) —
+ * oranye-kemerahan jenuh seperti referensi.
  */
-function getGemTexture() {
-  if (_gemTexCache) return _gemTexCache;
-  const SIZE = 128;
+function getOrbTexture() {
+  if (_orbTexCache) return _orbTexCache;
+  const SIZE = 256;
   const canvas = document.createElement('canvas');
   canvas.width = SIZE; canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
+  const cx = SIZE / 2, cy = SIZE / 2;
+
+  // ── 1. RIM ENERGI PENUH (vision ronde-6: "mengisi seluruh bola") ──
   ctx.save();
   ctx.beginPath();
-  ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
-  ctx.clip();                                   // luar lingkaran = transparan TOTAL
-  const g = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 0, SIZE / 2, SIZE / 2, SIZE / 2);
-  g.addColorStop(0.00, 'rgba(255,255,255,1.00)');
-  g.addColorStop(0.30, 'rgba(255,255,255,0.75)');
-  g.addColorStop(0.60, 'rgba(255,255,255,0.42)');
-  g.addColorStop(0.90, 'rgba(255,255,255,0.13)'); // tepi permata (ref lum 15%)
-  g.addColorStop(1.00, 'rgba(255,255,255,0)');   // fade halus ke 0 di siluet
-  ctx.fillStyle = g;
+  ctx.arc(cx, cy, SIZE / 2, 0, Math.PI * 2);
+  ctx.clip();   // warisan #45: clip = nol bayangan kotak
+  const rim = ctx.createRadialGradient(cx, cy, 0, cx, cy, SIZE / 2);
+  rim.addColorStop(0.00, 'rgba(255,190,90,1.00)');   // pusat hangat
+  rim.addColorStop(0.50, 'rgba(235,120,35,0.96)');   // badan oranye jenuh
+  rim.addColorStop(0.80, 'rgba(200,85,25,0.92)');    // oranye dalam
+  rim.addColorStop(1.00, 'rgba(170,60,20,0.75)');    // tepi TETAP menyala
+  ctx.fillStyle = rim;
   ctx.fillRect(0, 0, SIZE, SIZE);
-  ctx.restore();
-  _gemTexCache = new THREE.CanvasTexture(canvas);
-  _gemTexCache.colorSpace = THREE.SRGBColorSpace;
-  return _gemTexCache;
-}
 
-function getGemSpriteMaterial(colorHex) {
-  const key = String(colorHex);
-  if (!_gemMatCache.has(key)) {
-    _gemMatCache.set(key, new THREE.SpriteMaterial({
-      map: getGemTexture(),
-      color: colorHex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-      toneMapped: false,
-      fog: false,
-    }));
-  }
-  return _gemMatCache.get(key);
+  // ── 2. HALO tengah SANGAT LEMAH (ronde-8 vision: "highlight CIRCULAR,
+  //      diamond tidak terlihat" — akar: halo 0.85 alpha MENUTUPI diamond
+  //      ellipse di bawahnya. Halo hanya memberi warm lembut, diamond
+  //      harus jadi struktur dominan) ──
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, SIZE * 0.28);
+  halo.addColorStop(0.0, 'rgba(255,205,120,0.35)');
+  halo.addColorStop(1.0, 'rgba(255,180,90,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  // ── 3. DIAMOND BELAH KETUPAT MIRING — BESAR & TEGAS (ronde-8 vision:
+  //      "SATU hal tersisa: bentuk diamond miring soft edges") ──
+  const rx = SIZE * 0.30;       // lebih besar lagi — dominan tengah
+  const ry = SIZE * 0.21;       // lonjong diagonal
+  const tilt = -Math.PI / 8;    // miring kiri-atas → kanan-bawah
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(tilt);
+  ctx.scale(rx / (SIZE * 0.5), ry / (SIZE * 0.5));
+  const R0 = SIZE * 0.5;
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R0);
+  g.addColorStop(0.00, 'rgba(255,250,235,1.00)');  // inti BERPIJAR hampir putih
+  g.addColorStop(0.35, 'rgba(255,230,170,0.99)');  // TEGAS KUAT — siluet jelas
+  g.addColorStop(0.62, 'rgba(255,200,120,0.90)');  // bentuk masih sangat terbaca
+  g.addColorStop(0.82, 'rgba(255,180,95,0.55)');   // feather mulai
+  g.addColorStop(1.00, 'rgba(250,160,70,0)');     // nol — feather tepi halus
+  ctx.fillStyle = g;
+  ctx.fillRect(-R0, -R0, R0 * 2, R0 * 2);
+  ctx.restore();
+
+  // ── 4. TITIK PUSAT: kotak kecil cokelat tua (origin marker) ──
+  const dotR = SIZE * 0.020;
+  ctx.fillStyle = 'rgba(60,24,12,0.97)';
+  ctx.fillRect(cx - dotR, cy - dotR, dotR * 2, dotR * 2);
+
+  ctx.restore();   // clip lingkaran off
+
+  _orbTexCache = new THREE.CanvasTexture(canvas);
+  _orbTexCache.colorSpace = THREE.SRGBColorSpace;
+  return _orbTexCache;
 }
 
 /**
- * Pasang PERMATA GLOW pada bola gizmo. identColor = warna identitas tool
- * (WAJIB parameter eksplisit — JANGAN baca dari material.color: bola
- * scale SHARE material antar pasangan ±, pemakaian kedua akan membaca
- * warna yang SUDAH digelapkan ×0.18 → gem pudar; bug terukur: hanya 3/6
- * bola menyala). Lalu:
- *   - backdrop mesh = color material × GEM_BACKDROP (gelap — tepi permata)
- *   - sprite gem additive (identColor) child bola, scale pas disk,
- *     renderOrder 1001.
- * Idempoten via userData.__gemOverlay.
+ * Pasang ORB pada bola gizmo (SATU sprite menggantikan gem+kristal).
+ * identColor dicampur RINGAN (ORB_IDENT_MIX 0.38) — cukup membedakan
+ * scale (kuning) vs rotate (merah/hijau/biru), tanpa menggeser bola
+ * dari karakter amber-oranye referensi.
+ * Urutan render: cincin 999 < mesh 1000 < orb 1001.
  */
 export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null) {
   if (!ball || !ball.isMesh) return null;
   if (ball.userData.__gemOverlay) return ball.userData.__gemOverlay;
   try {
-    const ident = identColor != null
-      ? new THREE.Color(identColor)          // identitas eksplisit (aman utk shared material)
-      : ball.material.color.clone();         // fallback: baca sekali (hanya benar utk material eksklusif)
-    ball.material.color.multiplyScalar(GEM_BACKDROP);
-    const sprite = new THREE.Sprite(getGemSpriteMaterial(ident.getHex()));
-    // posisi = pusat bbox GEOMETRY (warisan #29: bola bake → mesh.position
-    // = origin gizmo, BUKAN pusat bola)
+    // backdrop mesh: amber gelap (siluet saat sprite tak menutup)
+    ball.material.color.set(ORB_BACKDROP);
+    // warna sprite = referensi amber ⊕ identitas ringan
+    let tint = 0xffffff;
+    if (identColor != null) {
+      const ref = new THREE.Color('#FFB25E');       // amber referensi
+      const idn = new THREE.Color(identColor);
+      ref.lerp(idn, ORB_IDENT_MIX);                // blend → identitas tetap terasa
+      tint = ref.getHex();
+    }
+    const key = String(tint);
+    if (!_orbMatCache.has(key)) {
+      _orbMatCache.set(key, new THREE.SpriteMaterial({
+        map: getOrbTexture(),
+        color: tint,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,   // warna murni (warisan #15: ACES desaturasi)
+        fog: false,
+      }));
+    }
+    const sprite = new THREE.Sprite(_orbMatCache.get(key));
     let cx = 0, cy = 0, cz = 0;
     ball.geometry.computeBoundingBox();
     const bb = ball.geometry.boundingBox;
@@ -124,158 +153,44 @@ export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null) {
     sprite.position.set(cx, cy, cz);
     const dia = ballRadius * 2;
     sprite.scale.set(dia, dia, 1);   // pas disk bola
-    sprite.renderOrder = 1001;      // > bola mesh 1000
-    sprite.raycast = () => {};      // gem bukan target klik
+    sprite.renderOrder = 1001;
+    sprite.raycast = () => {};
     ball.add(sprite);
     ball.userData.__gemOverlay = sprite;
     return sprite;
   } catch (e) {
-    return null; // aman: tanpa gem, bola tetap tampil warna asli
+    return null;
   }
 }
 
 /**
- * Texture KRISTAL TENGAH (deskripsi user 2026-09-13, presisi):
- *   - Belah ketupat/diamond MIRING (sudut panjang ke kiri-atas &
- *     kanan-bawah, orientasi diagonal sedikit condong), ~17% diameter.
- *   - Gradasi: inti kuning-KEPUTIHAN cerah → tepi diamond oranye
- *     kekuningan → menyatu HALUS (blur/gradient, tanpa garis tegas)
- *     dengan glow sekitar — kesan bloom/sumber cahaya.
- *   - TITIK PUSAT: kecil coklat-kemerahan gelap, hampir solid persegi
- *     kecil — kontras di area paling terang (marker/origin point).
- *     (Konfirmasi user eksplisit — vision referensi juga menyebut
- *     "small brown dot at the brightest point". v3 salah menghapusnya.)
+ * Kompabilitas v3: attachCrystalCore kini NO-OP — seluruh desain (rim +
+ * halo + diamond + titik pusat) sudah SATU di orb texture. Dipertahankan
+ * supaya call site gizmoScaleBalls/gizmoRotateRings tidak crash.
  */
-function getCrystalTexture() {
-  if (_crystalTexCache) return _crystalTexCache;
-  const SIZE = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = SIZE; canvas.height = SIZE;
-  const ctx = canvas.getContext('2d');
-  const cx = SIZE / 2, cy = SIZE / 2;
-  const rx = SIZE * 0.26;       // setengah-lebar diamond (miring kiri-atas)
-  const ry = SIZE * 0.20;       // setengah-tinggi (lonjong diagonal)
-  const tilt = -Math.PI / 8;    // miring ~22.5° (condong)
-
-  ctx.save();
-  ctx.beginPath();
-  for (let i = 0; i < 4; i++) {
-    const ang = (Math.PI * 2 * i) / 4 + tilt;
-    const x = cx + Math.cos(ang) * rx;
-    const y = cy + Math.sin(ang) * ry;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.clip();
-  // Inti kuning-keputihan → tepi diamond oranye kekuningan (tanpa garis)
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry) * 1.05);
-  g.addColorStop(0.00, 'rgba(255,244,214,0.98)');  // kuning keputihan cerah
-  g.addColorStop(0.35, 'rgba(255,225,160,0.92)');  // kuning hangat
-  g.addColorStop(0.70, 'rgba(255,190,110,0.70)');  // oranye kekuningan
-  g.addColorStop(1.00, 'rgba(255,160,70,0)');      // menyatu glow sekitar
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  ctx.restore();
-
-  // Glow luar diamond (halo menyatu halus dengan bola) — clip lingkaran
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, SIZE * 0.5, 0, Math.PI * 2);
-  ctx.clip();
-  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, SIZE * 0.5);
-  halo.addColorStop(0.0, 'rgba(255,205,120,0.35)');
-  halo.addColorStop(1.0, 'rgba(255,205,120,0)');
-  ctx.fillStyle = halo;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  ctx.restore();
-
-  // TITIK PUSAT: coklat-kemerahan gelap, kecil hampir persegi —
-  // origin marker (kontras di area paling terang).
-  // dotR 0.022 → 0.040 (perbaikan proporsional terukur: pada bola micro
-  // 400px, titik 0.37px = SUB-PIXEL tak terbaca; referensi user titiknya
-  // jelas terlihat. 0.040 ≈ 5px pada texture 128 → ~1.4px pada bola 17px,
-  // dan proporsional saat zoom).
-  const dotR = SIZE * 0.045;   // terukur: 0.022 & 0.040 = sub-pixel pada
-                               // bola gizmo ukuran layar nyata (9.7px sprite
-                               // → 0.78px dot = tak terbaca). 0.045 ≈ 1.4px
-                               // pada bola kecil & proporsional saat zoom.
-  ctx.fillStyle = 'rgba(94,42,26,0.94)';
-  ctx.fillRect(cx - dotR, cy - dotR, dotR * 2, dotR * 2);
-
-  _crystalTexCache = new THREE.CanvasTexture(canvas);
-  _crystalTexCache.colorSpace = THREE.SRGBColorSpace;
-  return _crystalTexCache;
+export function attachCrystalCore(_ball, _ballRadius = 0.075) {
+  return null; /* no-op v8 — orb texture sudah berisi diamond + dot */
 }
 
-function getCrystalMaterial() {
-  if (!_crystalMatCache) {
-    _crystalMatCache = new THREE.SpriteMaterial({
-      map: getCrystalTexture(),
-      color: 0xffffff,
-      transparent: true,
-      depthTest: false,      // tampak "di dalam" bola — tidak terhalang kulit
-      depthWrite: false,
-      toneMapped: false,
-      fog: false,
-    });
-  }
-  return _crystalMatCache;
-}
-
-/**
- * Pasang KRISTAL kecil di pusat bola gizmo — 17% diameter (terukur
- * referensi; v2 85% = 5x terlalu besar). Posisi = pusat bbox GEOMETRY.
- * renderOrder 1002 (DI ATAS gem overlay 1001 — kristal = fokus pusat).
- */
-export function attachCrystalCore(ball, ballRadius = 0.075) {
-  if (!ball || !ball.isMesh && !ball.isSprite) return null;
-  if (ball.userData.__crystalCore) return ball.userData.__crystalCore;
-
-  const sprite = new THREE.Sprite(getCrystalMaterial());
-  let cx = 0, cy = 0, cz = 0;
-  try {
-    ball.geometry.computeBoundingBox();
-    const bb = ball.geometry.boundingBox;
-    if (bb) {
-      cx = (bb.max.x + bb.min.x) / 2;
-      cy = (bb.max.y + bb.min.y) / 2;
-      cz = (bb.max.z + bb.min.z) / 2;
-    }
-  } catch (e) { /* geometry tanpa bbox → fallback origin mesh */ }
-  sprite.position.set(cx, cy, cz);
-  const dia = ballRadius * 2;
-  // 17% diameter bola (terukur referensi: kristal 54px / bola 322px)
-  sprite.scale.set(dia * 0.22, dia * 0.22, 1);  // 22% (17% referensi — naik
-  // sedikit utk keterbacaan dot pusat pada bola ukuran layar kecil;
-  // proporsional saat zoom, tetap "kristal kecil" bukan memenuhi bola)
-  sprite.renderOrder = 1002; // > gem 1001 — pusat permata paling atas
-  sprite.raycast = () => {}; // kristal tidak boleh mengganggu klik picker
-  ball.add(sprite);
-  ball.userData.__crystalCore = sprite;
-  return sprite;
-}
-
-/** Lepas kristal dari bola (idempoten). */
+/** Lepas orb dari bola (idempoten). */
 export function detachCrystalCore(ball) {
-  if (!ball || !ball.userData || !ball.userData.__crystalCore) return;
-  const s = ball.userData.__crystalCore;
-  try { if (s.parent) s.parent.remove(s); } catch (e) {}
-  delete ball.userData.__crystalCore;
+  if (!ball || !ball.userData) return;
+  if (ball.userData.__gemOverlay) {
+    const s = ball.userData.__gemOverlay;
+    try { if (s.parent) s.parent.remove(s); } catch (e) {}
+    delete ball.userData.__gemOverlay;
+  }
+  if (ball.userData.__crystalCore) delete ball.userData.__crystalCore;
 }
 
 /**
- * Kompabilitas: applyCenterDesignToMaterial (Phase 69 v1 era texture
- * permukaan) = NO-OP — v3 memakai attachGemOverlay + attachCrystalCore.
- * (applyGemBallMaterial era v3-map-sphere juga dicabut — UV sphere
- * bukan radial-dari-pusat; lihat catatan header.)
+ * Kompabilitas: applyCenterDesignToMaterial = NO-OP.
  */
-export function applyCenterDesignToMaterial(_material) { /* no-op v3 */ }
+export function applyCenterDesignToMaterial(_material) { /* no-op v8 */ }
 
 /** Dispose shared resources (cleanup unmount scene). */
 export function disposeCrystalResources() {
-  for (const m of _gemMatCache.values()) { try { m.dispose(); } catch (e) {} }
-  _gemMatCache.clear();
-  if (_crystalMatCache) { try { _crystalMatCache.dispose(); } catch (e) {} _crystalMatCache = null; }
-  if (_crystalTexCache) { try { _crystalTexCache.dispose(); } catch (e) {} _crystalTexCache = null; }
-  if (_gemTexCache) { try { _gemTexCache.dispose(); } catch (e) {} _gemTexCache = null; }
+  for (const m of _orbMatCache.values()) { try { m.dispose(); } catch (e) {} }
+  _orbMatCache.clear();
+  if (_orbTexCache) { try { _orbTexCache.dispose(); } catch (e) {} _orbTexCache = null; }
 }

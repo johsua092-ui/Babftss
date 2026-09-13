@@ -281,7 +281,16 @@ function enableCursorLockedRotation(transformControls) {
 
       // Reset baseline saat drag baru mulai (drag sebelumnya sudah selesai).
       if (!this._dragAngleInit) {
-        prevRawAngle = this.rotationAngle || 0;
+        // FIX BUG "MENGGILA 360°" (user 2026-09-13: "klik bola gizmo setelah
+        // block miring → berputar 360° lalu kadang kembali kadang TIDAK"):
+        // baseline v3-lama mengisi prevRawAngle dari this.rotationAngle yang
+        // BASI dari sesi drag sebelumnya (library TIDAK me-reset-nya di
+        // pointerDown — terbaca baris 375/706: hanya di-set ulang saat
+        // pointerMove). Drag baru = apply dimulai dari _quaternionStart
+        // (sudah menyimpan pose object saat klik), jadi sudut HARUS mulai
+        // dari 0 — bukan sisa 350° basi yang membuat block melesat dulu.
+        prevRawAngle = 0;
+        this.rotationAngle = 0;
         this._dragAngleInit = true;
         // FIX BUG "ROTATE BERBALIK ARAH" (user 2026-09-13: "asik rotate
         // tiba-tiba ke kiri malah ke kanan"): tangent dihitung dari
