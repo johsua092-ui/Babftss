@@ -97,7 +97,7 @@
  */
 
 import * as THREE from 'three';
-import { attachCrystalCore, attachGemOverlay, applyOrbHover, ORB_IDENT_MIX_STRONG } from './ballCenterDesign.js';
+import { attachCrystalCore, attachGemOverlay, applyOrbHover, ORB_IDENT_PURE } from './ballCenterDesign.js';
 
 /** Nama sumbu yang punya cincin berwarna. */
 const AXES = ['X', 'Y', 'Z'];
@@ -595,10 +595,10 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       // kecil 17% — identColor dari sharedMaterial.color (RGB sumbu, material
       // bola rotate eksklusif per bola tapi eksplisit lebih aman).
       // Cincin 999 < bola 1000 < gem 1001 < kristal 1002.
-      // Phase 70 v5 (user 2026-09-13): mix KUAT 0.85 — bola rotate wajib
-      // jelas MERAH/HIJAU/BIRU bawaan Three.js, "bukan oranye semua".
-      // (Scale tetap 0.38 — DESIGN LOCK, tidak tersentuh.)
-      attachGemOverlay(ball, ballRadius, sharedMaterial.color, ORB_IDENT_MIX_STRONG);
+      // Phase 70 v6 (user 2026-09-13: "hilangin 100% ORANYE-nya — RGB
+      // harus BERSIH"): ORB_IDENT_PURE = mix 1.0 → tint = warna sumbu
+      // MURNI, nol amber. Texture orb & seluruh design tidak disentuh.
+      attachGemOverlay(ball, ballRadius, sharedMaterial.color, ORB_IDENT_PURE);
       attachCrystalCore(ball, ballRadius);
       rotateObj.add(ball);
 

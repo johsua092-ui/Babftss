@@ -35,7 +35,14 @@ const ORB_BACKDROP = '#6b3007';
  * parameter opsional agar nilai scale tidak tersentuh. */
 const ORB_IDENT_MIX = 0.38;
 const ORB_IDENT_MIX_STRONG = 0.85;
-export { ORB_IDENT_MIX_STRONG };
+// Phase 70 v6 (user 2026-09-13: "hilangin 100% warna ORANYE-nya di bola
+// rotate — merah/hijau/biru harus BERSIH langsung keliatan mata; JANGAN
+// sentuh design texture yang sudah perfect"): mix 1.0 = NOL amber base —
+// tint = warna sumbu MURNI. Texture orb (rim/halo/diamond/titik) tetap
+// 100% sama (design LOCK) — struktur terlihat via luminance alpha,
+// warnanya murni RGB axis. Scale TETAP 0.38 (design LOCK — tak tersentuh).
+const ORB_IDENT_PURE = 1.0;
+export { ORB_IDENT_MIX_STRONG, ORB_IDENT_PURE };
 
 /**
  * Texture ORB SATU-SATUYA (vision 7 ronde — semua elemen referensi):

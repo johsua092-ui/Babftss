@@ -138,6 +138,9 @@ const SIDE_EPS = 1e-6;
 // Objek sementara (tanpa alokasi per frame).
 const _tmpVec = new THREE.Vector3();
 const _tmpQuat = new THREE.Quaternion();
+// Phase 70 v6: scratch utk offset sumbu-block (bug posisi bola saat rotate)
+const _tmpAxisVec = new THREE.Vector3();
+const _identityQuat = new THREE.Quaternion();
 
 /**
  * Mencari Object3D gizmo scale dari sebuah TransformControls.
@@ -404,10 +407,26 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
             factor = healthy ? healthy.scale.x : 1;
           }
           const BALL_GAP = 0.55; // unit lokal — gap 3D simetris; perspektif kamera mempersempit sisi dekat jadi ~5px pada 0.35 → 0.55 agar gap visual cukup di semua sudut
-          const off = distance * (wsv - factor) + BALL_GAP;
-          ball.position.x += UNIT[axis].x * sign * off;
-          ball.position.y += UNIT[axis].y * sign * off;
-          ball.position.z += UNIT[axis].z * sign * off;
+          // Gap dikompensasi factor kamera (runtime terukur: tanpa /factor
+          // err seragam 0.124 — bola sedikit overshoot; dgn /factor presisi)
+          const off = distance * (wsv - factor) + (BALL_GAP / factor);
+          // FIX BUG POSISI-SAAT-ROTASI (user 2026-09-13: "block sudah
+          // dirotasi ke segala arah & miring → posisi bola scale sangat
+          // aneh & tidak masuk akal"): offset LAMA memakai UNIT[axis]
+          // = SUMBU DUNIA, padahal mode scale dipaksa 'local' (library
+          // baris 1585) — bake geometry bola ±distance ikut dirotasi
+          // worldQuaternion block → offset dunia + bake miring = dua
+          // frame referensi campur → bola nyasar + drift lateral
+          // (RED terukur: err 0.21-0.39 unit, lateral sampai 0.73).
+          // FIX: geser sepanjang SUMBU BLOCK di dunia — axisLocal
+          // dirotasi worldQuaternion (warisan #5b: _worldScale di-set
+          // library tiap frame; worldQuaternion juga live).
+          const axisWorld = _tmpAxisVec.set(
+            UNIT[axis].x, UNIT[axis].y, UNIT[axis].z,
+          ).applyQuaternion(transformControls.worldQuaternion || _identityQuat);
+          ball.position.x += axisWorld.x * sign * off;
+          ball.position.y += axisWorld.y * sign * off;
+          ball.position.z += axisWorld.z * sign * off;
 
           // FIX BUG A (user 2026-09-11: "kamera tepat lurus di hadapan bola
           // → bola MENGHILANG"): fungsi asli AXIS_HIDE_THRESHOLD 0.99
@@ -444,9 +463,12 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
             // Cone center world = 0.3 + offC; bola = 0.5 + offB →
             // offC = offB + 0.2 membuat keduanya sama.
             const offC = off + (distance - 0.3);
-            pickerCone.position.x += UNIT[axis].x * sign * offC;
-            pickerCone.position.y += UNIT[axis].y * sign * offC;
-            pickerCone.position.z += UNIT[axis].z * sign * offC;
+            // Phase 70 v6: picker cone ikut SUMBU BLOCK (sinkron dgn bola —
+            // warisan #27: geser visual wajib geser picker senama; cone bake
+            // ±0.3 juga ikut rotasi local space)
+            pickerCone.position.x += axisWorld.x * sign * offC;
+            pickerCone.position.y += axisWorld.y * sign * offC;
+            pickerCone.position.z += axisWorld.z * sign * offC;
             // FIX BUG A lanjutan: cone picker JUGA kena AXIS_HIDE di
             // fungsi asli (ikut loop handles) → klik bola sisi-dekat-
             // kamera TIDAK BISA. Pulihkan visible + scale cone senama.
