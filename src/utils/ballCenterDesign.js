@@ -43,8 +43,12 @@ const GEM_BACKDROP = 0.18;
 
 /**
  * Texture radial POLOS putih→transparan untuk sprite gem (alpha channel,
- * AdditiveBlending): pusat alpha 1.0 → 30% 0.75 → 60% 0.42 → 100% 0.13.
- * (Profil luminance referensi dinormalisasi; color dari material tint.)
+ * AdditiveBlending). CLIP LINGKARAN + fade ke 0 di tepi (fix user
+ * 2026-09-13 "ada bayangan berbentuk KOTAK samar di bola"): stop alpha
+ * terakhir sebelumnya 0.13 di r=SIZE/2 → canvas radial gradient CLAMP
+ * area luar-lingkaran (4 sudut quad sprite) ke 0.13 juga = quad persegi
+ * samar menambah cahaya di sekitar bola. Dengan ctx.clip() lingkaran,
+ * luar disk = alpha 0 tegas — nol kotak.
  */
 function getGemTexture() {
   if (_gemTexCache) return _gemTexCache;
@@ -52,13 +56,19 @@ function getGemTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = SIZE; canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
+  ctx.clip();                                   // luar lingkaran = transparan TOTAL
   const g = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 0, SIZE / 2, SIZE / 2, SIZE / 2);
   g.addColorStop(0.00, 'rgba(255,255,255,1.00)');
   g.addColorStop(0.30, 'rgba(255,255,255,0.75)');
   g.addColorStop(0.60, 'rgba(255,255,255,0.42)');
-  g.addColorStop(1.00, 'rgba(255,255,255,0.13)');
+  g.addColorStop(0.90, 'rgba(255,255,255,0.13)'); // tepi permata (ref lum 15%)
+  g.addColorStop(1.00, 'rgba(255,255,255,0)');   // fade halus ke 0 di siluet
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, SIZE, SIZE);
+  ctx.restore();
   _gemTexCache = new THREE.CanvasTexture(canvas);
   _gemTexCache.colorSpace = THREE.SRGBColorSpace;
   return _gemTexCache;
@@ -125,8 +135,16 @@ export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null) {
 }
 
 /**
- * Texture kristal: belah ketupat miring glow putih → transparan.
- * TANPA titik gelap pusat (referensi terukur: 0 pixel gelap).
+ * Texture KRISTAL TENGAH (deskripsi user 2026-09-13, presisi):
+ *   - Belah ketupat/diamond MIRING (sudut panjang ke kiri-atas &
+ *     kanan-bawah, orientasi diagonal sedikit condong), ~17% diameter.
+ *   - Gradasi: inti kuning-KEPUTIHAN cerah → tepi diamond oranye
+ *     kekuningan → menyatu HALUS (blur/gradient, tanpa garis tegas)
+ *     dengan glow sekitar — kesan bloom/sumber cahaya.
+ *   - TITIK PUSAT: kecil coklat-kemerahan gelap, hampir solid persegi
+ *     kecil — kontras di area paling terang (marker/origin point).
+ *     (Konfirmasi user eksplisit — vision referensi juga menyebut
+ *     "small brown dot at the brightest point". v3 salah menghapusnya.)
  */
 function getCrystalTexture() {
   if (_crystalTexCache) return _crystalTexCache;
@@ -135,9 +153,9 @@ function getCrystalTexture() {
   canvas.width = SIZE; canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
   const cx = SIZE / 2, cy = SIZE / 2;
-  const rx = SIZE * 0.26;
-  const ry = SIZE * 0.20;
-  const tilt = -Math.PI / 8;
+  const rx = SIZE * 0.26;       // setengah-lebar diamond (miring kiri-atas)
+  const ry = SIZE * 0.20;       // setengah-tinggi (lonjong diagonal)
+  const tilt = -Math.PI / 8;    // miring ~22.5° (condong)
 
   ctx.save();
   ctx.beginPath();
@@ -149,13 +167,40 @@ function getCrystalTexture() {
   }
   ctx.closePath();
   ctx.clip();
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry) * 1.2);
-  g.addColorStop(0, 'rgba(255,255,255,0.98)');
-  g.addColorStop(0.45, 'rgba(255,255,255,0.75)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
+  // Inti kuning-keputihan → tepi diamond oranye kekuningan (tanpa garis)
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry) * 1.05);
+  g.addColorStop(0.00, 'rgba(255,244,214,0.98)');  // kuning keputihan cerah
+  g.addColorStop(0.35, 'rgba(255,225,160,0.92)');  // kuning hangat
+  g.addColorStop(0.70, 'rgba(255,190,110,0.70)');  // oranye kekuningan
+  g.addColorStop(1.00, 'rgba(255,160,70,0)');      // menyatu glow sekitar
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, SIZE, SIZE);
   ctx.restore();
+
+  // Glow luar diamond (halo menyatu halus dengan bola) — clip lingkaran
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, SIZE * 0.5, 0, Math.PI * 2);
+  ctx.clip();
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, SIZE * 0.5);
+  halo.addColorStop(0.0, 'rgba(255,205,120,0.35)');
+  halo.addColorStop(1.0, 'rgba(255,205,120,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  ctx.restore();
+
+  // TITIK PUSAT: coklat-kemerahan gelap, kecil hampir persegi —
+  // origin marker (kontras di area paling terang).
+  // dotR 0.022 → 0.040 (perbaikan proporsional terukur: pada bola micro
+  // 400px, titik 0.37px = SUB-PIXEL tak terbaca; referensi user titiknya
+  // jelas terlihat. 0.040 ≈ 5px pada texture 128 → ~1.4px pada bola 17px,
+  // dan proporsional saat zoom).
+  const dotR = SIZE * 0.045;   // terukur: 0.022 & 0.040 = sub-pixel pada
+                               // bola gizmo ukuran layar nyata (9.7px sprite
+                               // → 0.78px dot = tak terbaca). 0.045 ≈ 1.4px
+                               // pada bola kecil & proporsional saat zoom.
+  ctx.fillStyle = 'rgba(94,42,26,0.94)';
+  ctx.fillRect(cx - dotR, cy - dotR, dotR * 2, dotR * 2);
 
   _crystalTexCache = new THREE.CanvasTexture(canvas);
   _crystalTexCache.colorSpace = THREE.SRGBColorSpace;
@@ -200,7 +245,9 @@ export function attachCrystalCore(ball, ballRadius = 0.075) {
   sprite.position.set(cx, cy, cz);
   const dia = ballRadius * 2;
   // 17% diameter bola (terukur referensi: kristal 54px / bola 322px)
-  sprite.scale.set(dia * 0.17, dia * 0.17, 1);
+  sprite.scale.set(dia * 0.22, dia * 0.22, 1);  // 22% (17% referensi — naik
+  // sedikit utk keterbacaan dot pusat pada bola ukuran layar kecil;
+  // proporsional saat zoom, tetap "kristal kecil" bukan memenuhi bola)
   sprite.renderOrder = 1002; // > gem 1001 — pusat permata paling atas
   sprite.raycast = () => {}; // kristal tidak boleh mengganggu klik picker
   ball.add(sprite);

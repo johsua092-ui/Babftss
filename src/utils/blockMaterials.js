@@ -80,17 +80,13 @@ const _texCache = new Map();
 // Map slug → { hueShift (deg), sat (mult), contrast (mult), gamma (lift v) }
 const TEX_FIX = {
   gold_block: { hueShift: -18, sat: 1.45, contrast: 1.25 },
-  // Phase 70 v2 (user 2026-09-13: "terlalu terang = MELAWAN DATASET —
-  // warna wajib kayak dataset!"): gamma-lift v1 (4.0/4.5/5.0) menjauhkan
-  // warna dari dataset. Target BARU terukur = tampak3D dataset (yang
-  // dilihat user sebagai "benar"): obsidian avg 69, fabric 51, coal 58
-  // — vs texture 2D mentah 53/31/23. Gamma dikalibrasi ke SITU, bukan
-  // lebih. Coal: saturasi DINORMALKAN kembali 1.0 (v1 desat 0.2 =
-  // melawan dataset — coal dataset memang kebiruan, itu identitasnya).
-  // File dataset asli TIDAK disentuh (koreksi tetap in-memori).
-  obsidian_block: { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 3.0 },
-  fabric_block:  { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 3.5 },
-  coal_block:    { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 5.0 },
+  // Phase 70 v3 (PERINTAH USER 2026-09-13): "jadikan dataset langsung
+  // jadi tekstur blocknya — tempel (19)/(23)/(35) langsung ke 6 sisi".
+  // SEMUA koreksi obsidian/fabric/coal DIHAPUS TOTAL (gamma v1 & v2
+  // dua-duanya ditolak user: v1 "terlalu terang", v2 pun masih "melawan
+  // dataset"). Texture = file dataset ASLI mentah, nol modifikasi.
+  // (PBR roughness/metalness tetap dari registry — itu sifat material,
+  // bukan warna.)
 };
 
 function applyTexFix(img, fix) {

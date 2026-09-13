@@ -276,13 +276,28 @@ function enableCursorLockedRotation(transformControls) {
     }
 
     try {
+      _lockAxis.set(axis === 'X' ? 1 : 0, axis === 'Y' ? 1 : 0, axis === 'Z' ? 1 : 0);
+      const isLocal = this.space === 'local' && axis !== 'E' && axis !== 'XYZE';
+
       // Reset baseline saat drag baru mulai (drag sebelumnya sudah selesai).
       if (!this._dragAngleInit) {
         prevRawAngle = this.rotationAngle || 0;
         this._dragAngleInit = true;
+        // FIX BUG "ROTATE BERBALIK ARAH" (user 2026-09-13: "asik rotate
+        // tiba-tiba ke kiri malah ke kanan"): tangent dihitung dari
+        // worldQuaternion TIAP FRAME — padahal object terus dirotasi
+        // selama drag → quaternion berubah → saat rotasi sudah ~90°,
+        // tangent FLIP TANDA → dot product berbalik → arah rotasi
+        // TERBALIK dari kursor. Solusi: FREEZE tangent di langkah PERTAMA
+        // drag (satu sesi drag = satu arah konsisten; reset di pointerUp).
+        _lockTangent.copy(_lockAxis);
+        if (isLocal) _lockTangent.applyQuaternion(this.worldQuaternion);
+        _lockTangent.cross(this.eye);
+        this._dragTangentFrozen = true;
       }
       // 1) pointEnd dari intersect _plane (sama seperti asli)
       if (pointer != null) _lockRay.setFromCamera(pointer, this.camera);
+      const rotSpeed = 20 / this.worldPosition.distanceTo(_lockRay.ray.origin);
       const planeIntersect = _lockRay.intersectObject(this._plane, true)[0];
       if (!planeIntersect) return;
       this.pointEnd.copy(planeIntersect.point).sub(this.worldPositionStart);
@@ -290,19 +305,14 @@ function enableCursorLockedRotation(transformControls) {
 
       // 2) RotationAngle — RUMUS ASLI (baris 708-731):
       //    rotationAngle = _offset.dot(_tempVector.normalize()) * ROTATION_SPEED
-      //    dengan _tempVector = (unitAxis [×wq kalau local]) × eye
-      //    PENTING: tangent memakai worldQuaternion SAAT INI (perilaku asli),
+      //    dengan _tempVector = (unitAxis [×wq kalau local]) × eye —
+      //    TANGENT SUDAH DI-FREEZE di awal drag (lihat _dragAngleInit):
+      //    memakai worldQuaternion SAAT MULAI drag, bukan live yang
+      //    berubah tiap frame (sumber bug arah terbalik).
       //    TAPI rotasi yang DI-APPLY selalu pakai UNIT (sumbu lokal polos).
       //    (Kesalahan v3.3 sebelumnya: apply memakai sumbu world yang ikut
       //     berubah tiap frame → saat block sudah diputar lalu rotate balik,
       //     sumbu "melayang" → kacau / tidak ada sumbu.)
-      const rotSpeed = 20 / this.worldPosition.distanceTo(_lockRay.ray.origin);
-      _lockAxis.set(axis === 'X' ? 1 : 0, axis === 'Y' ? 1 : 0, axis === 'Z' ? 1 : 0);
-      const isLocal = this.space === 'local' && axis !== 'E' && axis !== 'XYZE';
-      // tangent: lakukan copy agar _lockAxis polos tetap utuh utk apply
-      _lockTangent.copy(_lockAxis);
-      if (isLocal) _lockTangent.applyQuaternion(this.worldQuaternion);
-      _lockTangent.cross(this.eye);
 
       let raw;
       if (_lockTangent.length() === 0) {
