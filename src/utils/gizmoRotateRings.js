@@ -524,6 +524,13 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
 
     replacedRings.push({ mesh: ring, originalGeometry: ring.geometry });
     ring.geometry = fullRing;      // geometry lama disimpan untuk dispose()
+    // Phase 70 (user/tester 2026-09-13): cincin library renderOrder=Infinity
+    // (setupGizmo baris 1541) > bola 1000 (Phase 69 v2) → cincin dirender
+    // SETELAH bola = garis cincin warna lain NEMBUS terlihat di dalam tubuh
+    // bola (lintasan biru lewat perut bola hijau). Fix: cincin 999 < bola
+    // 1000 → bola menutup garis TEPAT di sisi luarnya (garis "berhenti"
+    // di tepi bola — interior bola bersih). Tetap < kristal 1001.
+    ring.renderOrder = 999;
     rings.push(`${axis} (cincin penuh)`);
 
     // ── 3. Tambahkan 2 bola handle di ujung berseberangan ──

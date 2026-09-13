@@ -33,7 +33,7 @@ import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, g
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
 import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
-import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow } from '../utils/blockMaterials.js';
+import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 
 /* ================================================================
@@ -11972,6 +11972,7 @@ Now you can apply Displacement for detailed effect.`);
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    setGoldEnvRenderer(renderer); // Phase 70: envMap gold berkilau (PMREM butuh renderer)
     container.appendChild(renderer.domElement);
 
     // ── Phase 13: Post-Processing (EffectComposer + Bloom) ──

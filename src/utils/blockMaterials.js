@@ -16,6 +16,13 @@
  * getBlockIcon(slug) → URL ikon untuk panel.
  */
 
+// Phase 70: RoomEnvironment untuk envMap gold berkilau (prosedural — nol
+// file asset). THREE tetap lewat parameter fungsi (pola modul ini), hanya
+// RoomEnvironment yang diimport langsung. Pakai path examples/jsm (bukan
+// three/addons/*) — resolve di Vite DAN di harness importmap browser
+// (addons/* hanya eksis via package-exports, harness importmap tak baca).
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+
 export const BLOCK_LIBRARY = [
   { slug: 'wood_block',         name: 'Wood',         roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'smooth_wood_block',  name: 'Smooth Wood',  roughness: 0.45, metalness: 0.0, transparent: false, opacity: 1.0 },
@@ -70,9 +77,22 @@ const _texCache = new Map();
 // MEMORI (canvas) saat load — file dataset asli TIDAK diubah:
 //   - geser hue dingin → hangat (lemon → emas oranye)
 //   - saturasi naik, kontras naik (kesan "rich")
-// Map slug → { hueShift (deg), sat (mult), contrast (mult) }
+// Map slug → { hueShift (deg), sat (mult), contrast (mult), gamma (lift v) }
 const TEX_FIX = {
   gold_block: { hueShift: -18, sat: 1.45, contrast: 1.25 },
+  // Phase 70 (user 2026-09-13): obsidian/fabric/coal "gelap kusam, susah
+  // lihat teksturnya" — texture tampak2D dataset JAUH lebih gelap daripada
+  // tampilan referensi tampak3D (terukur: obsidian 51→81, fabric 41→74,
+  // coal 21→72 avg RGB; render app bermasalah lebih parah lagi: 8/8/3 =
+  // hampir hitam total, karena pipeline sRGB→linear→ACES menghancurkan
+  // nilai gelap). Fix: GAMMA LIFT di memori v' = v^(1/gamma) — shading
+  // 3-wajah MeshStandardMaterial TETAP hidup (emissive flat = mati
+  // shading, kontrak warisan #19). File dataset asli tak tersentuh.
+  // Nilai gamma dikalibrasi empiris di harness lighting PERSIS app
+  // (ambient 0.45 + dir 1.2 + ACES) sampai display ≈ referensi 3D.
+  obsidian_block: { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 4.0 },
+  fabric_block:  { hueShift: 0, sat: 1.05, contrast: 1.0, gamma: 4.5 },
+  coal_block:    { hueShift: 0, sat: 0.2, contrast: 1.0, gamma: 5.0 },
 };
 
 function applyTexFix(img, fix) {
@@ -94,10 +114,13 @@ function applyTexFix(img, fix) {
       else if (max === g) h = ((b - r) / dd + 2) * 60;
       else h = ((r - g) / dd + 4) * 60;
     }
-    // fix
-    let hh = (h + fix.hueShift + 360) % 360;
-    const ss = Math.min(1, s * fix.sat);
-    const vv = Math.min(1, 0.5 + (v - 0.5) * fix.contrast);
+    // fix (semua field opsional — default = identitas)
+    let hh = (h + (fix.hueShift ?? 0) + 360) % 360;
+    const ss = Math.min(1, s * (fix.sat ?? 1));
+    let vv = Math.min(1, 0.5 + (v - 0.5) * (fix.contrast ?? 1));
+    // gamma lift (Phase 70): angkat brightness nilai gelap — v^(1/gamma);
+    // gamma 1 = no-op. Dipakai obsidian/fabric/coal (anti gelap total).
+    if (fix.gamma && fix.gamma > 0) vv = Math.min(1, Math.pow(vv, 1 / fix.gamma));
     // HSV→RGB
     const c = vv * ss, x = c * (1 - Math.abs(((hh / 60) % 2) - 1)), m = vv - c;
     let rr = 0, gg = 0, bb = 0;
@@ -258,6 +281,15 @@ export function makeBlockMaterial(THREE, slug) {
   if (!tex.userData.isReady && tex.userData.onReady) {
     tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
   }
+  if (def.slug === 'gold_block') {
+    // Phase 70 (user 2026-09-13): gold HARUS kuning BERKILAU (logam nyata),
+    // bukan block kusam. envMap RoomEnvironment = refleksi nyata →
+    // metalness 0.85 menghasilkan kilau logam TANPA gelap (kontrak
+    // Phase 63: tanpa envMap metal tinggi = gelap 3x — envMap menyelesaikan).
+    applyGoldSparkle(mat);
+    const env = getGoldEnvMap(THREE);
+    if (env) { mat.envMap = env; mat.needsUpdate = true; }
+  }
   return mat;
 }
 
@@ -266,6 +298,75 @@ export function makeBlockMaterial(THREE, slug) {
 // identik dataset. Bloom diuji 7 ronde → overexposed utk block besar.)
 let _auraSpriteMatCache = null;
 let _auraSpriteTexCache = null;
+
+// ─── GOLD ENVMAP (Phase 70, user 2026-09-13: "gold harus kuning BERKILAU,
+// bukan block biasa") — kilau logam NYATA butuh refleksi lingkungan;
+// tanpa envMap metalness tinggi = gelap 3x (kontrak Phase 63).
+// envMap CUSTOM KONTRAS (bukan RoomEnvironment — langit-langitnya putih
+// seragam → refleksi flat "washed out", vision 2/10; terukur iterasi-3):
+// ruang gelap + 3 PANEL TERANG hangat pada sudut berbeda = HOTSPOT
+// refleksi tajam terlihat DI DALAM wajah (kilau khas logam game).
+// Di-PMREM sekali & cache; dipasang HANYA pada material gold.
+let _goldEnvMapCache = null;
+function getGoldEnvMap(THREE) {
+  if (_goldEnvMapCache) return _goldEnvMapCache;
+  try {
+    const envScene = new RoomEnvironment(); // basis kosong
+    // kosongkan isi default RoomEnvironment, ganti panel custom
+    while (envScene.children.length) envScene.remove(envScene.children[0]);
+    envScene.background = new THREE.Color(0x0a0a12); // ruang gelap
+    const mkPanel = (color, intensity, w, h, pos, lookAt) => {
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(color).multiplyScalar(intensity),
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+      m.position.copy(pos);
+      m.lookAt(lookAt || new THREE.Vector3(0, 0, 0));
+      envScene.add(m);
+      return m;
+    };
+    // 3 sumber terang hangat (softbox studio) — dasar kilau emas.
+    // Kalibrasi terukur iterasi-4: panel kecil (4x3) di ruang gelap
+    // dominan → gold GELAP (avg render 128 vs 232 RoomEnv). Solid angle
+    // panel harus dominan: panel BESAR + intensity tinggi.
+    mkPanel(0xfff2cc, 24.0, 12, 8, new THREE.Vector3(-9, 10, 7));   // softbox utama
+    mkPanel(0xffe6b3, 16.0, 8, 10, new THREE.Vector3(10, 5, -9));   // rim kanan
+    mkPanel(0xffffff, 10.0, 16, 4, new THREE.Vector3(0, 14, 0));    // strip atas
+    const pmrem = new THREE.PMREMGenerator(THREE_LAST_RENDERER());
+    pmrem.compileEquirectangularShader();
+    _goldEnvMapCache = pmrem.fromScene(envScene, 0.05).texture;
+    pmrem.dispose();
+    envScene.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+  } catch (e) {
+    return null; // fallback aman: gold tanpa envMap (perilaku lama)
+  }
+  return _goldEnvMapCache;
+}
+
+// Renderer aktif dipasang via setGoldEnvRenderer() dari init scene app
+// (blockMaterials tidak punya akses renderer saat module-load).
+let _rendererRef = null;
+function THREE_LAST_RENDERER() { return _rendererRef; }
+export function setGoldEnvRenderer(renderer) { _rendererRef = renderer; }
+
+function applyGoldSparkle(mat) {
+  if (!mat) return;
+  // Kalibrasi iterasi-3 (vision): metalness 0.95 = refleksi murni →
+  // TEXTURE GOLD MATI ("plastik kuning solid" — vision) padahal user bilang
+  // "teksturnya sudah benar" = WAJIB tetap terlihat. 0.7 = diffuse map
+  // masih berkontribusi (~30%) + refleksi envMap dominan = kilau logam.
+  mat.metalness = 0.7;
+  mat.roughness = 0.18;   // licin → highlight tajam
+  mat.envMapIntensity = 1.5;
+  // EMISSIVE = 0 (terukur): baseline emissive menaikkan area gelap →
+  // kontras kilau rendah (1.18→1.35). Tanpa emissive = kontras penuh.
+  mat.emissiveIntensity = 0;
+}
 
 function getAuraSpriteTexture(THREE) {
   if (!_auraSpriteTexCache) {
