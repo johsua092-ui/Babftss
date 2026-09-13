@@ -63,7 +63,7 @@
  */
 
 import * as THREE from 'three';
-import { attachCrystalCore } from './ballCenterDesign.js';
+import { attachCrystalCore, attachGemOverlay } from './ballCenterDesign.js';
 
 /** Penanda idempoten pada gizmo scale. */
 const SCALE_MARK = '__scaleBallsP51';
@@ -296,9 +296,12 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
       scaleObj.add(ball);
       addedBalls.push(ball);
       sideOfBall.set(ball, sign);
-      // Phase 69 v2 (user 2026-09-12 koreksi): SATU kristal billboard di
-      // PUSAT bola (di dalam perutnya) — terlihat sama dari semua arah;
-      // bukan texture map permukaan (itu bikin titik hitam 6 sisi).
+      // Phase 69 v3 (bandingkan/contoh_benar.png): PERMATA GLOW — mesh
+      // jadi backdrop gelap (×0.18) + sprite radial additive identitas
+      // (1001) + kristal kecil 17% (1002). identColor WAJIB eksplisit:
+      // material bola SHARE antar pasangan ± — attachGemOverlay tidak
+      // boleh membaca color material (bug: bola kedua baca warna gelap).
+      attachGemOverlay(ball, ballRadius, color);
       attachCrystalCore(ball, ballRadius);
       balls.push(`${axis}${sign > 0 ? '+' : '-'}`);
     }

@@ -97,7 +97,7 @@
  */
 
 import * as THREE from 'three';
-import { attachCrystalCore } from './ballCenterDesign.js';
+import { attachCrystalCore, attachGemOverlay } from './ballCenterDesign.js';
 
 /** Nama sumbu yang punya cincin berwarna. */
 const AXES = ['X', 'Y', 'Z'];
@@ -572,8 +572,11 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       ball.name = axis;              // wajib: highlight, showX/Y/Z, picking axis
       ball.renderOrder = 1000;   // Phase 69 v2: < sprite kristal (1001) supaya kristal tampak DI ATAS bola
       ball.userData[BALL_MARK] = true;
-      // Phase 69 v2 (user 2026-09-12 koreksi): SATU kristal billboard di
-      // pusat bola rotate (di dalam perutnya), sama seperti bola scale.
+      // Phase 69 v3 (bandingkan/contoh_benar.png): permata glow + kristal
+      // kecil 17% — identColor dari sharedMaterial.color (RGB sumbu, material
+      // bola rotate eksklusif per bola tapi eksplisit lebih aman).
+      // Cincin 999 < bola 1000 < gem 1001 < kristal 1002.
+      attachGemOverlay(ball, ballRadius, sharedMaterial.color);
       attachCrystalCore(ball, ballRadius);
       rotateObj.add(ball);
 

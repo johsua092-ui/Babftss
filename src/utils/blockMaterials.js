@@ -80,19 +80,17 @@ const _texCache = new Map();
 // Map slug → { hueShift (deg), sat (mult), contrast (mult), gamma (lift v) }
 const TEX_FIX = {
   gold_block: { hueShift: -18, sat: 1.45, contrast: 1.25 },
-  // Phase 70 (user 2026-09-13): obsidian/fabric/coal "gelap kusam, susah
-  // lihat teksturnya" — texture tampak2D dataset JAUH lebih gelap daripada
-  // tampilan referensi tampak3D (terukur: obsidian 51→81, fabric 41→74,
-  // coal 21→72 avg RGB; render app bermasalah lebih parah lagi: 8/8/3 =
-  // hampir hitam total, karena pipeline sRGB→linear→ACES menghancurkan
-  // nilai gelap). Fix: GAMMA LIFT di memori v' = v^(1/gamma) — shading
-  // 3-wajah MeshStandardMaterial TETAP hidup (emissive flat = mati
-  // shading, kontrak warisan #19). File dataset asli tak tersentuh.
-  // Nilai gamma dikalibrasi empiris di harness lighting PERSIS app
-  // (ambient 0.45 + dir 1.2 + ACES) sampai display ≈ referensi 3D.
-  obsidian_block: { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 4.0 },
-  fabric_block:  { hueShift: 0, sat: 1.05, contrast: 1.0, gamma: 4.5 },
-  coal_block:    { hueShift: 0, sat: 0.2, contrast: 1.0, gamma: 5.0 },
+  // Phase 70 v2 (user 2026-09-13: "terlalu terang = MELAWAN DATASET —
+  // warna wajib kayak dataset!"): gamma-lift v1 (4.0/4.5/5.0) menjauhkan
+  // warna dari dataset. Target BARU terukur = tampak3D dataset (yang
+  // dilihat user sebagai "benar"): obsidian avg 69, fabric 51, coal 58
+  // — vs texture 2D mentah 53/31/23. Gamma dikalibrasi ke SITU, bukan
+  // lebih. Coal: saturasi DINORMALKAN kembali 1.0 (v1 desat 0.2 =
+  // melawan dataset — coal dataset memang kebiruan, itu identitasnya).
+  // File dataset asli TIDAK disentuh (koreksi tetap in-memori).
+  obsidian_block: { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 3.0 },
+  fabric_block:  { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 3.5 },
+  coal_block:    { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 5.0 },
 };
 
 function applyTexFix(img, fix) {
