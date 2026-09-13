@@ -63,7 +63,7 @@
  */
 
 import * as THREE from 'three';
-import { attachCrystalCore, attachGemOverlay } from './ballCenterDesign.js';
+import { attachCrystalCore, attachGemOverlay, applyOrbHover } from './ballCenterDesign.js';
 
 /** Penanda idempoten pada gizmo scale. */
 const SCALE_MARK = '__scaleBallsP51';
@@ -342,6 +342,11 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
   gizmoRoot.updateMatrixWorld = function (force) {
     // Jalankan rantai sebelumnya dulu (rotate wrapper → solo arrow → asli).
     originalUpdate.call(this, force);
+
+    // HOVER-KUNING ORB (user 2026-09-13): bola yang di-hover jadi kuning —
+    // orb-nya sendiri (material unik per bola), bukan mesh backdrop yang
+    // kini tak dirender. Setelah fungsi asli (axis sudah di-update library).
+    applyOrbHover(addedBalls, transformControls.axis, transformControls.dragging);
 
     // PHASE 52 — mode world-align (checkbox "arrow match rotation" kosong):
     // Three.js memaksa scale selalu local (baris 1585) sehingga bola ikut

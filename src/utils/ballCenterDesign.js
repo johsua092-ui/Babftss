@@ -29,8 +29,13 @@ let _orbMatCache = new Map();
 
 /** Backdrop mesh: amber gelap — siluet bola + raycast + hover-target. */
 const ORB_BACKDROP = '#6b3007';
-/** Faktor blend identitas tool ke warna sprite (0 = murni referensi). */
+/** Faktor blend identitas tool ke warna sprite (0 = murni referensi).
+ * SCALE PAKAI 0.38 (DESIGN LOCK — jangan diubah!). Rotate butuh mix kuat
+ * supaya RGB jelas (user: "bukan oranye semua") — dilewatkan sebagai
+ * parameter opsional agar nilai scale tidak tersentuh. */
 const ORB_IDENT_MIX = 0.38;
+const ORB_IDENT_MIX_STRONG = 0.85;
+export { ORB_IDENT_MIX_STRONG };
 
 /**
  * Texture ORB SATU-SATUYA (vision 7 ronde — semua elemen referensi):
@@ -115,33 +120,41 @@ function getOrbTexture() {
  * dari karakter amber-oranye referensi.
  * Urutan render: cincin 999 < mesh 1000 < orb 1001.
  */
-export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null) {
+export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null, identMix = ORB_IDENT_MIX) {
   if (!ball || !ball.isMesh) return null;
   if (ball.userData.__gemOverlay) return ball.userData.__gemOverlay;
   try {
-    // backdrop mesh: amber gelap (siluet saat sprite tak menutup)
+    // FIX DOBEL-BOLA (user 2026-09-13: "ada bola lain kuning di belakang,
+    // lebih besar, muncul sejak awal; saat kursor dekat DIA yang jadi
+    // kuning — bukan orb diamond"): mesh backdrop #6b3007 TAMPIL sebagai
+    // bola kedua di belakang sprite (sphere di-scale factor kamera >
+    // disk sprite). Material mesh kini TIDAK DIRENDER (visible=false —
+    // raycast TETAP kena, terbukti test: picker/hover axis aman) dan
+    // hover-kuning library menimpa material tak-terlihat ini = nol
+    // efek visual liar. Design orb sprite DI BAWAH TIDAK DISENTUH.
     ball.material.color.set(ORB_BACKDROP);
+    ball.material.visible = false;   // tidak dirender; tetap ke-raycast
     // warna sprite = referensi amber ⊕ identitas ringan
     let tint = 0xffffff;
     if (identColor != null) {
       const ref = new THREE.Color('#FFB25E');       // amber referensi
       const idn = new THREE.Color(identColor);
-      ref.lerp(idn, ORB_IDENT_MIX);                // blend → identitas tetap terasa
+      ref.lerp(idn, identMix);                 // blend → identitas terasa (scale 0.38 LOCK / rotate 0.85)
       tint = ref.getHex();
     }
-    const key = String(tint);
-    if (!_orbMatCache.has(key)) {
-      _orbMatCache.set(key, new THREE.SpriteMaterial({
-        map: getOrbTexture(),
-        color: tint,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,   // warna murni (warisan #15: ACES desaturasi)
-        fog: false,
-      }));
-    }
-    const sprite = new THREE.Sprite(_orbMatCache.get(key));
+    // MATERIAL UNIK PER-BOLA (bukan cache shared — prasyarat hover
+    // per-bola: tint kuning hover harus mengenai bola yang di-hover
+    // SAJA; shared = semua bola ikut kuning. Texture tetap shared
+    // 1x di cache — hanya material clone murah per bola).
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: getOrbTexture(),
+      color: tint,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,   // warna murni (warisan #15: ACES desaturasi)
+      fog: false,
+    }));
     let cx = 0, cy = 0, cz = 0;
     ball.geometry.computeBoundingBox();
     const bb = ball.geometry.boundingBox;
@@ -170,6 +183,33 @@ export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null) {
  */
 export function attachCrystalCore(_ball, _ballRadius = 0.075) {
   return null; /* no-op v8 — orb texture sudah berisi diamond + dot */
+}
+
+/**
+ * HOVER-KUNING orb (user 2026-09-13: "kalau kursor didekatkan bola
+ * oranye itu jadi kuning — bola yang sama, bukan bola lain"): dipanggil
+ * dari wrapper updateMatrixWorld gizmo SETELAH fungsi asli (pola
+ * kontrak #2). tc.axis = nama sumbu yang sedang di-hover (library
+ * meng-setnya via picker raycast — mesh orb tetap ke-raycast walau
+ * materialnya tak dirender). dragging = jangan highlight saat drag
+ * (solo-drag sudah punya perilakunya sendiri).
+ * Idempoten per bola: tint disimpan di sprite.userData.__restTint.
+ */
+const ORB_HOVER_TINT = new THREE.Color('#FFE066');   // kuning hangat
+export function applyOrbHover(balls, activeAxis, dragging) {
+  if (!Array.isArray(balls)) return;
+  for (const ball of balls) {
+    const orb = ball.userData && ball.userData.__gemOverlay;
+    if (!orb || !orb.material) continue;
+    const rest = orb.userData.__restTint || orb.material.color.getHex();
+    orb.userData.__restTint = rest;
+    const hovering = !dragging && activeAxis != null && ball.name === activeAxis;
+    if (hovering) {
+      orb.material.color.copy(ORB_HOVER_TINT);
+    } else {
+      orb.material.color.setHex(rest);
+    }
+  }
 }
 
 /** Lepas orb dari bola (idempoten). */

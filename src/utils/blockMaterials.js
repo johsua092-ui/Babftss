@@ -91,6 +91,10 @@ const TEX_FIX = {
   // doang" — gamma MINIM 1.35 saja (obsidian & fabric TETAP mentah);
   // hue/sat/contrast 0/1/1 = identitas warna dataset 100% utuh.
   coal_block:    { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 1.35 },
+  // Phase 70 v5 (user 2026-09-13: "yang kamu lakukan dikit ke coal
+  // bagus loh, bisa diterapin sama persis ke fabric block?"):
+  // gamma 1.35 PERSIS sama coal. Obsidian TETAP mentah.
+  fabric_block:  { hueShift: 0, sat: 1.0, contrast: 1.0, gamma: 1.35 },
 };
 
 function applyTexFix(img, fix) {

@@ -97,7 +97,7 @@
  */
 
 import * as THREE from 'three';
-import { attachCrystalCore, attachGemOverlay } from './ballCenterDesign.js';
+import { attachCrystalCore, attachGemOverlay, applyOrbHover, ORB_IDENT_MIX_STRONG } from './ballCenterDesign.js';
 
 /** Nama sumbu yang punya cincin berwarna. */
 const AXES = ['X', 'Y', 'Z'];
@@ -595,7 +595,10 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       // kecil 17% — identColor dari sharedMaterial.color (RGB sumbu, material
       // bola rotate eksklusif per bola tapi eksplisit lebih aman).
       // Cincin 999 < bola 1000 < gem 1001 < kristal 1002.
-      attachGemOverlay(ball, ballRadius, sharedMaterial.color);
+      // Phase 70 v5 (user 2026-09-13): mix KUAT 0.85 — bola rotate wajib
+      // jelas MERAH/HIJAU/BIRU bawaan Three.js, "bukan oranye semua".
+      // (Scale tetap 0.38 — DESIGN LOCK, tidak tersentuh.)
+      attachGemOverlay(ball, ballRadius, sharedMaterial.color, ORB_IDENT_MIX_STRONG);
       attachCrystalCore(ball, ballRadius);
       rotateObj.add(ball);
 
@@ -640,6 +643,11 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       originalUpdate.call(this, force);
       if (this.mode !== 'rotate') return;
 
+      // HOVER-KUNING ORB (user 2026-09-13) — SEBELUM cabang mode-return:
+      // applyOrbHover butuh jalan tiap frame termasuk saat mode rotate
+      // aktif; diletakkan setelah originalUpdate, sebelum early-return.
+      applyOrbHover(addedBalls, transformControls.axis, transformControls.dragging);
+
       const isLocal = this.space === 'local' && !!this.worldQuaternion;
       // Basis gizmo: sama seperti yang dipakai Three.js untuk mode non-rotate.
       _tmpQuatBase.copy(isLocal ? this.worldQuaternion : _identityQuat);
@@ -675,6 +683,10 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
 
       // Quaternion diubah SETELAH super.updateMatrixWorld() → hitung ulang.
       rotateObj.updateMatrixWorld(true);
+
+      // PHASE 70 v5 (user 2026-09-13): hover-kuning di ORB bola rotate —
+      // bola yang di-hover saja (material unik per-bola), design texture aman.
+      applyOrbHover(addedBalls, transformControls.axis, transformControls.dragging);
     };
   }
 
