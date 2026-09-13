@@ -145,15 +145,20 @@ function getOrbInvTexture() {
   const d = id.data;
   for (let i = 0; i < d.length; i += 4) {
     const lum = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
-    // Invers luminance dgn FLOOR: inti diamond (lum ~250) → ~80 (gelap tapi
-    // BUKAN hitam total — saat di-tint merah jadi "merah gelap", bukan hitam);
-    // tepi gelap (lum ~60) → ~230 (hampir penuh — bola pembungkus MENTOK warna)
-    const inv = 80 + (255 - lum) * 0.72;
-    const ratio = lum > 0 ? inv / lum : 0;
-    d[i]   = Math.min(255, d[i]   * ratio);
-    d[i+1] = Math.min(255, d[i+1] * ratio);
-    d[i+2] = Math.min(255, d[i+2] * ratio);
-    // alpha tetap — siluet/feather design 100% dipertahankan
+    // Phase 70 v8 (user 2026-09-13, 3 komplain): inversi v7 masih
+    // menyisakan BIAS AMBER texture asli (R tinggi, G sedang, B rendah)
+    // → tint murni mengambil channel per warna: merah untung mentok,
+    // HIJAU cuma ~138/255 (kurang maksimal), BIRU cuma ~46/255 (gelap
+    // banget); inti 87 terlalu gelap = "hitam". FIX: (a) hasil invers
+    // GRAYSCALE MURNI (R=G=B=inv) — tint apapun dapat kekuatan penuh
+    // sama; (b) floor naik 80→120 + koefisien 0.72→0.65: inti diamond
+    // lum 245 → 127 = "MERAH/HIJAU/BIRU TUA" (bukan hitam), tepi lum 51
+    // → 252 = mentok penuh utk SEMUA warna. Alpha tetap — design bentuk
+    // 100% identik (LOCK texture asli tak tersentuh).
+    const inv = Math.min(255, 120 + (255 - lum) * 0.65);
+    d[i]   = inv;   // grayscale murni — bukan scale-per-channel ber-bias
+    d[i+1] = inv;
+    d[i+2] = inv;
   }
   ctx.putImageData(id, 0, 0);
   _orbInvTexCache = new THREE.CanvasTexture(canvas);
