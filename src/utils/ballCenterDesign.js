@@ -25,6 +25,7 @@
 import * as THREE from 'three';
 
 let _orbTexCache = null;
+let _orbInvTexCache = null;   // varian luminance TERBALIK utk rotate
 let _orbMatCache = new Map();
 
 /** Backdrop mesh: amber gelap — siluet bola + raycast + hover-target. */
@@ -121,6 +122,46 @@ function getOrbTexture() {
 }
 
 /**
+ * Texture INVERS LUMINANCE untuk bola ROTATE (user 2026-09-13: "warnanya
+ * KEBALIK — yang merah: dalam perut bola harus MERAH GELAP, bola gizmo
+ * pembungkusnya merah MENTOK merah; sekarang kebalik!"). Texture scale
+ * (LOCK) punya profil: tepi gelap → inti diamond terang. Rotate butuh
+ * KEBALIKANNYA: tepi penuh/terang → diamond dalam lebih gelap.
+ * Dibuat dari canvas texture LOCK yang sama: tiap pixel luminance
+ * dibalik (inv = 255 - lum), alpha & siluet dipertahankan persis —
+ * bentuk design 100% identik, hanya terang-gelapnya yang dibalik.
+ * Texture asli SAMA SEKALI tidak diubah (design LOCK scale aman).
+ */
+function getOrbInvTexture() {
+  if (_orbInvTexCache) return _orbInvTexCache;
+  const src = getOrbTexture();          // canvas LOCK (jangan disentuh)
+  const srcCanvas = src.image;
+  const SIZE = srcCanvas.width;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE; canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(srcCanvas, 0, 0);
+  const id = ctx.getImageData(0, 0, SIZE, SIZE);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+    // Invers luminance dgn FLOOR: inti diamond (lum ~250) → ~80 (gelap tapi
+    // BUKAN hitam total — saat di-tint merah jadi "merah gelap", bukan hitam);
+    // tepi gelap (lum ~60) → ~230 (hampir penuh — bola pembungkus MENTOK warna)
+    const inv = 80 + (255 - lum) * 0.72;
+    const ratio = lum > 0 ? inv / lum : 0;
+    d[i]   = Math.min(255, d[i]   * ratio);
+    d[i+1] = Math.min(255, d[i+1] * ratio);
+    d[i+2] = Math.min(255, d[i+2] * ratio);
+    // alpha tetap — siluet/feather design 100% dipertahankan
+  }
+  ctx.putImageData(id, 0, 0);
+  _orbInvTexCache = new THREE.CanvasTexture(canvas);
+  _orbInvTexCache.colorSpace = THREE.SRGBColorSpace;
+  return _orbInvTexCache;
+}
+
+/**
  * Pasang ORB pada bola gizmo (SATU sprite menggantikan gem+kristal).
  * identColor dicampur RINGAN (ORB_IDENT_MIX 0.38) — cukup membedakan
  * scale (kuning) vs rotate (merah/hijau/biru), tanpa menggeser bola
@@ -153,8 +194,13 @@ export function attachGemOverlay(ball, ballRadius = 0.075, identColor = null, id
     // per-bola: tint kuning hover harus mengenai bola yang di-hover
     // SAJA; shared = semua bola ikut kuning. Texture tetap shared
     // 1x di cache — hanya material clone murah per bola).
+    // Phase 70 v7 (user 2026-09-13 "warnanya KEBALIK"): rotate (mix 1.0)
+    // pakai texture INVERS LUMINANCE — bola pembungkus = warna MENTOK
+    // penuh, diamond dalam = versi GELAP warna (persis permintaan user);
+    // scale (mix 0.38 LOCK) TETAP texture asli — nol perubahan.
+    const useInv = identMix >= 1.0;
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: getOrbTexture(),
+      map: useInv ? getOrbInvTexture() : getOrbTexture(),
       color: tint,
       transparent: true,
       depthTest: false,

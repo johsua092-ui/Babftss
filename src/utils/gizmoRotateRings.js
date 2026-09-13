@@ -643,11 +643,6 @@ export function restyleRotateGizmo(transformControls, helperRoot = null, options
       originalUpdate.call(this, force);
       if (this.mode !== 'rotate') return;
 
-      // HOVER-KUNING ORB (user 2026-09-13) — SEBELUM cabang mode-return:
-      // applyOrbHover butuh jalan tiap frame termasuk saat mode rotate
-      // aktif; diletakkan setelah originalUpdate, sebelum early-return.
-      applyOrbHover(addedBalls, transformControls.axis, transformControls.dragging);
-
       const isLocal = this.space === 'local' && !!this.worldQuaternion;
       // Basis gizmo: sama seperti yang dipakai Three.js untuk mode non-rotate.
       _tmpQuatBase.copy(isLocal ? this.worldQuaternion : _identityQuat);
