@@ -155,8 +155,18 @@ function getOrbInvTexture() {
     // lum 245 → 127 = "MERAH/HIJAU/BIRU TUA" (bukan hitam), tepi lum 51
     // → 252 = mentok penuh utk SEMUA warna. Alpha tetap — design bentuk
     // 100% identik (LOCK texture asli tak tersentuh).
-    const inv = Math.min(255, 120 + (255 - lum) * 0.65);
-    d[i]   = inv;   // grayscale murni — bukan scale-per-channel ber-bias
+    // Phase 70 v9 (user 2026-09-13: "kulit luar SUDAH VERIFIKASI MENTOK —
+    // aman! Tapi design dalam perut masih terdeteksi HITAM: harusnya
+    // MERAU TUA / HIJAU TUA / BIRU TUA"): inti diamond v8 = 127 grayscale
+    // → tint merah = RGB(127,0,0) = marun KEBITAMAN (diapit kulit terang
+    // 252, kontras membuatnya tampak hitam). FIX: floor naik via
+    // Math.max(160, rumus-v8) — HANYA pixel gelap yang diangkat:
+    // inti 245 → 160 = RGB(160,0,0) MERAH TUA jelas (bukan hitam);
+    // kulit/tepi lum 51 → 252 TETAP PERSIS (rumus v8 sudah >160 —
+    // nol perubahan area mentok yang sudah diverifikasi user).
+    // Alpha/siluet tetap — design bentuk 100% identik.
+    const inv = Math.min(255, Math.max(160, 120 + (255 - lum) * 0.65));
+    d[i]   = inv;   // grayscale murni — semua tint sama kuat
     d[i+1] = inv;
     d[i+2] = inv;
   }
