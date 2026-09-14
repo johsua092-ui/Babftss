@@ -488,10 +488,36 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
           if (pickerCone) {
             // Cone bake ±0.3 di geometry, bola bake ±0.5 (distance). Agar
             // CENTER cone = CENTER bola (hitbox menutup bola persis):
-            // offset cone = offset bola + selisih bake (distance − 0.3).
-            // Cone center world = 0.3 + offC; bola = 0.5 + offB →
-            // offC = offB + 0.2 membuat keduanya sama.
-            const offC = off + (distance - 0.3);
+            // center bola world = 0.5×f + off ; center cone = bakeEff×f + offC
+            // → offC = off + (0.5 − bakeEff)×f. Konversi selisih bake WAJIB
+            // ×factor karena bake di-scale factor-kamera di ruang dunia
+            // (baris 1627 library: handle.scale = f×size/4). Mentah +0.2
+            // hanya benar di f=1 — tidak pernah terjadi (f 1.6-8.7 terukur)
+            // → cone tertinggal 0.2×(f−1) sepanjang sumbu = MENUMPUK DI
+            // PUSAT block (RED probe A: cone 0.07 vs bola 0.64, klik X−
+            // kena Z; G kamera jauh along 1.54).
+            // v12: bakeEfektif cone = 0.3 × 0.3 (shrink) = 0.09 → offC
+            // pakai (0.5−0.09)×f. Tanpa ini cone berselisih 0.21×f ke sisi
+            // BERLAWANAN (terukur along −1.63 @f=7.76) — proximity picking
+            // menutupi, tapi fallback raycast cone nyasar.
+            const offC = off + (distance - 0.3 * 0.3) * factor;
+            // FIX BUG FRAME-CONE (user 2026-09-14: "cuma 2 bola bisa
+            // dipencet, sisanya visual doang — hitbox kabur"): saat checkbox
+            // UNCHECKED, bola dipaksa quaternion.identity() (sumbu DUNIA)
+            // oleh blok Phase 52 di atas — tapi cone TIDAK: fungsi asli
+            // men-set cone.quaternion = worldQuaternion block tiap frame
+            // (baris 1743) → bake cone miring di sumbu block, bola tegak
+            // dunia = DUA frame campur → lateral terukur 0.82-2.26 unit
+            // saat block dirotasi 45-60° (probe C/F/I: klik bola X+ kena
+            // cone Z+ / XYZ sama sekali nyasar). Block dirotasi sekitar Y
+            // → sumbu Y satu-satunya tak berubah → Y+ Y− tetap bisa diklik
+            // = persis gejala "cuma 2 bola yang bisa dipencet".
+            // FIX: kunci cone ke frame SAMA dgn bola — identity saat
+            // unchecked (setelah fungsi asli, sebelum pickerRoot.
+            // updateMatrixWorld(true) di bawah → matrix raycast ke-update).
+            if (worldAlign === false) {
+              pickerCone.quaternion.identity();
+            }
             // Phase 70 v6: picker cone ikut SUMBU BLOCK (sinkron dgn bola —
             // warisan #27: geser visual wajib geser picker senama; cone bake
             // ±0.3 juga ikut rotasi local space)
@@ -503,6 +529,17 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
             // kamera TIDAK BISA. Pulihkan visible + scale cone senama.
             if (pickerCone.visible === false) pickerCone.visible = true;
             if (pickerCone.scale.x < 1e-5) pickerCone.scale.set(factor, factor, factor);
+            // FIX v12 (user 2026-09-14: "cuma 2 bola bisa dipencet, sisanya
+            // visual doang"): cone bawaan r0.2/bentang 0.6 di-scale factor
+            // kamera = r1.55 unit / bentang 4.66 world saat f=7.76 (2.7×
+            // radius bola!) — APEX-nya kini di sisi JAUH block (offset
+            // Phase 68 menggeser cone keluar tepi), bagian tengah gemuk
+            // menelan ray ke bola sisi lain: probe 2026-09-14 bidik X−
+            // kena cone Z duluan (ray lewat (0,0.4,0.67), radius cone di
+            // situ 0.81 > jarak 0.4). Dikecilkan ×0.3 → r0.47/bentang 1.4
+            // ≈ inti bola; tepi bola yang lebih luas dilayani picking
+            // proximity layar (lihat pointerHover override di bawah).
+            pickerCone.scale.multiplyScalar(0.3);
           }
         }
         // Matrix anak tidak ter-update otomatis (super sudah jalan di
@@ -529,10 +566,71 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
     }
   };
 
+  // ── 5. PICKING PROXIMITY LAYAR (FIX v12, user 2026-09-14: "cuma 2 bola
+  //    bisa dipencet, sisanya visual doang — hitbox kabur") ──
+  // Akar (probe matriks 9 skenario): cone bawaan di-scale factor kamera
+  // MENELAN ray ke bola sisi lain (bidik X− kena Z duluan). Cone sudah
+  // dikecilkan ×0.3, tapi itu saja belum cukup di semua sudut kamera:
+  // ray ke CENTER bola sisi-jauh menembus 2-3 cone sisi-dekat di depannya.
+  // Solusi POLA TERBUKTI gizmoRotateRings.findBallNearPointer (bola rotate
+  // klik presisi 3 tahun jalan): setelah picker raycast bawaan,
+  // proyeksikan 6 bola ke layar (NDC) — kalau pointer dekat bola yang USER
+  // LIHAT (≤0.08 NDC ≈ 72px @900px), paksa axis = bola itu. Bola terlihat
+  // = yang dipilih — hitbox cone hanya fallback untuk pointer di antara
+  // bola dan pusat.
+  const origHover = transformControls.pointerHover;
+  const origDown = transformControls.pointerDown;
+
+  /** Proyeksikan center bola ke NDC; bola terdekat pointer menang. */
+  const findBallNearPointer = (pointer) => {
+    if (!pointer) return null;
+    scaleObj.updateMatrixWorld(true);
+    let best = null;
+    let bestD = Infinity;
+    for (const ball of addedBalls) {
+      if (!ball.geometry.boundingSphere) ball.geometry.computeBoundingSphere();
+      const center = ball.geometry.boundingSphere.center.clone()
+        .applyMatrix4(ball.matrixWorld).project(transformControls.camera);
+      const d = Math.hypot(center.x - pointer.x, center.y - pointer.y);
+      if (d < bestD) { bestD = d; best = ball; }
+    }
+    return (best && bestD < 0.08) ? best : null;
+  };
+
+  const proxHover = function (pointer) {
+    origHover.call(this, pointer);
+    if (this.mode !== 'scale' || this.dragging === true || pointer == null) return;
+    if (this.object === undefined) return;
+    const near = findBallNearPointer(pointer);
+    if (near) this.axis = near.name;
+  };
+
+  const proxDown = function (pointer) {
+    // Prioritas bola persis sebelum raycast _plane (axis harus final saat
+    // pointerDown mulai drag — kalau cone fallback terpilih duluan, drag
+    // sumbu salah).
+    if (this.mode === 'scale' && this.dragging !== true && pointer != null &&
+        this.object !== undefined) {
+      const near = findBallNearPointer(pointer);
+      if (near) this.axis = near.name;
+    }
+    return origDown.call(this, pointer);
+  };
+
+  transformControls.pointerHover = proxHover;
+  transformControls.pointerDown = proxDown;
+
   const dispose = () => {
     // Lepas wrapper dulu (LIFO terhadap pemasangan).
     if (gizmoRoot.updateMatrixWorld !== originalUpdate) {
       gizmoRoot.updateMatrixWorld = originalUpdate;
+    }
+    // Lepas override picking proximity (pola rotate: cek identitas dulu).
+    if (transformControls.pointerHover === proxHover) {
+      transformControls.pointerHover = origHover;
+    }
+    if (transformControls.pointerDown === proxDown) {
+      transformControls.pointerDown = origDown;
     }
     // Hapus bola buatan + material + geometry-nya.
     for (const ball of addedBalls) {
