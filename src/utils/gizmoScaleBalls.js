@@ -406,10 +406,21 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
             const healthy = addedBalls.find(b => b.scale.x > 1e-4);
             factor = healthy ? healthy.scale.x : 1;
           }
+          // FIX v11 (user 2026-09-13: "KADANG scale berhasil, KADANG
+          // hitbox LENYAP tak bisa diklik padahal visual aman"):
+          // BALL_GAP/factor MELEDAK saat block di-scale MENGECIL —
+          // factor kamera ∝ size block: size 0.2 → off 6 unit; 0.05 →
+          // 22.5; 0.01 → 110 (terukur simulasi) → bola & PICKER CONE
+          // terlempar jauh dari block → hitbox lepas dari tempat klik.
+          // "Kadang" = hanya saat hasil scale mengecil cukup jauh.
+          // FIX: clamp factor minimum — gap tidak pernah meledak;
+          // di bawah clamp, gap dibiarkan membesar alami (visual tetap
+          // wajar karena bola ikut mengecil di layar).
+          const factorSafe = Math.max(factor, 0.35);
           const BALL_GAP = 0.55; // unit lokal — gap 3D simetris; perspektif kamera mempersempit sisi dekat jadi ~5px pada 0.35 → 0.55 agar gap visual cukup di semua sudut
           // Gap dikompensasi factor kamera (runtime terukur: tanpa /factor
           // err seragam 0.124 — bola sedikit overshoot; dgn /factor presisi)
-          const off = distance * (wsv - factor) + (BALL_GAP / factor);
+          const off = distance * (wsv - factor) + (BALL_GAP / factorSafe);
           // FIX BUG POSISI-SAAT-ROTASI (user 2026-09-13: "block sudah
           // dirotasi ke segala arah & miring → posisi bola scale sangat
           // aneh & tidak masuk akal"): offset LAMA memakai UNIT[axis]
