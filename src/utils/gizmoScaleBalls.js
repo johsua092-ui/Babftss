@@ -418,12 +418,30 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
           // worldQuaternion block → offset dunia + bake miring = dua
           // frame referensi campur → bola nyasar + drift lateral
           // (RED terukur: err 0.21-0.39 unit, lateral sampai 0.73).
-          // FIX: geser sepanjang SUMBU BLOCK di dunia — axisLocal
-          // dirotasi worldQuaternion (warisan #5b: _worldScale di-set
-          // library tiap frame; worldQuaternion juga live).
-          const axisWorld = _tmpAxisVec.set(
-            UNIT[axis].x, UNIT[axis].y, UNIT[axis].z,
-          ).applyQuaternion(transformControls.worldQuaternion || _identityQuat);
+          // FIX v6: geser sepanjang SUMBU BLOCK di dunia.
+          // FIX v10 (user 2026-09-13: "centang arrow match rotation
+          // DICABUT → gizmo scale ikut kacau & TIDAK BISA DI-SCALE!
+          // Padahal rotate/move aman di mode ini"): saat unchecked,
+          // wrapper Phase 52 memaksa bola quaternion.identity() →
+          // bake bola menunjuk SUMBU DUNIA → offset harus ikut frame
+          // DUNIA. Offset block-axis (v6) = campur frame cermin.
+          // SOLUSI: pilih frame referensi sesuai MODE:
+          //   tercentang (align=true)  → axisLocal × worldQuaternion
+          //   dicabut   (align=false) → axisLocal murni (sumbu dunia)
+          // RED world-align: 4/6 bola err 0.24-0.30, lateral 0.56;
+          //   picker cone ikut nyasar = hitbox lepas → "tidak bisa
+          //   di-scale" (klik tak kena bola).
+          const worldAlign = getScaleWorldAlign(transformControls);
+          let axisWorld;
+          if (worldAlign) {
+            axisWorld = _tmpAxisVec.set(
+              UNIT[axis].x, UNIT[axis].y, UNIT[axis].z,
+            ).applyQuaternion(transformControls.worldQuaternion || _identityQuat);
+          } else {
+            axisWorld = _tmpAxisVec.set(
+              UNIT[axis].x, UNIT[axis].y, UNIT[axis].z,
+            );   // bola identity → sumbu dunia
+          }
           ball.position.x += axisWorld.x * sign * off;
           ball.position.y += axisWorld.y * sign * off;
           ball.position.z += axisWorld.z * sign * off;
