@@ -3,15 +3,35 @@ import { getBlockDef, getBlockIconPath } from '../utils/blockMaterials.js';
 import { scaleToStudsLabel, STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
 /* ================================================================
-   GizmoBlockInfoPanel — Phase 72 v2 (2026-09-15, revisi user:
-   "scale info & gizmo options = satu wilayah yang sama, jangan 2 kotak")
+   GizmoBlockInfoPanel — Phase 72 v4 (2026-09-15, permintaan user:
+   teks panel "gak kelihatan woi dan sulit bacanya kaya nyatu")
    ================================================================
-   PERUBAHAN v2: komponen ini kini SEKSI EMBEDDED di DALAM panel
-   Gizmo Options (render berupa ISI — tanpa wrapper panel/border/
-   header sendiri) → satu area bersama: satu background, satu border.
-   Integrasi ada di BlockSimulator3D: {tool === 'scale' && <.../>}
-   ditaruh SETELAH header "Gizmo Options", sebelum baris checkbox,
-   dipisah DIVIDER halus.
+   PERUBAHAN v4 (KONTRAS / KETERBACAAN — warna saja, nol layout):
+   User melaporkan 5 titik teks+garis sulit dibaca. Diukur WCAG
+   terhadap background nyata (komposit alpha di atas panel
+   rgba(14,20,32,0.92) → view_bg rgb(22,30,45)):
+
+     elemen                        SEBELUM            SESUDAH (#FFFFFF)
+     1. "Pilih block untuk scale"  rgb(79,90,108)  2.39:1  →  16.70:1
+        (border putus-putus)       rgb(54,63,80)   1.58:1  →  16.70:1
+     2. "Belum ada block"          rgb(88,99,116)  3.00:1  →  18.27:1
+     3. "Panjang, Lebar, Tinggi"   rgb(82,92,108)  2.70:1  →  18.27:1
+   Standar WCAG AA teks normal = 4.5:1 → SEMUA di bawah standar
+   sebelum perbaikan (paling parah 1.58:1 = nyaris tak terlihat).
+   Permintaan user eksplisit: warna PUTIH #FFFFFF.
+
+   YANG TIDAK DIUBAH (sengaja): layout, padding, ukuran font,
+   struktur JSX, logika poll/state, label "STUDS" (#94a3b8 — sudah
+   lulus 5.3:1, tidak dikeluhkan), nilai angka studs (#e2e8f0 sudah
+   terang), warna amber saat block aktif (identitas app).
+
+   PERUBAHAN v2 (2026-09-15, revisi user: "scale info & gizmo
+   options = satu wilayah yang sama, jangan 2 kotak"):
+   Komponen ini SEKSI EMBEDDED di DALAM panel Gizmo Options (render
+   berupa ISI — tanpa wrapper panel/border/header sendiri) → satu
+   area bersama: satu background, satu border.
+   Integrasi di BlockSimulator3D: {tool === 'scale' && <.../>}
+   setelah header "Gizmo Options", sebelum baris checkbox.
 
    ISI (permintaan user Phase 72):
    1) KOTAK VIEW: gambar 3D-view block yang SEDANG di-scale — 100%
@@ -20,10 +40,9 @@ import { scaleToStudsLabel, STUDS_PER_BLOCK } from '../utils/blockStuds.js';
    2) DI BAWAHNYA: baris dimensi P, L, T STUDS — standar MUTLAK:
       block biasa belum di-scale = 2, 2, 2 studs (blockStuds.js).
 
-   Implementasi tetap TANPA MENYENTUH ENGINE: poll 10Hz baca
-   tc.object via threeRef sendiri, setState hanya saat label berubah.
-   Anggota keluarga-5 lain (move/rotate/clone/mirror) menyusul —
-   render komponen ini di seksi panel yang sama per tool.
+   Implementasi TANPA MENYENTUH ENGINE: poll 10Hz baca tc.object via
+   threeRef sendiri, setState hanya saat label berubah.
+   Anggota keluarga-5 lain (move/rotate/clone/mirror) menyusul.
    ================================================================ */
 
 /** Baca { slug, scale, isMulti } dari object gizmo saat ini. */
@@ -111,12 +130,13 @@ export default function GizmoBlockInfoPanel({ threeRef, toolName = 'Scale' }) {
             style={{ width: 96, height: 96, objectFit: 'contain', display: 'block', filter: empty ? 'grayscale(0.9) opacity(0.4)' : 'none' }}
           />
         ) : (
-          /* Slot kosong stabil — placeholder bukan dekorasi */
+          /* Slot kosong stabil — placeholder bukan dekorasi.
+             v4: teks + garis putus-putus PUTIH #FFFFFF (1.58:1 → 16.70:1). */
           <div style={{
             width: 84, height: 84, borderRadius: 10,
-            border: '2px dashed rgba(148,163,184,0.25)',
+            border: '2px dashed #FFFFFF',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'rgba(148,163,184,0.45)', fontSize: 9.5,
+            color: '#FFFFFF', fontSize: 9.5,
             fontFamily: 'Inter, sans-serif', textAlign: 'center', lineHeight: 1.35,
           }}>
             Pilih block<br />untuk {toolName.toLowerCase()}
@@ -124,11 +144,13 @@ export default function GizmoBlockInfoPanel({ threeRef, toolName = 'Scale' }) {
         )}
       </div>
 
-      {/* Nama jenis — kecil di bawah view */}
+      {/* Nama jenis — kecil di bawah view.
+          v4: state kosong ("Belum ada block") PUTIH (3.00:1 → 18.27:1);
+          state ada block tetap amber #f59e0b (identitas app, sesuai). */}
       <div style={{
         marginTop: 6, textAlign: 'center',
         fontSize: 10, fontWeight: 600,
-        color: empty ? 'rgba(148,163,184,0.55)' : '#f59e0b',
+        color: empty ? '#FFFFFF' : '#f59e0b',
         fontFamily: 'Inter, sans-serif',
       }}>
         {isMulti ? 'Multi-Block' : (def ? def.name : 'Belum ada block')}
@@ -154,10 +176,11 @@ export default function GizmoBlockInfoPanel({ threeRef, toolName = 'Scale' }) {
         }}>{scaleLabel}</span>
       </div>
 
-      {/* Petunjuk urutan — caption kecil */}
+      {/* Petunjuk urutan — caption kecil.
+          v4: PUTIH (2.70:1 → 18.27:1). */}
       <div style={{
         marginTop: 4, textAlign: 'center',
-        fontSize: 8.5, color: 'rgba(148,163,184,0.5)',
+        fontSize: 8.5, color: '#FFFFFF',
         fontFamily: 'Inter, sans-serif',
       }}>Panjang, Lebar, Tinggi (studs)</div>
     </div>

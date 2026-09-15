@@ -18854,9 +18854,13 @@ Now you can apply Displacement for detailed effect.`);
             {/* Hint kecil — progressive disclosure (surface Configure).
                 FIX Phase 56: teks pendek per-keadaan (bukan 1 baris gabungan
                 panjang) supaya tidak pernah mendorong lebar panel; panel sudah
-                maxWidth 208 → hint wrap ke bawah, bukan melebar ke kiri. */}
+                maxWidth 208 → hint wrap ke bawah, bukan melebar ke kiri.
+                Phase 72 v4 (2026-09-15, permintaan user "teksnya gak kelihatan
+                woi, kaya nyatu"): warna rgba(148,163,184,0.55) diukur WCAG =
+                3.00:1 terhadap panel rgb(15,21,33) — DI BAWAH standar AA 4.5:1
+                → diganti PUTIH #FFFFFF (18.27:1). Ukuran/layout tidak diubah. */}
             <div style={{
-              marginTop: 2, fontSize: 9.5, color: 'rgba(148,163,184,0.55)',
+              marginTop: 2, fontSize: 9.5, color: '#FFFFFF',
               fontFamily: 'Inter, sans-serif', lineHeight: 1.4,
             }}>
               <div>{arrowMatchRotation ? 'Gizmo mengikuti rotasi block' : 'Gizmo selalu tegak lurus dunia'}</div>
