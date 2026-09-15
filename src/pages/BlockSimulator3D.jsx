@@ -18702,22 +18702,9 @@ Now you can apply Displacement for detailed effect.`);
               tidak — hierarki via state, bukan dekorasi.
             • Hover feedback (pola onMouseEnter/Leave spt swatch Colors).
             ATURAN MUTLAK: default TERCENTANG setiap user masuk web. */}
-        {/* ══ Phase 72 (2026-09-15, fitur keluarga-5 — uji coba SCALE dulu):
-              PANEL INFO BLOCK — preview 3D view block yang sedang di-scale
-              (kayu→kayu, neon→neon — 100% sesuai jenis, ikon dataset sama
-              dgn panel Place) + dimensi P,L,T dalam STUDS (standar MUTLAK:
-              block biasa = 2×2×2 studs; grid cell 2×2). Panel ini menempati
-              koordinat PERSIS Gizmo Options lama (top:80 right:16); panel
-              Gizmo Options DIGESER KE BAWAH tepat di bawahnya saat scale.
-              Panel self-contained: rAF-poll baca tc.object sendiri, NOL
-              modifikasi engine/state page. Anggota keluarga lain (move/
-              rotate/clone/mirror) menyusul — komponen sudah generik. ══ */}
-        {tool === 'scale' && (
-          <GizmoBlockInfoPanel threeRef={threeRef} toolName="Scale" />
-        )}
         {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror') && (
           <div style={{
-            position: 'absolute', top: tool === 'scale' ? 308 : 80, right: 16,
+            position: 'absolute', top: 80, right: 16,
             display: 'flex', flexDirection: 'column', gap: 4,
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
@@ -18743,6 +18730,25 @@ Now you can apply Displacement for detailed effect.`);
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
             }}>Gizmo Options</div>
+
+            {/* ══ Phase 72 v2 (2026-09-15, revisi user: "info & options = SATU
+                  WILAYAH yang sama — jangan 2 kotak terpisah"): seksi INFO BLOCK
+                  EMBEDDED di DALAM panel Gizmo Options ini — satu background,
+                  satu border, satu wilayah. View 3D block yang sedang di-scale
+                  (kayu→kayu, neon→neon 100% sesuai) + dimensi P,L,T STUDS
+                  (standar MUTLAK: block biasa = 2×2×2 studs; grid 2×2).
+                  Komponen self-contained: poll 10Hz baca tc.object sendiri,
+                  NOL modifikasi engine/state page. Anggota keluarga-5 lain
+                  (move/rotate/clone/mirror) menyusul di seksi yang sama. ══ */}
+            {tool === 'scale' && (
+              <GizmoBlockInfoPanel threeRef={threeRef} toolName="Scale" />
+            )}
+
+            {/* Divider halus — pemisah seksi info vs opsi (masih 1 wilayah) */}
+            <div style={{
+              height: 1, backgroundColor: 'rgba(148,163,184,0.16)',
+              margin: '10px 0 8px', borderRadius: 1, flexShrink: 0,
+            }} />
 
             {/* ── Baris opsi (pola reusable — opsi baru tinggal copy pola ini) ── */}
             <div

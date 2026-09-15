@@ -1,37 +1,29 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { getBlockDef, getBlockIconPath } from '../utils/blockMaterials.js';
 import { scaleToStudsLabel, STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
 /* ================================================================
-   GizmoBlockInfoPanel — Phase 72 (2026-09-15)
+   GizmoBlockInfoPanel — Phase 72 v2 (2026-09-15, revisi user:
+   "scale info & gizmo options = satu wilayah yang sama, jangan 2 kotak")
    ================================================================
-   FITUR BARU KELUARGA-5 GIZMO (uji coba user: SCALE dulu; anggota
-   lain menyusul — komponen ini generik, tinggal render di tool lain).
+   PERUBAHAN v2: komponen ini kini SEKSI EMBEDDED di DALAM panel
+   Gizmo Options (render berupa ISI — tanpa wrapper panel/border/
+   header sendiri) → satu area bersama: satu background, satu border.
+   Integrasi ada di BlockSimulator3D: {tool === 'scale' && <.../>}
+   ditaruh SETELAH header "Gizmo Options", sebelum baris checkbox,
+   dipisah DIVIDER halus.
 
-   LETAK: koordinat PERSIS panel Gizmo Options lama (top: 80,
-   right: 16). Gizmo Options lama DIGESER KE BAWAH tepat di bawah
-   panel ini — TIDAK menimpa (lihat integrasi di BlockSimulator3D).
+   ISI (permintaan user Phase 72):
+   1) KOTAK VIEW: gambar 3D-view block yang SEDANG di-scale — 100%
+      sesuai jenis (kayu → tampak3D kayu, neon → tampak3D neon, dst;
+      ikon dataset public/blocks/icon — aset sama dgn panel Place).
+   2) DI BAWAHNYA: baris dimensi P, L, T STUDS — standar MUTLAK:
+      block biasa belum di-scale = 2, 2, 2 studs (blockStuds.js).
 
-   ISI (permintaan user):
-   1) KOTAK VIEW: menampilkan gambar 3D-view block yang SEDANG
-      di-scale user — 100% sesuai jenis: kayu → tampak3D kayu,
-      neon → tampak3D neon, dst (ikon dataset public/blocks/icon
-      — asset yang sama dgn panel Place, konsisten).
-   2) DI BAWAHNYA: baris info dimensi "P, L, T" studs:
-      - Standar MUTLAK: block biasa belum di-scale = 2, 2, 2
-        studs (1 block = 2×2×2 studs; grid cell = 2×2 studs).
-      - Live update tiap frame saat drag scale (rAF poll).
-
-   IMPLEMENTASI TANPA MENYENTUH ENGINE:
-   - Panel membaca sendiri via threeRef (ref container app) +
-     transformControls.object — TIDAK menimpa listener apa pun,
-     TIDAK menambah state di page utama, TIDAK menyentuh engine.
-   - rAF loop ringan: baca object & scale → setState HANYA kalau
-     berubah (string compare) → nol re-render spam.
-   - Cleanup penuh di unmount (cancelAnimationFrame).
-
-   DESIGN SYSTEM (ikut app — panelBg #0e1420, Orbitron/Inter):
-   surface CONFIGURE/INSPECT: panel info — bukan dekorasi.
+   Implementasi tetap TANPA MENYENTUH ENGINE: poll 10Hz baca
+   tc.object via threeRef sendiri, setState hanya saat label berubah.
+   Anggota keluarga-5 lain (move/rotate/clone/mirror) menyusul —
+   render komponen ini di seksi panel yang sama per tool.
    ================================================================ */
 
 /** Baca { slug, scale, isMulti } dari object gizmo saat ini. */
@@ -40,9 +32,8 @@ function readGizmoTarget(threeRef) {
   if (!tc) return null;
   const obj = tc.object;
   if (!obj || !obj.isObject3D) return null;
-  // Multi-select: gizmo attach ke selectionGroup (THREE.Group punya
-  // type 'Group'; block Mesh punya userData.isBlock). Group = banyak
-  // block → tampil state multi (view placeholder group, dims group).
+  // Multi-select: gizmo attach ke selectionGroup (THREE.Group). Group =
+  // banyak block → tampil state multi (view ketumpuk, dims group).
   const isMulti = !!(obj.userData && obj.userData.__selectionGroup) ||
     (obj.isGroup === true);
   const slug = (obj.userData && obj.userData.blockSlug) || null;
@@ -81,35 +72,18 @@ export default function GizmoBlockInfoPanel({ threeRef, toolName = 'Scale' }) {
     return () => clearInterval(id);
   }, [threeRef]);
 
-  // Kosong: tidak ada block yang digenggam gizmo — panel tetap tampil
-  // (slot stabil, tidak lompat) dgn state placeholder, sesuai request
-  // user "kalau kayu ya muncul kayu, kalau neon ya neon 100% sesuai".
+  // Kosong: tidak ada block yang digenggam gizmo — seksi tetap tampil
+  // (slot stabil, tidak lompat) dgn state placeholder.
   const empty = !info;
   const isMulti = !empty && info.isMulti;
   const slug = empty ? null : info.slug;
   const def = slug ? getBlockDef(slug) : null;
   const scaleLabel = empty ? `${STUDS_PER_BLOCK}, ${STUDS_PER_BLOCK}, ${STUDS_PER_BLOCK}` : info.scaleLabel;
 
+  // ── SEKSI EMBEDDED: tanpa wrapper panel/border sendiri — mengalir
+  //    di dalam panel induk (satu wilayah, satu background). ──
   return (
-    <div style={{
-      position: 'absolute', top: 80, right: 16,
-      display: 'flex', flexDirection: 'column',
-      backgroundColor: 'rgba(14, 20, 32, 0.92)',
-      padding: 12, borderRadius: 14,
-      border: '1px solid #1e293b',
-      backdropFilter: 'blur(10px)',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-      zIndex: 5,
-      minWidth: 208, maxWidth: 208,
-      userSelect: 'none',
-    }}>
-      {/* Header — identik header Gizmo Options/Colors (Orbitron) */}
-      <div style={{
-        fontSize: 10, fontWeight: 700, color: '#94a3b8',
-        textTransform: 'uppercase', letterSpacing: '1px',
-        marginBottom: 8, fontFamily: 'Orbitron, sans-serif',
-      }}>{toolName} Info</div>
-
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       {/* ── Kotak view 3D block (100% sesuai jenis) ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
