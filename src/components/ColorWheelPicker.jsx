@@ -356,7 +356,11 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   }, [dragging, handleWheelPos]);
 
   // ── HSV slider handlers ──
-  const onHueChange = useCallback(v => onChange(hsvToHex(v, sat, val)), [sat, val, onChange]);
+  // FIX Phase 71: hue DI-CLAMP 359 — hue 360 ≡ 0 (merah #ff0000) dan
+  // round-trip via hex selalu mengembalikan h=0 → thumb "pentok ke atas"
+  // TELEPORT ke bawah (terukur: 360→#ff0000→h=0→thumb fraksi 1.00).
+  // 359° → #ff0004 → round-trip h≈359 → thumb diam di atas.
+  const onHueChange = useCallback(v => onChange(hsvToHex(Math.min(v, 359), sat, val)), [sat, val, onChange]);
   const onSatChange = useCallback(v => onChange(hsvToHex(hue, v / 100, val)), [hue, val, onChange]);
   const onValChange = useCallback(v => onChange(hsvToHex(hue, sat, v / 100)), [hue, sat, onChange]);
 
@@ -370,10 +374,15 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   const onSatInput = useCallback(v => { const n = parseInt(v); if (!isNaN(n)) onSatChange(Math.max(0, Math.min(100, n))); }, [onSatChange]);
   const onValInput = useCallback(v => { const n = parseInt(v); if (!isNaN(n)) onValChange(Math.max(0, Math.min(100, n))); }, [onValChange]);
 
-  // Hue slider gradient (rainbow top to bottom)
+  // Hue slider gradient — SESUAI handlePos: klik atas = value 360, bawah = 0.
+  // (FIX Phase 71: dulu merah-atas→kuning .17→hijau .33→biru .67→magenta .83 —
+  // BERBALIKAN dengan handlePos (atas=360) → klik kuning-visual malah
+  // menghasilkan magenta 299°, hijau↔biru tertukar; terukur probe RED 4/5.
+  // Gradient benar: warna pada fraksi f harus = hsvToRgb((1−f)×360):
+  // atas=360 merah, .17=magenta, .33=biru, .5=cyan, .67=hijau, .83=kuning.)
   const hueGrad = [
-    [0, '#ff0000'], [0.17, '#ffff00'], [0.33, '#00ff00'],
-    [0.5, '#00ffff'], [0.67, '#0000ff'], [0.83, '#ff00ff'], [1, '#ff0000'],
+    [0, '#ff0000'], [0.17, '#ff00ff'], [0.33, '#0000ff'],
+    [0.5, '#00ffff'], [0.67, '#00ff00'], [0.83, '#ffff00'], [1, '#ff0000'],
   ];
   // Sat slider gradient (white to full hue color)
   const [fullR, fullG, fullB] = hsvToRgb(hue, 1, val);
