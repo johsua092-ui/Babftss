@@ -135,6 +135,26 @@ const AXIS_KEY = { X: 'x', Y: 'y', Z: 'z' };
 /** Toleransi tanda sisi (float). */
 const SIDE_EPS = 1e-6;
 
+// ── FIX v13 (user 2026-09-14: "klik bola bawah malah yang atas aktif;
+//    drag ke atas malah scale ke bawah — super licin / berat / melawan") ──
+/** State drag screen-space per-instance (WeakMap — tidak bocor memori).
+ *  Dipakai saat bidang drag library DEGENERATE (sumbu hampir sejajar kamera). */
+const dragScreenByTc = new WeakMap();
+/** Bola yang DIGENGGAM saat pointerDown — sumber sisi solo paling andal
+ *  (titik potong bidang bisa flip tanda di elevasi tinggi / pointStart
+ *  BASI saat plane-raycast gagal — library hanya set pointStart di dalam
+ *  `if (planeIntersect)`, baris 489-502). */
+const grabbedBallByTc = new WeakMap();
+/** Sumbu DEGENERATE saat |axisWorld·eye| > ini. Terukur probe elevasi:
+ *  45° (dot 0.71) sehat; 60° (0.87) Y− rasio 5.5; 75° → 23; 80° → −102
+ *  (plane hampir sejajar ray → 1px pointer = titik potong meluncur
+ *  puluhan unit → rasio meledak/flip). 0.80 ≈ elevasi 53°. */
+const AXIS_EYE_DEGENERATE = 0.80;
+/** Batas ratio screen-space (anti ledakan d0 ekstrem kecil). */
+const SCREEN_RATIO_MAX = 60;
+/** Sama dgn clamp app Phase 67. */
+const SCALE_MIN_ABS = 0.05;
+
 // Objek sementara (tanpa alokasi per frame).
 const _tmpVec = new THREE.Vector3();
 const _tmpQuat = new THREE.Quaternion();
@@ -556,7 +576,14 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
     const axis = transformControls.axis;
     if (!AXIS_KEY[axis]) return; // XYZ / XY / YZ / XZ → tidak di-solo
 
-    const side = detectDragSide(transformControls, axis);
+    // FIX v13: sisi solo dari BOLA YANG DIGENGGAM (pointerDown) — bukan
+    // titik potong bidang (bisa flip tanda di elevasi tinggi: "klik bola
+    // bawah malah yang atas yang tampil/solo"). Fallback detectDragSide
+    // kalau bola tak terekam (drag via cone fallback).
+    const grabbed = grabbedBallByTc.get(transformControls);
+    const side = (grabbed && grabbed.name === axis)
+      ? sideOfBall.get(grabbed)
+      : detectDragSide(transformControls, axis);
     if (side === 0) return; // sisi tak jelas → jangan sembunyikan apa pun
 
     for (const ball of addedBalls) {
@@ -620,12 +647,132 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
   transformControls.pointerHover = proxHover;
   transformControls.pointerDown = proxDown;
 
+  // ── 5b. v13: hover/down mencatat bola yang digenggam + freeze referensi ──
+  const proxHoverV13 = function (pointer) {
+    proxHover.call(this, pointer);
+    if (this.mode === 'scale' && this.dragging !== true && pointer != null) {
+      this.__v13GrabbedBall = findBallNearPointer(pointer);
+    } else {
+      this.__v13GrabbedBall = null;
+    }
+  };
+
+  const proxDownV13 = function (pointer) {
+    proxDown.call(this, pointer);   // v12: paksa axis dari bola terdekat
+    const near = this.__v13GrabbedBall || null;
+    grabbedBallByTc.set(transformControls, near);
+    dragScreenByTc.set(transformControls, null);
+    try {
+      if (near && transformControls.mode === 'scale' && transformControls.dragging === true &&
+          AXIS_KEY[transformControls.axis] && transformControls.camera && transformControls.object) {
+        const key = AXIS_KEY[transformControls.axis];
+        // Snapshot sendiri (jebakan _scaleStart: library hanya mengisi
+        // _scaleStart di dalam `if (planeIntersect)` L489-496 — saat bidang
+        // degenerate raycast GAGAL → _scaleStart basi dari gesture lama →
+        // scale lompat ke nilai gesture sebelumnya. Kita bekukan sendiri).
+        const startScale = transformControls.object.scale[key];
+        // arah sumbu bola di DUNIA — kolom matrixWorld bola (bake mengikuti)
+        near.geometry.computeBoundingSphere();
+        const axisWorld = new THREE.Vector3()
+          .setFromMatrixColumn(near.matrixWorld, { X: 0, Y: 1, Z: 2 }[transformControls.axis]).normalize();
+        const deg = Math.abs(axisWorld.dot(_tmpVec.copy(transformControls.eye).normalize()));
+        if (deg > AXIS_EYE_DEGENERATE) {
+          // SUMBU DEGENERATE (hampir sejajar kamera) → freeze referensi
+          // RUANG LAYAR (warisan #46 — referensi gesture beku saat mulai):
+          // axisProj = vektor pusat→bola di NDC; grabNdc = posisi pointer awal.
+          scaleObj.updateMatrixWorld(true);
+          const ballNdc = near.geometry.boundingSphere.center.clone()
+            .applyMatrix4(near.matrixWorld).project(transformControls.camera);
+          const ctrNdc = new THREE.Vector3().copy(transformControls.worldPosition)
+            .project(transformControls.camera);
+          const axisProj = new THREE.Vector2(ballNdc.x - ctrNdc.x, ballNdc.y - ctrNdc.y);
+          const al0 = axisProj.length() || 1e-4;
+          // ANCHOR stabil lintas-elevasi: sumbu Y ter-foreshorten parah di
+          // elevasi tinggi (terukur 0.005 NDC @88° → drag 56px = ×33 LICIN)
+          // — normalisasi ke sumbu LAIN yang melebar di layar (max antar 6
+          // bola; di elevasi tinggi X/Z selalu panjang & jalurnya terukur
+          // sehat). Di elevasi rendah max = al0 sendiri → rasa persis
+          // jalur library sehat (25°: ×3.5 per 56px, terukur).
+          let anchor = al0;
+          for (const b of addedBalls) {
+            if (!b.geometry.boundingSphere) b.geometry.computeBoundingSphere();
+            const c = b.geometry.boundingSphere.center.clone()
+              .applyMatrix4(b.matrixWorld).project(transformControls.camera);
+            const len = Math.hypot(c.x - ctrNdc.x, c.y - ctrNdc.y);
+            if (len > anchor) anchor = len;
+          }
+          dragScreenByTc.set(transformControls, {
+            key, axisProj, al0, anchor, startScale,
+            // jarak bertanda pointer awal sepanjang sumbu-layar (relatif pusat)
+            along0: (pointer.x - ctrNdc.x) * axisProj.x / al0 + (pointer.y - ctrNdc.y) * axisProj.y / al0,
+          });
+        }
+      }
+    } catch (e) {
+      dragScreenByTc.set(transformControls, null);
+    }
+  };
+  // ── 5c. v13: pointerMove cabang RUANG LAYAR saat sumbu degenerate ──
+  const origMove = transformControls.pointerMove;
+  const moveHandler = function (pointer) {
+    const st = dragScreenByTc.get(this);
+    if (!(this.mode === 'scale' && this.dragging === true && st && pointer != null &&
+          this.object && AXIS_KEY[this.axis])) {
+      return origMove.call(this, pointer);   // jalur asli (sehat) — tak tersentuh
+    }
+    try {
+      // proyeksi pusat block SEKARANG (tetap diam — pusat transform)
+      const ctrNdc = new THREE.Vector3().copy(this.worldPosition).project(this.camera);
+      const ux = st.axisProj.x / st.al0, uy = st.axisProj.y / st.al0;
+      const along = (pointer.x - ctrNdc.x) * ux + (pointer.y - ctrNdc.y) * uy;
+      // Rasio dinormalisasi ke ANCHOR (offset layar sumbu ter-lebar antar 6
+      // bola, frozen saat down): sumbu Y ter-foreshorten di elevasi tinggi
+      // → al0 kecil → drag kecil = scale meledak ("super licin"). Dengan
+      // anchor: drag 1× jarak bola-layar = ×2 — rasa konsisten di SEMUA
+      // elevasi; di elevasi rendah anchor=al0 → rasa persis jalur library
+      // sehat (sudah disetujui user).
+      const anchor = Math.max(st.anchor || st.al0, 1e-4);
+      let ratio = 1 + (along - st.along0) / anchor;
+      ratio = Math.max(0, Math.min(SCREEN_RATIO_MAX, ratio));
+      // hanya sumbu yang digenggam yang berubah (pola library 649-663);
+      // tanda identitas block (kaca −x sah, Phase 67) dari snapshot down
+      // (bukan _scaleStart library — basi saat plane-raycast gagal).
+      const start = st.startScale;
+      const signStart = start >= 0 ? 1 : -1;
+      let target = signStart * Math.max(Math.abs(start) * ratio, SCALE_MIN_ABS);
+      this.object.scale[st.key] = target;
+      this.object.updateMatrixWorld();
+      this.dispatchEvent({ type: 'change' });
+      this.dispatchEvent({ type: 'objectChange' });
+    } catch (e) {
+      return origMove.call(this, pointer);
+    }
+  };
+
+  transformControls.pointerHover = proxHoverV13;
+  transformControls.pointerDown = proxDownV13;
+  transformControls.pointerMove = moveHandler;
+
+
   const dispose = () => {
     // Lepas wrapper dulu (LIFO terhadap pemasangan).
     if (gizmoRoot.updateMatrixWorld !== originalUpdate) {
       gizmoRoot.updateMatrixWorld = originalUpdate;
     }
-    // Lepas override picking proximity (pola rotate: cek identitas dulu).
+    // Lepas override picking proximity + cabang v13 (LIFO terhadap pemasangan;
+    // cek identitas dulu — pola rotate).
+    if (transformControls.pointerHover === proxHoverV13) {
+      transformControls.pointerHover = proxHover;   // lepas lapis v13 → masih v12
+    }
+    if (transformControls.pointerDown === proxDownV13) {
+      transformControls.pointerDown = proxDown;
+    }
+    if (transformControls.pointerMove === moveHandler) {
+      transformControls.pointerMove = origMove;
+    }
+    // Bersihkan state drag v13 (WeakMap — cukup delete supaya drag mati bersih).
+    grabbedBallByTc.delete(transformControls);
+    dragScreenByTc.delete(transformControls);
     if (transformControls.pointerHover === proxHover) {
       transformControls.pointerHover = origHover;
     }
