@@ -18744,11 +18744,20 @@ Now you can apply Displacement for detailed effect.`);
               <GizmoBlockInfoPanel threeRef={threeRef} toolName="Scale" />
             )}
 
-            {/* Divider halus — pemisah seksi info vs opsi (masih 1 wilayah) */}
-            <div style={{
-              height: 1, backgroundColor: 'rgba(148,163,184,0.16)',
-              margin: '10px 0 8px', borderRadius: 1, flexShrink: 0,
-            }} />
+            {/* Divider halus — pemisah seksi info vs opsi (masih 1 wilayah).
+                Phase 72 v3 (2026-09-15): divider WAJIB ikut syarat seksi di
+                ATASNYA. Sebelumnya dirender TANPA syarat → di tool move/
+                rotate/clone/mirror (yang tidak punya seksi info) garis
+                menggantung persis di bawah header, memisahkan "tidak ada
+                apa-apa" dari opsi = visual noise (terukur harness: divider
+                y=122, hanya 18px di bawah header, seksi info NIHIL).
+                Divider hanya sah kalau benar-benar ada 2 seksi yang dipisah. */}
+            {tool === 'scale' && (
+              <div style={{
+                height: 1, backgroundColor: 'rgba(148,163,184,0.16)',
+                margin: '10px 0 8px', borderRadius: 1, flexShrink: 0,
+              }} />
+            )}
 
             {/* ── Baris opsi (pola reusable — opsi baru tinggal copy pola ini) ── */}
             <div
