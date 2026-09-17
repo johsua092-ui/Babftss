@@ -26,6 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import GizmoBlockInfoPanel from '../components/GizmoBlockInfoPanel';
+import ScaleModeModal from '../components/ScaleModeModal';
 import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
@@ -36,6 +37,10 @@ import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, dispo
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
+import {
+  DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
+  applyScaleByMode, computeScaleModeFrame,
+} from '../utils/scaleModes.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -544,6 +549,61 @@ export default function BlockSimulator3D({ setPage }) {
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+  // ── Phase 73 (2026-09-15): ATURAN SCALING 4 MODE (permintaan user) ──
+  // scaleMode = mode aktif ('1side'|'2side'|'4side'|'6side'), default 1side.
+  // scaleModeRef = cermin untuk closure handler drag (objectChange).
+  // showScaleModeModal = modal "Scale Mode" (muncul saat equip scale pertama).
+  // scaleModeLockedRef = true SETELAH user klik Konfirmasi → modal tidak
+  //   pernah muncul lagi sampai refresh/keluar halaman; kalau user Batal,
+  //   tetap false → modal muncul lagi tiap equip scale (permintaan user).
+  const [scaleMode, setScaleMode] = useState(DEFAULT_SCALE_MODE);
+  const scaleModeRef = useRef(DEFAULT_SCALE_MODE);
+  const [showScaleModeModal, setShowScaleModeModal] = useState(false);
+  const scaleModeLockedRef = useRef(false);
+  useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
+  // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
+  // frameQuat, startScale, startPos }. Diisi saat 'dragging-changed' start,
+  // dibaca/diterapkan di objectChange. null = mode 2side (jalur lama apa adanya).
+  const scaleDragRef = useRef(null);
+
+  // ── Phase 73: TRIGGER modal "Scale Mode" (permintaan user) ──
+  // Muncul tiap kali user meng-equip tool 'scale' SELAMA belum dikonfirmasi.
+  // Setelah Konfirmasi (scaleModeLockedRef=true) → tidak muncul lagi sampai
+  // refresh/keluar halaman. Kalau Batal → tetap false → muncul lagi tiap equip.
+  useEffect(() => {
+    if (tool === 'scale' && !scaleModeLockedRef.current) {
+      setShowScaleModeModal(true);
+    }
+  }, [tool]);
+
+  // Konfirmasi mode → simpan, KUNCI modal (tak muncul lagi sampai refresh),
+  // toast kuning keemasan.
+  const handleScaleModeConfirm = (mode) => {
+    const m = normalizeScaleMode(mode);
+    setScaleMode(m);
+    scaleModeRef.current = m;
+    scaleModeLockedRef.current = true;
+    setShowScaleModeModal(false);
+    toast.warning(`Mode scaling dipilih: ${SCALE_MODE_LABEL[m]}`);
+  };
+
+  // Batal → sistem menganggap user memilih DEFAULT (1 side, permintaan user).
+  // TIDAK mengunci → modal akan muncul lagi saat next equip scale.
+  const handleScaleModeCancel = () => {
+    const m = DEFAULT_SCALE_MODE;
+    setScaleMode(m);
+    scaleModeRef.current = m;
+    setShowScaleModeModal(false);
+    toast.warning(`Mode scaling dipilih: ${SCALE_MODE_LABEL[m]}`);
+  };
+
+  // Phase 73: pilih mode dari tombol "+" di panel (ganti mode sewaktu-waktu).
+  const handleSelectScaleModeFromPanel = (mode) => {
+    const m = normalizeScaleMode(mode);
+    setScaleMode(m);
+    scaleModeRef.current = m;
+    toast.warning(`Mode scaling dipilih: ${SCALE_MODE_LABEL[m]}`);
+  };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
   // Build Area "Coming Soon" modal state
@@ -12301,12 +12361,38 @@ Now you can apply Displacement for detailed effect.`);
         // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           snapshotScaleDragStart(transformControls.object);
+          // ── Phase 73: snapshot drag untuk mode 1/4/6 side ──
+          // Ambil axis + SISI bola + FRAME (lokal vs dunia, warisan #59) +
+          // nilai awal scale/pos. Dipakai objectChange untuk menerapkan mode.
+          // Mode 2side TIDAK butuh snapshot (jalur lama apa adanya).
+          try {
+            const tcSnap = transformControls;
+            const frame = computeScaleModeFrame(
+              THREE, tcSnap.axis, tcSnap.pointStart,
+              tcSnap.worldQuaternion, getScaleWorldAlign(tcSnap),
+            );
+            if (frame && scaleModeRef.current !== '2side') {
+              const o = tcSnap.object;
+              scaleDragRef.current = {
+                axisKey: frame.axisKey,
+                sign: frame.sign,
+                frameQuat: frame.frameQuat,
+                startScale: { x: o.scale.x, y: o.scale.y, z: o.scale.z },
+                startPos: { x: o.position.x, y: o.position.y, z: o.position.z },
+              };
+            } else {
+              scaleDragRef.current = null;   // 2side / axis tak dikenal → jalur lama
+            }
+          } catch (err) {
+            scaleDragRef.current = null;     // gagal snapshot → aman: jalur lama
+          }
         }
       } else {
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
         // di place/restore pakai fallback tanda nilai saat itu).
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           clearScaleDragStart(transformControls.object);
+          scaleDragRef.current = null;   // Phase 73: bersihkan snapshot mode
         }
         // Drag SELESAI.
         // Kalau tool clone/mirror & ada ghost → finalkan jadi block PERMANEN:
@@ -12359,6 +12445,23 @@ Now you can apply Displacement for detailed effect.`);
       // DIKUNCI ke snapshot saat drag mulai (__scaleDragStart di-set di
       // dragging-changed start) — crossing nol mentok di ±0.05 tanpa membalik.
       if (transformControls.getMode() === 'scale') {
+        // ── Phase 73: ATURAN SCALING 1/4/6 SIDE (permintaan user) ──
+        // Mode 2side = BAWAAN — jalur lama TIDAK tersentuh sama sekali
+        // (scaleDragRef null). Untuk mode lain: derive ratio dari sumbu
+        // yang digenggam (library/v13 sudah men-set nilai itu), lalu
+        // terapkan mode (reset sumbu lain + offset sisi seberang utk 1side).
+        const sd = scaleDragRef.current;
+        if (sd) {
+          const s0 = sd.startScale[sd.axisKey];
+          const nowVal = obj.scale[sd.axisKey];
+          // ratio = nilai sekarang / nilai awal (tanda ikut — konsisten
+          // dgn rumus library scale = _scaleStart × tempVector2).
+          const ratio = (s0 !== 0) ? (nowVal / s0) : 1;
+          applyScaleByMode(
+            THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
+            sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
+          );
+        }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
         // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
         // memanjang, CROP saat mengecil; TIDAK melar (absolut semua block).
@@ -18741,7 +18844,12 @@ Now you can apply Displacement for detailed effect.`);
                   NOL modifikasi engine/state page. Anggota keluarga-5 lain
                   (move/rotate/clone/mirror) menyusul di seksi yang sama. ══ */}
             {tool === 'scale' && (
-              <GizmoBlockInfoPanel threeRef={threeRef} toolName="Scale" />
+              <GizmoBlockInfoPanel
+                threeRef={threeRef}
+                toolName="Scale"
+                scaleMode={scaleMode}
+                onSelectScaleMode={handleSelectScaleModeFromPanel}
+              />
             )}
 
             {/* Divider halus — pemisah seksi info vs opsi (masih 1 wilayah).
@@ -23263,6 +23371,19 @@ Now you can apply Displacement for detailed effect.`);
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Phase 73: MODAL "SCALE MODE" (permintaan user) ──
+          Muncul saat equip tool scale pertama (belum dikonfirmasi). Warna
+          oranye keemasan (amber #f59e0b), 6 tombol (4 mode + Confirm/Cancel),
+          TIDAK bisa ditutup kecuali Confirm/Cancel. Design = pola modal
+          Clear All (satu design system: overlay blur, panel gelap, Orbitron). */}
+      {showScaleModeModal && (
+        <ScaleModeModal
+          value={scaleMode}
+          onConfirm={handleScaleModeConfirm}
+          onCancel={handleScaleModeCancel}
+        />
       )}
 
       {/* Reset Camera Confirmation Modal */}
