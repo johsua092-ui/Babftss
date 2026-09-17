@@ -549,16 +549,21 @@ export default function BlockSimulator3D({ setPage }) {
 
   // Clear All confirmation modal state
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
-  // ── Phase 73 (2026-09-15): ATURAN SCALING 4 MODE (permintaan user) ──
+  // ── Phase 73 (2026-09-15) + v2 (2026-09-17): ATURAN SCALING 4 MODE ─
   // scaleMode = mode aktif ('1side'|'2side'|'4side'|'6side'), default 1side.
   // scaleModeRef = cermin untuk closure handler drag (objectChange).
-  // showScaleModeModal = modal "Scale Mode" (muncul saat equip scale pertama).
-  // scaleModeLockedRef = true SETELAH user klik Konfirmasi → modal tidak
-  //   pernah muncul lagi sampai refresh/keluar halaman; kalau user Batal,
-  //   tetap false → modal muncul lagi tiap equip scale (permintaan user).
+  // showScaleModeModal = modal "Scale Mode" tampil/tidak.
+  // scaleModeModalVariant = 'onboarding' (muncul saat equip scale, tidak bisa
+  //   ditutup kecuali Konfirmasi/Batal) | 'picker' (dibuka tombol "+" di panel
+  //   — jendela pilihan bebas). DUA VARIAN = SATU DESAIN (satu komponen).
+  // scaleModeLockedRef = true SETELAH user klik Konfirmasi di varian
+  //   onboarding → modal tidak pernah muncul lagi sampai refresh/keluar
+  //   halaman; kalau Batal → tetap false → muncul lagi tiap equip scale
+  //   (permintaan user). Varian 'picker' TIDAK mengunci (buka-tutup bebas).
   const [scaleMode, setScaleMode] = useState(DEFAULT_SCALE_MODE);
   const scaleModeRef = useRef(DEFAULT_SCALE_MODE);
   const [showScaleModeModal, setShowScaleModeModal] = useState(false);
+  const [scaleModeModalVariant, setScaleModeModalVariant] = useState('onboarding');
   const scaleModeLockedRef = useRef(false);
   useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
   // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
@@ -566,43 +571,50 @@ export default function BlockSimulator3D({ setPage }) {
   // dibaca/diterapkan di objectChange. null = mode 2side (jalur lama apa adanya).
   const scaleDragRef = useRef(null);
 
-  // ── Phase 73: TRIGGER modal "Scale Mode" (permintaan user) ──
+  // ─ Phase 73: TRIGGER modal "Scale Mode" (permintaan user) ──
   // Muncul tiap kali user meng-equip tool 'scale' SELAMA belum dikonfirmasi.
   // Setelah Konfirmasi (scaleModeLockedRef=true) → tidak muncul lagi sampai
   // refresh/keluar halaman. Kalau Batal → tetap false → muncul lagi tiap equip.
   useEffect(() => {
     if (tool === 'scale' && !scaleModeLockedRef.current) {
+      setScaleModeModalVariant('onboarding');
       setShowScaleModeModal(true);
     }
   }, [tool]);
 
-  // Konfirmasi mode → simpan, KUNCI modal (tak muncul lagi sampai refresh),
-  // toast kuning keemasan.
+  // Konfirmasi mode → simpan + toast kuning keemasan.
+  // Varian 'onboarding' (= equip scale pertama): KUNCI modal (tak muncul lagi
+  // sampai refresh). Varian 'picker' (= tombol "+" di panel): jendela pilihan
+  // bebas → TIDAK mengunci apa pun, boleh dibuka-tutup sesuka hati.
   const handleScaleModeConfirm = (mode) => {
     const m = normalizeScaleMode(mode);
     setScaleMode(m);
     scaleModeRef.current = m;
-    scaleModeLockedRef.current = true;
+    if (scaleModeModalVariant !== 'picker') {
+      scaleModeLockedRef.current = true;
+    }
     setShowScaleModeModal(false);
     toast.warning(`Mode scaling dipilih: ${SCALE_MODE_LABEL[m]}`);
   };
 
   // Batal → sistem menganggap user memilih DEFAULT (1 side, permintaan user).
-  // TIDAK mengunci → modal akan muncul lagi saat next equip scale.
+  // Varian 'onboarding' TIDAK mengunci → modal akan muncul lagi saat next
+  // equip scale. Varian 'picker' juga tidak mengubah mode (sekadar menutup).
   const handleScaleModeCancel = () => {
+    setShowScaleModeModal(false);
+    if (scaleModeModalVariant === 'picker') return;
     const m = DEFAULT_SCALE_MODE;
     setScaleMode(m);
     scaleModeRef.current = m;
-    setShowScaleModeModal(false);
     toast.warning(`Mode scaling dipilih: ${SCALE_MODE_LABEL[m]}`);
   };
 
-  // Phase 73: pilih mode dari tombol "+" di panel (ganti mode sewaktu-waktu).
-  const handleSelectScaleModeFromPanel = (mode) => {
-    const m = normalizeScaleMode(mode);
-    setScaleMode(m);
-    scaleModeRef.current = m;
-    toast.warning(`Mode scaling dipilih: ${SCALE_MODE_LABEL[m]}`);
+  // ── Phase 73 v2 (2026-09-17, permintaan user): tombol "+" di panel info
+  //    scale TIDAK LAGI membuka popup kecil — langsung mengarahkan ke MODAL
+  //    "Scale Mode" yang megah (desain sama dengan peringatan equip scale). ──
+  const handleOpenScaleModeFromPanel = () => {
+    setScaleModeModalVariant('picker');
+    setShowScaleModeModal(true);
   };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
@@ -18848,7 +18860,7 @@ Now you can apply Displacement for detailed effect.`);
                 threeRef={threeRef}
                 toolName="Scale"
                 scaleMode={scaleMode}
-                onSelectScaleMode={handleSelectScaleModeFromPanel}
+                onOpenScaleMode={handleOpenScaleModeFromPanel}
               />
             )}
 
@@ -23373,14 +23385,21 @@ Now you can apply Displacement for detailed effect.`);
         </div>
       )}
 
-      {/* ── Phase 73: MODAL "SCALE MODE" (permintaan user) ──
-          Muncul saat equip tool scale pertama (belum dikonfirmasi). Warna
-          oranye keemasan (amber #f59e0b), 6 tombol (4 mode + Confirm/Cancel),
-          TIDAK bisa ditutup kecuali Confirm/Cancel. Design = pola modal
-          Clear All (satu design system: overlay blur, panel gelap, Orbitron). */}
+      {/* ── Phase 73 + v2: MODAL 'SCALE MODE' (permintaan user) ──
+          SATU modal, DUA varian (desain identik — nol duplikasi visual):
+          • variant='onboarding' = saat equip tool scale pertama (belum
+            dikonfirmasi): 6 tombol (4 mode + Konfirmasi/Batal), TIDAK bisa
+            ditutup kecuali Konfirmasi/Batal.
+          • variant='picker' = dibuka tombol plus di panel info scale
+            (permintaan user 2026-09-17: popup kecil DIHAPUS, langsung
+            arahkan ke modal megah ini): klik mode = langsung dipakai,
+            bisa ditutup lewat klik luar / X / Escape.
+          Warna oranye keemasan (amber #f59e0b). Design = pola modal Clear
+          All (satu design system: overlay blur, panel gelap, Orbitron). */}
       {showScaleModeModal && (
         <ScaleModeModal
           value={scaleMode}
+          variant={scaleModeModalVariant}
           onConfirm={handleScaleModeConfirm}
           onCancel={handleScaleModeCancel}
         />
