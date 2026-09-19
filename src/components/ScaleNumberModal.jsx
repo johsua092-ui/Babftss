@@ -157,19 +157,20 @@ export default function ScaleNumberModal({
                 Scale Number
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
-                Masukkan nilai scale dalam studs (1 block = 2 studs)
+                Masukkan step scale dalam studs (drag akan snap ke kelipatan ini)
               </p>
             </div>
           </div>
 
-          {/* Penjelasan singkat — fondasi matematika studs */}
+          {/* Penjelasan singkat — fondasi matematika studs + behavior step */}
           <p style={{
             margin: '0 0 18px 0', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6,
           }}>
-            Nilai studs dipakai untuk apply scale ke block yang sedang
-            di-scale. 1 block penuh = 2 studs; 1 studs = setengah block;
-            0.5 studs = seperempat block. Block yang belum dipilih tidak
-            akan terapply — pilih block dulu lewat gizmo.
+            Nilai studs = <b>step</b> untuk snap drag bola gizmo. Saat user drag,
+            perubahan scale disesuaikan ke kelipatan step ini. 1 block penuh
+            = 2 studs; 1 studs = setengah block; 0.5 studs = seperempat block.
+            Snap aktif di mode 1/4/6 side. Mode 2 side (bawaan) tidak snap —
+            pilih mode lain untuk snap.
           </p>
 
           {/* ── INPUT FIELD — body utama modal ini ── */}

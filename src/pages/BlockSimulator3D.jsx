@@ -574,8 +574,21 @@ export default function BlockSimulator3D({ setPage }) {
   //    Fondasi matematika: scale = studs / STUDS_PER_BLOCK (kontrak bab
   //    STANDAR PENGUKURAN STUDS; STUDS_PER_BLOCK = 2 MUTLAK).
   //    ──
+  // ── Phase 75 (2026-09-19, sesi server z.ai): PERUBAHAN SEMANTIK —
+  //    input studs BUKAN lagi SET langsung ke block. Sekarang = STEP
+  //    untuk drag bola gizmo. Saat user drag, scale di-snap ke
+  //    kelipatan step (lewat applyScaleByMode parameter snapStudStep).
+  //    Behavior: user drag sedikit → block tidak berubah (delta < 0.5
+  //    * stepScale); user drag >= 0.5 * stepScale → block naik/turun
+  //    1 step. Snap relatif ke startScale supaya block tidak melompat
+  //    saat belum drag. Snap AKTIF hanya di mode 1/4/6 side (mode 2 side
+  //    jalur lama Three.js, tidak lewat applyScaleByMode).
+  //    ──
   const [showScaleNumberModal, setShowScaleNumberModal] = useState(false);
   const [scaleNumberValue, setScaleNumberValue] = useState(2);
+  const [scaleNumberStep, setScaleNumberStep] = useState(null);  // null = no snap
+  const scaleNumberStepRef = useRef(null);  // ref supaya event handler baca nilai terbaru
+  useEffect(() => { scaleNumberStepRef.current = scaleNumberStep; }, [scaleNumberStep]);
   useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
   // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
   // frameQuat, startScale, startPos }. Diisi saat 'dragging-changed' start,
@@ -653,25 +666,20 @@ export default function BlockSimulator3D({ setPage }) {
     setShowScaleNumberModal(true);
   };
 
-  // ── Phase 74: handler Konfirmasi ScaleNumberModal — apply scale ke
-  //    block yang sedang di-attach ke gizmo (tc.object). Konversi:
-  //    scale = studs / STUDS_PER_BLOCK. Pakai setScalar untuk apply
-  //    ke 3 sumbu sekaligus (x, y, z) — konsisten dgn kubus block 1x1x1.
-  //    Kalau tidak ada block yang di-attach → toast.warning.
+  // ── Phase 75 (2026-09-19, sesi server z.ai): handler Konfirmasi
+  //    ScaleNumberModal — UBAH SEMANTIK dari SET langsung ke SET STEP.
+  //    Input studs = step untuk snap drag bola gizmo (lewat applyScaleByMode
+  //    parameter snapStudStep). Snap aktif di mode 1/4/6 side (mode 2 side
+  //    jalur lama tidak lewat applyScaleByMode, snap tidak aktif).
+  //    Default value modal saat dibuka lagi = step saat ini (supaya user
+  //    lihat step yang aktif). State scaleNumberStep + ref supaya event
+  //    handler onTransformObjectChange (yang dibuat sekali di useEffect awal)
+  //    baca nilai terbaru via ref.
   //    ──
   const handleScaleNumberConfirm = (studs) => {
-    const tc = threeRef.current && threeRef.current.transformControls;
-    const obj = tc && tc.object;
-    if (!obj || !obj.isObject3D) {
-      toast.warning('Pilih block dulu lewat gizmo Scale sebelum set nilai studs');
-      setShowScaleNumberModal(false);  // FIX bug layar buram: tutup modal juga saat error
-      return;
-    }
-    const scale = studs / STUDS_PER_BLOCK;
-    obj.scale.setScalar(scale);
-    obj.updateMatrixWorld();
-    setShowScaleNumberModal(false);  // FIX bug layar buram: tutup modal supaya overlay blur hilang
-    toast.success(`Block di-scale ke ${studs} studs (scale factor ${scale.toFixed(3)})`);
+    setScaleNumberStep(studs);
+    setShowScaleNumberModal(false);
+    toast.success(`Step scale diset ke ${studs} studs — drag bola gizmo untuk snap ke kelipatan ini`);
   };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
@@ -12448,6 +12456,7 @@ Now you can apply Displacement for detailed effect.`);
                 frameQuat: frame.frameQuat,
                 startScale: { x: o.scale.x, y: o.scale.y, z: o.scale.z },
                 startPos: { x: o.position.x, y: o.position.y, z: o.position.z },
+                snapStudStep: scaleNumberStepRef.current,  // Phase 75: step untuk snap
               };
             } else {
               scaleDragRef.current = null;   // 2side / axis tak dikenal → jalur lama
@@ -12529,6 +12538,7 @@ Now you can apply Displacement for detailed effect.`);
           applyScaleByMode(
             THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
+            sd.snapStudStep,  // Phase 75: step untuk snap ke kelipatan studs
           );
         }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);

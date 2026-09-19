@@ -39,6 +39,23 @@
      nol cabang tambahan di jalur 2 side (jaminan tak tersentuh).
    ================================================================ */
 
+import { STUDS_PER_BLOCK } from './blockStuds.js';
+
+// ── Phase 75 (2026-09-19, sesi server z.ai): snap scale ke kelipatan studs ──
+// User minta: input studs di ScaleNumberModal = STEP untuk drag bola gizmo,
+// bukan SET langsung. Saat user drag, perubahan scale disesuaikan ke
+// kelipatan step. Implementasi: tambah parameter `snapStudStep` ke
+// applyScaleByMode. Snap relatif ke startScale[axis] supaya block tidak
+// melompat kalau user belum drag (raw = startScale → delta = 0 →
+// snappedDelta = 0 → finalScale = startScale).
+// Formula: stepScale = snapStudStep / STUDS_PER_BLOCK (studs → scale factor).
+// Snap HANYA sumbu yang di-scale oleh mode (axes), bukan semua sumbu.
+// Untuk mode 2 side: scaleDragRef.current = null → applyScaleByMode TIDAK
+// dipanggil → snap TIDAK aktif di mode 2 side (jalur lama Three.js
+// men-scale sumbu yang digenggam langsung tanpa hook). User kalau mau
+// snap, pilih mode 1/4/6 side.
+// ──
+
 export const SCALE_MODES = ['1side', '2side', '4side', '6side'];
 
 /** Mode default saat user pertama masuk / menekan Cancel (permintaan user). */
@@ -193,7 +210,7 @@ export function getGeometryHalfSize(object, axisKey) {
  * @param {number} ratio       rasio drag (1 = tidak berubah)
  * @param {number} minAbs      batas minimum absolut (0.05 — Phase 67)
  */
-export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale, startPos, ratio, minAbs = 0.05, frameQuat = null) {
+export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale, startPos, ratio, minAbs = 0.05, frameQuat = null, snapStudStep = null) {
   const m = normalizeScaleMode(mode);
   const axes = getScaledAxes(m, axisKey);
   const r = isFinite(ratio) ? Math.max(0, ratio) : 1;
@@ -215,6 +232,31 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
     const s0 = startScale[a];
     const sgn = s0 >= 0 ? 1 : -1;
     object.scale[a] = sgn * Math.max(Math.abs(s0) * r, minAbs);
+  }
+
+  // ── PHASE 75 (2026-09-19, sesi server z.ai): SNAP scale ke kelipatan studs ──
+  // User input step studs di ScaleNumberModal → snap perubahan scale ke
+  // kelipatan stepScale. Snap RELATIF ke startScale[axis] (bukan absolute)
+  // supaya block TIDAK melompat saat user belum drag (raw = startScale →
+  // delta = 0 → snappedDelta = 0 → finalScale = startScale). Behavior:
+  // user drag sedikit → block tidak berubah (delta < 0.5*stepScale).
+  // user drag >= 0.5*stepScale → block naik/turun 1 step.
+  // stepScale = snapStudStep / STUDS_PER_BLOCK (konversi studs → scale factor).
+  // Snap HANYA sumbu yang di-scale oleh mode ini (axes), bukan semua sumbu.
+  // Mode 1side → 1 sumbu (digenggam); 4side → 2 sumbu lain; 6side → semua.
+  // Mode 2side TIDAK lewat sini (scaleDragRef null → applyScaleByMode tidak
+  // dipanggil → snap tidak aktif). User pilih mode 1/4/6 side untuk snap.
+  if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep)) {
+    const stepScale = snapStudStep / STUDS_PER_BLOCK;
+    for (const a of axes) {
+      const s0 = startScale[a];
+      const sgn = s0 >= 0 ? 1 : -1;
+      const raw = object.scale[a];
+      const delta = raw - s0;
+      const snappedDelta = Math.round(delta / stepScale) * stepScale;
+      const finalScale = sgn * Math.max(Math.abs(s0 + snappedDelta), minAbs);
+      object.scale[a] = finalScale;
+    }
   }
 
   // 1side: geser pusat supaya sisi seberang DIAM.
