@@ -1,0 +1,64 @@
+docs(kontrak): append warisan butir 110-112 — snap real-time vs mouseUp + hysteresis band 0.6 + default mode mutable
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 79 — default 2side + snap saat drag + hysteresis fix
+goyang (commit 596a11c) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak. BUG ini adalah lesson learned KRITIS
+ karena user bilang "sepertinya anda kena jebakan lagi mohon baca
+lagi kontrak permanen md agar anda terhindar dari jebakan".
+
+PENYEBAB
+Phase 78 pindah snap ke mouseUp untuk fix goyang + preserve mode
+1 side semantics. TAPI user mau snap REAL-TIME saat drag (block
+berubah sesuai step saat user drag), BUKAN delayed ke mouseUp.
+User komplain "block tidak berubah saat drag, seperti scale 0".
+Phase 79 fix dengan kembalikan snap ke applyScaleByMode (saat
+drag) + hysteresis band 0.6 (fix goyang di boundary).
+
+SOLUSI
+Append section baru "## 20. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 79 — default 2side + snap saat drag +
+hysteresis fix goyang)" di akhir file. Teks yang sudah ada tidak
+diubah apa pun. Warisan berisi 3 butir:
+  110. Snap saat mouseUp (Phase 78) TIDAK address user complaint
+       "block tidak berubah saat drag". User mau snap REAL-TIME
+       saat drag (feedback instant), BUKAN delayed ke mouseUp.
+       Pola: snap harus real-time saat drag. Kalau goyang, fix
+       dengan hysteresis (BUKAN pindah snap ke mouseUp).
+  111. Hysteresis band 0.6 = fix goyang di boundary + snap
+       real-time + sisi seberang diam. Implementasi: track
+       lastStep per-sumbu di obj.userData.__snapLastStep. Reset
+       di drag mulai + clear di drag selesai. Band 0.6 (lebih
+       besar dari Math.round 0.5) prevent lompat bolak-balik di
+       boundary. Trade-off: block lambat (perlu drag 0.6×stepScale
+       untuk pindah step). Acceptable untuk snap.
+  112. Default scale mode BISA BERUBAH antar phase — user pref
+       mutable. Phase 73 = 1side, Phase 79 = 2side. Jangan asumsi
+       default dari Phase X tetap valid forever.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~100 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~100 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 3 butir warisan karena ada lesson learned
+  KRITIS: snap real-time vs mouseUp (user mau feedback instant),
+  hysteresis band 0.6 (fix goyang di boundary Math.round -0.5
+  ambiguity), default mode mutable (user pref berubah antar
+  phase). Semua 3 butir ditulis DETAIL dengan implementasi kode
+  + pola general supaya AI penerus yang baca kontrak langsung
+  paham akar masalah + cara cegah. User eksplisit bilang "kenapa
+  kena jebakan lagi" — saya akui kesalahan + janji tidak ulang.
+  Implementasi prinsip Aturan #9: "tiap sesi = 1 epoch, kontrak
+  = bobot yang terus ter-update".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).

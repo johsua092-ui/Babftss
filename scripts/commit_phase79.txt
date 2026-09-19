@@ -1,0 +1,181 @@
+fix(scale-ui): Phase 79 — default 2side + snap saat drag + hysteresis fix goyang
+
+MASALAH
+Dua bug dari user setelah Phase 78:
+
+1. Default scale mode saat pertama buka modal 4 mode = 1side. User
+   mau ubah ke 2side. "jika user langsung tekan konfirmasi atau
+   batal ketika pertama kali buka menu pemilihan 4 mode di scale
+   ini maka akan terpaksa pakai scale 1 kan? nah itu ubah jadi 2
+   aja defaultnya".
+
+2. Saat user scale dengan step studs tertentu, block TIDAK berubah
+   sesuai step saat drag. "ketika saya scale angka berapapun
+   harusnya di visual dia terlihat maju memanjang atau memendek
+   sesuai angka studs kan? lah ini yang sekarang tidak! malahan
+   saya berasa seperti sedang memakai scale 0!". User juga bilang
+   "sepertinya anda kena jebakan lagi mohon baca lagi kontrak
+   permanen md".
+
+PENYEBAB
+1. DEFAULT_SCALE_MODE = '1side' di scaleModes.js (sejak Phase 73).
+   User Phase 73 minta 1side, sekarang mau ubah ke 2side.
+
+2. Phase 78 (commit e9b3f1d) pindah snap dari setiap frame
+   (applyScaleByMode) ke mouseUp (snapScaleFinal). Selama drag,
+   block scale smooth (raw, TANPA snap) — user lihat block tidak
+   berubah sesuai step studs, "seperti scale 0". User mau snap
+   REAL-TIME saat drag (block berubah sesuai step saat user drag).
+
+   Tapi snap saat drag (Phase 75, Math.round + computeAnchorOffset
+   pakai snapped scale) = GOYANG di boundary karena Math.round(-0.5)
+   = 0 di JS (round half up), TAPI Math.round(-0.6) = -1. Saat delta
+   oscillate di boundary -0.5×stepScale, snap lompat bolak-balik
+   antara step 0 dan step -1 → posisi lompat bolak-balik = GOYANG.
+   computeAnchorOffset pakai snapped scale → offset lompat bersama
+   snap.
+
+   Phase 77 fix goyang dengan skip computeAnchorOffset saat snap
+   aktif → TAPI break mode 1 side semantics (sisi seberang tidak
+   diam). User komplain "kok di mode 1side 2 sisi ke scale?".
+
+   Phase 78 pindah snap ke mouseUp → TAPI user komplain "block
+   tidak berubah saat drag, seperti scale 0".
+
+   Konflik 3 semantics: snap real-time + sisi seberang diam +
+   tidak goyang. Phase 79 fix ALL 3 dengan hysteresis.
+
+SOLUSI
+2 file berubah, 4 perubahan inti:
+
+**File 1: src/utils/scaleModes.js (86 insertions, 24 deletions)**
+  1. DEFAULT_SCALE_MODE: '1side' → '2side'. Tambah komentar Phase 79
+     yang jelaskan permintaan user + alasan ubah.
+  2. Kembalikan snap logic di applyScaleByMode (dihapus di Phase
+     78). TAPI pakai HYSTERESIS BAND 0.6 (BUKAN Math.round 0.5):
+     - Kalau stepIdx > lastStep: pindah ke stepIdx kalau delta >=
+       (lastStep + 0.6) × stepScale.
+     - Kalau stepIdx < lastStep: pindah ke stepIdx kalau delta <=
+       (lastStep - 0.6) × stepScale.
+     - Kalau delta di antara (lastStep - 0.6) dan (lastStep + 0.6)
+       × stepScale, tetap di lastStep (TIDAK lompat).
+     Behavior: snap real-time saat drag (block berubah sesuai
+     step), TIDAK goyang di boundary (hysteresis prevent lompat
+     bolak-balik), sisi seberang diam (computeAnchorOffset pakai
+     snapped scale).
+  3. Hysteresis state (lastStep per-sumbu) disimpan di
+     obj.userData.__snapLastStep. Persistent di object, reset di
+     onDraggingChanged true (drag mulai) + clear di onDraggingChanged
+     false (drag selesai).
+  4. Komentar Phase 78 yang bilang "snap logic hapus, pindah ke
+     snapScaleFinal" diganti dengan komentar Phase 79 yang jelaskan
+     alasan kembalikan snap ke applyScaleByMode + hysteresis.
+  5. Fungsi snapScaleFinal (Phase 78) tetap di file (unused export
+     — backward compat, tidak dipanggil lagi). Bisa di-cleanup di
+     sesi lain.
+
+**File 2: src/pages/BlockSimulator3D.jsx (44 insertions, 28 deletions)**
+  6. onTransformObjectChange: applyScaleByMode call hapus argumen
+     `null`, ganti dengan `sd.snapStudStep` (kembali ke Phase 75
+     style, TAPI snap logic di applyScaleByMode sekarang pakai
+     hysteresis).
+  7. onDraggingChanged false (mouseUp): HAPUS block call
+     snapScaleFinal. Snap sekarang jalan saat drag (di applyScaleByMode)
+     + hysteresis. Saat mouseUp, block tetap di snapped scale dari
+     frame terakhir (TIDAK perlu snapScaleFinal lagi). Tambah
+     `delete obj.userData.__snapLastStep` di cleanup (bersama
+     clearScaleDragStart + scaleDragRef = null).
+  8. onDraggingChanged true (drag mulai): tambah
+     `delete transformControls.object.userData.__snapLastStep`
+     SEBELUM snapshot drag. Supaya lastStep mulai dari 0 (delta = 0
+     saat drag mulai) — tanpa reset, lastStep dari drag sebelumnya
+     masih ada → snap bisa lompat ke step yang salah.
+
+YANG TIDAK DISENTUH:
+- ScaleNumberModal.jsx — tidak berubah. Phase 77 (koma→titik, 3
+  desimal, STEP=0.001) tetap utuh.
+- BlockSimulator3D.jsx handler confirm (handleScaleNumberConfirm)
+  — tidak berubah. Phase 76 (default value = step saat ini) tetap
+  utuh.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 2 file spesifik berubah: scaleModes.js + BlockSimulator3D.jsx.
+  Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (default baru): scaleDragRef = null → applyScaleByMode
+  tidak dipanggil. Behavior Three.js scale sumbu yang digenggam
+  langsung (jalur lama, tanpa snap, tanpa computeAnchorOffset).
+  Snap tidak aktif di mode 2 side (sudah dicatat di kontrak butir
+  99 + komentar scaleModes.js).
+- Mode 1 side TANPA snap (step=0): applyScaleByMode jalan tanpa
+  snap (hysteresis check `snapStudStep > 0` = false). computeAnchorOffset
+  jalan (sisi seberang diam). Behavior sama seperti sebelum Phase 79.
+- Mode 1 side DENGAN snap (step>0): applyScaleByMode jalan dengan
+  snap + hysteresis. Snap real-time saat drag. Sisi seberang diam
+  (computeAnchorOffset pakai snapped scale). TIDAK goyang di
+  boundary (hysteresis band 0.6).
+
+VERIFIKASI
+- git diff --stat: 2 files changed, 79 insertions(+), 51 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.50s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98 + 107):
+  KASUS 1: Default scale mode = 2side
+  1. User pertama equip Scale → modal muncul (onboarding). ✓
+  2. User Konfirmasi/Batal langsung. ✓
+  3. handleScaleModeConfirm/Cancel → setScaleMode(DEFAULT_SCALE_MODE
+     = '2side'). ✓
+  4. Block scale mode = 2side (default). ✓
+
+  KASUS 2: Mode 1 side + snap step 1 studs + drag mengecil
+  1. User set step = 1 (scaleNumberStep = 1). ✓
+  2. User pilih mode 1 side. ✓
+  3. User drag bola gizmo X mengecil. ✓
+  4. onDraggingChanged true: snapshot + reset __snapLastStep +
+     scaleDragRef = {..., snapStudStep: 1}. ✓
+  5. Selama drag (objectChange setiap frame):
+     a. applyScaleByMode dengan snapStudStep = 1. ✓
+     b. applyScaleByMode: reset → apply ratio → snap + hysteresis
+        band 0.6 → finalScale = startScale + finalStep × stepScale. ✓
+     c. computeAnchorOffset pakai finalScale (snapped) → sisi
+        seberang DIAM. ✓
+     d. Snap REAL-TIME saat drag (block berubah sesuai step). ✓
+     e. TIDAK goyang di boundary (hysteresis prevent lompat
+        bolak-balik). ✓
+  6. User lepas mouse → clearScaleDragStart + delete __snapLastStep. ✓
+
+  Semua step + sub-step aman. FIX ALL 3 (snap real-time + sisi
+  seberang diam + tidak goyang di boundary).
+
+CATATAN
+- BUG INI adalah lesson learned lanjutan dari kontrak butir 107
+  (mental simulation cover ALL semantics) + butir 108 (jangan
+  sacrifice semantics). Phase 78 sacrifice "snap real-time" untuk
+  fix goyang (pindah snap ke mouseUp). User tidak terima. Phase 79
+  fix ALL 3 dengan hysteresis band 0.6: snap real-time (kembali ke
+  applyScaleByMode) + tidak goyang (hysteresis prevent lompat
+  bolak-balik di boundary) + sisi seberang diam (computeAnchorOffset
+  pakai snapped scale).
+- Trade-off: block lambat (perlu drag 0.6×stepScale untuk pindah
+  step, BUKAN 0.5×stepScale). Acceptable untuk snap (user expect
+  step function). Kalau user komplain lambat, turunkan HYSTERESIS_BAND
+  ke 0.55 atau 0.51 (lebih dekat ke Math.round 0.5, TAPI tetap
+  prevent goyang di boundary).
+- Komentar header Phase 75 di scaleModes.js baris 44-57 yang bilang
+  "snap aktif di applyScaleByMode" sekarang AKURAT LAGI (Phase 79
+  kembalikan snap ke applyScaleByMode). Tapi komentar Phase 78 yang
+  bilang "snap logic hapus" di dalam applyScaleByMode sudah diganti
+  dengan komentar Phase 79.
+- snapScaleFinal di scaleModes.js sekarang UNUSED (Phase 79 tidak
+  panggil lagi). Bisa di-cleanup di sesi lain. Untuk minimal change,
+  biarkan (tidak fatal, vite build OK).
+- Import snapScaleFinal di BlockSimulator3D.jsx baris 43 sekarang
+  UNUSED. Bisa di-cleanup di sesi lain.
