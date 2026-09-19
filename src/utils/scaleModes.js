@@ -369,73 +369,78 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
 }
 
 /**
- * snapScaleFinal — Phase 78 (2026-09-19, sesi server z.ai)
+ * applyGeometryOffset — Phase 87 (2026-09-19, sesi server z.ai)
  *
- * SNAP scale ke kelipatan stepScale + computeAnchorOffset FINAL.
- * Dipanggil SAAT MOUSEUP (drag selesai) — BUKAN setiap frame.
+ * GEOMETRY TRANSLATE PER-BLOCK: achieve "sisi seberang DIAM + pusat DIAM"
+ * tanpa modify object.position. Modify geometry vertices (BUKAN position).
  *
- * Kenapa SNAP saat mouseUp, BUKAN setiap frame:
- * Sebelum Phase 78, snap jalan setiap frame di applyScaleByMode.
- * Saat snap lompat antar step (karena user drag), scale berubah
- * cepat → computeAnchorOffset (yang pakai scale untuk hitung
- * offset posisi) juga lompat → posisi block goyang/bergetar.
+ * User mau BOTH: sisi seberang diam + pusat diam. Tidak mungkin dengan
+ * object.scale + object.position (scale dari pusat → sisi bergerak simetris).
+ * TAPI mungkin dengan geometry.translate (modify geometry vertices):
  *
- * Phase 77 fix goyang dengan SKIP computeAnchorOffset saat snap
- * aktif — TAPI break mode 1 side semantics (sisi seberang tidak
- * diam). User komplain: "kok di mode 1side 2 sisi ke scale?
- * harusnya sisi lain diam".
+ * Final position = (geometry vertices + translate) × scale + position.
  *
- * Phase 78 fix BOTH bugs (goyang + sisi seberang diam):
- *  - Selama drag: applyScaleByMode JALAN tanpa snap (smooth),
- *    computeAnchorOffset pakai raw scale → sisi seberang DIAM.
- *  - Saat mouseUp: snapScaleFinal snap 1x ke step terdekat +
- *    computeAnchorOffset pakai snapped scale → sisi seberang
- *    TETAP di posisi snapped (lompat sedikit ke snapped position,
- *    TAPI tidak goyang karena hanya 1x lompatan).
+ * Untuk sisi seberang diam di posisi awal:
+ * (geometrySisiSeberang + translate) × finalScale + startPos = sisiSeberangAwal
+ * sisiSeberangAwal = startPos + geometrySisiSeberang × startScale
+ * → translate = halfSize × (finalScale - startScale) / finalScale × sign
+ *
+ * Hasil:
+ * - Sisi seberang DIAM (geometry.translate compensate). ✓
+ * - Pusat object DIAM (object.position = startPos). ✓
+ * - Sisi yang digenggam bergerak (object.scale). ✓
+ * - Reversibel (offset proportional ke delta scale, BUKAN absolute). ✓
+ *
+ * WAJIB: object.geometry = CLONE (BUKAN shared). Kalau shared, modify
+ * geometry akan affect semua mesh yang share geometry. Clone saat
+ * drag mulai (lihat BlockSimulator3D.jsx onDraggingChanged true).
  *
  * @param {object} THREE
- * @param {object} object      mesh block
+ * @param {object} object      mesh block (geometry = CLONE, BUKAN shared)
  * @param {string} mode        '1side' | '2side' | '4side' | '6side'
  * @param {string} axisKey     sumbu bola yang digenggam
  * @param {number} sign        +1 / −1 sisi bola
  * @param {object} startScale  snapshot {x,y,z} saat drag mulai
- * @param {object} startPos    snapshot {x,y,z} posisi saat drag mulai
- * @param {number} snapStudStep step dalam studs (0/null = no snap)
- * @param {number} minAbs      batas minimum absolut (0.05)
- * @param {object} frameQuat   quaternion frame referensi
+ * @param {object} originalGeometry  clone asli (untuk reset position attribute)
  */
-export function snapScaleFinal(THREE, object, mode, axisKey, sign, startScale, startPos, snapStudStep, minAbs = 0.05, frameQuat = null) {
-  if (!THREE || !object) return null;
+export function applyGeometryOffset(THREE, object, mode, axisKey, sign, startScale, originalGeometry) {
+  if (!THREE || !object || !object.geometry || !originalGeometry) return;
+
+  // 1. RESET clone position attribute ke original (copy array).
+  //    Setiap frame, reset dulu supaya tidak double-translate.
+  const origPos = originalGeometry.attributes.position;
+  const clonePos = object.geometry.attributes.position;
+  if (origPos && clonePos && origPos.array && clonePos.array) {
+    const src = origPos.array;
+    const dst = clonePos.array;
+    for (let i = 0; i < src.length; i++) {
+      dst[i] = src[i];
+    }
+    clonePos.needsUpdate = true;
+  }
+
+  // 2. Kalau mode 1 side: translate geometry supaya sisi seberang DIAM.
+  //    Mode lain (2/4/6 side): tidak ada translate (pusat diam, sisi
+  //    bergerak simetris = mode 2/4/6 side behavior).
   const m = normalizeScaleMode(mode);
-  const axes = getScaledAxes(m, axisKey);
-
-  // Snap scale ke kelipatan stepScale (relatif ke startScale).
-  // stepScale = snapStudStep / STUDS_PER_BLOCK (studs → scale factor).
-  if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep)) {
-    const stepScale = snapStudStep / STUDS_PER_BLOCK;
-    for (const a of axes) {
-      const s0 = startScale[a];
-      const sgn = s0 >= 0 ? 1 : -1;
-      const raw = object.scale[a];
-      const delta = raw - s0;
-      const snappedDelta = Math.round(delta / stepScale) * stepScale;
-      const finalScale = sgn * Math.max(Math.abs(s0 + snappedDelta), minAbs);
-      object.scale[a] = finalScale;
+  if (m === '1side' && axisKey && sign !== undefined && startScale) {
+    const halfSize = getGeometryHalfSize(originalGeometry, axisKey);
+    const finalScale = object.scale[axisKey];
+    if (finalScale !== 0 && isFinite(finalScale) && halfSize > 0) {
+      const s0 = startScale[axisKey] || 1;
+      // offset = halfSize × (finalScale - startScale) / finalScale × sign
+      const offset = halfSize * (finalScale - s0) / finalScale * (sign >= 0 ? 1 : -1);
+      if (isFinite(offset) && offset !== 0) {
+        object.geometry.translate(
+          axisKey === 'x' ? offset : 0,
+          axisKey === 'y' ? offset : 0,
+          axisKey === 'z' ? offset : 0,
+        );
+      }
     }
   }
 
-  // computeAnchorOffset final (pakai snapped scale) — supaya sisi
-  // seberang DIAM di posisi snapped (BUKAN raw position). Tanpa ini,
-  // setelah snap, sisi seberang akan bergeser karena pusat tetap di
-  // raw position padahal scale sudah snapped.
-  if (needsAnchorOffset(m) && startPos) {
-    const half = getGeometryHalfSize(object, axisKey);
-    const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
-    if (off) {
-      object.position.set(startPos.x, startPos.y, startPos.z);
-      object.position.add(off);
-    }
-  }
-
-  return object.scale;
+  // 3. Update bounding box + bounding sphere (karena geometry di-modify).
+  object.geometry.computeBoundingBox();
+  object.geometry.computeBoundingSphere();
 }

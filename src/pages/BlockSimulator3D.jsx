@@ -40,7 +40,7 @@ import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlo
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
-  applyScaleByMode, computeScaleModeFrame, snapScaleFinal,
+  applyScaleByMode, computeScaleModeFrame, applyGeometryOffset,
 } from '../utils/scaleModes.js';
 import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
@@ -12461,9 +12461,18 @@ Now you can apply Displacement for detailed effect.`);
         // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           snapshotScaleDragStart(transformControls.object);
+          // Phase 87: clone geometry → originalGeometry. Set tc.object.geometry = clone.
+          // applyGeometryOffset akan modify clone (reset + translate) setiap frame.
+          // object.position tetap DIAM (startPos). Sisi seberang DIAM via geometry.translate.
+          const obj87 = transformControls.object;
+          if (obj87.geometry) {
+            if (!obj87.userData.__originalGeometry) {
+              obj87.userData.__originalGeometry = obj87.geometry.clone();
+            }
+            // Set geometry = clone dari original (fresh, belum di-translate)
+            obj87.geometry = obj87.userData.__originalGeometry.clone();
+          }
           // Phase 79: reset hysteresis state supaya lastStep mulai dari 0
-          // (delta = 0 saat drag mulai). Tanpa reset, lastStep dari drag
-          // sebelumnya masih ada → snap bisa lompat ke step yang salah.
           if (transformControls.object.userData) {
             delete transformControls.object.userData.__snapLastStep;
           }
@@ -12575,7 +12584,13 @@ Now you can apply Displacement for detailed effect.`);
           applyScaleByMode(
             THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
-            sd.snapStudStep,  // Phase 79: snap saat drag + hysteresis (kembali ke Phase 75 style, TAPI dengan hysteresis band 0.6 untuk fix goyang)
+            sd.snapStudStep,
+          );
+          // Phase 87: applyGeometryOffset — geometry translate per-block.
+          // Sisi seberang DIAM (geometry.translate) + pusat DIAM (position = startPos).
+          applyGeometryOffset(
+            THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
+            sd.startScale, obj.userData.__originalGeometry,
           );
         }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
