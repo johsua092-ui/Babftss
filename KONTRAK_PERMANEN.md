@@ -2885,6 +2885,102 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     `scaleModeRef`, `scaleModeLockedRef`, `toolRef`, `threeRef`,
     `scaleDragRef`, `scaleNumberStepRef` (Phase 75 baru).
 
+---
+
+## 17. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 76 — fix default value modal + izinkan input 0/0.01/0.02)
+
+101. **DEFAULT VALUE MODAL = STATE YANG USER SET SEBELUMNYA, BUKAN CURRENT STATE TARGET**
+    (sesi 2026-09-19, fix commit `249de67` untuk bug Phase 74 commit
+    `c455b03` + Phase 75 commit `6daaa3d`): ScaleNumberModal punya
+    bug: saat user buka modal lagi setelah scale block ke 8 studs,
+    default value input = 8 (current scale block), BUKAN step
+    saat ini. User expect: default value = step yang user sudah
+    set lewat Konfirmasi sebelumnya (mis. 2), bukan current scale
+    block yang berubah saat user drag. Akar masalah: di
+    handleComingSoonClick, saya baca `tc.object.scale` → konversi
+    ke studs → set sebagai default value. Ini salah karena default
+    value harusnya = state `scaleNumberStep` (yang persist di
+    React state, tidak berubah saat user drag block).
+    **Pola WAJIB untuk modal input yang punya state persist**:
+    default value modal = `stateYangSudahDiset ?? defaultValueFallback`.
+    Bukan `currentValueTarget` (yang berubah saat user interaksi
+    dengan target). Alasan: user buka modal untuk SET nilai baru;
+    kalau default value ikut current value target, user bingung
+    "kok angkanya berubah padahal cuma mau ganti step?". Default
+    value = state persist supaya user lihat step yang sedang aktif,
+    lalu user bisa ganti atau biarkan.
+    **Implementasi**:
+    ```javascript
+    // BENAR (Phase 76):
+    setScaleNumberValue(scaleNumberStep ?? 2);  // state persist
+    // SALAH (Phase 74, commit c455b03):
+    setScaleNumberValue(Math.max(0.25, maxScale * STUDS_PER_BLOCK));
+    // ↑ current scale block, berubah saat user drag
+    ```
+
+102. **JANGAN ASUMSI BATASAN MINIMUM INPUT KALAU USER TIDAK EKSPLISIT MINTA**
+    (sesi 2026-09-19, fix commit `249de67`, kelanjutan butir 97):
+    user Phase 74 tulis: "yang terkecil disini adalah 0! dimana
+    jika user ingin scale nya menggunakan 0 studs maka tidak ada
+    batasan sama sekali! jadi langsung lancar sembarangan tanpa
+    terikat batasan matematika! dan dari 0 itu ada 0.01 0.02 0.03
+    0.04 0.05 0.06 0.07 0.08 0.09 lalu jadi 0.1 0.2 0.3 0.4 dan
+    seterusnya". Saya Phase 74 set MIN_STUDS = 0.25 karena takut
+    block terlalu kecil sampai susah dilihat. Tapi user eksplisit
+    mau 0 (no snap) + nilai kecil 0.01, 0.02, ... Saya asumsi
+    "block terlalu kecil = buruk UX" tanpa konfirmasi user.
+    Hasilnya: user komplain "kenapa 0.1 dilarang?".
+    **Pelajaran**: untuk input numerik user, JANGAN asumsi
+    batasan minimum. Pakai 0 (atau -Infinity kalau konteks
+    butuhkan negatif) sebagai minimum default, KECUALI:
+    (a) user eksplisit minta batasan (mis. "minimum 0.5 studs"),
+    (b) ada kontrak/app constraint hard yang TIDAK bisa diubah
+        (mis. MIN_ABS_SCALE app = 0.05 di blockScale.js yang
+        mencegah block jebol/terbalik — itu safety net di
+        applyScaleByMode, BUKAN di input modal).
+    Input modal = UX layer (fleksibel, user control). Apply layer
+    (applyScaleByMode) = safety layer (hard clamp, mencegah
+    crash/visual bug). Jangan campur aduk: input modal boleh
+    terima 0, apply layer tetap clamp ke minimum hard (0.05).
+    User yang input 0.01 → snap aktif dengan stepScale 0.005 →
+    saat drag mengecil, block di-clamp ke 0.05 (MIN_ABS_SCALE app).
+    User lihat block tidak bisa mengecil lebih kecil dari 0.1 studs
+    walau step 0.01 — itu behavior safety, BUKAN bug.
+
+103. **POLA TOGGLE: INPUT 0 = MATIKAN FITUR, INPUT > 0 = AKTIFKAN**
+    (sesi 2026-09-19, fix commit `249de67`): untuk fitur yang
+    punya parameter numerik (step, threshold, dll), pola toggle
+    lewat input 0 = pattern UX yang natural. User tidak perlu
+    tombol "Aktifkan/Nonaktifkan" terpisah — cukup input 0 untuk
+    matikan, input > 0 untuk aktifkan dengan nilai itu.
+    Implementasi di applyScaleByMode (scaleModes.js): check
+    `if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep))`
+    → kalau snapStudStep = 0 atau null → check = false → snap
+    tidak aktif. Tidak perlu khusus set null kalau user input 0;
+    angka 0 otomatis = off lewat check `> 0`.
+    Di caller (BlockSimulator3D.jsx): `setScaleNumberStep(studs)`
+    langsung — kalau 0, state = 0 (BUKAN null). useEffect sync ref.
+    applyScaleByMode call menerima `sd.snapStudStep = 0` → snap
+    off. Behavior konsisten: 0 = off, > 0 = on.
+    **Pola untuk fitur lain yang punya parameter numerik** (snap,
+    threshold, multiplier, dll): pakai check `value > 0` (atau
+    `value !== 0` kalau negatif valid) sebagai toggle otomatis.
+    Tambah toast beda untuk 0 vs > 0 supaya user tahu behavior
+    yang aktif:
+    ```javascript
+    if (studs === 0) {
+      toast.success('Snap dimatikan — drag bebas');
+    } else {
+      toast.success(`Step diset ke ${studs} studs — drag untuk snap`);
+    }
+    ```
+    **Pelajaran**: kalau fitur punya parameter numerik, pertimbangkan
+    0 = toggle off. Lebih UX-friendly daripada tombol checkbox
+    "Aktifkan" terpisah + input field. User input 0 = matikan,
+    input angka lain = aktifkan dengan nilai itu. SATU kontrol
+    untuk dua fungsi (toggle + value).
+
+
 
 
 
