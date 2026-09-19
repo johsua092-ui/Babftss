@@ -134,29 +134,27 @@ export function needsAnchorOffset(mode) {
  */
 export function computeAnchorOffset(THREE, object, axisKey, sign, scaleStart, scaleNew, halfSize, frameQuat = null) {
   if (!THREE || !object) return null;
-  // Phase 84 (2026-09-19, sesi server z.ai): UBAH dari (scaleNew - scaleStart)
-  // ke Math.abs(scaleNew - scaleStart). User komplain: "scale mengecil dia
-  // maju tepat 1 studs ke arah saya sedang memendekkan blocknya. dia ngikutin!".
+  // Phase 85 (2026-09-19, sesi server z.ai): REVERT Math.abs dari Phase 84.
+  // Math.abs menyebabkan offset selalu POSITIF (MAJU). Saat scale kembali ke
+  // ukuran asli (scaleNew = scaleStart), offset BUKAN 0 — pusat TIDAK kembali
+  // ke posisi awal. Setiap cycle membesar→mengecil, pusat bergeser lagi.
+  // AKUMULASI. User komplain: "scale panjang lalu pendek sampai mentok ke
+  // ukuran asli, block maju 1 studs ke arah scale. Pola sama, berulang."
   //
-  // Sebelum Phase 84: delta = (scaleNew - scaleStart) × sign × halfSize.
-  // Saat scale MENGECIL: delta NEGATIF → offset NEGATIF → pusat geser MUNDUR
-  // (ke arah sisi seberang). Sisi seberang DIAM, sisi yang digenggam bergerak
-  // masuk. User lihat: block geser MUNDUR (ke arah sisi seberang). User tidak
-  // mau ini — user mau: saat mengecil, sisi yang digenggam DIAM, sisi seberang
-  // bergerak masuk, pusat MAJU (ke arah sisi yang digenggam).
+  // (scaleNew - scaleStart) = REVERSIBEL:
+  // - Scale membesar: delta positif → pusat MAJU → sisi seberang DIAM.
+  // - Scale mengecil: delta negatif → pusat MUNDUR → sisi seberang DIAM.
+  // - Scale kembali ke ukuran asli: delta = 0 → pusat KEMBALI ke posisi awal. ✓
   //
-  // Fix Phase 84: delta = Math.abs(scaleNew - scaleStart) × sign × halfSize.
-  // Selalu POSITIF → offset selalu POSITIF → pusat selalu MAJU (ke arah sisi
-  // yang digenggam).
-  // - Scale MEMBESAR: delta = (scaleNew - scaleStart) × sign × halfSize (positif).
-  //   Pusat MAJU. Sisi seberang DIAM. Sisi yang digenggam bergerak KELUAR. ✓
-  // - Scale MENGECIL: delta = (scaleStart - scaleNew) × sign × halfSize (positif).
-  //   Pusat MAJU. Sisi yang digenggam DIAM. Sisi seberang bergerak MASUK. ✓
-  // User Phase 78 mau sisi seberang diam (saat membesar). User Phase 84 mau
-  // sisi yang digenggam diam (saat mengecil). Math.abs fix BOTH:
-  // - Saat membesar: sisi seberang diam (computeAnchorOffset saat ini). ✓
-  // - Saat mengecil: sisi yang digenggam diam (kebalikan). ✓
-  const delta = Math.abs(scaleNew - scaleStart) * (sign >= 0 ? 1 : -1) * halfSize;
+  // Math.abs = TIDAK REVERSIBEL:
+  // - Scale membesar: delta positif → pusat MAJU.
+  // - Scale mengecil: delta positif (BUKAN negatif) → pusat MAJU lagi → AKUMULASI.
+  // - Scale kembali ke ukuran asli: delta positif (BUKAN 0) → pusat TIDAK kembali. ✗
+  //
+  // Pelajaran: offset posisi WAJIB reversibel (proportional ke delta scale).
+  // Math.abs = symmetric tapi TIDAK reversibel. (scaleNew - scaleStart) =
+  // asymmetric tapi reversibel. Untuk computeAnchorOffset, reversibel > symmetric.
+  const delta = (scaleNew - scaleStart) * (sign >= 0 ? 1 : -1) * halfSize;
   if (!isFinite(delta) || delta === 0) return null;
   const local = new THREE.Vector3(
     axisKey === 'x' ? 1 : 0,
