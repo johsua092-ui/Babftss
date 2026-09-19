@@ -1,0 +1,113 @@
+fix(scale-ui): Phase 83 — kembali ke computeAnchorOffset SELALU (ide user: pusat ikut titik tengah)
+
+MASALAH
+User Phase 82 komplain "1 side jadi 2 side" karena Phase 82 skip
+computeAnchorOffset saat snap aktif → sisi seberang bergerak
+simetris (BUKAN diam). User mau sisi seberang DIAM (mode 1 side
+true semantics) + pusat bergeser ke titik tengah.
+
+User ide jenius: "pusat ikut bergeser maju jika block di scale
+panjang atau bergeser mundur jika block di pendekkan. Pusat
+mengikuti titik tengah block yang di-scale. Terapkan kepada
+SEMUA mode (1, 2, 4, 6 side)."
+
+PENYEBAB
+Phase 82 skip computeAnchorOffset saat snap aktif (`&& !snapActive`)
+→ sisi seberang bergerak simetris (mode 2 side behavior) → user
+komplain "1 side jadi 2 side".
+
+SOLUSI
+1 file berubah, 1 perubahan inti:
+
+**File: src/utils/scaleModes.js (16 insertions, 19 deletions)**
+  1. Hapus `&& !snapActive` dari check computeAnchorOffset. Kembali
+     ke `if (needsAnchorOffset(m) && startPos)`. computeAnchorOffset
+     SELALU jalan untuk mode 1 side (sisi seberang DIAM, pusat
+     bergeser ke titik tengah).
+  2. Update komentar Phase 82 → Phase 83 yang jelaskan:
+     - Untuk mode 1 side: computeAnchorOffset geser pusat ke titik
+       tengah (antara sisi seberang DIAM dan sisi yang bergerak).
+       Sisi seberang diam, sisi yang digenggam bergerak, pusat
+       bergeser ke titik tengah. ✓
+     - Untuk mode 2/4/6 side: needsAnchorOffset return false →
+       skip computeAnchorOffset → pusat tetap di tempat (scale dari
+       pusat = pusat = titik tengah). Sisi + dan sisi − bergerak
+       simetris, pusat tetap di titik tengah. ✓
+     - Phase 82 skip computeAnchorOffset saat snap aktif → user
+       komplain "1 side jadi 2 side". Phase 83 kembalikan
+       computeAnchorOffset SELALU → sisi seberang DIAM (mode 1 side
+       true semantics) + pusat bergeser ke titik tengah (ide user).
+
+YANG TIDAK DISENTUH:
+- BlockSimulator3D.jsx — tidak berubah. Phase 81 (default
+  scaleNumberStep = 2) tetap utuh. Snap aktif sejak awal.
+- ScaleNumberModal.jsx — tidak berubah.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+- Snap + hysteresis + cek minimum (Phase 79 + 82) tetap utuh.
+  Cuma computeAnchorOffset yang di-kembalikan ke SELALU (BUKAN
+  skip saat snap aktif).
+
+AMAN
+- 1 file spesifik berubah: scaleModes.js. Tidak ada file lain
+  tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh.
+- Mode 1 side + snap (Phase 79 hysteresis + Phase 82 cek minimum)
+  tetap utuh. Cuma computeAnchorOffset yang di-kembalikan ke SELALU.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 16 insertions(+), 19 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.10s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98 + 107):
+  KASUS: Mode 1 side + snap step 1 studs + drag mengecil dari
+  default 2 studs
+  1. startScale = 1.0 (default, 2 studs). step = 1 studs (stepScale
+     = 0.5). snapActive = true. ✓
+  2. User drag mengecil. delta = -0.7. stepIdx = round(-1.4) = -1. ✓
+  3. Hysteresis: delta <= (0 - 0.6) × 0.5 = -0.3. delta -0.7 <=
+     -0.3. Cukup. finalStep = -1. ✓
+  4. Cek minimum: candidateScale = 1.0 + (-1) × 0.5 = 0.5.
+     |0.5| > minAbs (0.05). finalStep = -1. ✓
+  5. finalScale = 1.0 + (-1) × 0.5 = 0.5. Block mengecil ke 1
+     studs. ✓
+  6. computeAnchorOffset SELALU (Phase 83). offset = (0.5 - 1.0)
+     × 1 × 0.5 = -0.25. Pusat geser -0.25 ke arah sisi seberang. ✓
+  7. Sisi seberang diam di -0.5 (sesuai start 1.0 × 0.5 = -0.5). ✓
+  8. Sisi yang digenggam bergerak. Sisi seberang diam. Pusat
+     bergeser ke titik tengah (antara sisi seberang diam dan sisi
+     yang bergerak). ✓
+
+  Semua step aman. Fix user complaint:
+  - Sisi seberang DIAM (mode 1 side true semantics). ✓
+  - Pusat bergeser ke titik tengah (ide user jenius). ✓
+  - Hanya 1 sumbu yang di-scale (sumbu lain diam). ✓
+  - Snap aktif real-time (Phase 79 hysteresis). ✓
+  - Cek minimum (Phase 82). ✓
+
+CATATAN
+- BUG INI = lesson learned lanjutan dari kontrak butir 115 (user
+  pref berubah antar phase). Phase 82 prioritaskan block diam (skip
+  computeAnchorOffset). Phase 83 kembalikan ke sisi seberang diam
+  + pusat bergeser ke titik tengah (ide user). User pref berubah
+  lagi — TAPI kali ini user kasih ide jenius yang resolve konflik
+  (sisi seberang diam + pusat bergeser = computeAnchorOffset, yang
+  sudah ada sejak Phase 73).
+- Pelajaran: kalau user kasih IDE sendiri, dengarkan + implementasi.
+  User paling tahu apa yang dia mau. computeAnchorOffset sudah ada
+  sejak Phase 73, TAPI saya Phase 77/82 skip karena komplain
+  "geser-geser". User Phase 83 kasih ide "pusat ikut titik tengah"
+  = computeAnchorOffset. Jadi sebenarnya, computeAnchorOffset sudah
+  benar sejak awal — user cuma perlu paham bahwa "pusat bergeser"
+  = "pusat ikut titik tengah" (BUKAN "block pindah lokasi").
+- Trade-off: computeAnchorOffset + snap saat drag = pusat lompat 1x
+  per step (saat snap lompat antar step). Hysteresis band 0.6
+  prevent lompat bolak-balik di boundary. Kalau user komplain
+  "geser-geser" lagi, naikkan band ke 0.9.
