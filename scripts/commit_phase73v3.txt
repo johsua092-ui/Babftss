@@ -1,0 +1,111 @@
+feat(scale-ui): Phase 73 v3 — tombol "+" jadi coming soon, gear buka modal Scale
+
+MASALAH
+Tombol "+" di pojok kiri-atas kotak view block (komponen
+GizmoBlockInfoPanel) selama ini langsung membuka modal "Scale Mode"
+(varian picker) saat diklik. User minta:
+  (1) Tombol "+" itu klik = muncul tulisan "coming soon" (bukan
+      buka modal lagi).
+  (2) Tambah tombol BARU dengan icon GEAR ORANYE, posisi DI BAWAH
+      tombol "+". Klik gear = buka modal "Scale Mode" (peran tombol
+      "+" lama).
+  (3) Urutan visual: "+" di atas (coming soon), gear di bawah
+      (buka modal).
+
+PENYEBAB
+Phase 73 v2 (commit bc82b8c) membuat tombol "+" di pojok kiri-atas
+kotak view = buka modal Scale Mode. User sekarang mau pecah tombol
+itu jadi 2: tombol "+" sibuk (coming soon), gear ambil alih peran
+buka-modal. Alasan: user ingin simpan tombol "+" untuk fitur lain
+yang masih coming soon, sementara modal 4 mode scale dipindah ke
+tombol gear.
+
+SOLUSI
+2 file berubah, 7 perubahan total:
+
+**File 1: src/components/GizmoBlockInfoPanel.jsx**
+  1. Import: tambah `Settings` ke import lucide-react (icon gear).
+  2. Signature: tambah prop `onComingSoon = null` (default null,
+     aman kalau caller belum passing).
+  3. Komentar header: tambah block Phase 73 v3 (2026-09-19) yang
+     menjelaskan perubahan ini + catatan bahwa komentar Phase 73 v2
+     di ScaleModeModal.jsx sekarang outdated (lihat kontrak butir 83).
+  4. TOMBOL "+" LAMA: behavior BERUBAH. onClick dari
+     `onOpenScaleMode && onOpenScaleMode()` jadi
+     `onComingSoon && onComingSoon()`. title/aria-label jadi
+     "Coming soon". Icon Plus tetap, style tetap (top:6 left:6,
+     26px, accent amber, border amber, hover darker).
+  5. TOMBOL GEAR BARU: tambah block JSX baru SETELAH tombol "+".
+     Posisi top:38 left:6 (jarak 6px dari tombol + yang berakhir
+     di top:32). onClick = `onOpenScaleMode && onOpenScaleMode()`.
+     Icon Settings size 16 strokeWidth 2.6 (identik dengan Plus
+     supaya simetris). title/aria-label "Pilih mode scaling
+     (1/2/4/6 side)" (sama dengan tombol + lama). Style identik
+     dengan tombol + (background, border, color, hover, dll).
+
+**File 2: src/pages/BlockSimulator3D.jsx**
+  6. Tambah handler `handleComingSoonClick` di baris 620-627:
+     panggil `toast.info('Fitur ini masih coming soon — bersiap!')`.
+     Pakai lib sonner (sudah diimport baris 26), pola sama dengan
+     Binding/Property/BuildArea coming soon (baris 12519, 12521,
+     15663, 15709, 23908).
+  7. Pass prop `onComingSoon={handleComingSoonClick}` ke
+     `<GizmoBlockInfoPanel>` (baris 18873), sejajar dengan prop
+     onOpenScaleMode yang sudah ada.
+
+YANG DIBIARKAN APA ADANYA (tidak disentuh):
+- Tombol + (lama → sekarang coming soon): icon Plus tetap, style
+  tetap (top:6 left:6, accent amber, dst.) — user bilang "iconnya
+  sama persis '+'" untuk tombol baru, artinya tombol + lama juga
+  tetap pakai icon Plus. Tidak sentuh style tombol + lama.
+- Handler `handleOpenScaleModeFromPanel` (baris 615-618) TIDAK
+  diubah — sekarang dipanggil dari tombol gear (bukan tombol +).
+  Function name `handleOpenScaleModeFromPanel` sekarang sedikit
+  misleading (tidak lagi dipanggil dari tombol + di panel) tapi
+  tetap valid: dipanggil dari tombol gear di panel. Rename terpisah
+  kalau user minta, untuk minimal change tidak dilakukan.
+- Komentar header Phase 73 v2 di ScaleModeModal.jsx baris 23-40
+  yang menyebut "tombol + di panel" → outdated (Phase 73 v3 sudah
+  ganti ke tombol gear). Tidak di-update untuk minimal change,
+  lihat kontrak butir 83.
+
+AMAN
+- 2 file berubah: GizmoBlockInfoPanel.jsx (komponen panel info
+  block) + BlockSimulator3D.jsx (caller).
+- File terlarang (kontrak Bagian 1 #4) TIDAK tersentuh: AuthContext,
+  firebase, supabase, LoginPage, UserPill semua intact.
+- Tidak sentuh ScaleModeModal.jsx (modal itu sendiri), tidak sentuh
+  scaleModes.js (konstanta 4 mode), tidak sentuh file utils gizmo
+  (gizmoSixArrows/gizmoRotateRings/gizmoScaleBalls), tidak sentuh
+  TransformControls Three.js, tidak sentuh material gizmo.
+- Tidak sentuh toast config sonner, tidak sentuh pattern coming
+  soon lain (Binding/Property/BuildArea) — semua intact.
+- Behavior tombol + lama: sebelum = buka modal; sesudah = coming
+  soon. Behavior tombol gear baru = buka modal (sama dengan tombol
+  + lama). Tidak ada fitur yang hilang, hanya pecah peran.
+
+VERIFIKASI
+- git diff --stat: 2 files changed, 65 insertions(+), 7 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 18.28s, 0 error, 0 warning syntax.
+  BlockSimulator3D chunk tetap ke-build (1.27MB) tanpa error.
+- Tidak ada tes headless (tidak ada test file untuk GizmoBlockInfoPanel
+  atau handler coming soon); tidak ada uji pixel (perubahan =
+  duplikat tombol + handler toast, bukan rendering visual material
+  Three.js — verifikasi cukup via logika React: klik + →
+  onComingSoon → toast.info; klik gear → onOpenScaleMode → buka
+  modal Scale Mode varian picker).
+
+CATATAN
+- Pitfall: ketika pecah tombol jadi 2, WAJIB cek caller (lihat
+  kontrak butir 81). Di kasus ini, caller sudah support flow baru
+  tanpa modifikasi — handler onOpenScaleMode sudah ada, hanya
+  ditambah handler onComingSoon baru. Tidak ada perubahan flow
+  modal ScaleMode (varian picker tetap pilih-konfirmasi setelah
+  commit 742e3a6).
+- Komentar header Phase 73 v3 di GizmoBlockInfoPanel.jsx ditulis
+  lengkap (14 baris) supaya AI penerus tahu sejarah perubahan
+  tombol ini: v1 = popup kecil, v2 = buka modal megah, v3 = pecah
+  jadi + (coming soon) + gear (buka modal). Ini implementasi
+  Aturan #9 warisan pengalaman secara inline di kode (selain
+  KONTRAK_PERMANEN.md).

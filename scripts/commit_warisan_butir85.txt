@@ -1,0 +1,54 @@
+docs(kontrak): append warisan butir 85-88 — pecah tombol jadi 2 peran + pattern
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+Tugas Phase 73 v3 — pecah tombol "+" jadi coming soon + tambah
+tombol gear buka modal (commit e4bd4ce) sudah selesai &
+terverifikasi, warisannya belum di-append ke kontrak.
+
+PENYEBAB
+Tugas dilakukan di server z.ai, source code dari repo GitHub.
+Pekerjaan teknis sudah di-push ke origin/main commit e4bd4ce,
+tapi warisan belum menyusul. Instruksi user eksplisit: "teks
+yang sudah ada dilarang disentuh, hanya boleh menambah tepat
+di bawahnya".
+
+SOLUSI
+Append section baru "## 13. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 73 v3 — pecah tombol "+" jadi coming
+soon + gear buka modal)" di akhir file, TEPAT di bawah baris
+penutup section 12. Teks yang sudah ada tidak diubah apa pun.
+Warisan berisi 4 butir:
+  85. Pola pecah tombol jadi 2 peran: cek caller + ikut pattern
+      toast yang sudah ada (sonner toast.info, pola Binding/
+      Property/BuildArea)
+  86. Pitfall komentar header Phase lama semakin outdated tiap
+      kali ada Phase versi baru (kelanjutan butir 83)
+  87. Hitung posisi tombol baru manual: top = top_lama +
+      height_lama + gap; cek minHeight container parent
+  88. Komentar header Phase X vN inline di kode = warisan
+      inline, bukan hanya di kontrak — wajib tulis sejarah
+      perubahan + cross-reference untuk AI penerus
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~90 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~90 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 4 butir warisan karena ada beberapa
+  pitfall non-trivial: pecah tombol jadi 2 peran (5 langkah
+  systematic), komentar header lintas-Phase semakin outdated,
+  hitung posisi tombol absolute manual, komentar inline sebagai
+  warisan. Lebih banyak dari sesi sebelumnya (1-2 butir) karena
+  tugas ini multi-file (GizmoBlockInfoPanel.jsx + BlockSimulator3D
+  .jsx) + ada sejarah versi Phase 73 v1→v2→v3.
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
