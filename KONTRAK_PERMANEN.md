@@ -3504,6 +3504,44 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     titik tengah". Phase 83 user paham + kasih ide yang = function
     yang sudah ada.
 
+---
+
+## 25. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 84 — Math.abs fix arah offset, pusat selalu MAJU)
+
+118. **Math.abs(scaleNew - scaleStart) = FIX ARAH OFFSET: pusat selalu MAJU, sisi yang diam bergantung arah scale**
+    (sesi 2026-09-19, fix commit `9b8990a`): computeAnchorOffset pakai
+    `delta = (scaleNew - scaleStart) × sign × halfSize`. Saat scale
+    MENGECIL: delta NEGATIF → offset NEGATIF → pusat geser MUNDUR
+    (ke arah sisi seberang). User komplain: "scale mengecil dia maju
+    tepat 1 studs ke arah saya sedang memendekkan blocknya. dia
+    ngikutin!".
+    **Fix Phase 84**: `delta = Math.abs(scaleNew - scaleStart) ×
+    sign × halfSize`. Selalu POSITIF → offset selalu POSITIF → pusat
+    selalu MAJU (ke arah sisi yang digenggam).
+    - Scale MEMBESAR: delta = (scaleNew - scaleStart) × sign ×
+      halfSize (positif). Pusat MAJU. Sisi seberang DIAM. Sisi yang
+      digenggam bergerak KELUAR. ✓ (sesuai user Phase 78)
+    - Scale MENGECIL: delta = (scaleStart - scaleNew) × sign ×
+      halfSize (positif). Pusat MAJU. Sisi yang digenggam DIAM. Sisi
+      seberang bergerak MASUK. ✓ (sesuai user Phase 84)
+    **Pola untuk offset posisi yang arahnya bergantung arah
+    perubahan**: pakai `Math.abs(newValue - oldValue)` supaya offset
+    selalu ke arah yang sama (MAJU), BUKAN bergantung arah perubahan
+    (MAJU/MUNDUR). Untuk scale: saat membesar, sisi seberang diam;
+    saat mengecil, sisi yang digenggam diam. Math.abs fix BOTH
+    dengan cara yang cerdas — sisi yang diam bergantung arah scale,
+    TAPI pusat selalu MAJU.
+    **Pola untuk conflict antar phase yang resolve dengan Math.abs**:
+    kalau user Phase N mau A saat kondisi X, dan user Phase N+1 mau
+    B saat kondisi Y (kebalikan dari X), cek apakah `Math.abs` atau
+    fungsi symmetric lain bisa fix BOTH. Math.abs = "selalu positif"
+    = "selalu MAJU" = kondisi-independent. Untuk scale offset, ini
+    berarti: sisi yang diam bergantung arah scale (sisi seberang saat
+    membesar, sisi yang digenggam saat mengecil), TAPI pusat selalu
+    MAJU. Fix both user Phase 78 (sisi seberang diam saat membesar)
+    dan user Phase 84 (sisi yang digenggam diam saat mengecil).
+
+
 
 
 
