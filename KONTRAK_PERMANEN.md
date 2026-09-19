@@ -3345,6 +3345,57 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     modal tanpa ubah state" (inline arrow function lama) — yang
     TIDAK set default kalau state null.
 
+---
+
+## 22. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 81 — default scaleNumberStep = 2 sejak awal)
+
+114. **DEFAULT STATE vs DEFAULT SETELAH USER INTERAKSI — KALAU AMBIGU, IMPLEMENTASI DEFAULT SEJAK AWAL**
+    (sesi 2026-09-19, fix commit `be6d324` untuk bug Phase 80 commit
+    `b57e5e4`): user Phase 80 bilang "default '2' jika user memilih
+    konfirmasi atau memilih batal tanpa mengatur scale number
+    terlebih dahulu". Saya Phase 80 implementasi handleScaleNumberCancel
+    yang set default 2 kalau user Batal modal ScaleNumberModal (state
+    null → 2). TAPI user Phase 81 TIDAK pernah buka modal
+    ScaleNumberModal — user Konfirmasi modal 4 mode (ScaleModeModal)
+    lalu LANGSUNG scale. Karena user tidak pernah buka modal
+    ScaleNumberModal, state scaleNumberStep masih null (default Phase
+    75) → snap tidak aktif → block scale bebas (seperti scale 0).
+    User komplain: "saya langsung scale tanpa aturan scale number dulu
+    dan lah kok malah saya seolah memakai scale 0? bukan scale 2?".
+    **Akar masalah**: saya Phase 80 salah paham "default 2". Kira user
+    mau "default 2 SETELAH user Konfirmasi/Batal modal ScaleNumberModal".
+    Ternyata user mau "default 2 SEJAK AWAL, bahkan sebelum user buka
+    modal ScaleNumberModal". Snap aktif sejak awal dengan step 2 studs.
+    **Fix Phase 81**: state default scaleNumberStep dari null → 2
+    (useState(2)). Ref default scaleNumberStepRef dari null → 2
+    (useRef(2)). Dengan ini, snap aktif sejak awal. User tidak perlu
+    buka modal ScaleNumberModal untuk aktifkan snap.
+    **Pelajaran KRITIS (kelanjutan butir 113)**: kalau user bilang
+    "default X", cek APAKAH default itu berlaku:
+    (a) SEJAK AWAL (state initial / useRef initial), atau
+    (b) SETELAH user interaksi tertentu (Konfirmasi/Batal modal, klik
+        tombol, dll).
+    Kalau user tidak specify, TANYA: "yang maksud 'default X' itu
+    berlaku sejak awal, atau SETELAH saya Konfirmasi/Batal modal?".
+    Atau implementasi default sejak awal (lebih safe, covers semua
+    case — user yang tidak buka modal juga dapat default).
+    **Pola untuk default state**: kalau user mau "default X", lebih
+    safe implementasi `useState(X)` (default sejak awal) daripada
+    `useState(null)` + handler set X saat user interaksi. Alasan:
+    user mungkin tidak selalu buka modal/klik tombol sebelum
+    interaksi lain (mis. user Konfirmasi modal 4 mode lalu langsung
+    scale, TANPA buka modal ScaleNumberModal). Default sejak awal
+    covers semua case. Trade-off: user tidak bisa "no snap" (smooth
+    drag) kecuali buka modal + input 0. Acceptable kalau user tahu
+    cara matikan (Phase 76/77: "0 = no snap").
+    **Pola untuk ref default**: kalau state default X, ref default
+    juga X (useRef(X)). useEffect sync ref ← state baru jalan
+    setelah first render. Kalau ref default null, ada window kecil
+    di mana event handler baca null → snap tidak aktif. Default X
+    = safe. Implementasi: `const [state, setState] = useState(X);
+    const stateRef = useRef(X); useEffect(() => { stateRef.current
+    = state; }, [state]);`.
+
 
 
 
