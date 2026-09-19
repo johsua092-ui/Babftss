@@ -1,0 +1,57 @@
+docs(kontrak): append warisan pengalaman sesi 2026-09-19 (job hapus badge bawaan)
+
+MASALAH
+Aturan #9 kontrak mewajibkan setiap AI penerus menulis warisan
+pengalaman ke KONTRAK_PERMANEN.md di akhir setiap tugas (setelah
+verifikasi, sebelum push final). Tugas hapus badge "bawaan" di
+ScaleModeModal.jsx (commit 5298a26) sudah selesai & terverifikasi,
+tapi warisannya belum di-append ke kontrak. Tanpa ini, AI penerus
+di sesi berikutnya tidak tahu pitfall dependensi visual tersembunyi
+saat menghapus elemen UI.
+
+PENYEBAB
+Tugas dilakukan di server z.ai (bukan local dev user), source code
+diambil dari repo GitHub yang sudah berisi source code lengkap project
+Babftss (commit bc82b8c, 4a4cef3, dst.). Pekerjaan teknis (hapus
+badge) sudah di-push ke origin/main commit 5298a26, tapi warisan
+belum menyusul. Instruksi user eksplisit: "teks yang sudah ada
+dilarang disentuh, hanya boleh menambah tepat di bawahnya".
+
+SOLUSI
+Append section baru "## 10. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: hapus badge "bawaan" di ScaleModeModal)" di
+akhir file, TEPAT di bawah baris penutup asli ("...Kalau ragu —
+ukur ulang, jangan menebak."). Teks yang sudah ada (baris 1-2217)
+tidak diubah apa pun. Warisan berisi 6 butir:
+  74. Pitfall dependensi visual tersembunyi saat hapus elemen UI
+  75. Verifikasi fix UI text-only: vite build exit 0 cukup
+  76. Teknik search target hapus string spesifik di codebase besar
+  77. Edit tool: hapus block JSX multi-baris tanpa whitespace drift
+  78. Protokol push server-ke-repo private: git credential helper
+      env-var (tanpa simpan token di .git/config)
+  79. Red herring: komentar panjang header = warisan, bukan dead code
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~120 baris baru).
+- Teks yang sudah ada (baris 1-2217) tidak diubah apa pun — verify
+  via git diff: hanya insertion di akhir, tidak ada deletion/modifikasi
+  baris existing.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~120 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → harus kosong (bukti tidak
+  ada baris existing yang diubah/dihapus).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Skill babftss-kontrak belum di-update (tidak ada skill tsb. di
+  server ini). Kalau ada, ringkasan singkat 74-79 seharusnya
+  di-sinkronkan ke skill tsb. agar AI penerus membaca ringkasan
+  sebelum kontrak penuh — kontrak Bagian 3 Aturan #9 langkah 3.
+- Tidak ada temuan baru yang lintas-project; semua 6 butir bersifat
+  project-specific (ScaleModeModal) atau workflow-specific (git
+  credential helper, Edit tool) yang sudah cukup ditampung di
+  kontrak ini.

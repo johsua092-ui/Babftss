@@ -1,0 +1,62 @@
+fix(scale-ui): hapus badge "bawaan" di mode 2 Side ScaleModeModal
+
+MASALAH
+Di modal "Scale Mode" (tombol "+" di tools Scale), kartu mode "2 Side"
+menampilkan badge teks "bawaan" di sudut kanan-kartu. User minta
+teks ini dihapus karena tidak perlu ada di sana — terlihat berisik
+dan tidak memberi informasi tambahan bagi user.
+
+PENYEBAB
+Block JSX kondisional {m === '2side' && (<span>bawaan</span>)} ada
+di src/components/ScaleModeModal.jsx baris 238-244. Tidak ada
+referensi/fungsi lain yang membaca badge ini — hanya render visual.
+Diverifikasi lewat:
+  rg "bawaan" src/ -n → hanya 1 match di ScaleModeModal.jsx:243
+  rg "'2side'" src/ -n → match lain semua untuk LOGIKA, bukan badge
+Tidak ada test file untuk ScaleModeModal.jsx (find -name "*ScaleModeModal*"
+hanya menemukan file komponennya sendiri).
+
+SOLUSI
+Hapus seluruh block JSX badge bawaan (7 baris, baris 238-244):
+  {m === '2side' && (
+    <span style={{...}}>bawaan</span>
+  )}
+Sebelum: label "2 Side" + badge "bawaan" (marginLeft auto push kanan)
+         + checkmark aktif (marginLeft 6, menempel ke badge bawaan)
+Sesudah: label "2 Side" + checkmark aktif saja.
+Efek samping kecil (TIDAK di-fix, sesuai instruksi user "jangan
+menyenggol yang lain"): baris 247 masih punya
+  marginLeft: m === '2side' ? 6 : 'auto'
+jadi saat mode 2side aktif, checkmark akan menempel ke label (marginLeft
+6px) — bukan ter-push ke kanan seperti mode 1side/4side/6side.
+Sengaja dibiarkan apa adanya: user eksplisit melarang menyenggol kode
+lain; efek visual bisa di-review terpisah kalau user komplain.
+
+AMAN
+- HANYA src/components/ScaleModeModal.jsx berubah (7 baris dihapus).
+- File terlarang (kontrak Bagian 1 #4) TIDAK tersentuh:
+  AuthContext.jsx/firebase.js/supabase.js/LoginPage.jsx/UserPill.jsx.
+- File fitur lain tidak berubah: gizmoSixArrows.js, gizmoRotateRings.js,
+  gizmoScaleBalls.js, BlockSimulator3D.jsx, scaleModes.js semua intact.
+- Tidak sentuh picker TransformControls, tidak sentuh material gizmo,
+  tidak sentuh logic scale 1/2/4/6 side di scaleModes.js.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 7 deletions(-), 0 insertions(+).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 18.66s, 0 error, 0 warning syntax.
+- BlockSimulator3D.jsx chunk tetap ke-build (1.27MB) tanpa error.
+- Tidak ada tes headless (tidak ada test file ScaleModeModal); tidak
+  ada uji pixel (perubahan text-only, bukan rendering visual).
+
+CATATAN
+- Pitfall KECIL: baris 247 punya dependensi SEMI ke badge bawaan lewat
+  ternary `m === '2side' ? 6 : 'auto'`. Setelah badge dihapus, angka 6
+  jadi "dead context" tapi tidak rusak. Kalau user komplain visual
+  checkmark menempel, fix terpisah di sesi lain (ubah ke 'auto').
+- Pelajaran untuk warisan: untuk perubahan UI text-only, vite build
+  cukup untuk verifikasi syntax; tidak perlu vision_analyze (aturan #8
+  hanya wajib saat bentuk ditentukan gambar referensi).
+- Skill-related: tidak ada update skill babftss-kontrak karena temuan
+  ini bersifat project-specific (layout ScaleModeModal), bukan
+  lintas-project.
