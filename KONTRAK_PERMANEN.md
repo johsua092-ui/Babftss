@@ -2980,6 +2980,114 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     input angka lain = aktifkan dengan nilai itu. SATU kontrol
     untuk dua fungsi (toggle + value).
 
+---
+
+## 18. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 77 — fix goyang saat snap + 3 desimal + koma→titik)
+
+104. **BUG GOYANG: SNAP + computeAnchorOffset = CONFLICT, SKIP computeAnchorOffset saat snap aktif**
+    (sesi 2026-09-19, fix commit `9c953ab` untuk bug Phase 75
+    commit `6daaa3d`): user komplain "scale menjadi kecil tiba
+    tiba blocknya goyang goyang bergetar sampai yang paling parah
+    bergeser dari posisi awal". Akar masalah: `computeAnchorOffset`
+    (mode 1 side) dijalankan SETIAP FRAME dengan offset =
+    `(scaleNew - startScale) × halfSize`. Saat snap lompat antar
+    step (karena user drag), `scaleNew` berubah cepat → offset
+    berubah cepat → posisi block berubah cepat = GOYANG. Saat scale
+    membesar, offset positif (ke arah sisi +); saat mengecil,
+    offset negatif (ke arah sisi −). Lompatan offset lebih terlihat
+    saat mengecil karena delta negatif lebih besar magnitude-nya
+    untuk step yang sama (user drag mengecil sampai 0.05 = delta
+    -1.95 dari startScale 2, lompatan offset -0.975; user drag
+    membesar sampai 4 = delta +2, lompatan offset +1.0 — tapi
+    membesar terlihat natural karena block membesar searah).
+    **Fix**: skip `computeAnchorOffset` saat snap aktif. Tambah
+    `const snapActive = snapStudStep && snapStudStep > 0 &&
+    isFinite(snapStudStep)` di atas. Ubah check dari
+    `if (needsAnchorOffset(m) && startPos)` →
+    `if (needsAnchorOffset(m) && startPos && !snapActive)`.
+    Behavior: snap aktif = block scale dari PUSAT (mode 2 side
+    behavior), posisi TIDAK bergeser setiap frame → tidak goyang.
+    **Trade-off**: mode 1 side + snap aktif = sisi seberang TIDAK
+    diam (behavior 2 side). User pilih mode 1 side TANPA snap
+    (step=0) kalau mau sisi seberang diam. Prioritas: snap >
+    sisi seberang diam. Document di komentar Phase 77 di
+    scaleModes.js.
+    **Pola untuk fitur snap + offset posisi**: kalau snap
+    menyebabkan scale lompat antar step, JANGAN pakai scale untuk
+    hitung offset posisi setiap frame (akan goyang). Cuma hitung
+    offset saat drag SELESAI (mouseUp), atau skip offset saat snap
+    aktif. Untuk project Babftss: skip dipilih karena simpler +
+    tidak ubah flow event Three.js.
+
+105. **INPUT NUMERIK: type="text" + inputMode="decimal" + manual onChange = KONTROL PENUH**
+    (sesi 2026-09-19, fix commit `9c953ab`): ScaleNumberModal input
+    field awalnya `type="number"`. User mau koma "," diganti titik
+    "." paksa. Tapi `type="number"` di browser beda-beda locale:
+    beberapa browser (locale EU) terima koma sebagai decimal
+    separator, beberapa (locale US/ID) tidak. Untuk konsisten
+    lintas-browser + handle koma→titik manual: ganti ke
+    `type="text" inputMode="decimal"` + manual onChange:
+    ```jsx
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder="0.001 - 100"
+      value={input}
+      onChange={(e) => {
+        const v = e.target.value.replace(/,/g, '.');
+        setInput(v);
+      }}
+      // ...
+    />
+    ```
+    - `type="text"`: kontrol penuh, simpan apa adanya string.
+    - `inputMode="decimal"`: mobile keyboard muncul numeric
+      dengan tombol titik (bukan huruf).
+    - `placeholder="0.001 - 100"`: hint format yang user harap.
+    - `onChange` replace `,` → `.`: koma diubah paksa jadi titik.
+    **Trade-off**: hilang fitur arrow ↑↓ bawaan type=number
+    (browser arrow tambah/kurang step). User bisa pakai keyboard
+    arrow normal di text field (kurang lebih sama UX). Acceptable
+    supaya koma→titik jalan konsisten lintas-browser.
+    **Pola untuk input numerik user dengan transformasi (koma→
+    titik, auto-trim, dll)**: pakai type="text" + manual onChange
+    + validasi parseFloat. JANGAN pakai type="number" kalau butuh
+    transformasi value (locale issue + cursor jump + value
+    coercion). Untuk validasi: cek `!isNaN(parseFloat(input)) &&
+    isFinite(parseFloat(input))`.
+
+106. **VALIDASI MAKSIMAL N ANGKA DI BELAKANG KOMA: input.split('.')[1].length > N**
+    (sesi 2026-09-19, fix commit `9c953ab`): user mau input maks
+    3 desimal (0.001 valid, 0.0001 invalid). Implementasi:
+    ```javascript
+    const decimalPart = (typeof input === 'string' && input.includes('.'))
+      ? input.split('.')[1] || ''
+      : '';
+    const hasMoreThan3Decimals = decimalPart.length > 3;
+    const valid = isNumber && parsed >= MIN_STUDS && parsed <= MAX_STUDS
+      && !hasMoreThan3Decimals;
+    ```
+    **PENTING**: validasi pakai INPUT STRING, BUKAN `parsed`
+    (parseFloat). Karena parseFloat buang trailing zero:
+    `parseFloat("1.500") = 1.5` → kalau pakai `parsed.toString().
+    split('.')[1]`, length=1, padahal user input 3 angka. Pakai
+    input string asli → length=3 untuk "1.500".
+    **Edge case**: "1." (titik tanpa angka setelahnya) →
+    `split('.')[1] = ''` → length=0 → valid (sebenarnya tidak
+    parseable jadi parseFloat=NaN → isNumber=false → invalid lewat
+    check lain). "1.5" → length=1 → valid. "1.500" → length=3 →
+    valid. "1.5001" → length=4 → invalid. "1" (integer) →
+    `input.includes('.') = false` → decimalPart='' → length=0 →
+    valid. OK behavior benar.
+    **Pola untuk limit desimal di input**: pakai input string +
+    split('.')[1].length. JANGAN pakai parsed number (trailing
+    zero hilang). JANGAN pakai regex complex (lebih sulit debug).
+    Penunjuk/hasil konversi (toFixed, dll) boleh banyak angka —
+    cuma INPUT yang dibatasi N desimal. User Phase 77 eksplisit:
+    "di penunjuk scale bahkan mungkin bisa banyak angka dibelakang
+    koma itu diperbolehkan karena itu hanya sekedar penunjuk saja".
+
+
 
 
 
