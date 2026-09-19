@@ -3645,6 +3645,82 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     Phase 87 mau sisi seberang diam lagi, TANYA user pilih
     (tidak mungkin both di Three.js).
 
+---
+
+## 28. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 87 — geometry translate per-block, sisi seberang DIAM + pusat DIAM BOTH)
+
+121. **GEOMETRY TRANSLATE PER-BLOCK = ACHIEVE "SISI SEBERANG DIAM + PUSAT DIAM" (BOTH!) — MODIFY GEOMETRY VERTICES, BUKAN object.position**
+    (sesi 2026-09-19, fix commit `6f9b82a`): setelah konflik beruntun
+    Phase 77-86 (skip computeAnchorOffset → "1 side jadi 2 side",
+    computeAnchorOffset → "block geser", Math.abs → "akumulasi"),
+    user pilih opsi C: geometry translate per-block.
+
+    **Konsep**: di Three.js, `object.scale` dari pusat → sisi + dan
+    sisi − bergerak simetris. Untuk achieve "sisi seberang diam",
+    harus modify GEOMETRY VERTICES (BUKAN object.position).
+
+    Final position = (geometry vertices + translate) × scale + position.
+
+    Untuk sisi seberang diam di posisi awal:
+    ```
+    (geometrySisiSeberang + translate) × finalScale + startPos = sisiSeberangAwal
+    sisiSeberangAwal = startPos + geometrySisiSeberang × startScale
+    → translate = halfSize × (finalScale - startScale) / finalScale × sign
+    ```
+
+    **Hasil**:
+    - Sisi seberang **DIAM** (geometry.translate compensate). ✓
+    - Pusat object **DIAM** (`object.position = startPos`). ✓
+    - Sisi yang digenggam bergerak (`object.scale`). ✓
+    - **Reversibel** (offset proportional ke delta scale, BUKAN
+      absolute — saat scale kembali ke asli, offset = 0). ✓
+
+    **Implementasi**:
+    - `applyGeometryOffset(THREE, object, mode, axisKey, sign,
+      startScale, originalGeometry)` di scaleModes.js.
+      1. Reset clone position attribute ke original (copy array).
+      2. Kalau mode 1 side: translate geometry = `halfSize ×
+         (finalScale - startScale) / finalScale × sign`.
+      3. Update bounding box + sphere.
+    - BlockSimulator3D.jsx:
+      - onDraggingChanged true (scale): clone geometry →
+        `obj.userData.__originalGeometry`. Set geometry = clone.
+      - onTransformObjectChange (scale): call applyGeometryOffset
+        setelah applyScaleByMode.
+      - needsAnchorOffset tetap false (Phase 86). applyGeometryOffset
+        dipanggil terpisah dari applyScaleByMode.
+
+    **Pola untuk achieve "sisi seberang diam + pusat diam" di Three.js**:
+    WAJIB modify geometry vertices (geometry.translate), BUKAN
+    object.position. object.position = startPos (DIAM). object.scale =
+    finalScale (scale dari pusat). geometry.translate(offset)
+    compensate supaya sisi seberang diam. Clone geometry per-block
+    (karena geometry shared antar mesh — kalau tidak clone, modify
+    geometry akan affect semua mesh yang share geometry).
+
+    **Pola untuk offset yang reversibel + per-block**:
+    offset = `halfSize × (finalScale - startScale) / finalScale × sign`.
+    - Saat scale kembali ke asli (finalScale = startScale): offset = 0.
+      Sisi seberang diam di posisi awal. Pusat diam. ✓
+    - Saat scale membesar: offset positif. Sisi seberang diam.
+      Pusat diam. Sisi yang digenggam bergerak keluar. ✓
+    - Saat scale mengecil: offset negatif. Sisi seberang diam.
+      Pusat diam. Sisi yang digenggam bergerak masuk. ✓
+
+    **Trade-off**: clone geometry per-block = memory overhead kecil
+    (BoxGeometry(1,1,1) = 24 vertices × 3 floats × 4 bytes = 288
+    bytes per block yang pernah di-scale). Acceptable. Bounding box +
+    sphere update setiap frame (karena geometry di-modify) = CPU
+    overhead kecil (24 vertices). Acceptable.
+
+    **Edge case**: kalau user move block setelah scale, geometry =
+    clone (yang sudah di-translate). object.position berubah (mode
+    translate). Sisi seberang TIDAK diam di posisi baru (karena
+    geometry offset masih dari scale drag sebelumnya). Fix: reset
+    geometry ke original saat mode translate (belum diimplementasi
+    di Phase 87 — bisa di sesi lain kalau user komplain).
+
+
 
 
 
