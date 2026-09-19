@@ -3464,6 +3464,46 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     User tidak bisa mengecil block dengan step besar. ✓ Sesuai
     "tidak bisa di-scale lagi".
 
+---
+
+## 24. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 83 — kembali ke computeAnchorOffset SELALU, ide user: pusat ikut titik tengah)
+
+117. **USER KASIH IDE SENDIRI = DENGARKAN + IMPLEMENTASI (BUKAN OVER-THINK)**
+    (sesi 2026-09-19, fix commit `f4fc78c`): setelah konflik beruntun
+    (Phase 77 skip computeAnchorOffset → Phase 78 pindah snap ke
+    mouseUp → Phase 79 hysteresis → Phase 82 skip saat snap aktif),
+    user Phase 83 kasih IDE JENIUS yang resolve konflik:
+    "pusat ikut bergeser maju jika block di scale panjang atau
+    bergeser mundur jika block di pendekkan. Pusat mengikuti titik
+    tengah block yang di-scale. Terapkan kepada SEMUA mode."
+    Itu = computeAnchorOffset (yang sudah ada sejak Phase 73!).
+    Saya Phase 77/82 skip karena komplain "geser-geser", TAPI user
+    Phase 83 paham bahwa "pusat bergeser" = "pusat ikut titik
+    tengah" (BUKAN "block pindah lokasi"). computeAnchorOffset
+    sudah benar sejak awal — user cuma perlu paham semantics.
+    **Pelajaran KRITIS**: kalau user kasih IDE sendiri, DENGARKAN
+    + IMPLEMENTASI. JANGAN over-think. User paling tahu apa yang
+    dia mau. computeAnchorOffset sudah ada sejak Phase 73, TAPI
+    saya skip di Phase 77/82 karena komplain "geser-geser" — saya
+    salah paham bahwa "pusat bergeser" = "block pindah lokasi"
+    (BUKAN — pusat bergeser ke titik tengah, BUKAN pindah lokasi).
+    User Phase 83 klarifikasi: "pusat ikut titik tengah" = pusat
+    bergeser ke tengah block baru (BUKAN block pindah lokasi).
+    computeAnchorOffset sudah implementasi itu sejak awal.
+    **Pola untuk konflik beruntun**: kalau ada konflik antar phase
+    (Phase N mau A, Phase N+1 mau B, konflik), dan user kasih ide
+    sendiri yang resolve konflik, DENGARKAN + IMPLEMENTASI. Jangan
+    over-think atau TANYA lagi. User sudah kasih solusi — pakai.
+    **Pola untuk "computeAnchorOffset sudah benar sejak awal"**:
+    kalau ada function yang sudah ada + sudah benar, TAPI di-skip
+    karena komplain, cek: apakah komplain karena MISUNDERSTANDING
+    (user tidak paham semantics) atau karena BUG NYATA? Kalau
+    misunderstanding, jelaskan semantics ke user. Kalau bug nyata,
+    fix bug. Phase 77/82 = misunderstanding — "pusat bergeser"
+    dianggap "block pindah lokasi", padahal "pusat bergeser ke
+    titik tengah". Phase 83 user paham + kasih ide yang = function
+    yang sudah ada.
+
 
 
 
