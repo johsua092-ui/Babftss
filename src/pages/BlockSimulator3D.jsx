@@ -12496,6 +12496,14 @@ Now you can apply Displacement for detailed effect.`);
                 startPos: { x: o.position.x, y: o.position.y, z: o.position.z },
                 snapStudStep: scaleNumberStepRef.current,  // Phase 75: step untuk snap
               };
+              // Phase 87 fix: simpan di userData supaya applyGeometryOffset
+              // bisa dipanggil kalau objectChange fire SETELAH dragging-changed
+              // false (sd = null). Tanpa ini, geometry TIDAK compensate → teleport.
+              if (o.userData) {
+                o.userData.__scaleAxisKey = frame.axisKey;
+                o.userData.__scaleSign = frame.sign;
+                o.userData.__scaleStartScale = { x: o.scale.x, y: o.scale.y, z: o.scale.z };
+              }
             } else {
               scaleDragRef.current = null;   // 2side / axis tak dikenal → jalur lama
             }
@@ -12601,6 +12609,17 @@ Now you can apply Displacement for detailed effect.`);
           applyGeometryOffset(
             THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, obj.userData.__originalGeometry,
+          );
+        } else if (obj.userData.__originalGeometry && obj.userData.__scaleAxisKey) {
+          // Phase 87 fix: sd null (objectChange SETELAH dragging-changed false).
+          // Pakai userData supaya applyGeometryOffset tetap jalan.
+          // Tanpa ini, geometry TIDAK compensate → block teleport.
+          applyGeometryOffset(
+            THREE, obj, scaleModeRef.current,
+            obj.userData.__scaleAxisKey,
+            obj.userData.__scaleSign,
+            obj.userData.__scaleStartScale,
+            obj.userData.__originalGeometry,
           );
         }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
