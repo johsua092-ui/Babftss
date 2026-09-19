@@ -56,10 +56,10 @@ import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 const ACCENT = '#f59e0b';
 const PANEL_BG = 'rgba(14, 20, 32, 0.98)';
 const ANIM_MS = 200;
-const MIN_STUDS = 0.25;
+const MIN_STUDS = 0;     // Phase 76: 0 supaya user bisa input 0 (no snap) + nilai kecil 0.01, 0.02, ...
 const MAX_STUDS = 100;
 const DEFAULT_STUDS = 2;
-const STEP = 0.25;
+const STEP = 0.01;   // Phase 76: 0.01 supaya user bisa input 0.01, 0.02, 0.03, ... halus
 
 export default function ScaleNumberModal({
   value = DEFAULT_STUDS, onConfirm, onCancel,
@@ -77,11 +77,14 @@ export default function ScaleNumberModal({
   };
 
   // Parse + validasi input. Tampilkan pesan error inline kalau invalid.
+  // Phase 76: MIN_STUDS = 0 supaya user bisa input 0 (= no snap, drag bebas)
+  // dan nilai kecil seperti 0.01, 0.02, ... sesuai permintaan user.
   const parsed = parseFloat(input);
   const isNumber = !isNaN(parsed) && isFinite(parsed);
   const valid = isNumber && parsed >= MIN_STUDS && parsed <= MAX_STUDS;
-  const scaleResult = valid ? (parsed / STUDS_PER_BLOCK) : null;
-  const blockResult = valid ? scaleResult : null; // 1 block = scale 1.0
+  const isZero = valid && parsed === 0;  // 0 = snap dimatikan
+  const scaleResult = (valid && !isZero) ? (parsed / STUDS_PER_BLOCK) : null;
+  const blockResult = (valid && !isZero) ? scaleResult : null;
 
   // Enter key = Konfirmasi (kalau valid).
   const onKeyDown = (e) => {
@@ -157,7 +160,7 @@ export default function ScaleNumberModal({
                 Scale Number
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
-                Masukkan step scale dalam studs (drag akan snap ke kelipatan ini)
+                Masukkan step scale dalam studs (0 = bebas tanpa snap, drag lancar)
               </p>
             </div>
           </div>
@@ -166,11 +169,11 @@ export default function ScaleNumberModal({
           <p style={{
             margin: '0 0 18px 0', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6,
           }}>
-            Nilai studs = <b>step</b> untuk snap drag bola gizmo. Saat user drag,
-            perubahan scale disesuaikan ke kelipatan step ini. 1 block penuh
-            = 2 studs; 1 studs = setengah block; 0.5 studs = seperempat block.
-            Snap aktif di mode 1/4/6 side. Mode 2 side (bawaan) tidak snap —
-            pilih mode lain untuk snap.
+            Nilai studs = <b>step</b> untuk snap drag bola gizmo. <b>0 = snap
+            dimatikan</b> (drag bebas tanpa batasan matematika). 0.01, 0.02, ... =
+            snap ke kelipatan itu. 1 block penuh = 2 studs; 1 studs = setengah
+            block; 0.5 studs = seperempat block. Snap aktif di mode 1/4/6 side.
+            Mode 2 side (bawaan) tidak snap — pilih mode lain untuk snap.
           </p>
 
           {/* ── INPUT FIELD — body utama modal ini ── */}
@@ -207,7 +210,14 @@ export default function ScaleNumberModal({
               }}
             />
             {/* Hasil konversi real-time — supaya user lihat efek input */}
-            {valid ? (
+            {valid && isZero ? (
+              <div style={{
+                fontSize: 12, color: '#86efac',
+                fontFamily: 'Inter, sans-serif', fontWeight: 600,
+              }}>
+                Snap dimatikan — drag bola gizmo bebas tanpa batasan step
+              </div>
+            ) : valid ? (
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
                 fontSize: 12, color: '#94a3b8',
@@ -218,7 +228,7 @@ export default function ScaleNumberModal({
                 </span></span>
                 <span>= <span style={{ color: ACCENT, fontWeight: 700 }}>
                   {blockResult.toFixed(3)}
-                </span> block</span>
+                </span> block per step</span>
               </div>
             ) : (
               <div style={{
@@ -239,12 +249,12 @@ export default function ScaleNumberModal({
             border: '1px solid rgba(148,163,184,0.14)',
           }}>
             {[
-              { studs: 2,   desc: '1 block (default)' },
-              { studs: 1,   desc: 'setengah block' },
-              { studs: 0.5, desc: 'seperempat block' },
-              { studs: 4,   desc: '2 block' },
-              { studs: 0.25, desc: '1/8 block (min)' },
-              { studs: 6,   desc: '3 block' },
+              { studs: 0,    desc: 'no snap (bebas)' },
+              { studs: 0.01, desc: '1/200 block' },
+              { studs: 0.1,  desc: '1/20 block' },
+              { studs: 0.5,  desc: 'seperempat block' },
+              { studs: 1,    desc: 'setengah block' },
+              { studs: 2,    desc: '1 block (default)' },
             ].map((row) => (
               <div key={row.studs} style={{
                 display: 'flex', flexDirection: 'column', gap: 2,

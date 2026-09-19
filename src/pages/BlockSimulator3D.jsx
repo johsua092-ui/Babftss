@@ -641,28 +641,21 @@ export default function BlockSimulator3D({ setPage }) {
     setShowScaleModeModal(true);
   };
 
-  // ── Phase 74 (2026-09-19, sesi server z.ai): tombol "+" BUKAN lagi
+  // ── Phase 76 (2026-09-19, sesi server z.ai): tombol "+" BUKAN lagi
   //    "coming soon" — sekarang buka modal ScaleNumberModal untuk input
-  //    nilai scale dalam studs. Default value = current scale block yang
-  //    sedang di-attach ke gizmo (tc.object), supaya user lihat angka
-  //    aktual block-nya sekarang berapa studs. Kalau tidak ada block
-  //    yang di-attach, default 2 (default block).
+  //    step scale dalam studs. Default value modal = STEP SAAT INI
+  //    (scaleNumberStep), BUKAN current scale block — supaya user lihat
+  //    step yang aktif, bukan angka current scale yang berubah-ubah saat
+  //    user drag. Kalau belum pernah set step (null) → default 2.
   //    Fondasi: scale = studs / STUDS_PER_BLOCK (kontrak bab STANDAR
   //    PENGUKURAN STUDS; STUDS_PER_BLOCK = 2 MUTLAK; test_blockStuds.mjs
   //    11/11 PASS terverifikasi sebagai fondasi).
   //    ──
   const handleComingSoonClick = () => {
-    const tc = threeRef.current && threeRef.current.transformControls;
-    const obj = tc && tc.object;
-    if (obj && obj.isObject3D) {
-      // Pakai max |scale| antar sumbu supaya user lihat nilai tertinggi
-      // (block bisa pipih/memanjang — tampilkan yang paling besar).
-      const s = obj.scale;
-      const maxScale = Math.max(Math.abs(s.x), Math.abs(s.y), Math.abs(s.z));
-      setScaleNumberValue(Math.max(0.25, maxScale * STUDS_PER_BLOCK));
-    } else {
-      setScaleNumberValue(2); // default block: 2 studs = 1 block
-    }
+    // Phase 76: default = step saat ini (kalau sudah diset) atau 2 (default).
+    // BUKAN current scale block (perubahan Phase 76 fix user complaint
+  //    "kok berubah jadi 8 studs padahal cuma mau ganti step").
+    setScaleNumberValue(scaleNumberStep ?? 2);
     setShowScaleNumberModal(true);
   };
 
@@ -675,11 +668,19 @@ export default function BlockSimulator3D({ setPage }) {
   //    lihat step yang aktif). State scaleNumberStep + ref supaya event
   //    handler onTransformObjectChange (yang dibuat sekali di useEffect awal)
   //    baca nilai terbaru via ref.
+  // ── Phase 76 (2026-09-19, sesi server z.ai): studs = 0 VALID =
+  //    snap dimatikan (drag bebas tanpa batasan). applyScaleByMode check
+  //    `snapStudStep > 0` → kalau 0 → false → snap tidak aktif. Toast
+  //    beda untuk 0 vs > 0 supaya user tahu behavior yang aktif.
   //    ──
   const handleScaleNumberConfirm = (studs) => {
-    setScaleNumberStep(studs);
+    setScaleNumberStep(studs);  // 0 = no snap (applyScaleByMode check > 0)
     setShowScaleNumberModal(false);
-    toast.success(`Step scale diset ke ${studs} studs — drag bola gizmo untuk snap ke kelipatan ini`);
+    if (studs === 0) {
+      toast.success('Snap dimatikan — drag bola gizmo bebas tanpa batasan step');
+    } else {
+      toast.success(`Step scale diset ke ${studs} studs — drag bola gizmo untuk snap ke kelipatan ini`);
+    }
   };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
