@@ -2530,6 +2530,124 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     kontrak tetap sumber kebenaran tertinggi (Aturan #1), komentar
     inline = shortcut kontekstual per-file.
 
+---
+
+## 14. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 74 — modal ScaleNumberModal input scale dalam studs)
+
+89. **AUDIT FONDASI MATEMATIKA SEBELUM PAKAI: JALANKAN TEST FILE**
+    (sesi 2026-09-19, commit `c455b03`): user minta fitur input scale
+    dalam studs + minta cek "sistem matematika perhitungan studs udah
+    bener belum dan apakah udah layak dijadikan acuan fondasi". Langkah
+    yang BENAR sebelum implement fitur yang pakai fondasi tsb:
+    (1) Baca helper resmi (`src/utils/blockStuds.js`) — pastikan
+        konstanta `STUDS_PER_BLOCK = 2` MUTLAK (sesuai kontrak bab
+        STANDAR PENGUKURAN STUDS) + formula `studs = 2 × |scale|` +
+        inverse `scale = studs / 2`.
+    (2) Baca test file (`test_blockStuds.mjs`) — 11 asersi,
+        termasuk edge case (scale null, kaca mirror −x, urutan
+        P/L/T, clamp 0.05).
+    (3) JALANKAN test: `node test_blockStuds.mjs` → exit 0 + output
+        "RESULT 11/11". Itu BUKTI fondasi terverifikasi sebagai
+        sumber kebenaran.
+    (4) Kalau test FAIL → FIX fondasi dulu, JANGN implement fitur
+        baru di atas fondasi rusak. Kalau test PASS → pakai helper
+        + konstanta, JANGAN duplikasi formula manual di kode baru.
+    **Pelajaran**: untuk fitur yang konsumsi fondasi matematika
+    (studs/scale/dimensi block), WAJIB audit fondasi dulu + re-run
+    test sebelum & sesudah implement fitur. Bukan opsional — ini
+    jaminan fitur tidak menimbulkan bug karena salah konversi. Di
+    kasus Phase 74: test_blockStuds.mjs 11/11 PASS sebelum & sesudah
+    commit `c455b03` = fondasi tidak rusak, fitur aman di atasnya.
+
+90. **POLA MODAL "SAMA PERSIS DESIGNNYA" = COPY STRUKTUR, GANTI BODY**
+    (sesi 2026-09-19, commit `c455b03`): user minta modal baru
+    (ScaleNumberModal) yang "sama persis seperti" ScaleModeModal
+    (Phase 73) — overlay blur, panel amber, header, footer Batal+
+    Konfirmasi. Cara BENAR:
+    (a) Baca ScaleModeModal.jsx penuh (~302 baris) untuk paham
+        struktur: style block, keyframes, animasi, ACCENT konstanta,
+        PANEL_BG, ANIM_MS.
+    (b) Tulis modal baru dengan struktur yang SAMA — copy overlay
+        style, panel style, header style, footer style. JANGAN
+        duplikasi konstanta (ACCENT, PANEL_BG, ANIM_MS) — pakai
+        nilai yang sama persis supaya design system konsisten.
+    (c) Ganti hanya BODY modal: ScaleModeModal punya grid 4 mode,
+        ScaleNumberModal punya input field + tabel konversi.
+    (d) **WAJIB**: keyframes CSS ber-prefix BERBEDA (`scalenum-*`
+        vs `scalemode-*`) supaya tidak tabrakan @keyframes. Test:
+        vite build OK + visual kedua modal tidak saling override
+        animasi.
+    (e) Default value: ambil dari current state target (di kasus
+        ini, current scale block yang di-attach ke gizmo) — lebih
+        UX-friendly daripada hardcoded default. Pattern: saat
+        handler open modal dipanggil, baca `tc.object.scale` →
+        konversi ke studs → set sebagai initial value input.
+
+91. **APPLY SCALE VIA `obj.scale.setScalar(value)` — PATTERN YANG SUDAH ADA**
+    (sesi 2026-09-19, commit `c455b03`): untuk apply scale ke block
+    yang sedang di-attach ke gizmo (tc.object), pakai
+    `obj.scale.setScalar(studs / STUDS_PER_BLOCK)` + `obj.updateMatrixWorld()`.
+    - `setScalar(v)` set x, y, z sekaligus ke `v` — konsisten untuk
+      kubus block 1×1×1 (tidak perlu set x, y, z terpisah).
+    - `updateMatrixWorld()` sinkron ke TransformControls supaya
+      gizmo bola langsung pindah ke posisi baru (tanpa frame delay).
+    - Pattern ini SUDAH DIPAKAI di file (baris 309, 338-339 pakai
+      `tc.object` sebagai sourceBlock). Bukan API baru — ikuti
+      pattern yang ada, jangan cari API lain.
+    - **Penting**: jangan pakai `tc.setSize()` atau `tc.setSpace()`
+      — itu API TransformControls untuk gizmo, BUKAN untuk block
+      yang di-attach. Mengubah block = ubah `obj.scale` langsung.
+    - Kalau tc.object null (tidak ada block yang di-attach) →
+      toast.warning "Pilih block dulu" + return early, JANGN
+      paksa apply (akan crash `Cannot read property 'scale' of null`).
+
+92. **INPUT NUMBER FIELD: VALIDASI REAL-TIME + KONFIRMASI DISABLED saat invalid**
+    (sesi 2026-09-19, commit `c455b03`): untuk modal dengan input
+    number (ScaleNumberModal), pattern UX yang aman:
+    (a) `useState(String(value))` untuk simpan input sebagai string
+        (supaya user bisa ketik "0.5" tanpa auto-convert ke number
+        yang truncate). Parse `parseFloat(input)` saat Konfirmasi.
+    (b) Validasi real-time: `const valid = !isNaN(parsed) &&
+        parsed >= MIN && parsed <= MAX`. Tampilkan pesan error
+        inline (merah) kalau invalid + disable tombol Konfirmasi
+        (`disabled={!valid}` + cursor 'not-allowed').
+    (c) Hasil konversi real-time: tampilkan "= scale factor X" +
+        "= Y block" supaya user lihat efek input sebelum Konfirmasi.
+        Pakai `STUDS_PER_BLOCK` untuk konversi (JANGAN hardcode
+        `2` — konstanta dari helper).
+    (d) `autoFocus` di input supaya user bisa langsung ketik tanpa
+        klik tambahan.
+    (e) Enter key = Konfirmasi: `onKeyDown` cek `e.key === 'Enter'`
+        + valid → finishClose + onConfirm.
+    (f) `inputMode="decimal"` + `step={0.25}` + `min/max` supaya
+        mobile keyboard muncul numeric + arrow ↑↓ tambah/kurang
+        0.25 studs per step.
+    **Pelajaran**: untuk modal yang minta input numerik user,
+    JANGAN trust input apa adanya. Selalu validasi + disable
+    Konfirmasi saat invalid + tampilkan pesan error. Tanpa ini,
+    user bisa input "abc" atau "-5" → parseFloat NaN → apply
+    `NaN / 2 = NaN` ke obj.scale → block lenyap (Three.js tidak
+    crash, tapi block jadi invisible karena scale NaN).
+
+93. **KOMENTAR HEADER PHASE LAMA OUTDATED SEMAKIN PARAH TIAP Phase VERSI BARU (CYCLE)**
+    (sesi 2026-09-19, commit `c455b03`, kelanjutan butir 83 & 86):
+    komentar header Phase 73 v3 di GizmoBlockInfoPanel.jsx baris
+    55-67 yang bilang tombol + = "coming soon" sekarang OUTDATED
+    lagi (Phase 74 ganti tombol + = buka modal ScaleNumberModal).
+    Siklus: Phase 73 v1 → v2 → v3 → Phase 74 → ... tiap versi
+    baru membuat komentar versi sebelumnya bertambah outdated.
+    Tetap TIDAK di-update untuk minimal change (prinsip butir 83).
+    AI penerus: baca komentar Phase TERBARU yang relevan + cross-
+    check kode sebenarnya. Untuk tombol + di GizmoBlockInfoPanel:
+    flow terkini (sejak Phase 74) = buka modal ScaleNumberModal
+    (input studs). Komentar Phase 73 v3 yang bilang "coming soon"
+    = outdated; komentar Phase 74 di BlockSimulator3D.jsx baris
+    631-640 = yang akurat. **Pola lintas-Phase**: kalau komentar
+    header di file A (GizmoBlockInfoPanel) menyebut flow yang
+    implementasi-nya di file B (BlockSimulator3D), cross-check
+    komentar di file B untuk versi TERBARU.
+
+
 
 
 
