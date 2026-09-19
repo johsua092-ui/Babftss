@@ -308,29 +308,26 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
   }
 
   // 1side: geser pusat supaya sisi seberang DIAM.
-  // PHASE 82 (2026-09-19, sesi server z.ai): SKIP computeAnchorOffset
-  // kalau snap aktif. Sebelum Phase 82, computeAnchorOffset jalan
-  // setiap frame dengan offset = (scaleNew - startScale) × halfSize.
-  // Saat snap lompat antar step (karena user drag), scale berubah
-  // cepat → offset berubah cepat → posisi block berubah cepat =
-  // GESER-GESER / pindah lokasi. User komplain: "ketika saya pendekin
-  // tiba tiba blocknya geser geser! bahkan pindah lokasi! padahal saya
-  // ingin ini blocknya diam mau dipanjangin atau dipendekin! harusnya
-  // absolut diam!".
+  // PHASE 83 (2026-09-19, sesi server z.ai): KEMBALI ke computeAnchorOffset
+  // SELALU (hapus `&& !snapActive` dari Phase 82). User ide jenius:
+  // "pusat ikut bergeser maju jika block di scale panjang atau bergeser
+  // mundur jika block di pendekkan. Pusat mengikuti titik tengah block
+  // yang di-scale. Terapkan kepada SEMUA mode (1, 2, 4, 6 side)."
   //
-  // Fix Phase 82: skip computeAnchorOffset saat snap aktif. Behavior:
-  // snap aktif = block DIAM (scale dari pusat, 1 sumbu), posisi TIDAK
-  // bergeser. Sisi seberang bergerak simetris (mode 2 side behavior).
-  // User mau block DIAM (BUKAN sisi seberang diam — user Phase 78 mau
-  // sisi seberang diam, TAPI user Phase 82 mau block diam. Konflik.
-  // Phase 82 prioritaskan block diam karena user explicit bilang
-  // "harusnya absolut diam").
+  // Untuk mode 1 side: computeAnchorOffset geser pusat ke titik tengah
+  // (antara sisi seberang DIAM dan sisi yang bergerak). Sisi seberang
+  // diam, sisi yang digenggam bergerak, pusat bergeser ke titik tengah. ✓
   //
-  // Mode 1 side TANPA snap (step = 0): computeAnchorOffset jalan
-  // (sisi seberang diam). Block bergeser. Tapi user Phase 81 set
-  // default scaleNumberStep = 2 → snap aktif sejak awal →
-  // computeAnchorOffset selalu di-skip → block DIAM selalu.
-  if (needsAnchorOffset(m) && startPos && !snapActive) {
+  // Untuk mode 2/4/6 side: needsAnchorOffset return false → skip
+  // computeAnchorOffset → pusat tetap di tempat (scale dari pusat =
+  // pusat = titik tengah). Sisi + dan sisi − bergerak simetris, pusat
+  // tetap di titik tengah. ✓ (pusat = titik tengah, tidak bergeser).
+  //
+  // Phase 82 skip computeAnchorOffset saat snap aktif → user komplain
+  // "1 side jadi 2 side" (sisi seberang bergerak simetris). Phase 83
+  // kembalikan computeAnchorOffset SELALU → sisi seberang DIAM (mode 1
+  // side true semantics) + pusat bergeser ke titik tengah (ide user).
+  if (needsAnchorOffset(m) && startPos) {
     const half = getGeometryHalfSize(object, axisKey);
     const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
     if (off) {
