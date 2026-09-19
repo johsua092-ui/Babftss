@@ -267,7 +267,8 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
   // Trade-off: block lambat (perlu drag 0.6×stepScale untuk pindah
   // step, BUKAN 0.5×stepScale). Acceptable untuk snap (user expect
   // step function).
-  if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep)) {
+  const snapActive = snapStudStep && snapStudStep > 0 && isFinite(snapStudStep);
+  if (snapActive) {
     const stepScale = snapStudStep / STUDS_PER_BLOCK;
     const HYSTERESIS_BAND = 0.6;  // band 0.6 (lebih besar dari Math.round 0.5)
     // Hysteresis state: track lastSnappedStep per-sumbu
@@ -288,6 +289,18 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
       } else if (stepIdx < lastStep && delta <= (lastStep - HYSTERESIS_BAND) * stepScale) {
         finalStep = stepIdx;
       }
+      // Phase 82 (2026-09-19, sesi server z.ai): cek minimum — kalau
+      // candidateScale < minAbs, JANGAN snap ke step itu. Tetap di
+      // lastStep. User: "kalau step 2 studs dan block 2 studs (default),
+      // tidak bisa mengecil karena 2 - 2 = 0, tidak valid". Tanpa cek
+      // ini, snap ke step -1 = 0 → di-clamp ke minAbs (0.05) → block
+      // mengecil ke 0.1 studs (tidak sesuai harapan user). Dengan cek
+      // ini, block tetap di lastStep (default 2 studs) = "tidak bisa
+      // di-scale lagi" sesuai matematika user.
+      const candidateScale = s0 + finalStep * stepScale;
+      if (Math.abs(candidateScale) < minAbs) {
+        finalStep = lastStep;  // tetap di lastStep, jangan snap ke step yang invalid
+      }
       lastStepMap[a] = finalStep;
       const finalScale = sgn * Math.max(Math.abs(s0 + finalStep * stepScale), minAbs);
       object.scale[a] = finalScale;
@@ -295,11 +308,29 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
   }
 
   // 1side: geser pusat supaya sisi seberang DIAM.
-  // computeAnchorOffset pakai object.scale[axisKey] yang sudah di-snap
-  // (finalScale) — supaya sisi seberang DIAM di posisi snapped (BUKAN
-  // raw position). Saat snap lompat antar step, offset lompat 1x per
-  // step (BUKAN goyang, karena hysteresis prevent lompat bolak-balik).
-  if (needsAnchorOffset(m) && startPos) {
+  // PHASE 82 (2026-09-19, sesi server z.ai): SKIP computeAnchorOffset
+  // kalau snap aktif. Sebelum Phase 82, computeAnchorOffset jalan
+  // setiap frame dengan offset = (scaleNew - startScale) × halfSize.
+  // Saat snap lompat antar step (karena user drag), scale berubah
+  // cepat → offset berubah cepat → posisi block berubah cepat =
+  // GESER-GESER / pindah lokasi. User komplain: "ketika saya pendekin
+  // tiba tiba blocknya geser geser! bahkan pindah lokasi! padahal saya
+  // ingin ini blocknya diam mau dipanjangin atau dipendekin! harusnya
+  // absolut diam!".
+  //
+  // Fix Phase 82: skip computeAnchorOffset saat snap aktif. Behavior:
+  // snap aktif = block DIAM (scale dari pusat, 1 sumbu), posisi TIDAK
+  // bergeser. Sisi seberang bergerak simetris (mode 2 side behavior).
+  // User mau block DIAM (BUKAN sisi seberang diam — user Phase 78 mau
+  // sisi seberang diam, TAPI user Phase 82 mau block diam. Konflik.
+  // Phase 82 prioritaskan block diam karena user explicit bilang
+  // "harusnya absolut diam").
+  //
+  // Mode 1 side TANPA snap (step = 0): computeAnchorOffset jalan
+  // (sisi seberang diam). Block bergeser. Tapi user Phase 81 set
+  // default scaleNumberStep = 2 → snap aktif sejak awal →
+  // computeAnchorOffset selalu di-skip → block DIAM selalu.
+  if (needsAnchorOffset(m) && startPos && !snapActive) {
     const half = getGeometryHalfSize(object, axisKey);
     const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
     if (off) {
