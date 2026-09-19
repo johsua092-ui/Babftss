@@ -2440,5 +2440,96 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     keterbacaan → ya, tapi reader yang paham JSX akan lihat struktur
     dari `</div>` penutup, bukan dari indentasi.
 
+---
+
+## 13. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 73 v3 — pecah tombol "+" jadi coming soon + gear buka modal)
+
+85. **POLA PECAH TOMBOL JADI 2 PERAN: CEK CALLER + IKUT PATTERN TOAST YANG SUDAH ADA**
+    (sesi 2026-09-19, commit `e4bd4ce`): user minta pecah tombol "+"
+    lama (di GizmoBlockInfoPanel pojok kiri-atas kotak view) jadi 2:
+    "+" di atas (coming soon), gear di bawah (buka modal ScaleMode
+    — peran lama tombol +). Langkah yang BENAR:
+    (1) Cari di mana tombol itu dirender + caller handler-nya
+        (rg `handleOpenScaleModeFromPanel` → BlockSimulator3D.jsx
+        baris 615-618, lalu rg `onOpenScaleMode` → komponen
+        penerima = GizmoBlockInfoPanel.jsx baris 135).
+    (2) Cek apakah handler caller sudah support peran baru tanpa
+        modifikasi. Di kasus ini: `handleOpenScaleMode` sudah ada
+        untuk peran "buka modal" → tinggal pakai ulang di tombol
+        gear baru. Hanya perlu TAMBAH handler baru `handleComingSoon-
+        Click` untuk peran coming soon (3 baris: `toast.info(...)`
+        sonner). Caller tidak perlu ubah flow/modal — hanya tambah
+        handler baru + pass prop baru.
+    (3) Ikuti pattern toast yang sudah ada di project untuk coming
+        soon: Binding/Property/BuildArea semua pakai
+        `toast.warning(...)` / `toast.info(...)` sonner (baris 12519,
+        12521, 15663, 15709, 23908). Jangan cari lib toast baru,
+        jangan buat modal Coming Soon custom kecuali user minta
+        eksplisit (di kasus ini user minta "tulisan coming soon" =
+        toast cukup).
+    (4) Untuk komponen panel: tambah prop baru `onComingSoon = null`
+        (default null supaya aman kalau caller belum passing),
+        JANGAN ubah signature prop lama.
+    (5) Tambah komentar header Phase X v(N+1) yang jelaskan
+        sejarah perubahan tombol — AI penerus baca komentar header
+        untuk paham kenapa tombol + sekarang = coming soon padahal
+        komentar Phase X vN bilang "+" = buka modal.
+
+86. **PITFALL: KOMENTAR HEADER PHASE LAMA SEMAKIN OUTDATED TIAP KALI ADA Phase VERSI BARU**
+    (sesi 2026-09-19, commit `e4bd4ce`, kelanjutan butir 83):
+    ScaleModeModal.jsx baris 23-40 (komentar Phase 73 v2) menyebut
+    "tombol + di panel" yang membuka modal. Setelah Phase 73 v3,
+    tombol + di panel TIDAK LAGI membuka modal (sekarang coming
+    soon), yang membuka modal = tombol gear. Komentar Phase 73 v2
+    jadi LEBIH outdated. Tapi tetap TIDAK di-update untuk minimal
+    change — prinsip butir 83 berlaku: komentar header = snapshot,
+    bisa outdated, AI penerus yang baca kode sebenarnya yang
+    menang. **Pelajaran lintas-Phase**: setiap kali ada Phase X v
+    (N+1) yang mengubah flow yang dijelaskan di komentar header
+    Phase X vN, komentar itu BERTAMBAH outdated — tidak masalah
+    selama kode jalan + ada komentar Phase X v(N+1) di file/loasi
+    yang sama yang jelaskan flow baru. AI penerus WAJIB baca
+    komentar Phase TERBARU yang relevan, bukan komentar Phase
+    versi awal. Untuk project Babftss: kalau baca komentar header
+    ScaleModeModal.jsx, SELALU cross-check dengan komentar header
+    GizmoBlockInfoPanel.jsx (karena komponen tombol + / gear ada
+    di sana, bukan di ScaleModeModal).
+
+87. **HITUNG POSISI TOMBOL BARU SECARA MANUAL: TOP = TOP_LAMA + HEIGHT_LAMA + GAP**
+    (sesi 2026-09-19, commit `e4bd4ce`): untuk tambah tombol baru
+    DI BAWAH tombol lama yang position absolute, rumus manual:
+    `top_baru = top_lama + height_lama + gap_yang_diinginkan`.
+    Di kasus ini: tombol + lama di `top:6 left:6`, height 26px →
+    berakhir di y = 6 + 26 = 32. Jarak 6px (sama dengan padding
+    parent) → top gear = 32 + 6 = 38. Verifikasi container parent:
+    `minHeight: 96` di kotak view (baris 128) → total vertical
+    space = 96. Tombol + (6-32) + gear (38-64) = 64px terpakai,
+    sisa 32px untuk content image. Aman, tidak overflow.
+    **Pola**: SELALU cek `minHeight`/`height` container parent
+    sebelum tambah tombol absolute baru. Kalau container terlalu
+    pendek, tombol bisa overflow ke content di bawahnya (image
+    block, label, dll). Kalau overflow, opsinya: (a) tambah
+    `minHeight` container, atau (b) pakai posisi lain (kanan/bawah
+    container), atau (c) pakai layout flex/grid bukan absolute.
+
+88. **KOMENTAR HEADER Phase X vN INLINE DI KODE = WARISAN INLINE, BUKAN HANYA DI KONTRAK**
+    (sesi 2026-09-19, commit `e4bd4ce`): komentar header Phase 73
+    v3 di GizmoBlockInfoPanel.jsx (14 baris) ditulis lengkap:
+    sejarah perubahan tombol (v1 popup kecil → v2 buka modal megah
+    → v3 pecah jadi + coming soon + gear buka modal) + alasan
+    kenapa komentar Phase 73 v2 di ScaleModeModal.jsx tidak
+    di-update. Ini implementasi Aturan #9 (Warisan Pengalaman)
+    SECARA INLINE di kode, selain di KONTRAK_PERMANEN.md. Komentar
+    header inline = yang pertama dibaca AI penerus saat buka file
+    tsb (sebelum baca kontrak penuh). **Pola**: untuk perubahan
+    yang punya sejarah versi (Phase X v1 → v2 → v3), WAJIB tulis
+    komentar header inline yang jelaskan: (a) apa yang berubah di
+    versi ini, (b) kenapa, (c) apa yang TIDAK berubah (supaya AI
+    penerus tidak salah sentuh), (d) cross-reference ke file/kontrak
+    lain yang terkait. Komentar inline bukan pengganti kontrak —
+    kontrak tetap sumber kebenaran tertinggi (Aturan #1), komentar
+    inline = shortcut kontekstual per-file.
+
+
 
 
