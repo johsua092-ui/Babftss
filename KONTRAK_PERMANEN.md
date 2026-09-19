@@ -3087,6 +3087,117 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     "di penunjuk scale bahkan mungkin bisa banyak angka dibelakang
     koma itu diperbolehkan karena itu hanya sekedar penunjuk saja".
 
+---
+
+## 19. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 78 — snap pindah ke mouseUp, fix goyang + sisi seberang diam)
+
+107. **MENTAL SIMULATION FLOW WAJIB COVER SEMUA SEMANTICS YANG USER EXPECT, BUKAN CUMA SATU ASPEK**
+    (sesi 2026-09-19, fix commit `e9b3f1d` untuk bug Phase 77 commit
+    `9c953ab`): user komplain "kok di mode 1side 2 sisi ke scale?
+    harusnya sisi lain diam" + "kamu kena jebakan lagi ya? padahal
+    kamu sudah suru baca kontrak permanen md". Akar masalah: Phase 77
+    fix bug goyang dengan SKIP computeAnchorOffset saat snap aktif.
+    Tapi computeAnchorOffset adalah yang buat sisi seberang diam di
+    mode 1 side. Skip = sisi seberang ikut scale (mode 2 side
+    behavior). Saya Phase 77 mental simulation flow CUMA cek "snap
+    aktif → block smooth → tidak goyang", TIDAK cek "sisi seberang
+    diam atau tidak". Hasilnya: fix goyang TAPI break mode 1 side
+    semantics.
+    **Pelajaran KRITIS (untuk AI penerus, JANGAN ULANG)**: mental
+    simulation flow WAJIB cover SEMUA semantics yang user expect
+    dari fitur, BUKAN cuma satu aspek. Untuk fitur scale + snap:
+    (a) tidak goyang saat drag,
+    (b) sisi seberang diam (mode 1 side semantics),
+    (c) snap aktif ke kelipatan step studs,
+    (d) modal tutup tidak stuck (Phase 74),
+    (e) input valid (Phase 76-77),
+    (f) koma → titik (Phase 77),
+    (g) mode lain (2/4/6 side) tidak tersentuh,
+    (h) file terlarang tidak tersentuh,
+    (i) fondasi studs tidak rusak (test_blockStuds 11/11 PASS).
+    KALAU ADA 1 aspek yang TIDAK di-mental-simulation, likely bug
+    di aspek itu. User akan komplain + bilang "kenapa kena jebakan
+    lagi". Phase 77 = pelajaran: saya cuman fix 1 aspek (goyang)
+    TAPI break aspek lain (sisi seberang diam). User tidak terima.
+    **Checklist mental simulation extended** (tambah butir 98):
+    (1)-(5) flow modal + Konfirmasi (butir 95).
+    (6)-(7) flow drag + cleanup (butir 98).
+    (8) **BARU Phase 78**: untuk SETIAP mode yang ada (1/2/4/6
+        side), cek SEMUA semantics yang mode itu janjikan:
+        - Mode 1 side: sisi seberang DIAM. Snap aktif kalau step>0.
+        - Mode 2 side: scale sumbu yang digenggam (jalur lama).
+        - Mode 4 side: 2 sumbu lain di-scale, sumbu digenggam DIAM.
+        - Mode 6 side: ketiga sumbu di-scale.
+    (9) **BARU Phase 78**: untuk SETIAP kombinasi (mode × snap
+        aktif/non-aktif × drag membesar/mengecil × ada block/
+        tidak ada), cek behavior konsisten dengan semantics.
+    Kalau salah 1 kombinasi TIDAK di-mental-simulation, likely bug.
+
+108. **SAAT ADA CONFLICT ANTARA 2 SEMANTICS, JANGAN SACRIFICE SALAH SATU — CARI SOLUSI YANG FIX BOTH**
+    (sesi 2026-09-19, fix commit `e9b3f1d`): Phase 77 fix bug
+    goyang dengan sacrifice sisi seberang diam (skip computeAnchorOffset
+    saat snap aktif). User tidak terima trade-off. Phase 78 cari
+    solusi yang fix BOTH: pindah snap dari setiap frame (applyScaleByMode)
+    ke mouseUp (snapScaleFinal).
+    - Selama drag: applyScaleByMode JALAN tanpa snap → smooth +
+      computeAnchorOffset pakai raw scale → sisi seberang DIAM.
+    - Saat mouseUp: snapScaleFinal snap 1x + computeAnchorOffset
+      pakai snapped scale → sisi seberang TETAP di posisi snapped.
+    Fix BOTH bugs (goyang + sisi seberang diam) TANPA sacrifice
+    apapun. Trade-off baru: saat mouseUp, block lompat sedikit
+    ke snapped position (1x lompatan, bukan goyang). Acceptable
+    karena user expect snap = step function (lompat antar step).
+    **Pola untuk conflict semantics** (snap vs sisi seberang diam,
+    speed vs accuracy, flex vs safety, dll): JANGAN sacrifice salah
+    satu. Cari pendekatan yang fix BOTH:
+    (a) Pisahkan ke 2 fase (selama drag = A, saat mouseUp = B).
+        Phase 78: snap saat mouseUp, smooth selama drag.
+    (b) Pakai hysteresis (kalau conflict di boundary).
+    (c) Pakai threshold yang adaptif.
+    (d) Refactor struktural (pisahkan fungsi).
+    Trade-off "sacrifice A untuk fix B" = RED FLAG. User TIDAK
+    akan terima. Selalu cari solusi yang fix ALL bugs. Kalau
+    tidak bisa, TANYA user mana yang prioritas — JANGAN asumsi.
+    Di kasus Phase 77, saya asumsi "snap > sisi seberang diam"
+    tanpa konfirmasi user. Hasilnya: user komplain. Phase 78 fix
+    dengan pisahkan ke 2 fase (selama drag = smooth + sisi seberang
+    diam, saat mouseUp = snap + sisi seberang tetap diam di
+    snapped position).
+
+109. **POLA: SNAP SAAT mouseUp (BUKAN setiap frame) = FIX GOYANG + PRESERVE SEMANTICS**
+    (sesi 2026-09-19, fix commit `e9b3f1d`): implementasi snap yang
+    paling robust = snap saat mouseUp (drag selesai), BUKAN setiap
+    frame saat objectChange. Alasan:
+    - Snap setiap frame + computeAnchorOffset pakai scale = GOYANG
+      (saat snap lompat antar step, offset lompat, posisi lompat).
+    - Snap saat mouseUp = 1x lompatan ke step terdekat. Tidak
+      goyang karena hanya 1x.
+    - Selama drag: block scale smooth (raw), computeAnchorOffset
+      jalan setiap frame pakai raw scale (semantics preserved).
+    - Saat mouseUp: snap 1x + computeAnchorOffset pakai snapped
+      scale (semantics tetap preserved, posisi lompat sedikit ke
+      snapped position).
+    **Implementasi**: pisahkan fungsi:
+    - `applyScaleByMode(...)` — JALAN setiap frame saat objectChange.
+      TANPA snap. Cuma apply ratio + computeAnchorOffset (mode 1
+      side, sisi seberang diam pakai raw scale).
+    - `snapScaleFinal(...)` — JALAN 1x saat mouseUp (onDraggingChanged
+      false). Snap scale ke kelipatan stepScale + computeAnchorOffset
+      pakai snapped scale.
+    Di caller (BlockSimulator3D.jsx):
+    - onTransformObjectChange: applyScaleByMode (tanpa snapStudStep,
+      atau snapStudStep=null).
+    - onDraggingChanged false: kalau sd ada + snapStudStep > 0,
+      panggil snapScaleFinal SEBELUM clearScaleDragStart.
+    **Trade-off**: saat mouseUp, block lompat sedikit ke snapped
+    position. Acceptable untuk snap (user expect step function).
+    **Pola untuk fitur snap apapun** (scale, position, rotation):
+    PERTIMBANGKAN snap saat mouseUp BUKAN setiap frame. Kalau snap
+    setiap frame menyebabkan goyang/flicker (karena lompat antar
+    step di boundary), pindah ke mouseUp. UX lebih natural: user
+    drag smooth, setelah lepas, block snap ke step terdekat.
+
+
 
 
 
