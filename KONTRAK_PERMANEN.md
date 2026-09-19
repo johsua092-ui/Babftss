@@ -2325,3 +2325,38 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     TIDAK tersentuh meski match grep-nya, karena kita pakai Edit tool
     dengan `old_str` spesifik ke `ScaleModeModal.jsx` saja.
 
+---
+
+## 11. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: tombol Batal & Konfirmasi simetris di ScaleModeModal)
+
+80. **POLA SIMETRIS 2-TOMBOL DI FLEXBOX: `flex: 1` di kedua anak + hapus `justifyContent`**
+    (sesi 2026-09-19, commit `3e9b65c`): kasus = tombol "Batal" (kiri) dan
+    "Konfirmasi" (kanan) di footer modal ScaleModeModal. Sebelum: keduanya
+    content-driven (lebar = content + padding), container punya
+    `justifyContent: 'flex-end'` yang meng-grup keduanya di kanan → Batal
+    pendek, Konfirmasi panjang, tidak rata. Solusi minimal (Aturan #5):
+    (1) tambah `flex: 1` di awal style kedua tombol, (2) hapus
+    `justifyContent: 'flex-end'` di container (sebab jadi no-op ketika
+    kedua anak flex:1, biarkan jadi dead context misleading). Hasil:
+    tiap tombol = `(containerWidth - gap) / 2` = simetris 50:50, Batal
+    otomatis kiri (anak flex pertama), Konfirmasi kanan. **Pitfall
+    penting**: padding berbeda antar tombol (mis. `10px 20px` vs
+    `10px 24px`) TIDAK memengaruhi lebar akhir saat `flex:1` aktif —
+    flex stretch men-supersede content/padding dalam perhitungan
+    lebar. Padding beda hanya menggeser text dalam tombol. Jadi kalau
+    user komplain "text Batal mepet pinggir" tapi lebar tombol sudah
+    sama, fix-nya samakan padding (bukan flex). **Alternatif yang
+    juga valid tapi LEBIH besar perubahan**: grid 2-kolom
+    (`gridTemplateColumns: '1fr 1fr'`) atau width `calc(50% - 6px)`
+    eksplisit — tapi Aturan #5 "ubah sekecil mungkin" → pilih flex:1.
+
+    Verifikasi: perubahan layout flexbox murni (tidak sentuh material
+    Three.js, tidak sentuh rendering visual geometri) → vite build
+    exit 0 CUKUP. Tidak perlu vision_analyze (bukan fix dari gambar
+    referensi) atau uji pixel (delta layout terprediksi via logika
+    CSS flexbox, bukan rendering subpixel yang butuh bukti pixel).
+    Sudah ditampung di butir 75 ("VERIFIKASI FIX UI TEXT-ONLY") —
+    aturan serupa berlaku: untuk fix UI murni yang dampak visualnya
+    terprediksi lewat logika CSS, vite build exit 0 = cukup bukti.
+
+
