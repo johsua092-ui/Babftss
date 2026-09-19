@@ -1,0 +1,173 @@
+fix(scale-ui): Phase 75 — ubah ScaleNumberModal dari SET langsung ke STEP snap
+
+MASALAH
+Bug dari user: setelah set studs di ScaleNumberModal (Phase 74,
+commit c455b03) + Konfirmasi, saat user drag bola gizmo scale,
+block tidak "bertambah/berkurang per step studs" sesuai harapan.
+User expect: input 2 studs → drag → block snap ke kelipatan 2
+studs (1, 2, 3 block dst). Tapi aktual: drag bebas (smooth), tidak
+ada snap. User coba 1, 0.5, 0.1 studs → juga tidak ada efek step
+→ "matematikanya gimana??" — user kecewa.
+
+PENYEBAB
+Salah interpretasi saya di Phase 74. User sebenarnya minta:
+input studs = STEP untuk drag bola gizmo (snap ke kelipatan),
+BUKAN SET langsung scale ke nilai studs itu. Implementasi Phase 74
+(commit c455b03) pakai pendekatan SET langsung (obj.scale.setScalar
+(studs / STUDS_PER_BLOCK)) yang hanya apply 1x saat Konfirmasi,
+tidak ada hook ke drag bola gizmo. Saat user drag setelah Konfirmasi,
+Three.js TransformControls scale bebas tanpa ada snap → behavior
+tidak sesuai harapan user.
+
+Akar masalah: tidak baca ulang permintaan user Phase 74 dengan
+teliti. User tulis: "jika user menginput scale number = 2 studs
+maka jika user MENCOBA SCALE dia akan BERTAMBAH 2 block dan
+BERKURANG 2 block". Kata "mencoba scale" = drag bola gizmo.
+Kata "bertambah/berkurang per step" = snap. Saya salah baca sebagai
+SET langsung (apply ke block saat Konfirmasi).
+
+SOLUSI
+3 file berubah, 4 perubahan inti:
+
+**File 1: src/utils/scaleModes.js (44 insertions)**
+  1. Import STUDS_PER_BLOCK dari './blockStuds.js' (konstanta
+     fondasi studs, MUTLAK sesuai kontrak bab STANDAR PENGUKURAN).
+  2. Tambah komentar header Phase 75 di posisi atas file (di atas
+     export const SCALE_MODES) yang jelaskan: snap = fitur input
+     studs dari ScaleNumberModal, behavior step (bukan SET langsung),
+     formula stepScale = snapStudStep / STUDS_PER_BLOCK, snap aktif
+     hanya di mode 1/4/6 side (mode 2 side jalur lama tidak lewat
+     applyScaleByMode).
+  3. Tambah parameter `snapStudStep = null` (default null = no snap)
+     ke signature `applyScaleByMode`.
+  4. Tambah snap logic SETELAH loop apply ratio, SEBELUM
+     computeAnchorOffset. Snap relatif ke startScale[axis]
+     (bukan absolute) supaya block tidak melompat saat belum drag:
+     delta = raw - startScale[a]
+     snappedDelta = Math.round(delta / stepScale) * stepScale
+     finalScale = sgn * max(|startScale + snappedDelta|, minAbs)
+     Behavior: drag < 0.5*stepScale → block tidak berubah; drag
+     >= 0.5*stepScale → block naik/turun 1 step. Snap HANYA
+     sumbu yang di-scale oleh mode (axes dari getScaledAxes).
+     Kompensasi posisi mode 1 side (computeAnchorOffset) pakai
+     scale yang sudah di-snap → offset otomatis konsisten.
+
+**File 2: src/pages/BlockSimulator3D.jsx (44 insertions, 13 deletions)**
+  5. Tambah state `scaleNumberStep` (default null = no snap) +
+     ref `scaleNumberStepRef` (default null) + useEffect sync
+     ref ← state. Pattern sama dengan scaleModeRef yang sudah
+     ada (ref supaya event handler onTransformObjectChange yang
+     dibuat sekali di useEffect awal baca nilai terbaru).
+  6. Edit handleScaleNumberConfirm: UBAH SEMANTIK dari SET langsung
+     (obj.scale.setScalar + updateMatrixWorld + toast.success)
+     menjadi SET STEP (setScaleNumberStep(studs) + tutup modal +
+     toast.success "Step scale diset ke X studs — drag bola gizmo
+     untuk snap ke kelipatan ini"). Hapus logic apply langsung
+     (tc.object + setScalar + updateMatrixWorld). Komentar header
+     Phase 75 jelaskan perubahan semantik.
+  7. Tambah field `snapStudStep: scaleNumberStepRef.current` ke
+     scaleDragRef.current saat snapshot drag mulai (di
+     onTransformDraggingChanged, e.value=true, baris 12459).
+  8. Tambah argumen `sd.snapStudStep` ke applyScaleByMode call di
+     onTransformObjectChange (baris 12541). Kalau snapStudStep
+     null (default), snap tidak aktif → behavior drag = seperti
+     sebelumnya (smooth, tanpa snap). Kalau snapStudStep angka
+     valid (user sudah Konfirmasi modal), snap aktif.
+
+**File 3: src/components/ScaleNumberModal.jsx (13 insertions, 5 deletions)**
+  9. Update subtitle text dari "Masukkan nilai scale dalam studs
+     (1 block = 2 studs)" → "Masukkan step scale dalam studs (drag
+     akan snap ke kelipatan ini)". Supaya user paham ini STEP,
+     bukan SET langsung.
+  10. Update penjelasan singkat dari "Nilai studs dipakai untuk
+      apply scale ke block yang sedang di-scale" → "Nilai studs =
+      step untuk snap drag bola gizmo. Saat user drag, perubahan
+      scale disesuaikan ke kelipatan step ini. Snap aktif di mode
+      1/4/6 side. Mode 2 side (bawaan) tidak snap — pilih mode
+      lain untuk snap."
+
+YANG DIBIARKAN APA ADANYA (tidak disentuh):
+- handleComingSoonClick (Phase 74, baris 641-667) — TIDAK diubah.
+  Tetap baca tc.object untuk set default value modal. Behavior:
+  kalau ada block yang di-attach → default value = current scale
+  studs block; kalau tidak ada → default 2. Bisa di-improve untuk
+  baca scaleNumberStep sebagai prioritas default (supaya user lihat
+  step yang aktif saat buka modal lagi), tapi untuk minimal change
+  skip — di catat di kontrak sebagai follow-up.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- blockStuds.js + test_blockStuds.mjs — fondasi tidak diubah.
+  Hanya DIKONSUMSI (import STUDS_PER_BLOCK) oleh scaleModes.js.
+- File terlarang, gizmo utils (gizmoSixArrows/gizmoRotateRings/
+  gizmoScaleBalls), TransformControls Three.js — semua intact.
+
+AMAN
+- 3 file spesifik berubah: scaleModes.js + BlockSimulator3D.jsx +
+  ScaleNumberModal.jsx. Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh (verified via git diff --name-only
+  | grep -E "AuthContext|firebase|supabase|LoginPage|UserPill" →
+  kosong).
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS
+  sebelum & sesudah perubahan.
+- Mode 2 side (jalur lama Three.js) TIDAK tersentuh: scaleDragRef
+  = null → applyScaleByMode TIDAK dipanggil → snap TIDAK aktif.
+  Behavior drag mode 2 side = smooth seperti sebelumnya (sesuai
+  permintaan user Phase 73: "sistem yang itu DIPERTAHANKAN").
+
+VERIFIKASI
+- git diff --stat: 3 files changed, 77 insertions(+), 24 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.99s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS (re-run after fix).
+- MENTAL SIMULATION FLOW USER (kontrak butir 95):
+  1. User klik "+" → handleComingSoonClick → set default value
+     (current scale studs atau 2) + setShowScaleNumberModal(true).
+     Modal render. ✓
+  2. User input angka (mis. 2) → state input update. ✓
+  3. User klik Konfirmasi → valid → finishClose(callback) →
+     setClosing(true) → 200ms → callback() = handleScaleNumberConfirm
+     (2). ✓
+  4. handleScaleNumberConfirm(2) → setScaleNumberStep(2) +
+     setShowScaleNumberModal(false) + toast.success. ✓
+  5. useEffect sync → scaleNumberStepRef.current = 2. ✓
+  6. Modal unmount → overlay hilang → user bisa interaksi. ✓
+  7. User drag bola gizmo → onTransformDraggingChanged (e.value=
+     true) → snapshot scale + frame + snapStudStep:
+     scaleNumberStepRef.current (2). ✓
+  8. Saat drag → onTransformObjectChange fire setiap frame →
+     applyScaleByMode dipanggil dengan sd.snapStudStep = 2. ✓
+  9. applyScaleByMode: apply ratio → snap ke kelipatan stepScale
+     (= 2/2 = 1.0) → block scale snap ke 1, 2, 3 dst. ✓
+  10. Drag selesai → onTransformDraggingChanged (e.value=false) →
+      clearScaleDragStart + scaleDragRef = null. ✓
+  Semua step aman. Tidak ada bug overlay blur stuck (Phase 74 fix
+  commit e7c1d92 sudah panggil setShowScaleNumberModal(false) di
+  handler confirm baru — dipertahankan di Phase 75).
+- Regresi fitur lama: tidak ada — mode 2 side jalur lama tidak
+  tersentuh (scaleDragRef null untuk 2 side), tombol + masih
+  panggil onComingSoon, tombol gear masih panggil onOpenScaleMode.
+
+CATATAN
+- BUG INI ADALAH LESSON LEARNED lanjutan dari butir 95 kontrak
+  (vite build exit 0 ≠ fitur bekerja). Phase 74 commit c455b03
+  lolos vite build + test_blockStuds 11/11 PASS, tapi TIDAK
+  mental simulation flow drag. Saya cuma mental simulation flow
+  klik tombol + → modal → Konfirmasi (yang fix bug layar buram
+  commit e7c1d92), TAPI TIDAK mental simulation flow drag bola
+  gizmo SETELAH Konfirmasi. Hasilnya: bug snap tidak ketangkap
+  sampai user coba sendiri + komplain. Untuk fitur yang melibatkan
+  hook ke event Three.js (drag, objectChange), WAJIB mental
+  simulation sampai step drag, bukan cuma sampai step modal tutup.
+- Mode 2 side TIDAK snap (jalur lama Three.js men-scale sumbu
+  yang digenggam langsung tanpa hook applyScaleByMode). User kalau
+  mau snap, pilih mode 1/4/6 side. Behavior ini sudah dicatat di
+  komentar header Phase 75 di scaleModes.js baris 44-57 + di
+  ScaleNumberModal.jsx subtitle + penjelasan singkat.
+- Komentar header Phase 74 di ScaleNumberModal.jsx baris 1-58
+  yang bilang "input nilai scale" (bukan step) sekarang OUTDATED
+  lagi. Tidak di-update untuk minimal change (lihat kontrak butir
+  83, 86, 93 — komentar header Phase lama cycle outdated lintas-
+  Phase). AI penerus baca komentar header ScaleNumberModal: skip
+  bagian "apply ke tc.object" — lihat kode sebenarnya: handler
+  confirm cuma set scaleNumberStep (state) + tutup modal, apply
+  snap lewat applyScaleByMode saat drag.

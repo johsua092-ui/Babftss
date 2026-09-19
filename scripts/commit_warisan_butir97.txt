@@ -1,0 +1,61 @@
+docs(kontrak): append warisan butir 97-100 — salah interpretasi user + mental simulation drag + snap relatif + state vs ref
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 75 — ubah ScaleNumberModal dari SET langsung ke STEP
+snap (commit 6daaa3d) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak. Bug ini adalah LESSON LEARNED penting
+karena akar masalahnya = SALAH INTERPRETASI permintaan user yang
+lolos verifikasi Phase 74 (vite build + test + mental simulation
+flow modal), TAPI mental simulation tidak sampai step drag.
+
+PENYEBAB
+Phase 74 commit c455b03 saya salah baca permintaan user "mencoba
+scale" sebagai SET langsung, padahal maksud user = drag bola
+gizmo + snap ke kelipatan step. Hasilnya: bug "drag tidak ada
+efek step" yang baru ketahuan setelah user coba sendiri + komplain.
+
+SOLUSI
+Append section baru "## 16. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 75 — fix snap scale studs, ubah ScaleNum-
+berModal dari SET langsung ke STEP)" di akhir file. Teks yang
+sudah ada tidak diubah apa pun. Warisan berisi 4 butir:
+  97. Salah interpretasi permintaan user = akar bug fatal. Baca
+      ulang dengan teliti, cek kata kunci ("mencoba" = interaksi,
+      "step" = snap, "set" = langsung). Kalau ambigu, tanya user.
+  98. Mental simulation flow WAJIB sampai step DRAG untuk fitur
+      hook event Three.js (objectChange/dragging-changed), bukan
+      cuma sampai modal tutup. Checklist extended 7 step (tambah
+      step 6-7 untuk drag + cleanup).
+  99. Pattern snap relatif ke startScale (bukan absolute ke grid)
+      supaya block tidak melompat saat belum drag. Formula:
+      delta = raw - startScale; snappedDelta = round(delta/step)
+      * step; finalScale = startScale + snappedDelta.
+  100. State React vs ref untuk event handler yang dibuat sekali
+       di useEffect — closure pegang nilai state saat itu, TIDAK
+       update saat state berubah. WAJIB pakai ref + useEffect sync
+       (pattern scaleModeRef yang sudah ada di project).
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~120 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~120 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 4 butir warisan karena ada banyak lesson
+  learned KRITIS: salah interpretasi user + mental simulation
+  tidak sampai drag + pattern snap relatif vs absolute + state vs
+  ref untuk event handler. Semua 4 butir ditulis DETAIL supaya AI
+  penerus yang baca kontrak langsung paham akar masalah + cara
+  cegah tanpa harus ulang bug ini dari awal. Implementasi prinsip
+  Aturan #9: "tiap sesi = 1 epoch, kontrak = bobot yang terus
+  ter-update, AI penerus = inferens yang mulai dari bobot terbaik".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
