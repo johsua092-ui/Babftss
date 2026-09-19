@@ -586,8 +586,17 @@ export default function BlockSimulator3D({ setPage }) {
   //    ──
   const [showScaleNumberModal, setShowScaleNumberModal] = useState(false);
   const [scaleNumberValue, setScaleNumberValue] = useState(2);
-  const [scaleNumberStep, setScaleNumberStep] = useState(null);  // null = no snap
-  const scaleNumberStepRef = useRef(null);  // ref supaya event handler baca nilai terbaru
+  // Phase 81 (2026-09-19, sesi server z.ai): default scaleNumberStep = 2 (BUKAN null).
+  // User komplain: "saya langsung scale tanpa aturan scale number dulu dan lah
+  // kok malah saya seolah memakai scale 0? bukan scale 2?". Akar masalah: state
+  // default null → snap tidak aktif sebelum user buka modal ScaleNumberModal.
+  // Fix: default 2 → snap aktif sejak awal dengan step 2 studs. User tidak perlu
+  // buka modal untuk aktifkan snap. Kalau user mau matikan snap, input 0 di modal.
+  const [scaleNumberStep, setScaleNumberStep] = useState(2);  // default 2 studs (snap aktif sejak awal)
+  // Phase 81: ref default 2 juga, supaya event handler baca 2 sebelum first render
+  // (useEffect sync baru jalan setelah first render). Kalau ref default null, ada
+  // window kecil di mana event handler baca null → snap tidak aktif. Default 2 = safe.
+  const scaleNumberStepRef = useRef(2);  // ref default 2 supaya event handler baca 2 sebelum first render
   useEffect(() => { scaleNumberStepRef.current = scaleNumberStep; }, [scaleNumberStep]);
   useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
   // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
