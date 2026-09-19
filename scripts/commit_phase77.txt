@@ -1,0 +1,162 @@
+fix(scale-ui): Phase 77 — fix goyang saat snap + 3 desimal + koma→titik
+
+MASALAH
+Dua bug + 1 permintaan UX dari user setelah Phase 75/76:
+
+1. BUG GOYANG: saat user scale MENGECIL dengan snap aktif, block
+   "goyang goyang bergetar sampai yang paling parah bergeser dari
+   posisi awal". Scale memanjang aman, tapi mengecil goyang.
+
+2. LIMIT 3 ANGKA DI BELAKANG KOMA: user mau bisa input 0.001,
+   0.002, ..., 1.263, dst (maks 3 desimal). 4 desimal (0.0001)
+   "mustahil user menginput". Tapi penunjuk (hasil konversi)
+   boleh banyak angka.
+
+3. KOMA → TITIK: user mau koma "," diganti titik "." paksa di
+   input field. User ketik "1,5" → auto-ubah jadi "1.5".
+
+PENYEBAB
+1. computeAnchorOffset (mode 1 side) dijalankan SETIAP FRAME dengan
+   offset = (scaleNew - startScale) × halfSize. Saat snap lompat
+   antar step (karena user drag), scaleNew berubah cepat → offset
+   berubah cepat → posisi block berubah cepat = GOYANG. Saat scale
+   membesar, offset positif (ke arah sisi +); saat mengecil, offset
+   negatif (ke arah sisi −). Lompatan offset lebih terlihat saat
+   mengecil karena delta negatif lebih besar magnitude-nya untuk
+   step yang sama.
+
+2. STEP = 0.01 (Phase 76) — user mau 0.001. Tidak ada validasi
+   maksimal 3 desimal, jadi user bisa input 0.0001 atau 1.2634.
+
+3. Input type="number" di browser beda-beda locale. Beberapa
+   browser tidak terima koma sebagai decimal separator. User mau
+   eksplisit: koma diubah paksa ke titik.
+
+SOLUSI
+2 file berubah, 7 perubahan inti:
+
+**File 1: src/utils/scaleModes.js (17 insertions, 2 deletions)**
+  1. Tambah var `snapActive = snapStudStep && snapStudStep > 0 &&
+     isFinite(snapStudStep)` di atas snap logic. Dipakai di snap
+     if + computeAnchorOffset check.
+  2. Snap if: ganti dari `if (snapStudStep && snapStudStep > 0 &&
+     isFinite(snapStudStep))` → `if (snapActive)`. Logic sama,
+     cuma pakai var yang sudah di-define.
+  3. computeAnchorOffset check: ganti dari
+     `if (needsAnchorOffset(m) && startPos)` →
+     `if (needsAnchorOffset(m) && startPos && !snapActive)`.
+     SKIP computeAnchorOffset kalau snap aktif. Behavior: snap
+     aktif = block scale dari PUSAT (mode 2 side behavior), posisi
+     TIDAK bergeser setiap frame → tidak goyang.
+  4. Tambah komentar Phase 77 di atas computeAnchorOffset check
+     yang jelaskan: bug goyang + alasan skip + trade-off (sisi
+     seberang tidak diam saat snap aktif) + user pilih mode 1 side
+     tanpa snap (step=0) kalau mau sisi seberang diam.
+
+**File 2: src/components/ScaleNumberModal.jsx (52 insertions, 20 deletions)**
+  5. STEP: 0.01 → 0.001 (Phase 77). Arrow ↑↓ di input field
+     tambah/kurang 0.001 per step.
+  6. Validasi: tambah cek `decimalPart.length > 3` =
+     `hasMoreThan3Decimals`. `decimalPart` = bagian setelah titik
+     di input string. Mis. "1.263" → length 3 (valid); "1.2634"
+     → length 4 (invalid). `valid = isNumber && parsed >=
+     MIN_STUDS && parsed <= MAX_STUDS && !hasMoreThan3Decimals`.
+  7. Subtitle: "Masukkan step scale dalam studs (0 = bebas, maks
+     3 desimal, koma → titik)".
+  8. Penjelasan singkat: tambah kalimat "Maks 3 angka di belakang
+     koma (0.001, 0.002, ..., 1.263, dst). Koma , diubah paksa
+     jadi titik . — mis. ketik '1,5' → '1.5'. Penunjuk (hasil
+     konversi di bawah) boleh banyak angka, cuma input yang
+     dibatasi 3 desimal."
+  9. Input field: ganti type dari "number" → "text" + inputMode=
+     "decimal" + placeholder="0.001 - 100". Hapus step/min/max
+     attribute (tidak relevan untuk type=text). Tambah onChange
+     handler: `const v = e.target.value.replace(/,/g, '.');
+     setInput(v);` — ganti SEMUA koma dengan titik paksa.
+  10. Error message: "Masukkan angka 0–100 studs, maks 3 angka di
+      belakang koma (mis. 0.001). Pakai titik, bukan koma."
+  11. Tabel konversi: update 6 row. Tambah row "0.001 → 1/2000
+      block". Hapus row "0.5 → seperempat block" (tidak essential,
+      diganti row 0.001 yang lebih relevan ke step kecil).
+
+YANG DIBIARKAN APA ADANYA (tidak disentuh):
+- BlockSimulator3D.jsx — tidak berubah. Handler confirm + caller
+  applyScaleByMode tetap pass scaleNumberStepRef.current sebagai
+  snapStudStep. Tidak perlu ubah caller.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS sebelum & sesudah.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 2 file spesifik berubah: scaleModes.js + ScaleNumberModal.jsx.
+  Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh: snap tidak aktif di
+  mode 2 side (scaleDragRef null → applyScaleByMode tidak dipanggil).
+- Mode 1 side TANPA snap (step=0): computeAnchorOffset tetap
+  jalan seperti sebelumnya (snapActive = false). Sisi seberang
+  diam. Tidak ada regresi untuk mode 1 side tanpa snap.
+- Mode 1 side DENGAN snap (step>0): computeAnchorOffset di-skip
+  (behavior berubah: scale dari pusat, sisi seberang tidak diam).
+  Ini trade-off yang didokumentasikan di komentar Phase 77.
+
+VERIFIKASI
+- git diff --stat: 2 files changed, 49 insertions(+), 20 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.76s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98):
+  KASUS 1: Bug 1 fix — scale mengecil + snap aktif
+  1. User set step = 1 studs (snapStudStep = 1, snapActive = true).
+  2. User drag bola gizmo scale mengecil di mode 1 side.
+  3. onTransformObjectChange fire setiap frame → applyScaleByMode
+     dipanggil.
+  4. snapActive = true → snap jalan → finalScale di-set.
+  5. computeAnchorOffset SKIP (karena !snapActive = false) →
+     posisi TIDAK bergeser.
+  6. Block size berubah (snap), posisi stabil → tidak goyang. ✓
+
+  KASUS 2: Bug 2 fix — input 3 desimal
+  1. User input "1.263" → parsed=1.263, decimalPart="263",
+     length=3, hasMoreThan3Decimals=false, valid=true. ✓
+  2. User input "1.2634" → decimalPart="2634", length=4,
+     hasMoreThan3Decimals=true, valid=false → error message. ✓
+  3. User input "0.001" → decimalPart="001", length=3, valid=true. ✓
+  4. Hasil konversi (penunjuk): scaleResult.toFixed(3) = 0.001 →
+     tampil "scale factor 0.001". Boleh banyak angka — toFixed(3)
+     cukup, kalau user mau lebih presisi bisa naikkan ke toFixed(6). ✓
+
+  KASUS 3: Bug 3 fix — koma → titik
+  1. User ketik "1,5" → onChange: replace(",", ".") → "1.5".
+  2. setInput("1.5") → state input = "1.5".
+  3. parsed = 1.5, valid = true. ✓
+
+  Semua step aman. Behavior sesuai harapan user.
+
+CATATAN
+- BUG GOYANG adalah lesson learned lanjutan dari butir 99 kontrak
+  (snap relatif ke startScale). Snap relatif supaya block tidak
+  melompat saat belum drag. Tapi saat user drag + snap lompat
+  antar step, computeAnchorOffset (yang pakai scale yang sudah
+  di-snap) juga lompat → posisi lompat → goyang. Fix Phase 77:
+  skip computeAnchorOffset saat snap aktif. Trade-off: mode 1
+  side + snap = behavior mode 2 side (scale dari pusat). User
+  pilih mode 1 side tanpa snap (step=0) kalau mau sisi seberang
+  diam. Document di komentar Phase 77 + kontrak warisan.
+- INPUT TYPE: ganti dari type="number" ke type="text" +
+  inputMode="decimal". Alasan: type="number" di browser beda-
+  beda locale, koma kadang tidak diterima. type="text" + manual
+  onChange handler (replace koma→titik) = kontrol penuh. Tapi
+  hilang fitur arrow ↑↓ bawaan browser (karena bukan type=
+  number). User bisa pakai keyboard arrow normal di text field
+  (kurang lebih sama UX). Trade-off acceptable supaya koma→titik
+  jalan konsisten lintas-browser.
+- Komentar header Phase 74 di ScaleNumberModal.jsx baris 1-58
+  yang menyebut "MIN_STUDS = 0.25" + "STEP = 0.01" + "type=
+  number" sekarang OUTDATED lagi (Phase 76 + 77). Tidak di-update
+  untuk minimal change (lihat kontrak butir 83, 86, 93 — komentar
+  header Phase lama cycle outdated lintas-Phase).
