@@ -12439,6 +12439,12 @@ Now you can apply Displacement for detailed effect.`);
         // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           snapshotScaleDragStart(transformControls.object);
+          // Phase 79: reset hysteresis state supaya lastStep mulai dari 0
+          // (delta = 0 saat drag mulai). Tanpa reset, lastStep dari drag
+          // sebelumnya masih ada → snap bisa lompat ke step yang salah.
+          if (transformControls.object.userData) {
+            delete transformControls.object.userData.__snapLastStep;
+          }
           // ── Phase 73: snapshot drag untuk mode 1/4/6 side ──
           // Ambil axis + SISI bola + FRAME (lokal vs dunia, warisan #59) +
           // nilai awal scale/pos. Dipakai objectChange untuk menerapkan mode.
@@ -12470,33 +12476,16 @@ Now you can apply Displacement for detailed effect.`);
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
         // di place/restore pakai fallback tanda nilai saat itu).
         if (transformControls.getMode() === 'scale' && transformControls.object) {
-          // ── Phase 78 (2026-09-19, sesi server z.ai): SNAP FINAL saat
-          //    mouseUp — BUKAN setiap frame. Sebelum Phase 78, snap jalan
-          //    setiap frame di applyScaleByMode → saat snap lompat antar
-          //    step, computeAnchorOffset (yang pakai scale untuk hitung
-          //    offset posisi) juga lompat → posisi goyang. Phase 77 fix
-          //    goyang dengan skip computeAnchorOffset saat snap aktif —
-          //    TAPI break mode 1 side semantics (sisi seberang tidak diam,
-          //    user komplain "kok di mode 1side 2 sisi ke scale?").
-          //    Phase 78 fix BOTH: selama drag smooth + sisi seberang diam
-          //    (applyScaleByMode tanpa snap), saat mouseUp snap 1x ke step
-          //    terdekat + computeAnchorOffset pakai snapped scale (sisi
-          //    seberang tetap diam di snapped position).
-          //    ──
-          const sd = scaleDragRef.current;
-          if (sd && sd.snapStudStep && sd.snapStudStep > 0) {
-            const obj = transformControls.object;
-            const s0 = sd.startScale[sd.axisKey];
-            const nowVal = obj.scale[sd.axisKey];
-            const ratio = (s0 !== 0) ? (nowVal / s0) : 1;
-            snapScaleFinal(
-              THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
-              sd.startScale, sd.startPos, sd.snapStudStep, 0.05,
-              sd.frameQuat,
-            );
-          }
+          // Phase 79: hapus call snapScaleFinal di mouseUp. Snap sekarang
+          // jalan saat drag (di applyScaleByMode) + hysteresis. Saat mouseUp,
+          // block tetap di snapped scale dari frame terakhir (TIDAK perlu
+          // snapScaleFinal lagi). Hysteresis state (obj.userData.__snapLastStep)
+          // di-clear bersama snapshot drag di bawah.
           clearScaleDragStart(transformControls.object);
           scaleDragRef.current = null;   // Phase 73: bersihkan snapshot mode
+          if (transformControls.object.userData) {
+            delete transformControls.object.userData.__snapLastStep;
+          }
         }
         // Drag SELESAI.
         // Kalau tool clone/mirror & ada ghost → finalkan jadi block PERMANEN:
@@ -12564,10 +12553,7 @@ Now you can apply Displacement for detailed effect.`);
           applyScaleByMode(
             THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
-            // Phase 78: snapStudStep tidak lagi di-pass ke applyScaleByMode
-            // (snap dihapus dari applyScaleByMode — pindah ke snapScaleFinal
-            // yang dipanggil di mouseUp). Biarkan null supaya backward compat.
-            null,
+            sd.snapStudStep,  // Phase 79: snap saat drag + hysteresis (kembali ke Phase 75 style, TAPI dengan hysteresis band 0.6 untuk fix goyang)
           );
         }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);

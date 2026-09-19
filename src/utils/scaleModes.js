@@ -58,8 +58,12 @@ import { STUDS_PER_BLOCK } from './blockStuds.js';
 
 export const SCALE_MODES = ['1side', '2side', '4side', '6side'];
 
-/** Mode default saat user pertama masuk / menekan Cancel (permintaan user). */
-export const DEFAULT_SCALE_MODE = '1side';
+/** Mode default saat user pertama masuk / menekan Cancel (permintaan user).
+ *  Phase 79 (2026-09-19, sesi server z.ai): ubah dari '1side' → '2side'.
+ *  User: "jika user langsung tekan konfirmasi atau batal ketika pertama
+ *  kali buka menu pemilihan 4 mode di scale ini maka akan terpaksa pakai
+ *  scale 1 kan? nah itu ubah jadi 2 aja defaultnya". */
+export const DEFAULT_SCALE_MODE = '2side';
 
 /** Label UI per mode (dipakai tombol modal + toast + panel info). */
 export const SCALE_MODE_LABEL = {
@@ -234,29 +238,67 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
     object.scale[a] = sgn * Math.max(Math.abs(s0) * r, minAbs);
   }
 
+  // ── PHASE 79 (2026-09-19, sesi server z.ai): SNAP SAAT DRAG + HYSTERESIS ──
+  // Phase 78 pindah snap ke mouseUp — TAPI user komplain "block tidak
+  // berubah saat drag, seperti scale 0". User mau snap REAL-TIME saat
+  // drag (block berubah sesuai step studs saat user drag).
+  //
+  // Phase 75 (snap saat drag, Math.round) = goyang di boundary karena
+  // Math.round(-0.5) = 0 di JS (round half up), TAPI Math.round(-0.6) =
+  // -1. Saat delta oscillate di boundary -0.5×stepScale, snap lompat
+  // bolak-balik antara step 0 dan step -1 → posisi lompat bolak-balik
+  // = GOYANG. computeAnchorOffset pakai snapped scale → offset lompat
+  // bersama snap.
+  //
+  // Phase 79 fix BOTH (snap real-time + tidak goyang + sisi seberang
+  // diam) pakai HYSTERESIS BAND 0.6 (lebih besar dari Math.round 0.5):
+  // - Kalau stepIdx > lastStep: pindah ke stepIdx kalau delta >=
+  //   (lastStep + 0.6) × stepScale (band 0.6, BUKAN 0.5).
+  // - Kalau stepIdx < lastStep: pindah ke stepIdx kalau delta <=
+  //   (lastStep - 0.6) × stepScale.
+  // - Kalau delta di antara (lastStep - 0.6) dan (lastStep + 0.6) ×
+  //   stepScale, tetap di lastStep (TIDAK lompat).
+  // Behavior: snap real-time saat drag (block berubah sesuai step),
+  // TIDAK goyang di boundary (hysteresis prevent lompat bolak-balik),
+  // sisi seberang diam (computeAnchorOffset pakai snapped scale).
+  // lastStep disimpan di obj.userData.__snapLastStep (persistent di
+  // object, reset di onDraggingChanged true).
+  //
+  // Trade-off: block lambat (perlu drag 0.6×stepScale untuk pindah
+  // step, BUKAN 0.5×stepScale). Acceptable untuk snap (user expect
+  // step function).
+  if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep)) {
+    const stepScale = snapStudStep / STUDS_PER_BLOCK;
+    const HYSTERESIS_BAND = 0.6;  // band 0.6 (lebih besar dari Math.round 0.5)
+    // Hysteresis state: track lastSnappedStep per-sumbu
+    if (!object.userData) object.userData = {};
+    if (!object.userData.__snapLastStep) object.userData.__snapLastStep = {};
+    const lastStepMap = object.userData.__snapLastStep;
+    for (const a of axes) {
+      const s0 = startScale[a];
+      const sgn = s0 >= 0 ? 1 : -1;
+      const raw = object.scale[a];
+      const delta = raw - s0;
+      const lastStep = (lastStepMap[a] !== undefined) ? lastStepMap[a] : 0;
+      const stepIdx = Math.round(delta / stepScale);
+      // Hysteresis: pindah ke stepIdx kalau delta cukup jauh dari lastStep
+      let finalStep = lastStep;
+      if (stepIdx > lastStep && delta >= (lastStep + HYSTERESIS_BAND) * stepScale) {
+        finalStep = stepIdx;
+      } else if (stepIdx < lastStep && delta <= (lastStep - HYSTERESIS_BAND) * stepScale) {
+        finalStep = stepIdx;
+      }
+      lastStepMap[a] = finalStep;
+      const finalScale = sgn * Math.max(Math.abs(s0 + finalStep * stepScale), minAbs);
+      object.scale[a] = finalScale;
+    }
+  }
+
   // 1side: geser pusat supaya sisi seberang DIAM.
-  // PHASE 78 (2026-09-19, sesi server z.ai): snap logic HAPUS dari
-  // applyScaleByMode (pindah ke snapScaleFinal yang dipanggil SAAT
-  // MOUSEUP / drag selesai). Sebelum Phase 78, snap jalan SETIAP
-  // FRAME di applyScaleByMode → saat snap lompat antar step, scale
-  // berubah cepat → computeAnchorOffset (yang pakai scale untuk
-  // hitung offset posisi) juga lompat → posisi block GOYANG.
-  //
-  // Phase 77 fix goyang dengan SKIP computeAnchorOffset saat snap
-  // aktif — TAPI break mode 1 side semantics (sisi seberang tidak
-  // diam, user komplain "kok di mode 1side 2 sisi ke scale?").
-  //
-  // Phase 78 fix BOTH bugs (goyang + sisi seberang diam):
-  //  - Selama drag: applyScaleByMode JALAN tanpa snap (smooth),
-  //    computeAnchorOffset pakai raw scale → sisi seberang DIAM.
-  //  - Saat mouseUp: snapScaleFinal snap 1x ke step terdekat +
-  //    computeAnchorOffset pakai snapped scale → sisi seberang
-  //    TETAP di posisi snapped (lompat sedikit ke snapped position,
-  //    TAPI tidak goyang karena hanya 1x lompatan).
-  //
-  // Parameter snapStudStep di signature ini TIDAK dipakai (deprecated
-  // — backward compat untuk caller yang masih pass). Snap sekarang
-  // lewat snapScaleFinal yang dipanggil di onDraggingChanged false.
+  // computeAnchorOffset pakai object.scale[axisKey] yang sudah di-snap
+  // (finalScale) — supaya sisi seberang DIAM di posisi snapped (BUKAN
+  // raw position). Saat snap lompat antar step, offset lompat 1x per
+  // step (BUKAN goyang, karena hysteresis prevent lompat bolak-balik).
   if (needsAnchorOffset(m) && startPos) {
     const half = getGeometryHalfSize(object, axisKey);
     const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
