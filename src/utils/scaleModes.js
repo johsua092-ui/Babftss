@@ -107,7 +107,17 @@ export function getScaledAxes(mode, axisKey) {
  * Hanya 1side. (2side simetris; 4side & 6side memang tumbuh dari pusat.)
  */
 export function needsAnchorOffset(mode) {
-  return normalizeScaleMode(mode) === '1side';
+  // Phase 86 (2026-09-19, sesi server z.ai): SELALU return false.
+  // User mau block DIAM — "jangan maju! diam! 0! tidak akan pernah maju!".
+  // computeAnchorOffset tidak pernah jalan. Pusat TIDAK PERNAH bergeser.
+  // Sebelum Phase 86: return true untuk mode 1side (sisi seberang diam,
+  // pusat bergeser). User komplain berulang (Phase 77/82/83/84/85).
+  // Phase 86: user sangat jelas — "jangan maju plis tolong benerin".
+  // SKIP computeAnchorOffset SELALU. Block DIAM. Titik.
+  // Trade-off: sisi seberang bergerak simetris (BUKAN diam) di mode 1side.
+  // User Phase 78 komplain "1 side jadi 2 side". Tapi user Phase 86
+  // prioritaskan "diam" > "sisi seberang diam". Phase terbaru menang.
+  return false;
 }
 
 /**
