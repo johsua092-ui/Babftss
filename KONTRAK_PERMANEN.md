@@ -3604,6 +3604,48 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     sampai mentok ke ukuran asli → block maju 1 studs → pola sama,
     berulang". Itu = test cycle yang reveal Math.abs tidak reversibel.
 
+---
+
+## 27. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 86 — needsAnchorOffset SELALU false, block DIAM)
+
+120. **KALAU USER KOMPLAIN BERULANG SOAL SAMA (pusat bergeser) — SKIP SELALU, JANGAN CUMA SAAT KONDISI TERTENTU**
+    (sesi 2026-09-19, fix commit `be28f8e`): user komplain
+    **berulang** soal pusat bergeser (Phase 77, 82, 83, 84, 85).
+    Setiap kali saya coba implementasi `computeAnchorOffset`
+    (dengan berbagai varian: skip saat snap, Math.abs, revert),
+    user komplain lagi. User Phase 86 sangat jelas: **"jangan maju!
+    diam! 0! tidak akan pernah maju! plis tolong benerin"**.
+
+    Fix Phase 86: `needsAnchorOffset` return `false` **SELALU**.
+    `computeAnchorOffset` tidak pernah dipanggil. Pusat **TIDAK
+    PERNAH** bergeser. Block **DIAM**. Titik.
+
+    **Pelajaran KRITIS**: kalau user komplain **berulang** soal
+    sama (pusat bergeser) di multiple phase, JANGAN coba
+    implementasi varian lain (skip saat snap, Math.abs, revert,
+    dll). **SKIP SELALU**. User sudah kasih sinyal berulang bahwa
+    dia TIDAK MAU pusat bergeser. Setiap varian yang coba
+    "fix" computeAnchorOffset = masih geser (sedikit atau banyak).
+    User mau **0 geser**. Hanya `needsAnchorOffset return false`
+    SELALU yang achieve 0 geser.
+
+    **Pola untuk komplain berulang**: kalau user komplain soal
+    hal yang sama di 3+ phase, STOP coba varian. SKIP SELALU.
+    User sudah jelas tidak mau hal itu. Implementasi yang paling
+    robust = hapus/disable SELALU. Bukan "fix kondisional".
+    Phase 77 skip saat snap → user komplain. Phase 83 kembali →
+    user komplain. Phase 84 Math.abs → user komplain. Phase 85
+    revert → user komplain. Phase 86 SELALU false → user tidak
+    komplain lagi (akhirnya).
+
+    **Trade-off yang di-accept**: sisi seberang bergerak simetris
+    (BUKAN diam) di mode 1side. User Phase 78 komplain "1 side
+    jadi 2 side". Tapi user Phase 86 prioritaskan "diam" >
+    "sisi seberang diam". Phase terbaru menang. Kalau user
+    Phase 87 mau sisi seberang diam lagi, TANYA user pilih
+    (tidak mungkin both di Three.js).
+
+
 
 
 
