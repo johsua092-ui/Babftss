@@ -40,7 +40,7 @@ import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlo
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
-  applyScaleByMode, computeScaleModeFrame, applyGeometryOffset,
+  applyScaleByMode, computeScaleModeFrame,
 } from '../utils/scaleModes.js';
 import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
@@ -12461,17 +12461,11 @@ Now you can apply Displacement for detailed effect.`);
         // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           snapshotScaleDragStart(transformControls.object);
-          // Phase 87: clone geometry → originalGeometry. Set tc.object.geometry = clone.
-          // applyGeometryOffset akan modify clone (reset + translate) setiap frame.
-          // object.position tetap DIAM (startPos). Sisi seberang DIAM via geometry.translate.
-          const obj87 = transformControls.object;
-          if (obj87.geometry) {
-            if (!obj87.userData.__originalGeometry) {
-              obj87.userData.__originalGeometry = obj87.geometry.clone();
-            }
-            // Set geometry = clone dari original (fresh, belum di-translate)
-            obj87.geometry = obj87.userData.__originalGeometry.clone();
-          }
+          // Phase 88: HAPUS clone geometry (Phase 87). Geometry translate
+          // menyebabkan pivot TIDAK di tengah geometry → "inti block melesat keluar".
+          // User mau: pivot tetap di tengah geometry (terperangkap di block).
+          // Tanpa geometry translate, pivot selalu di tengah geometry
+          // (karena geometry center = 0). Sisi bergerak simetris (scale dari pusat).
           // Phase 79: reset hysteresis state supaya lastStep mulai dari 0
           if (transformControls.object.userData) {
             delete transformControls.object.userData.__snapLastStep;
@@ -12515,21 +12509,8 @@ Now you can apply Displacement for detailed effect.`);
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
         // di place/restore pakai fallback tanda nilai saat itu).
         if (transformControls.getMode() === 'scale' && transformControls.object) {
-          // Phase 87: RE-APPLY applyGeometryOffset SEBELUM clear sd.
-          // Saat lepas gizmo, geometry = clone (yang sudah di-translate dari
-          // frame terakhir). Kalau ada objectChange terakhir yang fire SETELAH
-          // dragging-changed false (dengan sd = null), applyGeometryOffset
-          // TIDAK dipanggil → geometry offset TIDAK compensate → sisi seberang
-          // bergerak → block "teleport". Fix: RE-APPLY di sini (sd MASIH ada,
-          // sebelum clear) supaya geometry compensate untuk finalScale.
-          const obj87 = transformControls.object;
-          const sd87 = scaleDragRef.current;
-          if (sd87 && obj87.userData && obj87.userData.__originalGeometry) {
-            applyGeometryOffset(
-              THREE, obj87, scaleModeRef.current, sd87.axisKey, sd87.sign,
-              sd87.startScale, obj87.userData.__originalGeometry,
-            );
-          }
+          // Phase 88: HAPUS RE-APPLY applyGeometryOffset (Phase 87).
+          // Geometry translate dihapus. Pivot tetap di tengah geometry.
           clearScaleDragStart(transformControls.object);
           scaleDragRef.current = null;   // Phase 73: bersihkan snapshot mode
           if (transformControls.object.userData) {
@@ -12604,23 +12585,10 @@ Now you can apply Displacement for detailed effect.`);
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
             sd.snapStudStep,
           );
-          // Phase 87: applyGeometryOffset — geometry translate per-block.
-          // Sisi seberang DIAM (geometry.translate) + pusat DIAM (position = startPos).
-          applyGeometryOffset(
-            THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
-            sd.startScale, obj.userData.__originalGeometry,
-          );
-        } else if (obj.userData.__originalGeometry && obj.userData.__scaleAxisKey) {
-          // Phase 87 fix: sd null (objectChange SETELAH dragging-changed false).
-          // Pakai userData supaya applyGeometryOffset tetap jalan.
-          // Tanpa ini, geometry TIDAK compensate → block teleport.
-          applyGeometryOffset(
-            THREE, obj, scaleModeRef.current,
-            obj.userData.__scaleAxisKey,
-            obj.userData.__scaleSign,
-            obj.userData.__scaleStartScale,
-            obj.userData.__originalGeometry,
-          );
+          // Phase 88: HAPUS applyGeometryOffset (Phase 87). Geometry translate
+          // menyebabkan pivot TIDAK di tengah geometry → "inti block melesat keluar".
+          // Tanpa geometry translate, pivot selalu di tengah geometry (geometry center = 0).
+          // Sisi bergerak simetris (scale dari pusat). TIDAK ada "melesat".
         }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
         // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
