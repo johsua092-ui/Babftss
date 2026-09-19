@@ -59,7 +59,7 @@ const ANIM_MS = 200;
 const MIN_STUDS = 0;     // Phase 76: 0 supaya user bisa input 0 (no snap) + nilai kecil 0.01, 0.02, ...
 const MAX_STUDS = 100;
 const DEFAULT_STUDS = 2;
-const STEP = 0.01;   // Phase 76: 0.01 supaya user bisa input 0.01, 0.02, 0.03, ... halus
+const STEP = 0.001;   // Phase 77: 0.001 supaya user bisa input 0.001, 0.002, ... halus (maks 3 desimal)
 
 export default function ScaleNumberModal({
   value = DEFAULT_STUDS, onConfirm, onCancel,
@@ -79,9 +79,17 @@ export default function ScaleNumberModal({
   // Parse + validasi input. Tampilkan pesan error inline kalau invalid.
   // Phase 76: MIN_STUDS = 0 supaya user bisa input 0 (= no snap, drag bebas)
   // dan nilai kecil seperti 0.01, 0.02, ... sesuai permintaan user.
+  // Phase 77: validasi maksimal 3 angka di belakang koma (0.001 valid, 0.0001 invalid).
+  // Penunjuk (hasil konversi) boleh banyak angka — cuma INPUT yang dibatasi 3 desimal.
   const parsed = parseFloat(input);
   const isNumber = !isNaN(parsed) && isFinite(parsed);
-  const valid = isNumber && parsed >= MIN_STUDS && parsed <= MAX_STUDS;
+  // Hitung jumlah angka di belakang koma. Mis. "1.263" → 3, "1.2634" → 4 (invalid).
+  // "1" → 0 (integer, valid). "0.001" → 3 (valid).
+  const decimalPart = (typeof input === 'string' && input.includes('.'))
+    ? input.split('.')[1] || ''
+    : '';
+  const hasMoreThan3Decimals = decimalPart.length > 3;
+  const valid = isNumber && parsed >= MIN_STUDS && parsed <= MAX_STUDS && !hasMoreThan3Decimals;
   const isZero = valid && parsed === 0;  // 0 = snap dimatikan
   const scaleResult = (valid && !isZero) ? (parsed / STUDS_PER_BLOCK) : null;
   const blockResult = (valid && !isZero) ? scaleResult : null;
@@ -160,7 +168,7 @@ export default function ScaleNumberModal({
                 Scale Number
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
-                Masukkan step scale dalam studs (0 = bebas tanpa snap, drag lancar)
+                Masukkan step scale dalam studs (0 = bebas, maks 3 desimal, koma → titik)
               </p>
             </div>
           </div>
@@ -170,10 +178,13 @@ export default function ScaleNumberModal({
             margin: '0 0 18px 0', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6,
           }}>
             Nilai studs = <b>step</b> untuk snap drag bola gizmo. <b>0 = snap
-            dimatikan</b> (drag bebas tanpa batasan matematika). 0.01, 0.02, ... =
-            snap ke kelipatan itu. 1 block penuh = 2 studs; 1 studs = setengah
+            dimatikan</b> (drag bebas tanpa batasan matematika). Maks <b>3 angka
+            di belakang koma</b> (0.001, 0.002, ..., 1.263, dst). Koma <code>,</code>
+            diubah paksa jadi titik <code>.</code> — mis. ketik "1,5" → "1.5".
+            Penunjuk (hasil konversi di bawah) boleh banyak angka, cuma input
+            yang dibatasi 3 desimal. 1 block penuh = 2 studs; 1 studs = setengah
             block; 0.5 studs = seperempat block. Snap aktif di mode 1/4/6 side.
-            Mode 2 side (bawaan) tidak snap — pilih mode lain untuk snap.
+            Mode 2 side (bawaan) tidak snap.
           </p>
 
           {/* ── INPUT FIELD — body utama modal ini ── */}
@@ -190,13 +201,17 @@ export default function ScaleNumberModal({
             </label>
             <input
               id="scale-number-input"
-              type="number"
+              type="text"
               inputMode="decimal"
-              step={STEP}
-              min={MIN_STUDS}
-              max={MAX_STUDS}
+              placeholder="0.001 - 100"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                // Phase 77: koma ',' → titik '.' paksa. type=text supaya kita
+                // kontrol penuh (type=number di browser berbeda locale, koma
+                // kadang tidak diterima).
+                const v = e.target.value.replace(/,/g, '.');
+                setInput(v);
+              }}
               onKeyDown={onKeyDown}
               autoFocus
               style={{
@@ -235,7 +250,8 @@ export default function ScaleNumberModal({
                 fontSize: 12, color: '#fca5a5',
                 fontFamily: 'Inter, sans-serif',
               }}>
-                Masukkan angka antara {MIN_STUDS} dan {MAX_STUDS} studs.
+                Masukkan angka {MIN_STUDS}–{MAX_STUDS} studs, maks 3 angka di
+                belakang koma (mis. 0.001). Pakai titik, bukan koma.
               </div>
             )}
           </div>
@@ -249,12 +265,12 @@ export default function ScaleNumberModal({
             border: '1px solid rgba(148,163,184,0.14)',
           }}>
             {[
-              { studs: 0,    desc: 'no snap (bebas)' },
-              { studs: 0.01, desc: '1/200 block' },
-              { studs: 0.1,  desc: '1/20 block' },
-              { studs: 0.5,  desc: 'seperempat block' },
-              { studs: 1,    desc: 'setengah block' },
-              { studs: 2,    desc: '1 block (default)' },
+              { studs: 0,     desc: 'no snap (bebas)' },
+              { studs: 0.001, desc: '1/2000 block' },
+              { studs: 0.01,  desc: '1/200 block' },
+              { studs: 0.1,   desc: '1/20 block' },
+              { studs: 1,     desc: 'setengah block' },
+              { studs: 2,     desc: '1 block (default)' },
             ].map((row) => (
               <div key={row.studs} style={{
                 display: 'flex', flexDirection: 'column', gap: 2,

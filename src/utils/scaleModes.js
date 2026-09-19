@@ -246,7 +246,8 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
   // Mode 1side → 1 sumbu (digenggam); 4side → 2 sumbu lain; 6side → semua.
   // Mode 2side TIDAK lewat sini (scaleDragRef null → applyScaleByMode tidak
   // dipanggil → snap tidak aktif). User pilih mode 1/4/6 side untuk snap.
-  if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep)) {
+  const snapActive = snapStudStep && snapStudStep > 0 && isFinite(snapStudStep);
+  if (snapActive) {
     const stepScale = snapStudStep / STUDS_PER_BLOCK;
     for (const a of axes) {
       const s0 = startScale[a];
@@ -260,7 +261,19 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
   }
 
   // 1side: geser pusat supaya sisi seberang DIAM.
-  if (needsAnchorOffset(m) && startPos) {
+  // PHASE 77 (2026-09-19, sesi server z.ai): SKIP computeAnchorOffset
+  // kalau snap aktif. Sebelum Phase 77, computeAnchorOffset dijalankan
+  // setiap frame dengan offset = (scaleNew - startScale) × halfSize.
+  // Saat snap lompat antar step (karena user drag), scale berubah cepat
+  // → offset berubah cepat → posisi block berubah cepat = GOYANG/BERGETAR.
+  // User komplain: "scale menjadi kecil tiba tiba blocknya goyang goyang
+  // bergetar sampai yang paling parah bergeser dari posisi awal".
+  // Fix: skip computeAnchorOffset saat snap aktif. Behavior: snap aktif
+  // = block scale dari PUSAT (mode 2 side behavior), posisi TIDAK
+  // bergeser. Sisi seberang TIDAK diam saat snap aktif — user pilih
+  // mode 1 side TANPA snap (step = 0) kalau mau sisi seberang diam.
+  // Mode 1 side + snap aktif = prioritas snap > sisi seberang diam.
+  if (needsAnchorOffset(m) && startPos && !snapActive) {
     const half = getGeometryHalfSize(object, axisKey);
     const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
     if (off) {
