@@ -1,0 +1,137 @@
+feat(scale-ui): Phase 74 — modal ScaleNumberModal untuk input scale dalam studs
+
+MASALAH
+Tombol "+" di GizmoBlockInfoPanel (Phase 73 v3, commit e4bd4ce)
+sebelumnya = "coming soon" (toast.info). User minta sekarang
+tombol "+" BUKAN lagi coming soon — harus membuka jendela
+peringatan oranye SAMA PERSIS designnya dengan modal Scale Mode
+(Phase 73, modal yang dipakai tombol gear). Tapi body modal ini
+BUKAN pilih 4 mode, melainkan INPUT nilai scale dalam satuan
+STUDS. Apply nilai studs ke block yang sedang di-attach ke gizmo
+(tc.object).
+
+PENYEBAB
+User ingin fitur input scale number eksplisit (bukan cuma drag
+bola gizmo) supaya bisa set nilai presisi. Fondasi matematika
+sudah ada sejak Phase 72 (2026-09-15) di src/utils/blockStuds.js
++ test_blockStuds.mjs (11/11 PASS): STUDS_PER_BLOCK = 2 MUTLAK,
+formula studs = 2 × |scale|, inverse scale = studs / 2. Tapi
+belum pernah dipakai untuk INPUT USER sampai Phase 74 ini.
+
+SOLUSI
+2 file berubah + 1 file baru:
+
+**File baru: src/components/ScaleNumberModal.jsx**
+Komponen modal baru, design SAMA PERSIS dengan ScaleModeModal
+(overlay blur 8px, panel rgba(14,20,32,0.98), border amber
+#f59e0b, glow, header dgn Maximize icon + Orbitron "Scale Number"
++ subtitle "Masukkan nilai scale dalam studs (1 block = 2 studs)",
+footer Batal+Konfirmasi flex:1 simetris 50:50 warisan butir 80).
+Perbedaan dari ScaleModeModal:
+  - Body: input field type number (min 0.25, max 100, step 0.25)
+    + label "Scale (studs)" + hasil konversi real-time
+    ("= scale factor X" + "= Y block")
+  - Tabel konversi cepat 6 baris (0.25/0.5/1/2/4/6 studs →
+    "1/8 block"/"seperempat block"/"setengah block"/"1 block
+    (default)"/"2 block"/"3 block")
+  - Enter key = Konfirmasi (kalau valid)
+  - autoFocus di input
+  - Validation: invalid (NaN / <0.25 / >100) → Konfirmasi disabled
+    + pesan error inline merah
+  - keyframes CSS ber-prefix 'scalenum' (bukan 'scalemode')
+    supaya tidak tabrakan
+
+**File 2: src/pages/BlockSimulator3D.jsx (58 insertions, 5 deletions)**
+  1. Import ScaleNumberModal (baris 30).
+  2. Import STUDS_PER_BLOCK dari '../utils/blockStuds.js' (baris 45).
+  3. Tambah state `showScaleNumberModal` + `scaleNumberValue`
+     (default 2 = default block), di posisi sejajar state
+     scaleModeModal (baris 577-578).
+  4. Ganti body handler `handleComingSoonClick` (baris 641-654):
+     dari `toast.info('coming soon')` → set scaleNumberValue
+     (default = current scale studs block yang di-attach ke gizmo,
+     pakai max |scale| antar sumbu * STUDS_PER_BLOCK; kalau tidak
+     ada block, default 2) + setShowScaleNumberModal(true).
+  5. Tambah handler `handleScaleNumberConfirm(studs)` (baris 662-673):
+     baca tc.object → kalau null, toast.warning "Pilih block dulu";
+     kalau ada, set obj.scale.setScalar(studs / STUDS_PER_BLOCK)
+     + obj.updateMatrixWorld() + toast.success.
+  6. Render `<ScaleNumberModal>` di JSX (baris 23455-23461), sebelum
+     `<ScaleModeModal>`. Pass prop value, onConfirm, onCancel.
+
+YANG TIDAK DISENTUH:
+- ScaleModeModal.jsx (modal 4 mode) — tidak berubah, masih dipakai
+  tombol gear (Phase 73 v3).
+- GizmoBlockInfoPanel.jsx (komponen panel info block + tombol +/gear)
+  — tidak berubah. Handler onComingSoon tetap dipanggil dari tombol +
+  seperti Phase 73 v3 (commit e4bd4ce); caller (BlockSimulator3D)
+  yang ganti body handler-nya (dari toast.info → buka modal baru).
+- src/utils/blockStuds.js + test_blockStuds.mjs — fondasi matematika
+  studs TIDAK diubah. Hanya DIKONSUMSI (import STUDS_PER_BLOCK)
+  oleh ScaleNumberModal + BlockSimulator3D.
+- scaleModes.js (4 mode), gizmo utils, TransformControls Three.js,
+  file terlarang (AuthContext/firebase/supabase/LoginPage/UserPill)
+  semua intact.
+
+AMAN
+- 2 file spesifik berubah + 1 file baru: ScaleNumberModal.jsx (new),
+  BlockSimulator3D.jsx (modified). Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh (verified via git diff --name-only
+  | grep -E "AuthContext|firebase|supabase|LoginPage|UserPill" → kosong).
+- Fondasi matematika studs TIDAK diubah: test_blockStuds.mjs
+  11/11 PASS sebelum & sesudah perubahan.
+
+VERIFIKASI
+- git diff --stat: 1 file modified (58 insertions, 5 deletions) +
+  1 file new (ScaleNumberModal.jsx ~280 baris).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.65s, 0 error, 0 warning syntax.
+  BlockSimulator3D chunk size: 1.28MB (+6.4KB dari 1.27MB) — wajar
+  karena tambah ScaleNumberModal component ke dalam bundle.
+- test_blockStuds.mjs: 11/11 PASS — fondasi matematika terverifikasi
+  sebagai sumber kebenaran untuk konversi studs/scale.
+- Tidak ada tes headless untuk ScaleNumberModal (komponen baru);
+  tidak ada uji pixel (perubahan = komponen modal baru + handler
+  apply scale, bukan rendering visual material Three.js — verifikasi
+  cukup via logika React + THREE.js API: tc.object.scale.setScalar
+  dipakai sama dengan pattern yang sudah ada di file baris 309, 338).
+- Regresi fitur lama: tidak ada — tombol + masih memanggil
+  onComingSoon (GizmoBlockInfoPanel tidak berubah), hanya body
+  handler yang ganti. Tombol gear tetap memanggil onOpenScaleMode
+  (modal 4 mode ScaleModeModal tetap jalan).
+
+CATATAN
+- Komentar header Phase 73 v3 di GizmoBlockInfoPanel.jsx baris
+  55-67 yang bilang tombol + = "coming soon" sekarang OUTDATED
+  lagi (Phase 74 ganti ke buka modal). Tidak di-update untuk
+  minimal change (lihat kontrak butir 83 & 86 — komentar header
+  Phase lama bisa di-skip cross-Phase). AI penerus baca komentar
+  Phase 73 v3 di GizmoBlockInfoPanel.jsx: skip bagian "coming
+  soon" — lihat komentar Phase 74 di BlockSimulator3D.jsx baris
+  631-640 yang jelaskan flow baru.
+- Pitfall MIN_STUDS = 0.25: pilihan hard floor supaya block tidak
+  terlalu kecil sampai susah dilihat/diklik. Bukan batas kontrak
+  (kontrak cuma bilang STUDS_PER_BLOCK = 2 sebagai default). Kalau
+  user mau lebih kecil dari 0.25, ubah MIN_STUDS di ScaleNumberModal
+  + ulang test. Untuk sekarang 0.25 cukup (block 1/8 dari ukuran
+  asli = 0.125 studs per sumbu, masih kelihatan).
+- PITFALL VERIFIKASI: test_blockStuds.mjs PUNYA asersi "0.05 →
+  0.1 studs" (baris 35). Artinya MIN_ABS_SCALE app = 0.05 (scale
+  0.05 = 0.1 studs). MIN_STUDS ScaleNumberModal = 0.25 lebih
+  besar dari 0.1 studs (MIN_ABS_SCALE app), jadi tidak konflik
+  dengan clamp app. Kalau user input 0.25, app tetap clamp ke
+  0.05 minimum abs scale (sudah diatur di blockScale.js /
+  gizmoScaleBalls.js — tidak disentuh di commit ini).
+
+WARISAN INLINE DI KODE
+- Komentar header ScaleNumberModal.jsx (block /* */ baris 1-58)
+  ditulis lengkap: sejarah permintaan user + fondasi matematika
+  studs + cross-reference ke kontrak bab STANDAR PENGUKURAN +
+  helper blockStuds.js + test_blockStuds.mjs. Implementasi butir
+  88 kontrak (komentar inline = warisan inline).
+- Komentar inline di handler handleComingSoonClick + handleScaleNum-
+  berConfirm (BlockSimulator3D.jsx baris 631-673) jelaskan:
+  (a) apa yang berubah dari Phase 73 v3; (b) kenapa default value
+  pakai max |scale|; (c) formula konversi scale = studs /
+  STUDS_PER_BLOCK; (d) cross-reference ke kontrak bab STANDAR
+  PENGUKURAN STUDS.

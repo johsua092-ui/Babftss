@@ -1,0 +1,59 @@
+docs(kontrak): append warisan butir 89-93 — Phase 74 ScaleNumberModal + fondasi studs
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+Tugas Phase 74 — modal ScaleNumberModal input scale dalam studs
+(commit c455b03) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak.
+
+PENYEBAB
+Tugas dilakukan di server z.ai, source code dari repo GitHub.
+Pekerjaan teknis sudah di-push ke origin/main commit c455b03,
+tapi warisan belum menyusul. Instruksi user eksplisit: "teks
+yang sudah ada dilarang disentuh, hanya boleh menambah tepat
+di bawahnya".
+
+SOLUSI
+Append section baru "## 14. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 74 — modal ScaleNumberModal input scale
+dalam studs)" di akhir file, TEPAT di bawah baris penutup
+section 13. Teks yang sudah ada tidak diubah apa pun. Warisan
+berisi 5 butir:
+  89. Audit fondasi matematika sebelum pakai: jalankan test file
+      (test_blockStuds.mjs 11/11 PASS sebelum & sesudah)
+  90. Pola modal "sama persis designnya" = copy struktur,
+      ganti body; keyframes CSS ber-prefix berbeda supaya tidak
+      tabrakan
+  91. Apply scale via obj.scale.setScalar(value) — pattern yang
+      sudah ada di file (baris 309, 338-339); jangan pakai API
+      TransformControls lain
+  92. Input number field: validasi real-time + Konfirmasi
+      disabled saat invalid (supaya user tidak bisa input NaN
+      yang buat block lenyap)
+  93. Komentar header Phase lama outdated semakin parah tiap
+      Phase versi baru (cycle, kelanjutan butir 83 & 86)
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~120 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~120 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 5 butir warisan karena ada banyak
+  pelajaran non-trivial: audit fondasi matematika (terverifikasi
+  11/11 PASS), pola modal "sama persis designnya" (copy struktur
+  + ganti body + keyframes ber-prefix beda), pattern apply scale
+  (obj.scale.setScalar + updateMatrixWorld), validasi input
+  real-time (supaya NaN tidak sampai ke obj.scale), komentar header
+  lintas-Phase cycle outdated. Lebih banyak dari sesi sebelumnya
+  (4 butir Phase 73 v3) karena tugas ini melibatkan fondasi
+  matematika + komponen baru + handler apply ke Three.js.
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
