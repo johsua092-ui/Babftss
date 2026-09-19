@@ -664,11 +664,13 @@ export default function BlockSimulator3D({ setPage }) {
     const obj = tc && tc.object;
     if (!obj || !obj.isObject3D) {
       toast.warning('Pilih block dulu lewat gizmo Scale sebelum set nilai studs');
+      setShowScaleNumberModal(false);  // FIX bug layar buram: tutup modal juga saat error
       return;
     }
     const scale = studs / STUDS_PER_BLOCK;
     obj.scale.setScalar(scale);
     obj.updateMatrixWorld();
+    setShowScaleNumberModal(false);  // FIX bug layar buram: tutup modal supaya overlay blur hilang
     toast.success(`Block di-scale ke ${studs} studs (scale factor ${scale.toFixed(3)})`);
   };
   // Reset Camera confirmation modal state
