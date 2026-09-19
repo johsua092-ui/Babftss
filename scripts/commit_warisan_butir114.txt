@@ -1,0 +1,56 @@
+docs(kontrak): append warisan butir 114 — default state sejak awal vs setelah user interaksi
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 81 — default scaleNumberStep = 2 sejak awal (commit
+be6d324) sudah selesai & terverifikasi, warisannya belum
+di-append ke kontrak. BUG ini = lesson learned KRITIS karena
+akar masalahnya = salah paham "default X" (Phase 80 implementasi
+default SETELAH Konfirmasi/Batal modal, padahal user mau default
+SEJAK AWAL).
+
+PENYEBAB
+Phase 80 user bilang "default '2' jika user Konfirmasi/Batal
+tanpa ngatur scale number". Saya Phase 80 implementasi
+handleScaleNumberCancel yang set default 2 saat user Batal modal
+ScaleNumberModal. TAPI user Phase 81 tidak pernah buka modal
+ScaleNumberModal — user Konfirmasi modal 4 mode (ScaleModeModal)
+lalu langsung scale. State scaleNumberStep masih null → snap
+tidak aktif → block scale bebas (seperti scale 0). User komplain.
+
+SOLUSI
+Append section baru "## 22. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 81 — default scaleNumberStep = 2 sejak
+awal)" di akhir file. Teks yang sudah ada tidak diubah apa pun.
+Warisan berisi 1 butir:
+  114. Default state vs default SETELAH user interaksi. Kalau user
+       bilang "default X", cek APAKAH default itu berlaku sejak
+       awal (state initial) atau SETELAH user interaksi (Konfirmasi/
+       Batal modal). Kalau ambigu, TANYA. Atau implementasi default
+       sejak awal (lebih safe, covers semua case). Pola: useState(X)
+       + useRef(X) + useEffect sync. Trade-off: user tidak bisa
+       "no snap" kecuali buka modal + input 0.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~55 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~55 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 1 butir warisan karena lesson learned
+  KRITIS: default state sejak awal vs setelah user interaksi.
+  Butir 114 ditulis DETAIL dengan contoh konkret (Phase 80 salah
+  + Phase 81 koreksi) + pola general (useState(X) + useRef(X) +
+  useEffect sync) supaya AI penerus yang baca kontrak langsung
+  paham akar masalah + cara cegah. Implementasi prinsip Aturan
+  #9: "tiap sesi = 1 epoch, kontrak = bobot yang terus
+  ter-update, AI penerus = inferens yang mulai dari bobot terbaik".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).

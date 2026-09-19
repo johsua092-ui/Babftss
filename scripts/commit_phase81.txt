@@ -1,0 +1,132 @@
+fix(scale-ui): Phase 81 — default scaleNumberStep = 2 (snap aktif sejak awal)
+
+MASALAH
+User komplain: "saya langsung scale tanpa aturan scale number dulu
+dan lah kok malah saya seolah memakai scale 0? bukan scale 2?
+kayak blocknya terscale dengan bebas tanpa ada terikat memanjang
+dengan scale 2?".
+
+User Phase 80 sudah bilang "default '2' jika user memilih
+konfirmasi atau memilih batal tanpa mengatur scale number terlebih
+dahulu". Saya Phase 80 implementasi handleScaleNumberCancel yang
+set default 2 kalau user Batal modal ScaleNumberModal. TAPI user
+Phase 81 TIDAK buka modal ScaleNumberModal sama sekali — user
+Konfirmasi modal 4 mode (ScaleModeModal) lalu LANGSUNG scale.
+Karena user tidak pernah buka modal ScaleNumberModal, state
+scaleNumberStep masih null (default Phase 75) → snap tidak aktif
+→ block scale bebas (seperti scale 0).
+
+PENYEBAB
+State default scaleNumberStep = null (sejak Phase 75). Null =
+snap tidak aktif. Phase 80 fix dengan set default 2 saat user
+Konfirmasi/Batal modal ScaleNumberModal. TAPI user TIDAK pernah
+buka modal ScaleNumberModal → state tetap null → snap tidak aktif.
+
+Saya Phase 80 salah paham: kira user mau "default 2 SETELAH user
+Konfirmasi/Batal modal ScaleNumberModal". Ternyata user mau
+"default 2 SEJAK AWAL, bahkan sebelum user buka modal
+ScaleNumberModal". Snap aktif sejak awal dengan step 2 studs.
+
+SOLUSI
+1 file berubah, 2 perubahan inti:
+
+**File: src/pages/BlockSimulator3D.jsx (9 insertions, 2 deletions)**
+  1. State default `scaleNumberStep`: `useState(null)` →
+     `useState(2)`. Default 2 studs (snap aktif sejak awal).
+     User tidak perlu buka modal ScaleNumberModal untuk aktifkan
+     snap. Kalau user mau matikan snap, buka modal + input 0 +
+     Konfirmasi.
+  2. Ref default `scaleNumberStepRef`: `useRef(null)` →
+     `useRef(2)`. Ref default 2 supaya event handler
+     (onTransformObjectChange yang dibuat sekali di useEffect awal)
+     baca 2 sebelum first render. useEffect sync baru jalan
+     setelah first render — kalau ref default null, ada window
+     kecil di mana event handler baca null → snap tidak aktif.
+     Default 2 = safe.
+  3. Tambah komentar Phase 81 yang jelaskan alasan + akar masalah
+     (user complaint Phase 81 + why default null di Phase 75 salah
+     untuk UX user Phase 80/81).
+
+YANG TIDAK DISENTUH:
+- handleScaleNumberConfirm — tidak berubah. Sudah pakai studs dari
+  input (default value modal = scaleNumberStep ?? 2 = 2 kalau
+  scaleNumberStep = 2). Kalau user Konfirmasi tanpa ngatur, studs
+  = 2 (default value). setScaleNumberStep(2). ✓ (sekarang state
+  default sudah 2, jadi setScaleNumberStep(2) = no-op, tapi aman).
+- handleScaleNumberCancel — tidak berubah. Pakai
+  `setScaleNumberStep(prev => prev ?? 2)`. Kalau state default = 2,
+  prev = 2 (BUKAN null). `2 ?? 2` = 2. OK aman. Kalau user set
+  step 0 lalu Batal, prev = 0. `0 ?? 2` = 0 (BUKAN 2, karena 0
+  bukan null/undefined). OK, tetap 0 (no snap). Aman.
+- handleComingSoonClick — tidak berubah. Sudah set default value
+  modal = scaleNumberStep ?? 2 = 2 (kalau state = 2). OK konsisten.
+- scaleModes.js (applyScaleByMode + snap hysteresis Phase 79) —
+  tidak berubah. Sudah benar.
+- ScaleNumberModal.jsx — tidak berubah.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 1 file spesifik berubah: BlockSimulator3D.jsx. Tidak ada file
+  lain tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh.
+- Mode 1 side + snap (Phase 79 hysteresis) TIDAK tersentuh. Cuma
+  default state yang berubah (null → 2).
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 9 insertions(+), 2 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 18.53s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98 + 107):
+  KASUS: User Konfirmasi modal 4 mode → langsung scale tanpa buka
+  modal ScaleNumberModal
+  1. User pertama equip Scale → modal ScaleModeModal muncul. ✓
+  2. User Konfirmasi → setScaleMode('1side') + scaleModeLockedRef
+     = true + tutup modal. ✓
+  3. User langsung drag bola gizmo scale (TANPA buka modal
+     ScaleNumberModal). ✓
+  4. onDraggingChanged true: snapshot + reset __snapLastStep +
+     scaleDragRef = {..., snapStudStep: scaleNumberStepRef.current}. ✓
+  5. scaleNumberStepRef.current = 2 (default Phase 81) →
+     snapStudStep = 2. ✓
+  6. Selama drag (objectChange): applyScaleByMode dengan
+     snapStudStep = 2. ✓
+  7. snap + hysteresis band 0.6 → block snap ke kelipatan 2 studs
+     (stepScale = 1.0, snap ke 1.0, 2.0, 3.0, ...). ✓
+  8. computeAnchorOffset pakai snapped scale → sisi seberang DIAM. ✓
+  9. Snap AKTIF dengan step 2 studs SEJAK AWAL (tanpa user buka
+     modal ScaleNumberModal). ✓
+
+  Semua step aman. Fix bug user Phase 81: snap aktif sejak awal
+  dengan step 2 studs.
+
+CATATAN
+- BUG INI = lesson learned lanjutan dari kontrak butir 113 (salah
+  interpretasi permintaan user). Phase 80 saya implementasi
+  handleScaleNumberCancel untuk set default 2 saat user Batal
+  modal ScaleNumberModal. TAPI user Phase 81 tidak pernah buka
+  modal ScaleNumberModal → state tetap null → snap tidak aktif.
+  Saya Phase 80 salah paham: kira user mau "default 2 SETELAH
+  Konfirmasi/Batal modal ScaleNumberModal". Ternyata user mau
+  "default 2 SEJAK AWAL, bahkan sebelum user buka modal".
+- Pelajaran: kalau user bilang "default X", cek APAKAH default
+  itu berlaku sejak awal (state initial) atau SETELAH user
+  interaksi tertentu (Konfirmasi/Batal modal). Kalau user tidak
+  specify, TANYA. Atau implementasi default sejak awal (lebih
+  safe, karena covers semua case). Phase 81 = default sejak awal.
+- Trade-off: dengan default 2, snap aktif sejak awal. User tidak
+  bisa "no snap" (smooth drag) kecuali buka modal + input 0 +
+  Konfirmasi. Acceptable karena user Phase 76/77 bilang "0 = no
+  snap" (user tahu cara matikan snap).
+- Komentar header Phase 74/75 di BlockSimulator3D.jsx baris 571-
+  586 yang menyebut "input nilai scale" + "PERUBAHAN SEMANTIK" +
+  "null = no snap" sekarang OUTDATED lagi (Phase 81 default 2,
+  BUKAN null). Tapi komentar Phase 81 di baris 589-599 sudah
+  jelaskan perubahan default.
