@@ -1,0 +1,731 @@
+     1→/**
+     2→ * ChunkManager.js — High-performance voxel/spatial block management for three.js.
+     3→ *
+     4→ * ════════════════════════════════════════════════════════════════════════════
+     5→ * ARCHITECTURE OVERVIEW
+     6→ * ════════════════════════════════════════════════════════════════════════════
+     7→ *
+     8→ * Designed for large grids (500×500+) with thousands of dynamic blocks that
+     9→ * support free Scale (down to 0.05 for thin planks) and free Rotation.
+    10→ *
+    11→ * Solves 3 core performance problems of naive Mesh-per-block approaches:
+    12→ *
+    13→ * ── 1. DRAW CALL BOTTLENECK ──────────────────────────────────────────────────
+    14→ * Naive:   1 THREE.Mesh per block → 1 draw call per block.
+    15→ *          10,000 blocks = 10,000 draw calls → GPU pipeline stall → <10 FPS.
+    16→ * Solution: THREE.InstancedMesh per Chunk → 1 draw call per Chunk.
+    17→ *          500×500 grid / 25×25 chunks = 400 chunks max → ≤400 draw calls
+    18→ *          (only non-empty chunks render). 10×–50× fewer draw calls.
+    19→ *
+    20→ * ── 2. MEMORY WASTE ON EMPTY AREAS ──────────────────────────────────────────
+    21→ * Naive:   Pre-allocate Group/InstancedMesh for every chunk.
+    22→ *          400 chunks × (geometry + material + instance buffer) = wasted RAM.
+    23→ * Solution: Lazy allocation — empty chunks have ZERO 3D allocation.
+    24→ *          InstancedMesh spawns only when first block is added to a chunk.
+    25→ *          When chunk becomes empty again, it is auto-disposed (GPU freed).
+    26→ *
+    27→ * ── 3. O(N) LOOKUP / FRAME ITERATION ─────────────────────────────────────────
+    28→ * Naive:   Loop through all blocks every frame for updates.
+    29→ *          10,000 blocks × 60 FPS = 600,000 iterations/sec.
+    30→ * Solution: Map<string, number> per chunk for O(1) coordinate lookup.
+    31→ *          Block lookup by (x,y,z) is instant — no scanning 250,000 coords.
+    32→ *
+    33→ * ════════════════════════════════════════════════════════════════════════════
+    34→ * CHUNKING STRATEGY
+    35→ * ════════════════════════════════════════════════════════════════════════════
+    36→ *
+    37→ * World is divided into square chunks (default 25×25 blocks).
+    38→ * Each chunk has:
+    39→ *   - Chunk coords (cx, cz) — derived from world coords: cx = floor(x / SIZE)
+    40→ *   - One InstancedMesh (lazily allocated) holding all blocks in that chunk
+    41→ *   - Internal Map<'x,y,z', instanceIndex> for O(1) block lookup
+    42→ *   - Reverse array indexToBlock[] for raycast instanceId → block coord
+    43→ *   - Free index list for O(1) block removal (swap-remove strategy)
+    44→ *
+    45→ * ════════════════════════════════════════════════════════════════════════════
+    46→ * RENDERING & CULLING
+    47→ * ════════════════════════════════════════════════════════════════════════════
+    48→ *
+    49→ * Each chunk's InstancedMesh has a STATIC boundingSphere encompassing the
+    50→ * chunk's world AABB. three.js renderer auto-frustum-culls any chunk whose
+    51→ * boundingSphere is outside camera view → 0 GPU cost for off-screen chunks.
+    52→ *
+    53→ * Material uses THREE.FrontSide (backface culling active) so interior faces
+    54→ * of blocks are not rasterized — blocks look solid without wasting fill rate.
+    55→ *
+    56→ * No fog — blocks remain visible from edge to edge of the 500×500 grid.
+    57→ *
+    58→ * ════════════════════════════════════════════════════════════════════════════
+    59→ * BLOCK TRANSFORMS
+    60→ * ════════════════════════════════════════════════════════════════════════════
+    61→ *
+    62→ * Each block stores its own THREE.Matrix4 encoding position + quaternion +
+    63→ * scale. Thin planks (scale.y = 0.05) and arbitrary rotations are fully
+    64→ * supported. Updates go through setMatrixAt(index, matrix), then a single
+    65→ * instanceMatrix.needsUpdate = true is set on the chunk (once per frame max,
+    66→ * batched across all block updates in that frame via _pendingFlush Set).
+    67→ *
+    68→ * ════════════════════════════════════════════════════════════════════════════
+    69→ * USAGE
+    70→ * ════════════════════════════════════════════════════════════════════════════
+    71→ *
+    72→ *   import { ChunkManager } from '../lib/ChunkManager.js';
+    73→ *
+    74→ *   // 1. Create manager (shared geometry + material, FrontSide culling)
+    75→ *   const cm = new ChunkManager(scene, {
+    76→ *     chunkSize: 25,          // 25×25 blocks per chunk → 400 chunks for 500×500
+    77→ *     capacity: 25 * 25 * 64, // max blocks per chunk (height up to 64)
+    78→ *     chunkHeightMax: 64,
+    79→ *   });
+    80→ *
+    81→ *   // 2. Add blocks (lazy-allocates chunk's InstancedMesh on first add)
+    82→ *   cm.setBlock(10, 5, 20, {
+    83→ *     color: 0x3b82f6,
+    84→ *     scale: [1, 0.05, 1],   // thin plank
+    85→ *     quaternion: [0, 0, 0, 1],
+    86→ *   });
+    87→ *   cm.setBlock(11, 5, 20, { color: 0xef4444 }); // default scale/rotation
+    88→ *
+    89→ *   // 3. Per-frame: flush pending matrix updates (call in animate loop)
+    90→ *   function animate() {
+    91→ *     cm.update(); // batched — only dirty chunks get needsUpdate
+    92→ *     renderer.render(scene, camera);
+    93→ *   }
+    94→ *
+    95→ *   // 4. Raycast support
+    96→ *   const targets = cm.getRaycastTargets();
+    97→ *   const hits = raycaster.intersectObjects(targets.map(t => t.mesh));
+    98→ *   if (hits[0]) {
+    99→ *     const target = targets.find(t => t.mesh === hits[0].object);
+   100→ *     const coords = cm.instanceIdToCoords(target.chunk, hits[0].instanceId);
+   101→ *     // coords = { x, y, z } of the clicked block
+   102→ *   }
+   103→ *
+   104→ *   // 5. Update block transform (e.g. during gizmo drag)
+   105→ *   cm.updateBlockTransform(x, y, z, newMatrix4);
+   106→ *
+   107→ *   // 6. Remove block (chunk auto-disposes when empty → GPU freed)
+   108→ *   cm.removeBlock(10, 5, 20);
+   109→ *
+   110→ *   // 7. Full cleanup
+   111→ *   cm.dispose();
+   112→ *
+   113→ * ════════════════════════════════════════════════════════════════════════════
+   114→ * PERFORMANCE CHARACTERISTICS (500×500 grid, 25×25 chunks)
+   115→ * ════════════════════════════════════════════════════════════════════════════
+   116→ *
+   117→ *   Metric                  | Naive Mesh-per-block | ChunkManager
+   118→ *   ------------------------|----------------------|------------------
+   119→ *   Draw calls (10k blocks) | 10,000               | ≤400 (non-empty)
+   120→ *   Block lookup            | O(N) scan            | O(1) Map.get
+   121→ *   Empty chunk cost        | wasted allocation    | 0 bytes / 0 GPU
+   122→ *   Per-frame matrix update | per-block            | per-chunk (batched)
+   123→ *   Frustum cull granularity| per-block (slow)     | per-chunk (fast)
+   124→ *   Memory/block            | ~1KB (Mesh+Geo+Mat)  | ~64 bytes (matrix+color)
+   125→ */
+   126→
+   127→import * as THREE from 'three';
+   128→
+   129→// ─── Defaults ────────────────────────────────────────────────────────────────
+   130→const DEFAULT_CHUNK_SIZE = 25;                  // 25×25 blocks per chunk
+   131→const DEFAULT_BLOCK_CAPACITY = 25 * 25 * 64;    // max blocks per chunk
+   132→const DEFAULT_CHUNK_HEIGHT_MAX = 64;            // max build height for culling
+   133→
+   134→// ─── Scratch objects (avoid per-call allocation) ─────────────────────────────
+   135→const _tmpMatrix = new THREE.Matrix4();
+   136→const _tmpPos = new THREE.Vector3();
+   137→const _tmpQuat = new THREE.Quaternion();
+   138→const _tmpScale = new THREE.Vector3();
+   139→const _tmpColor = new THREE.Color();
+   140→
+   141→// ─── Key helpers ─────────────────────────────────────────────────────────────
+   142→const chunkKey = (cx, cz) => `${cx},${cz}`;
+   143→const blockKey = (x, y, z) => `${x},${y},${z}`;
+   144→
+   145→// ════════════════════════════════════════════════════════════════════════════
+   146→// Chunk — manages one sub-grid region with a single InstancedMesh.
+   147→// Lazy allocation: InstancedMesh is NOT created until first block is added.
+   148→// Empty chunks have ZERO GPU memory footprint.
+   149→// ════════════════════════════════════════════════════════════════════════════
+   150→class Chunk {
+   151→  constructor(cx, cz, manager) {
+   152→    this.cx = cx;
+   153→    this.cz = cz;
+   154→    this.manager = manager;
+   155→
+   156→    // World-space origin (corner) of this chunk
+   157→    this.originX = cx * manager.chunkSize;
+   158→    this.originZ = cz * manager.chunkSize;
+   159→
+   160→    // Lazily-allocated InstancedMesh (null until first block added)
+   161→    this.instancedMesh = null;
+   162→
+   163→    // Block lookup: 'x,y,z' → instance index in InstancedMesh
+   164→    this.blockToIndex = new Map();
+   165→
+   166→    // Reverse lookup: instance index → 'x,y,z' (for raycast hit → block coord)
+   167→    this.indexToBlock = [];
+   168→
+   169→    // Free list for recycled indices (O(1) removal without reordering)
+   170→    this.freeIndices = [];
+   171→
+   172→    // Current instance count
+   173→    this.count = 0;
+   174→
+   175→    // Dirty flags — flushed once per frame by ChunkManager.update()
+   176→    this.matrixDirty = false;
+   177→    this.colorDirty = false;
+   178→  }
+   179→
+   180→  /**
+   181→   * Lazy-allocate the InstancedMesh on first block add.
+   182→   * Empty chunks skip this entirely → zero GPU memory.
+   183→   */
+   184→  ensureAllocated() {
+   185→    if (this.instancedMesh) return;
+   186→
+   187→    const { geometry, material, capacity, chunkSize, chunkHeightMax, scene } = this.manager;
+   188→
+   189→    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+   190→    mesh.count = 0; // start empty — grow as blocks are added
+   191→    mesh.frustumCulled = true; // enable chunk-level frustum culling (spec #4)
+   192→    mesh.castShadow = true;
+   193→    mesh.receiveShadow = true;
+   194→
+   195→    // STATIC boundingSphere encompassing the chunk's world AABB.
+   196→    // This lets three.js frustum-cull whole chunks in O(1) per chunk
+   197→    // (no per-instance iteration needed for culling).
+   198→    // Sphere is conservative — slightly larger than the actual block bounds —
+   199→    // but this is the correct tradeoff: cull granularity is per-chunk, not
+   200→    // per-block, so we accept minor over-draw for huge cull speedup.
+   201→    const cx0 = this.originX;
+   202→    const cz0 = this.originZ;
+   203→    const cyMax = chunkHeightMax;
+   204→    const center = new THREE.Vector3(
+   205→      cx0 + chunkSize / 2,
+   206→      cyMax / 2,
+   207→      cz0 + chunkSize / 2
+   208→    );
+   209→    const halfDiag = Math.sqrt(
+   210→      (chunkSize / 2) ** 2 + (cyMax / 2) ** 2 + (chunkSize / 2) ** 2
+   211→    );
+   212→    mesh.boundingSphere = new THREE.Sphere(center, halfDiag);
+   213→
+   214→    // Per-instance color buffer (for tinting individual blocks).
+   215→    // Initialized to white (no tint) — actual block colors set via setColorAt.
+   216→    // DynamicDrawUsage because colors change at runtime (paint tool).
+   217→    const colors = new Float32Array(capacity * 3);
+   218→    for (let i = 0; i < capacity; i++) {
+   219→      colors[i * 3] = 1;
+   220→      colors[i * 3 + 1] = 1;
+   221→      colors[i * 3 + 2] = 1;
+   222→    }
+   223→    mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
+   224→    mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+   225→
+   226→    // instanceMatrix is also dynamic (blocks move/scale/rotate at runtime)
+   227→    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+   228→
+   229→    this.instancedMesh = mesh;
+   230→    scene.add(mesh);
+   231→  }
+   232→
+   233→  /**
+   234→   * Add a block to this chunk. Allocates InstancedMesh if this is the first block.
+   235→   * @param {number} x,y,z — world block coords
+   236→   * @param {THREE.Matrix4} matrix — full transform (pos + quat + scale)
+   237→   * @param {number} colorHex — block color (e.g. 0x3b82f6)
+   238→   * @returns {number} instance index, or -1 if capacity exceeded
+   239→   */
+   240→  addBlock(x, y, z, matrix, colorHex) {
+   241→    this.ensureAllocated();
+   242→
+   243→    const key = blockKey(x, y, z);
+   244→    if (this.blockToIndex.has(key)) {
+   245→      // Block already exists — update in place instead of duplicate
+   246→      return this.updateBlock(x, y, z, matrix, colorHex);
+   247→    }
+   248→
+   249→    // Allocate instance index — prefer recycled slots, else grow
+   250→    let index;
+   251→    if (this.freeIndices.length > 0) {
+   252→      index = this.freeIndices.pop();
+   253→    } else {
+   254→      index = this.count;
+   255→      if (index >= this.manager.capacity) {
+   256→        console.warn(
+   257→          `[Chunk ${this.cx},${this.cz}] capacity exceeded ` +
+   258→          `(${this.manager.capacity}). Block at (${x},${y},${z}) rejected.`
+   259→        );
+   260→        return -1;
+   261→      }
+   262→      this.count++;
+   263→    }
+   264→
+   265→    // Apply matrix (pos + quat + scale baked into Matrix4)
+   266→    this.instancedMesh.setMatrixAt(index, matrix);
+   267→
+   268→    // Apply per-instance color
+   269→    _tmpColor.setHex(colorHex);
+   270→    this.instancedMesh.setColorAt(index, _tmpColor);
+   271→
+   272→    // Update lookup maps
+   273→    this.blockToIndex.set(key, index);
+   274→    this.indexToBlock[index] = key;
+   275→
+   276→    // Grow visible count
+   277→    this.instancedMesh.count = this.count;
+   278→
+   279→    // Mark dirty — will be flushed once at end of frame
+   280→    this.matrixDirty = true;
+   281→    this.colorDirty = true;
+   282→
+   283→    return index;
+   284→  }
+   285→
+   286→  /**
+   287→   * Update an existing block's transform and/or color.
+   288→   * @returns {number} instance index, or -1 if block not found
+   289→   */
+   290→  updateBlock(x, y, z, matrix, colorHex) {
+   291→    const key = blockKey(x, y, z);
+   292→    const index = this.blockToIndex.get(key);
+   293→    if (index === undefined) return -1;
+   294→
+   295→    if (matrix) {
+   296→      this.instancedMesh.setMatrixAt(index, matrix);
+   297→      this.matrixDirty = true;
+   298→    }
+   299→    if (colorHex !== undefined) {
+   300→      _tmpColor.setHex(colorHex);
+   301→      this.instancedMesh.setColorAt(index, _tmpColor);
+   302→      this.colorDirty = true;
+   303→    }
+   304→    return index;
+   305→  }
+   306→
+   307→  /**
+   308→   * Remove a block. Uses swap-remove strategy for O(1):
+   309→   * the last instance is moved into the freed slot, then count is decremented.
+   310→   * Block lookup maps are updated accordingly.
+   311→   *
+   312→   * Why swap-remove: keeps instance buffer compact (no gaps), so InstancedMesh
+   313→   * renders exactly `count` instances with no wasted GPU work on dead slots.
+   314→   */
+   315→  removeBlock(x, y, z) {
+   316→    const key = blockKey(x, y, z);
+   317→    const index = this.blockToIndex.get(key);
+   318→    if (index === undefined) return false;
+   319→
+   320→    const lastIndex = this.count - 1;
+   321→
+   322→    if (index !== lastIndex) {
+   323→      // Swap: move last instance's matrix+color into the freed slot
+   324→      this.instancedMesh.getMatrixAt(lastIndex, _tmpMatrix);
+   325→      this.instancedMesh.setMatrixAt(index, _tmpMatrix);
+   326→
+   327→      if (this.instancedMesh.instanceColor) {
+   328→        this.instancedMesh.getColorAt(lastIndex, _tmpColor);
+   329→        this.instancedMesh.setColorAt(index, _tmpColor);
+   330→      }
+   331→
+   332→      // Update reverse map: the last block's index is now `index`
+   333→      const lastKey = this.indexToBlock[lastIndex];
+   334→      this.blockToIndex.set(lastKey, index);
+   335→      this.indexToBlock[index] = lastKey;
+   336→      this.indexToBlock[lastIndex] = undefined;
+   337→    } else {
+   338→      // Removing the last instance — no swap needed
+   339→      this.indexToBlock[index] = undefined;
+   340→    }
+   341→
+   342→    this.blockToIndex.delete(key);
+   343→    this.count--;
+   344→    this.instancedMesh.count = this.count;
+   345→    this.freeIndices.push(index); // recycle slot for future adds
+   346→
+   347→    this.matrixDirty = true;
+   348→    this.colorDirty = true;
+   349→
+   350→    return true;
+   351→  }
+   352→
+   353→  /**
+   354→   * Get instance index for a block coord. O(1) Map lookup.
+   355→   * Returns undefined if not found.
+   356→   */
+   357→  getBlock(x, y, z) {
+   358→    return this.blockToIndex.get(blockKey(x, y, z));
+   359→  }
+   360→
+   361→  /**
+   362→   * Flush pending matrix/color updates to GPU.
+   363→   * Called once per frame by ChunkManager.update() — NOT per block change.
+   364→   * This is the critical optimization: 1000 block updates in a frame = 1
+   365→   * needsUpdate call per chunk, not 1000.
+   366→   */
+   367→  flush() {
+   368→    if (!this.instancedMesh) return;
+   369→    if (this.matrixDirty) {
+   370→      this.instancedMesh.instanceMatrix.needsUpdate = true;
+   371→      this.matrixDirty = false;
+   372→    }
+   373→    if (this.colorDirty && this.instancedMesh.instanceColor) {
+   374→      this.instancedMesh.instanceColor.needsUpdate = true;
+   375→      this.colorDirty = false;
+   376→    }
+   377→  }
+   378→
+   379→  /**
+   380→   * Dispose: remove from scene, free GPU buffers.
+   381→   * Called when chunk becomes empty (lazy unload) OR manager is disposed.
+   382→   * Geometry & material are NOT disposed here — they're shared across all
+   383→   * chunks and managed by ChunkManager.dispose().
+   384→   */
+   385→  dispose() {
+   386→    if (this.instancedMesh) {
+   387→      this.manager.scene.remove(this.instancedMesh);
+   388→      this.instancedMesh.dispose(); // frees instanceMatrix + instanceColor buffers
+   389→      this.instancedMesh = null;
+   390→    }
+   391→    this.blockToIndex.clear();
+   392→    this.indexToBlock.length = 0;
+   393→    this.freeIndices.length = 0;
+   394→    this.count = 0;
+   395→    this.matrixDirty = false;
+   396→    this.colorDirty = false;
+   397→  }
+   398→}
+   399→
+   400→// ════════════════════════════════════════════════════════════════════════════
+   401→// ChunkManager — orchestrates all chunks, provides O(1) block API.
+   402→// Owns shared geometry + material (ONE BoxGeometry + ONE Material reused
+   403→// by ALL chunks → massive memory saver vs per-chunk assets).
+   404→// ════════════════════════════════════════════════════════════════════════════
+   405→class ChunkManager {
+   406→  constructor(scene, options = {}) {
+   407→    this.scene = scene;
+   408→
+   409→    // ── Config ──
+   410→    this.chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
+   411→    this.capacity = options.capacity ?? DEFAULT_BLOCK_CAPACITY;
+   412→    this.chunkHeightMax = options.chunkHeightMax ?? DEFAULT_CHUNK_HEIGHT_MAX;
+   413→
+   414→    // ── Shared geometry — ONE BoxGeometry(1,1,1) reused by ALL chunks ──
+   415→    // Per-instance scale handles thin planks (scale.y=0.05) and large blocks.
+   416→    this.geometry = options.geometry ?? new THREE.BoxGeometry(1, 1, 1);
+   417→
+   418→    // ── Shared material — FrontSide = backface culling active (spec #4) ──
+   419→    // Interior faces of blocks are not rasterized → huge fill-rate savings.
+   420→    this.material = options.material ?? new THREE.MeshStandardMaterial({
+   421→      roughness: 0.85,
+   422→      metalness: 0.05,
+   423→      side: THREE.FrontSide, // ← backface culling ON
+   424→    });
+   425→
+   426→    // ── Chunk lookup: 'cx,cz' → Chunk instance ──
+   427→    // Only non-empty chunks live here. Empty chunks are deleted (lazy load).
+   428→    this.chunks = new Map();
+   429→
+   430→    // ── Pending flush set — chunks with matrix/color changes this frame ──
+   431→    // Using Set → dedupes: 100 updates to same chunk = 1 flush entry.
+   432→    this._pendingFlush = new Set();
+   433→  }
+   434→
+   435→  // ══════════════════════════════════════════════════════════════════════════
+   436→  // Coordinate helpers
+   437→  // ══════════════════════════════════════════════════════════════════════════
+   438→
+   439→  /**
+   440→   * Convert world block coord (x, z) → chunk coord (cx, cz).
+   441→   * Uses Math.floor so negative coords map correctly (e.g. -1 → -1, not 0).
+   442→   */
+   443→  worldToChunkCoord(x, z) {
+   444→    return {
+   445→      cx: Math.floor(x / this.chunkSize),
+   446→      cz: Math.floor(z / this.chunkSize),
+   447→    };
+   448→  }
+   449→
+   450→  /**
+   451→   * Get existing chunk at (cx, cz). Returns undefined if not allocated.
+   452→   */
+   453→  _getChunk(cx, cz) {
+   454→    return this.chunks.get(chunkKey(cx, cz));
+   455→  }
+   456→
+   457→  /**
+   458→   * Get or create chunk at (cx, cz). Chunk object is cheap (just maps);
+   459→   * the expensive InstancedMesh is lazy-allocated on first block add.
+   460→   */
+   461→  _getOrCreateChunk(cx, cz) {
+   462→    const key = chunkKey(cx, cz);
+   463→    let chunk = this.chunks.get(key);
+   464→    if (!chunk) {
+   465→      chunk = new Chunk(cx, cz, this);
+   466→      this.chunks.set(key, chunk);
+   467→    }
+   468→    return chunk;
+   469→  }
+   470→
+   471→  // ══════════════════════════════════════════════════════════════════════════
+   472→  // Public Block API — O(1) lookup, lazy allocation, batched updates
+   473→  // ══════════════════════════════════════════════════════════════════════════
+   474→
+   475→  /**
+   476→   * Set/update a block at world coords (x, y, z).
+   477→   * Accepts either a full Matrix4, or decomposed {position, quaternion, scale}.
+   478→   *
+   479→   * @param {number} x,y,z — world block coords
+   480→   * @param {Object} opts
+   481→   *   - matrix: THREE.Matrix4 (full transform, takes precedence)
+   482→   *   - position: [x,y,z] (default: [x,y,z] from args)
+   483→   *   - quaternion: [x,y,z,w] (default: identity)
+   484→   *   - scale: [sx,sy,sz] (default: [1,1,1]; use 0.05 for thin planks)
+   485→   *   - color: hex number (default: 0xffffff)
+   486→   * @returns {number} instance index, or -1 on failure
+   487→   */
+   488→  setBlock(x, y, z, opts = {}) {
+   489→    const { cx, cz } = this.worldToChunkCoord(x, z);
+   490→    const chunk = this._getOrCreateChunk(cx, cz);
+   491→
+   492→    let matrix;
+   493→    if (opts.matrix instanceof THREE.Matrix4) {
+   494→      matrix = opts.matrix;
+   495→    } else {
+   496→      const pos = opts.position ?? [x, y, z];
+   497→      const quat = opts.quaternion ?? [0, 0, 0, 1];
+   498→      const scale = opts.scale ?? [1, 1, 1];
+   499→      _tmpPos.set(pos[0], pos[1], pos[2]);
+   500→      _tmpQuat.set(quat[0], quat[1], quat[2], quat[3]);
+   501→      _tmpScale.set(scale[0], scale[1], scale[2]);
+   502→      matrix = new THREE.Matrix4().compose(_tmpPos, _tmpQuat, _tmpScale);
+   503→    }
+   504→
+   505→    const colorHex = opts.color ?? 0xffffff;
+   506→    const index = chunk.addBlock(x, y, z, matrix, colorHex);
+   507→
+   508→    if (index >= 0) {
+   509→      this._pendingFlush.add(chunk);
+   510→    }
+   511→    return index;
+   512→  }
+   513→
+   514→  /**
+   515→   * Update only the transform of an existing block.
+   516→   * Use this for gizmo drags (Move/Rotate/Scale tools) — high-frequency
+   517→   * updates batched into one needsUpdate per chunk per frame.
+   518→   *
+   519→   * @param {THREE.Matrix4} matrix — new full transform
+   520→   */
+   521→  updateBlockTransform(x, y, z, matrix) {
+   522→    const { cx, cz } = this.worldToChunkCoord(x, z);
+   523→    const chunk = this._getChunk(cx, cz);
+   524→    if (!chunk) return -1;
+   525→
+   526→    const index = chunk.updateBlock(x, y, z, matrix, undefined);
+   527→    if (index >= 0) this._pendingFlush.add(chunk);
+   528→    return index;
+   529→  }
+   530→
+   531→  /**
+   532→   * Update only the color of an existing block (paint tool).
+   533→   */
+   534→  updateBlockColor(x, y, z, colorHex) {
+   535→    const { cx, cz } = this.worldToChunkCoord(x, z);
+   536→    const chunk = this._getChunk(cx, cz);
+   537→    if (!chunk) return -1;
+   538→
+   539→    const index = chunk.updateBlock(x, y, z, undefined, colorHex);
+   540→    if (index >= 0) this._pendingFlush.add(chunk);
+   541→    return index;
+   542→  }
+   543→
+   544→  /**
+   545→   * Remove a block. If chunk becomes empty, it is auto-disposed (lazy unload)
+   546→   * → GPU memory freed immediately. Spec #2: no empty chunk left behind.
+   547→   */
+   548→  removeBlock(x, y, z) {
+   549→    const { cx, cz } = this.worldToChunkCoord(x, z);
+   550→    const chunk = this._getChunk(cx, cz);
+   551→    if (!chunk) return false;
+   552→
+   553→    const removed = chunk.removeBlock(x, y, z);
+   554→    if (removed) {
+   555→      // Auto-dispose empty chunks → free GPU memory (spec #2: lazy loading)
+   556→      if (chunk.count === 0) {
+   557→        chunk.dispose();
+   558→        this.chunks.delete(chunkKey(cx, cz));
+   559→      } else {
+   560→        this._pendingFlush.add(chunk);
+   561→      }
+   562→    }
+   563→    return removed;
+   564→  }
+   565→
+   566→  /**
+   567→   * Get a block's instance index at world coords. O(1) lookup.
+   568→   * Returns -1 if no block exists.
+   569→   */
+   570→  getBlock(x, y, z) {
+   571→    const { cx, cz } = this.worldToChunkCoord(x, z);
+   572→    const chunk = this._getChunk(cx, cz);
+   573→    if (!chunk) return -1;
+   574→    const index = chunk.getBlock(x, y, z);
+   575→    return index ?? -1;
+   576→  }
+   577→
+   578→  /**
+   579→   * Check if a block exists at coords. O(1).
+   580→   */
+   581→  hasBlock(x, y, z) {
+   582→    return this.getBlock(x, y, z) >= 0;
+   583→  }
+   584→
+   585→  /**
+   586→   * Get all allocated chunks' InstancedMeshes for raycasting.
+   587→   * Returns array of { chunk, mesh } — pass mesh array to raycaster.
+   588→   *
+   589→   * Usage:
+   590→   *   const targets = cm.getRaycastTargets();
+   591→   *   const hits = raycaster.intersectObjects(targets.map(t => t.mesh));
+   592→   *   if (hits[0]) {
+   593→   *     const target = targets.find(t => t.mesh === hits[0].object);
+   594→   *     const coords = cm.instanceIdToCoords(target.chunk, hits[0].instanceId);
+   595→   *   }
+   596→   */
+   597→  getRaycastTargets() {
+   598→    const targets = [];
+   599→    for (const chunk of this.chunks.values()) {
+   600→      if (chunk.instancedMesh) {
+   601→        targets.push({ chunk, mesh: chunk.instancedMesh });
+   602→      }
+   603→    }
+   604→    return targets;
+   605→  }
+   606→
+   607→  /**
+   608→   * Resolve a raycast hit's instanceId back to world block coords.
+   609→   * @param {Chunk} chunk — the chunk the hit came from (from getRaycastTargets)
+   610→   * @param {number} instanceId — from intersection.instanceId
+   611→   * @returns {{x,y,z}|null}
+   612→   */
+   613→  instanceIdToCoords(chunk, instanceId) {
+   614→    const key = chunk.indexToBlock[instanceId];
+   615→    if (!key) return null;
+   616→    const parts = key.split(',');
+   617→    return {
+   618→      x: Number(parts[0]),
+   619→      y: Number(parts[1]),
+   620→      z: Number(parts[2]),
+   621→    };
+   622→  }
+   623→
+   624→  /**
+   625→   * Get the world-space matrix of a block (for gizmo attach, etc).
+   626→   * @param {THREE.Matrix4} target — optional, reused if provided
+   627→   * @returns {THREE.Matrix4|null} null if block not found
+   628→   */
+   629→  getBlockMatrix(x, y, z, target = new THREE.Matrix4()) {
+   630→    const { cx, cz } = this.worldToChunkCoord(x, z);
+   631→    const chunk = this._getChunk(cx, cz);
+   632→    if (!chunk || !chunk.instancedMesh) return null;
+   633→    const index = chunk.getBlock(x, y, z);
+   634→    if (index === undefined) return null;
+   635→    chunk.instancedMesh.getMatrixAt(index, target);
+   636→    return target;
+   637→  }
+   638→
+   639→  /**
+   640→   * Iterate all blocks across all chunks.
+   641→   * Callback receives (x, y, z, matrix, colorHex) for each block.
+   642→   * Useful for serialization (save/export) or bulk operations.
+   643→   */
+   644→  forEachBlock(callback) {
+   645→    const mat = new THREE.Matrix4();
+   646→    const col = new THREE.Color();
+   647→    for (const chunk of this.chunks.values()) {
+   648→      if (!chunk.instancedMesh) continue;
+   649→      for (const [key, index] of chunk.blockToIndex) {
+   650→        const [x, y, z] = key.split(',').map(Number);
+   651→        chunk.instancedMesh.getMatrixAt(index, mat);
+   652→        if (chunk.instancedMesh.instanceColor) {
+   653→          chunk.instancedMesh.getColorAt(index, col);
+   654→        } else {
+   655→          col.setHex(0xffffff);
+   656→        }
+   657→        callback(x, y, z, mat, col.getHex());
+   658→      }
+   659→    }
+   660→  }
+   661→
+   662→  // ══════════════════════════════════════════════════════════════════════════
+   663→  // Frame loop — call update() once per frame in animate loop
+   664→  // ══════════════════════════════════════════════════════════════════════════
+   665→
+   666→  /**
+   667→   * Call once per frame. Flushes all pending matrix/color updates in a single
+   668→   * batch — only chunks with changes get instanceMatrix.needsUpdate = true.
+   669→   *
+   670→   * Critical optimization: 1000 block updates in a frame across 50 chunks
+   671→   * = 50 needsUpdate calls (1 per dirty chunk), NOT 1000.
+   672→   *
+   673→   * @param {THREE.Camera} _camera — reserved for future LOD/distance culling
+   674→   */
+   675→  update(_camera) {
+   676→    for (const chunk of this._pendingFlush) {
+   677→      chunk.flush();
+   678→    }
+   679→    this._pendingFlush.clear();
+   680→  }
+   681→
+   682→  /**
+   683→   * Clear all blocks and dispose all chunks. Geometry & material are kept
+   684→   * (they're shared and cheap to keep around for re-use).
+   685→   */
+   686→  clear() {
+   687→    for (const chunk of this.chunks.values()) {
+   688→      chunk.dispose();
+   689→    }
+   690→    this.chunks.clear();
+   691→    this._pendingFlush.clear();
+   692→  }
+   693→
+   694→  /**
+   695→   * Total block count across all chunks. O(chunks) — use sparingly.
+   696→   */
+   697→  get totalBlocks() {
+   698→    let total = 0;
+   699→    for (const chunk of this.chunks.values()) {
+   700→      total += chunk.count;
+   701→    }
+   702→    return total;
+   703→  }
+   704→
+   705→  /**
+   706→   * Total allocated chunk count (non-empty chunks only).
+   707→   */
+   708→  get totalChunks() {
+   709→    return this.chunks.size;
+   710→  }
+   711→
+   712→  /**
+   713→   * Full cleanup — dispose all chunks, shared geometry, shared material.
+   714→   * Call when ChunkManager is no longer needed (e.g. component unmount).
+   715→   */
+   716→  dispose() {
+   717→    this.clear();
+   718→    if (this.geometry) {
+   719→      this.geometry.dispose();
+   720→      this.geometry = null;
+   721→    }
+   722→    if (this.material) {
+   723→      this.material.dispose();
+   724→      this.material = null;
+   725→    }
+   726→  }
+   727→}
+   728→
+   729→export { ChunkManager, Chunk };
+   730→export default ChunkManager;
+   731→
