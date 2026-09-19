@@ -2766,6 +2766,126 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     Kalau salah satu checklist LUPA → bug. Untuk modal dengan
     overlay blur, lupa checklist #3 = bug fatal (user stuck).
 
+---
+
+## 16. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 75 — fix snap scale studs, ubah ScaleNumberModal dari SET langsung ke STEP)
+
+97. **SALAH INTERPRETASI PERMINTAAN USER = AKAR BUG FATAL**
+    (sesi 2026-09-19, fix commit `6daaa3d` untuk bug Phase 74 commit
+    `c455b03`): user Phase 74 tulis: "jika user menginput scale
+    number = 2 studs maka jika user MENCoba scale dia akan BERTAMBAH
+    2 block dan BERKURANG 2 block". Saya salah baca sebagai:
+    "input 2 studs = SET langsung scale ke 2 studs (= 1 block)".
+    Implementasi Phase 74: obj.scale.setScalar(studs / STUDS_PER_BLOCK)
+    saat Konfirmasi. Ternyata user maksud: input 2 studs = STEP
+    untuk drag bola gizmo, saat drag block snap ke kelipatan 2 studs.
+    Akar masalah: asumsi saya tanpa konfirmasi ulang ke user. Kata
+    "mencoba scale" = drag, bukan SET. Kata "bertambah/berkurang per
+    step" = snap. **Pelajaran**: kalau permintaan user ambigu (bisa
+    diinterpretasi 2+ cara), JANGAN asumsi. Baca ulang dengan teliti
+    + cek kata kunci ("mencoba" = interaksi, "step" = snap, "set" =
+    langsung). Kalau masih ragu, TANYA user atau pilih interpretasi
+    yang paling sesuai dengan behavior yang sudah ada di project (di
+    kasus ini, project punya `applyScaleByMode` yang menerima `ratio`
+    drag → pakai pola yang sama: step + snap, bukan SET langsung).
+    Implementasi Phase 74 (SET langsung) melanggar pola project —
+    seharusnya pakai pattern `applyScaleByMode` dengan parameter
+    snap tambahan, bukan bypass ke `obj.scale.setScalar`.
+
+98. **MENTAL SIMULATION FLOW WAJIB SAMPAI STEP DRAG UNTUK FITUR HOOK EVENT THREE.JS**
+    (sesi 2026-09-19, fix commit `6daaa3d`, kelanjutan butir 95):
+    Phase 74 commit `c455b03` lolos verifikasi via `vite build` exit 0
+    + `test_blockStuds.mjs` 11/11 PASS + mental simulation flow
+    KLIK TOMBOL + → MODAL → KONFIRMASI (yang fix bug layar buram
+    commit `e7c1d92`). TAPI TIDAK mental simulation flow DRAG BOLA
+    GIZMO SETELAH Konfirmasi. Hasilnya: bug snap tidak ketangkap
+    sampai user coba sendiri + komplain "drag tidak ada efek step".
+    **Pelajaran**: untuk fitur yang melibatkan hook ke event Three.js
+    (`objectChange`, `dragging-changed`, `mouseUp`), mental simulation
+    flow WAJIB sampai step DRAG, bukan cuma sampai modal tutup.
+    Checklist mental simulation extended (tambah butir 95):
+    (1) User klik tombol trigger → state setter dipanggil?
+    (2) Modal render → visible?
+    (3) User isi input → state input update?
+    (4) User klik Konfirmasi → finishClose(callback) → callback
+        dipanggil setelah ANIM_MS → handler confirm dijalankan →
+        logic apply + STATE SETTER MODAL TUTUP DIPANGGIL?
+    (5) Modal unmount → overlay hilang → user bisa interaksi lagi?
+    (6) **BARU Phase 75**: User DRAG bola gizmo → event Three.js
+        fire (objectChange/dragging-changed) → handler baca
+        `scaleNumberStepRef.current` (BUKAN state, karena event
+        handler closure dibuat sekali di useEffect awal) →
+        applyScaleByMode dipanggil dengan snapStudStep → snap
+        aktif? Block scale berubah per step?
+    (7) **BARU Phase 75**: Drag selesai → cleanup snapshot +
+        scaleDragRef = null → snap tidak aktif lagi (sampai user
+        drag lagi dengan snapshot baru).
+    Kalau salah satu step ini LUPA → bug. Untuk Phase 74, step 6-7
+    TIDAK di-mental-simulation → bug snap tidak ketangkap.
+
+99. **PATTERN SNAP RELATIF KE startScale (BUKAN ABSOLUTE) — SUPAYA BLOCK TIDAK MELOMPAT**
+    (sesi 2026-09-19, fix commit `6daaa3d`): implementasi snap di
+    `applyScaleByMode` (scaleModes.js). Snap RELATIF ke
+    `startScale[axis]` (bukan absolute ke kelipatan step):
+    ```javascript
+    const delta = raw - startScale[a];        // perubahan dari awal
+    const snappedDelta = Math.round(delta / stepScale) * stepScale;
+    const finalScale = sgn * Math.max(Math.abs(s0 + snappedDelta), minAbs);
+    ```
+    Kenapa RELATIF (bukan absolute `Math.round(raw / stepScale) *
+    stepScale`):
+    - Kalau startScale BUKAN kelipatan stepScale (mis. user sudah
+      di-scale ke 0.5, lalu set step 2 studs = stepScale 1.0), snap
+      absolute akan MELOMPAT dari 0.5 ke 1.0 mendadak saat user
+      drag sedikit. Snap relatif: 0.5 → delta=0 → snappedDelta=0
+      → finalScale=0.5 (tidak berubah sampai user drag cukup).
+    - Behavior natural: user tidak drag → block tetap di posisi
+      awal. User drag sedikit (< 0.5*stepScale) → block tetap.
+      User drag >= 0.5*stepScale → block naik/turun 1 step dari
+      posisi awal.
+    - Formula: `stepScale = snapStudStep / STUDS_PER_BLOCK`
+      (studs → scale factor). Mis. step 2 studs → stepScale 1.0;
+      step 0.5 studs → stepScale 0.25.
+    - Minimum: `Math.max(|finalScale|, minAbs)` (minAbs = 0.05
+      default, kontrak MIN_ABS_SCALE app). Block tidak bisa
+      mengecil lebih kecil dari 0.05 (clamp Phase 67 v2).
+    **Pola untuk fitur snap apapun**: snap relatif ke start state,
+    bukan absolute ke grid. Kecuali kalau user eksplisit mau snap
+    ke grid absolute (mis. snap block position ke cell center —
+    itu absolute, pakai `Math.floor(x) + 0.5` di onTransformObject-
+    Change baris 12506-12509). Tapi untuk scale, relatif lebih alami.
+
+100. **STATE REACT VS REF UNTUK EVENT HANDLER YANG DIBUAT SEKALI DI useEffect**
+    (sesi 2026-09-19, fix commit `6daaa3d`): event handler Three.js
+    (`onTransformObjectChange`, `onTransformDraggingChanged`) di-bind
+    ke `transformControls` saat scene setup di `useEffect` awal.
+    Handler ini = CLOSURE dengan nilai state React saat useEffect
+    dijalankan. Saat state berubah (mis. user set step baru lewat
+    modal), handler TIDAK otomatis baca nilai terbaru — closure
+    masih pegang nilai lama. **Pola WAJIB**: state + ref + useEffect
+    sync, persis seperti `scaleModeRef` yang sudah ada di project
+    (baris 566, 592):
+    ```javascript
+    const [scaleNumberStep, setScaleNumberStep] = useState(null);
+    const scaleNumberStepRef = useRef(null);
+    useEffect(() => { scaleNumberStepRef.current = scaleNumberStep; },
+      [scaleNumberStep]);
+    // Di event handler: baca scaleNumberStepRef.current, BUKAN
+    // scaleNumberStep langsung.
+    ```
+    Kenapa tidak pakai state langsung: closure handler pegang nilai
+    saat useEffect awal (null), TIDAK update saat user set step baru.
+    Snap tidak akan aktif walau user sudah Konfirmasi modal. Pakai
+    ref: ref.current selalu baca nilai terbaru dari mana saja.
+    **Pola lintas-project**: untuk state yang dipakai di event
+    handler Three.js (bukan React event), WAJIB pakai ref + useEffect
+    sync. State React hanya untuk trigger re-render UI (mis. modal
+    show/hide). Untuk nilai yang dibaca di event handler non-React,
+    pakai ref. Pattern ini sudah dipakai di project untuk:
+    `scaleModeRef`, `scaleModeLockedRef`, `toolRef`, `threeRef`,
+    `scaleDragRef`, `scaleNumberStepRef` (Phase 75 baru).
+
+
 
 
 
