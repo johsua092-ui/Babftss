@@ -1,0 +1,49 @@
+docs(kontrak): append warisan butir 81-84 — flow modal + hapus X konsekuensi
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+Tugas tambah Batal/Konfirmasi ke varian picker ScaleModeModal +
+hapus X (commit 742e3a6) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak.
+
+PENYEBAB
+Tugas dilakukan di server z.ai, source code dari repo GitHub.
+Pekerjaan teknis sudah di-push ke origin/main commit 742e3a6,
+tapi warisan belum menyusul. Instruksi user eksplisit: "teks
+yang sudah ada dilarang disentuh, hanya boleh menambah tepat
+di bawahnya".
+
+SOLUSI
+Append section baru "## 12. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: varian picker ScaleModeModal + Batal/Konfirmasi,
+hapus X)" di akhir file, TEPAT di bawah baris penutup section 11
+(baris "...vite build exit 0 = cukup bukti."). Teks yang sudah ada
+tidak diubah apa pun. Warisan berisi 4 butir:
+  81. Wajib cek flow caller sebelum ubah flow komponen modal
+  82. Jebakan hapus elemen UI + ubah flow = konsekuensi berjalan
+      (5 konsekuensi: import unused, text subtitle misleading,
+       marginBottom salah, komentar outdated, wrap kondisional)
+  83. Komentar header Phase lama = outdated setelah flow ubah,
+      bisa di-skip untuk minimal change; catat di commit message
+  84. Indentation tidak rapi setelah hapus wrap JSX = tidak fatal
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~80 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~80 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 4 butir warisan karena ada banyak pitfall
+  non-trivial: cek flow caller, 5 konsekuensi otomatis dari hapus
+  elemen + ubah flow, komentar header outdated, indentation rusak.
+  Berbeda dari sesi sebelumnya (1-2 butir) karena perubahan flow
+  multi-kondisi `isPicker` lebih kompleks dari sekadar fix text/CSS.
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).

