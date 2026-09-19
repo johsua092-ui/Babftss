@@ -105,19 +105,63 @@ export function getScaledAxes(mode, axisKey) {
 /**
  * Apakah mode ini butuh kompensasi posisi supaya sisi seberang DIAM?
  * Hanya 1side. (2side simetris; 4side & 6side memang tumbuh dari pusat.)
+ *
+ * PHASE 89 (2026-09-19, sesi server z.ai): RE-ENABLE untuk mode 1side.
+ *
+ * RANTAI KEPUTUSAN:
+ * - Phase 86: needsAnchorOffset return false SELALU karena user komplain
+ *   "jangan maju! diam!". Akibatnya: 1side mode berperilaku seperti 2side
+ *   (sisi seberang BERGERAK SIMETRIS, BUKAN diam). User Phase 78 sebelumnya
+ *   komplain "1 side jadi 2 side" — tidak terpenuhi.
+ * - Phase 87: coba fix BOTH (sisi seberang diam + pusat diam) pakai
+ *   geometry translate per-block. AKIBAT BUG: pivot (object.position)
+ *   TIDAK di tengah geometry (karena geometry vertices bergeser) →
+ *   "inti block melesat keluar jauh" setelah lepas gizmo.
+ * - Phase 88: HAPUS geometry translate (Phase 87). Tanpa geometry
+ *   translate, pivot selalu di tengah geometry. TAPI 1side mode masih
+ *   berperilaku 2side (karena needsAnchorOffset masih false SELALU dari
+ *   Phase 86).
+ *
+ * PHASE 89 (permintaan user):
+ *   "yang di mode 1 side bisa gak itu 5 sisi diam sementara lalu khusus
+ *    1 sisi yang bergerak yang sedang ditarik gizmonya oleh user saja
+ *    yang boleh memanjang atau memendek? (hanya 1 sisi bukan 2 sisi)"
+ *
+ * USER MAU: 5 sisi diam + 1 sisi (yang digenggam) bergerak. User TERIMA
+ * Phase 88 fix (inti terkunci di tengah block, no melesat) TAPI mau
+ * 1side mode benar-benar berperilaku 1side.
+ *
+ * SOLUSI: re-enable computeAnchorOffset HANYA untuk mode 1side.
+ *
+ * computeAnchorOffset men-shift object.position ke titik tengah block
+ * yang sudah di-scale secara asimetris. Hasilnya:
+ *   - Sisi seberang (X- kalau drag X+) DIAM di posisi awal. ✓
+ *   - Sisi yang digenggam (X+) bergerak keluar/masuk. ✓
+ *   - Inti (object.position) = titik tengah visual block → "inti
+ *     terkunci di tengah block" (mengikuti visual center, BUKAN
+ *     lepas seperti Phase 87 geometry translate). ✓
+ *   - Reversibel: saat scale kembali ke startScale, delta=0, offset=0,
+ *     pusat kembali ke startPos. (TIDAK ada akumulasi seperti Math.abs
+ *     Phase 84 — warisan #119.)
+ *
+ * Phase 86 warisan #120 bilang "SKIP SELALU kalau user komplain
+ * berulang soal pusat bergeser". TAPI permintaan Phase 89 EKSPLISIT
+ * minta 1side behavior — yang SANGAT berbeda dari komplain "jangan
+ * maju" Phase 86. Phase 89 user mau 1side mode bekerja sebagai 1side.
+ * Permintaan terbaru menang (warisan #120 prinsip sama: "Phase terbaru
+ * menang"). ComputeAnchorOffset = satu-satunya cara achieve "5 sisi
+ * diam + 1 sisi bergerak + inti tetap di tengah visual block" tanpa
+ * geometry translate (yang bikin melesat).
+ *
+ * Trade-off: inti (object.position) BERGERAK mengikuti visual center.
+ * Block tidak "diam di tempat" — block bergeser ke arah sisi yang
+ * digenggam (visual center bergerak ke arah itu). TAPI inti tetap
+ * di tengah block (TIDAK melesat keluar block seperti Phase 87).
  */
 export function needsAnchorOffset(mode) {
-  // Phase 86 (2026-09-19, sesi server z.ai): SELALU return false.
-  // User mau block DIAM — "jangan maju! diam! 0! tidak akan pernah maju!".
-  // computeAnchorOffset tidak pernah jalan. Pusat TIDAK PERNAH bergeser.
-  // Sebelum Phase 86: return true untuk mode 1side (sisi seberang diam,
-  // pusat bergeser). User komplain berulang (Phase 77/82/83/84/85).
-  // Phase 86: user sangat jelas — "jangan maju plis tolong benerin".
-  // SKIP computeAnchorOffset SELALU. Block DIAM. Titik.
-  // Trade-off: sisi seberang bergerak simetris (BUKAN diam) di mode 1side.
-  // User Phase 78 komplain "1 side jadi 2 side". Tapi user Phase 86
-  // prioritaskan "diam" > "sisi seberang diam". Phase terbaru menang.
-  return false;
+  // Phase 89: RE-ENABLE untuk 1side. (Phase 86 SELALU-false REVERTED.)
+  // 2/4/6 side: tetap false (mereka tumbuh simetris dari pusat).
+  return normalizeScaleMode(mode) === '1side';
 }
 
 /**

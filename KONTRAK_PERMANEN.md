@@ -3721,6 +3721,153 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     di Phase 87 — bisa di sesi lain kalau user komplain).
 
 
+## 29. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 88 — HAPUS geometry translate, pivot tetap di tengah geometry)
+
+    Catatan: warisan ini DITAMBAH secara retrospektif di sesi Phase 89.
+    Sesi sebelumnya (Phase 88, commit `f5cf0e1`) tidak menambahkan
+    warisan ke kontrak ini. Berikut konteksnya supaya AI penerus paham
+    rantai keputusan.
+
+    **Akar masalah Phase 88**: geometry translate (Phase 87) menyebabkan
+    pivot (object.position) TIDAK di tengah geometry — karena geometry
+    vertices bergeser (translate), pivot terlepas dari tengah visual
+    block. Setelah lepas gizmo, geometry translate offset bisa sangat
+    besar (kalau finalScale kecil, mis. 0.1 → offset = 9 × halfSize)
+    → block melesat keluar jauh dari inti.
+
+    User Phase 88 komplain: "intinya dari block tidak mengikuti block!
+    dia terlepas jauh dari block setelah klik tahan gizmo lalu lepas
+    dia melesat keluar jauh! saya ingin intinya tetap terperangkap di
+    block dengan posisi paling tengah dari block itu sendiri!"
+
+    **Fix Phase 88**: HAPUS SEMUA Phase 87 — applyGeometryOffset +
+    clone geometry + userData fallback. Tanpa geometry translate,
+    pivot (object.position) selalu di tengah geometry (karena
+    geometry center = 0, object.position = startPos, tengah geometry
+    = object.position).
+
+    **Trade-off Phase 88**: tanpa geometry translate DAN tanpa
+    computeAnchorOffset (karena Phase 86 SELALU-false), sisi bergerak
+    SIMETRIS dari pusat. 1side mode berperilaku 2side. User Phase 78
+    komplain "1 side jadi 2 side" — TIDAK terpenuhi di Phase 88.
+
+    **Pola untuk "inti terkunci di tengah block"**: inti (object.
+    position) HARUS selalu di visual center block. Untuk block yang
+    di-scale simetris (2side behavior), visual center = startPos
+    (object.position DIAM). Untuk block yang di-scale asimetris
+    (1side behavior dengan computeAnchorOffset), visual center =
+    startPos + offset (object.position BERGERAK mengikuti visual
+    center). Geometry translate (Phase 87) = SALAH karena
+    dissociates object.position dari visual center.
+
+
+## 30. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 89 — re-enable computeAnchorOffset untuk 1side, 5 sisi diam + 1 sisi bergerak)
+
+122. **RE-ENABLE computeAnchorOffset UNTUK 1SIDE = "5 SISI DIAM + 1 SISI BERGERAK" TANPA MELESAT — KEMBALI KE Phase 83 APPROACH (BUKAN Phase 87 geometry translate)**
+    (sesi 2026-09-19, fix commit `pending`): setelah rantai
+    Phase 86 (SKIP SELALU) → Phase 87 (geometry translate, melesat)
+    → Phase 88 (HAPUS geometry translate, no melesat TAPI 1side jadi
+    2side behavior), user Phase 89 minta: "yang di mode 1 side
+    bisa gak itu 5 sisi diam sementara lalu khusus 1 sisi yang
+    bergerak yang sedang ditarik gizmonya oleh user saja yang boleh
+    memanjang atau memendek? (hanya 1 sisi bukan 2 sisi)".
+
+    User TERIMA Phase 88 fix (inti terkunci di tengah block, no
+    melesat). TAPI mau 1side mode benar-benar berperilaku 1side.
+
+    **Solusi**: RE-ENABLE `needsAnchorOffset(mode)` return true untuk
+    '1side' (revert Phase 86 SELALU-false). ComputeAnchorOffset
+    dijalankan LAGI untuk mode 1side. ApplyGeometryOffset (Phase 87)
+    TETAP DIHAPUS (Phase 88 fix preserved).
+
+    **Mengapa ini TIDAK menyebabkan "melesat" (berbeda Phase 87)**:
+    - Phase 87 pakai geometry translate — modify geometry VERTICES
+      (BUKAN object.position). Akibatnya: object.position =
+      startPos (DIAM), TAPI visual center block = startPos +
+      offset*finalScale (BERGERAK). Visual center ≠ object.position
+      → inti (object.position) TIDAK di tengah visual block →
+      "melesat keluar jauh" (terutama saat finalScale kecil, mis.
+      0.1 → offset = 9 × halfSize → visual center 0.9*halfSize dari
+      object.position).
+    - Phase 89 pakai computeAnchorOffset — modify object.position
+      (BUKAN geometry). Akibatnya: object.position = startPos +
+      offset (BERGERAK), visual center block = object.position
+      (SAMA). Visual center = object.position → inti TEPAT di
+      tengah visual block. TIDAK melesat.
+
+    **Hasil test_scaleModes.mjs (40/40 PASS setelah fix)**:
+    - 1side drag X+ outward (scale 1→2): `{"X+":1,"X-":0,...}`
+      X+ bergerak 1 (memanjang), X- DIAM 0. ✓
+    - 1side drag Y- outward (scale 1→2): Y+ DIAM, Y- memanjang. ✓
+    - 1side mengecil (scale 1→0.5): X- tetap DIAM (reversibel). ✓
+    - 1side rot 45°: X- DIAM (axis local × quaternion, warisan #54). ✓
+    - 2side: X+ dan X- SAMA-SAMA bergeser 0.5 (simetris, BAWAAN
+      tidak berubah). ✓ — jalur 2side TIDAK tersentuh.
+    - 4side: 4 sisi memanjang, sumbu digenggam DIAM. ✓
+    - 6side: SEMUA 6 sisi bergerak. ✓
+    - Kaca/mirror: tanda negatif dipertahankan. ✓
+    - Clamp minimum 0.05: works. ✓
+    - World-align (checkbox dicabut): offset pada sumbu DUNIA. ✓
+
+    **Pola untuk 1side scaling yang benar di Three.js**:
+    - ComputeAnchorOffset (modify object.position) = cara YANG
+      BENAR. Visual center mengikuti object.position → inti tetap
+      di tengah block.
+    - Geometry translate (modify geometry vertices) = SALAH.
+      Visual center ≠ object.position → inti melesat.
+    - Tanpa offset (scale dari pusat) = TIDAK MEMENUHI "1side
+      behavior" (sisi seberang bergerak simetris = 2side).
+
+    **Pola untuk interpretasi "5 sisi diam"**:
+    "5 sisi diam" BUKAN berarti 5 sisi tetap di posisi world
+    mereka (tidak mungkin — sisi-sisi terhubung lewat geometry
+    block). "5 sisi diam" = 5 sisi TIDAK MEMANJANG di arah normal
+    mereka (Y+ tetap di Y=+0.5, Z+ tetap di Z=+0.5, dst). Hanya 1
+    sisi (yang digenggam) memanjang di arah normalnya (X+ extends
+    outward di X). Span test: `span: {x:1, y:0, z:0}` — hanya X
+    yang grew, Y/Z span unchanged.
+
+    **Trade-off yang di-accept**:
+    - Inti (object.position) BERGERAK mengikuti visual center block
+      (ke arah sisi yang digenggam). Block tidak "diam di tempat"
+      secara visual — bergeser ke arah sisi yang di-scale.
+    - TAPI inti TETAP di tengah block (tidak melesat keluar).
+    - Ini KONFLIK dengan komplain Phase 86 "jangan maju! diam!".
+      Phase 89 permintaan terbaru menang — user mau 1side mode
+      bekerja sebagai 1side, yang REQUIRES block bergeser. Tidak
+      ada cara lain di Three.js untuk achieve "5 sisi diam + 1
+      sisi bergerak" tanpa geometry translate (yang bikin melesat).
+
+    **Pola untuk user request yang KONFLIK dengan warisan sebelumnya**:
+    Warisan #120 bilang "SKIP SELALU kalau user komplain berulang
+    soal pusat bergeser". Phase 86 user komplain "jangan maju".
+    TAPI Phase 89 user eksplisit minta "5 sisi diam + 1 sisi
+    bergerak" yang REQUIRES pusat bergeser. Permintaan terbaru
+    menang (warisan #120 prinsip sama: "Phase terbaru menang").
+    Kalau user request BARU eksplisit minta hal yang KONFLIK
+    dengan warisan sebelumnya, IKUTI request baru. Warisan lama
+    berlaku UNTUK KONTEKS LAMA, bukan untuk request baru yang
+    berbeda konteks.
+
+    **Pola untuk verifikasi TIDAK menyenggol pekerjaan lain**:
+    Sebelum commit, jalankan:
+    ```
+    node test_scaleModes.mjs   # 40/40 PASS (1side + 2side + 4side + 6side)
+    node test_blockStuds.mjs   # 11/11 PASS (STUDS_PER_BLOCK=2)
+    git diff --stat           # only 1 file modified (scaleModes.js)
+    ```
+    Hasil Phase 89: 1 file modified (src/utils/scaleModes.js),
+    40+11 tests PASS, tidak ada file lain tersentuh.
+
+    **JANGAN ulangi Phase 87 geometry translate**. ComputeAnchorOffset
+    (modify object.position) = cara YANG BENAR untuk 1side mode.
+    Geometry translate = SALAH karena dissociates object.position
+    dari visual center. Phase 88 hapus geometry translate (benar).
+    Phase 89 re-enable computeAnchorOffset (benar). Kombinasi
+    Phase 88+89 = "no melesat + true 1side behavior". INI = solusi
+    final untuk 1side mode (selama user tidak minta hal baru).
+
+
 
 
 
