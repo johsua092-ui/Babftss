@@ -1,0 +1,168 @@
+fix(scale-ui): Phase 78 — snap pindah ke mouseUp, fix goyang + sisi seberang diam
+
+MASALAH
+User komplain: "kok di mode 1side 2 sisi ke scale? harusnya sisi
+lain diam". Phase 77 (commit 9c953ab) fix goyang dengan SKIP
+computeAnchorOffset saat snap aktif — TAPI break mode 1 side
+semantics (sisi seberang tidak diam, block scale dari pusat =
+behavior mode 2 side). User tidak terima trade-off ini. User mau
+BOTH: snap aktif + sisi seberang diam + tidak goyang.
+
+User juga bilang: "kamu kena jebakan lagi ya? padahal kamu sudah
+suru baca kontrak permanen md agar tidak kena jebakan, kenapa
+masih aja kena jebakan??". Akar masalah: mental simulation flow
+Phase 77 TIDAK cover case "mode 1 side + snap aktif" secara
+spesifik — saya cuma cek "snap aktif → block scale smooth →
+tidak goyang", TIDAK cek "sisi seberang diam atau tidak".
+
+PENYEBAB
+Phase 77 (commit 9c953ab) hapus computeAnchorOffset saat snap
+aktif (untuk fix goyang). Tapi computeAnchorOffset adalah yang
+buat sisi seberang diam di mode 1 side. Skip = sisi seberang ikut
+scale (mode 2 side behavior). User pilih mode 1 side karena mau
+sisi seberang diam — skip = break semantics.
+
+Akar masalah yang lebih dalam: snap di applyScaleByMode (setiap
+frame) + computeAnchorOffset (setiap frame, pakai scale untuk
+hitung offset posisi) = CONFLICT. Saat snap lompat antar step,
+scale berubah cepat → offset berubah cepat → posisi goyang.
+Phase 77 pilih skip computeAnchorOffset (sacrifice sisi seberang
+diam). Phase 78 pilih pendekatan lain: pindah snap ke mouseUp
+(sacrifice NOTHING).
+
+SOLUSI
+2 file berubah, 3 perubahan inti:
+
+**File 1: src/utils/scaleModes.js (112 insertions, 18 deletions)**
+  1. applyScaleByMode: HAPUS snap logic (baris 237-261 di Phase
+     75 + komentar Phase 77 + check `&& !snapActive` di
+     computeAnchorOffset). Kembalikan check ke
+     `if (needsAnchorOffset(m) && startPos)`. Tambah komentar
+     Phase 78 yang jelaskan: snap logic pindah ke snapScaleFinal,
+     selama drag applyScaleByMode JALAN tanpa snap (smooth +
+     sisi seberang diam), saat mouseUp snapScaleFinal snap 1x +
+     computeAnchorOffset pakai snapped scale.
+  2. Parameter snapStudStep di signature applyScaleByMode tetap
+     ada (deprecated — backward compat untuk caller yang masih
+     pass, sekarang diabaikan). Komentar jelaskan: snap sekarang
+     lewat snapScaleFinal.
+  3. Tambah fungsi baru `snapScaleFinal(THREE, object, mode,
+     axisKey, sign, startScale, startPos, snapStudStep, minAbs,
+     frameQuat)` di akhir file. Fungsi ini: snap scale ke kelipatan
+     stepScale (relatif ke startScale, formula sama dengan Phase 75)
+     + computeAnchorOffset final (pakai snapped scale, supaya sisi
+     seberang DIAM di posisi snapped). Dipanggil SAAT MOUSEUP
+     (BUKAN setiap frame).
+
+**File 2: src/pages/BlockSimulator3D.jsx (32 insertions, 12 deletions)**
+  4. Import snapScaleFinal dari scaleModes.js (update import line
+     41-44, tambah snapScaleFinal ke list).
+  5. onTransformObjectChange: applyScaleByMode call hapus argumen
+     `sd.snapStudStep` → ganti ke `null` (komentar Phase 78:
+     snapStudStep tidak lagi di-pass ke applyScaleByMode, pindah
+     ke snapScaleFinal di mouseUp).
+  6. onDraggingChanged false (mouseUp): tambah block kode SEBELUM
+     clearScaleDragStart. Baca sd = scaleDragRef.current. Kalau
+     sd ada + sd.snapStudStep > 0, panggil snapScaleFinal dengan
+     sd.startScale, sd.startPos, sd.snapStudStep, sd.frameQuat.
+     Lalu clearScaleDragStart + scaleDragRef = null (seperti
+     sebelumnya).
+
+YANG TIDAK DISENTUH:
+- ScaleNumberModal.jsx — tidak berubah. Phase 77 (koma→titik, 3
+  desimal, STEP=0.001) tetap utuh.
+- BlockSimulator3D.jsx handler confirm (handleScaleNumberConfirm)
+  — tidak berubah. Phase 76 (default value = step saat ini)
+  tetap utuh.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 2 file spesifik berubah: scaleModes.js + BlockSimulator3D.jsx.
+  Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh: scaleDragRef null
+  → applyScaleByMode + snapScaleFinal tidak dipanggil. Behavior
+  Three.js scale sumbu yang digenggam langsung (tanpa snap, tanpa
+  computeAnchorOffset).
+- Mode 1 side TANPA snap (step=0): applyScaleByMode jalan tanpa
+  snap, computeAnchorOffset jalan (sisi seberang diam). mouseUp:
+  sd.snapStudStep = 0 → snapScaleFinal check `> 0` = false →
+  snap tidak aktif. Behavior sama seperti sebelum Phase 78.
+- Mode 1 side DENGAN snap (step>0): applyScaleByMode jalan tanpa
+  snap (smooth + sisi seberang diam saat drag). mouseUp: snapScaleFinal
+  snap 1x + computeAnchorOffset pakai snapped scale (sisi seberang
+  tetap diam di snapped position). FIX BOTH BUGS.
+
+VERIFIKASI
+- git diff --stat: 2 files changed, 114 insertions(+), 30 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 18.04s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98, EXTENDED
+  Phase 78 untuk cover SEMUA semantics yang user expect):
+  KASUS: mode 1 side + snap step 1 studs + drag mengecil
+  1. User set step = 1 (scaleNumberStep = 1, snap aktif). ✓
+  2. User klik block → drag bola gizmo X (mode 1 side). ✓
+  3. onDraggingChanged true: snapshot scale + frame + snapStudStep
+     di scaleDragRef. ✓
+  4. Selama drag (objectChange setiap frame):
+     a. applyScaleByMode dipanggil dengan snapStudStep=null (snap
+        TIDAK aktif di applyScaleByMode). ✓
+     b. applyScaleByMode: reset sumbu → apply ratio ke sumbu x
+        → computeAnchorOffset pakai raw scale (sisi seberang x
+        DIAM). ✓
+     c. Block scale smooth (raw, tidak snap) → TIDAK GOYANG. ✓
+     d. Sisi seberang DIAM (computeAnchorOffset jalan) → MODE
+        1 SIDE SEMANTICS PRESERVED. ✓
+  5. User lepas mouse (mouseUp, onDraggingChanged false):
+     a. sd = scaleDragRef.current (masih ada). ✓
+     b. sd.snapStudStep = 1 > 0 → snap aktif. ✓
+     c. Panggil snapScaleFinal: snap scale ke step terdekat +
+        computeAnchorOffset pakai snapped scale. ✓
+     d. Sisi seberang TETAP DIAM di snapped position (lompat
+        sedikit ke snapped position, TAPI hanya 1x lompatan,
+        bukan goyang bergetar). ✓
+     e. clearScaleDragStart + scaleDragRef = null. ✓
+
+  Semua 5 step + sub-step aman. FIX BOTH BUGS:
+  - Bug goyang: TIDAK ADA (selama drag smooth, snap hanya saat
+    mouseUp 1x).
+  - Bug sisi seberang diam: PRESERVED (computeAnchorOffset jalan
+    setiap frame pakai raw scale saat drag + pakai snapped scale
+    saat mouseUp).
+  - Snap aktif: PRESERVED (saat mouseUp, snap 1x ke step terdekat).
+
+CATATAN
+- BUG INI adalah lesson learned KRITIS untuk mental simulation
+  flow (kontrak butir 95 + 98). Saya Phase 77 mental simulation
+  flow CUMA cek "snap aktif → block smooth → tidak goyang". TIDAK
+  cek "sisi seberang diam atau tidak". Hasilnya: fix goyang TAPI
+  break mode 1 side semantics. User komplain "kenapa kena
+  jebakan lagi".
+- PELAJARAN: mental simulation flow WAJIB cover SEMUA semantics
+  yang user expect, BUKAN cuma satu aspek. Untuk fitur scale:
+  (a) tidak goyang, (b) sisi seberang diam (mode 1 side),
+  (c) snap aktif, (d) modal tutup tidak stuck, (e) input valid,
+  (f) koma→titik, dst. KALAU ADA 1 aspek yang TIDAK di-mental-
+  simulation, likely bug di aspek itu.
+- Phase 78 fix dengan PINDAH snap ke mouseUp (BUKAN skip
+  computeAnchorOffset). Trade-off: saat mouseUp, block lompat
+  sedikit ke snapped position (1x lompatan, bukan goyang).
+  Acceptable karena user expect snap = step function (lompat
+  antar step).
+- Komentar header Phase 75 di scaleModes.js baris 44-57 yang
+  bilang "snap aktif di applyScaleByMode" sekarang OUTDATED
+  lagi (Phase 78 pindah snap ke snapScaleFinal). Tidak di-update
+  untuk minimal change (lihat kontrak butir 83, 86, 93 — komentar
+  header Phase lama cycle outdated lintas-Phase).
+- Variable `s0`, `nowVal`, `ratio` di mouseUp block (baris
+  12489-12491) TIDAK dipakai oleh snapScaleFinal (snapScaleFinal
+  pakai object.scale langsung, bukan ratio). Variable unused ini
+  TIDAK fatal (vite build OK, tidak ada runtime error). Bisa
+  di-cleanup di sesi lain kalau ada lint warning.

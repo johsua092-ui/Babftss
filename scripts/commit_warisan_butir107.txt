@@ -1,0 +1,65 @@
+docs(kontrak): append warisan butir 107-109 — mental simulation cover all semantics + snap saat mouseUp
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 78 — snap pindah ke mouseUp, fix goyang + sisi seberang
+diam (commit e9b3f1d) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak. BUG ini adalah LESSON LEARNED KRITIS
+karena user eksplisit bilang "kamu kena jebakan lagi ya? padahal
+kamu sudah suru baca kontrak permanen md".
+
+PENYEBAB
+Phase 77 fix bug goyang dengan sacrifice sisi seberang diam (skip
+computeAnchorOffset saat snap aktif). User tidak terima trade-off.
+Akar masalah: mental simulation flow Phase 77 TIDAK cover SEMUA
+semantics yang user expect — saya cuma cek "snap aktif → block
+smooth → tidak goyang", TIDAK cek "sisi seberang diam atau tidak".
+Phase 78 fix BOTH bugs dengan pindah snap ke mouseUp.
+
+SOLUSI
+Append section baru "## 19. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 78 — snap pindah ke mouseUp, fix goyang
++ sisi seberang diam)" di akhir file. Teks yang sudah ada tidak
+diubah apa pun. Warisan berisi 3 butir:
+  107. Mental simulation flow WAJIB cover SEMUA semantics yang
+       user expect, BUKAN cuma satu aspek. Checklist extended
+       (tambah butir 98): untuk SETIAP mode (1/2/4/6 side) × SETIAP
+       kombinasi (snap aktif/non × drag membesar/mengecil × ada/
+       tidak ada block), cek behavior konsisten dengan semantics.
+  108. Saat ada conflict antara 2 semantics, JANGAN sacrifice
+       salah satu — cari solusi yang fix BOTH. Trade-off "sacrifice
+       A untuk fix B" = RED FLAG. User TIDAK akan terima. Pisahkan
+       ke 2 fase (selama drag = A, saat mouseUp = B), atau pakai
+       hysteresis, atau refactor struktural.
+  109. Pola: snap saat mouseUp (BUKAN setiap frame) = fix goyang
+       + preserve semantics. Implementasi: applyScaleByMode
+       (setiap frame, tanpa snap) + snapScaleFinal (1x saat
+       mouseUp, dengan snap + computeAnchorOffset pakai snapped
+       scale). Trade-off: saat mouseUp, block lompat sedikit ke
+       snapped position. Acceptable untuk snap.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~115 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~115 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 3 butir warisan karena ada lesson learned
+  KRITIS: mental simulation cover all semantics (BUKAN cuma 1 aspek),
+  jangan sacrifice semantics (cari solusi fix BOTH), pola snap saat
+  mouseUp. Semua 3 butir ditulis DETAIL dengan checklist + pola
+  general supaya AI penerus yang baca kontrak langsung paham akar
+  masalah + cara cegah. User eksplisit bilang "kenapa kena jebakan
+  lagi" — saya akui kesalahan + janji tidak ulang. Implementasi
+  prinsip Aturan #9: "tiap sesi = 1 epoch, kontrak = bobot yang
+  terus ter-update, AI penerus = inferens yang mulai dari bobot
+  terbaik".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
