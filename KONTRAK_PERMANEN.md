@@ -3541,6 +3541,70 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     MAJU. Fix both user Phase 78 (sisi seberang diam saat membesar)
     dan user Phase 84 (sisi yang digenggam diam saat mengecil).
 
+---
+
+## 26. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 85 — REVERT Math.abs, offset WAJIB reversibel)
+
+119. **OFFSET POSISI WAJIB REVERSIBEL — Math.abs = TIDAK REVERSIBEL (AKUMULASI)**
+    (sesi 2026-09-19, fix commit `a6e844d` untuk bug Phase 84 commit
+    `9b8990a`): Phase 84 ubah `computeAnchorOffset` dari
+    `(scaleNew - scaleStart)` ke `Math.abs(scaleNew - scaleStart)`.
+    Tujuan: pusat selalu MAJU (ke arah sisi yang digenggam), BUKAN
+    MUNDUR saat mengecil. TAPI Math.abs = **TIDAK REVERSIBEL**.
+    Saat scale kembali ke ukuran asli (scaleNew = scaleStart),
+    `Math.abs(scaleNew - scaleStart)` = `Math.abs(0)` = 0...
+    TUNGGU. Sebenarnya `Math.abs(0) = 0`. Jadi saat scale kembali
+    ke ukuran asli, delta = 0, offset = 0, pusat kembali. Itu
+    seharusnya OK.
+
+    TAPI masalahnya: startPos di-snapshot **saat drag mulai**
+    (onDraggingChanged true). Setiap drag mulai, startPos = posisi
+    **saat itu** (yang sudah bergeser dari drag sebelumnya).
+
+    Misal:
+    1. Drag 1: scale 1.0 → 1.5. startPos = (0, 0, 0).
+       `Math.abs(1.5 - 1.0) × sign × 0.5 = +0.25`. Pusat = 0 + 0.25 = 0.25.
+    2. Lepas mouse. Posisi sekarang = (0.25, 0, 0).
+    3. Drag 2: scale 1.5 → 1.0 (mengecil kembali). startPos = (0.25, 0, 0).
+       `Math.abs(1.0 - 1.5) × sign × 0.5 = +0.25` (POSITIF! BUKAN negatif!).
+       Pusat = 0.25 + 0.25 = 0.50.
+
+    **Pusat tidak kembali ke (0, 0, 0)!** Pusat bergeser dari 0.25 ke 0.50.
+    Setiap cycle membesar→mengecil, pusat bergeser +0.25 lagi. **AKUMULASI**.
+
+    Dengan `(scaleNew - scaleStart)` (original, tanpa Math.abs):
+    1. Drag 1: scale 1.0 → 1.5. startPos = (0, 0, 0).
+       `(1.5 - 1.0) × sign × 0.5 = +0.25`. Pusat = 0 + 0.25 = 0.25.
+    2. Lepas mouse. Posisi = (0.25, 0, 0).
+    3. Drag 2: scale 1.5 → 1.0. startPos = (0.25, 0, 0).
+       `(1.0 - 1.5) × sign × 0.5 = -0.25` (NEGATIF!).
+       Pusat = 0.25 + (-0.25) = 0.00. **Pusat KEMBALI ke (0, 0, 0)!** ✓
+
+    **Pelajaran KRITIS**: offset posisi WAJIB **reversibel**
+    (proportional ke delta scale, BUKAN absolute). Kalau user scale
+    membesar lalu mengecil kembali ke ukuran asli, pusat **HARUS
+    kembali** ke posisi awal. `Math.abs` = symmetric tapi **TIDAK
+    reversibel** (selalu positif → akumulasi). `(scaleNew - scaleStart)`
+    = asymmetric tapi **reversibel** (positif saat membesar, negatif
+    saat mengecil, nol saat kembali ke asli). **Reversibel > symmetric**
+    untuk offset posisi.
+
+    **Pola untuk offset posisi**: WAJIB pakai `(newValue - oldValue)`
+    (BUKAN `Math.abs(newValue - oldValue)`). Alasan: startPos di-snapshot
+    saat drag mulai = posisi **saat itu** (yang sudah bergeser dari drag
+    sebelumnya). Offset = `(newValue - oldValue)` = perubahan dari start
+    drag ini. Kalau user kembali ke nilai start, offset = 0 → pusat
+    kembali ke startPos. **Reversibel**. Kalau pakai `Math.abs`, offset
+    selalu positif → pusat tidak kembali → **akumulasi**.
+
+    **Pola untuk cek apakah offset reversibel**: test cycle
+    membesar→mengecil→kembali ke asli. Kalau pusat kembali ke posisi
+    awal = reversibel. Kalau pusat bergeser = tidak reversibel (bug).
+    User Phase 85 kasih test cycle ini: "scale panjang lalu pendek
+    sampai mentok ke ukuran asli → block maju 1 studs → pola sama,
+    berulang". Itu = test cycle yang reveal Math.abs tidak reversibel.
+
+
 
 
 
