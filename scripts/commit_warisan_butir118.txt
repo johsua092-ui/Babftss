@@ -1,0 +1,49 @@
+docs(kontrak): append warisan butir 118 — Math.abs fix arah offset, pusat selalu MAJU
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 84 — Math.abs fix arah offset, pusat selalu MAJU
+(commit 9b8990a) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak.
+
+PENYEBAB
+computeAnchorOffset pakai delta = (scaleNew - scaleStart) × sign
+× halfSize. Saat scale MENGECIL: delta NEGATIF → offset NEGATIF
+→ pusat geser MUNDUR (ke arah sisi seberang). User mau MAJU (ke
+arah sisi yang digenggam).
+
+SOLUSI
+Append section baru "## 25. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 84 — Math.abs fix arah offset, pusat
+selalu MAJU)" di akhir file. Teks yang sudah ada tidak diubah
+apa pun. Warisan berisi 1 butir:
+  118. Math.abs(scaleNew - scaleStart) = fix arah offset. Pusat
+       selalu MAJU (ke arah sisi yang digenggam). Saat membesar:
+       sisi seberang diam. Saat mengecil: sisi yang digenggam
+       diam. Math.abs fix BOTH user Phase 78 (sisi seberang diam
+       saat membesar) dan user Phase 84 (sisi yang digenggam diam
+       saat mengecil). Pola: kalau conflict antar phase yang
+       bergantung arah, cek apakah Math.abs atau fungsi symmetric
+       bisa fix BOTH.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~40 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~40 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 1 butir warisan karena lesson learned
+  KRITIS: Math.abs = fix arah offset yang resolve conflict antar
+  phase. Butir 118 ditulis DETAIL dengan contoh konkret + pola
+  general supaya AI penerus yang baca kontrak langsung paham.
+  Implementasi prinsip Aturan #9: "tiap sesi = 1 epoch, kontrak
+  = bobot yang terus ter-update".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).

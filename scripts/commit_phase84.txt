@@ -1,0 +1,95 @@
+fix(scale-ui): Phase 84 — computeAnchorOffset pakai Math.abs, pusat selalu MAJU
+
+MASALAH
+User komplain: "scale mengecil dia maju tepat 1 studs atau setengah
+block ke arah saya sedang memendekkan blocknya. dan itu tepat ke
+arah saya memendekkan blocknya loh dia ngikutin!".
+
+PENYEBAB
+computeAnchorOffset pakai delta = (scaleNew - scaleStart) × sign ×
+halfSize. Saat scale MENGECIL (scaleNew < scaleStart): delta
+NEGATIF → offset NEGATIF → pusat geser MUNDUR (ke arah sisi
+seberang). Sisi seberang DIAM, sisi yang digenggam bergerak masuk.
+
+User mau: saat scale mengecil, sisi yang digenggam DIAM, sisi
+seberang bergerak masuk, pusat MAJU (ke arah sisi yang digenggam).
+
+SOLUSI
+1 file berubah, 1 perubahan inti:
+
+**File: src/utils/scaleModes.js (22 insertions, 1 deletion)**
+  1. computeAnchorOffset: UBAH delta dari
+     `(scaleNew - scaleStart) × sign × halfSize` →
+     `Math.abs(scaleNew - scaleStart) × sign × halfSize`.
+     Selalu POSITIF → offset selalu POSITIF → pusat selalu MAJU
+     (ke arah sisi yang digenggam).
+
+     - Scale MEMBESAR: delta = (scaleNew - scaleStart) × sign ×
+       halfSize (positif). Pusat MAJU. Sisi seberang DIAM. Sisi
+       yang digenggam bergerak KELUAR. ✓ (sesuai user Phase 78)
+     - Scale MENGECIL: delta = (scaleStart - scaleNew) × sign ×
+       halfSize (positif). Pusat MAJU. Sisi yang digenggam DIAM.
+       Sisi seberang bergerak MASUK. ✓ (sesuai user Phase 84)
+
+     Math.abs fix BOTH:
+     - Saat membesar: sisi seberang diam (computeAnchorOffset saat
+       ini). ✓
+     - Saat mengecil: sisi yang digenggam diam (kebalikan). ✓
+     - Pusat selalu MAJU (ke arah sisi yang digenggam). ✓
+
+  2. Tambah komentar Phase 84 yang jelaskan alasan + akar masalah
+     (user complaint Phase 84 + why Math.abs fix BOTH).
+
+YANG TIDAK DISENTUH:
+- applyScaleByMode (snap + hysteresis + cek minimum Phase 79/82)
+  tetap utuh. Cuma computeAnchorOffset yang diubah.
+- BlockSimulator3D.jsx — tidak berubah.
+- ScaleNumberModal.jsx — tidak berubah.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 1 file spesifik berubah: scaleModes.js. Tidak ada file lain
+  tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh.
+- Snap + hysteresis + cek minimum tetap utuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 22 insertions(+), 1 deletion(-).
+- vite build: exit 0, built in 18.21s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION:
+  KASUS: Mode 1 side + snap step 1 studs + drag mengecil dari
+  default 2 studs
+  1. startScale = 1.0, step = 1 studs (stepScale = 0.5), sign = +1.
+  2. User drag mengecil. finalStep = -1. finalScale = 0.5.
+  3. computeAnchorOffset: delta = Math.abs(0.5 - 1.0) × 1 × 0.5
+     = 0.5 × 0.5 = 0.25. offset = +0.25 (MAJU).
+  4. Pusat geser +0.25 (MAJU, ke arah sisi +). Sisi + DIAM di
+     +0.5. Sisi − bergerak masuk (dari -0.5 ke 0).
+  User lihat: sisi yang digenggam (+) DIAM, sisi seberang (−)
+  bergerak masuk, pusat MAJU. ✓
+
+  KASUS: Scale membesar
+  1. startScale = 1.0, scaleNew = 1.5, sign = +1.
+  2. delta = Math.abs(1.5 - 1.0) × 1 × 0.5 = 0.25. offset = +0.25 (MAJU).
+  3. Pusat geser +0.25 (MAJU). Sisi − DIAM di -0.5. Sisi +
+     bergerak keluar (dari +0.5 ke +1.0).
+  User lihat: sisi seberang (−) DIAM, sisi yang digenggam (+)
+  bergerak keluar, pusat MAJU. ✓
+
+CATATAN
+- BUG INI = lesson learned dari kontrak butir 115 (user pref
+  berubah antar phase). User Phase 78 mau sisi seberang diam
+  (saat membesar dan mengecil). User Phase 84 mau sisi yang
+  digenggam diam (saat mengecil). Math.abs fix BOTH: saat
+  membesar, sisi seberang diam; saat mengecil, sisi yang
+  digenggam diam. Pusat selalu MAJU.
+- Trade-off: user Phase 83 bilang "maju kalau panjang, mundur
+  kalau pendek". Math.abs = "MAJU kalau panjang, MAJU kalau
+  pendek" (selalu MAJU). Konflik dengan user Phase 83. Tapi user
+  Phase 84 lebih baru, prioritaskan phase terbaru.
