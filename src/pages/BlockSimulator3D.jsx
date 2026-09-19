@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import GizmoBlockInfoPanel from '../components/GizmoBlockInfoPanel';
 import ScaleModeModal from '../components/ScaleModeModal';
+import ScaleNumberModal from '../components/ScaleNumberModal';
 import { ChunkManager } from '../lib/ChunkManager.js';
 import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
@@ -41,6 +42,7 @@ import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
   applyScaleByMode, computeScaleModeFrame,
 } from '../utils/scaleModes.js';
+import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -565,6 +567,15 @@ export default function BlockSimulator3D({ setPage }) {
   const [showScaleModeModal, setShowScaleModeModal] = useState(false);
   const [scaleModeModalVariant, setScaleModeModalVariant] = useState('onboarding');
   const scaleModeLockedRef = useRef(false);
+
+  // ── Phase 74 (2026-09-19, sesi server z.ai): modal ScaleNumberModal —
+  //    input nilai scale dalam studs, apply ke tc.object. Default value
+  //    = current scale studs block yang sedang di-attach ke gizmo.
+  //    Fondasi matematika: scale = studs / STUDS_PER_BLOCK (kontrak bab
+  //    STANDAR PENGUKURAN STUDS; STUDS_PER_BLOCK = 2 MUTLAK).
+  //    ──
+  const [showScaleNumberModal, setShowScaleNumberModal] = useState(false);
+  const [scaleNumberValue, setScaleNumberValue] = useState(2);
   useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
   // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
   // frameQuat, startScale, startPos }. Diisi saat 'dragging-changed' start,
@@ -617,13 +628,48 @@ export default function BlockSimulator3D({ setPage }) {
     setShowScaleModeModal(true);
   };
 
-  // ── Phase 73 v3 (2026-09-19, sesi server z.ai): tombol "+" di panel
-  //    info scale TIDAK LAGI membuka modal Scale Mode — sekarang "coming
-  //    soon" (tombol baru ber-icon gear yang membuka modal). Pakai sonner
-  //    toast.info, pola sama dengan Binding/Property/BuildArea coming soon.
+  // ── Phase 74 (2026-09-19, sesi server z.ai): tombol "+" BUKAN lagi
+  //    "coming soon" — sekarang buka modal ScaleNumberModal untuk input
+  //    nilai scale dalam studs. Default value = current scale block yang
+  //    sedang di-attach ke gizmo (tc.object), supaya user lihat angka
+  //    aktual block-nya sekarang berapa studs. Kalau tidak ada block
+  //    yang di-attach, default 2 (default block).
+  //    Fondasi: scale = studs / STUDS_PER_BLOCK (kontrak bab STANDAR
+  //    PENGUKURAN STUDS; STUDS_PER_BLOCK = 2 MUTLAK; test_blockStuds.mjs
+  //    11/11 PASS terverifikasi sebagai fondasi).
   //    ──
   const handleComingSoonClick = () => {
-    toast.info('Fitur ini masih coming soon — bersiap!');
+    const tc = threeRef.current && threeRef.current.transformControls;
+    const obj = tc && tc.object;
+    if (obj && obj.isObject3D) {
+      // Pakai max |scale| antar sumbu supaya user lihat nilai tertinggi
+      // (block bisa pipih/memanjang — tampilkan yang paling besar).
+      const s = obj.scale;
+      const maxScale = Math.max(Math.abs(s.x), Math.abs(s.y), Math.abs(s.z));
+      setScaleNumberValue(Math.max(0.25, maxScale * STUDS_PER_BLOCK));
+    } else {
+      setScaleNumberValue(2); // default block: 2 studs = 1 block
+    }
+    setShowScaleNumberModal(true);
+  };
+
+  // ── Phase 74: handler Konfirmasi ScaleNumberModal — apply scale ke
+  //    block yang sedang di-attach ke gizmo (tc.object). Konversi:
+  //    scale = studs / STUDS_PER_BLOCK. Pakai setScalar untuk apply
+  //    ke 3 sumbu sekaligus (x, y, z) — konsisten dgn kubus block 1x1x1.
+  //    Kalau tidak ada block yang di-attach → toast.warning.
+  //    ──
+  const handleScaleNumberConfirm = (studs) => {
+    const tc = threeRef.current && threeRef.current.transformControls;
+    const obj = tc && tc.object;
+    if (!obj || !obj.isObject3D) {
+      toast.warning('Pilih block dulu lewat gizmo Scale sebelum set nilai studs');
+      return;
+    }
+    const scale = studs / STUDS_PER_BLOCK;
+    obj.scale.setScalar(scale);
+    obj.updateMatrixWorld();
+    toast.success(`Block di-scale ke ${studs} studs (scale factor ${scale.toFixed(3)})`);
   };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
@@ -23406,6 +23452,13 @@ Now you can apply Displacement for detailed effect.`);
             bisa ditutup lewat klik luar / X / Escape.
           Warna oranye keemasan (amber #f59e0b). Design = pola modal Clear
           All (satu design system: overlay blur, panel gelap, Orbitron). */}
+      {showScaleNumberModal && (
+        <ScaleNumberModal
+          value={scaleNumberValue}
+          onConfirm={handleScaleNumberConfirm}
+          onCancel={() => setShowScaleNumberModal(false)}
+        />
+      )}
       {showScaleModeModal && (
         <ScaleModeModal
           value={scaleMode}
