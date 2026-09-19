@@ -1,0 +1,69 @@
+fix(scale-ui): tombol Batal & Konfirmasi ScaleModeModal simetris (flex:1)
+
+MASALAH
+Di modal "Scale Mode" (varian onboarding, muncul saat klik "+"), tombol
+"Batal" (kiri) dan "Konfirmasi" (kanan) tidak simetris:
+  - Batal: padding 10px 20px (lebar konten ~80px)
+  - Konfirmasi: padding 10px 24px (lebar konten ~140px)
+  - Container: justifyContent: 'flex-end' → keduanya di-push ke kanan
+    sebagai satu grup, Batal menempel ke kiri Konfirmasi.
+Hasil visual: Batal pendek, Konfirmasi panjang, grup di-kanan → tidak
+simetris, terlihat tidak rapi. User minta: Batal dari kiri ke tengah,
+Konfirmasi dari kanan ke tengah, sama rata panjang.
+
+PENYEBAB
+Tidak ada width/flex eksplisit di kedua tombol — lebarnya hanya ditentukan
+oleh content + padding, jadi otomatis berbeda karena "Batal" (5 huruf)
+vs "Konfirmasi" (9 huruf). Container justifyContent: 'flex-end' juga
+meng-grup keduanya di kanan, bukan membagi rata 50:50.
+
+SOLUSI
+3 perubahan minimal (Aturan #5: ubah sekecil mungkin):
+  1. Container: hapus `justifyContent: 'flex-end'` (jadi no-op ketika
+     kedua anak punya flex:1 — biar tidak misleading dead context).
+  2. Tombol Batal: tambah `flex: 1` di awal style.
+  3. Tombol Konfirmasi: tambah `flex: 1` di awal style.
+Efek: dengan flex:1 di kedua tombol + container flex dengan gap:12,
+tiap tombol menempati (containerWidth - 12) / 2 = simetris 50:50.
+Batal otomatis di kiri (sebagai anak flex pertama), Konfirmasi di
+kanan. Padding berbeda (20px vs 24px) tidak memengaruhi lebar tombol
+karena flex:1 men-stretch ke ukuran sama; padding hanya mengatur
+posisi text dalam tombol.
+
+AMAN
+- HANYA src/components/ScaleModeModal.jsx berubah (3 baris: 1 di
+  container, 1 di style Batal, 1 di style Konfirmasi).
+- File terlarang (kontrak Bagian 1 #4) TIDAK tersentuh: AuthContext,
+  firebase, supabase, LoginPage, UserPill semua intact.
+- Tidak sentuh: grid 4 mode (1side/2side/4side/6side), picker, header,
+  body modal, ACCENT color, animasi slide-up. Varian picker tetap
+  tidak punya footer (memakai mode langsung saat kartu diklik).
+- Tidak sentuh hover handler (onMouseEnter/Leave) kedua tombol —
+  interaksi tetap jalan apa adanya.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 3 insertions(+), 3 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.26s, 0 error, 0 warning syntax.
+- Tidak ada tes headless (tidak ada test file ScaleModeModal); tidak
+  ada uji pixel (perubahan layout flexbox, bukan rendering visual
+  yang butuh verifikasi pixel — verifikasi cukup via logika CSS:
+  flex:1 + container flex + gap 12 → dua anak stretch sama besar).
+- Regresi: otomatis aman karena hanya 2 tombol di footer yang
+  berubah style; tidak ada perubahan event handler/state/props.
+
+CATATAN
+- Komentar "footer sengaja tidak ada" untuk varian picker tetap
+  utuh; footer hanya muncul di varian onboarding (sebelum sesi ini,
+  sesudah sesi ini).
+- Tidak ada temuan teknis baru dari tugas ini — flex:1 di kedua
+  tombol + hapus justifyContent adalah pola CSS standar untuk
+  simetris 2-kolom di flexbox. Tidak ada jebakan library Three.js,
+  tidak ada dependensi visual tersembunyi seperti kasus sebelumnya
+  (badge "bawaan" + marginLeft '2side'?6:auto).
+- Pitfall minor yang ditinggalkan: padding Batal 20px vs Konfirmasi
+  24px tidak disamakan. Alasan: flex:1 sudah stretch keduanya ke
+  lebar sama, padding berbeda hanya menggeser text dalam tombol
+  (tidak terlihat dalam lebar tombol final). Kalau user komplain
+  "text Batal terlalu mepet pinggir", fix terpisah: samakan padding
+  ke 22px di kedua tombol.

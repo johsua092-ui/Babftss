@@ -1,0 +1,46 @@
+docs(kontrak): append warisan butir 80 — pola flex:1 simetris 2-tombol
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+Tugas simetris-kan tombol Batal & Konfirmasi ScaleModeModal
+(commit 3e9b65c) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak.
+
+PENYEBAB
+Tugas dilakukan di server z.ai, source code dari repo GitHub.
+Pekerjaan teknis sudah di-push ke origin/main commit 3e9b65c,
+tapi warisan belum menyusul. Instruksi user eksplisit: "teks
+yang sudah ada dilarang disentuh, hanya boleh menambah tepat
+di bawahnya".
+
+SOLUSI
+Append section baru "## 11. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: tombol Batal & Konfirmasi simetris di
+ScaleModeModal)" di akhir file, TEPAT di bawah baris penutup
+section 10 (baris "...`old_str` spesifik ke `ScaleModeModal.jsx`
+saja."). Teks yang sudah ada (baris 1-2326) tidak diubah apa pun.
+Warisan berisi 1 butir:
+  80. Pola simetris 2-tombol di flexbox: flex:1 di kedua anak
+      + hapus justifyContent + pitfall padding beda tidak
+      memengaruhi lebar tombol saat flex:1 aktif.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~35 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~35 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini bersifat simple CSS layout fix; tidak ada temuan teknis
+  baru yang signifikan. Pola flex:1 untuk simetris 2-tombol adalah
+  CSS standar, tapi ditampung di kontrak supaya AI penerus tidak
+  over-engineer dengan grid atau width:50% saat flex:1 sudah cukup
+  (sesuai Aturan #5 "ubah sekecil mungkin").
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
