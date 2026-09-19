@@ -2359,4 +2359,86 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     aturan serupa berlaku: untuk fix UI murni yang dampak visualnya
     terprediksi lewat logika CSS, vite build exit 0 = cukup bukti.
 
+---
+
+## 12. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: varian picker ScaleModeModal + Batal/Konfirmasi, hapus X)
+
+81. **WAJIB CEK FLOW CALLER SEBELAUM UBAH FLOW KOMPONEN MODAL**
+    (sesi 2026-09-19, commit `742e3a6`): saat user minta tambah
+    Batal/Konfirmasi ke varian picker ScaleModeModal, terlihat simple
+    (cuma tambah footer). Tapi flow lama varian picker = "klik kartu
+    langsung apply + tutup modal" — kalau footer ditambah tanpa ubah
+    flow kartu, footer jadi useless (modal sudah tutup saat klik kartu,
+    Batal/Konfirmasi tidak pernah diklik). Maka wajib samakan flow
+    picker = onboarding (klik kartu = setSelected highlight, Konfirmasi
+    = apply, Batal = tutup tanpa apply). **SEBELAUM ubah**: baca caller
+    (BlockSimulator3D.jsx baris 589-610) — `handleScaleModeConfirm`
+    sudah support apply-mode-tanpa-kunci untuk varian picker, dan
+    `handleScaleModeCancel` sudah support tutup-tanpa-apply untuk
+    varian picker. Hasil: caller TIDAK tersentuh sama sekali, hanya
+    komponen ScaleModeModal yang berubah. **Pelajaran**: untuk tugas
+    "tambah tombol ke varian X", cek dulu: (a) apakah flow kartu-moda
+    langsung apply = Ya? → ubah ke setSelected; (b) apakah handler
+    caller sudah support flow pilih-konfirmasi? → kalau Ya, tidak perlu
+    sentuh caller; kalau Tidak, wajib sentuh caller.
+
+82. **JEBAKAN HAPUS ELEMEN UI + UBAH FLOW = KONSEKUENSI BERJALAN**
+    (sesi 2026-09-19, commit `742e3a6`): hapus tombol X + tambah
+    footer ke varian picker TIDAK cuma sentuh 2 elemen target. Ada
+    5 konsekuensi otomatis yang ikut harus diupdate:
+    (a) import `X` dari lucide-react jadi unused → hapus dari import
+        (kalau tidak, lint warning);
+    (b) text subtitle "Klik salah satu mode untuk langsung memakainya"
+        (varian picker) jadi MISLEADING setelah flow diubah → harus
+        samakan untuk kedua varian;
+    (c) `marginBottom: isPicker ? 0 : 24` di grid 4-mode jadi salah —
+        picker dulu 0 karena footer tidak ada, sekarang footer selalu
+        ada → harus samakan ke 24 supaya grid tidak menempel ke footer;
+    (d) komentar footer "HANYA varian onboarding — varian picker
+        memakai mode langsung" jadi OUTDATED → harus update;
+    (e) `{!isPicker && (` wrap + `)}` penutup harus hapus.
+    **Pola**: setiap kali hapus elemen UI + ubah flow = cek SEMUA
+    tempat yang punya kondisi `isPicker` (atau nama varian) di file
+    yang sama, lalu untuk masing-masing tanya: apakah kondisi ini
+    masih true setelah flow baru? Kalau tidak → update/hapus.
+    Di kasus ini: 7 perubahan total, 2 inti (hapus X + hapus wrap
+    footer) + 5 konsekuensi (import, text, marginBottom, komentar,
+    onClick kartu).
+
+83. **KOMENTAR HEADER PHASE LAMA = OUTDATED SETELAH FLOW UBAH, BISA DI-SKIP**
+    (sesi 2026-09-19, commit `742e3a6`): komentar header Phase 73 v2
+    (ScaleModeModal.jsx baris 23-40) menjelaskan "varian picker =
+    klik mode langsung memakai + bisa ditutup lewat X/overlay/Escape".
+    Setelah commit ini, flow tersebut TIDAK LAGI AKURAT (X dihapus,
+    klik kartu jadi setSelected, footer ditambah). Namun komentar
+    header TIDAK di-update di commit yang sama, dengan alasan:
+    (a) Aturan #5 "ubah sekecil mungkin" — komentar header bukan
+        kode fungsional, update-nya bisa di-skip tanpa efek runtime;
+    (b) update komentar = sentuh baris 23-40 (20 baris komentar
+        panjang) = perubahan lebih besar dari perubahan inti;
+    (c) AI penerus yang baca komentar header tahu lihat kode
+        sebenarnya, bukan asal percaya komentar.
+    **Pola untuk AI penerus**: kalau baca komentar header Phase X yang
+    menjelaskan flow/behavior yang TIDAK cocok dengan kode sebenarnya
+    → kode yang menang. Komentar header = snapshot keputusan saat
+    Phase itu; bisa outdated. Verifikasi: `git log --oneline -L:start,end:filename`
+    untuk lihat kapan terakhir kali kode (bukan komentar) berubah.
+    Tetap praktek baik: kalau flow berubah signifikan, catat di commit
+    message bahwa komentar header outdated, agar AI penerus tahu.
+
+84. **INDENTATION YANG TIDAK RAPI SETELAH HAPUS WRAP JSX = TIDAK FATAL**
+    (sesi 2026-09-19, commit `742e3a6`): hapus `{!isPicker && (...
+    <div>...</div>)}` wrap menyisakan `<button>` di dalam dengan
+    indentation 14 spasi (seharusnya 10 spasi setelah wrap hilang).
+    JSX tidak peduli indentation, vite build OK, tidak ada runtime
+    error. Untuk Aturan #5 "ubah sekecil mungkin", re-indentasi 8+
+    baris footer tidak dilakukan di commit yang sama — bisa terpisah
+    di commit prettier/format kalau user/CI minta. **Pola**: jika
+    indentasi rusak setelah edit, cek apakah (a) berdampak ke runtime
+    → tidak, JSX whitespace-agnostic; (b) berdampak ke lint/CI →
+    mungkin, tapi bisa fix di commit terpisah; (c) berdampak ke
+    keterbacaan → ya, tapi reader yang paham JSX akan lihat struktur
+    dari `</div>` penutup, bukan dari indentasi.
+
+
 
