@@ -98,7 +98,7 @@
 *.gem
 *.rbc
 **/.bundle/
-**/vendor/bundle
+**/vendor/bundle/
 **/.byebug_history
 
 # Logs
@@ -180,3 +180,6 @@
 .next/
 .next
 .vercel
+
+# Project-specific
+skills/
