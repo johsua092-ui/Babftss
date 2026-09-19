@@ -1,0 +1,55 @@
+docs(kontrak): append warisan butir 113 — salah interpretasi default mode vs number + TANYA user kalau ambigu
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 80 — koreksi salah paham default mode vs scale number
+(commit b57e5e4) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak. BUG ini = lesson learned KRITIS
+karena akar masalahnya = salah interpretasi permintaan user yang
+ambigu (Phase 79 salah baca "default 2" = scale mode, padahal
+user maksud scale number).
+
+PENYEBAB
+Phase 79 user bilang "default '2' jika user langsung tekan
+konfirmasi atau batal ketika pertama kali buka menu pemilihan 4
+mode di scale ini". Saya salah baca: kira "default 2" = scale
+mode 2side. Implementasi Phase 79: ubah DEFAULT_SCALE_MODE ke
+'2side'. Phase 80 user klarifikasi: "default 2" = scale number
+(input studs), BUKAN scale mode. User mau mode default = 1side.
+
+SOLUSI
+Append section baru "## 21. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 80 — koreksi salah paham default mode
+vs scale number)" di akhir file. Teks yang sudah ada tidak
+diubah apa pun. Warisan berisi 1 butir:
+  113. Salah interpretasi "default 2" = scale mode vs scale
+       number. Kalau permintaan user ambigu (bisa diinterpretasi
+       2+ cara), TANYA user untuk klarifikasi. JANGAN asumsi +
+       implementasi + tunggu user komplain. Lebih murah TANYA
+       sekali daripada fix 2x. Pola handler Batal yang set
+       default: setScaleNumberStep(prev => prev ?? 2) kalau
+       state null/undefined; tetap kalau sudah ada.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~50 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~50 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 1 butir warisan karena lesson learned
+  KRITIS: salah interpretasi permintaan ambigu. Butir 113 ditulis
+  DETAIL dengan contoh konkret (Phase 79 salah + Phase 80 koreksi)
+  + pola general (TANYA user kalau ambigu) supaya AI penerus
+  yang baca kontrak langsung paham akar masalah + cara cegah.
+  Implementasi prinsip Aturan #9: "tiap sesi = 1 epoch, kontrak
+  = bobot yang terus ter-update, AI penerus = inferens yang mulai
+  dari bobot terbaik, BUKAN nol".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).

@@ -1,0 +1,120 @@
+fix(scale-ui): Phase 80 — koreksi salah paham, default mode 1side + scale number default 2
+
+MASALAH
+Salah paham saya di Phase 79. User Phase 79 bilang "default 2",
+saya kira = scale mode 2side. Ternyata user maksud = SCALE NUMBER
+(input studs) default 2. User Phase 80 klarifikasi:
+
+"sepertinya anda salah paham yang saya maksud itu default '2'
+adalah 'scale number' jadi scale number default '2' jika user
+memilih konfirmasi atau memilih batal tanpa mengatur scale number
+terlebih dahulu, dan sekarang tolong ubah mode default kepada
+1 side ya!"
+
+PENYEBAB
+Phase 79 (commit 596a11c) ubah DEFAULT_SCALE_MODE dari '1side'
+→ '2side' karena salah interpretasi. User sebenarnya mau:
+- Default SCALE NUMBER (input studs) = 2 (BUKAN scale mode).
+  Kalau user Konfirmasi/Batal tanpa ngatur, scale number = 2.
+- Default SCALE MODE = 1side (kembalikan ke Phase 73 default).
+
+SOLUSI
+2 file berubah, 3 perubahan inti:
+
+**File 1: src/utils/scaleModes.js (6 insertions, 4 deletions)**
+  1. DEFAULT_SCALE_MODE: '2side' → '1side' (kembalikan ke Phase 73
+     default). Update komentar header: Phase 73 = '1side',
+     Phase 79 = '2side' (salah paham), Phase 80 = '1side' lagi
+     (koreksi salah paham).
+
+**File 2: src/pages/BlockSimulator3D.jsx (13 insertions, 2 deletions)**
+  2. Tambah handler baru `handleScaleNumberCancel` setelah
+     handleScaleNumberConfirm. Handler ini:
+     - setScaleNumberStep(prev => (prev === null || prev ===
+       undefined) ? 2 : prev) — kalau user belum pernah set
+       step (null), set default = 2 studs (snap aktif dengan
+       step 2). Kalau user sudah set step sebelumnya (mis. 5),
+       Batal = tetap di step itu (tidak reset).
+     - setShowScaleNumberModal(false) — tutup modal.
+     Komentar Phase 80 jelaskan alasan: user mau default scale
+     number = 2 kalau Batal tanpa ngatur.
+  3. Update onCancel prop ScaleNumberModal dari inline arrow
+     function `() => setShowScaleNumberModal(false)` ke
+     `handleScaleNumberCancel`. Supaya Batal juga set default 2
+     kalau belum pernah set step.
+
+YANG TIDAK DISENTUH:
+- handleScaleNumberConfirm — tidak berubah. Sudah pakai studs
+  dari input (default value modal = scaleNumberStep ?? 2 = 2 kalau
+  scaleNumberStep = null). Kalau user Konfirmasi tanpa ngatur,
+  studs = 2 (default value). setScaleNumberStep(2). ✓
+- handleComingSoonClick — tidak berubah. Sudah set default value
+  modal = scaleNumberStep ?? 2 (Phase 76).
+- State default scaleNumberStep = null (Phase 75) — TIDAK diubah.
+  Snap tidak aktif sebelum user Konfirmasi/Batal. SETELAH user
+  Konfirmasi/Batal (tanpa ngatur), scaleNumberStep = 2 (snap aktif).
+- ScaleNumberModal.jsx — tidak berubah. Phase 77 (koma→titik,
+  3 desimal, STEP=0.001) tetap utuh.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 2 file spesifik berubah: scaleModes.js + BlockSimulator3D.jsx.
+  Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh.
+- Mode 1 side + snap (Phase 79 hysteresis) TIDAK tersentuh.
+  Cuma default mode yang berubah (kembali ke 1side).
+
+VERIFIKASI
+- git diff --stat: 2 files changed, 19 insertions(+), 6 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 18.07s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98 + 107):
+  KASUS 1: Default scale mode = 1side (koreksi salah paham)
+  1. User pertama equip Scale → modal ScaleModeModal muncul. ✓
+  2. User Konfirmasi/Batal langsung. ✓
+  3. handleScaleModeConfirm/Cancel → setScaleMode(DEFAULT_SCALE_MODE
+     = '1side'). ✓
+  4. Block scale mode = 1side (default). ✓
+
+  KASUS 2: Default scale number = 2 (Konfirmasi/Batal tanpa ngatur)
+  1. User klik "+" → handleComingSoonClick → setScaleNumberValue(
+     scaleNumberStep ?? 2) → modal muncul dengan default value = 2. ✓
+  2a. User Konfirmasi langsung (tanpa ngatur input): studs = 2
+      (default value modal). handleScaleNumberConfirm(2) →
+      setScaleNumberStep(2) + tutup modal + toast "Step scale
+      diset ke 2 studs". Snap aktif dengan step 2. ✓
+  2b. User Batal langsung (tanpa ngater input): handleScaleNumberCancel
+      → setScaleNumberStep(prev => prev ?? 2) → kalau null, set 2.
+      Snap aktif dengan step 2. + tutup modal. ✓
+
+  KASUS 3: User sudah set step 5, lalu Batal (tidak reset)
+  1. User sebelumnya set step = 5 (scaleNumberStep = 5). ✓
+  2. User buka modal lagi → default value = 5 (dari scaleNumberStep). ✓
+  3. User Batal → handleScaleNumberCancel → setScaleNumberStep(prev
+     => prev ?? 2) → prev = 5 (BUKAN null), tetap 5. Tidak reset
+     ke 2. ✓
+
+  Semua 3 kasus aman. Fix sesuai permintaan user Phase 80.
+
+CATATAN
+- BUG INI = lesson learned lanjutan dari kontrak butir 97 (salah
+  interpretasi permintaan user). Phase 79 saya salah baca "default
+  2" sebagai scale mode 2side, padahal user maksud scale number 2.
+  User Phase 80 klarifikasi. Fix Phase 80: koreksi salah paham.
+- Pelajaran: kalau permintaan user ambigu (bisa diinterpretasi
+  2+ cara), TANYA user untuk klarifikasi. JANGAN asumsi. Phase 79
+  saya asumsi "default 2" = scale mode. Phase 80 user klarifikasi
+  = scale number. Kalau saya TANYA di Phase 79, tidak perlu fix
+  Phase 80.
+- Komentar header Phase 79 di scaleModes.js yang bilang "ubah ke
+  2side" sekarang OUTDATED (Phase 80 kembalikan ke 1side). Tapi
+  komentar sudah di-update di Phase 80 (jelaskan history Phase 73
+  → 79 → 80).
