@@ -616,6 +616,15 @@ export default function BlockSimulator3D({ setPage }) {
     setScaleModeModalVariant('picker');
     setShowScaleModeModal(true);
   };
+
+  // ── Phase 73 v3 (2026-09-19, sesi server z.ai): tombol "+" di panel
+  //    info scale TIDAK LAGI membuka modal Scale Mode — sekarang "coming
+  //    soon" (tombol baru ber-icon gear yang membuka modal). Pakai sonner
+  //    toast.info, pola sama dengan Binding/Property/BuildArea coming soon.
+  //    ──
+  const handleComingSoonClick = () => {
+    toast.info('Fitur ini masih coming soon — bersiap!');
+  };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
   // Build Area "Coming Soon" modal state
@@ -18861,6 +18870,7 @@ Now you can apply Displacement for detailed effect.`);
                 toolName="Scale"
                 scaleMode={scaleMode}
                 onOpenScaleMode={handleOpenScaleModeFromPanel}
+                onComingSoon={handleComingSoonClick}
               />
             )}
 

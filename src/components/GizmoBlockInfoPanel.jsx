@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Settings } from 'lucide-react';
 import { getBlockDef, getBlockIconPath } from '../utils/blockMaterials.js';
 import { scaleToStudsLabel, STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 import {
@@ -51,6 +51,20 @@ import {
    Ditambahkan/tetap (visual lama v4 & v2 TIDAK diubah):
    - Tombol "+" 26px di pojok kiri-atas KOTAK VIEW (absolute, top:6 left:6)
      — accent amber #f59e0b, sinkron design system app.
+
+   ─ PHASE 73 v3 (2026-09-19, sesi server z.ai, permintaan user) ──
+   User: "tombol '+' yang memunculkan menu pilih 4 mode itu iconnya
+   jadi gear oranye. Bikin tombol baru lagi yang iconnya sama persis
+   '+'. Urutannya: tombol '+' dulu, klik = tulisan coming soon; di
+   bawahnya tombol gear oranye, klik = buka modal pilih 4 mode scale."
+   → Tombol "+" lama: behavior BERUBAH jadi "coming soon" (panggil
+     prop baru onComingSoon → caller handle lewat sonner toast).
+   → Tombol baru di BAWAH "+" (top:38 left:6, 26px, gear icon Settings
+     lucide, accent amber, style identik dgn tombol "+") → onClick
+     onOpenScaleMode (buka modal Scale Mode varian picker).
+   Komentar Phase 73 v2 di header ScaleModeModal.jsx yang menyebut
+   "tombol + di panel" sekarang outdated tapi TIDAK di-update untuk
+   minimal change (lihat kontrak butir 83).
    ================================================================ */
 
 const ACCENT = '#f59e0b';
@@ -71,7 +85,7 @@ function readGizmoTarget(threeRef) {
 
 export default function GizmoBlockInfoPanel({
   threeRef, toolName = 'Scale',
-  scaleMode = DEFAULT_SCALE_MODE, onOpenScaleMode = null,
+  scaleMode = DEFAULT_SCALE_MODE, onOpenScaleMode = null, onComingSoon = null,
 }) {
   const [info, setInfo] = useState(null); // {slug,label,scaleLabel,isMulti}
 
@@ -127,14 +141,16 @@ export default function GizmoBlockInfoPanel({
             border: `1px solid ${empty ? 'rgba(148,163,184,0.14)' : 'rgba(245,158,11,0.35)'}`,
             minHeight: 96,
           }}>
-            {/* ─ Phase 73 v2: TOMBOL "+" — pojok KIRI ATAS kotak view.
-                   Membuka MODAL "Scale Mode" yang megah — desain SAMA dengan
-                   peringatan oranye saat equip scale (bukan popup kecil). ── */}
+            {/* ─ Phase 73 v3 (2026-09-19): TOMBOL "+" — pojok KIRI ATAS
+                   kotak view. Behavior BERUBAH: tidak lagi membuka modal
+                   Scale Mode, sekarang "coming soon" (panggil onComingSoon
+                   → caller handle lewat sonner toast). Icon tetap Plus
+                   lucide, style tetap sama dengan tombol + lama (Phase 73 v2). ── */}
             <button
               type="button"
-              onClick={() => onOpenScaleMode && onOpenScaleMode()}
-              title="Pilih mode scaling (1/2/4/6 side)"
-              aria-label="Pilih mode scaling"
+              onClick={() => onComingSoon && onComingSoon()}
+              title="Coming soon"
+              aria-label="Coming soon"
               style={{
                 position: 'absolute', top: 6, left: 6,
                 width: 26, height: 26, borderRadius: 7,
@@ -153,6 +169,38 @@ export default function GizmoBlockInfoPanel({
               }}
             >
               <Plus size={16} strokeWidth={2.6} />
+            </button>
+
+            {/* ─ Phase 73 v3 (2026-09-19): TOMBOL GEAR — pojok KIRI ATAS
+                   kotak view, DI BAWAH tombol "+" (top:38, jarak 6px dari
+                   tombol + yang berakhir di top:32). Menggantikan peran
+                   tombol "+" lama (sebelum v3): klik = buka MODAL "Scale
+                   Mode" yang megah. Icon Settings lucide (gear), accent
+                   amber, style identik dengan tombol "+" di atas supaya
+                   simetris. ── */}
+            <button
+              type="button"
+              onClick={() => onOpenScaleMode && onOpenScaleMode()}
+              title="Pilih mode scaling (1/2/4/6 side)"
+              aria-label="Pilih mode scaling"
+              style={{
+                position: 'absolute', top: 38, left: 6,
+                width: 26, height: 26, borderRadius: 7,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: 'rgba(245,158,11,0.14)',
+                border: `1px solid ${ACCENT}`,
+                color: ACCENT,
+                cursor: 'pointer', padding: 0, zIndex: 3,
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
+              }}
+            >
+              <Settings size={16} strokeWidth={2.6} />
             </button>
 
         {isMulti ? (
