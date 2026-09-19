@@ -3197,6 +3197,106 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     step di boundary), pindah ke mouseUp. UX lebih natural: user
     drag smooth, setelah lepas, block snap ke step terdekat.
 
+---
+
+## 20. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 79 — default 2side + snap saat drag + hysteresis fix goyang)
+
+110. **SNAP SAAT mouseUp (Phase 78) TIDAK ADDRESS USER COMPLAINT "BLOCK TIDAK BERUBAH SAAT DRAG"**
+    (sesi 2026-09-19, fix commit `596a11c` untuk bug Phase 78 commit
+    `e9b3f1d`): Phase 78 pindah snap dari setiap frame (applyScaleByMode)
+    ke mouseUp (snapScaleFinal) untuk fix goyang + preserve mode 1
+    side semantics. TAPI user komplain "ketika saya scale angka
+    berapapun harusnya di visual dia terlihat maju memanjang atau
+    memendek sesuai angka studs kan? lah ini yang sekarang tidak!
+    malahan saya berasa seperti sedang memakai scale 0!". Akar
+    masalah: snap saat mouseUp = block scale smooth (raw, TANPA
+    snap) selama drag. User lihat block tidak berubah SESUAI step
+    studs (raw berubah smooth, BUKAN snap ke step). User expect snap
+    REAL-TIME saat drag (block berubah sesuai step saat user drag).
+    **Pelajaran KRITIS (kelanjutan butir 107 + 108)**: mental
+    simulation flow WAJIB cek apakah snap AKTIF SAAT DRAG (real-time),
+    BUKAN cuma "snap aktif" (yang bisa jadi saat mouseUp). User mau
+    FEEDBACK INSTANT saat drag — block berubah sesuai step saat
+    user drag. Snap saat mouseUp = feedback DELAYED (block baru
+    snap setelah lepas mouse). User tidak terima delayed feedback.
+    **Pola untuk fitur snap**: snap harus REAL-TIME saat drag (block
+    berubah sesuai step saat user drag), BUKAN delayed saat mouseUp.
+    Kalau snap real-time menyebabkan goyang, fix goyang dengan
+    hysteresis (BUKAN pindah snap ke mouseUp).
+
+111. **HYSTERESIS BAND 0.6 = FIX GOYANG DI BOUNDARY + SNAP REAL-TIME + SISI SEBERANG DIAM**
+    (sesi 2026-09-19, fix commit `596a11c`): Phase 75 (snap saat
+    drag, Math.round + computeAnchorOffset pakai snapped scale) =
+    GOYANG di boundary. Akar: Math.round(-0.5) = 0 di JS (round
+    half up towards +infinity), TAPI Math.round(-0.6) = -1. Saat
+    delta oscillate di boundary -0.5×stepScale (mis. delta -0.24
+    vs -0.26), Math.round lompat antara 0 dan -1 → snap lompat
+    bolak-balik → posisi lompat bolak-balik = GOYANG.
+    **Fix Phase 79**: pakai HYSTERESIS BAND 0.6 (lebih besar dari
+    Math.round 0.5). Implementasi:
+    ```javascript
+    const HYSTERESIS_BAND = 0.6;
+    const lastStep = lastStepMap[a] || 0;
+    const stepIdx = Math.round(delta / stepScale);
+    let finalStep = lastStep;
+    if (stepIdx > lastStep && delta >= (lastStep + HYSTERESIS_BAND) * stepScale) {
+      finalStep = stepIdx;
+    } else if (stepIdx < lastStep && delta <= (lastStep - HYSTERESIS_BAND) * stepScale) {
+      finalStep = stepIdx;
+    }
+    lastStepMap[a] = finalStep;
+    const finalScale = sgn * Math.max(Math.abs(s0 + finalStep * stepScale), minAbs);
+    ```
+    Behavior:
+    - Kalau delta di antara (lastStep - 0.6) dan (lastStep + 0.6) ×
+      stepScale, TETAP di lastStep (TIDAK lompat, BUKAN goyang).
+    - Kalau delta >= (lastStep + 0.6) × stepScale, pindah ke
+      stepIdx (naik 1 step).
+    - Kalau delta <= (lastStep - 0.6) × stepScale, pindah ke
+      stepIdx (turun 1 step).
+    **Fix ALL 3 semantics**:
+    (a) Snap REAL-TIME saat drag (block berubah sesuai step saat
+        user drag) — TIDAK delayed ke mouseUp.
+    (b) TIDAK goyang di boundary (hysteresis prevent lompat
+        bolak-balik saat delta oscillate di boundary).
+    (c) Sisi seberang DIAM (computeAnchorOffset pakai snapped
+        scale, offset lompat 1x per step = step function, BUKAN
+        goyang).
+    **Trade-off**: block lambat (perlu drag 0.6×stepScale untuk
+    pindah step, BUKAN 0.5×stepScale). Acceptable untuk snap (user
+    expect step function). Kalau user komplain lambat, turunkan
+    HYSTERESIS_BAND ke 0.55 atau 0.51 (lebih dekat ke Math.round
+    0.5, TAPI tetap prevent goyang di boundary).
+    **Hysteresis state**: simpan lastStep per-sumbu di
+    `obj.userData.__snapLastStep = {x:0, y:0, z:0}`. Persistent di
+    object. RESET di onDraggingChanged true (drag mulai) supaya
+    lastStep mulai dari 0 (delta = 0 saat drag mulai). CLEAR di
+    onDraggingChanged false (drag selesai) bersama clearScaleDragStart.
+    **Pola untuk fitur snap apapun** (scale, position, rotation):
+    kalau Math.round menyebabkan goyang di boundary (karena round
+    half up ambiguity di -0.5), pakai HYSTERESIS BAND > 0.5 (mis.
+    0.6). Hysteresis = "sticky" — sekali snap ke step A, TIDAK
+    balik ke step B kecuali delta cukup jauh dari A. Prevent
+    oscillation di boundary. UX natural: user drag → block snap
+    ke step terdekat, TETAP di step itu sampai user drag cukup
+    jauh untuk pindah step.
+
+112. **DEFAULT SCALE MODE BISA BERUBAH ANTAR PHASE — USER PREF BERUBAH**
+    (sesi 2026-09-19, fix commit `596a11c`): Phase 73 user minta
+    DEFAULT_SCALE_MODE = '1side' (saat pertama equip Scale, default
+    1 side). Phase 79 user minta ubah ke '2side' ("jika user
+    langsung tekan konfirmasi atau batal ketika pertama kali buka
+    menu pemilihan 4 mode di scale ini maka akan terpaksa pakai
+    scale 1 kan? nah itu ubah jadi 2 aja defaultnya").
+    **Pelajaran**: user preference BISA BERUBAH antar phase. JANGAN
+    asumsi default dari Phase X tetap valid forever. Kalau user
+    minta ubah default, ubah. Update komentar header yang jelaskan
+    alasan ubah + phase terkini. DEFAULT_SCALE_MODE di scaleModes.js
+    sekarang '2side' (Phase 79). Kalau user Phase berikutnya minta
+    ubah lagi, ubah lagi. Tidak ada "permanent default" — user
+    preference = mutable.
+
+
 
 
 
