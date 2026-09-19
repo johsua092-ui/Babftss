@@ -1,0 +1,107 @@
+fix(scale-ui): bug layar buram setelah Konfirmasi ScaleNumberModal — tutup modal
+
+MASALAH
+Setelah klik Konfirmasi di modal ScaleNumberModal (Phase 74, commit
+c455b03), layar user jadi buram (overlay blur 8px rgba(0,0,0,0.75)
+tetap dirender) + tidak bisa interaksi apa pun lagi — seolah
+terkunci. User terpaksa refresh halaman untuk keluar dari state ini.
+
+PENYEBAB
+Handler `handleScaleNumberConfirm(studs)` di BlockSimulator3D.jsx
+TIDAK memanggil `setShowScaleNumberModal(false)` di akhir handler.
+Akibatnya:
+  1. User klik Konfirmasi → ScaleNumberModal.finishClose(callback)
+     → setClosing(true) (animasi keluar 200ms mulai) + setTimeout.
+  2. 200ms kemudian: callback() = handleScaleNumberConfirm(studs)
+     → apply scale (obj.scale.setScalar) + toast.success.
+  3. TAPI showScaleNumberModal di-caller MASIH true → React tidak
+     unmount modal.
+  4. Animasi keluar sudah selesai (modal opacity 0, transform
+     scale 0.35), TAPI modal tetap di DOM dengan opacity 0.
+  5. Overlay div (rgba(0,0,0,0.75) + backdropFilter blur 8px)
+     TETAP menutupi layar → user lihat layar buram.
+  6. zIndex overlay = 1100, di atas semua UI lain → user tidak
+     bisa klik apapun.
+
+Akar masalah: lupa panggil setter state `setShowScaleNumberModal-
+(false)` di handler confirm. Bandingkan dengan handler
+`handleScaleModeConfirm` (Phase 73, working tanpa bug) yang
+memanggil `setShowScaleModeModal(false)` di akhir (baris 596).
+Pattern yang sama LUPA diaplikasikan ke ScaleNumberModal karena
+ScaleNumberModal adalah komponen baru Phase 74 yang tidak ikut
+pattern yang sudah terbukti aman di ScaleModeModal.
+
+SOLUSI
+2 perubahan minimal di src/pages/BlockSimulator3D.jsx (handler
+handleScaleNumberConfirm):
+
+  1. Branch error (tidak ada block yang di-attach): tambah
+     `setShowScaleNumberModal(false);` SEBELUM `return;`. User
+     yang klik Konfirmasi tanpa pilih block dulu sekarang juga
+     tidak stuck — modal tutup + toast.warning + user bisa klik
+     block dulu lalu buka modal lagi lewat tombol +.
+
+  2. Branch sukses (apply scale): tambah `setShowScaleNumberModal-
+     (false);` SETELAH `obj.updateMatrixWorld();` SEBELUM
+     `toast.success`. Modal tutup → overlay blur hilang → user
+     bisa lanjut interaksi (lihat block yang baru di-scale, klik
+     block lain, drag bola gizmo, dll).
+
+YANG TIDAK DISENTUH:
+- ScaleNumberModal.jsx (komponen modal) — TIDAK berubah. Internal
+  flow modal sudah benar: finishClose(callback) → setClosing(true)
+  + setTimeout → callback. Modal akan unmount dari React saat
+  caller set showScaleNumberModal=false. Tidak perlu ubah internal.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+  Pattern-nya sudah benar (caller panggil setShowScaleModeModal-
+  (false) di handler confirm).
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+  Tombol + tetap panggil onComingSoon → handleComingSoonClick →
+  setShowScaleNumberModal(true).
+- ScaleNumberModal caller onCancel handler
+  `() => setShowScaleNumberModal(false)` sudah ada (Batal working).
+  Hanya onConfirm (handleScaleNumberConfirm) yang lupa tutup state.
+- File terlarang, gizmo utils, scaleModes.js, blockStuds.js —
+  semua intact. Fondasi studs tetap 11/11 PASS.
+
+AMAN
+- HANYA src/pages/BlockSimulator3D.jsx berubah (2 insertions,
+  0 deletions). Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh (verified via git diff --name-only
+  | grep -E "AuthContext|firebase|supabase|LoginPage|UserPill" →
+  kosong).
+- Perubahan sangat minimal: hanya 2 baris `setShowScaleNumber-
+  Modal(false)` di 2 branch handler. Tidak ubah logic apply scale,
+  tidak ubah validasi, tidak ubah animasi modal.
+- test_blockStuds.mjs: 11/11 PASS (fondasi tidak rusak, hanya
+  handler caller yang diperbaiki).
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 2 insertions(+), 0 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.98s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS (re-run after fix).
+- Logika fix: sebelum = overlay blur tetap setelah Konfirmasi
+  (state showScaleNumberModal tetap true); sesudah = state jadi
+  false → React unmount modal → overlay hilang. Pattern identik
+  dengan handleScaleModeConfirm yang sudah working sejak Phase 73.
+- Regresi fitur lama: tidak ada — hanya 2 baris tambahan di 1
+  handler, tidak ubah flow lain.
+
+CATATAN
+- BUG INI ADALAH LESSON LEARNED yang akan dicatat di kontrak
+  permanen (warisan butir 94): saat buat modal baru + handler baru,
+  WAJIB cross-check pattern handler confirm yang sudah working di
+  modal lain (ScaleModeModal handler confirm baris 589-598 yang
+  punya setShowScaleModeModal(false)). Lupa panggil setter state
+  di handler confirm = bug klasik yang user alami sebagai "layar
+  buram + terkunci".
+- Untuk UX: sekarang setelah Konfirmasi, modal langsung tutup +
+  overlay hilang + user bisa lihat block yang baru di-scale dan
+  lanjut interaksi. toast.success tetap muncul sebagai feedback.
+- Untuk branch error (tidak ada block): sekarang modal juga tutup
+  saat error. Sebelum fix, kalau user klik Konfirmasi tanpa block,
+  modal tetap terbuka (TAPI sebenarnya tidak stuck — bisa Batal
+  manual). Setelah fix, modal tutup otomatis → UX lebih clean,
+  user bisa langsung klik block dulu lalu buka modal lagi lewat
+  tombol +.

@@ -1,0 +1,62 @@
+docs(kontrak): append warisan butir 94-96 — bug klasik overlay blur stuck + mental simulation
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX bug layar buram ScaleNumberModal (commit e7c1d92) sudah
+selesai & terverifikasi, warisannya belum di-append ke kontrak.
+Bug ini adalah LESSON LEARNED penting karena akar masalah + cara
+deteksi + pencegahan di masa depan wajib diwariskan ke AI penerus.
+
+PENYEBAB
+Phase 74 commit c455b03 dibuat tanpa cross-check pattern handler
+confirm yang sudah working di ScaleModeModal (Phase 73). Hasilnya:
+handler handleScaleNumberConfirm lupa panggil setShowScaleNumber-
+Modal(false) → overlay blur tetap di layar setelah Konfirmasi →
+user terkunci, harus refresh halaman. Bug ini TIDAK ketangkap
+vite build exit 0 (build cuma cek syntax, bukan flow state).
+
+SOLUSI
+Append section baru "## 15. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: FIX bug layar buram ScaleNumberModal Phase 74)"
+di akhir file. Teks yang sudah ada tidak diubah apa pun.
+Warisan berisi 3 butir:
+  94. Bug klasik: lupa panggil setShowXxxModal(false) di handler
+      confirm → overlay blur tetap di layar → user stuck. Pola
+      WAJIB: panggil setter di SEMUA branch (sukses + error).
+      Cross-check pattern handler confirm yang sudah working di
+      modal lain sebelum klaim selesai.
+  95. Vite build exit 0 TIDAK = fitur bekerja — WAJIB mental
+      simulation flow user (5 step: trigger → render → input →
+      confirm+apply+state-setter-tutup → unmount+overlay-hilang).
+      Server z.ai tidak punya Chrome headless + GPU, jadi visual
+      test minimal = mental simulation + catat eksplisit di laporan
+      bahwa visual test belum dilakukan.
+  96. Duplikasi modal = wajib duplikasi pattern handler caller,
+      bukan hanya komponen. Checklist 5 item saat copy modal A →
+      modal B: komponen struktur, state show baru, handler confirm
+      baru (panggil setter di semua branch), handler cancel baru,
+      render JSX conditional.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~120 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~120 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 3 butir warisan karena ada lesson learned
+  KRITIS: bug klasik overlay blur stuck + cara detect + checklist
+  pencegahan untuk duplikasi modal di masa depan. Butir 94-96
+  ditulis DETAIL (lebih panjang dari butir biasa) supaya AI penerus
+  yang baca kontrak langsung paham akar masalah + cara cegah tanpa
+  harus ulang bug ini dari awal. Ini implementasi prinsip Aturan #9:
+  "tiap sesi = 1 epoch, kontrak = bobot yang terus ter-update, AI
+  penerus = inferens yang mulai dari bobot terbaik, bukan nol."
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
