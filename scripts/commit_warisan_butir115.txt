@@ -1,0 +1,62 @@
+docs(kontrak): append warisan butir 115-116 — user pref berubah antar phase + cek minimum snap
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 82 — block DIAM saat snap + cek minimum step invalid
+(commit 643ad49) sudah selesai & terverifikasi, warisannya
+belum di-append ke kontrak. BUG ini = lesson learned KRITIS
+karena akar masalahnya = user preference berubah antar phase
+(Phase 78 mau sisi seberang diam, Phase 82 mau block diam —
+konflik) + matematika minimum (candidateScale < minAbs = tidak
+snap).
+
+PENYEBAB
+1. computeAnchorOffset (mode 1 side) menggeser pusat block supaya
+   sisi seberang diam. Saat snap lompat, offset lompat, block
+   "geser-geser". User Phase 82 mau block DIAM (BUKAN sisi seberang
+   diam). Konflik dengan user Phase 78 yang mau sisi seberang diam.
+2. Snap Phase 79 pakai max(candidateScale, minAbs) — kalau
+   candidateScale = 0, finalScale = 0.05 (clamp ke minimum). Block
+   mengecil ke 0.1 studs, BUKAN tetap di default. User mau: kalau
+   candidateScale < minAbs, JANGAN snap. Tetap di lastStep.
+
+SOLUSI
+Append section baru "## 23. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 82 — block DIAM saat snap + cek minimum
+step invalid)" di akhir file. Teks yang sudah ada tidak diubah
+apa pun. Warisan berisi 2 butir:
+  115. User preference BISA BERUBAH antar phase. Phase 78 mau
+       sisi seberang diam, Phase 82 mau block diam. Konflik (tidak
+       mungkin both di Three.js). Phase 82 prioritaskan block diam
+       karena user explicit bilang "harusnya absolut diam". Pola:
+       prioritaskan phase terbaru + document trade-off.
+  116. Cek minimum: kalau candidateScale < minAbs, JANGAN snap.
+       Tetap di lastStep. Implementasi: hitung candidateScale dulu,
+       cek minimum, baru update finalStep. JANGAN pakai max(...,
+       minAbs) langsung (itu clamp ke minimum, BUKAN tetap di
+       lastStep). User mau "tidak bisa snap ke step invalid",
+       BUKAN "clamp ke minimum".
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~70 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~70 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 2 butir warisan karena ada 2 lesson
+  learned KRITIS: user pref berubah antar phase (block diam vs
+  sisi seberang diam) + cek minimum snap (candidateScale < minAbs
+  = tidak snap, BUKAN clamp ke minimum). Semua 2 butir ditulis
+  DETAIL dengan contoh konkret + pola general supaya AI penerus
+  yang baca kontrak langsung paham akar masalah + cara cegah.
+  Implementasi prinsip Aturan #9: "tiap sesi = 1 epoch, kontrak
+  = bobot yang terus ter-update".
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).

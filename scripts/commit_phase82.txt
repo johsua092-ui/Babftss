@@ -1,0 +1,145 @@
+fix(scale-ui): Phase 82 — block DIAM saat snap + cek minimum step invalid
+
+MASALAH
+Dua bug dari user:
+
+1. Saat scale mengecil di mode 1 side, block "geser-geser! bahkan
+   pindah lokasi!". User mau "blocknya diam mau dipanjangin atau
+   dipendekin! harusnya absolut diam!".
+
+2. Matematika: kalau step = 2 studs dan block 2 studs (default),
+   tidak bisa mengecil (karena 2 - 2 = 0, tidak valid). User:
+   "kalau saya panjangin dengan scale 2 lalu saya kembalikan lagi
+   maka scale 2 ketemu ukuran asli blocknya saat ini yaitu
+   panjangnya 2 maka 2 ketemu harusnya saling meniadakan dan
+   tidak bisa di scale lagi kan? apalagi ukuran block saat ini
+   misal dua tapi mau discale kecil dengan scale number lebih
+   besar dari 2 misal 5 atau 10 kan gak bakal bisa bukan? itu
+   logika mutlak dunia ini!".
+
+PENYEBAB
+1. computeAnchorOffset (mode 1 side) menggeser pusat block supaya
+   sisi seberang diam (math mode 1 side). Saat snap lompat antar
+   step, offset lompat → pusat lompat → block "geser-geser /
+   pindah lokasi". User mau block DIAM (BUKAN sisi seberang diam).
+
+2. Snap Phase 79 pakai `finalScale = max(|s0 + finalStep ×
+   stepScale|, minAbs)`. Kalau s0 + finalStep × stepScale = 0
+   (mis. startScale 1.0 + step -1 × 1.0 = 0), finalScale = max(0,
+   0.05) = 0.05 (di-clamp ke MIN_ABS_SCALE). Block mengecil ke
+   0.1 studs, BUKAN tetap di default. User mau: kalau candidateScale
+   < minAbs, JANGAN snap. Tetap di lastStep.
+
+SOLUSI
+1 file berubah, 2 perubahan inti:
+
+**File: src/utils/scaleModes.js (37 insertions, 6 deletions)**
+  1. Tambah `const snapActive = snapStudStep && snapStudStep > 0 &&
+     isFinite(snapStudStep);` di atas snap logic. Dipakai di snap
+     if + computeAnchorOffset check.
+  2. Ubah `if (snapStudStep && ...)` → `if (snapActive)` di snap
+     logic. Logic sama, cuma pakai var yang sudah di-define.
+  3. Tambah cek minimum di snap: `const candidateScale = s0 +
+     finalStep * stepScale; if (Math.abs(candidateScale) < minAbs)
+     { finalStep = lastStep; }`. Kalau candidateScale < minAbs,
+     JANGAN snap ke step itu. Tetap di lastStep. Block "tidak bisa
+     di-scale lagi" kalau step besar (mis. step 2 studs + block
+     2 studs → snap ke step -1 = 0 < minAbs → tetap di lastStep
+     = default 2 studs).
+  4. Ubah check computeAnchorOffset: `if (needsAnchorOffset(m) &&
+     startPos)` → `if (needsAnchorOffset(m) && startPos &&
+     !snapActive)`. SKIP computeAnchorOffset saat snap aktif.
+     Behavior: snap aktif = block DIAM (scale dari pusat, 1 sumbu),
+     posisi TIDAK bergeser. Sisi seberang bergerak simetris (mode
+     2 side behavior).
+  5. Tambah komentar Phase 82 yang jelaskan alasan + akar masalah
+     (user complaint Phase 82 + why computeAnchorOffset menyebabkan
+     geser-geser + why cek minimum diperlukan).
+
+YANG TIDAK DISENTUH:
+- BlockSimulator3D.jsx — tidak berubah. Phase 81 (default
+  scaleNumberStep = 2) tetap utuh. Snap aktif sejak awal →
+  computeAnchorOffset selalu di-skip → block DIAM selalu.
+- ScaleNumberModal.jsx — tidak berubah.
+- Fondasi studs (blockStuds.js + test_blockStuds.mjs) — tidak
+  diubah. 11/11 PASS.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 1 file spesifik berubah: scaleModes.js. Tidak ada file lain
+  tersentuh.
+- File terlarang TIDAK tersentuh.
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh.
+- Mode 1 side TANPA snap (step = 0): computeAnchorOffset jalan
+  (sisi seberang diam). Block bergeser. Tapi user Phase 81 set
+  default = 2 → snap aktif sejak awal → computeAnchorOffset
+  selalu di-skip → block DIAM selalu.
+- Mode 1 side DENGAN snap (step > 0): applyScaleByMode jalan
+  dengan snap + hysteresis + cek minimum. computeAnchorOffset
+  di-skip. Block DIAM. Snap real-time. Cek minimum prevent snap
+  ke step invalid.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, 37 insertions(+), 6 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.93s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS.
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98 + 107):
+  KASUS 1: Mode 1 side + snap step 2 studs + drag mengecil dari
+  default 2 studs
+  1. startScale = 1.0 (default, 2 studs). step = 2 studs (stepScale
+     = 1.0). snapActive = true. ✓
+  2. User drag mengecil. delta = -1.5. stepIdx = round(-1.5) = -1. ✓
+  3. Hysteresis: delta <= (0 - 0.6) × 1.0 = -0.6. delta -1.5 <=
+     -0.6. Cukup. finalStep = -1. ✓
+  4. Cek minimum: candidateScale = 1.0 + (-1) × 1.0 = 0.0.
+     |0.0| < minAbs (0.05). finalStep = lastStep (0). ✓
+  5. finalScale = 1.0 + 0 × 1.0 = 1.0. Block tetap di default
+     2 studs. ✓ "Tidak bisa di-scale lagi".
+  6. computeAnchorOffset di-skip (snapActive = true). Block DIAM. ✓
+
+  KASUS 2: Mode 1 side + snap step 1 studs + drag mengecil dari
+  default 2 studs
+  1. startScale = 1.0 (default, 2 studs). step = 1 studs (stepScale
+     = 0.5). snapActive = true. ✓
+  2. User drag mengecil. delta = -0.7. stepIdx = round(-1.4) = -1. ✓
+  3. Hysteresis: delta <= (0 - 0.6) × 0.5 = -0.3. delta -0.7 <=
+     -0.3. Cukup. finalStep = -1. ✓
+  4. Cek minimum: candidateScale = 1.0 + (-1) × 0.5 = 0.5.
+     |0.5| > minAbs (0.05). finalStep = -1 (tetap). ✓
+  5. finalScale = 1.0 + (-1) × 0.5 = 0.5. Block mengecil ke 1
+     studs. ✓
+  6. computeAnchorOffset di-skip (snapActive = true). Block DIAM. ✓
+
+  Semua step aman. Fix BOTH bugs:
+  - Bug 1 (geser-geser): TIDAK ADA (computeAnchorOffset di-skip
+    saat snap aktif, block DIAM).
+  - Bug 2 (matematika minimum): cek minimum prevent snap ke step
+    invalid. Block "tidak bisa di-scale lagi" kalau step besar.
+
+CATATAN
+- BUG INI = lesson learned lanjutan dari kontrak butir 104 (SKIP
+  computeAnchorOffset saat snap aktif). Phase 77 sudah implementasi
+  skip, TAPI user Phase 78 komplain "sisi seberang tidak diam".
+  Phase 79 kembalikan computeAnchorOffset + hysteresis. TAPI user
+  Phase 82 komplain "block geser-geser". Phase 82 kembali ke skip
+  (Phase 77 style) + tambah cek minimum.
+- Pelajaran: user preference BISA BERUBAH antar phase. Phase 78
+  mau sisi seberang diam. Phase 82 mau block diam. Konflik. Phase 82
+  prioritaskan block diam karena user explicit bilang "harusnya
+  absolut diam". Kalau user Phase berikutnya mau sisi seberang
+  diam lagi, TANYA user pilih: block diam atau sisi seberang diam
+  (tidak mungkin both di Three.js).
+- Trade-off: dengan skip computeAnchorOffset saat snap aktif,
+  mode 1 side + snap = behavior mode 2 side (scale dari pusat,
+  sisi seberang bergerak simetris). Sisi seberang TIDAK diam.
+  User Phase 78 komplain. Tapi user Phase 82 mau block diam.
+  Prioritas block diam.
+- Cek minimum: kalau candidateScale < minAbs, JANGAN snap. Tetap
+  di lastStep. Block "tidak bisa di-scale lagi" kalau step besar.
+  Implementasi: `if (Math.abs(candidateScale) < minAbs) { finalStep
+  = lastStep; }`. Simple + robust.
