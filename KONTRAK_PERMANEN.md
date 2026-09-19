@@ -3396,6 +3396,75 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     const stateRef = useRef(X); useEffect(() => { stateRef.current
     = state; }, [state]);`.
 
+---
+
+## 23. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 82 — block DIAM saat snap + cek minimum step invalid)
+
+115. **USER PREFERENCE BISA BERUBAH ANTAR PHASE — block DIAM vs sisi seberang DIAM**
+    (sesi 2026-09-19, fix commit `643ad49`): user Phase 78 komplain
+    "kok di mode 1side 2 sisi ke scale? harusnya sisi lain diam" →
+    minta sisi seberang DIAM. Phase 79 implementasi computeAnchorOffset
+    (sisi seberang diam, pusat bergeser). User Phase 82 komplain
+    "blocknya geser geser! bahkan pindah lokasi! padahal saya ingin
+    ini blocknya diam mau dipanjangin atau dipendekin! harusnya
+    absolut diam!" → minta block DIAM (pusat tidak bergeser).
+    **Konflik**: sisi seberang diam = pusat harus bergeser (math
+    mode 1 side di Three.js, scale dari pusat). Block diam = pusat
+    tidak bergeser = sisi seberang bergerak simetris (mode 2 side
+    behavior). TIDAK MUNGKIN both di Three.js (scale dari pusat).
+    **Phase 82 prioritaskan block diam** karena user explicit
+    bilang "harusnya absolut diam". Implementasi: skip
+    computeAnchorOffset saat snap aktif (`if (needsAnchorOffset(m)
+    && startPos && !snapActive)`). Behavior: snap aktif = block
+    DIAM, sisi seberang bergerak simetris.
+    **Pelajaran**: user preference BISA BERUBAH antar phase. Phase
+    N minta A, Phase N+1 minta B, konflik. JANGAN asumsi preference
+    tetap. Kalau user komplain soal trade-off yang sebelumnya
+    di-accept, cek: apakah user berubah pikiran? Atau user tidak
+    paham trade-off? Kalau user explicit minta hal yang konflik
+    dengan phase sebelumnya, prioritaskan phase TERBARU (user
+    paling tahu apa yang dia mau sekarang). TAPI catat di kontrak
+    + commit message bahwa ada konflik antar phase, supaya AI
+    penerus tahu history + bisa TANYA user kalau perlu.
+    **Pola untuk conflict antar phase**: baca kontrak + history
+    commit untuk paham preference sebelumnya. Kalau user minta
+    hal yang konflik, prioritaskan phase terbaru + document trade-
+    off. JANGAN sacrifice phase terbaru untuk phase lama (phase
+    lama = user preference lama, mungkin sudah berubah).
+
+116. **CEK MINIMUM: KALAU candidateScale < minAbs, JANGAN SNAP — TETAP DI lastStep**
+    (sesi 2026-09-19, fix commit `643ad49`): user Phase 82 mau
+    matematika yang benar: "kalau step 2 studs dan block 2 studs
+    (default), tidak bisa mengecil karena 2 - 2 = 0, tidak valid".
+    Implementasi sebelum Phase 82: `finalScale = max(|s0 + finalStep
+    × stepScale|, minAbs)`. Kalau s0 + finalStep × stepScale = 0,
+    finalScale = max(0, 0.05) = 0.05 (di-clamp ke MIN_ABS_SCALE).
+    Block mengecil ke 0.1 studs, BUKAN tetap di default. User mau:
+    kalau candidateScale < minAbs, JANGAN snap. Tetap di lastStep.
+    **Fix Phase 82**: tambah cek minimum di snap:
+    ```javascript
+    const candidateScale = s0 + finalStep * stepScale;
+    if (Math.abs(candidateScale) < minAbs) {
+      finalStep = lastStep;  // tetap di lastStep, jangan snap ke step invalid
+    }
+    ```
+    Kalau candidateScale < minAbs (mis. 0 atau negatif), finalStep
+    = lastStep (tidak snap). Block tetap di lastStep. "Tidak bisa
+    di-scale lagi" sesuai matematika user.
+    **Pola untuk snap dengan minimum**: setiap snap ke step baru,
+    cek apakah candidateScale valid (> minAbs). Kalau tidak valid,
+    JANGAN snap. Tetap di lastStep. Implementasi: hitung
+    candidateScale dulu, cek minimum, baru update finalStep.
+    JANGAN pakai `max(candidateScale, minAbs)` langsung (itu
+    akan clamp ke minAbs, BUKAN tetap di lastStep). User mau
+    "tidak bisa snap ke step invalid", BUKAN "clamp ke minimum".
+    **Edge case**: kalau lastStep sendiri = 0 (default) dan
+    candidateScale (step -1) = 0 < minAbs, finalStep = 0.
+    finalScale = s0 + 0 = s0 (default). Block tetap di default.
+    User tidak bisa mengecil block dengan step besar. ✓ Sesuai
+    "tidak bisa di-scale lagi".
+
+
 
 
 
