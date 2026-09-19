@@ -3296,6 +3296,56 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     ubah lagi, ubah lagi. Tidak ada "permanent default" — user
     preference = mutable.
 
+---
+
+## 21. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: Phase 80 — koreksi salah paham default mode vs scale number)
+
+113. **SALAH INTERPRETASI "DEFAULT 2" = SCALE MODE vs SCALE NUMBER — TANYA USER KALAU AMBIGU**
+    (sesi 2026-09-19, fix commit `b57e5e4` untuk salah paham Phase 79
+    commit `596a11c`): Phase 79 user bilang "default '2' jika user
+    langsung tekan konfirmasi atau batal ketika pertama kali buka
+    menu pemilihan 4 mode di scale ini". Saya salah baca: saya kira
+    "default 2" = scale mode 2side. Implementasi Phase 79: ubah
+    DEFAULT_SCALE_MODE dari '1side' → '2side'. Ternyata user maksud
+    = SCALE NUMBER (input studs) default 2, BUKAN scale mode. User
+    Phase 80 klarifikasi: "sepertinya anda salah paham yang saya
+    maksud itu default '2' adalah 'scale number' jadi scale number
+    default '2' jika user memilih konfirmasi atau memilih batal
+    tanpa mengatur scale number terlebih dahulu, dan sekarang tolong
+    ubah mode default kepada 1 side ya!".
+    Fix Phase 80: koreksi salah paham.
+    - DEFAULT_SCALE_MODE: '2side' → '1side' (kembalikan ke Phase 73
+      default).
+    - Tambah handler handleScaleNumberCancel yang set
+      scaleNumberStep = 2 (default) kalau user Batal tanpa pernah
+      set step (scaleNumberStep = null). Kalau user sudah set step
+      sebelumnya (mis. 5), Batal = tetap (tidak reset).
+    - Update onCancel prop ScaleNumberModal dari inline arrow
+      function ke handleScaleNumberCancel.
+    **Pelajaran KRITIS (kelanjutan butir 97 + 107)**: kalau
+    permintaan user ambigu (bisa diinterpretasi 2+ cara), TANYA
+    user untuk klarifikasi. JANGAN asumsi. Phase 79 saya asumsi
+    "default 2" = scale mode (karena konteks: "menu pemilihan 4
+    mode"). Phase 80 user klarifikasi = scale number. Kalau saya
+    TANYA di Phase 79 "yang maksud 'default 2' itu scale mode
+    atau scale number?", tidak perlu fix Phase 80.
+    **Pola untuk permintaan ambigu**: kalau user bilang "default
+    X" tanpa specify apa yang default (mode? number? value?),
+    TANYA: "yang maksud 'default X' itu [opsi A] atau [opsi B]?".
+    JANGAN asumsi + implementasi + tunggu user komplain. Lebih
+    murah TANYA sekali daripada fix 2x (Phase 79 implementasi
+    salah + Phase 80 koreksi).
+    **Pola untuk handler Batal yang set default**: kalau user mau
+    "Batal tanpa ngatur = default value", handler cancel WAJIB
+    set state ke default value kalau state masih null/undefined.
+    Implementasi: `setScaleNumberStep(prev => (prev === null ||
+    prev === undefined) ? 2 : prev)`. Kalau user sudah set value
+    sebelumnya, Batal = tetap (tidak reset). Kalau belum pernah
+    set, Batal = set default. Ini beda dengan "Batal = tutup
+    modal tanpa ubah state" (inline arrow function lama) — yang
+    TIDAK set default kalau state null.
+
+
 
 
 
