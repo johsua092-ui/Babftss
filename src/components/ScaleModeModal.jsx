@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Maximize, X } from 'lucide-react';
+import { Check, Maximize } from 'lucide-react';
 import {
   SCALE_MODES, SCALE_MODE_LABEL, SCALE_MODE_DESC, DEFAULT_SCALE_MODE, normalizeScaleMode,
 } from '../utils/scaleModes.js';
@@ -155,37 +155,9 @@ export default function ScaleModeModal({
                 Scale Mode
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
-                {isPicker
-                  ? 'Klik salah satu mode untuk langsung memakainya'
-                  : 'Pilih aturan scaling sebelum men-scale block'}
+                Pilih aturan scaling, lalu klik Konfirmasi untuk menerapkan
               </p>
             </div>
-            {/* Tombol tutup (X) — HANYA varian picker; varian onboarding
-                desainnya tidak diubah (tetap hanya Konfirmasi/Batal). */}
-            {isPicker && (
-              <button
-                type="button"
-                aria-label="Tutup"
-                title="Tutup"
-                onClick={() => finishClose(() => onCancel && onCancel())}
-                style={{
-                  width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'transparent', border: '1px solid #334155',
-                  color: '#94a3b8', cursor: 'pointer', transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#64748b';
-                  e.currentTarget.style.color = '#e2e8f0';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#334155';
-                  e.currentTarget.style.color = '#94a3b8';
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
           </div>
 
           {/* Penjelasan singkat */}
@@ -201,21 +173,14 @@ export default function ScaleModeModal({
           {/* Grid 4 mode — tombol UTAMA tugas ini */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12,
-            marginBottom: isPicker ? 0 : 24,
+            marginBottom: 24,
           }}>
             {SCALE_MODES.map((m) => {
               const active = selected === m;
               return (
                 <button
                   key={m}
-                  onClick={() => {
-                    if (isPicker) {
-                      // Picker: pemilihan langsung = pemakaian mode itu.
-                      finishClose(() => onConfirm && onConfirm(m));
-                    } else {
-                      setSelected(m);
-                    }
-                  }}
+                  onClick={() => setSelected(m)}
                   aria-pressed={active}
                   style={{
                     display: 'flex', flexDirection: 'column', gap: 5,
@@ -254,10 +219,9 @@ export default function ScaleModeModal({
           </div>
 
           {/* Footer: Batal (outline) + Konfirmasi (solid amber).
-              HANYA varian onboarding — varian picker memakai mode langsung
-              saat kartu diklik (footer sengaja tidak ada). */}
-          {!isPicker && (
-            <div style={{ display: 'flex', gap: 12 }}>
+              Kedua varian (onboarding & picker) memakai footer yang sama:
+              pilih mode di kartu → Konfirmasi untuk apply, Batal untuk batal. */}
+          <div style={{ display: 'flex', gap: 12 }}>
               <button
                 onClick={() => finishClose(() => onCancel && onCancel())}
                 style={{
@@ -293,8 +257,7 @@ export default function ScaleModeModal({
               >
                 Konfirmasi
               </button>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </>
