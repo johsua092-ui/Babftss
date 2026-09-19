@@ -1,0 +1,2002 @@
+     1→# KONTRAK PERMANEN — 3D Block Simulator (Babftss)
+     2→
+     3→> **DOKUMEN INI WAJIB DIBACA PENUH, DARI AWAL SAMPAI HABIS, OLEH SETIAP AI PENERUS
+     4→> SEBELUM MENYENTUH KODE ATAU MENGERJAKAN TUGAS APA PUN DI PROJECT INI.**
+     5→>
+     6→> Aturan ini berlaku di SETIAP sesi, untuk model/AI apa pun yang dipakai.
+     7→> Tidak boleh dilewati, di-skip, atau hanya dibaca sebagian.
+     8→> Dokumen ini adalah satu-satunya sumber kebenaran kontrak. Kalau bertentangan
+     9→> dengan sumber lain, KONTRAK INI YANG MENANG.
+    10→
+    11→---
+    12→
+    13→## 0. IDENTITAS PROJECT
+    14→
+    15→```
+    16→Project   : Babftss (React + Vite + Three.js 0.185.1)
+    17→Folder    : C:\Users\user\Babft Project\Babftss-main
+    18→File utama: src/pages/BlockSimulator3D.jsx   (~22.600 baris)
+    19→            (sebelumnya BlockSimulator3Dv2.jsx — di-rename commit 40bb7fe,
+    20→             2026-09-09; SEMUA referensi lama di dokumen ini = file itu)
+    21→Repo      : https://github.com/johsua092-ui/Babftss   branch: main
+    22→Dev server: node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173
+    23→Build     : node node_modules/vite/bin/vite.js build
+    24→Node      : v24  |  Shell: bash (git-bash/MSYS) di Windows
+    25→```
+    26→
+    27→Cara membuka fitur: buka web → menu **Shapes** → **3D Block Simulator v2** →
+    28→taruh block → pilih tool **Move** / **Rotate** → klik block.
+    29→
+    30→---
+    31→
+    32→## 1. ATURAN MUTLAK (JANGAN DILANGGAR)
+    33→
+    34→1. **DILARANG force push.** `git push --force` / `-f` / `--force-with-lease`
+    35→   dilarang total, tanpa pengecualian, walau user meminta. Baca
+    36→   `RULES_KESELAMATAN_GIT.md` di root project.
+    37→2. **WAJIB push otomatis** setelah pekerjaan selesai & terverifikasi. Jangan
+    38→   menyuruh user push manual.
+    39→3. **JANGAN sentuh kode lain yang sudah jalan.** Fokus 100% pada masalah yang
+    40→   sedang dikerjakan. Pernah ada AI menimpa pekerjaan user sampai hilang.
+    41→   Jangan sentuh, senggol, merusak, atau mengubah kodingan lain yang sudah
+    42→   sempurna.
+    43→4. **FILE TERLARANG DISENTUH** (milik teman user, backend/auth):
+    44→   ```
+    45→   src/contexts/AuthContext.jsx
+    46→   src/context/AuthContext.jsx
+    47→   src/lib/firebase.js
+    48→   src/lib/supabase.js
+    49→   src/components/LoginPage.jsx
+    50→   src/components/UserPill.jsx
+    51→   ```
+    52→5. **DILARANG pakai dialog browser** (`window.confirm/alert/prompt`). Selalu
+    53→   custom modal: dark theme `rgba(14,20,32,0.98)`, `backdropFilter: blur(8px)`,
+    54→   font Orbitron (judul) + Inter (body), animasi slide-up. User sangat tidak
+    55→   suka UI 'jelek dan kuno'.
+    56→6. **Laporan wajib jujur.** Kalau belum diverifikasi, bilang belum. Jangan
+    57→   pernah mengarang output/hasil tes.
+    58→7. **WAJIB lapor ke Telegram + screenshot bukti** setiap selesai satu tugas
+    59→   (cara lengkap di Bagian 7).
+    60→
+    61→### Quirk git repo ini
+    62→`core.autocrlf=true` membuat 9 file selalu tampil " M" di `git status` walau
+    63→isinya identik (api/ai-chat.js, index.html, lib/ai-client.js, lib/ai-dataset.json,
+    64→server/package.json, AIHelperPanel/LoginModal/LoginPage.jsx, ShapesCalculator.jsx).
+    65→**Itu BUKAN perubahan nyata.** Cara cek yang benar:
+    66→```bash
+    67→git add -A && git diff --cached --stat HEAD   # ini yang jujur
+    68→```
+    69→Lalu `git reset` kalau cuma mau lihat. **Selalu `git add <file spesifik>`**,
+    70→jangan `git add -A` saat commit.
+    71→
+    72→---
+    73→
+    74→## 2. APA YANG SUDAH SELESAI (5 commit, sudah di GitHub main)
+    75→
+    76→| Commit | Fase | Isi |
+    77→|--------|------|-----|
+    78→| `6548fc8` | Phase 49 v9 | Move gizmo jadi **6 panah utuh** (garis + kerucut di ±X ±Y ±Z) |
+    79→| `f43f9f2` | Phase 49 v10 | Hapus **garis bantu putih panjang** yang muncul saat hover/drag |
+    80→| `0977c3d` | Phase 49 v11 | **Solo drag**: tahan 1 panah → 5 lainnya sembunyi, lepas → muncul lagi |
+    81→| `545201f` | Phase 50 | Rotate gizmo jadi **3 cincin penuh + 6 bola**, buang cincin abu-abu & kuning |
+    82→| `c9574fb` | Phase 50 v2 | Bola rotate **terkunci** (tidak ikut kamera) + **solo-orbit** saat drag |
+    83→
+    84→### File yang dibuat (JANGAN dihapus/ditimpa)
+    85→```
+    86→src/utils/gizmoSixArrows.js    — semua logika Move (Phase 49 v9/v10/v11)
+    87→src/utils/gizmoRotateRings.js  — semua logika Rotate (Phase 50)
+    88→src/utils/gizmoScaleBalls.js   — semua logika Scale 6 bola #EFBF04 (Phase 51,
+    89→                                 commit e6045e8) — solo drag + material kebal
+    90→                                 setColors; jebakan: scale dipaksa local (5b)
+    91→```
+    92→Ketiga file punya **komentar header sangat panjang** yang menjelaskan setiap
+    93→keputusan teknis + kenapa pendekatan lain gagal. **BACA DULU sebelum mengubah.**
+    94→Jangan hapus komentarnya.
+    95→
+    96→### Cara dipakai di BlockSimulator3Dv2.jsx
+    97→Import di baris ~28-29:
+    98→```javascript
+    99→import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow } from '../utils/gizmoSixArrows.js';
+   100→import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
+   101→```
+   102→Dipanggil sekali saat setup TransformControls (cari komentar `Phase 49 v9`),
+   103→dan `dispose()`-nya dipanggil di cleanup unmount **sebelum**
+   104→`transformControls.dispose()`.
+   105→
+   106→---
+   107→
+   108→## 3. METODE KERJA — INI RAHASIANYA (WAJIB DITIRU)
+   109→
+   110→Bug di project ini sebelumnya gagal diselesaikan >1 minggu oleh beberapa AI.
+   111→Bukan karena tools kurang — yang beda cuma **URUTAN BERPIKIR**. Jangan menulis
+   112→satu baris kode pun sebelum tahu angka sebenarnya. **UKUR DULU. JANGAN MENEBAK.**
+   113→
+   114→### ATURAN #1 — JANGAN MENEBAK. UKUR DULU.
+   115→Three.js bisa dijalankan di Node **tanpa browser** untuk membaca struktur:
+   116→```bash
+   117→cd "C:/Users/user/Babft Project/Babftss-main"
+   118→node --input-type=module -e "
+   119→import * as THREE from 'three';
+   120→import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+   121→const tc = new TransformControls(new THREE.PerspectiveCamera(), null);
+   122→const t = tc._gizmo.gizmo.translate;
+   123→for (const c of t.children) {
+   124→  c.geometry.computeBoundingBox();
+   125→  console.log(c.name, JSON.stringify(c.geometry.boundingBox));
+   126→}
+   127→"
+   128→```
+   129→Contoh nyata: user bilang "ada 4 cincin". Diukur ternyata **5**. Kalau percaya
+   130→asumsi, perbaikannya salah sasaran.
+   131→
+   132→### ATURAN #2 — BUKTIKAN KENAPA PERCOBAAN LAMA GAGAL
+   133→Sebelum mencoba cara baru, buktikan secara numerik kesalahan cara lama.
+   134→(v7 salah karena heuristik "sizeY>0.3=shaft" padahal shaft X punya sizeY 0.0130;
+   135→v8 salah karena flip 2 sumbu = rotasi 180° thd sumbu itu sendiri → center.x tetap.)
+   136→Begitu sebab pastinya ketemu, solusinya jadi jelas dalam sekali coba.
+   137→
+   138→### ATURAN #3 — TES HARUS BISA MERAH DULU (RED-GREEN)
+   139→Selalu tulis 2 bagian:
+   140→- **RED** — buktikan bug-nya ADA sebelum diperbaiki
+   141→- **GREEN** — buktikan sudah benar sesudahnya
+   142→
+   143→**Kalau angka SEBELUM dan SESUDAH sama-sama nol, tesmu rusak — bukan lulus.**
+   144→
+   145→### ATURAN #4 — CURIGAI ALAT UKURMU SENDIRI
+   146→Pernah 3x mengalami LULUS PALSU / GAGAL PALSU:
+   147→- **Kasus 1 — SwiftShader TIDAK bisa menggambar garis panjang.** Line -1000..999000
+   148→  → 0 px di SwiftShader, tapi 417 px di GPU nyata. Uji garis WAJIB di GPU nyata
+   149→  (`--use-angle=default`, buang `--disable-gpu`), atau pakai `renderer.info.render.lines`.
+   150→- **Kasus 2 — bola tertukar identitas** setelah orbit → sudut terbaca 120° padahal 60°.
+   151→  Solusi: lacak objek lewat `uuid`/referensi mesh, JANGAN hasil sort.
+   152→- **Kasus 3 — warna objek uji bocor** (kubus biru ikut dihitung). Solusi: objek uji
+   153→  pakai abu-abu netral.
+   154→
+   155→**Cara membedakan bug kode vs bug alat ukur:**
+   156→Jalankan skenario yang SAMA pada versi BAWAAN (tanpa modifikasi). Kalau bawaan
+   157→juga "gagal", berarti alat ukurmu yang salah.
+   158→
+   159→### ATURAN #5 — UBAH SEKECIL MUNGKIN
+   160→Bukan "hapus lalu bangun ulang", tapi **cari apa yang kurang, tambahkan hanya itu**.
+   161→- Pakai **API publik** dulu (`showXYZE = false`) sebelum menyentuh internal.
+   162→- **Share material**, jangan clone — supaya highlight kuning tetap sinkron.
+   163→- Semua fungsi **idempoten** (tandai `userData`) + punya **`dispose()`**.
+   164→- Bungkus `try/catch` supaya kegagalan tidak menggagalkan init scene.
+   165→
+   166→### ATURAN #6 — JANGAN NAMBAL 2 KALI, CARI AKAR MASALAH
+   167→Kalau pendekatan yang sama gagal 2x, **STOP menambal**. Cari akar penyebab dan
+   168→ganti pendekatan secara fundamental.
+   169→
+   170→### ATURAN #7 — TAHU KAPAN HARUS BERHENTI & JUJUR
+   171→Keterbatasan library (mis. akurasi klik 69%→77%) lebih baik dilaporkan apa
+   172→adanya daripada dikejar tanpa henti. Jujur > mengarang hasil.
+   173→
+   174→### ATURAN #8 — VISION WAJIB DIPAKAI (protokol permanen, 2026-09-10)
+   175→
+   176→Tool `vision_analyze` sekarang pakai **Gemini 3 Flash** (config:
+   177→`auxiliary.vision.provider=gemini`, `auxiliary.vision.model=gemini-3-flash-preview`,
+   178→key `GOOGLE_API_KEY`/`GEMINI_API_KEY` di .env — aktif permanen semua sesi).
+   179→
+   180→**WAJIB — jangan pernah dilupakan/dilewati:**
+   181→1. **Sebelum menulis kode** yang bentuknya ditentukan gambar referensi
+   182→   (desain UI, mock, screenshot bug, layout): WAJIB baca gambar dengan
+   183→   `vision_analyze` DULU — tanya struktur: "ini garis mengambang atau
+   184→   menempel kulit? inset? berapa persen ketebalan?" Konfirmasi 2-3x dengan
+   185→   pertanyaan berbeda untuk kunci keputusan besar.
+   186→2. **Sesudah fix**: screenshot bukti WAJIB dilihat sendiri via
+   187→   `vision_analyze` SEBELUM dikirim ke user/Telegram. Tanpa melihat =
+   188→   dilarang klaim sukses. (Kasus nyata: vision menangkap screenshot
+   189→   halaman error localhost yang tanpa vision akan diklaim sukses palsu.)
+   190→3. **Pelajaran Phase 60 v2**: analisis pixel PROGRAMATIK sendirian
+   191→   BOLEH SALAH MEMBACA STRUKTUR gambar (pixel membaca warna benar,
+   192→   tetapi salah mengartikan "menempel vs mengambang" — hasil 50% benar,
+   193→   direvisi 3x sampai user bilang tepat 100%). Pixel-check tetap SAH
+   194→   tapi HANYA untuk angka presisi (ketebalan px, rasio bbox, jumlah
+   195→   pixel warna) — untuk STRUKTUR/MAKNA selalu pakai vision dulu.
+   196→
+   197→**Protokol limit (urutan, disetujui user 2026-09-10):**
+   198→Kuota tier gratis: ~1.500 request/hari per key, ~10 request/menit, dan
+   199→token-per-menit/hari (gambar = "berat", ~ratusan-2500 token tergantung
+   200→resolusi). Reset harian ~14:00-15:00 WIB (tengah malam Pacific).
+   201→Kalau kena 429, urutan solusi:
+   202→1. Pindah model flash lain dalam key yang sama (gemini-flash-latest,
+   203→   gemini-2.5-flash — kolam kuota TERPISAH per model; terbukti 3.1-pro
+   204→   429 → 3-flash langsung jalan). GRATIS & instan.
+   205→2. Tunggu reset harian (~14:00-15:00 WIB).
+   206→3. User kirim API key akun kedua → pasang di .env (catatan: Google
+   207→   ToS melarang multi-akun untuk hindari limit — risiko flag akun,
+   208→   keputusan user).
+   209→4. Opsi berbayar (limit ribuan kali lebih longgar).
+   210→JANGAN pernah kembali ke "menebak gambar tanpa mata".
+   211→
+   212→### ATURAN #9 — WARISAN PENGALAMAN WAJIB (komitmen lintas-generasi AI)
+   213→
+   214→**Setiap AI — masa lalu, masa kini, masa depan — yang bekerja di project
+   215→ini WAJIB mewariskan pengalaman.** Ini bukan opsional, bukan "kalau
+   216→ingat", bukan inisiatif pribadi — ini KEWAJIBAN yang sama kuatnya
+   217→dengan larangan force-push. Alasan: AI tidak punya ingatan antar sesi;
+   218→satu-satunya cara ilmu bertahan adalah DITULIS. AI yang bekerja lalu
+   219→pergi tanpa menulis warisan = membuang pengalaman mahal yang sudah
+   220→dibayar dengan waktu & kegagalan nyata.
+   221→
+   222→**Kewajiban pada AKHIR setiap tugas (setelah verifikasi, sebelum/sambil
+   223→lapor Telegram & push):**
+   224→1. TANYAKAN DIRI: apa yang aku pelajari dari tugas ini?
+   225→   - Jebakan/pitfall baru yang menipu? (FAIL palsu, alat ukur bohong,
+   226→     asumsi salah yang terbukti salah lewat angka)
+   227→   - Pola bug yang belum tercatat? Teknik yang menang di mana pendekatan
+   228→     lain gagal? Perilaku library yang mengejutkan?
+   229→   - Kalau TIDAK ADA apapun yang baru → tulis minimal 1 kalimat di laporan
+   230→     bahwa "tidak ada temuan baru" (bukti bahwa pertanyaannya diajukan,
+   231→     bukan dilupakan).
+   232→2. TULIS warisan ke tempat yang benar:
+   233→   - Temuan teknis/project → KONTRAK_PERMANEN.md (bab PITFALL/WARISAN
+   234→     PENGALAMAN yang relevan, atau bab baru kalau temuan berdiri sendiri)
+   235→   - Temuan yang berlaku umum lintas-project → skill Synapse terkait
+   236→     (skill_manage patch — jangan menunggu diminta)
+   237→   - Warisan WAJIB menyertakan ANGKA/bukti nyata (bukan "kelihatannya"),
+   238→     plus konteks kapan itu terjadi (phase/commit/tanggal).
+   239→3. SINKRONKAN ringkasan singkat ke skill babftss-kontrak (AI penerus
+   240→   membaca skill sebelum kontrak penuh).
+   241→4. PUSH perubahan kontrak/skill sebelum menutup sesi (kalau berada di
+   242→   repo yang tertrack git; KONTRAK_PERMANEN.md di luar repo → cukup
+   243→   tersimpan di disk + sebutkan di laporan Telegram).
+   244→
+   245→**Standar kualitas warisan** (contoh nyata yang BENAR — lihat bab
+   246→"WARISAN PENGALAMAN — sesi 2026-09-10"): tiap butir = jebakan apa,
+   247→kenapa menipu, bukti/angka, dan cara benar. Warisan yang baik membuat
+   248→AI penerus TIDAK MENGULANG kegagalan yang sama — seperti machine
+   249→learning: tiap sesi = 1 epoch, kontrak = bobot yang terus ter-update,
+   250→AI penerus = inferens yang mulai dari bobot terbaik, bukan nol.
+   251→
+   252→**Larangan:** DILARANG menutup sesi/laporan dengan kalimat "nanti
+   253→saja aku catat" atau menyimpan temuan hanya di kepala — sesi baru
+   254→= kepala kosong, warisan yang tidak ditulis TIDAK ADA.
+   255→
+   256→---
+   257→
+   258→## 4. PENGETAHUAN TEKNIS MAHAL (jangan ulangi risetnya)
+   259→
+   260→Hasil pengukuran langsung ke `node_modules/three/examples/jsm/controls/TransformControls.js`.
+   261→
+   262→### Struktur TransformControls 0.185
+   263→```
+   264→transformControls
+   265→  ._root                          ← hasil getHelper(), di-add ke scene
+   266→      ._gizmo                     ← TransformControlsGizmo
+   267→          .gizmo.translate        ← VISUAL panah      (yang dimodifikasi)
+   268→          .gizmo.rotate           ← VISUAL cincin
+   269→          .gizmo.scale            ← VISUAL scale
+   270→          .picker.translate        ← AREA KLIK (invisible) — JANGAN disentuh
+   271→          .picker.rotate
+   272→          .helper.translate        ← garis bantu putih
+   273→      ._plane                     ← bidang bantu untuk hitung drag
+   274→```
+   275→
+   276→### 5 JEBAKAN PALING MEMATIKAN
+   277→**1. `handle.position` DITIMPA SETIAP FRAME** (baris 1613):
+   278→`handle.position.copy(this.worldPosition)` → set manual selalu hilang.
+   279→Diverifikasi: set (9,9,9) → jadi (0,0,0). → Offset posisi WAJIB lewat `geometry.translate()`.
+   280→
+   281→**2. `handle.visible = true` DIPAKSA SETIAP FRAME** (baris 1611):
+   282→Menyembunyikan sekali langsung dibatalkan frame berikutnya.
+   283→→ Bungkus `_gizmo.updateMatrixWorld`, terapkan SESUDAH fungsi asli:
+   284→```javascript
+   285→const originalUpdate = gizmoRoot.updateMatrixWorld;
+   286→gizmoRoot.updateMatrixWorld = function (force) {
+   287→  originalUpdate.call(this, force);   // biarkan yang asli jalan dulu
+   288→  /* ...baru terapkan penyembunyian/pengaturan di sini... */
+   289→};
+   290→```
+   291→
+   292→**3. `setupGizmo()` MEM-BAKE ROTASI KE GEOMETRY** (baris 1538-1540):
+   293→Setelah itu bounding box sudah world-space: shaft X → sizeY cuma 0.0130, dsb.
+   294→→ Jangan pakai tinggi-Y untuk klasifikasi. **Ukur extent pada sumbu handle-nya
+   295→sendiri** (handle 'X' → ukur `x`). Shaft ≈0.5, cone ≈0.1.
+   296→→ `handle.isMesh` TIDAK bisa membedakan garis dari kerucut (lineGeometry2 juga Mesh).
+   297→
+   298→**4. Mode rotate: setiap handle diputar CAMERA-ALIGN** (baris 1831-1853):
+   299→Cincin penuh tidak kelihatan berubah, tapi bola yang menempel JELAS bergeser.
+   300→→ Kunci quaternion bola ke basis gizmo, lalu **WAJIB**
+   301→`rotateObj.updateMatrixWorld(true)` karena `super.updateMatrixWorld()` sudah
+   302→dipanggil di akhir fungsi asli (baris 1902).
+   303→
+   304→**5. `material.color` gizmo DITIMPA TIAP FRAME dari cache `_color`** (baris 1874-1878,
+   305→ditemukan 2026-09-07, commit `f2b6ca1`):
+   306→`updateMatrixWorld()` menyimpan warna asli ke `material._color` lalu menimpa
+   307→`material.color.copy(material._color)` SETIAP FRAME. Mengubah `handle.material.color`
+   308→langsung → 1 frame kemudian BALIK ke warna lama. Ini sumber kegagalan panjang
+   309→fitur "warna gizmo Clone/Mirror" (banyak AI menyerah / malah merusak fitur lain):
+   310→setGizmoColor() lama melaporkan `changed:12` (lulus palsu) tapi layar tak berubah.
+   311→→ CARA BENAR: API publik `tc.setColors(x, y, z, active)` (baris 947) —
+   312→satu-satunya jalur yang JUGA memperbarui cache `_color` (baris 962-969).
+   313→Semua handle panah/bola SHARE material dari `materialLib`, jadi satu panggilan
+   314→menjangkau semuanya. Slot `active` (warna highlight hover/drag) ikut diisi
+   315→supaya panah tidak "balik kuning" saat di-hover. Reset default:
+   316→`tc.setColors(0xff0000, 0x00ff00, 0x0000ff, 0xffff00)`.
+   317→PENGECUALIAN (Phase 51, commit `e6045e8`): bola scale #EFBF04 memakai material
+   318→BARU per sumbu — BUKAN share materialLib — supaya warnanya kebal terhadap
+   319→setColors() clone/mirror. Highlight hover tetap bekerja karena baris 1884
+   320→meng-copy `materialLib.active.color` langsung ke handle aktif.
+   321→
+   322→**5b. Mode scale DIPAKSA space='local'** (baris 1585: `const space = (this.mode
+   323→=== 'scale') ? 'local' : this.space;`) WALAU tc.space='world'. Konsekuensi:
+   324→gizmo scale mengikuti worldQuaternion object, sementara pointStart tetap
+   325→world space → deteksi SISI (untuk solo drag) WAJIB un-rotate pointStart
+   326→dengan inverse worldQuaternion SELALU di mode scale (Move hanya perlu saat
+   327→space==='local'). Tanpa ini, block yang dirotasi 90° membuat deteksi sisi
+   328→salah/kabur (terukur: komponen 0.000).
+   329→
+   330→### Angka penting Move gizmo (translate)
+   331→```
+   332→cone (arrowGeometry)  : CylinderGeometry(0, 0.04, 0.1, 12)   center ±0.55
+   333→shaft (lineGeometry2) : CylinderGeometry(0.0075,0.0075,0.5,3) center ±0.25
+   334→Bawaan: 6 cone + hanya 3 shaft (sisi + saja)  ← INI SUMBER BUG
+   335→Mirror ke sisi negatif: rotasi 180° thd sumbu PERPENDICULAR
+   336→  x → putar thd Y  |  y → putar thd X  |  z → putar thd X
+   337→Determinan +1 → winding aman, TIDAK perlu DoubleSide
+   338→```
+   339→
+   340→### Angka penting Rotate gizmo
+   341→```
+   342→Bawaan punya 5 handle:
+   343→  XYZE : cincin abu-abu #787878 PENUH r=0.5
+   344→  X    : busur merah SETENGAH (arc 0.5), bidang YZ
+   345→  Y    : busur hijau SETENGAH, bidang XZ
+   346→  Z    : busur biru SETENGAH, bidang XY
+   347→  E    : cincin kuning #ffff00 PENUH r=0.75
+   348→Cincin penuh: TorusGeometry(0.5, 0.0075, 3, 64, 2π) + rotateY(π/2) + rotateX(π/2)
+   349→  rotasi tambahan: X=none, Y=[0,0,-π/2], Z=[0,π/2,0]
+   350→  cek berhasil: bbox 1.015 x 1.015 pada 2 sumbu (bukan 1.015 x 0.507)
+   351→Bola: SphereGeometry(0.075, 16, 12), di radius 0.5
+   352→  cincin Y → bola di ±X (kiri-kanan)
+   353→  cincin X → bola di ±Z (depan-belakang)
+   354→  cincin Z → bola di ±Y (atas-bawah)
+   355→Picker rotate = TorusGeometry(0.5, 0.1) PENUH → bola (r 0.075) sudah tercakup,
+   356→  TIDAK perlu picker tambahan (sudah diuji 3 ukuran, tidak membaik)
+   357→```
+   358→
+   359→### BUG SEJARAH — TransformControls Clone/Mirror (Phase 50 v9, 2026-09-06)
+   360→
+   361→**Akar Masalah:**
+   362→TransformControls intercept drag SEBELUM click handler fire. Saat user switch
+   363→dari Move ke Clone/Mirror:
+   364→- Gizmo masih attach ke block lama dari operasi Move
+   365→- User klik-tahan-geser → TransformControls drag block lama (bukan ghost clone)
+   366→- `onWindowMouseUp` exit early karena `transformControls.dragging = true`
+   367→- Branch clone di click handler tidak pernah tercapai → ghost tidak ter-create
+   368→- Hasil: Clone tidak bekerja, terasa seperti Move biasa
+   369→
+   370→**Solusi yang BENAR** (commit `d7e0938`):
+   371→```javascript
+   372→// Di useEffect yang watch tool state, saat switch ke Clone/Mirror:
+   373→if ((tool === 'clone' || tool === 'mirror') && tc.object) {
+   374→  const sourceBlock = tc.object;
+   375→  tc.detach();   // 1. Detach dari block asli
+   376→
+   377→  // 2. Auto-create ghost di posisi block yang sama
+   378→  if (sourceBlock && sourceBlock.userData.isBlock && !sourceBlock.userData.cloneGhost) {
+   379→    const scene = threeRef.current.scene;
+   380→    if (scene) {
+   381→      const ghost = new THREE.Mesh(
+   382→        sourceBlock.geometry.clone(),
+   383→        Array.isArray(sourceBlock.material)
+   384→          ? sourceBlock.material.map(m => m.clone())
+   385→          : sourceBlock.material.clone()
+   386→      );
+   387→      ghost.position.copy(sourceBlock.position);
+   388→      ghost.rotation.copy(sourceBlock.rotation);
+   389→      ghost.scale.copy(sourceBlock.scale);
+   390→      ghost.userData.isBlock = true;
+   391→      ghost.userData.cloneGhost = true;
+   392→      scene.add(ghost);
+   393→      threeRef.current.blocks.push(ghost);
+   394→      threeRef.current.cloneGhost = ghost;
+   395→
+   396→      // 3. Attach gizmo ke ghost → 6 panah muncul di ghost
+   397→      tc.attach(ghost);
+   398→    }
+   399→  }
+   400→}
+   401→```
+   402→
+   403→**Flow yang BENAR:**
+   404→1. Move → 6 panah muncul di block A
+   405→2. Switch Clone → detach dari A → auto-create ghost di posisi A → attach ke
+   406→   ghost → 6 panah muncul di ghost
+   407→3. Drag ghost → clone bekerja (block baru ter-create)
+   408→4. Klik block lain → gizmo pindah ke ghost baru
+   409→
+   410→**Pola Kesalahan yang HARUS DIHINDARI:**
+   411→1. Terlalu cepat apply fix tanpa trace flow lengkap — jangan asumsikan masalahnya
+   412→   di mana. Trace: mousedown → drag → mouseup → handler → branch mana yang fire?
+   413→2. Detach gizmo saja — 6 panah hilang → UX buruk. User harus klik block dulu
+   414→   baru 6 panah muncul. Tidak natural.
+   415→3. Re-attach ke block yang sama — TransformControls intercept drag lagi → clone
+   416→   tidak bekerja (kembali ke masalah awal).
+   417→4. Tidak pikirkan UX impact — gizmo visible vs hidden, flow natural vs awkward,
+   418→   user expectation.
+   419→
+   420→**Pelajaran Penting:**
+   421→- TransformControls punya prioritas drag LEBIH TINGGI dari click handler.
+   422→  Kalau gizmo attach ke object, user drag → TransformControls menang, click
+   423→  handler kalah.
+   424→- Solusi: detach gizmo DULU, baru click handler bisa fire. Tapi detach saja =
+   425→  UX buruk → harus auto-create ghost + attach ke ghost.
+   426→- **Selalu trace full flow sebelum fix** — jangan asumsikan masalahnya di mana.
+   427→
+   428→**Testing Checklist untuk Gizmo/Clone/Mirror:**
+   429→- Switch tool → gizmo mode berubah (translate/rotate/scale)
+   430→- Switch ke Clone/Mirror → 6 panah tetap visible (di ghost)
+   431→- Klik block → ghost muncul
+   432→- Drag ghost → clone bekerja (bukan drag block lama)
+   433→- Klik block lain → gizmo pindah ke ghost baru
+   434→- Clone ke-2, ke-3, dst → semua bekerja
+   435→- Mirror → behavior sama dengan Clone
+   436→
+   437→**Waktu yang Terbuang:** 5 JAM untuk fix bug ini karena tidak trace flow
+   438→lengkap di awal, apply fix tanpa tes memadai, revert → fix lagi → revert
+   439→lagi. JANGAN ULANGI KESALAHAN INI!
+   440→
+   441→### BUG SEJARAH — Warna Gizmo Clone/Mirror (Phase 50 v11, 2026-09-07, commit `f2b6ca1`)
+   442→
+   443→**Masalah dari user:** tool Clone → 6 panah harus BIRU #0096FF SEMUA; tool
+   444→Mirror → 6 panah harus UNGU #9D00FF SEMUA. Banyak AI sebelumnya gagal dan
+   445→malah menambah masalah baru.
+   446→
+   447→**Akar Masalah (terbukti ukur, bukan tebak):**
+   448→`TransformControlsGizmo.updateMatrixWorld()` baris 1874-1878:
+   449→```javascript
+   450→handle.material._color = handle.material._color || handle.material.color.clone();
+   451→handle.material.color.copy( handle.material._color );   // ← TIAP FRAME
+   452→```
+   453→Versi lama `setGizmoColor()` mengubah `handle.material.color` langsung →
+   454→tepat setelah dipanggil warna biru (kelihatan berhasil!), tapi frame
+   455→BERIKUTNYA ditimpa balik dari cache `_color` yang masih merah/hijau/biru.
+   456→`changed: 12` di return = LULUS PALSU. Ini jebakan yang sama dengan
+   457→`handle.position` (ditimpa `worldPosition` tiap frame) — hanya versi warna.
+   458→
+   459→**Solusi (API publik, ubah sekecil mungkin):**
+   460→```javascript
+   461→// setGizmoColor: 4 slot (x, y, z, active) diisi warna sama
+   462→transformControls.setColors(color, color, color, color);
+   463→// resetGizmoColors: default persis konstruktor
+   464→transformControls.setColors(0xff0000, 0x00ff00, 0x0000ff, 0xffff00);
+   465→```
+   466→`setColors()` (baris 947) adalah SATU-SATUNYA jalur yang juga memperbarui
+   467→cache `_color` (baris 962-969). Ke-12 handle panah (6 bawaan + 6 mirror
+   468→makeSixArrows) + 6 bola rotate semuanya share `materialLib` → satu
+   469→panggilan menjangkau semua. Slot `active` ikut diisi supaya hover/drag
+   470→tidak "balik kuning". Pemanggil di BlockSimulator3Dv2.jsx TIDAK diubah.
+   471→
+   472→**Pelajaran Penting:**
+   473→- Gejala "kelihatan berhasil lalu balik sendiri" = hampir pasti ada
+   474→  penimpaan tiap frame → cari cache internal (`_color`, `_opacity`).
+   475→- "Berhasil tepat setelah dipanggil" BELUM berarti berhasil — WAJIB
+   476→  render beberapa frame dulu baru mengukur (tes headless: `frame(5)`).
+   477→- Material gizmo di-SHARE antar handle & antar mode (translate↔rotate
+   478→  bola) → mengubah 1 material menjalar ke mana-mana; selalu pikirkan
+   479→  reset saat pindah tool.
+   480→- Bola rotate memang ikut berwarna saat Clone/Mirror (share materialLib)
+   481→  tapi TIDAK tampak di mode translate (`gizmo.rotate.visible=false`),
+   482→  dan useEffect tool memanggil resetGizmoColors() saat pindah tool → aman.
+   483→
+   484→**Verifikasi nyata:** tes headless 14 PASS / 0 FAIL (RED dulu: 4 FAIL);
+   485→uji pixel GPU nyata: SESUDAH clone = 236 px #0096FF, 0 px RGB lama;
+   486→SESUDAH mirror = 240 px #9D00FF, 0 px lain; vite build exit 0.
+   487→
+   488→**Pitfall alat ukur:** pixel "merah" 98 px di screenshot ternyata fringe
+   489→subpixel anti-aliasing TEKS judul panel (y=19-38), bukan panah — hitung
+   490→ulang per-kuadran area canvas saja → nol. Jangan lalu mengira fix gagal.
+   491→
+   492→### PENGETAHUAN — Checkbox "arrow match rotation" (Phase 52, 2026-09-07, commit `574b9bf`)
+   493→
+   494→**Fitur:** panel checkbox 1-keluarga untuk 5 tool (move/rotate/scale/
+   495→clone/mirror) di koordinat PERSIS panel Colors (top:80, right:16).
+   496→Tercentang (default WAJIB tiap fresh entry — jangan persist!) = gizmo
+   497→ikut sisi block (space local); kosong = panah/bola TEGAK LURUS dunia
+   498→walau block miring (space world).
+   499→
+   500→**Kunci implementasi:**
+   501→- Move/Clone/Mirror + Rotate: cukup `tc.space = 'local' | 'world'`
+   502→  (API publik ber-definesetter; otomatis sinkron ke gizmo+plane+event).
+   503→  Wrapper bola rotate (gizmoRotateRings) sudah membaca space dinamis.
+   504→- SCALE TIDAK BISA pakai tc.space — dipaksa 'local' (baris 1585, jebakan
+   505→  #5b) → pakai `setScaleWorldAlign(tc, match)` dari gizmoScaleBalls.js
+   506→  (flag WeakMap per-instance): wrapper mengunci quaternion bola ke
+   507→  identity SETELAH fungsi asli + `scaleObj.updateMatrixWorld(true)`;
+   508→  dan deteksi sisi solo drag TIDAK un-rotate pointStart saat world-align.
+   509→- useEffect penerapan: dep `[arrowMatchRotation, tool]` — restyleRotateGizmo
+   510→  men-set `tc.space='local'` saat init, jadi re-apply per ganti tool
+   511→  mencegah uncheck user tertimpa balik oleh init (race init scene).
+   512→
+   513→**PITFALL PENGUKURAN BARU (2x gagal palsu sebelum ketemu):**
+   514→1. JANGAN pernah menimpa properti internal yang sedang diukur —
+   515→   `tc._gizmo.worldQuaternion` adalah referensi SHARED dengan controls
+   516→   (TransformControlsRoot menulis ke sana tiap frame). Probe yang
+   517→   menimpanya dengan Quaternion baru merusak state → 5 FAIL palsu.
+   518→2. `updateMatrixWorld()` gizmo hanya memproses handle milik MODE AKTIF
+   519→   (`this.gizmo[this.mode].children`). Membaca quaternion bola scale
+   520→   saat mode masih 'translate' = identity palsu (bola tak di-update).
+   521→   Selalu `setMode(...)` + frame dulu sebelum mengukur.
+   522→3. Rumus tanda un-rotate: rotasi -45° thd Y pada (0,0,z) menghasilkan
+   523→   x = z·sin(-45°) → world -Z = sisi lokal +X. Jangan asal tanda.
+   524→
+   525→### PITFALL DESAIN DARI GAMBAR REFERENSI (Phase 52 v2, commit `4892631`)
+   526→
+   527→Analisis pixel KASAR (warna dominan global saja) TIDAK CUKUP untuk
+   528→menjiplak desain — panel v1 terbukti "jelek" karena struktur aslinya
+   529→tak ketangkap. IDENTIFIKASI MENYELURUH wajib (analyze-ref.py):
+   530→- Segmentasi horizontal per-segmen pada baris tengah (ymid) → panjang
+   531→  EXAKT tiap elemen (checkbox 46px, pemisah HITAM 12px, gap 24px).
+   532→- Border-run per sisi → border bisa ASIMETRIS (ukur nyata: 8/6/6/2).
+   533→- Cek pixel sudut (0,0)-(5,5) → PERSEGI vs rounded (radius 0, bukan tebak).
+   534→- Tinggi glyph teks (bbox pixel terang) → font-size asli (17px glyph
+   535→  = font 23px), bukan "kelihatan ~17px".
+   536→- Mask centang: bbox pixel gelap + render ASCII → bentuk & stroke (4.5px).
+   537→- Validasi silang 2 gambar beda skala (01.png 2.9x vs 02.png): SEMUA
+   538→  rasio harus cocok — kalau cocok, identifikasi benar.
+   539→- Verifikasi akhir: bandingkan PROFIL WARNA replika vs referensi
+   540→  (5 kategori, toleransi ≤6%) → PROFIL MATCH = jiplakan sah.
+   541→Teks label dari USER (bukan OCR): user menyebut "(arrow match rotation)" —
+   542→verifikasi struktural: 3 kelompok kata cocok lebar frasa.
+   543→
+   544→### PELAJARAN DESAIN TERBESAR (Phase 52 v3, commit `223f89b`)
+   545→
+   546→JIPLAK GAMBAR REFERENSI KALAH PENTING dari KONSISTENSI DESIGN SYSTEM
+   547→REPO. Panel v2 sudah presisi-pixel mengikuti gambar, tapi user tetap
+   548→bilang JELEK — karena gambar referensi (abu-abu #303030, border hitam
+   549→kasar) ASING terhadap app yang gelap-biru (#0e1420, #1e293b, amber
+   550→#f59e0b, Orbitron/Inter, radius 14, blur 10px).
+   551→ATURAN FINAL UTK UI PROJECT INI:
+   552→1. WAJIB load skill design dulu (claude-design + ui-ux-design-system)
+   553→   SEBELUM bikin/mengubah UI — kontrak A.1-A.5.
+   554→2. Source-code fidelity (skill claude-design): angkat nilai PERSIS dari
+   555→   tema repo — panelBg, panelBorder, textSecondary, accent, font, radius,
+   556→   blur, padding — jangan bangun dari ingatan apalagi dari gambar asing.
+   557→3. Surface-first: panel opsi = surface CONFIGURE — buat EXTENSIBLE
+   558→   (baris opsi reusable), karena user akan menambah opsi-opsi lain.
+   559→4. Checkbox custom konsisten app: checked = accent #f59e0b + glow;
+   560→   unchecked = abu transparan; label semibold/muted per state.
+   561→5. Kalau user minta "jiplak gambar" TAPI hasilnya janggal di app —
+   562→   desain ulang mengikuti design system app, lalu jelaskan alasannya.
+   563→   (User menilai dengan mata, bukan dengan toleransi pixel.)
+   564→
+   565→### PENGETAHUAN — Select Box / Marquee 3D (Phase 53, commit `3e5262e`)
+   566→
+   567→Fitur: opsi "Select Box" (panel Gizmo Options, bawah Arrow Match
+   568→Rotation; 1 keluarga 5 tool) — drag kiri = kotak transparan; semua
+   569→block yang PROYEKSI LAYARNYA kena kotak terpilih (jarak dunia tidak
+   570→relevan — seleksi ruang-layar). Warna per tool: move #0047AB, rotate
+   571→#32CD32, scale #EFBF04, clone #0096FF, mirror #9D00FF. Modul murni:
+   572→src/utils/marqueeSelect.js (getBlocksInScreenRect + MARQUEE_COLOR_BY_TOOL).
+   573→
+   574→**JEBAKAN PROYEKSI (bug nyata, terukur):**
+   575→Titik di BELAKANG kamera menghasilkan proyeksi NDC yang "sah-looking"
+   576→(NDC z > 1, tapi x/y bisa kecil wajar) → guard |NDC|>50 TIDAK menangkap
+   577→→ block di belakang kamera IKUT terpilih.
+   578→CARA BENAR: transformasi tiap sudut bbox ke VIEW-SPACE dulu via
+   579→`camera.matrixWorldInverse`; buang sudut dengan viewZ > 0 (kamera
+   580→Three.js menghadap -z) SEBELUM project(). Terukur: depan → viewZ < 0
+   581→(NDC z < 1); belakang → viewZ > 0.
+   582→GUARD tambahan drag: klik <5px bukan seleksi; hover gizmo
+   583→(transformControls.axis != null) → jangan curi drag; controls.enabled =
+   584→false selama marquee, pulihkan di mouseup (kalau tidak, orbit ikut
+   585→muter saat menyeleksi).
+   586→
+   587→**Pitfall test:** koordinat asersi marquee WAJIB dari getScreenBox()
+   588→(proyeksi terukur), bukan asumsi visual — 3 FAIL palsu karena posisi
+   589→block di layar dikira beda dari nyata (kamera lookAt bawah menggeser
+   590→semua proyeksi).
+   591→
+   592→**Update v2 (commit `ef6761e`, permintaan user):**
+   593→- Warna marquee move: #0047AB → **#00308F** (lebih TUA — jelas beda dari
+   594→  clone #0096FF yang terang; lum 44 vs 117).
+   595→- SYARAT GANDA: engine marquee menolak jika tool aktif BUKAN keluarga-5
+   596→  (guard `toolRef.current` sebelum aktivasi) — unequip/tool lain = fitur
+   597→  otomatis off, konsisten dengan visibilitas panel.
+   598→- ATURAN MUTLAK: default selectBoxEnabled = TRUE + tidak dipersist →
+   599→  tiap user masuk/buka 3D Block Simulator, Select Box langsung tercentang.
+   600→- Jangkauan (konfirmasi user): seleksi memang TIDAK terbatas jarak —
+   601→  block sejauh apa pun terpilih selama proyeksinya kena kotak.
+   602→
+   603→**Update v3 (commit `5f0a6b0`, bug report user):**
+   604→GEJALA: scale/move/rotate + Select Box OFF → drag kiri KAMERA MATI (tool
+   605→lain normal). AKAR: useEffect `mouseButtons.LEFT = null` SELALU untuk
+   606→keluarga-3 historis (warisan pra-Select-Box) — tidak membaca checkbox;
+   607→saat off: bukan marquee (guard tolak) + bukan pan (null) = no-op.
+   608→PELAJARAN: saat menambah interaksi drag BARU, AUDIT semua kode lama yang
+   609→mengatur mouse button / kontrol kamera untuk tool yang sama — kode warisan
+   610→yang dulu benar bisa jadi jebakan setelah fitur baru mengubah asumsinya.
+   611→FIX: useEffect baca [tool, selectBoxEnabled]; kondisi diperluas ke
+   612→KELUARGA-5 (bukan cuma 3 historis) supaya drag kiri deterministik:
+   613→ON = null (marquee murni, tanpa race pointerdown-vs-mousedown), OFF = PAN.
+   614→Tool lain selalu PAN (28 kombinasi teruji, tidak tersentuh).
+   615→
+   616→**Update v4 / Phase 54 (commit `04dcb66`, permintaan user):**
+   617→1. Warna marquee move FINAL: **#0044E0** — user: "tetap biru tua tapi
+   618→   ngejrenk". #00308F kusam karena channel B cuma 143; #0044E0 = HSL
+   619→   (222°,100%,44%) → B=224 jenuh. Terukur rgb(0,68,224) ≠ clone rgb(0,150,255).
+   620→   Pelajaran: "tua" ≠ "gelap kusam" — minta user konfirmasi vivid vs muted,
+   621→   naikkan CHANNEL warna utama, jangan semua channel.
+   622→2. GIZMO AUTO-HIDE: useEffect [tool] → tool BUKAN keluarga-5 →
+   623→   `ghostSource = null` DULU (batalkan restore v13!) + `clearSelection()`
+   624→   (dipakai apa adanya: unhighlight + buang group + ghost + detach).
+   625→   Antar keluarga → TETAP attach. PELAJARAN URUTAN: cabang auto-hide
+   626→   harus jalan SEBELUM restore v13 — tanpa ghostSource=null, keluar
+   627→   clone→paint akan re-attach gizmo ke block asal (bug dicegah, teruji).
+   628→   clearSelection diekspos ke threeRef saat init (pola recordHistory).
+   629→3. Phase 54 v2 (`162752a`): klik kiri AREA KOSONG di move/rotate/scale
+   630→   → gizmo TIDAK hilang (no-op; dulu clearSelection tanpa syarat →
+   631→   gizmo & highlight mati). Standar perilaku = clone/mirror: klik-kosong
+   632→   tidak menyentuh selection. Gizmo hanya hilang lewat jalur sengaja:
+   633→   unequip / tool non-keluarga. PELAJARAN UI: saat standarisasi perilaku
+   634→   antar tool sekeluarga, cari tool yang perilakunya sudah dianggap
+   635→   BENAR oleh user (di sini clone/mirror) dan samakan yang lain ke
+   636→   situ — jangan invented perilaku baru.
+   637→
+   638→### PENGETAHUAN — Update Terpisah Mobile vs PC (Phase 55, commit `36a8cee`)
+   639→
+   640→USER BISA MEMBATASI update per-platform dalam satu prompt ("khusus
+   641→prompt ini saja: yang mobile untuk mobile saja, yang PC untuk PC saja
+   642→— jangan tercampur!"). Pemisahan ketat di kode:
+   643→- Breakpoint konsisten app: innerWidth >= 768 = PC, < 768 = mobile
+   644→  (pola yang SUDAH dipakai keybinds [1]-[0] & tombol).
+   645→- MOBILE-ONLY: handler touch pinch dipasang HANYA jika
+   646→  `window.innerWidth < 768 && ('ontouchstart' in window)`;
+   647→  gear Paint dirender hanya < 768.
+   648→- PC-ONLY: tombol "Color Settings" hanya >= 768; handler pinch TIDAK
+   649→  dipasang di PC.
+   650→- Pinch Select Box (mobile): evaluatePinchSelectBox() di marqueeSelect.js
+   651→  — state machine murni. Zoom-OUT 2 jari → kotak muncul SEKETIKA (syarat
+   652→  keluarga-5 + checkbox ON); setelah aktif out=besar in=kecil; cubit
+   653→  duluan = kamera saja (kotak tak boleh muncul); OFF/tool lain = kamera.
+   654→  Saat kotak aktif: controls.enabled=false, pulih di touchend. PELAJARAN:
+   655→  logika gesture = state machine murni terpisah dari DOM supaya bisa
+   656→  dites tanpa device touch (7/7 PASS headless).
+   657→- Gear Paint → tombol "Color Settings" (PC): fungsi IDENTIK (buka modal
+   658→  ColorWheelPicker via setColorPicker mode 'picker') — hanya UI yang
+   659→  pindah; JANGAN sampai salah toggle tool / set warna langsung.
+   660→- PELAJARAN asersi: teks yang dicari (mis. 'Color Settings') bisa muncul
+   661→  dulu di KOMENTAR jauh dari blok kode — pakai lastIndexOf + cek konteks
+   662→  blok, bukan indexOf pertama.
+   663→
+   664→### PELAJARAN v2 (Phase 55, commit `a9d37ab` — 3 bug report user)
+   665→
+   666→1. JEBAKAN SVG+CSS: attribute `fill` SVG TIDAK menerima nilai CSS modern
+   667→   seperti `conic-gradient()` — browser tolak → render HITAM senyap
+   668→   (tanpa error). Gradient CSS (conic/radial/linear) WAJIB lewat
+   669→   `background` di elemen HTML (span/div), bukan fill/stroke SVG.
+   670→   Verifikasi visual wajib: hitung kategori warna pixel area ikon.
+   671→2. Pinch/gesture "BERAT" = gejala pertumbuhan per-event (scale
+   672→   dikomposisi 1+delta/prev tiap move) — responsnya melambat logaritmik
+   673→   & jari harus berulang. CARA BENAR: DIRECT TRACKING — ukuran =
+   674→   f(jari sekarang)/f(jari awal gesture) (anchor-based), proporsional
+   675→   1:1, lompatan sebesar apa pun instan. Sama rasa pinch zoom kamera.
+   676→3. Gesture 2 jari: kotak SELALU di MIDPOINT jari (centered) — otomatis
+   677→   dapat fitur "geser bersama = kotak pindah, kamera diam" gratis,
+   678→   tanpa state tambahan.
+   679→
+   680→### PENGETAHUAN — Phase 56: Panel Opsi, Pivot Multi-Select, Mirror Kaca, Ledakan Kamera Mobile (commit `816b699`)
+   681→
+   682→**Bug 1 — Panel Gizmo Options melebar saat centang Select Box (PC+mobile):**
+   683→Panel absolute nempel kanan (`right:16`) pakai lebar shrink-to-fit; teks hint
+   684→gabungan "• Select Box aktif: drag kiri = kotak pilih" dalam SATU baris
+   685→mendorong lebar panel +79.7px ke KIRI (terukur harness: 234.0→313.7px).
+   686→FIX: `maxWidth: 208` (= minWidth → lebar KONSTAN; hint panjang wrap ke bawah)
+   687→+ hint dipecah per-keadaan (`<div>` terpisah, pola extensible).
+   688→ATURAN: konten panel opsi jangan pernah dirangkai 1 baris panjang.
+   689→
+   690→**Bug 2 — Gizmo multi-select muncul di pusat build area (keluarga-5):**
+   691→`selectionGroup = new THREE.Group()` POLOS → origin (0,0,0) → gizmo
+   692→nempel pusat dunia walau block terpilih di ujung kiri-kanan (terukur:
+   693→block di ±8, pivot gizmo (0,0,0)).
+   694→FIX (rumus user "pake rumus aja buat nyari titik area tengah"):
+   695→`getSelectionPivot()` di marqueeSelect.js — union bounding box WORLD semua
+   696→block terpilih → center = (min+max)/2 → `selectionGroup.position.copy(pivot)`
+   697→SEBELUM `attach()` (attach tetap preserve world position block).
+   698→Otomatis benar 2 block s/d 50+ block tersebar/terotasi/ter-scale.
+   699→
+   700→**Bug 3 — Mirror harus KACA (klarifikasi user 2026-09-09):**
+   701→Mirror = menggandakan seperti clone (posisi ghost = posisi source, ikut
+   702→geser), TAPI sisi-sisi hasil 100% BERLAWANAN arah (bayangan kaca).
+   703→Clone = 100% identik. Block belum dirotasi memang tampak sama seperti
+   704→clone — itu BENAR (kubus simetris).
+   705→TERUKUR: mengubah angka rotasi Euler (skema lama rot.y=−y, rot.z=−z)
+   706→= det +1 = ROTASI BIASA, BUKAN kaca — TIDAK PERNAH bisa jadi kaca.
+   707→KACA SEJATI = determinant NEGATIF: rotasi dikonjugasi refleksi
+   708→R' = S·R·S (S = diag(−1,1,1) → negasi baris-0 & kolom-0 matriks
+   709→rotasi, e00 tetap; ekuivalen EXACT dgn S·R·S referensi) + `scale.x
+   710→= −scale.x` → det −1. Modul: `src/utils/mirrorGhost.js`
+   711→(`applyMirrorGlass` + `mirrorQuaternionX`). Hasil terukur: yaw 90° →
+   712→depan source (1,0,0) vs depan ghost (−1,0,0).
+   713→3 titik aplikasi: klik-path mirror, useEffect auto-create (ke mirror
+   714→saja), pindah clone↔mirror dgn ghost hidup (orientasi re-flip per
+   715→tool tujuan dari `userData.ghostSource`; POSISI ghost dipertahankan —
+   716→jangan teleport). Jalur klik lama yang menegasi position.x (ghost
+   717→muncul di seberang area build) DIHAPUS.
+   718→
+   719→**Bug 4 — Mobile: lepas 2 jari selepas marquee → kamera MELEDAK:**
+   720→Akar (dibaca langsung dari OrbitControls.js 0.185): `onPointerUp`
+   721→TIDAK punya guard `enabled` (beda dgn `onPointerMove` yang punya!).
+   722→Selama kotak pinch aktif, `controls.enabled=false` → `onPointerMove`
+   723→ke-gate → `_pointerPositions` TIDAK ter-update = BEKU. Saat jari 1
+   724→lepas, `onPointerUp` tetap jalan → state-correction case-1 men-set
+   725→`TOUCH_ROTATE` dgn `_rotateStart` = posisi jari 2 yang BEKU. Kalau
+   726→app lalu `controls.enabled = true` (padahal jari 2 masih menekan),
+   727→jari 2 bergeser dikit → delta = sekarang − BEKU (ratusan px, user
+   728→tadi menggoyang kotak) → kamera tersentak (terukur: azimuth 48.9° +
+   729→polar 100.3° dalam SATU move).
+   730→FIX: `controls.enabled = true` HANYA saat `e.touches.length === 0`;
+   731→kalau masih ada jari → pending flag, dituntaskan di touchend TERAKHIR
+   732→(listener `onPinchTouchEndPending`). ATURAN: jangan pernah pulihkan
+   733→`controls.enabled` di touchend selagi masih ada jari lain di layar.
+   734→
+   735→**Pitfall alat ukur Phase 56:**
+   736→1. det mesh ber-scale non-uniform (2,0.5,1.5) = −sx·sy·sz = −1.5,
+   737→   BUKAN −1. Penanda kaca = TANDA negatif, bukan nilai persis −1.
+   738→   Asersi v1 salah nebak −1 → FAIL palsu.
+   739→2. ~~`vision_analyze` bisa gagal total~~ **SUPERSEDED 2026-09-10**: era model
+   740→   text-only sudah berakhir — vision kini Gemini 3 Flash aktif permanen
+   741→   (lihat ATURAN #8). Kalau vision benar-benar gagal (429 limit → ikuti
+   742→   protokol limit di ATURAN #8; error lain → retry 2x), BARU fallback ke
+   743→   verifikasi pixel PROGRAMATIK (PIL + colorsys, klasifikasi HUE tahan
+   744→   shading Lambert — JANGAN RGB exact; v>0.35 & s<0.25 utk abu) — dan
+   745→   LAPORKAN ke user bahwa verifikasi visual belum 100% (pixel tidak bisa
+   746→   membaca STRUKTUR/makna gambar — pelajaran Phase 60 v2). Koordinat
+   747→   panel dari `getBoundingClientRect()` via `--dump-dom` tetap berlaku.
+   748→
+   749→### WARISAN PENGALAMAN — sesi 2026-09-10 (Phase 60-62, wajib dibaca AI penerus)
+   750→
+   751→Pengalaman nyata dari sesi vision-Gemini pertama (6 pelajaran mahal):
+   752→
+   753→1. **Vision adalah mata, pixel adalah mistar** — keduanya beda pekerjaan.
+   754→   Vision membaca STRUKTUR/MAKNA ("menempel vs mengambang"), pixel
+   755→   mengukur ANGKA (ketebalan px, rasio bbox). Salah tukar peran =
+   756→   keputusan salah (Phase 60 v2: pixel salah baca struktur → 50% benar).
+   757→2. **Shell child box 1×1×1 TIDAK otomatis pas di block non-1.0** —
+   758→   scale block (mis. thin plank) membuat bingkai 25% lebih besar →
+   759→   tampak "mengambang menembus block". WAJIB sesuaikan shell ke bounding
+   760→   box GEOMETRY block (local space) + offset center (max+min)/2. Jangan
+   761→   pakai Box3.setFromObject/world-scale (dobel-count parent scale).
+   762→3. **Jebakan anchor regex**: `indexOf('onCanvasMouseMove')` match KOMENTAR
+   763→   di baris 3899, bukan definisi di 13952 → zona tes kosong → FAIL
+   764→   palsu. Selalu anchor ke token unik definisi: `'const onCanvasMouseMove'`.
+   765→   (Serupa: 'currentTool' pertama ada di klik handler, bukan mousemove.)
+   766→4. **Harness jangan "pinter-pinteran"**: test yang manipulasi internal
+   767→   langsung (setTimeout detach manual meniru ganti warna) menghasilkan
+   768→   ARTEFAK PALSU yang dianggap bug produk. Tiru alur produk PERSIS via
+   769→   API resmi (attach → detach → attach), satu skenario per objek.
+   770→5. **Halaman test kosong ≠ berhasil**: screenshot 2KB = halaman error/
+   771→   JS gagal — CEK DULU dengan vision/CDP console sebelum menghitung
+   772→   pixel. Console CDP (Runtime.enable + exceptionThrown) menangkap
+   773→   SyntaxError import yang tak terlihat di screenshot. Vision juga
+   774→   menangkap halaman error localhost — tanpa vision, klaim sukses palsu.
+   775→6. **rgbToHsv internal skala 0-1, slider UI ×100** — asersi v=100 pada
+   776→   fungsi internal = FAIL palsu; cek dulu skala return sebelum menulis
+   777→   ekspektasi. (Bug serupa sebelumnya: colorsys hue 0-1 vs derajat.)
+   778→7. **Vision bisa salah menilai PNG transparan** (Phase 63, 2026-09-11):
+   779→   vision bilang ikon "background masih putih solid" padahal 76% area
+   780→   alpha=0 — viewer menampilkan layer putih DI BELAKANG transparansi.
+   781→   Verifikasi alpha WAJIB via histogram angka (PIL getchannel('A')),
+   782→   bukan mata vision.
+   783→8. **Harness dempet = penilaian vision palsu** (Phase 63): 5 kubus di
+   784→   spacing sempit menumpuk di 30% tengah layar → vision menilai glass
+   785→   "solid gelap" (tertutup kubus lain). Sebelum menyalahkan material,
+   786→   UKUR POSISI CLUSTER pixel dulu — kalau bbox menumpuk, itu layout
+   787→   harness yang salah, bukan PBR.
+   788→9. **Menyetel PBR di harness = kalibrasi salah** (Phase 63): pencahayaan
+   789→   harness HARUS PERSIS app (ambient/dir intensitas + posisi + tone
+   790→   mapping ACES). Harness lighting khayalan (ambient 0.75+dir 0.9) membuat
+   791→   gold terlihat "olive kusam" padahal di lighting app beda lagi.
+   792→10. **Kuota vision input-token PER-HARI bisa habis oleh iterasi** (Phase
+   793→    63): ~15 panggilan analisis berat = 429 persisten bahkan untuk payload
+   794→    kecil (beda dgn 429 per-menit yang pulih 60 detik). Protokol: switch
+   795→    ke pixel-check programatik sebagai verifikasi berjalan + laporkan
+   796→    jujur "vision menunggu reset ~14-15 WIB"; JANGAN spam retry.
+   797→11. **Placeholder tint × texture = MERUSAK warna** (Phase 64, 2026-09-11):
+   798→    color material DIKALIKAN texture — placeholder warna dominan yang
+   799→    dibiarkan permanen membuat block gelap/pekat (wood terukur 129,81,16
+   800→    → 76,29,3). Placeholder HANYA boleh sementara: beri warna dominan
+   801→    SEBELUM texture siap (anti block hitam), lalu WAJIB auto-reset ke
+   802→    putih via texture onReady callback. Kombinasi + preload semua texture
+   803→    di init = loading instan tanpa hitam.
+   804→12. **Emissive WAJIB konsisten warna dasar texture dataset** (Phase 64):
+   805→    emissive aditif dengan texture — neon texture MERAH + emissive HIJAU
+   806→    = tampak KUNING-ORANYE → tester menyangka "gold"! Selain merusak
+   807→    identitas block, ini bug paling menipu: file aset terverifikasi benar
+   808→    (hash+pixel), "tertukar" hanya ilusi campuran warna. Cek dataset dulu
+   809→    (vision/pixel) sebelum memilih warna emissive.
+   810→13. **Regex-vs-komentar jebakan KE-3x** (Phase 64): `!/0x39ff14/` FAIL
+   811→    palsu karena hex lama disebut di KOMENTAR sejarah fix. Qualifier kode
+   812→    aktif (`emissive: 0x...`) wajib — pola ini kini 3x terjadi (BackSide,
+   813→    Chat Umum, hex emissive); tulis tes dengan prefix properti, bukan
+   814→    nilai polos.
+   815→14. **Vision bisa SALAH menafsirkan BATAS objek untuk efek cahaya**
+   816→    (Phase 65, 2026-09-11, neon glow): vision 4x menilai "glow tidak ada"
+   817→    padahal pixel membuktikan pendaran nyata (aura r=117 membentang
+   818→    ±90px di luar tubuh, bg r=10). Akar: vision menganggap SELURUH area
+   819→    merah (tubuh+aura) sebagai "kubus" — jawabannya menyebut "3 tingkatan
+   820→    merah = bingkai kubus" (itu justru tubuh+aura). Untuk verifikasi
+   821→    glow/bloom/pendaran: PROFIL PIXEL sepanjang garis (nilai r dari bg →
+   822→    tepi → tubuh) adalah bukti utama; vision hanya konfirmasi makna.
+   823→    Jangan loop menyetel opacity karena vision bilang "tidak ada" kalau
+   824→    pixel sudah menunjukkan gradasi.
+   825→15. **toneMapping ACES menggeser #FF0000 → campuran oranye** (Phase 65):
+   826→    user komplain warna hasil "#FF4225" padahal emissive ff2a1a; dua
+   827→    faktor menumpuk: hex tak murni + ACES. Material yang wajib warna
+   828→    murni (neon/glow) WAJIB `toneMapped:false` — ganti hex saja TIDAK
+   829→    cukup, ACES tetap merusak saat render final.
+   830→16. **SHELL BOX BERLAPIS TIDAK AKAN PERNAH JADI GLOW HALUS** (Phase 65 v2,
+   831→    2026-09-11, koreksi user "double, kotak kaku!"): mesh box scale
+   832→    besar (apapun opacity/side-nya) selalu punya EDGE KOTAK — hasil
+   833→    "kotak kaku berlapis", bukan aura. GLOW/AURA WAJIB pakai SPRITE
+   834→    RADIAL-GRADIENT (canvas merah→transparan, AdditiveBlending,
+   835→    billboard menghadap kamera) — gradasi blur alami nol-edge.
+   836→    Ini satu-satunya teknik yang lolos verifikasi vision 5/5.
+   837→17. **Profil pixel HARUS dibaca POLA-nya, bukan sekadar keberadaan**
+   838→    (Phase 65 v2 — kegagalan paling mahal sesi ini): kotak kaku JUGA
+   839→    menghasilkan "ada merah di luar tubuh" (r=117) → saya salah
+   840→    menyimpulkan glow bekerja & 4x menepis penilaian vision yang benar.
+   841→    Beda kotak vs glow ada di KONTINUITAS: step rigit antar lapisan =
+   842→    shell kaku; naik/turun bertahap tiap pixel = glow. Selalu cetak
+   843→    profil nilai penuh (bukan 1 titik) & bandingkan pola dengan dataset.
+   844→    Dan kalau VISION BERULANG kali bilang "salah" sementara kamu pakai
+   845→    bukti tak langsung — BERHENTI, teliti ulang: vision mungkin benar.
+   846→    (Key pool vision dari user: GOOGLE_API_KEY_2/3/4 di .env — risiko
+   847→    multi-akun ditanggung user, dipakai hanya saat kuota utama habis.)
+   848→18. **BLOOM POST-PROCESSING = OVEREXPOSED untuk aura block BESAR**
+   849→    (Phase 65 v4, 2026-09-11, 7 ronde terukur): UnrealBloomPass dirancang
+   850→    untuk sumber KECIL (lampu/partikel/matahari). Block besar ±130px dgn
+   851→    emissive HDR 4-6 → bloom menutupi block sendiri (pusat overexposure
+   852→    putih), wood tetangga tersengat, hingga pojok layar; strength 1.6→0.2
+   853→    tak pernah stabil. SPRITE RADIAL tetap satu-satunya teknik aura block
+   854→    besar yang lolos verifikasi ganda (vision 5/5 + profil pixel mulus
+   855→    identik dataset). Bloom = opsional via toggle user saja.
+   856→    Sub-pelajaran terukur: threshold bloom pakai LUMINANCE (rumus
+   857→    0.2126R+0.7152G+0.0722B — r255 flat = 0.2126 SAJA, tidak otomatis
+   858→    lolos!); MeshBasic + color.multiplyScalar TIDAK lolos ke bloom
+   859→    (output colorSpace conversion menahan nilai).
+   860→19. **EMISSIVE FLAT = cara anti-shading yang benar** (Phase 65 v4):
+   861→    spek "flat tanpa shading" (MeshBasic-like) TAPI butuh light-aware
+   862→    features → pakai MeshStandardMaterial color HITAM + emissive warna
+   863→    intensity >1: emissive = self-illumination = FLAT rata semua sisi,
+   864→    kebal light. TRAP: MeshBasic TIDAK punya .emissive — set property
+   865→    itu = exception refreshUniformsCommon di three.module.js TIAP FRAME
+   866→    → render loop mati total, halaman kosong (screenshot murni bg).
+   867→    Bug gizmo terkait: highlight/unhighlight gizmo TIMPA emissive
+   868→    (biru saat dipilih → HITAM saat dilepas = warna glow hilang
+   869→    permanen) — guard isGlowBlock WAJIB di kedua jalur.
+   870→20. **COPY-PASTE LOGIC MATERIAL = BUG BERANTAI (Phase 66, 2026-09-11,
+   871→    laporan-bug-neon-block-3dblocksimulator.md)**: logic emissive
+   872→    highlight yang di-copy-paste inline ke 4+ tempat menyebabkan 3 bug
+   873→    sekaligus (undo/redo hitam, clone biru permanen, source hitam).
+   874→    ATURAN: logic yang menyentuh material block WAJIB SATU fungsi
+   875→    terpusat (setBlockHighlight) + guard flag (isGlowBlock) — menambah
+   876→    titik sentuh baru = wajib lewat fungsi itu, DILARANG inline lagi.
+   877→    Untuk undo/redo: snapshot HARUS menyimpan IDENTITAS block
+   878→    (userData.blockSlug + isGlow), bukan cuma warna — warna neon ada
+   879→    di emissive (color=#000000!), material generik restore = block
+   880→    hitam. Restore = makeBlockMaterial + attachBlockGlow (aura ikut).
+   881→    Trap test Node: module yang pakai TextureLoader/CanvasTexture butuh
+   882→    stub document.createElementNS + canvas 2d-context fake (gradient,
+   883→    fillRect, getImageData) SEBELUM import — tanpa itu ReferenceError.
+   884→21. **CHILD (sprite/aura/gizmo-helper) TIDAK IKUT material.clone()**
+   885→    (Phase 66 v2, 2026-09-11, bug user "clone/mirror neon → glow
+   886→    hilang!"): ghost/duplikat yang dibangun dari geometry.clone() +
+   887→    material.clone() kehilangan SEMUA children (sprite aura = child
+   888→    block). ATURAN: setiap titik duplikasi block (tool-switch ghost,
+   889→    klik clone, klik mirror, dan titik baru mana pun di masa depan)
+   890→    WAJIB: (a) copy userData identitas (blockSlug dsb.) secara
+   891→    eksplisit, (b) re-attach efek visual children via fungsi pembuatnya
+   892→    (attachBlockGlow dgn syarat def.glow dari registry — JANGAN
+   893→    hardcode slug), (c) greppable: cari semua 'material.clone()' dan
+   894→    audit satu-satu. Audit celah ikut nemu: panel emissive editor &
+   895→    applyPaint JUGA menimpa material — SEMUA penulis material block
+   896→    (setEmissive/paint/editor/ghost) wajib guard isGlowBlock; neon
+   897→    tidak boleh bisa dicat (identitas glow > paint manual).
+   898→22. **Tes zona-slice = FAIL palsu berulang (KE-4x)** (Phase 66): pola
+   899→    `sim.indexOf(anchor)` + slice ±N char salah menangkap komentar/
+   900→    definisi lain → tes merah padahal kode benar. ATURAN PRAKTIS:
+   901→    untuk fitur yang muncul N kali, pakai matchAll regex + verifikasi
+   902→    KONTEKS per-match (bukan 1 zona indexOf); kalau tes FAIL tapi grep
+   903→    manual membuktikan kode ada — perbaiki ANCHOR tes, jangan kode.
+   904→23. **SCALE BLOCK: clamp ABS + tiling UV, bukan texture.repeat**
+   905→    (Phase 67, 2026-09-11, 2 bug user "absolut semua block"):
+   906→    (a) TransformControls scale BEBAS melewati 0 → negatif = block
+   907→    "tembus ke belakang, jebol, membesar lagi" — WAJIB clamp per-sumbu
+   908→    absolut min (0.05), TANDA dipertahankan (kaca/mirror -x sah).
+   909→    (b) Tekstur melar saat scale = UV statis 0..1; texture di-SHARE
+   910→    lintas block (cache) → repeat per-block HARAM di texture — SOLUSI
+   911→    BENAR: mutasi UV geometry per-block (BoxGeometry unik per place;
+   912→    basis disimpan sekali di userData.__uvBase = idempoten tiap frame):
+   913→    wajah ±X repeat (|sz|,|sy|), ±Y (|sx|,|sz|), ±Z (|sx|,|sy|) —
+   914→    RepeatWrapping: >1 LOOP, <1 CROP. Integrasi 3 titik: drag
+   915→    (objectChange), place, restoreState (undo/redo scale tersimpan).
+   916→    (c) GUARD EARLY-RETURN di baris pertama handler = event mati total
+   917→    untuk semua mode lain — guard wajib DI DALAM cabang mode yang
+   918→    relevan (bug: snapMoveRef return-awal membuat objectChange tidak
+   919→    jalan saat snapMove off, termasuk scale).
+   920→24. **KESALAHAN v1 SCALE — TANDA MANA YANG DIPERTAHANKAN?** (Phase 67
+   921→    v2.1, 2026-09-11, ditangkap user "jebol ke arah lain lalu malah
+   922→    lanjut scale!"): clamp yang mempertahankan tanda HASIL drag SALAH —
+   923→    TransformControls baris 671: scale = _scaleStart × _tempVector2,
+   924→    _tempVector2 BEBAS negatif saat crossing → tanda hasil ≠ tanda
+   925→    identitas block. ATURAN: tanda yang sah = tanda _scaleStart (snapshot
+   926→    saat dragging-changed START); crossing nol = DINDING (mentok
+   927→    signRef × MIN_ABS, tidak terbalik, tidak membesar lagi seberang).
+   928→    Dan PELAJARAN VERIFIKASI TERPENTING: unit test clamp STATIS (kuset
+   929→    scale langsung) LULUS padahal drag nyata GAGAL — verifikasi fitur
+   930→    interaksi WAJIB mensimulasikan jalur aslinya (rumus library yang
+   931→    dibaca dari source +jalur app per frame), bukan fungsi terisolasi.
+   932→    Sintesis pointer event utk TransformControls TIDAK menyalakan drag
+   933→    internal — pakai replika rumus yang dibaca dari source library.
+   934→    KALAU USER bilang "masih bug" padahal unit testmu lulus: unit
+   935→    testmu yang salah jalur uji — jangan defensif, simulasi ulang.
+   936→25. **GIZMO BOLA SCALE BERGERAK — posisi vs bake vs factor kamera**
+   937→    (Phase 68, 2026-09-11): handle gizmo dipaksa position=worldPosition
+   938→    + scale=factor-kamera TIAP FRAME (baris 1613/1624) — menggeser bola
+   939→    hanya bisa SETELAH fungsi asli (pola wrapper Phase 52). Offset yang
+   940→    benar = UNIT×sign×distance×(|worldScale| − factor) dengan factor =
+   941→    ball.scale.x yang BARU diset fungsi asli — bake geometry IKUT
+   942→    di-scale handle, jadi tanpa −factor bola OVERSHOOT melewati tepi
+   943→    (terukur: scale-4 factor 2.057 → bola 2.53 vs tepi 2.0; vision
+   944→    menangkap "bola jauh di luar block"). worldScale live di
+   945→    controls._worldScale (baris 1143). Bola tetap bulat: geser position
+   946→    saja, jangan scale non-uniform. Harness mini TransformControls
+   947→    WAJIB set gizmoRoot.mode (properti gizmo, bukan tc) — tanpa itu
+   948→    wrapper blok-nya silent-skip.
+   949→26. **GAP GIZMO DEPAN SISI — perspektif mempersempit sisi dekat**
+   950→    (Phase 68 v2, 2026-09-11, user "bola kedeketan seperti menyatu"):
+   951→    offset v1 menaruh bola TEPAT DI PERMUKAAN sisi (gap 3D = 0) → nempel.
+   952→    WAJIB gap eksplisit (BALL_GAP) di luar tepi. Jebakan ukur: gap 3D
+   953→    simetris TAPI proyeksi kamera mempersempit sisi-dekat (0.35 unit →
+   954→    cuma 5px visual di sisi menghadap kamera, 30-40px di sisi jauh) —
+   955→    jangan menyetel gap dari 1 baris pixel saja; uji MINIMAL sisi
+   956→    dekat, dan pilih nilai yang sisi-dekatnya masih jelas (0.55 final).
+   957→    Verifikasi gap: scan pixel MULTI-BARIS (bola beda sumbu di baris
+   958→    beda) + vision rating keterpisahan.
+   959→27. **MENGGESER ELEMEN GIZMO = WAJIB GESER VISUAL + PICKER SENAMA**
+   960→    (Phase 68 v3, 2026-09-11, bug user "klik bola tak bisa tapi kursor
+   961→    ke pusat block mendadak bisa"): picker/hitbox bake DI GEOMETRY
+   962→    TERPISAH dari visual — menggeser mesh visual TIDAK menggeser
+   963→    hitbox. ATURAN: tiap elemen gizmo yang digeser, cari picker
+   964→    senama (nama sumbu + sisi via boundingBox center) dan geser
+   965→    dengan kompensasi selisih bake (center world picker = center
+   966→    world visual). 2 trap menyertai: (a) AXIS_HIDE_THRESHOLD 0.99
+   967→    menyembunyikan handle menghadap kamera + scale 1e-10 — untuk
+   968→    elemen BOLA pulihkan visible+scale SETELAH fungsi asli (dan
+   969→    jangan baca factor kamera dari elemen yang sedang di-hide);
+   970→    (b) harness mini TransformControls WAJIB mensimulasikan reset
+   971→    position picker per frame (loop handles baris 1601/1613) —
+   972→    tanpa itu offset menumpuk dan tes FAIL palsu.
+   973→28. **TEKSTUR POLOS × WARNA MATERIAL utk desain visual berulang**
+   974→    (Phase 69, 2026-09-11, desain tengah bola gizmo): tiru STRUKTUR
+   975→    referensi TANPA meniru warna → gambar texture PUTIH+alpha (canvas:
+   976→    pattern/diamond glow + titik gelap) sebagai `map`; warna identitas
+   977→    tetap dari material.color (map dikali color). Texture SHARED 1x
+   978→    cache — hemat memori; grid pattern 3x3 supaya tiap sisi menghadap
+   979→    user selalu menampilkan 1 pattern dominan. Untuk elemen yang
+   980→    material-nya di-SHARE (rotate bola share materialLib): buat material
+   981→    BARU per elemen, copy warna SEBELUM frame pertama (cache _color
+   982→    kontrak #5 menyimpan warna asli → highlight hover tetap bekerja
+   983→    karena library men-copy active.color LANGSUNG ke material), dan
+   984→    WAJIB dispose() di cleanup (tidak lagi share).
+   985→    Outline hover per-tool (scale=oranye #f59e0b, paint=putih/warna
+   986→    user, delete=merah): pola highlightBlock(block, mode) — cabang
+   987→    mousemove per tool, mousemove TIDAK diblokir saat gizmo attach
+   988→ (tidak ada guard) → outline muncul walau block sudah terpilih.
+   989→ 29. **SPRITE CHILD MESH BAKE-GEOMETRY — posisi child = space GEOMETRY,
+   990→ bukan dunia** (Phase 69 v2, 2026-09-13, commit 51a066e): bola gizmo
+   991→ diposisikan via geo.translate() (jejak kontrak: position ditimpa tiap
+   992→ frame → bake ke geometry) → mesh.position=(0,0,0) adalah ORIGIN GIZMO,
+   993→ BUKAN pusat bola. Sprite child di (0,0,0) = kristal nangkring di pusat
+   994→ block (6 kristal numpuk, offset terukur 0.55 = distance bake). CARA
+   995→ BENAR: pusat objek bake = pusat BBOX GEOMETRY ((max+min)/2) — hitung
+   996→ di attach, jangan percaya mesh.position. Butir 28 di atas (texture
+   997→ PUTIH+alpha sebagai map bola) SUPERSEDE untuk kasus bola: user 2026-09-12
+   998→ koreksi "bukan texture map permukaan — jadi titik hitam 6 sisi; yang
+   999→ benar SATU kristal 2D DI DALAM perut bola" → THREE.Sprite billboard
+  1000→ (selalu menghadap kamera) child bola, material depthTest/Write false +
+  1001→ toneMapped false, renderOrder 1001 > bola 1000.
+  1002→ 30. **renderOrder Infinity vs Infinity = TIEBREAK material.id — TIDAK
+  1003→ deterministik** (Phase 69 v2): gizmo library set renderOrder=Infinity
+  1004→ (TransformControls baris 1541) — sprite child bola juga butuh
+  1005→ dirender SETELAH bola; dua Infinity di-sort via material.id (mesh vs
+  1006→ sprite bisa bolak-balik). CARA BENAR: pasang pasangan eksplisit
+  1007→ deterministik (bola 1000 < kristal 1001) — urutan ascending renderOrder
+  1008→ DIJAMIN painterSortStable (opaque) & reversePainterSortStable (transparan,
+  1009→ tiga.module.js 8112/8142: groupOrder → renderOrder → z → material.id).
+  1010→ Cek dulu renderOrder scene lain (sprite aura block = 3) supaya tidak
+  1011→ tabrak.
+  1012→ 31. **KODE WARISAN SESI MATI = WAJIB AUDIT RED SEBELUM DIPERCAYA**
+  1013→ (Phase 69 v2, pelajaran lintas-sesi): sesi sebelumnya mati kena 429
+  1014→ di tengah tugas (context 795K token) — kode sudah ditulis tapi
+  1015→ TIDAK PERNAH diverifikasi (server test bahkan belum dijalankan).
+  1016→ Ditemukan 3 bug nyata di kode warisannya: sprite offset 0.55,
+  1017→ konstanta outline 0.045 (3x lebih tipis dari tampilan disetujui),
+  1018→ renderOrder Infinity dobel. ATURAN: menerima tugas "lanjutkan sesi
+  1019→ mati" = tulis RED test untuk SEMUA asumsi kode warisan DULU;
+  1020→ "sudah ditulis ≠ sudah benar". File .git status modified tanpa commit
+  1021→ terakhir = tanda kerja setengah jalan.
+  1022→ 32. **KONSTANTA DESAIN YANG SUDAH DISETUJUI USER = DIKUNCI SAAT REFACTOR**
+  1023→ (deleteWireframe v4, 2026-09-13): user setujui outline 13% (v3,
+  1024→ verifikasi vision 5/5). Saat refactor UV→world-space, sesi mati
+  1025→ memilih 0.045 unit "kira-kira" = 3x LEBIH TIPIS dari tampilan
+  1026→ disetujui. KONVERSI yang benar: 13% × wajah block standar 1x = 0.13
+  1027→ unit dunia — jaga NILAI VISUAL, bukan angka acak. Tes asersi harus
+  1028→ mengunci nilai (FRAME_WORLD_WIDTH === 0.13).
+  1029→ 33. **Pitfall tes attachPaintedFrame (idempoten 1-frame-per-block)**
+  1030→ (Phase 69 v2): attach warna B ke block yang SUDAH ber-frame warna A
+  1031→ = mengembalikan frame A (guard by design, cache key per warna) —
+  1032→ asersi "warna B terpasang" = FAIL PALSU. Gunakan block BARU atau
+  1033→ detach dulu. Catatan warna delete: normalisasi cache key
+  1034→ (getHexString clamp) membuat multiplyScalar(4) efektif netral —
+  1035→ warna efektif #ff0a0a murni, IDENTIK v3 committed; dibiarkan.
+  1036→ 34. **Token GitHub di .env bisa EXPIRED berurutan** (2026-09-13): ghp_
+  1037→ pertama (24-char) → 401 Bad credentials; kedua (40-char) aktif.
+  1038→ Verifikasi push wajib GitHub API — kalau 401, cek token berikutnya
+  1039→ kedua di .env (ada 2), jangan langsung anggap push gagal.
+  1040→ 35. **PMREM/envMap DALAM MODULE UTILS BUTUH RENDERER** (Phase 70,
+  1041→ 2026-09-13, f48a53b): module material tidak punya renderer saat
+  1042→ load — pola benar: setXxxRenderer(renderer) di-wire dari init
+  1043→ scene app (BlockSimulator3D setelah new WebGLRenderer). RoomEnvironment
+  1044→ stock = langit-langit putih SERAGAM → refleksi flat "washed out"
+  1045→ (vision 2/10) — envMap KONTRAS custom (ruang gelap + PANEL TERANG
+  1046→ besar hangat, PlaneGeometry MeshBasic HDR toneMapped:false, PMREM
+  1047→ fromScene) = hotspot kilau terlihat DALAM wajah. Kalibrasi terukur:
+  1048→ panel kecil (4x3, intensity 6) → gold GELAP avg 128; panel besar
+  1049→ (12x8, intensity 24) → 223. Solid angle panel harus dominan.
+  1050→ 36. **METALNESS TINGGI MEMATIKAN TEXTURE** (Phase 70): metalness 0.95
+  1051→ = refleksi murni, diffuse map nyaris nol → gold jadi "plastik
+  1052→ kuning solid TANPA texture" (vision) padahal user bilang "teksturnya
+  1053→ sudah benar" = wajib terlihat. 0.7 = kilau refleksi + texture masih
+  1054→ hidup. Dan emissive baseline MENURUNKAN kontras kilau (terukur rasio
+  1055→ max/min 1.18→1.35→emissive 0) — logam berkilau = kontras, bukan
+  1056→ terang rata.
+  1057→ 37. **IMPORT PATH 'three/addons/*' HANYA UNTUK BUNDLER** (Phase 70):
+  1058→ eksis via package.json exports — harness importmap browser TIDAK
+  1059→ membacanya (404, halaman kosong 3.9KB). Selalu import via
+  1060→ 'three/examples/jsm/*' — resolve di Vite DAN harness. Deteksi cepat:
+  1061→ screenshot 3-4KB = import gagal; error-trap window.addEventListener
+  1062→ 'error' → dump ERR: ke DOM = diagnosis tercepat headless.
+  1063→ 38. **MODUL POLA-PARAMETER-THREE (TANPA import THREE)**: fungsi internal
+  1064→ JANGAN pakai `new THREE.Color(...)` — ReferenceError saat runtime
+  1065→ (tertangkap error-trap). Pakai metode objek milik material:
+  1066→ mat.emissive.set(hex). blockMaterials.js memang pola THREE-lewat-
+  1067→ parameter — cek pola modul SEBELUM menulis kode internal barunya.
+  1068→ 39. **PIXEL-CHECK BOLA GIZMO — 4 JEBAKAN SEKALIGUS** (Phase 70): (a)
+  1069→ radius proyeksi ≠ radius pixel — gizmo di-scale factor kamera,
+  1070→ ukur radius disk dari DUMP RGB nyata (bola murni 24px terukur);
+  1071→ (b) KRISTAL putih pusat bola = elemen SAH — jangan dihitung
+  1072→ "garis asing" (klasifikasi saturasi: putih/abu sat<0.25 = sah);
+  1073→ (c) cincin SENAMA menempel bola → pengukuran radius sinar melebar
+  1074→ sampai cincin (R=39 padahal 12) — pakai nilai dump; (d) koordinat
+  1075→ bola dari bbox GEOMETRY (posisi bake) × matrixWorld — getWorldPosition
+  1076→ mesh position=0 = origin GIZMO, bukan pusat bola (warisan #29).
+  1077→ 40. **REGRESI renderOrder ANTO-GIZMO** (Phase 70, pelajaran penting):
+  1078→ mengubah renderOrder SATU elemen gizmo (bola 1000 utk kristal)
+  1079→ MENGUBAH urutan relatif SEMUA elemen lain yang tetap Infinity
+  1080→ (cincin library baris 1541) — cincin yang dulu "kalah tiebreak
+  1081→ material.id" kini MENANG dan nembus bola. ATURAN: setelah ubah
+  1082→ renderOrder elemen gizmo mana pun, AUDIT semua elemen visual
+  1083→ tetangga di mode itu (bola/cincin/kristal/panah) — pasang urutan
+  1084→ eksplisit penuh (999 cincin < 1000 bola < 1001 kristal).
+  1085→ 41. **KALIBRASI BRIGHTNESS: TARGET = WAJAH DEPAN REFERENSI, BUKAN AVG
+  1086→ GAMBAR PENUH** (Phase 70 v2, b98baee, 2026-09-13): user bilang hasil
+  1087→ v1 "terlalu terang = MELAWAN DATASET". Akar: target v1 kupakai avg
+  1088→ luminance SELURUH gambar tampak3D (termasuk wajah atas paling terang
+  1089→ yang terkena cahaya langsung) → membiaskan +60%. Target benar =
+  1090→ luminance WAJAH DEPAN referensi (obsidian 69.1, fabric 51.5, coal
+  1091→ 58.0). Kalibrasi gamma via model empiris display≈a·v^(1/γ) 2 titik
+  1092→ per block: obsidian γ3.0, fabric γ3.5, coal γ5.0 — hasil +2..3%.
+  1093→ DAN: saturasi dataset = IDENTITAS (coal kebiruan dataset SAH —
+  1094→ desat 0.2 v1 = melawan dataset, dicabut).
+  1095→ 42. **RADIAL CANVAS → UV SPHERE = LINGKARAN DI EQUATOR, BUKAN RADIAL
+  1096→ DARI PUSAT PANDANGAN** (Phase 70 v2, kegagalan JENIS ke-2 setelah
+  1097→ Phase 69 v1 "titik hitam 6 sisi"): memetakan tekstur radial ke UV
+  1098→ SphereGeometry menghasilkan lingkaran konsentris di sekitar garis
+  1099→ equator — dari sudut pandang kamera tampak "directional shading
+  1100→ flat" (vision 3/10), bukan permata menyala dari pusat. Glow yang
+  1101→ harus menghadap kamera dari SEMUA arah WAJIB SPRITE BILLBOARD
+  1102→ (pola aura neon Phase 65) — mesh hanya backdrop gelap (identitas ×
+  1103→ 0.18). Struktur bola permata final: mesh 1000 < gem sprite
+  1104→ AdditiveBlending 1001 < kristal 1002 (cincin 999).
+  1105→ 43. **attachXxx YANG MENGUBAH material.color DILARANG MEMBACA IDENTITAS
+  1106→ DARI MATERIAL YANG SAMA** (Phase 70 v2, bug terukur): bola scale
+  1107→ SHARE material antar pasangan ±X/±Y/±Z — attachGemOverlay v1 baca
+  1108→ identitas dari ball.material.color lalu menggelapkannya → bola
+  1109→ KEDUA dari tiap pasangan membaca warna yang SUDAH ×0.18 → gem pudar
+  1110→ (pixel: hanya 3/6 bola menyala). ATURAN: fungsi pemasang efek yang
+  1111→ memodifikasi material WAJIB terima identitas sebagai PARAMETER
+  1112→ EKSLISIT (identColor), jangan pernah baca-tulis material yang sama.
+  1113→ Node test khusus shared-material mencegah regresi.
+  1114→ 44. **ASERSI WARNA THREE.JS = LINEAR, BUKAN sRGB** (Phase 70 v2):
+  1115→ THREE.Color('#EFBF04').r = 0.8632 (sRGB→linear transfer), bukan
+  1116→ 239/255=0.937 — asersi angka manual sRGB = FAIL palsu. Selalu
+  1117→ bandingkan terhadap konversi THREE.Color sendiri (new
+  1118→ THREE.Color('#hex') sebagai referensi), bukan aritmetika manual.
+  1119→ 45. **CANVAS RADIAL GRADIENT CLAMP STOP TERAKHIR KE AREA LUAR RADIUS**
+  1120→ (Phase 70 v3, a32b312, 2026-09-13): stop alpha terakhir (0.13 di
+  1121→ r=SIZE/2) di-CLAMP ke SELURUH area canvas di luar radius — sprite
+  1122→ quad = 4 SUDUT bercahaya samar = "bayangan kotak" di sekitar bola
+  1123→ (laporan user, terukur 2/8 diagonal luar disk lum 79-84 vs bg 17;
+  1124→ awalnya user ragu "halusinasi saya?" — GEJALA NYATA). ATURAN: sprite
+  1125→ radial WAJIB (a) ctx.beginPath+arc+ctx.clip() LINGKARAN sebelum
+  1126→ fill, (b) stop 1.00 = alpha 0 (fade ke nol di siluet), bukan nilai
+  1127→ sisa.
+  1128→ 46. **TANGENT/VEKTOR DRAG DARI STATE-OBJECT-YANG-SEDANG-DIUBAH = ARAH
+  1129→ FLIP MID-DRAG** (Phase 70 v3, laporan user "asik rotate tiba-tiba
+  1130→ ke kiri malah ke kanan"): tangent rotate dihitung dari
+  1131→ worldQuaternion TIAP FRAME — object dirotasi terus selama drag →
+  1132→ quaternion berubah → pada rotasi ~90° tangent FLIP TANDA →
+  1133→ dot product berbalik → objek berputar MELAWAN kursor (probabilistik:
+  1134→ muncul hanya di drag panjang — "kadang"). ATURAN: vektor referensi
+  1135→ gesture WAJIB DI-FREEZE di langkah pertama gesture (init block),
+  1136→ reset di pointerUp; jangan pernah dibaca live dari objek yang
+  1137→ dimodifikasi gesture itu sendiri. Patch pendamping: definisikan
+  1138→ variabel lokal SEBELUM blok yang memakainya (TDZ — patch pertama
+  1139→ latent ReferenceError).
+  1140→ 47. **ELEMEN DESAIN "KECIL" = KALIBRASI KE PIXEL LAYAR, BUKAN HANYA
+  1141→ RASIO REFERENSI** (Phase 70 v3): dot pusat kristal 0.022×texture =
+  1142→ 0.78px pada bola layar 57px = SUB-PIXEL tak terbaca meski rasio
+  1143→ benar vs referensi (bola referensi 322px di-zoom penuh). Iterasi
+  1144→ terukur: 0.022 → 0.040 masih 0.78px — sub-pixel; 0.045 + sprite
+  1145→ 17%→22% = ~1.5px TERBACA (vision konfirmasi). ATURAN: elemen kecil
+  1146→ WAJIB diuji pada ukuran layar NYATA app, hitung px-akhir-nya,
+  1147→ minimum ~1.5px agar tidak lenyap.
+  1148→ 48. **VERIFIKASI VISION WAJIB SIDE-BY-SIDE DENGAN REFERENSI**
+  1149→   (Phase 70 v4, d3a60f7, 2026-09-13 — LARANGAN USER "dilarang menebak
+  1150→   pakai pixel, WAJIB vision Google"): klaim "lulus vision" dari zoom/
+  1151→   close-up TERISOLASI = LULUS PALSU — v3-ku divonis benar oleh vision
+  1152→   zoom tunggal, lalu divonis SALAH TOTAL oleh compare berdampingan
+  1153→   dengan referensi (diamond bahkan tak terlihat). ATURAN: verifikasi
+  1154→   desain visual = COMPOSITE KIRI(referensi)+KANAN(hasil) dalam satu
+  1155→   gambar, tanya vision BEDA apa saja secara eksplisit; iterasi sampai
+  1156→   vision bilang konfirmasi; skor per ronde dicatat (9 ronde v4:
+  1157→   3→7.5→5.5→6→6.5→6.5→6.5→8.5→9.5).
+  1158→ 49. **DUA SPRITE OVERLAP = HUE SHIFT TAK TERKENDALI** (Phase 70 v4,
+  1159→   terukur): komposisi gem AdditiveBlending + kristal NormalBlending di
+  1160→   posisi sama = kanal G melambung (pixel 253,186,41 = kuning murni
+  1161→   padahal tint #FF7A1A oranye) — tint apapun kalah oleh penumpukan,
+  1162→   hue hasil SELALU geser kuning/brass (7 ronde vision gagal karena
+  1163→   ini). SOLUSI: desain glow = SATU sprite, SEMUA elemen (rim + halo
+  1164→   + diamond + titik) digambar LANGSUNG warna final di canvas, nol
+  1165→   tint runtime = nol hue-shift; NormalBlending; identitas tool via
+  1166→   blend ringan Color.lerp (0.38) bukan tint penuh.
+  1167→ 50. **TRANSFORMCONTROLS TIDAK MERESAH rotationAngle ANTAR SESI DRAG**
+  1168→   (Phase 70 v4, bug "menggila 360°"): library hanya menulis
+  1169→   rotationAngle di pointerMove (baris 706+) — TIDAK ada reset di
+  1170→   pointerDown (init 0 hanya di konstruktor baris 375). Override
+  1171→   kumulatif (prevRawAngle+delta) yang baseline-nya dari this
+  1172→   .rotationAngle = mewarisi sudut BASI sesi sebelumnya → drag baru
+  1173→   melompat/menggila, "kadang kembali kadang tidak". FIX: baseline = 0
+  1174→   di blok init drag + reset _dragAngleInit di pointerUp (pose start
+  1175→   aman di _quaternionStart yang memang diset library per pointerDown).
+  1176→   51. **MESH GIZMO "BACKDROP" TETAP DIRENDER = BOLA DOBEL**
+  1177→   (Phase 70 v5, 7dc61a5, 2026-09-13, laporan user "ada bola lain kuning
+  1178→   di belakang, lebih besar, muncul sejak awal; saat hover DIA yang
+  1179→   kuning"): mesh sphere backdrop bola gizmo (#6b3007) ikut dirender —
+  1180→   sphere di-scale FACTOR KAMERA per frame tampak lebih besar dari disk
+  1181→   sprite orb = bola kedua; hover library menimpa materialnya kuning
+  1182→   (baris 1884) = "bola belakang" yang menyala. CARA BENAR sembunyikan
+  1183→   mesh interaktif: material.visible = false — TIDAK dirender TAPI
+  1184→   TETAP KE-REYCAST (terbukti Raycaster test; opacity 0 juga kena) —
+  1185→   picker & hover axis detection tetap hidup.
+  1186→   52. **HOVER TINT PER-OBJEK MENUNTUT MATERIAL UNIK PER-OBJEK**
+  1187→   (Phase 70 v5): material orb yang di-cache SHARED (per warna) →
+  1188→   hover men-tint satu = SEMUA bola sewarna ikut kuning. Texture tetap
+  1189→   boleh shared 1x (hemat), material WAJIB clone per-objek. Pola
+  1190→   hover-orb: applyOrbHover(balls, tc.axis, tc.dragging) dipanggil
+  1191→   dari wrapper updateMatrixWorld SETELAH fungsi asli; tint rest
+  1192→   disimpan sprite.userData.__restTint; pulih tiap frame.
+  1193→   53. **PATCH HAPUS-DUPLIKAT WAJIB DIFF-CHECK BLOK TETANGGA**
+  1194→   (Phase 70 v5, nyaris fatal): saat menghapus call applyOrbHover
+  1195→   duplikat, old_string-ku terlalu panjang sampai menelan blok
+  1196→   world-align Phase 52 (fitur lain yang jalan!) — terhapus.
+  1197→   KETANGKAP karena node --check + verifikasi diff sebelum commit,
+  1198→   langsung dipulihkan. ATURAN: sebelum commit apa pun setelah patch
+  1199→   penghapusan, `git diff | grep "^-"` — pastikan baris yang hilang
+  1200→   HANYALAH yang memang dituju; JANGAN patch berbasis snippet parsial
+  1201→   tanpa membaca konteks penuh file.
+  1202→   54. **OFFSET HANDLE GIZMO WAJIB SATU FRAME REFERENSI DENGAN BAKE**
+  1203→   (Phase 70 v6, ae69399, 2026-09-13, laporan user "posisi bola scale
+  1204→   sangat aneh saat block miring"): bake geometry bola dirotasi
+  1205→   worldQuaternion block (mode scale dipaksa local, baris 1585) —
+  1206→   TAPI offset position menambah arah SUMBU DUNIA = campur 2 frame
+  1207→   → bola nyasar + drift lateral (RED: err 0.21-0.39, lateral 0.73).
+  1208→   FIX: offset = axisLocal × worldQuaternion (sumbu block di dunia,
+  1209→   live per frame); picker cone senama ikut (warisan #27). Gap di-
+  1210→   kompensasi factor kamera (GAP/factor). GREEN 6/6 err 0.000.
+  1211→   55. **VERIFIKASI POSISI GIZMO = 3 LAPIS + WASPADA FALSE VISION**
+  1212→   (Phase 70 v6): vision 2x salah klaim ("bola nyasar" — ternyata
+  1213→   blob TEKSTUR batu oranye; "1 bola melayang di atas balok kayu" —
+  1214→   ternyata bola X+ block batu yang memang tinggi di layar karena
+  1215→   block miring, posisi world ideal). Bukti penentu = PROYEKSI EKSAK
+  1216→   runtime (posisi screen tiap bola dari data 3D) dicocokkan ke blob
+  1217→   pixel: 6 bola = 6 blob, NOL bola ke-7. ATURAN: posisi gizmo
+  1218→   diverifikasi vektor (probe Node) + proyeksi eksak → pixel cocok;
+  1219→   vision hanya konfirmasi arah/orientasi (sejajar rusuk block),
+  1220→   klaim "nyasar" vision WAJIB dibuktikan dengan proyeksi eksak
+  1221→   sebelum dijawab dengan kode. DAN: server test file bisa tertimpa
+  1222→   proses lain — selalu `curl -s url | grep title` SEBELUM percaya
+  1223→   screenshot (2x kejadian sesi ini: file lama ter-serve → verifikasi
+  1224→   total menyesatkan).
+  1225→   56. **TEXTURE TURUNAN (DERIVED) = UBAH KARAKTER TANPA SENTUH LOCK**
+  1226→   (Phase 70 v7, 81ec000, 2026-09-13, laporan user "bola rotate
+  1227→   warnanya KEBALIK — dalam harus GELAP, kulit MENTOK warna; design
+  1228→   bentuk DILARANG DIUBAH"): texture orb dipakai 2 gizmo dgn profil
+  1229→   luminance berlawan kebutuhan (scale: tepi gelap→inti terang;
+  1230→   rotate minta KEBALIKANNYA). Solusi: getOrbInvTexture() TURUNAN
+  1231→   canvas — salin canvas LOCK → getImageData → balik luminance per
+  1232→   pixel dgn FLOOR (inv = 80+(255−lum)×0.72: inti 245→87 gelap
+  1233→   BUKAN hitam-total agar tetap "merah gelap" saat di-tint; tepi
+  1234→   51→227 hampir penuh) → ALPHA/SILUET TIDAK DISENTUH (bentuk
+  1235→   design 100% identik) → CanvasTexture baru. Seleksi via identMix:
+  1236→   >= 1.0 (rotate) = invers, 0.38 (scale LOCK) = texture asli —
+  1237→   test Node memastikan getImageData TIDAK dipanggil utk scale.
+  1238→   ATURAN: kebutuhan visual berbeda antar tool dari texture sama =
+  1239→   buat TURUNAN canvas, JANGAN ubah asli; modifikasi pixel di rumus
+  1240→   (bukan gambar ulang) = reproducible & Node-testable.
+  1241→   57. **INVERSI/TURUNAN TEXTURE UNTUK TINT MULTI-WARNA WAJIB
+  1242→   GRAYSCALE MURNI** (Phase 70 v8, fa43a94, 2026-09-13, 3 komplain
+  1243→   user: "dalam HITAM harusnya merah TUA; hijau KURANG MAKSIMAL;
+  1244→   biru GELAP BANGET"): inversi v7 mempertahankan rasio channel
+  1245→   texture amber (R tinggi/G sedang/B rendah) → tint per warna
+  1246→   mengambil 1 channel: merah untung mentok, hijau ~138/255
+  1247→   (pudar), biru ~46/255 (gelap) — KEKUATAN WARNA TIDAK ADIL antar
+  1248→   tint. FIX: hasil invers R=G=B=inv (grayscale murni) — semua tint
+  1249→   identik kuat (terukur 204/209/212); floor "gelap" yang diminati
+  1250→   user = 120-140/255 (TUA kaya), BUKAN <90 (tampak hitam): inti
+  1251→   245→127. ATURAN: turunan texture yang akan di-tint berbagai
+  1252→   warna WAJIB dinetralkan grayscale; nilai "gelap" estetik diuji
+  1253→   angka (bukan kira-kira) — <90 = hitam bagi mata, 120-140 = TUA.
+  1254→   58. **"GELAP ESTETIK" ITU RELATIF KONTRAST SEKITAR** (Phase 70 v9,
+  1255→   af63cc4, 2026-09-13, laporan user "dalam masih HITAM padahal
+  1256→   v8 sudah 127"): 127 sendirian memang "TUA", tapi ditempel kulit
+  1257→   terang 252 → persepsi mata jadi HITAM (kontras lokal). Kalibrasi
+  1258→   final terukur: area gelap yang harus TERLIHAT SEBAGAI WARNA di
+  1259→   sebelah area terang ≥ 155-160/255. Pola fix presisi: Math.max(
+  1260→   160, rumus-lama) — otomatis HANYA mengangkat pixel gelap; pixel
+  1261→   terang (kulit) nilainya sudah >160 → NOL PERUBAHAN pada area
+  1262→   yang sudah diverifikasi user (jaga LOCK pasca-verifikasi).
+  1263→   Catatan: titik marker pusat bola sengaja dibiarkan gelap — itu
+  1264→   bagian design LOCK, jangan dianggap bug saat pixel-scan.
+  1265→
+  1266→ ════════════════════════════════════════════════════════════════════
+  1267→ ATURAN MUTLAK #10 — ROTASI API KEY VISION (PERINTAH USER 2026-09-13,
+  1268→ "INI KESALAHAN FATAL! TIDAK ADA Pengecualian!! MENGikat SEMUA AI")
+  1269→ ════════════════════════════════════════════════════════════════════
+  1270→ USER: "Saya sudah capek capek sediakan 3 key tambahan kok gak
+  1271→ dipakai?! Jika key 1 abis total, sistem WAJIB MENGARAHKAN DENGAN
+  1272→ PAKSA AI untuk SEGERA memakai key berikutnya DENGAN PAKSA dan
+  1273→ TIDAK PUNYA IZIN UNTUK MENOLAK! Bahkan jika AI menolak, ada
+  1274→ peringatan berlapis-lapis yang memaksa AI tetap memakai key
+  1275→ selanjutnya; jika itu abis lagi, lanjut key berikutnya lagi —
+  1276→ terus sampai semua habis. Jika SEMUA key habis → WAJIB BERHENTI,
+  1277→ DILARANG MENEBAK-NEBAK, wajib lapor user dengan JUJUR bahwa
+  1278→ semua sudah habis dan perlu key baru atau menunggu cooldown."
+  1279→ DIFIKSASI SEBAGAI HUKUM (teruji diagnosis af63cc4: key utama 429
+  1280→ habis total, key 2/3/4 sehat semua — tapi AI tidak otomatis
+  1281→ memakainya karena vision_analyze hanya membaca GOOGLE_API_KEY
+  1282→ utama; 3 key sehat user NGANGGUR. FATAL — jangan terulang):
+  1283→ 1. TAHAP 0 (SEBELUM verifikasi visual APA PUN): cek dulu key
+  1284→  mana yang hidup — panggil Gemini generateContent langsung per
+  1285→  key (test kecil text-only ~1 token, hemat kuota) urut
+  1286→  GOOGLE_API_KEY → _2 → _3 → _4.
+  1287→ 2. Key pertama yang merespons 200 = KEY AKTIF. GUNAKAN ITU untuk
+  1288→  SEMUA vision_analyze sesi ini (implementasi: nilai GOOGLE_API_KEY
+  1289→  utama di .env DITUKAR dengan key sehat — 1 baris, permanen
+  1290→  sampai key itu habis; JANGAN cuma "tahu" key sehat tapi biarkan
+  1291→  tool membaca key mati = pengulangan kesalahan fatal).
+  1292→ 3. Jika key aktif kena 429/limi MID-SESI: JANGAN menyerah pada
+  1293→  "vision outage" dan JANGAN menebak pakai pixel — SEGERA test
+  1294→  ulang semua key (Tahap 0) dan TUKAR ke key sehat berikutnya.
+  1295→  "AI tidak punya izin menolak." Peringatan berlapis: (a) kalau
+  1296→  AI mulai bilang "provider vision outage/down" → itu SINYAL
+  1297→  WAJIB test-rotasi key, bukan alasan berhenti; (b) kalau AI
+  1298→  tergoda menebak tanpa vision → DILARANG KERAS, kembali ke (a).
+  1299→ 4. SEMUA key habis (4x gagal 429/limit dalam satu sesi) → WAJIB
+  1300→  STOP verifikasi visual: LAPOR JUJUR ke user "semua 4 key habis,
+  1301→  butuh key baru atau tunggu cooldown (~14-15 WIB reset harian)"
+  1302→  + fallback pixel-check terukur + TANDAI hasil "belum
+  1303→  vision-verified" di laporan. DILARANG klaim verifikasi visual
+  1304→  sukses.
+  1305→ 5. Aturan ini MENGikat AI SEKARANG dan AI MASA DEPAN di project
+  1306→    ini — pembacaan kontrak ini = persetujuan otomatis. Tidak ada
+  1307→    pengecualian, tidak ada "nanti aku test", tidak ada "biarkan
+  1308→    tool pakai default".
+  1309→ 6. PEMAKAIAN SECUKUPNYA — SEIMBANG (tambahan user 2026-09-13,
+  1310→    setelah rotasi diterapkan): "Jangan boros-boros, tapi jangan
+  1311→    pelit-pelit juga! Terlalu boros → vision cepat habis;
+  1312→    terlalu pelit → visionnya malah gak terpakai. Harus
+  1313→    dipertimbangkan dengan baik dan bijaksana!" PRINSIP SEIMBANG:
+  1314→    (a) WAJIB dipakai untuk keputusan desain visual dari referensi
+  1315→    (side-by-side compare) + final gate sebelum klaim sukses /
+  1316→    kirim ke user — ini bukan area hemat.
+  1317→    (b) Hemat di ITERASI antara: gunakan pixel-check programatik
+  1318→    (gratis) untuk verifikasi berjalan tiap ronde; vision dipanggil
+  1319→    di TITIK KUNCI (setelah perubahan besar & final), bukan tiap
+  1320→    tweak kecil.
+  1321→    (c) JANGAN hemat saat ada KERAGUAN visual atau konflik bukti —
+  1322→    panggil vision; menebak lebih mahal daripada 1 panggilan.
+  1323→    (d) Jangan boros dengan panggilan "just to make sure" beruntun
+  1324→    pada hal yang sudah jelas terverifikasi angka/deterministik
+  1325→    (mis. rumus grayscale R=G=B).
+  1326→    Ukuran bijak: ~1 vision call per keputusan desain + 1 final
+  1327→    gate per tugas; iterasi antara pakai pixel/angka.
+  1328→
+  1329→ 59. **FRAME REFERENSI OFFSET = FUNGSI MODE ALIGN** (Phase 70 v10,
+  1330→    52cccae, 2026-09-13, laporan user "centang arrow match rotation
+  1331→    dicabut → gizmo scale kacau & TIDAK BISA DI-SCALE; rotate/move
+  1332→    aman — kenapa hanya dia?"): wrapper yang memaksa quaternion
+  1333→    .identity() pada satu mode (Phase 52 world-align/unchecked)
+  1334→    mengubah FRAME REFERENSI bake bola — rumus offset v6 hanya
+  1335→    mengenal frame sumbu-block → campur frame cermin: 4/6 bola
+  1336→    nyasar + picker lepas = klik tak kena = "tidak bisa di-scale".
+  1337→    Kenapa CUMA scale: bola scale SATU-SATUNYA handle yang digeser
+  1338→    manual via offset rumat sendiri; rotate/move dikelola library
+  1339→    langsung (otomatis per-mode). ATURAN: setiap rumus offset yang
+  1340→    menyentuh handle gizmo WAJIB bercabang per-mode align
+  1341→    (tercentang = axisLocal × worldQuaternion; dicabut = axisLocal
+  1342→    murni/sumbu dunia) — dan WAJIB uji KEDUA mode setiap kali
+  1343→    offset disentuh (bug v6 & v10 = pasangan cermin; satu GREEN
+  1344→    mode tidak cukup).
+  1345→ 60. **TELEGRAM sendPhoto PNG BESAR BISA GAGAL 3x SILENT**
+  1346→    (Phase 70 v10): PNG 63KB ditolak 3x (HTTPError tanpa body di
+  1347→    attempt-loop) — kompres ke JPG thumbnail 640px ~13KB = lolos
+  1348→    instan. ATURAN: kalau sendPhoto gagal 2x, jangan ulang PNG
+  1349→    sama — konversi JPG quality 85 + thumbnail dulu.
+  1350→
+  1351→ 61. **PEMBAGIAN OLEH FACTOR KAMERA ∝ SIZE = LEDAKAN SAAT MENGECIL**
+  1352→    (Phase 70 v11, 7332b00, 2026-09-13, laporan user "hitbox KADANG
+  1353→    lenyap padahal visual aman"): BALL_GAP/factor meledak saat block
+  1354→    di-scale mengecil — factor ∝ size: size 0.01 → offset 110 unit
+  1355→    → bola & picker cone terlempar → hitbox lepas dari klik.
+  1356→    "Kadang" = non-linear: statis normal (probe 2 kamera 0 issue),
+  1357→    mid-drag ekstrem meledak. ATURAN: (a) semua offset berbasis
+  1358→    factor kamera WAJIB clamp minimum sebelum pembagian
+  1359→    (Math.max(factor, 0.35)); (b) uji ekstrem KECIL bukan hanya
+  1360→    besar — bug hidup di arah yang jarang diuji; (c) gejala
+  1361→    "kadang hilang pasca-scale" = periksa dulu fungsi 1/f dalam
+  1362→    rumus offset sebelum menuduh AXIS_HIDE.
+  1363→ 62. **KOMPENSASI SELISIH BAKE ANTAR-HANDLE WAJIB ×FACTOR KAMERA**
+  1364→    (Phase 70 v12, 611c803, 2026-09-14, laporan user "masih bandel —
+  1365→    cuma 2 bola bisa dipencet, hitbox kabur"): offC lama = off + 0.2
+  1366→    MENTAH — padahal bake cone (0.3) & bola (0.5) DI-SCALE FACTOR di
+  1367→    ruang dunia (library baris 1627: handle.scale = f×size/4) → selisih
+  1368→    dunia = 0.2×f, konstanta lokal hanya benar di f=1 (tidak pernah:
+  1369→    f terukur 1.6-17.4). Akibat: cone menumpuk di PUSAT block (terukur
+  1370→    cone 0.07 vs bola 0.64 @f=3.88; along 1.54 @f=8.69) — klik bola X−
+  1371→    kena picker Z. Kenapa v10-v11 "lulus" tes: probe kameranya DEKAT
+  1372→    (f kecil, geometri hampir f=1) = FALSE-PASS. ATURAN: (a) setiap
+  1373→    koreksi selisih bake/posisi antar-handle gizmo WAJIB dihitung di
+  1374→    ruang dunia (×factor) atau relatif terhadap handle lain yang sudah
+  1375→    di-scale; (b) probe wajib mencakup kamera JAUH (f besar) — bug
+  1376→    geometri gizmo hidup di sana; (c) verifikasi cone = along/lateral
+  1377→    presisi vs bola, bukan sekadar "raycast kena".
+  1378→ 63. **OVERRIDE QUATERNION VISUAL WAJIB DIKUTI PICKER SENAMA + SCALE
+  1379→    PICKER MENGALIHKAN CENTER** (Phase 70 v12): saat unchecked, bola
+  1380→    dipaksa quaternion.identity() (sumbu dunia) tapi cone TIDAK —
+  1381→    fungsi asli baris 1743 men-set cone.quaternion = worldQuaternion
+  1382→    block TIAP FRAME → dua frame campur → lateral terukur 0.82-2.26
+  1383→    saat block dirotasi 45-60°; rotasi sekitar Y menyisakan Y+ Y−
+  1384→    satu-satunya selaras = persis gejala user "cuma 2 bola bisa
+  1385→    dipencet". Dan scale picker (×0.3 anti-ray-menelan) MENGUBAH bake
+  1386→    efektif 0.3→0.09 → offC wajib pakai bake EFektif, bukan bake asli
+  1387→    (tanpa ini cone berselisih 0.21×f ke sisi BERLAWANAN — terukur
+  1388→    along −1.63 @f=7.76, tertutupi proximity picking = setengah fix).
+  1389→    ATURAN: setiap override frame/visual handle WAJIB direplikasi ke
+  1390→    picker senama; setiap perubahan scale picker WAJIB diikuti hitung
+  1391→    ulang bake-efektif di rumus offset.
+  1392→ 64. **CONE BAWAAN GEMUK MENELAN RAY ANTAR-BOLA — PICKING PROXIMITY
+  1393→    LAYAR = SOLUSI TERBUKTI** (Phase 70 v12): cone bawaan r0.2/bentang
+  1394→    0.6 ×factor = r1.55/bentang 4.66 world @f=7.76 (2.7× radius bola)
+  1395→    — apex di sisi jauh block + badan gemuk menelan ray ke bola sisi
+  1396→    lain (ray ke X− menembus cone Z+ duluan). SOLUSI 2 lapis: (a)
+  1397→    kecilkan cone ×0.3 (bentang 1.4 ≈ inti bola), (b) PICKING
+  1398→    PROXIMITY LAYAR pola gizmoRotateRings.findBallNearPointer (3
+  1399→    tahun jalan di bola rotate, SKILL threejs-control-monkeypatch):
+  1400→    override pointerHover + pointerDown INSTANCE — proyeksikan 6 bola
+  1401→    ke NDC; pointer ≤0.08 dari bola yang USER LIHAT = paksa axis bola
+  1402→    itu; raycast cone jadi fallback. pointerDown paksa SEBELUM orig
+  1403→    (axis final saat drag mulai). dispose() lepas override (cek
+  1404→    identitas). VERIFIKASI penuh: Node 9/9 (along/lateral 0.00) +
+  1405→    GPU nyata PointerEvent DOM asli 72/72 (hover→down→drag→up, drag
+  1406→    mengubah scale HANYA di sumbu bola itu) + vision bersih.
+  1407→ 65. **TEST MODEL GEMINI UNTUK ATURAN #10 WAJIB PAKAI NAMA MODEL
+  1408→    AKTIF** (Phase 70 v12): skrip test key v1 memanggil model
+  1409→    "gemini-2.5-flash" → HTTP 404 SEMUA key (model tak ada, mirip
+  1410→    "mati") — bukan 429. Model vision aktif sesi ini:
+  1411→    gemini-3-flash-preview → 200 semua 4 key. ATURAN: sebelum menyalakan
+  1412→    protokol rotasi #10, pastikan test memakai NAMA MODEL yang benar
+  1413→    (cek auxiliary.vision di config.yaml) — 404 = salah nama model,
+  1414→    429 = kuota; jangan tertukar kesimpulan.
+  1415→ 66. **BIDANG DRAG SUMBU VERTIKAL DEGENERATE DI ELEVASI TINGGI —
+  1416→    DRAG RUANG LAYAR DGN ANCHOR TER-LEBAR** (Phase 70 v13, 5062d9d,
+  1417→    2026-09-15, laporan user "drag ke atas malah scale ke bawah /
+  1418→    melawan arah / super licin / berat; klik bola bawah malah yang
+  1419→    atas aktif; garis datar aman"): bidang drag sumbu Y library =
+  1420→    BIDANG VERTIKAL (normal = komponen horizontal eye, baris
+  1421→    1948-1957) — di |axisWorld·eye| > 0.80 (elevasi ≥ ~53°) ray
+  1422→    kamera hampir sejajar bidang → titik potong meledak (terukur
+  1423→    pointEnd.y = −24.3 @80°; rasio −102 s.d. −319) = licin/berat/
+  1424→    melawan-arah; tanda titik potong FLIP = solo salah bola; sumbu
+  1425→    datar bidangnya sehat dari atas (persis "garis datar aman").
+  1426→    SOLUSI: cabang drag RUANG LAYAR aktif hanya saat degenerate —
+  1427→    freeze axisProj (pusat→bola NDC) + along0 saat pointerDown
+  1428→    (warisan #46), rasio = 1 + (along−along0)/anchor, ANCHOR =
+  1429→    offset layar sumbu TER-LEBAR antar 6 bola. ATURAN: (a)
+  1430→    normalisasi rasio layar WAJIB ke sumbu layar yang TIDAK
+  1431→    ter-foreshorten (Y dari atas = 0.005 NDC → drag 56px meledak
+  1432→    ×33 bila pakai al0); (b) sisi solo WAJIB dari BOLA YANG
+  1433→    DIGENGGAM (pointerDown), bukan titik potong bidang (flip);
+  1434→    (c) _scaleStart library basi saat plane-raycast gagal (hanya
+  1435→    diisi dalam `if (planeIntersect)` L489-496) → snapshot scale
+  1436→    sendiri saat down; (d) feel target: rasio konsisten lintas
+  1437→    elevasi (terukur 2.22-2.24 @60-88°, sama dgn jalur sehat).
+  1438→ 67. **HARNESS PIXEL-VS-NDC: ARAH DRAG CAMPUR RUANG = TANDA
+  1439→    TERBALIK (ALAT UKUR MENIPU KE-8)** (Phase 70 v13): fase harness
+  1440→    GPU baru gagal total "keluar=0.05, balik=2.91" (terbalik)
+  1441→    padahal modul benar & Node probe GREEN — akar: arah dihitung di
+  1442→    NDC lalu DITAMBAHKAN ke koordinat PIXEL (y terbalik antara
+  1443→    NDC↑+1 vs pixel↓+). DBG dump angka (console.log dikaitkan ke
+  1444→    <pre> via hook console) membongkarnya: ptr.y=−0.14 saat
+  1445→    axisProj.y=+0.018. ATURAN: (a) harness satu ruang konsisten —
+  1446→    hitung arah dari 2 TITIK PIXEL (toPx kedua-duanya), atau
+  1447→    murni NDC; JANGAN campur; (b) kalau GPU gagal tapi Node GREEN
+  1448→    dgn rumus sama → curigai HARNESS dulu, pasang DBG dump angka
+  1449→    (console.log tak ikut --dump-dom → hook ke elemen DOM);
+  1450→    (c) probe DOM wajib spec asli: move=button −1 (L529 tolak
+  1451→    !==−1), down=button 0 — syarat button redundan di guard
+  1452→    sendiri karena dragging sudah dicek.
+  1453→ 68. **SISI SOLO & GRAB BOLA = STATE DARI HOVER CHAIN, BUKAN
+  1454→    RAYCAST** (Phase 70 v13): proxHoverV13 menyimpan
+  1455→    __v13GrabbedBall = findBallNearPointer(pointer) tiap hover
+  1456→    (mode scale, tidak sedang drag); proxDownV13 membacanya SETELAH
+  1457→    proxDown v12 (axis final) lalu membekukan state layar.
+  1458→    Library memanggil pointerHover TEPAT SEBELUM pointerDown
+  1459→    (L1047-1048) → grab selalu segar. dispose() melepas BERLAPIS
+  1460→    LIFO: v13→v12→asli + WeakMap delete. ATURAN: override pointer
+  1461→    bertingkat wajib diagram pemasangan + pelepasan cermin
+  1462→    (hover/down/move masing-masing), dan state gesture WeakMap
+  1463→    di-delete saat dispose supaya drag mati bersih.
+  1464→ 69. **GRADIENT VISUAL SLIDER & RUMUS KLIK WAJIB SATU ARAH
+  1465→    REFERENSI** (Phase 71, 967cccd, 2026-09-15, laporan user
+  1466→    "geser Color ke kuning malah pink, hijau malah biru, biru
+  1467→    malah hijau; pentok atas malah teleport bawah"): hueGrad
+  1468→    ColorWheelPicker menggambar kuning di fraksi 0.17-dari-atas
+  1469→    padahal handlePos (rumus klik) menghasilkan value=(1−f)×360 →
+  1470→    klik kuning-visual = hue 299° = MAGENTA; hijau↔biru tertukar;
+  1471→    CYAN satu-satunya selamat karena titik tengah simetri cermin
+  1472→    (gejala "cuma tengah yang benar" = tanda klasik inversi).
+  1473→    FIX: urutan stop dibalik (atas=360 merah→magenta .17→biru
+  1474→    .33→cyan .5→hijau .67→kuning .83). ATURAN: (a) tiap slider
+  1475→    custom: verifikasi fraksi f visual = warna hasil handlePos(f),
+  1476→    jangan percaya "gradient kelihatan bagus"; (b) simetri cermin
+  1477→    membuat TITIK TENGAH lulus palsu — asersi wajib titik asimetrik
+  1478→    (0.17, 0.33, 0.67, 0.83).
+  1479→ 70. **HUE 360 ≡ 0 LEWAT ROUND-TRIP HEX = TELEPORT THUMB UJUNG**
+  1480→    (Phase 71): pentok slider hue ke PALING ATAS → value 360 →
+  1481→    hsvToHex(360)=#ff0000 → rgbToHsv round-trip h=0 → thumb fraksi
+  1482→    1.00 = TELEPORT ke ujung bawah (terukur). FIX: clamp
+  1483→    Math.min(v, 359) di onHueChange — 359° → #ff0004 → round-trip
+  1484→    h≈359 → thumb diam. ATURAN: nilai siklik (hue, sudut) yang
+  1485→    melewati representasi diskrit (hex/derajat) WAJIB diuji di
+  1486→    KEDUA ujung batas (0 & max) — bug wrap hidup di boundary,
+  1487→    bukan tengah.
+  1488→ 71. **HARNESS REACT CANVAS = onMouseDown MouseEvent, BUKAN
+  1489→    POINTEREVENT** (Phase 71): canvas slider ColorWheelPicker
+  1490→    memasang handler React onMouseDown/onTouchStart — dispatch
+  1491→    PointerEvent sintetis = TIDAK terjadi apa-apa (sink diam,
+  1492→    currentHex tak berubah, semua tes "klik tak kerja" FAIL
+  1493→    palsu seragam). Deteksi cepat: semua hasil tes identik dgn
+  1494→    warna awal = event tak sampai, bukan bug mapping. ATURAN:
+  1495→    baca dulu atribut handler elemen (onMouseDown vs
+  1496→    onPointerDown) sebelum menulis dispatch harness; mousedown
+  1497→    saja cukup untuk React (setDrag+handlePos jalan di handler
+  1498→    itu), mouseup dispatch ke window.
+  1499→
+  1500→ ════════════════════════════════════════════════════════════════════
+  1501→ STANDAR PENGUKURAN "STUDS" (USER 2026-09-15 — MUTLAK, SELAMANYA)
+  1502→ ═══════════════════════════════════════════════════════════════════
+  1503→ USER: "disini pengukuran kita wajib pakai studs... 1 block biasa
+  1504→ dianggap lebar panjang dan tinggi 2×2×2 studs, dan itu MUTLAK;
+  1505→ grid yang kotak-kotak panjang-lebarnya juga sama 2×2 studs."
+  1506→ ATURAN UNTUK SEMUA AI SELANJUTNYA:
+  1507→ (a) SATUAN SEMUA PENGUKURAN DIMENSI DI BABFTSS = "studs" — bukan
+  1508→     meter/unit abstrak.
+  1509→ (b) BLOCK BIASA BELUM DI-SCALE = 2×2×2 studs (P×L×T) — konstanta
+  1510→     STUDS_PER_BLOCK = 2. Block ter-scale s = 2×s studs per sumbu.
+  1511→ (c) SATU SEL GRID = 2×2 studs.
+  1512→ (d) UI apapun yang menampilkan dimensi block WAJIB format studs:
+  1513→     default "2, 2, 2" (P, L, T).
+  1514→ (e) HELPER RESMI: src/utils/blockStuds.js — STUDS_PER_BLOCK=2,
+  1515→     scaleToStuds (P=x, L=z, T=y, ABSOLUT utk kaca/mirror −x),
+  1516→     scaleToStudsLabel (1 desimal tanpa ".0"). Unit test:
+  1517→     test_blockStuds.mjs (11 asersi). Jangan tulis konversi studs
+  1518→     manual di UI — selalu import helper ini.
+  1519→
+  1520→ 72. **HEADLESS virtual-time-budget MEMBEKUKAN requestAnimationFrame**
+  1521→    (Phase 72, c64bd44): komponen dgn rAF-poll tampak "tidak pernah
+  1522→    update" di harness headless (--virtual-time-budget mem-pump
+  1523→    timer/setTimeout, TIDAK rAF) — FAIL total padahal komponen benar
+  1524→    = artefak alat ukur (ke-10). Jawaban desain sekaligus benar:
+  1525→    HUD teks/angka CUKUP poll 10Hz (setInterval 100ms + tick awal
+  1526→    langsung) — rAF 60fps untuk teks boros; setState hanya saat
+  1527→    string berubah = nol re-render spam.
+  1528→ 73. **HARNESS PANEL ABSOLUTE: WRAPPER WAJIB MENIRU KONTAINER APP**
+  1529→    (Phase 72): harness menaruh panel (position:absolute top:80)
+  1530→    di dalam #host yang sendirinya fixed top:80 → koordinat MENUMPUK
+  1531→    (80+80=160, right 16×2) = FAIL posisi palsu. Kontainer harness
+  1532→    wajib inset:0 (persis kontainer app), panel yang bawa koordinatnya
+  1533→    sendiri. ATURAN: sebelum menguji koordinat panel absolute, cek
+  1534→    dulu apakah wrapper harness sendiri menambah offset.
+  1535→ 74. **PANEL SEKSI — konten pendamping tool jadi SEKSI di panel yang ADA**
+  1536→    (Phase 72 v2, a5bfb16, 2026-09-15, revisi user: "scale info & gizmo
+  1537→    options kok kayak punya wilayah masing-masing? lebih rapi kalau jadi
+  1538→    satu"): 2 panel berdampingan (masing-masing punya background+border)
+  1539→    dibaca user sebagai 2 WILAYAH terpisah. POLA BENAR: komponen
+  1540→    pendamping di-refactor jadi EMBEDDED SECTION — root-nya div kolom
+  1541→    polos (position:static, TANPA background/border/header sendiri) di
+  1542→    dalam panel induk, dipisah divider halus; panel induk kembali ke
+  1543→    koordinat tunggal (offset geser v1 top:308 dihapus, semua keluarga-5
+  1544→    kembali top:80). VERIFIKASI STRUKTUR: hitung elemen ber-background
+  1545→    panel di wilayah — asersi HARUS = 1 (bukan sekadar "kelihatan satu").
+  1546→ 75. **ELEMEN PEMISAH WAJIB MEWARISI SYARAT RENDER ELEMEN YANG
+  1547→    DIPISAHNYA** (Phase 72 v3, 6026911, 2026-09-15 — cacat yang LOLOS
+  1548→    dari verifikasi v2, ketemu saat audit sesi terputus): divider 1px
+  1549→    dirender TANPA syarat sementara seksi info di atasnya hanya saat
+  1550→    tool==='scale' → di move/rotate/clone/mirror garis MENGGANTUNG
+  1551→    (terukur: divider y=122 hanya 18px di bawah header y=93 h=11,
+  1552→    seksi info NIHIL), memisahkan "tidak ada apa-apa" dari baris opsi.
+  1553→    FIX: bungkus divider dgn guard yang SAMA ({tool === 'scale' && ...});
+  1554→    nilai visual tidak diubah sama sekali (tampilan saat scale identik
+  1555→    v2 yang sudah disetujui). Vision compare 3 panel berdampingan:
+  1556→    tanpa seksi info → "lebih rapi tanpa garis; garis = visual noise,
+  1557→    header terputus dari kontennya"; dengan seksi info → "garis sangat
+  1558→    masuk akal, memisahkan 2 kategori fungsi".
+  1559→    ATURAN TURUNAN — KENAPA v2 LOLOS: harness v2 hanya menguji skenario
+  1560→    tool='scale', satu-satunya kondisi yang PUNYA seksi info, sehingga
+  1561→    cabang "tool lain" tidak pernah dirender saat diuji. UI BERSYARAT
+  1562→    WAJIB DIUJI DI SEMUA CABANG KONDISI, bukan hanya jalur yang
+  1563→    diharapkan sukses. Cek cepat: untuk tiap elemen dekoratif (divider/
+  1564→    spacer/separator), tanya "kondisi mana yang membuat tetangganya
+  1565→    hilang?" — lalu render kondisi itu.
+  1566→ 76. **AUDIT SESI TERPUTUS + `git log -1 -- <file>` BUKAN BUKTI FILE
+  1567→    BERUBAH DI COMMIT ITU** (2026-09-15, FAIL PALSU alat ukur ke-11):
+  1568→    memeriksa 6 file terlarang dengan `git log --oneline <sha> -1 --
+  1569→    <file>` melaporkan 5 dari 6 "TERSENTUH" — padahal NOL tersentuh.
+  1570→    Sebabnya perintah itu mencari commit terakhir yang menyentuh file
+  1571→    ke BELAKANG dari sha, bukan isi diff sha tersebut. CARA BENAR:
+  1572→    `git show --name-only --format="" <sha> | grep -qxF "<file>"`.
+  1573→    Konfirmasi silang: `git log -1 --format='%h %ad' -- <file>` →
+  1574→    file terlarang terakhir diubah 2026-08-30, jauh sebelum sesi.
+  1575→    URUTAN AUDIT SESI MATI (API 503/429 sebelum audit akhir):
+  1576→    (1) HEAD == origin/main? (2) `git add -A && git diff --cached
+  1577→    --stat HEAD` lalu `git reset` (jujur thd autocrlf); (3) file uji
+  1578→    nyasar ke-commit? (`git show --name-only`); (4) file terlarang via
+  1579→    git show --name-only; (5) build exit 0; (6) unit test lama masih
+  1580→    PASS; (7) BARU audit isi fitur — karena "sudah ter-push ≠ sudah
+  1581→    benar" (warisan #31 versi lintas-sesi).
+  1582→
+  1583→
+  1584→ 77. **KELUHAN KETERBACAAN USER = KUANTIFIKASI WCAG, BUKAN DEBAT SELERA**
+  1585→    (Phase 72 v4, 4a4cef3, 2026-09-15, user: "teksnya gak kelihatan woi
+  1586→    dan sulit bacanya kaya nyatu gitu"): keluhan subjektif WAJIB diubah
+  1587→    jadi ANGKA — hitung rasio kontras WCAG terhadap BACKGROUND NYATA,
+  1588→    yaitu hasil KOMPOSIT ALPHA berlapis (canvas → panel rgba(14,20,32,
+  1589→    0.92) = rgb(15,21,33) → kotak view rgba(30,41,59,0.45) = rgb(22,30,
+  1590→    45)), BUKAN warna mentah yang tertulis di kode. Terukur: "Pilih
+  1591→    block untuk scale" 2.39:1, border dashed 1.58:1 (terparah),
+  1592→    "Belum ada block" 3.00:1, caption "Panjang, Lebar, Tinggi" 2.70:1,
+  1593→    hint panel 3.00:1 — SEMUA di bawah ambang AA 4.5:1 → keluhan user
+  1594→    TERBUKTI, bukan perasaan. Setelah #FFFFFF: 16.70-18.27:1.
+  1595→    ATURAN PENDAMPING — JANGAN OVER-FIX: elemen yang SUDAH lulus AA
+  1596→    jangan ikut diputihkan walau vision menyebutnya "masih redup"
+  1597→    (header "GIZMO OPTIONS" 7.12:1, label "STUDS" 6.45:1, angka studs
+  1598→    13.42:1, divider = dekorasi bukan teks). Hierarki visual label <
+  1599→    konten wajib dijaga; user hanya mengeluhkan yang benar-benar gagal.
+  1600→    Cara ukur cepat (Node/py): srgb→linear, luminance 0.2126R+0.7152G
+  1601→    +0.0722B, ratio (L_hi+0.05)/(L_lo+0.05); dan di harness GPU baca
+  1602→    getComputedStyle elemen TER-RENDER supaya angkanya dari piksel
+  1603→    nyata, bukan dari asumsi nilai di source.
+  1604→ 78. **ASERSI REGEX YANG IKUT PASS DI KODE LAMA = ALAT UKUR TUMPUL**
+  1605→    (Phase 72 v4): saat menjalankan RED terhadap commit sebelumnya, 2
+  1606→    asersi ikut PASS padahal seharusnya FAIL — regex-nya terlalu
+  1607→    longgar (mencocokkan potongan yang kebetulan ada di kedua versi).
+  1608→    Tes yang tidak mendiskriminasi = tidak membuktikan apa pun.
+  1609→    ATURAN: setiap asersi WAJIB diuji terhadap versi LAMA; yang ikut
+  1610→    lolos harus diperketat (hitung KEMUNCULAN dengan match().length,
+  1611→    atau anchor ke konteks properti lengkap), BUKAN dilonggarkan atau
+  1612→    dibuang. Target: jumlah FAIL di RED ≈ jumlah perubahan nyata.
+  1613→
+  1614→   ════════════════════════════════════════════════════════════════════
+  1615→   DESIGN LOCK — ORB BOLA GIZMO SCALE (d3a60f7, DINYATAKAN USER 2026-09-13)
+  1616→   ════════════════════════════════════════════════════════════════════
+  1617→   USER: "ini saya nyatakan sukses dan awas DILARANG mengubah design
+  1618→   sama sekali!!... warna oranye dari gizmo milik scale DILARANG
+  1619→   disentuh ya itu udah perfect... nanti saya akan mengalami kerugian
+  1620→   yang sangat besar jika kamu tidak hati-hati!"
+  1621→   LARANGAN TOTAL untuk AI apa pun: JANGAN ubah texture orb (ballCenter
+  1622→   Design.js getOrbTexture — rim/halo/diamond/titik/semua nilai rgba),
+  1623→   JANGAN ubah tint scale (#EFBF04 blend 0.38 → #f9b74b), JANGAN ubah
+  1624→   struktur sprite/mesh/renderOrder bola scale. Perbaikan yang DIIZINKAN
+  1625→   hanya: (a) behavior hover (bola jadi kuning saat kursor dekat —
+  1626→   bukan menambah bola kuning lain), (b) identitas RGB rotate (bola
+  1627→   rotate WAJIB jelas merah/hijau/biru bawaan Three.js — user 2026-13:
+  1628→   "bukan kuning semua"), (c) bug fix yang TIDAK mengubah tampilan
+  1629→   design istirahat (rest state) bola scale. Bola rotate boleh beda
+  1630→   tint-kuat (identMix 0.85) karena itu permintaan user eksplisit.
+  1631→
+  1632→   ### WARISAN PENGALAMAN — sesi 2026-09-17 (PHASE 73: aturan scaling 4 mode)
+  1633→
+  1634→   Konteks: tugas diwariskan dari DUA sesi yang mati kena HTTP 429 "token
+  1635→   quota exceeded" (bukan kode salah) — sesi-1 mati TEPAT sebelum pernah
+  1636→   menjalankan unit test-nya (context ~184.078 token), sesi-2 mati lagi
+  1637→   (~170.463 token) TEPAT saat mulai uji interaksi browser. Hasil: 0 commit,
+  1638→   0 push, fitur belum pernah diverifikasi end-to-end. Sesi-3 (ini)
+  1639→   peran = AUDITOR + SHIPPER: kode warisan TIDAK diubah satu byte pun,
+  1640→   hanya diaudit + diverifikasi + di-commit. (Pengulangan WARISAN #31.)
+  1641→
+  1642→   FITUR (permintaan user): 4 aturan scaling (1/2/4/6 side) + modal
+  1643→   "Scale Mode" oranye keemasan (design ikut modal Clear All, 6 tombol,
+  1644→   tidak bisa ditutup kecuali Konfirmasi/Batal) + tombol "+" di pojok
+  1645→   kiri-atas kotak studs dengan popup 4 mode beranimasi.
+  1646→   Modul: src/utils/scaleModes.js (murni, THREE = parameter), 
+  1647→   src/components/ScaleModeModal.jsx, integrasi BlockSimulator3D.jsx
+  1648→   (state scaleMode/scaleModeRef/scaleModeLockedRef/scaleDragRef +
+  1649→   snapshot di 'dragging-changed' + penerapan di 'objectChange'),
+  1650→   GizmoBlockInfoPanel.jsx (+tombol "+"/popup), test_scaleModes.mjs.
+  1651→   Commit bc82b8c. CONTEXT API: default tool = null (kontrak fresh-entry),
+  1652→   jadi modal muncul saat user MENEKAN tool scale — bukan saat halaman dibuka.
+  1653→
+  1654→   79. **HARNESS BACA STATE REACT PADA TICK YANG SAMA = FAIL PALSU**
+  1655→       (Phase 73, 2026-09-17): klik tombol lalu LANGSUNG baca
+  1656→       `el.style.animation` pada tick yang sama → React belum commit state
+  1657→       baru, yang terbaca masih animasi LAMA (terukur: popup tutup terbaca
+  1658→       "scalemode-pop-in" padahal code benar). Ini cacat yang SAMA dengan
+  1659→       cacat v1 harness warisan (sudah dicatat di header, tapi terulang).
+  1660→       CARA BENAR: beri 1 tick (await sleep(80)) SEBELUM membaca style/
+  1661→       atribut hasil render React. Terbukti setelah fix: terbaca
+  1662→       "180ms ... scalemode-pop-out forwards".
+  1663→
+  1664→   80. **HARNESS YANG ME-MOUNT HANYA PAGE TIDAK BISA MEMVERIFIKASI TOAST**
+  1665→       (Phase 73): `<Toaster>` di-render di App.jsx (baris 266) = DI LUAR
+  1666→       halaman BlockSimulator3D. Harness integrasi yang hanya mount page →
+  1667→       `toast.warning(...)` tidak punya Toaster → "toast tidak muncul" =
+  1668→       ARTEFAK ALAT UKUR, bukan bug. Harness WAJIB menyertakan Toaster
+  1669→       identik App.jsx (position top-center, richColors, theme dark).
+  1670→       Terverifikasi setelah itu: toast type=warning, teks "Mode scaling
+  1671→       dipilih: 4 Side", border rgb(61,61,0), judul rgb(243,207,88) =
+  1672→       #F3CF58 (KUNING KEEMASAN sesuai permintaan user — angka faktual,
+  1673→       bukan perkiraan). Cara baca warna toast = getComputedStyle pada
+  1674→       [data-title] (bukan warna latar, yang tetap dominan gelap).
+  1675→
+  1676→   81. **TOOLBAR TOOL TIDAK ADA DI DOM SAAT FRESH ENTRY — JALUR VERIFIKASI
+  1677→       RESMI = KEYBIND** (Phase 73): kontrak "master state 'build' WAJIB
+  1678→       TERTUTUP saat fresh entry" membuat tombol tool (termasuk Scale)
+  1679→       TIDAK ter-render sampai user membuka section → harness yang mencari
+  1680→       tombol via textContent gagal total ("Scale button not found") dan
+  1681→       SEMUA langkah turunannya FAIL palsu. Jalur resmi & lebih bersih:
+  1682→       keybind Phase 47 → '5'=scale, '7'=move (sekaligus AUTO-OPEN Build
+  1683→       Tools). Harness integrasi halaman wajib memakai keybind resmi,
+  1684→       jangan menebak struktur DOM panel.
+  1685→
+  1686→   82. **AABB SUMBU-DUNIA BLOCK TEROTASI ≠ PANJANG BLOCK** (Phase 73,
+  1687→       asersi salah-ukur yang kutulis sendiri): block 1×1×1 dirotasi 45°
+  1688→       punya span AABB dunia x = 2·cos45 + 1·sin45 = 2.121 — memakai span
+  1689→       dunia sebagai "panjang block" → FAIL palsu ("memanjang span 2.121",
+  1690→       padahal panjang sebenarnya tepat 2). METRIK BENAR: jarak antara
+  1691→       PUSAT kedua wajah sepanjang sumbu BLOCK (terukur 2.000000). Pola
+  1692→       umum: saat objek terotasi, metrik sumbu-dunia mengukur KOMBINASI
+  1693→       beberapa sumbu lokal — selalu proyeksikan ke frame objek dulu.
+  1694→
+  1695→   83. **SYNTHETIC PointerEvent TIDAK MENYALAKAN DRAG INTERNAL
+  1696→       TransformControls** (Phase 73, reconfirmasi warisan #24 + skill
+  1697→       measured-verification): dispatch pointerdown/move/up ke handler
+  1698→       tidak membuat library masuk mode dragging (butuh setPointerCapture
+  1699→       + raycast nyata). Verifikasi drag scale = REPLIKA RUMUS library
+  1700→       yang dibaca verbatim dari source (baris 496 `_scaleStart.copy`,
+  1701→       baris 500 `pointStart.copy(...).sub(worldPositionStart)`, baris 671
+  1702→       `scale.copy(_scaleStart).multiply(_tempVector2)`) + urutan listener
+  1703→       app yang sebenarnya (library memanggil 'dragging-changed' SETELAH
+  1704→       dragging=true & pointStart terisi, baris 504-506 → snapshot di
+  1705→       listener DIJAMIN valid). Hasil terukur 18/18 PASS.
+  1706→
+  1707→   Catatan teknis Phase 73 (pakai as-is, jangan riset ulang):
+  1708→   - `tc.worldQuaternion` = properti RESMI TransformControls (baris 382,
+  1709→     di-decompose baris 1143), aman dari listener; `getScaleWorldAlign(tc)`
+  1710→     (gizmoScaleBalls.js) pakai WeakMap → `get(null)` tidak throw.
+  1711→   - 1 side: rumus benar = reset skala ke nilai awal (kecuali clamping),
+  1712→     terapkan rasio ke sumbu mode, lalu offset pusat = axisLocal ×
+  1713→     frameQuat × sign × Δscale × halfSize. 2 side = jalur BAWAAN apa
+  1714→     adanya (scaleDragRef null → nol cabang tambahan).
+  1715→   - `applyScaleByMode` WAJIB ada karena library sudah men-set
+  1716→     `object.scale[sumbu digenggam]` SEBELUM objectChange — pada 4 side
+  1717→     sumbu itu harus DIAM, jadi nilai library HARUS direset.
+  1718→   - Aturan modal (final): default & Batal = 1 side; Batal TIDAK mengunci
+  1719→     (modal muncul lagi tiap equip scale); Konfirmasi mengunci (tidak
+  1720→     muncul lagi sampai refresh — lock di useRef, hilang otomatis saat
+  1721→     remount); klik overlay TIDAK menutup modal.
+  1722→   - Verifikasi halaman asli bisa lewat browser headless dengan harness
+  1723→     yang mount page + Toaster (page hanya butuh prop `setPage`, NOL
+  1724→     import firebase/auth) — 6 skenario B1-B6 PASS, nol error JS.
+  1725→
+  1726→### WARISAN PENGALAMAN — sesi 2026-09-17 (PHASE 73 v2: tombol "+" → modal megah)
+  1727→
+  1728→   Permintaan user (verbatim): "seharusnya tombol '+' jika diklik maka
+  1729→   munculnya adalah peringatan oranye yang MEGAH designnya itu!! bukan
+  1730→   malah kayak sepele kecil gini! tolong yang design pilih 4 mode yang
+  1731→   sepele kecil dan jelek ini hapus aja, langsung arahin ke yang
+  1732→   peringatan oranye dengan design bagus dan megah itu!"
+  1733→   → POPUP KECIL (210px di sudut kotak view) DIHAPUS TOTAL. Tombol "+"
+  1734→   sekarang membuka MODAL "Scale Mode" yang megah. Solusi: SATU komponen
+  1735→   ScaleModeModal + prop `variant` ('onboarding' = perilaku v1 persis;
+  1736→   'picker' = dari tombol "+": klik kartu = langsung pakai + modal tutup,
+  1737→   bisa ditutup klik luar/X/Escape). Desain 100% identik antar varian
+  1738→   (nol duplikasi visual). Commit 81d0f34. State baru:
+  1739→   scaleModeModalVariant; Konfirmasi hanya MENGUNCI saat varian
+  1740→   onboarding (picker bebas buka-tutup).
+  1741→
+  1742→   84. **CSS ANIMATION TIDAK MAJU DI HEADLESS (--virtual-time-budget) —
+  1743→       ELEMEN TAMPAK "MENYUSUT" PADAHAL CSS BENAR** (Phase 73 v2, 2026-09-17
+  1744→       — alat ukur menipu KE-12): panel modal terukur getBoundingClientRect
+  1745→       196px padahal CSS `width: min(560px, ...)`. Angka 196 = 560 × 0.35
+  1746→       PERSIS — yaitu scale(0.35) keyframe AWAL animasi `scalemode-in`.
+  1747→       Bukti pemisah: `offsetWidth` tetap 560px (layout benar) sementara
+  1748→       `transform: matrix(0.35,0,0,0.35,16.8,-16.8)` + `opacity: 0` +
+  1749→       `animationPlayState: running` MEMBEKU selamanya; dengan
+  1750→       `el.style.animation='none'` → rect jadi 560px. `animation-fill-mode:
+  1751→       none` = tidak ada state akhir yang menahan → elemen tinggal di
+  1752→       keyframe pertama. ATURAN: di headless, elem yang pakai ANIMASI CSS
+  1753→       (fade/scale-in) TIDAK PERNAH selesai — untuk screenshot atau ukur
+  1754→       REST STATE, matikan dulu animasinya (`style.animation='none'`;
+  1755→       set opacity/transform ke nilai akhir). Jangan menyimpulkan "CSS
+  1756→       width gagal" sebelum memeriksa offsetWidth vs rect dan transform.
+  1757→       Di browser nyata animasi SELESAI normal (0.34s) → tidak ada bug user.
+  1758→   85. **DUA ENTRY POINT KE SATU TAMPILAN = SATU KOMPONEN + PROP VARIANT**
+  1759→       (Phase 73 v2): modal yang sama dipakai dari 2 jalur (otomatis saat
+  1760→       equip scale & tombol "+"). Menyalin desain ke komponen kedua =
+  1761→       risiko drift (pelajaran Phase 72 v2: konten pendamping jadi "wilayah
+  1762→       kedua"). Solusi: satu komponen, prop `variant` mengubah PERILAKU
+  1763→       saja (footer/tombol X/cara tutup), desain nol perubahan. Verifikasi
+  1764→       wajib: ukur elemen pembeda tiap varian di halaman asli (footer ADA/TIDAK,
+  1765→       X ADA/TIDAK) + screenshot side-by-side keduanya vs referensi.
+  1766→   86. **"HAPUS" YANG DIMINTA USER = HAPUS SAMPAI BERSIH, BUKAN DISEMBUNYIKAN**
+  1767→       (Phase 73 v2): user bilang "popup sepele kecil dan jelek ini hapus
+  1768→       aja". Yang benar: hapus state + konstanta + keyframes + JSX + import
+  1769→       yang jadi tak terpakai, lalu BUKTIKAN di DOM bahwa popup lama sudah
+  1770→       tidak ada (matcher ciri khasnya: div `width: 210px` berisi 4 tombol
+  1771→       'Side') — bukan sekadar tidak dirender pada satu jalur. Residual
+  1772→       import/state yang tertinggal = utang yang membingungkan AI penerus.
+  1773→
+  1774→   ### PENGETAHUAN — AI Helper 1 Panel 2 Mode + v2 Lenyap Total Sampai Backend (Phase 58, commit 92c6748, 2026-09-09)
+  1775→
+  1776→PERMINTAAN USER: (1) AI Helper Block Simulator jadi SATU tubuh dengan toggle mode —
+  1777→"Chat Umum" (ngobrol normal) atau "3D Simulator" (khusus command) — user pilih
+  1778→sesuka hati; (2) "wajib BlockSimulator3Dv2 dengan embel embel v2 tidak ada!
+  1779→bahkan backend juga" — proteksi Phase 57 dicabut, di masa depan hanya
+  1780→"BlockSimulator3D" supaya tidak salah paham.
+  1781→- AI HELPER: state aiHelperMode 'simulator'|'chat' (default 'simulator');
+  1782→  riwayat TERPISAH aiHelperSimMessages/aiHelperChatMessages dengan system
+  1783→  prompt per-mode; [[COMMAND:...]] HANYA dieksekusi mode simulator; fallback
+  1784→  offline per-mode; segmented toggle gaya model-picker (amber #f59e0b) +
+  1785→  ikon Sparkles/MessageCircle; chips saran per-mode; lucide +MessageCircle.
+  1786→- RENAME BACKEND: api/ai-helper-v2.js → api/ai-helper.js; env
+  1787→  AI_HELPER_V2_URL/KEY → AI_HELPER_URL/KEY; route /api/ai-helper-v2 →
+  1788→  /api/ai-helper; log [ai-helper]. AMAN KARENA TERUKUR: production
+  1789→  /api/ai-helper-v2 = 503 "not configured" sejak awal (env tak pernah
+  1790→  terpasang) → rename nol risiko.
+  1791→- PAGE-ID: 'block-simulator-3d-v2' → 'block-simulator-3d' (KNOWN_PAGES,
+  1792→  conditional render, key, onClick, komentar). MIGRASI TANPA LITERAL v2 di
+  1793→  kode: restore DB — startsWith('block-simulator-3d') && !KNOWN_PAGES.has(id)
+  1794→  → dipetakan 'block-simulator-3d'. User lama tetap pulih, bukan 404.
+  1795→  save-progress otomatis menulis id baru.
+  1796→- PITFALL ALAT UKUR BARU: (1) harness subprocess rebuild arg-list lupa URL →
+  1797→  Chrome dump about:blank = FAIL PALSU (DOM via terminal terbukti sehat);
+  1798→  selalu pastikan URL ada di command list. (2) Threshold pixel wajib dari
+  1799→  ukur nyata: panel 380px → border amber di kolom x=900 (900 sampel) +
+  1800→  interior 714 amber/9146 dark = SAH; tebakan awal 2000 amber = FAIL palsu.
+  1801→- CATATAN KOORDINASI: backend developer — nanti pasang env AI Helper di
+  1802→  hosting pakai nama BARU AI_HELPER_URL/AI_HELPER_KEY.
+  1803→- KLARIFIKASI USER (2026-09-09, setelah Phase 58): larangan v2 itu KHUSUS
+  1804→  NAMA SIMULATOR saja — BlockSimulator3Dv2 / block-simulator-3d-v2 /
+  1805→  ai-helper-v2 / AI_HELPER_V2_*. "v2" dalam KONTEKS LAIN itu SAH-SAH
+  1806→  SAJA BOLEH: mis. "Phase 59 v2" (revisi kedua sebuah phase), segmen
+  1807→  kabel V2 di LogicGates (pola V-H-V), hash npm package-lock, versi
+  1808→  library/tool eksternal, dokumentasi sejarah. JANGAN generalisasi
+  1809→  larangan ke semua "v2" — dan JANGAN sentuh V2 LogicGates/konteks
+  1810→  lain hanya karena mengandung "v2".
+  1811→
+  1812→### PENGETAHUAN — Rename BlockSimulator3Dv2 → BlockSimulator3D + pembersihan "v2" (Phase 57, commit 40bb7fe, 2026-09-09)
+  1813→
+  1814→User: "teks v2 tidak pernah ada — frontend, kodingan, semua". Dilakukan full.
+  1815→(UPDATE Phase 58/92c6748: proteksi id halaman & route API di bawah sudah DICABUT
+  1816→oleh user — "di masa depan hanya perlu blocksimulator3D", termasuk backend.)
+  1817→- git mv src/pages/BlockSimulator3Dv2.jsx → src/pages/BlockSimulator3D.jsx.
+  1818→- Nama fungsi komponen → BlockSimulator3D; import App.jsx ikut (baris 36).
+  1819→- Variabel aiHelperV2*/AiHelperV2 → aiHelper*/AiHelper (26+34 kemunculan).
+  1820→- Teks UI: label menu Shapes "3D Block Simulator", login-gate, panel
+  1821→  "AI Helper", "Templates", greeting AI, default save "block-sim-scene".
+  1822→- TERLINDUNGI (jangan pernah rename tanpa koordinasi backend): page-id
+  1823→  'block-simulator-3d-v2' (App.jsx restore current_page dari DB Supabase
+  1824→  baris 69-70) dan route '/api/ai-helper-v2' + env AI_HELPER_V2_URL/KEY
+  1825→  (16 env var terpasang di Vercel oleh backend developer).
+  1826→- JEBAKAN PENGUKURAN (2 baru, catat!): (1) grep -c menghitung BARIS bukan
+  1827→  kemunculan — satu baris JSX bisa 4 pemakaian; wajib grep -o | wc -l.
+  1828→  (2) regex v2(?![.\d]) wajib — koordinat SVG "M9 3v2.2" & "2v2.77" lolos
+  1829→  sebagai substring palsu; LogicGates "V2" = segmen kabel V-H-V, konteks
+  1830→  lain; package-lock "v2" = hash npm; draco_encoder "v2" = binary WASM.
+  1831→- Skrip edit dua-fase verify-all-then-apply (pair = old/new/count; abort
+  1832→  kalau satu pair mismatch; idempoten re-run) — mencegah edit parsial.
+  1833→
+  1834→### BUG SEJARAH — Pindah Clone↔Mirror Panah Hilang (Phase 50 v12, 2026-09-07, commit `740cc70`)
+  1835→
+  1836→**Masalah dari user:** Move → klik block → Clone (6 panah biru muncul) →
+  1837→pindah ke Mirror: 6 panah LANGSUNG HILANG dan block tidak ter-highlight.
+  1838→Berlaku dua arah (clone↔mirror). Dari Move langsung ke Clone/Mirror normal.
+  1839→
+  1840→**Akar Masalah (terbukti ukur — simulasi Node urutan event app):**
+  1841→Saat ganti tool, DUA fungsi berjalan berurutan: `toggleTool` (state
+  1842→updater, Phase 50 v4) lalu `useEffect[tool]` (Phase 50 v9).
+  1843→1. `toggleTool` membersihkan ghost: `scene.remove` + `geometry/material
+  1844→   .dispose` + `cloneGhost=null` → ghost MATI.
+  1845→2. `useEffect[tool]` masih memegang `tc.object` = ghost mati itu →
+  1846→   `tc.detach()` jalan, tapi kondisi buat ghost baru `!sourceBlock
+  1847→   .userData.cloneGhost` = FALSE (ghost ber-flag) → ghost baru tidak
+  1848→   dibuat → gizmo TANPA target → 6 panah hilang; `selectedBlocks` sudah
+  1849→   di-clear → tidak ada highlight.
+  1850→Angka RED: clone→mirror & mirror→clone = `attached:false`; kontrol
+  1851→move→clone = `attached:true` (12 handle). Bug-nya "dispose lalu pakai":
+  1852→satu fungsi membuang objek, fungsi berikutnya masih pakai referensinya.
+  1853→
+  1854→**Solusi (ubah sekecil mungkin, 2 titik di jalur yang sama):**
+  1855→1. `toggleTool`: ghost dibuang HANYA kalau tool AKHIR bukan clone/mirror
+  1856→   (pindah clone↔mirror = ghost DIPERTAHANKAN; keluar tool = perilaku lama).
+  1857→2. `useEffect[tool]`: deteksi ghost hidup:
+  1858→   `tc.object.userData.cloneGhost && threeRef.current.cloneGhost === tc.object`
+  1859→   → JANGAN detach; gizmo tetap attach, re-highlight emissive 0x1a8cff.
+  1860→
+  1861→**Pelajaran Penting:**
+  1862→- Sebelum dispose objek, audit SEMUA pemegang referensi yang jalan
+  1863→  SETELAHNYA — terutama useEffect yang watch state yang berubah bersamaan.
+  1864→- Bug "hilang setelah interaksi kedua" (tapi normal di interaksi pertama)
+  1865→  = hampir pasti ada state/rificek yang belum direset di jalur pertama —
+  1866→  trace ulang dengan state yang sama, jangan hanya jalur pertama.
+  1867→- "Pertahankan objek lintas operasi sejenis" > "buang lalu buat ulang":
+  1868→  selain menghindari bug dispose-lalu-pakai, UX-nya lebih mulus (drag
+  1869→  langsung bisa tanpa klik ulang).
+  1870→
+  1871→**Verifikasi nyata:** tes headless 19 PASS / 0 FAIL (RED dulu:
+  1872→attached:false 2 arah); pixel GPU nyata: SESUDAH = 355 px panah ungu
+  1873→#9D00FF + 9727 px highlight TETAP ADA; SEBELUM = 0 px semua; build exit 0.
+  1874→
+  1875→**Pitfall alat ukur (2x lagi):** (1) assertion test sendiri bandingkan
+  1876→'#1a8cff' vs '1a8cff' (prefix #) → 3 FAIL palsu; (2) 412 px "biru" di
+  1877→screenshot SEBELUM ternyata TEKS hasil PASS di `<pre>` (y=386-408), bukan
+  1878→canvas — selalu pisahkan area canvas dari area teks saat hitung pixel.
+  1879→
+  1880→**Known issue (PRE-EXISTING, di luar scope):** warning "attached object
+  1881→must be part of scene graph" saat keluar clone→move — ghost dibuang tanpa
+  1882→detach (sejak Phase 50 v4). Tidak mengganggu fungsi; dicatat, tidak diubah.
+  1883→
+  1884→### BUG SEJARAH — Keluar Clone/Mirror ke Rotate: Bola Hilang (Phase 50 v13, 2026-09-07, commit `f388aaa`)
+  1885→
+  1886→**Masalah dari user:** Rotate (bola RGB muncul di block) → Clone (6 panah
+  1887→biru) → Rotate lagi: bola-bola LANGSUNG HILANG + block tidak ter-highlight.
+  1888→Berlaku juga rotate→mirror→rotate. Spam move↔rotate aman; spam
+  1889→rotate→clone/mirror = hilang ~50% (tergantung apakah ghost sudah dibuat /
+  1890→pernah dibuang). Gejala "50%" = DUA jalur bug bertumpuk, tidak satu.
+  1891→
+  1892→**Akar Masalah (terbukti ukur):**
+  1893→toggleTool (Phase 50 v4) membuang ghost TANPA melepas gizmo:
+  1894→1. **Jalur 1 — bola ngambang:** gizmo tetap attach ke ghost yang sudah
+  1895→   `scene.remove`+dispose → `attached:true, inScene:false` (parent=NULL)
+  1896→   → warning "must be part of scene graph" tiap frame; bola dirender di
+  1897→   posisi STALE ghost; highlight mati (selectedBlocks berisi ghost mati).
+  1898→2. **Jalur 2 — spam, semua hilang:** setelah jalur 1, masuk clone LAGI →
+  1899→   `tc.object` = ghost mati ber-flag cloneGhost → guard v12 `!cloneGhost`
+  1900→   menolak buat ghost baru → `detach()` tanpa `attach()` → panah+bola+
+  1901→   highlight SEMUANYA hilang. Pixel RED (spam 5 langkah): r=0 g=0 b=0,
+  1902→   highlight=0 — benar-benar kosong.
+  1903→useEffect[tool] untuk rotate/move/scale hanya `setMode` — tidak pernah
+  1904→restore attachment, jadi kondisi mati tidak pernah sembuh sendiri.
+  1905→
+  1906→**Solusi (4 titik kecil, semua di jalur yang sama):**
+  1907→1. Ghost DIBUAT → simpan `ghost.userData.ghostSource = <block asal>`
+  1908→   (3 titik pembuatan: useEffect auto-create, click clone, click mirror).
+  1909→2. `toggleTool` membuang ghost → salin ghostSource ke threeRef +
+  1910→   **`tc.detach()` SEBELUM dispose** (warning scene-graph ikut hilang).
+  1911→3. `useEffect[tool]`: keluar clone/mirror (tool≠clone/mirror, gizmo
+  1912→   kosong, ada ghostSource) → attach gizmo + highlight ke block ASAL.
+  1913→   Berlaku untuk SEMUA tool tujuan. Guard: block asal masih `parent`
+  1914→   (belum dihapus) + `isBlock`. ghostSource dikonsumsi sekali.
+  1915→4. Perilaku clone↔mirror (v12) tidak tersentuh.
+  1916→
+  1917→**Pelajaran Penting:**
+  1918→- "Dispose objek" BUKAN cuma soal referensi JS — gizmo/attachment juga
+  1919→  pemegang referensi. Detach dulu, baru dispose.
+  1920→- Gejala probabilistik (~50%, kadang muncul kadang tidak) = hampir pasti
+  1921→  DUA+ jalur bug bertumpuk dengan state berbeda — jangan berhenti di
+  1922→  jalur pertama yang ketemu; simulasikan SPAM (pengulangan) juga.
+  1923→- Simpan "objek asal" (source) di userData saat membuat objek turunan
+  1924→  sementara → restore jadi murah saat objek turungan dibatalkan.
+  1925→- `useEffect` yang hanya `setMode` (tanpa kelola attachment) adalah titik
+  1926→  buta: mode berubah tapi attachment bisa sudah tidak valid.
+  1927→
+  1928→**Verifikasi nyata:** headless 7 skenario 15 PASS / 0 FAIL (termasuk
+  1929→spam 7-langkah, unequip, drag-finalize, guard block terhapus); pixel GPU
+  1930→spam 5-langkah: SEBELUM 0/0/0+0 vs SESUDAH bola r269 g271 b597 px +
+  1931→highlight 6039 px; build exit 0. Screenshot diverifikasi per-kuadran
+  1932→(sisa pixel biru di panel SEBELUM hanya di area TEKS y=383-399, canvas nol).
+  1933→
+  1934→---
+  1935→
+  1936→## 5. CARA UJI (COPY-PASTE, SUDAH TERBUKTI)
+  1937→
+  1938→### A. Uji struktur di Node (cepat, tanpa browser)
+  1939→Simpan di `$LOCALAPPDATA/Temp/`, **JANGAN di dalam repo**.
+  1940→Karena file di luar project, `import 'three'` gagal — pakai absolute file URL:
+  1941→```javascript
+  1942→const PROJ = 'file:///C:/Users/user/Babft%20Project/Babftss-main/';
+  1943→const THREE = await import(PROJ + 'node_modules/three/build/three.module.js');
+  1944→const { TransformControls } = await import(PROJ + 'node_modules/three/examples/jsm/controls/TransformControls.js');
+  1945→const { makeSixArrows } = await import(PROJ + 'src/utils/gizmoSixArrows.js');
+  1946→
+  1947→let fail = 0;
+  1948→const check = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
+  1949→/* ...tulis RED lalu GREEN... */
+  1950→process.exit(fail === 0 ? 0 : 1);
+  1951→```
+  1952→Jalankan: `cd "C:/Users/user/Babft Project/Babftss-main" && node "$LOCALAPPDATA/Temp/verify.mjs"`
+  1953→
+  1954→### B. Uji visual/pixel di browser nyata
+  1955→Butuh static server kecil di Temp (karena `file://` kena CORS):
+  1956→```javascript
+  1957→import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+  1958→const PROJECT = 'C:/Users/user/Babft Project/Babftss-main';
+  1959→const TEMP = 'C:/Users/user/AppData/Local/Temp';
+  1960→const MIME = {'.html':'text/html','.js':'text/javascript','.json':'application/json'};
+  1961→http.createServer((req,res)=>{
+  1962→  const u = decodeURIComponent(req.url.split('?')[0]);
+  1963→  let f = u==='/' ? path.join(TEMP,'test.html')
+  1964→        : u.startsWith('/three/') ? path.join(PROJECT,'node_modules/three',u.slice(7))
+  1965→        : u.startsWith('/src/')   ? path.join(PROJECT,u.slice(1))
+  1966→        : path.join(TEMP,u.slice(1));
+  1967→  fs.readFile(f,(e,b)=>{ if(e){res.writeHead(404);res.end();return;}
+  1968→    res.writeHead(200,{'Content-Type':MIME[path.extname(f)]||'application/octet-stream'});res.end(b); });
+  1969→}).listen(5399);
+  1970→```
+  1971→HTML uji **WAJIB** punya importmap, kalau tidak addon Three.js gagal resolve:
+  1972→```html
+  1973→<script type="importmap">
+  1974→{ "imports": { "three": "/three/build/three.module.js", "three/": "/three/" } }
+  1975→</script>
+  1976→```
+  1977→Jalankan Chrome headless (**pakai GPU nyata** untuk uji garis):
+  1978→```bash
+  1979→"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new \
+  1980→  --no-sandbox --disable-extensions --use-angle=default \
+  1981→  --user-data-dir="C:/Users/user/AppData/Local/Temp/prof" \
+  1982→  --virtual-time-budget=60000 --window-size=900,900 \
+  1983→  --dump-dom "http://127.0.0.1:5399/" > out.html 2>&1
+  1984→grep -o "<title>[^<]*</title>" out.html
+  1985→sed -n '/<pre>/,/<\/pre>/p' out.html | sed 's/<[^>]*>//g'
+  1986→```
+  1987→Ambil screenshot: ganti `--dump-dom` dengan `--screenshot="C:/.../hasil.png"`.
+  1988→Lihat hasilnya sendiri dengan tool `vision_analyze` SEBELUM dikirim.
+  1989→
+  1990→### 3 PITFALL WAJIB saat uji PointerEvent
+  1991→```javascript
+  1992→// 1) canvas HARUS sudah masuk DOM — getPointer() pakai getBoundingClientRect(),
+  1993→//    canvas detached → rect nol → raycast selalu luput → axis tidak pernah ter-set
+  1994→document.body.appendChild(renderer.domElement);
+  1995→
+  1996→// 2) stub capture API — pointerId sintetis tidak terdaftar
+  1997→renderer.domElement.setPointerCapture = () => {};
+  1998→renderer.domElement.releasePointerCapture = () => {};
+  1999→
+  2000→// 3) 'pointermove' WAJIB button = -1 !!! pointerMove() punya guard
+
+[showing lines 1-2000 of 2218; use offset=2001 with limit to continue reading]

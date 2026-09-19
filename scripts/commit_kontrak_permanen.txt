@@ -1,0 +1,38 @@
+docs(kontrak): tambah KONTRAK_PERMANEN.md ke root repo
+
+MASALAH
+File KONTRAK_PERMANEN.md sebelumnya hanya tersimpan di local dev
+user, belum pernah dipush ke repo. AI penerus yang bekerja dari
+mesin lain tidak punya akses → setiap sesi mulai dari nol,
+kegagalan lama berisiko diulang.
+
+PENYEBAB
+Pekerjaan project Babftss (3D Block Simulator) selama ini
+dikerjakan di local dev user (Windows). Kontrak permanent sudah
+ada dan ter-update secara lokal, tapi belum disinkronkan ke
+repo GitHub https://github.com/johsua092-ui/Babftss.
+
+SOLUSI
+Tambahkan file KONTRAK_PERMANEN.md di root repo supaya setiap AI
+yang bekerja di repo bisa membaca penuh sebelum menyentuh kode
+apapun (sesuai Aturan Mutlak #1 di kontrak).
+
+AMAN
+Tidak ada kode/file lain yang disentuh. Isi KONTRAK_PERMANEN.md
+dipush apa adanya, identik dengan versi lokal user (2217 baris,
+129563 byte) — belum ada pekerjaan teknis yang dimulai, sesuai
+instruksi user: "baca 100% lalu push tanpa disentuh".
+
+VERIFIKASI
+- wc -l KONTRAK_PERMANEN.md = 2217 baris (sama dengan aslinya)
+- git status: hanya 1 file baru di-stage
+- git push origin main bersih, tidak ada force push
+
+CATATAN
+- Ini commit kontrak murni, belum ada fix/fitur teknis.
+- Sesuai Aturan #9 Warisan Pengalaman di kontrak: file ini akan
+  terus di-APPEND (bukan ditimpa) seiring temuan baru di sesi
+  kerja berikutnya. Teks yang sudah ada dilarang disentuh, hanya
+  boleh menambah tepat di bawahnya.
+- Skill-related: belum ada update skill (skill babftss-kontrak)
+  karena belum ada pekerjaan teknis yang menghasilkan temuan baru.
