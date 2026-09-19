@@ -682,6 +682,19 @@ export default function BlockSimulator3D({ setPage }) {
       toast.success(`Step scale diset ke ${studs} studs — drag bola gizmo untuk snap ke kelipatan ini`);
     }
   };
+
+  // ── Phase 80 (2026-09-19, sesi server z.ai): handler Batal ScaleNumberModal ──
+  //    User jelaskan: "default '2' yang saya maksud adalah SCALE NUMBER,
+  //    jika user memilih konfirmasi atau memilih batal tanpa mengatur scale
+  //    number terlebih dahulu". Berarti kalau user Batal tanpa pernah set
+  //    step (scaleNumberStep = null), set default = 2 studs (snap aktif
+  //    dengan step 2). Kalau user sudah set step sebelumnya (mis. 5),
+  //    Batal = tetap di step itu (tidak reset).
+  //    ──
+  const handleScaleNumberCancel = () => {
+    setScaleNumberStep(prev => (prev === null || prev === undefined) ? 2 : prev);
+    setShowScaleNumberModal(false);
+  };
   // Reset Camera confirmation modal state
   const [showResetCameraConfirm, setShowResetCameraConfirm] = useState(false);
   // Build Area "Coming Soon" modal state
@@ -23483,7 +23496,7 @@ Now you can apply Displacement for detailed effect.`);
         <ScaleNumberModal
           value={scaleNumberValue}
           onConfirm={handleScaleNumberConfirm}
-          onCancel={() => setShowScaleNumberModal(false)}
+          onCancel={handleScaleNumberCancel}
         />
       )}
       {showScaleModeModal && (

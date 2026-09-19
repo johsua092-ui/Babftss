@@ -59,11 +59,11 @@ import { STUDS_PER_BLOCK } from './blockStuds.js';
 export const SCALE_MODES = ['1side', '2side', '4side', '6side'];
 
 /** Mode default saat user pertama masuk / menekan Cancel (permintaan user).
- *  Phase 79 (2026-09-19, sesi server z.ai): ubah dari '1side' → '2side'.
- *  User: "jika user langsung tekan konfirmasi atau batal ketika pertama
- *  kali buka menu pemilihan 4 mode di scale ini maka akan terpaksa pakai
- *  scale 1 kan? nah itu ubah jadi 2 aja defaultnya". */
-export const DEFAULT_SCALE_MODE = '2side';
+ *  Phase 73: '1side'. Phase 79 (2026-09-19): ubah ke '2side'.
+ *  Phase 80 (2026-09-19, sesi server z.ai): kembalikan ke '1side'
+ *  (user jelaskan bahwa 'default 2' yang dimaksud di Phase 79 adalah
+ *  SCALE NUMBER studs, BUKAN scale mode. User mau mode default = 1side). */
+export const DEFAULT_SCALE_MODE = '1side';
 
 /** Label UI per mode (dipakai tombol modal + toast + panel info). */
 export const SCALE_MODE_LABEL = {
