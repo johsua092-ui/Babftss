@@ -40,7 +40,7 @@ import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlo
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
-  applyScaleByMode, computeScaleModeFrame,
+  applyScaleByMode, computeScaleModeFrame, snapScaleFinal,
 } from '../utils/scaleModes.js';
 import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
@@ -12470,6 +12470,31 @@ Now you can apply Displacement for detailed effect.`);
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
         // di place/restore pakai fallback tanda nilai saat itu).
         if (transformControls.getMode() === 'scale' && transformControls.object) {
+          // ── Phase 78 (2026-09-19, sesi server z.ai): SNAP FINAL saat
+          //    mouseUp — BUKAN setiap frame. Sebelum Phase 78, snap jalan
+          //    setiap frame di applyScaleByMode → saat snap lompat antar
+          //    step, computeAnchorOffset (yang pakai scale untuk hitung
+          //    offset posisi) juga lompat → posisi goyang. Phase 77 fix
+          //    goyang dengan skip computeAnchorOffset saat snap aktif —
+          //    TAPI break mode 1 side semantics (sisi seberang tidak diam,
+          //    user komplain "kok di mode 1side 2 sisi ke scale?").
+          //    Phase 78 fix BOTH: selama drag smooth + sisi seberang diam
+          //    (applyScaleByMode tanpa snap), saat mouseUp snap 1x ke step
+          //    terdekat + computeAnchorOffset pakai snapped scale (sisi
+          //    seberang tetap diam di snapped position).
+          //    ──
+          const sd = scaleDragRef.current;
+          if (sd && sd.snapStudStep && sd.snapStudStep > 0) {
+            const obj = transformControls.object;
+            const s0 = sd.startScale[sd.axisKey];
+            const nowVal = obj.scale[sd.axisKey];
+            const ratio = (s0 !== 0) ? (nowVal / s0) : 1;
+            snapScaleFinal(
+              THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
+              sd.startScale, sd.startPos, sd.snapStudStep, 0.05,
+              sd.frameQuat,
+            );
+          }
           clearScaleDragStart(transformControls.object);
           scaleDragRef.current = null;   // Phase 73: bersihkan snapshot mode
         }
@@ -12539,7 +12564,10 @@ Now you can apply Displacement for detailed effect.`);
           applyScaleByMode(
             THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
-            sd.snapStudStep,  // Phase 75: step untuk snap ke kelipatan studs
+            // Phase 78: snapStudStep tidak lagi di-pass ke applyScaleByMode
+            // (snap dihapus dari applyScaleByMode — pindah ke snapScaleFinal
+            // yang dipanggil di mouseUp). Biarkan null supaya backward compat.
+            null,
           );
         }
         clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);

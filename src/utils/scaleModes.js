@@ -234,20 +234,84 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
     object.scale[a] = sgn * Math.max(Math.abs(s0) * r, minAbs);
   }
 
-  // ── PHASE 75 (2026-09-19, sesi server z.ai): SNAP scale ke kelipatan studs ──
-  // User input step studs di ScaleNumberModal → snap perubahan scale ke
-  // kelipatan stepScale. Snap RELATIF ke startScale[axis] (bukan absolute)
-  // supaya block TIDAK melompat saat user belum drag (raw = startScale →
-  // delta = 0 → snappedDelta = 0 → finalScale = startScale). Behavior:
-  // user drag sedikit → block tidak berubah (delta < 0.5*stepScale).
-  // user drag >= 0.5*stepScale → block naik/turun 1 step.
-  // stepScale = snapStudStep / STUDS_PER_BLOCK (konversi studs → scale factor).
-  // Snap HANYA sumbu yang di-scale oleh mode ini (axes), bukan semua sumbu.
-  // Mode 1side → 1 sumbu (digenggam); 4side → 2 sumbu lain; 6side → semua.
-  // Mode 2side TIDAK lewat sini (scaleDragRef null → applyScaleByMode tidak
-  // dipanggil → snap tidak aktif). User pilih mode 1/4/6 side untuk snap.
-  const snapActive = snapStudStep && snapStudStep > 0 && isFinite(snapStudStep);
-  if (snapActive) {
+  // 1side: geser pusat supaya sisi seberang DIAM.
+  // PHASE 78 (2026-09-19, sesi server z.ai): snap logic HAPUS dari
+  // applyScaleByMode (pindah ke snapScaleFinal yang dipanggil SAAT
+  // MOUSEUP / drag selesai). Sebelum Phase 78, snap jalan SETIAP
+  // FRAME di applyScaleByMode → saat snap lompat antar step, scale
+  // berubah cepat → computeAnchorOffset (yang pakai scale untuk
+  // hitung offset posisi) juga lompat → posisi block GOYANG.
+  //
+  // Phase 77 fix goyang dengan SKIP computeAnchorOffset saat snap
+  // aktif — TAPI break mode 1 side semantics (sisi seberang tidak
+  // diam, user komplain "kok di mode 1side 2 sisi ke scale?").
+  //
+  // Phase 78 fix BOTH bugs (goyang + sisi seberang diam):
+  //  - Selama drag: applyScaleByMode JALAN tanpa snap (smooth),
+  //    computeAnchorOffset pakai raw scale → sisi seberang DIAM.
+  //  - Saat mouseUp: snapScaleFinal snap 1x ke step terdekat +
+  //    computeAnchorOffset pakai snapped scale → sisi seberang
+  //    TETAP di posisi snapped (lompat sedikit ke snapped position,
+  //    TAPI tidak goyang karena hanya 1x lompatan).
+  //
+  // Parameter snapStudStep di signature ini TIDAK dipakai (deprecated
+  // — backward compat untuk caller yang masih pass). Snap sekarang
+  // lewat snapScaleFinal yang dipanggil di onDraggingChanged false.
+  if (needsAnchorOffset(m) && startPos) {
+    const half = getGeometryHalfSize(object, axisKey);
+    const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
+    if (off) {
+      object.position.set(startPos.x, startPos.y, startPos.z);
+      object.position.add(off);
+    }
+  }
+  return object.scale;
+}
+
+/**
+ * snapScaleFinal — Phase 78 (2026-09-19, sesi server z.ai)
+ *
+ * SNAP scale ke kelipatan stepScale + computeAnchorOffset FINAL.
+ * Dipanggil SAAT MOUSEUP (drag selesai) — BUKAN setiap frame.
+ *
+ * Kenapa SNAP saat mouseUp, BUKAN setiap frame:
+ * Sebelum Phase 78, snap jalan setiap frame di applyScaleByMode.
+ * Saat snap lompat antar step (karena user drag), scale berubah
+ * cepat → computeAnchorOffset (yang pakai scale untuk hitung
+ * offset posisi) juga lompat → posisi block goyang/bergetar.
+ *
+ * Phase 77 fix goyang dengan SKIP computeAnchorOffset saat snap
+ * aktif — TAPI break mode 1 side semantics (sisi seberang tidak
+ * diam). User komplain: "kok di mode 1side 2 sisi ke scale?
+ * harusnya sisi lain diam".
+ *
+ * Phase 78 fix BOTH bugs (goyang + sisi seberang diam):
+ *  - Selama drag: applyScaleByMode JALAN tanpa snap (smooth),
+ *    computeAnchorOffset pakai raw scale → sisi seberang DIAM.
+ *  - Saat mouseUp: snapScaleFinal snap 1x ke step terdekat +
+ *    computeAnchorOffset pakai snapped scale → sisi seberang
+ *    TETAP di posisi snapped (lompat sedikit ke snapped position,
+ *    TAPI tidak goyang karena hanya 1x lompatan).
+ *
+ * @param {object} THREE
+ * @param {object} object      mesh block
+ * @param {string} mode        '1side' | '2side' | '4side' | '6side'
+ * @param {string} axisKey     sumbu bola yang digenggam
+ * @param {number} sign        +1 / −1 sisi bola
+ * @param {object} startScale  snapshot {x,y,z} saat drag mulai
+ * @param {object} startPos    snapshot {x,y,z} posisi saat drag mulai
+ * @param {number} snapStudStep step dalam studs (0/null = no snap)
+ * @param {number} minAbs      batas minimum absolut (0.05)
+ * @param {object} frameQuat   quaternion frame referensi
+ */
+export function snapScaleFinal(THREE, object, mode, axisKey, sign, startScale, startPos, snapStudStep, minAbs = 0.05, frameQuat = null) {
+  if (!THREE || !object) return null;
+  const m = normalizeScaleMode(mode);
+  const axes = getScaledAxes(m, axisKey);
+
+  // Snap scale ke kelipatan stepScale (relatif ke startScale).
+  // stepScale = snapStudStep / STUDS_PER_BLOCK (studs → scale factor).
+  if (snapStudStep && snapStudStep > 0 && isFinite(snapStudStep)) {
     const stepScale = snapStudStep / STUDS_PER_BLOCK;
     for (const a of axes) {
       const s0 = startScale[a];
@@ -260,20 +324,11 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
     }
   }
 
-  // 1side: geser pusat supaya sisi seberang DIAM.
-  // PHASE 77 (2026-09-19, sesi server z.ai): SKIP computeAnchorOffset
-  // kalau snap aktif. Sebelum Phase 77, computeAnchorOffset dijalankan
-  // setiap frame dengan offset = (scaleNew - startScale) × halfSize.
-  // Saat snap lompat antar step (karena user drag), scale berubah cepat
-  // → offset berubah cepat → posisi block berubah cepat = GOYANG/BERGETAR.
-  // User komplain: "scale menjadi kecil tiba tiba blocknya goyang goyang
-  // bergetar sampai yang paling parah bergeser dari posisi awal".
-  // Fix: skip computeAnchorOffset saat snap aktif. Behavior: snap aktif
-  // = block scale dari PUSAT (mode 2 side behavior), posisi TIDAK
-  // bergeser. Sisi seberang TIDAK diam saat snap aktif — user pilih
-  // mode 1 side TANPA snap (step = 0) kalau mau sisi seberang diam.
-  // Mode 1 side + snap aktif = prioritas snap > sisi seberang diam.
-  if (needsAnchorOffset(m) && startPos && !snapActive) {
+  // computeAnchorOffset final (pakai snapped scale) — supaya sisi
+  // seberang DIAM di posisi snapped (BUKAN raw position). Tanpa ini,
+  // setelah snap, sisi seberang akan bergeser karena pusat tetap di
+  // raw position padahal scale sudah snapped.
+  if (needsAnchorOffset(m) && startPos) {
     const half = getGeometryHalfSize(object, axisKey);
     const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
     if (off) {
@@ -281,5 +336,6 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
       object.position.add(off);
     }
   }
+
   return object.scale;
 }
