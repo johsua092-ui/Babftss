@@ -1,0 +1,154 @@
+fix(scale-ui): Phase 76 — fix default value modal + izinkan input 0/0.01/0.02/dst
+
+MASALAH
+Dua keluhan user setelah Phase 75 (commit 6daaa3d):
+
+1. Default value modal BERUBAH sesuai current scale block. User
+   scale block jadi 8 studs panjang, lalu buka modal lagi untuk
+   ganti step → default value di input = 8 (current scale block),
+   BUKAN step saat ini. User expect: default value = step yang
+   sedang aktif, BUKAN current scale block yang berubah-ubah.
+
+2. Input 0.1, 0.2, 0.3, dst DILARANG (MIN_STUDS = 0.25). User
+   mau bisa input mulai dari 0 (0 = no snap, drag bebas tanpa
+   batasan) sampai 0.01, 0.02, ..., 0.1, 0.2, dst. Yang terkecil
+   = 0 (snap dimatikan). Dari 0 → 0.01, 0.02, ..., 0.09, lalu 0.1,
+   0.2, ... sesuai step yang user input.
+
+PENYEBAB
+1. handleComingSoonClick (Phase 74, commit c455b03) set default
+   value = `Math.max(0.25, maxScale * STUDS_PER_BLOCK)` — yaitu
+   current scale block dalam studs. Ini salah karena default value
+   harusnya = step saat ini (yang user sudah set lewat Konfirmasi
+   sebelumnya), bukan current scale block yang berubah saat user
+   drag.
+
+2. MIN_STUDS = 0.25 di ScaleNumberModal.jsx (Phase 74, commit
+   c455b03) terlalu tinggi. User mau bisa input 0 (no snap) +
+   nilai kecil seperti 0.01, 0.02, ... Saya set 0.25 karena takut
+   block terlalu kecil sampai susah dilihat, tapi ternyata user
+   mau fleksibilitas penuh.
+
+SOLUSI
+2 file berubah, 6 perubahan inti:
+
+**File 1: src/components/ScaleNumberModal.jsx (46 insertions, 24 deletions)**
+  1. Konstanta MIN_STUDS: 0.25 → 0 (bisa input 0). STEP: 0.25 →
+     0.01 (supaya arrow ↑↓ di input field tambah/kurang 0.01,
+     bukan 0.25).
+  2. Validasi: tambah var `isZero = valid && parsed === 0`. Untuk
+     parsed = 0 → valid = true (BUKAN invalid). scaleResult dan
+     blockResult null kalau isZero (tidak ditampilkan).
+  3. Subtitle: "Masukkan step scale dalam studs (drag akan snap
+     ke kelipatan ini)" → "Masukkan step scale dalam studs (0 =
+     bebas tanpa snap, drag lancar)".
+  4. Penjelasan singkat: tambah kalimat "0 = snap dimatikan (drag
+     bebas tanpa batasan matematika). 0.01, 0.02, ... = snap ke
+     kelipatan itu."
+  5. Hasil konversi real-time: tambah branch `valid && isZero` →
+     tampilkan teks hijau "Snap dimatikan — drag bola gizmo bebas
+     tanpa batasan step" (BUKAN "scale factor 0.000 / 0.000 block").
+     Branch `valid && !isZero` tetap tampilkan scaleResult +
+     blockResult. Branch invalid tetap tampilkan error message
+     "Masukkan angka antara 0 dan 100 studs." (MIN_STUDS = 0
+     sekarang, BUKAN 0.25).
+  6. Tabel konversi: update 6 row dari [2/1/0.5/4/0.25/6] →
+     [0/0.01/0.1/0.5/1/2]. Row "0 studs" desc "no snap (bebas)".
+     Row "0.01 studs" desc "1/200 block". Row "0.1 studs" desc
+     "1/20 block". Row "0.5 studs" desc "seperempat block". Row
+     "1 studs" desc "setengah block". Row "2 studs" desc "1 block
+     (default)".
+
+**File 2: src/pages/BlockSimulator3D.jsx (37 insertions, 24 deletions)**
+  7. handleComingSoonClick: UBAH default value dari `Math.max(0.25,
+     maxScale * STUDS_PER_BLOCK)` (current scale block) →
+     `scaleNumberStep ?? 2` (step saat ini atau default 2). Hapus
+     baca tc.object + Math.max scale. Komentar Phase 76 jelaskan
+     perubahan + alasan (fix user complaint "kok berubah jadi 8
+     studs padahal cuma mau ganti step").
+  8. handleScaleNumberConfirm: tambah branch `if (studs === 0)` →
+     toast.success "Snap dimatikan — drag bola gizmo bebas tanpa
+     batasan step" (beda dengan toast > 0). setScaleNumberStep(studs)
+     tetap dipanggil dengan 0 — applyScaleByMode check
+     `snapStudStep > 0` → 0 > 0 = false → snap tidak aktif. Tidak
+     perlu khusus set null; 0 sudah otomatis = no snap di applyScaleByMode.
+
+YANG TIDAK DISENTUH:
+- scaleModes.js (applyScaleByMode + snap logic Phase 75) — tidak
+  berubah. Sudah benar: check `snapStudStep > 0` → kalau 0 →
+  snap tidak aktif. Tidak perlu ubah konstanta MIN_ABS_SCALE app
+  (0.05) yang mencegah block jebol/terbalik (kontrak Phase 67 v2).
+- blockStuds.js + test_blockStuds.mjs — fondasi tidak diubah.
+  test_blockStuds 11/11 PASS sebelum & sesudah perubahan.
+- ScaleModeModal.jsx (modal 4 mode Phase 73) — tidak berubah.
+- GizmoBlockInfoPanel.jsx (panel info + tombol +) — tidak berubah.
+- File terlarang, gizmo utils, TransformControls Three.js —
+  semua intact.
+
+AMAN
+- 2 file spesifik berubah: ScaleNumberModal.jsx + BlockSimulator3D.jsx.
+  Tidak ada file lain tersentuh.
+- File terlarang TIDAK tersentuh (verified via git diff --name-only
+  | grep -E "AuthContext|firebase|supabase|LoginPage|UserPill" →
+  kosong).
+- Fondasi studs TIDAK diubah: test_blockStuds.mjs 11/11 PASS.
+- Mode 2 side (jalur lama) TIDAK tersentuh: snap tidak aktif di
+  mode 2 side (scaleDragRef null → applyScaleByMode tidak dipanggil).
+  User pilih mode 1/4/6 side untuk snap aktif.
+
+VERIFIKASI
+- git diff --stat: 2 files changed, 47 insertions(+), 36 deletions(-).
+- git diff --name-only | grep file-terlarang → kosong (aman).
+- vite build: exit 0, built in 17.14s, 0 error, 0 warning syntax.
+- test_blockStuds.mjs: 11/11 PASS (re-run after fix).
+- MENTAL SIMULATION FLOW USER (kontrak butir 95 + 98):
+  KASUS 1: input 0 (no snap)
+  1. User klik "+" → handleComingSoonClick → setScaleNumberValue(
+     scaleNumberStep ?? 2) → modal render. ✓
+  2. User input "0" → parsed=0, valid=true, isZero=true. ✓
+  3. Hasil konversi: "Snap dimatikan — drag bebas" (hijau). ✓
+  4. Konfirmasi enabled (valid=true). ✓
+  5. User Konfirmasi → handleScaleNumberConfirm(0) → setScaleNumber-
+     Step(0) + tutup modal + toast "Snap dimatikan". ✓
+  6. useEffect sync → scaleNumberStepRef.current = 0. ✓
+  7. User drag bola gizmo → applyScaleByMode(sd.snapStudStep=0)
+     → check `snapStudStep > 0` = false → snap tidak aktif →
+     drag smooth (bebas). ✓
+
+  KASUS 2: input 0.03 (snap ke kelipatan 0.03 studs)
+  1. User klik "+" → modal render dengan default = 0 (step saat
+     ini dari Kasus 1) atau 2 (default). ✓
+  2. User input "0.03" → parsed=0.03, valid=true, isZero=false. ✓
+  3. Hasil konversi: "scale factor 0.015 / 0.015 block per step". ✓
+  4. User Konfirmasi → setScaleNumberStep(0.03) + tutup modal +
+     toast "Step scale diset ke 0.03 studs". ✓
+  5. User drag → applyScaleByMode(sd.snapStudStep=0.03) →
+     stepScale = 0.03/2 = 0.015 → snap ke kelipatan 0.015 (scale
+     factor). Block snap ke 0.015, 0.030, 0.045, ... per step. ✓
+
+  Semua step aman. Behavior sesuai harapan user: 0 = no snap,
+  0.01-0.99 = snap ke kelipatan itu, minimum value = 0 (bukan 0.25).
+
+CATATAN
+- BUG INI adalah lesson learned lanjutan dari butir 97 kontrak
+  (salah interpretasi permintaan user). User Phase 74 tulis:
+  "yang terkecil disini adalah 0! dimana jika user ingin scale
+  nya menggunakan 0 studs maka tidak ada batasan sama sekali!"
+  Saya Phase 74 (commit c455b03) set MIN_STUDS = 0.25 karena
+  takut block terlalu kecil. Tapi user eksplisit mau 0 = no snap
+  + nilai kecil. Pelajaran: JANGAN asumsi batasan minimum kalau
+  user tidak eksplisit minta. Pakai 0 sebagai minimum default
+  untuk input numerik, KECUALI ada kontrak/app constraint hard
+  (mis. MIN_ABS_SCALE app = 0.05 di blockScale.js yang mencegah
+  block jebol — itu TIDAK diubah, tetap aktif sebagai safety net
+  di applyScaleByMode, BUKAN di input modal).
+- Komentar header Phase 74 di ScaleNumberModal.jsx baris 1-58
+  yang menyebut "MIN_STUDS = 0.25" + "input nilai scale" (bukan
+  step) sekarang OUTDATED lagi (Phase 75 + 76). Tidak di-update
+  untuk minimal change (lihat kontrak butir 83, 86, 93 — komentar
+  header Phase lama cycle outdated lintas-Phase).
+- Import STUDS_PER_BLOCK di BlockSimulator3D.jsx baris 45 sekarang
+  UNUSED (Phase 75 hapus apply langsung, Phase 76 hapus default
+  value modal yang pakai STUDS_PER_BLOCK). Tidak dihapus untuk
+  minimal change — vite build OK, tidak ada runtime error. Bisa
+  di-cleanup di sesi lain kalau ada lint warning.

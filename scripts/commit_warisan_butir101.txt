@@ -1,0 +1,55 @@
+docs(kontrak): append warisan butir 101-103 — default value modal + batasan minimum + pola toggle 0
+
+MASALAH
+Aturan #9 mewajibkan warisan pengalaman di akhir setiap tugas.
+FIX Phase 76 — fix default value modal ScaleNumberModal + izinkan
+input 0/0.01/0.02/dst (commit 249de67) sudah selesai & terverifikasi,
+warisannya belum di-append ke kontrak.
+
+PENYEBAB
+Phase 74 commit c455b03 + Phase 75 commit 6daaa3d punya 2 bug:
+(1) default value modal = current scale block (berubah saat user
+drag), harusnya = step saat ini (persist state); (2) MIN_STUDS =
+0.25 melarang input < 0.25, padahal user eksplisit mau 0 + nilai
+kecil 0.01, 0.02, dst. Kedua bug = akar dari asumsi tanpa konfirmasi
+user (butir 97 + 102).
+
+SOLUSI
+Append section baru "## 17. WARISAN PENGALAMAN — sesi 2026-09-19
+(server z.ai; job: Phase 76 — fix default value modal + izinkan
+input 0/0.01/0.02)" di akhir file. Teks yang sudah ada tidak
+diubah apa pun. Warisan berisi 3 butir:
+  101. Default value modal = state yang user set sebelumnya,
+      BUKAN current state target. Pola: `statePersist ?? default-
+      Fallback`. Alasan: user buka modal untuk SET nilai baru,
+      bukan lihat current value target yang berubah saat interaksi.
+  102. Jangan asumsi batasan minimum input kalau user tidak
+      eksplisit minta. Pakai 0 sebagai minimum default, KECUALI
+      ada kontrak/app constraint hard (mis. MIN_ABS_SCALE app =
+      0.05 di blockScale.js). Input modal = UX layer (fleksibel),
+      apply layer = safety layer (hard clamp). Jangan campur aduk.
+  103. Pola toggle: input 0 = matikan fitur, input > 0 = aktifkan
+      dengan nilai itu. SATU kontrol untuk dua fungsi (toggle +
+      value). Check `value > 0` di applyScaleByMode = toggle
+      otomatis. Tambah toast beda untuk 0 vs > 0.
+
+AMAN
+- HANYA KONTRAK_PERMANEN.md berubah (append ~100 baris baru).
+- Teks existing tidak diubah — verified via git diff: hanya
+  insertion di akhir, tidak ada baris "-" selain separator.
+- Tidak ada file lain berubah. Tidak ada kode fungsional tersentuh.
+- File terlarang (kontrak Bagian 1 #4) tidak tersentuh.
+
+VERIFIKASI
+- git diff --stat: 1 file changed, ~100 insertions(+), 0 deletions(-).
+- git diff | grep "^-" | grep -v "^---" → kosong (bukti append-only).
+- Push normal (bukan force) ke origin/main.
+- Hash match pasca-push: git rev-parse HEAD == git rev-parse origin/main.
+
+CATATAN
+- Tugas ini menghasilkan 3 butir warisan karena ada 3 lesson learned
+  KRITIS: default value modal pattern, jangan asumsi minimum, pola
+  toggle 0. Ketiganya ditulis DETAIL dengan contoh kode + pola
+  general supaya AI penerus yang baca kontrak langsung paham akar
+  masalah + cara cegah tanpa harus ulang bug ini dari awal.
+- Tidak ada update skill (skill babftss-kontrak tidak ada di server).
