@@ -257,11 +257,11 @@ export default function ScaleModeModal({
               HANYA varian onboarding — varian picker memakai mode langsung
               saat kartu diklik (footer sengaja tidak ada). */}
           {!isPicker && (
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 12 }}>
               <button
                 onClick={() => finishClose(() => onCancel && onCancel())}
                 style={{
-                  padding: '10px 20px', borderRadius: 8,
+                  flex: 1, padding: '10px 20px', borderRadius: 8,
                   backgroundColor: 'transparent',
                   border: '1px solid #334155', color: '#94a3b8',
                   fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -283,7 +283,7 @@ export default function ScaleModeModal({
               <button
                 onClick={() => finishClose(() => onConfirm && onConfirm(selected))}
                 style={{
-                  padding: '10px 24px', borderRadius: 8,
+                  flex: 1, padding: '10px 24px', borderRadius: 8,
                   backgroundColor: ACCENT, border: `1px solid ${ACCENT}`,
                   color: '#0e1420', fontSize: 13, fontWeight: 700,
                   cursor: 'pointer', transition: 'all 0.15s ease',
