@@ -12507,11 +12507,21 @@ Now you can apply Displacement for detailed effect.`);
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
         // di place/restore pakai fallback tanda nilai saat itu).
         if (transformControls.getMode() === 'scale' && transformControls.object) {
-          // Phase 79: hapus call snapScaleFinal di mouseUp. Snap sekarang
-          // jalan saat drag (di applyScaleByMode) + hysteresis. Saat mouseUp,
-          // block tetap di snapped scale dari frame terakhir (TIDAK perlu
-          // snapScaleFinal lagi). Hysteresis state (obj.userData.__snapLastStep)
-          // di-clear bersama snapshot drag di bawah.
+          // Phase 87: RE-APPLY applyGeometryOffset SEBELUM clear sd.
+          // Saat lepas gizmo, geometry = clone (yang sudah di-translate dari
+          // frame terakhir). Kalau ada objectChange terakhir yang fire SETELAH
+          // dragging-changed false (dengan sd = null), applyGeometryOffset
+          // TIDAK dipanggil → geometry offset TIDAK compensate → sisi seberang
+          // bergerak → block "teleport". Fix: RE-APPLY di sini (sd MASIH ada,
+          // sebelum clear) supaya geometry compensate untuk finalScale.
+          const obj87 = transformControls.object;
+          const sd87 = scaleDragRef.current;
+          if (sd87 && obj87.userData && obj87.userData.__originalGeometry) {
+            applyGeometryOffset(
+              THREE, obj87, scaleModeRef.current, sd87.axisKey, sd87.sign,
+              sd87.startScale, obj87.userData.__originalGeometry,
+            );
+          }
           clearScaleDragStart(transformControls.object);
           scaleDragRef.current = null;   // Phase 73: bersihkan snapshot mode
           if (transformControls.object.userData) {
