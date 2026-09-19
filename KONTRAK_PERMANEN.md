@@ -2647,6 +2647,126 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     implementasi-nya di file B (BlockSimulator3D), cross-check
     komentar di file B untuk versi TERBARU.
 
+---
+
+## 15. WARISAN PENGALAMAN — sesi 2026-09-19 (server z.ai; job: FIX bug layar buram ScaleNumberModal Phase 74)
+
+94. **BUG KLASIK: LUPA PANGGIL `setShowXxxModal(false)` DI HANDLER CONFIRM → OVERLAY BLUR TETAP DI LAYAR → USER STUCK**
+    (sesi 2026-09-19, fix commit `e7c1d92` untuk bug Phase 74 commit
+    `c455b03`): ScaleNumberModal (modal baru Phase 74) punya bug:
+    setelah user klik Konfirmasi, layar jadi buram (overlay
+    `rgba(0,0,0,0.75) + backdropFilter blur(8px)` tetap dirender) +
+    user tidak bisa interaksi apa pun lagi. Akar masalah: handler
+    caller `handleScaleNumberConfirm(studs)` di BlockSimulator3D.jsx
+    TIDAK memanggil `setShowScaleNumberModal(false)` di akhir.
+    Akibatnya state `showScaleNumberModal` tetap true → React tidak
+    unmount modal → overlay div tetap di DOM dengan opacity 0 (animasi
+    keluar sudah selesai) TAPI backdrop blur tetap menutupi layar.
+    zIndex overlay = 1100, di atas semua UI → user tidak bisa klik
+    apa pun. User harus refresh halaman untuk keluar.
+    **Cara detect bug ini** (sebelum user komplain): saat implement
+    modal baru + handler confirm baru, CROSS-CHECK pattern handler
+    confirm yang sudah working di modal lain. Di kasus Phase 74,
+    handler `handleScaleModeConfirm` (Phase 73, working) sudah punya
+    `setShowScaleModeModal(false)` di baris 596 — pattern INI WAJIB
+    diaplikasikan ke handler confirm modal baru.
+    **Pola WAJIB untuk semua modal dengan overlay + state show**:
+    ```jsx
+    const handleXxxConfirm = (value) => {
+      // 1. validasi + apply (mis. ke tc.object)
+      // 2. tutup modal di SEMUA branch (sukses + error):
+      setShowXxxModal(false);  // ← JANGAN LUPA
+      // 3. feedback toast (sukses/warning)
+    };
+    ```
+    Kalau ada branch `return early` (mis. `if (!obj) return;`) →
+    panggil setter di SANA juga, bukan hanya di akhir handler.
+    Handler onCancel (Batal) sudah biasa panggil setter (pola:
+    `onCancel={() => setShowXxxModal(false)}` di JSX render). TAPI
+    handler onConfirm (Konfirmasi) sering lupa — karena fokus ke
+    logic apply. **Hati-hati khusus untuk modal yang punya overlay
+    blur: bug ini tidak fatal di modal tanpa overlay (modal bisa
+    di-klik lagi tanpa stuck), TAPI sangat fatal di modal dengan
+    overlay blur karena user terkunci**.
+
+95. **VITE BUILD EXIT 0 TIDAK = FITUR BEKERJA — WAJIB MENTAL SIMULATION FLOW USER**
+    (sesi 2026-09-19, fix commit `e7c1d92`): Phase 74 commit
+    `c455b03` di-verify via `vite build` exit 0 + test_blockStuds
+    11/11 PASS → dianggap "selesai & terverifikasi". Tapi ternyata
+    ada bug fatal (overlay tidak hilang setelah Konfirmasi) yang
+    HANYA terlihat saat user benar-benar klik tombol + → input
+    studs → klik Konfirmasi. `vite build` hanya cek syntax valid +
+    bundle ter-generate; TIDAK simulasi flow user + state changes.
+    **Pelajaran**: untuk fitur yang melibatkan state modal +
+    overlay + handler yang apply ke objek Three.js, WAJIB lakukan
+    MENTAL SIMULATION flow user sebelum klaim selesai:
+    (1) User klik tombol trigger → state setter dipanggil?
+    (2) Modal render → visible?
+    (3) User isi input → state input update?
+    (4) User klik Konfirmasi → finishClose(callback) → callback
+        dipanggil setelah ANIM_MS (200ms) → handler confirm
+        dijalankan → logic apply + STATE SETTER MODAL TUTUP
+        DIPANGGIL?
+    (5) Modal unmount → overlay hilang → user bisa interaksi lagi?
+    Kalau salah satu step ini LUPA (terutama step 4 — setter modal
+    tutup), bug fatal yang tidak ketangkap vite build. Karena itu
+    **wajib jalankan mental simulation flow user + cek apakah
+    SETiap branch handler confirm (sukses + error) memanggil setter
+    state modal tutup**. Kalau server AI tidak punya akses Chrome
+    headless + GPU untuk visual test, MINIMUM WAJIB mental
+    simulation flow + catat eksplisit di laporan bahwa visual test
+    belum dilakukan (kejujuran Aturan #6). Jangan klaim "selesai
+    & terverifikasi" kalau cuma vite build exit 0 — itu cuma
+    bukti syntax, bukan bukti fitur jalan.
+    **Untuk project Babftss server z.ai**: server tidak punya akses
+    ke Telegram bot user (untuk kirim screenshot bukti ke user)
+    + tidak punya Chrome headless + GPU untuk visual test. Maka
+    MINIMUM verifikasi yang bisa dilakukan: vite build exit 0 +
+    test fondasi (test_blockStuds.mjs) + mental simulation flow.
+    Visual test HARUS dilakukan user di local dev. AI server
+    WAJIB catat eksplisit bahwa visual test belum dilakukan +
+    saran user coba di local dev. Ini bukan kegagalan AI — ini
+    keterbatasan environment. TAPI mental simulation flow WAJIB
+    dilakukan AI server sebelum push.
+
+96. **DUPLIKASI MODAL = WAJIB DUPLIKASI PATTERN HANDLER CALLER, BUKAN HANYA KOMPONEN**
+    (sesi 2026-09-19, fix commit `e7c1d92`, kelanjutan butir 90):
+    saat buat modal baru (ScaleNumberModal) dengan "sama persis
+    designnya" dengan modal yang sudah ada (ScaleModeModal),
+    AI biasanya fokus copy STRUKTUR KOMPONEN (overlay, panel,
+    header, footer, keyframes). TAPI yang SERING LUPA: copy PATTERN
+    HANDLER CALLER. Di Phase 74, ScaleNumberModal komponen dibuat
+    sama persis (animasi, ACCENT, PANEL_BG, footer flex:1) — bagus.
+    TAPI handler caller `handleScaleNumberConfirm` tidak ikuti
+    pattern `handleScaleModeConfirm` (yang panggil setter state
+    tutup di akhir). Hasilnya: bug layar buram.
+    **Pola WAJIB untuk duplikasi modal**: saat copy modal A →
+    modal B, copy JUGA pattern caller:
+    - handler confirm A: `setShowModalA(false)` + toast + logic
+      apply → handler confirm B WAJIB: `setShowModalB(false)` +
+      toast + logic apply.
+    - handler cancel A: `setShowModalA(false)` → handler cancel
+      B WAJIB: `setShowModalB(false)`.
+    - state show A: `const [showModalA, setShowModalA] = useState
+      (false)` → state show B WAJIB sama.
+    - render JSX A: `{showModalA && (<ModalA ... onConfirm=
+      {handlerConfirmA} onCancel={() => setShowModalA(false)} />)}
+      ` → render JSX B WAJIB sama pattern.
+    **Checklist saat duplikasi modal** (tambahkan ke mental
+    simulation butir 95):
+    - [ ] Komponen modal baru copy struktur (overlay/panel/header/
+      footer/keyframes ber-prefix beda) — ini biasanya tidak lupa.
+    - [ ] State show baru + setter baru di-deklarasi di caller.
+    - [ ] Handler confirm baru: panggil setter state tutup di
+      SEMUA branch (sukses + error) — INI YANG SERING LUPA.
+    - [ ] Handler cancel baru (atau inline arrow function di
+      onCancel prop): panggil setter state tutup.
+    - [ ] Render JSX modal baru: conditional render pakai state
+      show + pass onConfirm/onCancel.
+    Kalau salah satu checklist LUPA → bug. Untuk modal dengan
+    overlay blur, lupa checklist #3 = bug fatal (user stuck).
+
+
 
 
 
