@@ -235,13 +235,6 @@ export default function ScaleModeModal({
                     }}>
                       {SCALE_MODE_LABEL[m]}
                     </span>
-                    {m === '2side' && (
-                      <span style={{
-                        marginLeft: 'auto', fontSize: 8.5, fontWeight: 700,
-                        color: '#94a3b8', fontFamily: 'Orbitron, sans-serif',
-                        textTransform: 'uppercase', letterSpacing: '0.5px',
-                      }}>bawaan</span>
-                    )}
                     {active && (
                       <span style={{
                         marginLeft: m === '2side' ? 6 : 'auto', width: 16, height: 16,
