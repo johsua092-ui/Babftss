@@ -40,7 +40,8 @@ import {
   attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe,
   disposeDeleteWireframeMaterial, setDeleteWireframeResolution,
   attachPropertyHoverOutline, detachPropertyHoverOutline,
-  attachPropertySelectOutline, detachPropertySelectOutline,
+  attachToolSelectOutline, detachToolSelectOutline, toolOutlineColor,
+  attachToolHoverOutline, detachToolHoverOutline, detachAllToolOutlines,
 } from '../utils/deleteWireframe.js';
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
@@ -314,7 +315,18 @@ export default function BlockSimulator3D({ setPage }) {
     // keluar clone→paint akan attach balik ke block asal = bug).
     const inFamily5 = tool === 'move' || tool === 'rotate' || tool === 'scale'
       || tool === 'clone' || tool === 'mirror';
-    if (!inFamily5) {
+    // ── HOVER TEBAL: warna ikut tool BARU ──
+    // Fix bug "hover tebal warna tool lama nempel" (terukur: property→move,
+    // hover tetap #12b34a). Kalau tool baru berhak → ganti warna hover;
+    // kalau tidak berhak → lepas hover (hover tebal hanya milik 6 tool).
+    if (threeRef.current.propHoverBlockRef) {
+      const _hb = threeRef.current.propHoverBlockRef.current;
+      const _hc = toolOutlineColor(tool);
+      if (_hb && _hc) attachToolHoverOutline(_hb, _hc);     // ganti warna hover
+      else if (_hb) detachToolHoverOutline(_hb);            // tak berhak → lepas
+      if (!_hc) threeRef.current.propHoverBlockRef.current = null;
+    }
+    if (!inFamily5 && tool !== 'property') {
       threeRef.current.ghostSource = null;      // batalkan restore v13
       if (threeRef.current.clearSelection) {
         try { threeRef.current.clearSelection(); } catch (e) { /* jangan gagalkan ganti tool */ }
@@ -327,16 +339,41 @@ export default function BlockSimulator3D({ setPage }) {
     // seperti pindah move↔rotate (gejala: rotate→clone→rotate = bola hilang).
     // ghostSource diambil & dikosongkan sekali jalan; berlaku untuk SEMUA tool
     // tujuan (move/rotate/scale), cukup sekali di sini sebelum pengaturan mode.
-    if (tool !== 'clone' && tool !== 'mirror' && !tc.object && threeRef.current.ghostSource) {
+    //
+    // FIX BUG "OUTLINE NEMPEL" (user 2026-09-20): guard lama `!tc.object`
+    // membuat jalur ini DILEWATI saat pindah dari tool yang sudah men-attach
+    // gizmo (mis. property→move, karena property kini ikut cabang seleksi
+    // move/rotate/scale dan men-attach gizmo) → block tetap terpilih TAPI
+    // warna outline-nya masih warna tool LAMA. Sekarang: kalau ada block
+    // terpilih, re-attach + pasang warna outline tool BARU (idempoten).
+    const _hasSel = threeRef.current.selectedBlocks && threeRef.current.selectedBlocks.size > 0;
+    if (tool !== 'clone' && tool !== 'mirror' && (!tc.object || _hasSel) && threeRef.current.ghostSource) {
       const src = threeRef.current.ghostSource;
       threeRef.current.ghostSource = null;
       if (src && src.parent && src.userData.isBlock) {
-        tc.attach(src);
+        if (!tc.object) tc.attach(src);
         setBlockHighlight(src, 'select'); // FIX BUG 2: terpusat + guard neon
         threeRef.current.selectedBlocks.clear();
         threeRef.current.selectedBlocks.add(src);
+        // Outline TIPIS ikut warna tool BARU (fix "outline warna lama nempel").
+        const _oc = toolOutlineColor(tool);
+        if (_oc) attachToolSelectOutline(src, _oc);
         console.log('[Phase 50 v13] Gizmo di-restore ke block asal setelah keluar clone/mirror →', tool);
       }
+    }
+
+
+    // ── OUTLINE TIPIS: warna mengikuti tool BARU ──
+    // UNCONDITIONAL (tidak bergantung gizmo attach) — fix bug "pindah tool tapi
+    // warna outline masih warna tool lama" (terukur: property→move tetap
+    // #12b34a, seharusnya #0044e0). Aturan user: hanya 6 tool berhak; tool lain
+    // → outline dilepas. Kalau selection kosong, loop ini no-op (aman).
+    {
+      const _ocNew = toolOutlineColor(tool);
+      threeRef.current.selectedBlocks.forEach((b) => {
+        if (_ocNew) attachToolSelectOutline(b, _ocNew);
+        else detachToolSelectOutline(b);
+      });
     }
 
     // Ubah MODE gizmo sesuai tool
@@ -13235,7 +13272,7 @@ Now you can apply Displacement for detailed effect.`);
     // Berlaku untuk APAPUN target delete: block biasa + nested mesh hasil
     // import GLB (EdgesGeometry otomatis ambil rusuk tajam geometry itu).
     let highlightedBlock = null;
-    // Block yang sedang di-hover dengan tool property (outline tebal).
+    // Block yang sedang di-hover dengan tool ber-outline (6 tool berhak).
     let propHoverBlockRef = { current: null };
     // Helper emissive — MASIH DIPAKAI oleh selection highlight
     // (highlightSelected/unhighlightSelected, baris setEmissive(block, ...)).
@@ -13254,6 +13291,12 @@ Now you can apply Displacement for detailed effect.`);
     const removeDeleteOutline = (block) => {
       detachDeleteWireframe(block || highlightedBlock);
     };
+    // Block di bawah kursor (raycast) — dipakai hover outline 6 tool.
+    const raycastHoveredBlock = () => {
+      const hits = raycaster.intersectObjects(threeRef.current.blocks, true);
+      return hits.length > 0 ? hits[0].object : null;
+    };
+
     const highlightBlock = (block, mode = 'delete') => {
       // Guard idempoten: hover ke block yang sama → tidak recreate (menghemat
       // build tiap mousemove; mousemove fire ~60x/detik).
@@ -13784,10 +13827,10 @@ Now you can apply Displacement for detailed effect.`);
           // PENTING: tool property TIDAK meng-attach gizmo (user hanya minta
           // panel opsi). Kalau gizmo ikut ter-attach, block akan "ditarik" gizmo
           // saat jatuh + muncul panah yang tidak diminta.
+          // Outline TIPIS "terpilih" (aturan user): warna mengikuti tool. Sudah
+          // dipasang terpusat di highlightSelected() → tidak diulang di sini.
           if (currentTool === 'property') {
-            // Persist outline TIPIS ke SEMUA block terpilih (multi-select sah).
-            // (Gizmo TIDAK di-attach — hanya outline + panel.)
-            threeRef.current.selectedBlocks.forEach((b) => attachPropertySelectOutline(b));
+            // Panel Property (gizmo TIDAK di-attach untuk tool ini).
             openPhysicsPanel(hit);
           } else {
             // Attach gizmo ke selection (1 blok = langsung, >1 = group)
@@ -13822,6 +13865,16 @@ Now you can apply Displacement for detailed effect.`);
     let selectionGroup = null;
 
     const highlightSelected = (block) => {
+      // ── OUTLINE TIPIS "TERPILIH" (aturan user 2026-09-20) ──
+      // HANYA 6 tool berhak: move/rotate/scale/clone/mirror (keluarga gizmo) +
+      // property (1 orang luar). Warna mengikuti tool (toolOutlineColor).
+      // Tool LAIN (delete/paint/dll) → TIDAK dapat garis, hanya highlight.
+      // Dipasang TERPUSAT di sini supaya SEMUA jalur seleksi (klik, marquee,
+      // shift/ctrl multi-select, restore antar-tool) otomatis ikut — mencegah
+      // bug "outline nempel" karena satu jalur terlewat.
+      const oc = toolOutlineColor(toolRef.current);
+      if (oc) attachToolSelectOutline(block, oc);
+      else detachToolSelectOutline(block);
       // FIX BUG GIZMO-NEON (user 2026-09-11): block glow (neon) DILARANG
       // kena highlight emissive — setEmissive akan TIMPA warna flat #FF0000
       // jadi biru (saat dipilih) lalu HITAM saat dilepas = "merah kusam".
@@ -13831,6 +13884,7 @@ Now you can apply Displacement for detailed effect.`);
       setEmissive(block, SELECT_COLOR, SELECT_INTENSITY);
     };
     const unhighlightSelected = (block) => {
+      detachToolSelectOutline(block);   // outline TIPIS ikut lepas (semua tool)
       // Neon juga DILARANG kena unhighlight (set emissive hitam = kusam).
       const mats = Array.isArray(block.material) ? block.material : [block.material];
       if (mats.some(m => m && m.userData && m.userData.isGlowBlock)) return;
@@ -13858,8 +13912,8 @@ Now you can apply Displacement for detailed effect.`);
         threeRef.current.cloneGhost = null;
       }
       threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
-      // Lepas outline PERSIST property (tipis) dari semua block yang dilepas.
-      threeRef.current.selectedBlocks.forEach(b => detachPropertySelectOutline(b));
+      // Lepas outline TIPIS "terpilih" (generik 6 tool) dari semua block.
+      threeRef.current.selectedBlocks.forEach(b => detachToolSelectOutline(b));
       threeRef.current.selectedBlocks.clear();
       transformControls.detach();
       setSelectedCount(0);
@@ -14421,6 +14475,8 @@ Now you can apply Displacement for detailed effect.`);
     // block, buang multi-select group (reparent ke scene), buang ghost
     // clone/mirror yang belum final, detach gizmo, reset selectedCount.
     threeRef.current.clearSelection = clearSelection;
+    threeRef.current.propHoverBlockRef = propHoverBlockRef;
+    threeRef.current.attachGizmoToSelection = attachGizmoToSelection;
 
     // Clear All function — accessible dari JSX via threeRef.current
     // Cleanup semua block + imported objects + selection + transformControls + highlightedBlock
@@ -14530,24 +14586,26 @@ Now you can apply Displacement for detailed effect.`);
         } else {
           highlightBlock(null);
         }
-      } else if (currentTool === 'property') {
-        // Hover PROPERTY: outline TEBAL hijau tua terang (#12B34A) saat kursor di
-        // atas block. TIDAK memakai highlightBlock (slot itu milik delete/paint/
-        // scale) — pakai slot KHUSUS (__propHoverOutline) supaya bisa tampil
-        // BERSAMAAN dengan outline PERSIST tipis milik block yang terpilih.
+      } else if (toolOutlineColor(currentTool)) {
+        // ── HOVER OUTLINE TEBAL (6 tool berhak: move/rotate/scale/clone/mirror +
+        // property) — aturan user 2026-09-20 ──
+        // Kursor di atas block → outline TEBAL warna khas tool. Tool LAIN
+        // (delete/paint/dll) TIDAK masuk sini (sudah ditangani cabangnya sendiri
+        // dengan hover tebal khas masing-masing: delete merah, paint putih).
+        // Slot terpisah dari outline TIPIS terpilih → keduanya bisa tampil
+        // BERSAMAAN (block terpilih + kursor di atasnya / block lain).
         ghostBlock.visible = false;
         ghostEdges.visible = false;
         highlightBlock(null);
-        const blockMeshes = threeRef.current.blocks;
-        const hits = raycaster.intersectObjects(blockMeshes, true);
-        const hovered = hits.length > 0 ? hits[0].object : null;
-        // Lepas hover dari block sebelumnya (kecuali block itu masih terpilih →
-        // outline persist-nya yang menempel, bukan hover).
+        const hovered = raycastHoveredBlock();
         if (propHoverBlockRef.current && propHoverBlockRef.current !== hovered) {
           detachPropertyHoverOutline(propHoverBlockRef.current);
         }
         propHoverBlockRef.current = hovered;
-        if (hovered) attachPropertyHoverOutline(hovered);
+        if (hovered) {
+          // Warna hover = warna tool (satu sumber kebenaran).
+          attachToolHoverOutline(hovered, toolOutlineColor(currentTool));
+        }
       } else {
         // Tool move/rotate/eyedropper/shape — hide ghost + delete highlight
         // (scale kini punya cabang sendiri dengan outline oranye di atas)
@@ -15464,6 +15522,7 @@ Now you can apply Displacement for detailed effect.`);
         threeRef.current.selectedBlocks.delete(block);
         setSelectedCount(threeRef.current.selectedBlocks.size);
       }
+      detachAllToolOutlines(block);          // buang outline (hover+terpilih)
       removeBody(block);                     // buang body rapier
       if (block.parent) block.parent.remove(block);
       else if (scene) scene.remove(block);

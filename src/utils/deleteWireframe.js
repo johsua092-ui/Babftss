@@ -190,8 +190,8 @@ export function attachDeleteWireframe(block) {
  * masing-masing ketebalan punya uniform sendiri (pola warisan #28: material
  * yang perlu beda properti WAJIB dipisah, bukan diubah runtime).
  */
-export const PROP_SEL_WIDTH = 0.045;   // tipis (block terpilih)
-export const PROP_COLOR = '#12B34A';   // hijau tua terang
+export const TOOL_SEL_WIDTH = 0.045;   // tipis (block terpilih)
+export const PROP_COLOR = '#12B34A';   // hijau property (1 orang luar)
 
 function getMaterialWidth(hexColor, frameWidth) {
   const key = (hexColor instanceof THREE.Color) ? '#' + hexColor.getHexString()
@@ -257,21 +257,90 @@ function detachFrameSlot(block, slot) {
   delete block.userData[slot];
 }
 
-/** Outline HOVER property (tebal) — muncul saat kursor di atas block. */
-export function attachPropertyHoverOutline(block) {
-  return attachFrameSlot(block, '__propHoverOutline', PROP_COLOR, FRAME_WORLD_WIDTH);
-}
-export function detachPropertyHoverOutline(block) {
-  detachFrameSlot(block, '__propHoverOutline');
+const __toolHoverColor = new Map();   // block -> hex warna hover terpasang
+
+/** Outline HOVER (tebal) generik — warna mengikuti tool. */
+export function attachToolHoverOutline(block, hexColor) {
+  if (!block || !hexColor) return null;
+  if (block.userData && block.userData.__propHoverOutline
+      && __toolHoverColor.get(block) === hexColor) {
+    return block.userData.__propHoverOutline;         // idempoten (warna sama)
+  }
+  detachToolHoverOutline(block);                      // ganti warna = pasang ulang
+  const h = attachFrameSlot(block, '__propHoverOutline', hexColor, FRAME_WORLD_WIDTH);
+  __toolHoverColor.set(block, hexColor);
+  return h;
 }
 
-/** Outline PERSIST property (tipis) — menetap selama block terpilih. */
-export function attachPropertySelectOutline(block) {
-  return attachFrameSlot(block, '__propSelOutline', PROP_COLOR, PROP_SEL_WIDTH);
+export function detachToolHoverOutline(block) {
+  if (!block) return;
+  detachFrameSlot(block, '__propHoverOutline');
+  __toolHoverColor.delete(block);
 }
-export function detachPropertySelectOutline(block) {
-  detachFrameSlot(block, '__propSelOutline');
+
+/** Kompatibilitas nama lama (property saja). */
+export function attachPropertyHoverOutline(block) {
+  return attachToolHoverOutline(block, PROP_COLOR);
 }
+export function detachPropertyHoverOutline(block) {
+  detachToolHoverOutline(block);
+}
+
+/**
+ * ── OUTLINE TIPIS "TERPILIH" (generik, 2026-09-20) ──
+ * ATURAN USER: outline TIPIS (menetap saat block terpilih) HANYA berhak dimiliki
+ * oleh 6 tool: move · rotate · scale · clone · mirror (keluarga gizmo) + property
+ * (1 orang luar). Tool LAIN (delete/paint/dll) → hanya highlight, TANPA garis.
+ *
+ * Warna mengikuti tool (satu sumber kebenaran: MARQUEE_COLOR_BY_TOOL di
+ * marqueeSelect.js) — move #0044E0 · rotate #32CD32 · scale #EFBF04 ·
+ * clone #0096FF · mirror #9D00FF · property #12B34A.
+ *
+ * Hanya SATU outline terpilih per block (`__toolSelOutline`). Ganti tool =
+ * detach dulu (warna tool baru), supaya tidak ada garis tertinggal.
+ */
+const __toolSelColor = new Map();   // block -> hex warna terpasang (deteksi ganti)
+
+export function attachToolSelectOutline(block, hexColor) {
+  if (!block || !hexColor) return null;
+  if (block.userData && block.userData.__toolSelOutline
+      && __toolSelColor.get(block) === hexColor) {
+    return block.userData.__toolSelOutline;          // idempoten (warna sama)
+  }
+  detachToolSelectOutline(block);                    // ganti warna = pasang ulang
+  const h = attachFrameSlot(block, '__toolSelOutline', hexColor, TOOL_SEL_WIDTH);
+  __toolSelColor.set(block, hexColor);
+  return h;
+}
+
+export function detachToolSelectOutline(block) {
+  if (!block) return;
+  detachFrameSlot(block, '__toolSelOutline');
+  __toolSelColor.delete(block);
+}
+
+/** Lepas SEMUA outline (hover + terpilih) — dipakai saat block dihapus. */
+export function detachAllToolOutlines(block) {
+  detachToolHoverOutline(block);
+  detachToolSelectOutline(block);
+}
+
+/**
+ * Warna outline TIPIS per tool — hanya 6 tool yang berhak (aturan user).
+ * @returns {string|null} hex warna, atau null kalau tool TIDAK berhak.
+ */
+export function toolOutlineColor(tool) {
+  return TOOL_OUTLINE_COLORS[tool] || null;
+}
+
+export const TOOL_OUTLINE_COLORS = {
+  move:    '#0044E0',   // biru tua vivid (khas move)
+  rotate:  '#32CD32',   // hijau muda (khas rotate)
+  scale:   '#EFBF04',   // kuning emas (khas scale)
+  clone:   '#0096FF',   // biru langit (khas clone)
+  mirror:  '#9D00FF',   // ungu (khas mirror)
+  property:'#12B34A',   // hijau property (1 orang luar)
+};
 
 /**
  * Lepas bingkai dari block (idempoten + aman untuk block sudah dispose).
