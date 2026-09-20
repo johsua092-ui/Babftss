@@ -63,6 +63,9 @@ console.log('');
 console.log('=== 4. ICE vs GRASS ===');
 {
   function slide(slug, friction) {
+    // ISOLASI: dunia rapier global -> bersihkan dulu (kalau tidak, block lama
+    // masih ada & bisa menghalangi/menumpuk).
+    PH.clearAllBodies();
     const b = mkBlock(slug, 0, 0.5, 0);
     b.userData.anchored = false;
     PH.ensureBody(b); PH.wakeBody(b);

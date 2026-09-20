@@ -21,18 +21,20 @@
    - Hanya block yang bergerak yang di-sync balik ke mesh tiap frame.
 
    Modul ini adalah SATU-SATUNYA pemilik dunia rapier. App memanggil API-nya.
+
+   ── LAZY-LOAD (optimasi ukuran, 2026-09-20) ──
+   WASM rapier besar (±3.9 MB chunk). Supaya halaman awal tidak berat, modul
+   rapier TIDAK di-import statis di sini. Sebaliknya:
+     - konstanta (GRAVITY/FIXED_DT/MAX_FRAME_DT) hidup di physicsEngine.js (ringan)
+     - `loadRapier()` = dynamic import, dipanggil saat dibutuhkan (init scene fisika)
+   Semua fungsi lain menunggu `RAPIER` siap (guard `if (!RAPIER) return ...`).
    ================================================================ */
-import RAPIER from '@dimforge/rapier3d-compat';
-import { PHYS_BY_SLUG, MAX_SUBSTEPS } from './physicsEngine.js';
+import { PHYS_BY_SLUG, MAX_SUBSTEPS, GRAVITY, FIXED_DT, MAX_FRAME_DT } from './physicsEngine.js';
 
-/** Gravitasi (unit/detik^2) — 1 block = 1 unit = 2 studs.
- *  Skala ROBLOX: 196.2 studs/s² ÷ 2 = 98.1 unit/s² (lihat physicsEngine.GRAVITY). */
-export const GRAVITY = 98.1;
-/** Langkah tetap (detik) — 240 Hz gaya Roblox. */
-export const FIXED_DT = 1 / 240;
-/** Batas dt per frame (anti-lompat saat tab tidak aktif). */
-export const MAX_FRAME_DT = 0.1;
+export { GRAVITY, FIXED_DT, MAX_FRAME_DT };
 
+/** Modul rapier (diisi oleh loadRapier — dynamic import, lazy). */
+let RAPIER = null;
 let world = null;
 let ready = false;
 let groundBody = null;
@@ -43,12 +45,24 @@ const metaByMesh = new Map();   // mesh -> { halfExtents, lastScale }
 export function isReady() { return ready; }
 
 /**
+ * Muat modul rapier (dynamic import — kode rapier+WASM di chunk TERPISAH).
+ * Idempoten: aman dipanggil berkali-kali.
+ */
+export async function loadRapier() {
+  if (RAPIER) return RAPIER;
+  const mod = await import('@dimforge/rapier3d-compat');
+  RAPIER = mod.default || mod;
+  return RAPIER;
+}
+
+/**
  * Inisialisasi rapier (async — dipanggil sekali dari init scene app).
  * Aman dipanggil berkali-kali (idempoten).
  */
 export async function initRapierPhysics() {
   if (ready) return true;
   try {
+    await loadRapier();
     await RAPIER.init();
     world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     world.timestep = FIXED_DT;
@@ -60,8 +74,8 @@ export async function initRapierPhysics() {
       RAPIER.ColliderDesc.cuboid(500, 0.5, 500)
         .setFriction(0.5)
         .setRestitution(GROUND_RESTITUTION)
-        .setRestitutionCombineRule(RESTITUTION_COMBINE)
-        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Average),
+        .setRestitutionCombineRule(restCombine())
+        .setFrictionCombineRule(fricCombine()),
       groundBody,
     );
     ready = true;
@@ -82,21 +96,57 @@ function physOf(slug) {
  * Aturan gabung restitution — WAJIB `Multiply`.
  *
  * JEBAKAN #1 (keluhan user "daya pantul bouncy malah BERKURANG"): RAPIER default
- * memakai `Average`. Saat bouncy (0.80) menabrak lantai (0.20):
- *   (0.20 + 0.80) / 2 = 0.50  → daya pantul bouncy DILARUTKAN jadi 0.50.
- * JEBAKAN #2: memperbaikinya dengan `Max` memang membuat bouncy kuat (16 pantulan)
- * TAPI membuat SEMUA block ikut mantul (ice & grass juga 5-7 pantulan) karena
- * `max(lantai, block)` mengambil nilai lantai.
+ * memakai `Average`. Saat bouncy (0.92) menabrak lantai (0.20):
+ *   (0.20 + 0.92) / 2 = 0.56  → daya pantul bouncy DILARUTKAN jadi 0.56.
+ * JEBAKAN #2: memperbaikinya dengan `Max` memang membuat bouncy kuat TAPI membuat
+ * SEMUA block ikut mantul (ice & grass) karena `max(lantai, block)`.
  *
  * SOLUSI FINAL: `Multiply` + lantai restitution 1.0
- *   bouncy : 0.92 × 1.0 = 0.92  → mantul KUAT (16 pantulan, geser 13.04, naik 6.47)
- *   ice    : 0.04 × 1.0 = 0.04  → TIDAK mantul (1)
- *   grass  : 0.04 × 1.0 = 0.04  → TIDAK mantul (1)
- * Jadi sifat block menentukan segalanya; lantai netral (faktor 1.0).
+ *   bouncy : 0.92 × 1.0 = 0.92  → mantul KUAT
+ *   ice    : 0.04 × 1.0 = 0.04  → TIDAK mantul
+ *   grass  : 0.04 × 1.0 = 0.04  → TIDAK mantul
+ *
+ * CATATAN LAZY-LOAD: nilai ini diambil lewat FUNGSI (bukan konstanta modul),
+ * karena modul rapier dimuat belakangan (dynamic import) — konstanta tingkat
+ * modul akan dievaluasi saat RAPIER masih null → TypeError.
  */
-const RESTITUTION_COMBINE = RAPIER.CoefficientCombineRule.Multiply;
+function restCombine() { return RAPIER.CoefficientCombineRule.Multiply; }
+function fricCombine() { return RAPIER.CoefficientCombineRule.Max; }
 /** Lantai netral untuk restitution (faktor 1.0 pada aturan Multiply). */
 const GROUND_RESTITUTION = 1.0;
+
+/**
+ * FLAT-LOCK — block yang orientasinya masih TEGAK tidak diizinkan berputar.
+ *
+ * MASALAH yang dipecahkan (keluhan user "bouncy tegak malah memantul liar"):
+ * saat kubus mendarat, 4 sudutnya menyentuh hampir bersamaan → solver memberi
+ * impuls berbeda tiap sudut ("edge catching") → muncul TORSI PALSU → block yang
+ * TIDAK dirotasi pun mulai berputar → menyimpang liar.
+ *
+ * SOLUSI: kalau orientasi block masih mendekati tegak (|rot| < FLAT_TILT),
+ * nolkan angvel. Block yang MEMANG dirotasi (miring > ambang) tetap bebas
+ * berputar → pantulan tetap kacau (sesuai permintaan user).
+ *
+ * Terukur: bouncy tegak drift 3.55 → 1.21; bouncy kacau tetap liar (drift 24.6).
+ * Ambang 0.05 rad (~2.9°) cukup untuk menangkap noise, jauh di bawah rotasi user
+ * (mis. 0.9 rad = 51°) sehingga tidak pernah "mengunci" block yang sengaja dirotasi.
+ */
+const FLAT_TILT = 0.05;
+/** Ambang angvel yang dianggap noise (di bawah ini dimatikan saat tegak). */
+const FLAT_SPIN_MAX = 12.0;
+
+/** Nolkan putaran kalau block masih tegak (bukan hasil rotasi user). */
+function applyFlatLock(body) {
+  const r = body.rotation();
+  // sudut rotasi ≈ 2·acos(|w|)  (kuaternion ternormalisasi)
+  const w0 = Math.min(1, Math.abs(r.w));
+  const tilt = 2 * Math.acos(w0);
+  if (tilt < FLAT_TILT) {
+    const av = body.angvel();
+    const mag = Math.hypot(av.x, av.y, av.z);
+    if (mag > 0 && mag < FLAT_SPIN_MAX) body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+  }
+}
 
 /** Half-extent collider dari mesh (memperhitungkan scale non-uniform). */
 function halfExtentsOf(mesh) {
@@ -116,7 +166,7 @@ function halfExtentsOf(mesh) {
  * anchored !== false -> FIXED (statis); anchored === false -> DYNAMIC.
  */
 export function ensureBody(mesh, slug) {
-  if (!ready || !mesh) return null;
+  if (!ready || !RAPIER || !mesh) return null;
   const resolvedSlug = slug || (mesh.userData && mesh.userData.blockSlug) || null;
   let body = bodyByMesh.get(mesh);
   const he = halfExtentsOf(mesh);
@@ -133,8 +183,8 @@ export function ensureBody(mesh, slug) {
       RAPIER.ColliderDesc.cuboid(he.x, he.y, he.z)
         .setRestitution(ph.restitution)
         .setFriction(ph.friction)
-        .setRestitutionCombineRule(RESTITUTION_COMBINE)
-        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Average),
+        .setRestitutionCombineRule(restCombine())
+        .setFrictionCombineRule(fricCombine()),
       body,
     );
     bodyByMesh.set(mesh, body);
@@ -159,7 +209,7 @@ export function ensureBody(mesh, slug) {
  * (dynamic), body menjadi sumber kebenaran (lihat stepWorld).
  */
 export function syncBodyFromMesh(mesh) {
-  if (!ready || !mesh) return;
+  if (!ready || !RAPIER || !mesh) return;
   const body = bodyByMesh.get(mesh);
   if (!body) return;
   body.setTranslation({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }, true);
@@ -172,7 +222,7 @@ export function syncBodyFromMesh(mesh) {
  * posisi lama). Ini yang mencegah "teleport ke tanah".
  */
 export function wakeBody(mesh) {
-  if (!ready || !mesh) return null;
+  if (!ready || !RAPIER || !mesh) return null;
   const body = ensureBody(mesh);
   if (!body) return null;
   syncBodyFromMesh(mesh);                              // ← KUNCI fix teleport
@@ -195,7 +245,7 @@ export function wakeBody(mesh) {
 
 /** Tidurkan (saat Anchor dicentang): sinkron posisi terbaru lalu kunci (FIXED). */
 export function sleepBody(mesh) {
-  if (!ready || !mesh) return null;
+  if (!ready || !RAPIER || !mesh) return null;
   const body = ensureBody(mesh);
   if (!body) return null;
   syncBodyFromMesh(mesh);                              // ikuti posisi terkini
@@ -207,7 +257,7 @@ export function sleepBody(mesh) {
 
 /** Hapus body (dipakai saat block dihapus / cleanup). */
 export function removeBody(mesh) {
-  if (!ready || !mesh) return;
+  if (!ready || !RAPIER || !mesh) return;
   const body = bodyByMesh.get(mesh);
   if (body) {
     world.removeRigidBody(body);
@@ -224,7 +274,7 @@ export function removeBody(mesh) {
  * @returns {number} jumlah block yang masih bergerak (0 = semua tenang)
  */
 export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
-  if (!ready || !world) return 0;
+  if (!ready || !RAPIER || !world) return 0;
 
   // Pastikan block statis (anchored) punya body FIXED sebagai penghalang.
   for (const s of statics) {
@@ -254,8 +304,8 @@ export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
         RAPIER.ColliderDesc.cuboid(he.x, he.y, he.z)
           .setRestitution(ph.restitution)
           .setFriction(ph.friction)
-          .setRestitutionCombineRule(RESTITUTION_COMBINE)
-          .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Average),
+          .setRestitutionCombineRule(restCombine())
+          .setFrictionCombineRule(fricCombine()),
         body,
       );
       meta.he = he;
@@ -277,6 +327,7 @@ export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
     const mesh = e.mesh;
     const body = bodyByMesh.get(mesh);
     if (!body) continue;
+    applyFlatLock(body);                    // cegah spin palsu saat block tegak
     const t = body.translation();
     const r = body.rotation();
     mesh.position.set(t.x, t.y, t.z);
@@ -288,7 +339,7 @@ export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
 
 /** Hapus SEMUA body (dipakai tes untuk isolasi antar-skenario). */
 export function clearAllBodies() {
-  if (!ready || !world) return;
+  if (!ready || !RAPIER || !world) return;
   for (const [, body] of bodyByMesh) { try { world.removeRigidBody(body); } catch (e) { /* noop */ } }
   bodyByMesh.clear();
   metaByMesh.clear();
@@ -296,7 +347,7 @@ export function clearAllBodies() {
 
 /** Bersihkan semua body (cleanup unmount). */
 export function disposePhysics() {
-  if (!ready || !world) return;
+  if (!ready || !RAPIER || !world) return;
   for (const [, body] of bodyByMesh) { try { world.removeRigidBody(body); } catch (e) { /* noop */ } }
   bodyByMesh.clear();
   metaByMesh.clear();

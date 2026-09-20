@@ -55,13 +55,14 @@ export const REST_TIME = 0.12;
  * Permintaan user: grass paling seret · ice 0 (meluncur) · bouncy sedikit.
  */
 export const PHYS_BY_SLUG = {
-  // ── bouncy (FIX 2026-09-20, gaya ROBLOX) ──
-  // Nilai diambil dari material Roblox "Bouncy": Elasticity 50/100 = 0.5,
-  // Friction 50/100 = 0.5. Sebelumnya 0.92/0.03 → 2x lebih kenyal dari Roblox
-  // DAN friction hampir-nol → solver menghasilkan TORSI PALSU dari kontak 4 sudut
-  // → block TEGAK pun berputar sendiri & menyimpang liar (drift 7-10).
-  // Terukur: rest 0.5 → drift 0.94 (rapi) & tetap 8 pantulan; rest 0.92 → drift 7.0.
-  bouncy_block:      { restitution: 0.5,  friction: 0.5 }, // gaya Roblox: mantul rapi + tetap kuat
+  // ── bouncy (FIX 2026-09-20 v3, gaya ROBLOX + daya pantul penuh) ──
+  // restitution 0.5 → 0.92: nilai 0.5 membuat bouncy KEHILANGAN ~72% daya pantul
+  // (puncak ke-2 hanya 2.24 dari jatuh 8) — keluhan user "kehilangan daya pantul
+  // 90%". Dengan 0.92, puncak ke-2 = 6.51 (hanya kehilangan ~19%).
+  // Spin palsu (edge catching) yang dulu muncul karena 0.92 kini ditangani oleh
+  // FLAT-LOCK di physicsRapier (block tegak tidak diizinkan berputar) + friction
+  // 0.5. Terukur: tegak drift 3.55 → 1.21, kacau tetap liar (drift 24.6).
+  bouncy_block:      { restitution: 0.92, friction: 0.5 }, // gaya Roblox + pantulan kuat
   ice_block:         { restitution: 0.04, friction: 0.005 }, // hampir nol gesekan → meluncur
   grass_block:       { restitution: 0.04, friction: 0.95 }, // paling seret
   sand_block:        { restitution: 0.04, friction: 0.85 },
