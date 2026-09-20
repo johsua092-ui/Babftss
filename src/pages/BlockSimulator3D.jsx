@@ -15938,14 +15938,14 @@ Now you can apply Displacement for detailed effect.`);
               )}
             </button>
             <button
-              onClick={() => toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon')}
-              title="Property — tool masih dalam tahap pengembangan (coming soon)"
+              onClick={() => toggleTool('property')}
+              title="Property — buka panel Anchor (kunci/lepas block dari gravitasi)"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 14px', borderRadius: 10,
-                border: '1px solid rgba(148,163,184,0.12)',
-                backgroundColor: 'transparent',
-                color: '#e2e8f0',
+                border: `1px solid ${tool === 'property' ? '#f59e0b' : 'rgba(148,163,184,0.12)'}`,
+                backgroundColor: tool === 'property' ? '#f59e0b' : 'transparent',
+                color: tool === 'property' ? '#0e1420' : '#e2e8f0',
                 fontSize: 13, fontWeight: 500, cursor: 'pointer',
                 transition: 'all 0.15s ease',
                 fontFamily: 'Inter, sans-serif',
