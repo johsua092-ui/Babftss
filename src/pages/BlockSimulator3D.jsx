@@ -54,6 +54,7 @@ import {
   FIXED_DT, MAX_FRAME_DT, GRAVITY,
   initRapierPhysics, isReady as physicsReady,
   ensureBody, wakeBody, sleepBody, stepWorld, removeBody,
+  setBodyCollision, hasBody,
 } from '../utils/physicsRapier.js';
 
 /* ================================================================
@@ -12864,6 +12865,14 @@ Now you can apply Displacement for detailed effect.`);
             const movingEntries = [];
             const statics = [];
             for (const b of blocksNow) {
+              // VOID: block dengan Collision OFF yang jatuh menembus dasar dunia
+              // (y < VOID_Y) → DIHAPUS otomatis. Terukur: block tembus turun ke
+              // y=-44 dalam 1 detik; batas aman -25.
+              if (b.position.y < VOID_Y) {
+                const cb = threeRef.current.deleteBlockByVoid;
+                if (cb) cb(b);
+                continue;
+              }
               if (b.userData && b.userData.anchored === false) {
                 movingEntries.push({ mesh: b, body: ensureBody(b) });
               } else {
@@ -12984,7 +12993,11 @@ Now you can apply Displacement for detailed effect.`);
         // dirender sebagai Mesh biasa — InstancedMesh mengkuantisasi posisi ke
         // sel (Math.round) sehingga gerakan halus akan "loncat". Bukan jatuh =
         // tetap ikut InstancedMesh seperti semula (nol perubahan perilaku lama).
-        const isFalling = !!(mesh.userData && mesh.userData.anchored === false);
+        // Block jatuh (anchored=false) ATAU collision OFF wajib dirender sebagai
+        // Mesh biasa: InstancedMesh mengkuantisasi posisi ke sel (Math.round)
+        // sehingga block tembus akan "loncat" — dan instance tidak bisa
+        // menggambarkan "menembus" secara halus.
+        const isFalling = !!(mesh.userData && (mesh.userData.anchored === false || mesh.userData.noCollision === true));
         // When Instanced: hide Mesh (raycaster still hits it — three.js ignores visible).
         // InstancedMesh renders the block instead.
         mesh.visible = isInstanced ? isFalling : true;
@@ -15335,19 +15348,76 @@ Now you can apply Displacement for detailed effect.`);
     if (block.userData.anchored) sleepBody(block);
   };
 
-  // Ubah status Anchor block yang panelnya sedang terbuka.
-  //   checked=true  → terkunci (berhenti, tidak jatuh)
-  //   checked=false → dilepas → block MULAI JATUH (gravitasi aktif)
-  const setPhysicsAnchor = (block, checked) => {
+  // Ubah status opsi Property (fitur 2026-09-20).
+  //   'anchor'    → terkunci / mulai jatuh
+  //   'collision' → padat / TEMBUS (tidak bertumpuk, jatuh menembus lantai)
+  //   'shadow'    → punya bayangan / tidak punya bayangan
+  const setPhysicsOption = (kind, block, value) => {
     if (!block) return;
-    block.userData.anchored = !!checked;
-    if (checked) sleepBody(block); else wakeBody(block);
-    const tc = threeRef.current && threeRef.current.transformControls;
-    if (tc && tc.object === block) tc.detach();
+    if (kind === 'anchor') {
+      block.userData.anchored = !!value;
+      if (value) sleepBody(block); else wakeBody(block);
+      const tc = threeRef.current && threeRef.current.transformControls;
+      if (tc && tc.object === block) tc.detach();
+    } else if (kind === 'collision') {
+      block.userData.noCollision = !value;
+      setBodyCollision(block, !!value);      // membership/filter grup rapier
+    } else if (kind === 'shadow') {
+      block.userData.noShadow = !value;
+      applyBlockShadow(block, !!value);
+    }
     if (threeRef.current && threeRef.current.recordHistory) threeRef.current.recordHistory();
   };
 
+  // Terapkan bayangan (castShadow + receiveShadow) ke block + anak-anaknya
+  // (sprite/aura child ikut). Dipakai opsi "Shadow".
+  const applyBlockShadow = (block, on) => {
+    if (!block) return;
+    try {
+      block.traverse((o) => {
+        if (o.isMesh || o.isSprite) {
+          o.castShadow = on;
+          if (o.isMesh) o.receiveShadow = on;
+        }
+      });
+    } catch (e) { /* jangan gagalkan toggle */ }
+  };
+
+  // Hapus block karena jatuh ke VOID (menembus dasar dunia dengan Collision OFF).
+  // Dipakai render loop. Disimpan di threeRef supaya bisa dipanggil dari closure
+  // useEffect scene (pola recordHistory / clearSelection).
+  const deleteBlockByVoid = (block) => {
+    if (!block) return;
+    try {
+      const scene = threeRef.current && threeRef.current.scene;
+      const tc = threeRef.current && threeRef.current.transformControls;
+      if (tc && tc.object === block) tc.detach();
+      if (threeRef.current.selectedBlocks) {
+        threeRef.current.selectedBlocks.delete(block);
+        setSelectedCount(threeRef.current.selectedBlocks.size);
+      }
+      removeBody(block);                     // buang body rapier
+      if (block.parent) block.parent.remove(block);
+      else if (scene) scene.remove(block);
+      threeRef.current.blocks = (threeRef.current.blocks || []).filter(b => b !== block);
+      setBlockCount(threeRef.current.blocks.length);
+      if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+    } catch (e) { console.warn('[physics] gagal hapus block void', e); }
+  };
+
+  // Ekspos ke threeRef SETELAH deklarasi (JEBAKAN TDZ: menaruh baris ini SEBELUM
+  // `const deleteBlockByVoid` di atas menyebabkan
+  // "Cannot access 'deleteBlockByVoid' before initialization" → HALAMAN BLANK.
+  // Terukur: error di baris 14771 saat baris assignment ada di baris ~15352
+  // sementara deklarasi di ~15392 (assignment 40 baris lebih awal).)
+  threeRef.current.deleteBlockByVoid = deleteBlockByVoid;
+
   /* ---------- Styles (reuse dari v1 untuk konsistensi) ---------- */
+  // Batas "void": block dengan Collision OFF yang jatuh di bawah ini DIHAPUS
+  // otomatis (menembus dasar dunia). Terukur: block tembus turun ke y=-44
+  // dalam 1 detik → batas -25 aman (tidak terlalu cepat, tidak terlalu lambat).
+  const VOID_Y = -25;
+
   const panelBg = '#0e1420';
   const panelBorder = '#1e293b';
   const textSecondary = '#94a3b8';
@@ -19115,7 +19185,7 @@ Now you can apply Displacement for detailed effect.`);
             {tool === 'property' && (
               <PhysicsAnchorPanel
                 target={physicsTarget}
-                onChange={setPhysicsAnchor}
+                onChange={setPhysicsOption}
               />
             )}
 

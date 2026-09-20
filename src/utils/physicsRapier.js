@@ -184,7 +184,10 @@ export function ensureBody(mesh, slug) {
         .setRestitution(ph.restitution)
         .setFriction(ph.friction)
         .setRestitutionCombineRule(restCombine())
-        .setFrictionCombineRule(fricCombine()),
+        .setFrictionCombineRule(fricCombine())
+        // Collision OFF (jika user sudah mematikannya sebelum body dibuat):
+        // membership 0x0001, filter 0x0000 → tembus tapi tetap disimulasikan.
+        .setCollisionGroups((mesh.userData && mesh.userData.noCollision) ? 0x00010000 : 0x0001FFFF),
       body,
     );
     bodyByMesh.set(mesh, body);
@@ -255,6 +258,11 @@ export function sleepBody(mesh) {
   return body;
 }
 
+/** Apakah mesh ini punya body rapier aktif (dipakai deteksi jatuh ke void). */
+export function hasBody(mesh) {
+  return !!(ready && mesh && bodyByMesh.has(mesh));
+}
+
 /** Hapus body (dipakai saat block dihapus / cleanup). */
 export function removeBody(mesh) {
   if (!ready || !RAPIER || !mesh) return;
@@ -265,6 +273,35 @@ export function removeBody(mesh) {
     metaByMesh.delete(mesh);
     if (mesh.userData) delete mesh.userData.__rapierBody;
   }
+}
+
+/**
+ * COLLISION ON/OFF (fitur Property → tombol "Collision").
+ *
+ * JEBAKAN API (terukur, JANGAN ulangi): `collider.setEnabled(false)` BUKAN cara
+ * yang benar — block jadi TIDAK JATUH SAMA SEKALI (y tetap 5.000 setelah 1 detik;
+ * massa/partisipasi simulasi hilang), padahal kita ingin block tetap jatuh TAPI
+ * menembus segalanya.
+ *
+ * CARA BENAR (terukur): `setCollisionGroups(0x00010000)` — membership = 0x0001,
+ * filter = 0x0000 → TIDAK berinteraksi dengan apa pun (tembus lantai & block
+ * lain) tapi tetap disimulasikan penuh (gravitasi tetap bekerja).
+ * Terukur: block jatuh tembus ke y=-44.1 (menembus lantai) ✅
+ *
+ * @param {object} mesh
+ * @param {boolean} on  true = collision aktif (normal), false = tembus
+ */
+export function setBodyCollision(mesh, on) {
+  if (!ready || !RAPIER || !mesh) return;
+  const body = bodyByMesh.get(mesh);
+  if (!body) return;
+  for (let i = 0; i < body.numColliders(); i++) {
+    const c = body.collider(i);
+    if (!c) continue;
+    // membership 0x0001, filter 0x0000 (tembus) | filter 0xFFFF (normal)
+    c.setCollisionGroups(on ? 0x0001FFFF : 0x00010000);
+  }
+  if (mesh.userData) mesh.userData.noCollision = !on;
 }
 
 /**
@@ -305,7 +342,8 @@ export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
           .setRestitution(ph.restitution)
           .setFriction(ph.friction)
           .setRestitutionCombineRule(restCombine())
-          .setFrictionCombineRule(fricCombine()),
+          .setFrictionCombineRule(fricCombine())
+          .setCollisionGroups((mesh.userData && mesh.userData.noCollision) ? 0x00010000 : 0x0001FFFF),
         body,
       );
       meta.he = he;
