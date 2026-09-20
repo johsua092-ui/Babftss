@@ -3867,19 +3867,85 @@ pengukuran nyata, bukan estimasi. Kalau ragu — ukur ulang, jangan menebak.*
     Phase 88+89 = "no melesat + true 1side behavior". INI = solusi
     final untuk 1side mode (selama user tidak minta hal baru).
 
+---
 
+## 31. ATURAN MUTLAK — "ATURAN KEISTIMEWAAN LOCALDEV" (perintah user, 2026-09-20)
 
+> ⚠️ MENGIKAT SEMUA AI. Dibuat atas perintah langsung user (M. Rizal Kurniawan).
+> Berlaku sampai user mencabutnya sendiri.
 
+### 31.1 Latar belakang — KENAPA aturan ini ada (jangan salah paham)
 
+User kerja di bidang **FRONTEND**. Backend & auth dipegang teman user dan
+**dilarang disentuh** (6 FILE TERLARANG — Bagian 1 Aturan #4).
 
+Masalah nyata yang memicu aturan ini (terukur 2026-09-20):
+- `.env` di laptop user HANYA berisi `DATABASE_URL` (sisa push dari server z.ai,
+  path `/home/z/my-project/`).
+- Kunci `VITE_FIREBASE_*` **TIDAK PERNAH ADA di riwayat git repo** (sudah dicek
+  `git log --all` → nol). Jadi tidak bisa dipulihkan dari repo.
+- Akibatnya `src/lib/firebase.js` menilai config tidak valid → `auth = null`
+  → klik Sign In melempar:
+  "Firebase belum dikonfigurasi. Isi .env dengan kredensial yang valid."
+  (sumber: `src/contexts/AuthContext.jsx` baris 51/57/63/69).
+- Kunci Firebase sebenarnya ADA di Vercel (terbukti ter-inline di bundle publik
+  produksi `https://babftss.vercel.app/assets/index-*.js`, project
+  `punya-si-jawa`), TAPI user **tidak boleh** mengambilnya karena itu ranah
+  backend / teman user.
 
+Perumpamaan user: "kunci pintu jatuh ke sumur — aku bisa mengambilnya, tapi itu
+bukan ranahku". Solusi user = bypass gerbang guest KHUSUS di laptop sendiri.
 
+### 31.2 ATURAN (2 bagian, jangan dibalik)
 
+**(1) DI REPO / PRODUCTION** (`origin/main`, Vercel `babftss.vercel.app`):
+Gerbang guest **TETAP SEPERTI SEKARANG, JANGAN DIUBAH.** Guest tidak bisa
+mengakses: `marketplace`, `canvas`, `logic-gates-simulator`,
+`block-simulator-3d`. Ini aturan produk yang sah.
 
+**(2) DI LOCALDEV** (laptop user, `npm run dev` di
+`C:\Users\user\Babft Project\Babftss-main`):
+**GUEST WAJIB BISA MENGAKSES SELURUH FITUR TANPA KECUALI.**
+Nama resmi: **"ATURAN KEISTIMEWAAN LOCALDEV"**.
 
+Tujuan: user menguji fitur frontend-nya sendiri tanpa terbelit gerbang login.
 
+### 31.3 Lokasi gerbang guest (hasil UKUR 2026-09-20 — biar AI penerus tak riset ulang)
 
+| # | File | Baris | Halaman | Mekanisme |
+|---|------|-------|---------|-----------|
+| 1 | `src/App.jsx` | ~413 | marketplace | `user ? setPage("marketplace") : showGuestAnnouncement()` + `locked={!user}` |
+| 2 | `src/App.jsx` | ~428 | canvas | idem (canvas) |
+| 3 | `src/App.jsx` | ~552 | logic-gates-simulator | idem |
+| 4 | `src/App.jsx` | ~321 | block-simulator-3d | route guard `{user ? <BlockSimulator3D/> : <AKSES DIKUNCI + Sign In>}` |
+| 5 | `src/pages/ShapesPage.jsx` | ~77 | block-simulator-3d | `user ? setPage('block-simulator-3d') : onGuestClick()` + `locked={!user}` |
 
+Pendukung: `showGuestAnnouncement` (App.jsx ~148, banner merah 3 detik),
+`LoginModal` (App.jsx ~284), tombol Sign In (App.jsx ~202 & ~356).
 
+### 31.4 Cara menerapkan (WAJIB pakai cara yang TIDAK bocor ke repo)
 
+**OPSI A (REKOMENDASI) — flag `.env.local`, kode di repo INERT:**
+1. Tambah di kode: `const LOCALDEV_BYPASS = import.meta.env.VITE_LOCALDEV_BYPASS_GUEST === 'true';`
+2. Ganti tiap `user ?` di 5 titik gerbang jadi `(user || LOCALDEV_BYPASS) ?`.
+3. Di laptop user: tambah `VITE_LOCALDEV_BYPASS_GUEST=true` ke `.env` (atau `.env.local`).
+4. Di Vercel: JANGAN pasang var itu → produksi 100% tidak berubah.
+Kelebihan: tanpa flag = perilaku lama (inert), tidak ada risiko "keburu
+ke-commit", dan terdokumentasi jelas.
+
+**OPSI B — ubah lokal tanpa commit:**
+Ubah 2 file (`src/App.jsx`, `src/pages/ShapesPage.jsx`) di laptop, JANGAN commit.
+Risiko: gampang keburu ter-commit/ter-push. Kalau pakai ini, WAJIB cek
+`git status` sebelum commit apa pun.
+
+### 31.5 LARANGAN (mutlak)
+
+1. **DILARANG commit/push bypass ini ke `origin/main`.** Produksi harus tetap
+   bergerbang. Kalau terlanjur, segera lapor user + revert.
+2. **DILARANG menyentuh 6 file terlarang** (`AuthContext.jsx` ×2,
+   `lib/firebase.js`, `lib/supabase.js`, `LoginPage.jsx`, `UserPill.jsx`).
+   Aturan keistimewaan ini TIDAK memberi izin menyentuhnya.
+3. **DILARANG hardcode kredensial** Firebase/Supabase ke dalam kode.
+4. Aturan ini **HANYA** berlaku di laptop user. Di server z.ai / CI / Vercel =
+   aturan repo berlaku penuh.
 
