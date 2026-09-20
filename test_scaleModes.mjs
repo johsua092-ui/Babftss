@@ -318,5 +318,52 @@ console.log('\n== FIX TIER-HARD 2026-09-20 #2: 2side + SNAP + mode 4/6 side (dul
   check(Math.abs(m4.scale.x - 1.7) < 1e-6, `2side tanpa snap: nilai bebas 1.7 (dapat ${m4.scale.x.toFixed(3)})`);
 }
 
+console.log('\n== FIX TIER-HARD 2026-09-20 #3: snap TIDAK boleh "nyangkut" di ukuran besar ==');
+{
+  // BUG (laporan user): "spam tarik membesar lalu mengecil dengan cepat → kadang
+  // STUCK di ukuran besar, bukan langsung ke ukuran asal; berasa nabrak &
+  // nyangkut". Berlaku SEMUA mode (1/2/4/6) — satu jalur snap.
+  // AKAR (Phase 82 min-check): kalau |candidateScale| < minAbs → finalStep =
+  // lastStep (mundur ke step BESAR terakhir) = DEAD-END. Terukur: tv=0.4 (raw
+  // 0.4) → hasil tetap 2.0 (deviasi 1.6 = 3x step).
+  // FIX: clamp finalStep ke step MINIMUM yang VALID (bukan mundur ke step besar).
+  const s0 = { x: 1, y: 1, z: 1 }, p0 = { x: 0, y: 0, z: 0 };
+  const BAND = 0.6, STEP_STUDS = 2, stepScale = 1;
+
+  for (const mode of ['1side', '2side', '4side', '6side']) {
+    const obj = new THREE.Mesh(GEO);
+    // CATATAN: ukur deviasi pada SUMBU YANG MEMANG DI-SCALE mode itu.
+    // 4side = sumbu digenggam (x) DIAM by design → mengukur x = salah ukur.
+    const axesUkur = mode === '4side' ? ['y', 'z'] : ['x'];
+    let maxDev = 0;
+    // drag CEPAT: membesar 3x lalu langsung mengecil ke 0.4x
+    for (const tv of [1, 2.0, 3.0, 0.4]) {
+      for (const a of ['x', 'y', 'z']) obj.scale[a] = 1 * tv;
+      const ratio = obj.scale.x / 1;
+      applyScaleByMode(THREE, obj, mode, 'x', +1, s0, p0, ratio, 0.05, null, STEP_STUDS);
+      const raw = 1 * tv;
+      if (raw > 0.05) for (const a of axesUkur) maxDev = Math.max(maxDev, Math.abs(obj.scale[a] - raw));
+    }
+    check(maxDev <= BAND * stepScale + 1e-9,
+      `${mode}: drag cepat besar→kecil tidak nyangkut (dev maks ${maxDev.toFixed(3)} ≤ ${(BAND*stepScale).toFixed(2)})`);
+  }
+
+  // blok tetap tidak bisa mengecil di bawah step valid minimum
+  const m = new THREE.Mesh(GEO);
+  for (const tv of [1, 2.0, -1.6]) {
+    m.scale.x = 1 * tv;
+    applyScaleByMode(THREE, m, '1side', 'x', +1, s0, p0, m.scale.x / 1, 0.05, null, STEP_STUDS);
+  }
+  check(Math.abs(m.scale.x - 1) < 1e-6, `tembus nol: berhenti di ukuran awal 1.0 (dapat ${m.scale.x.toFixed(3)})`);
+
+  // kembali ke asal saat drag balik ke asal
+  const m2 = new THREE.Mesh(GEO);
+  for (const tv of [1, 3.0, 0.4, 2.5, 1.0]) {
+    m2.scale.x = 1 * tv;
+    applyScaleByMode(THREE, m2, '1side', 'x', +1, s0, p0, m2.scale.x / 1, 0.05, null, STEP_STUDS);
+  }
+  check(Math.abs(m2.scale.x - 1) < 1e-9, `bolak-balik: kembali ke 1.0 (dapat ${m2.scale.x.toFixed(3)})`);
+}
+
 console.log(`\nRESULT ${pass}/${pass + fail}`);
 process.exit(fail === 0 ? 0 : 1);

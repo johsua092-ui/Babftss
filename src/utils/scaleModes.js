@@ -363,18 +363,18 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
       } else if (stepIdx < lastStep && delta <= (lastStep - HYSTERESIS_BAND) * stepScale) {
         finalStep = stepIdx;
       }
-      // Phase 82 (2026-09-19, sesi server z.ai): cek minimum — kalau
-      // candidateScale < minAbs, JANGAN snap ke step itu. Tetap di
-      // lastStep. User: "kalau step 2 studs dan block 2 studs (default),
-      // tidak bisa mengecil karena 2 - 2 = 0, tidak valid". Tanpa cek
-      // ini, snap ke step -1 = 0 → di-clamp ke minAbs (0.05) → block
-      // mengecil ke 0.1 studs (tidak sesuai harapan user). Dengan cek
-      // ini, block tetap di lastStep (default 2 studs) = "tidak bisa
-      // di-scale lagi" sesuai matematika user.
-      const candidateScale = s0 + finalStep * stepScale;
-      if (Math.abs(candidateScale) < minAbs) {
-        finalStep = lastStep;  // tetap di lastStep, jangan snap ke step yang invalid
-      }
+      // FIX TIER-HARD (2026-09-20) — "nyangkut / nabrak di ukuran besar":
+      // SEBELUMNYA (Phase 82): kalau |candidateScale| < minAbs → finalStep =
+      // lastStep. Itu DEAD-END: begitu user drag mengecil, step dikunci ke step
+      // BESAR terakhir → block TIDAK ikut turun (terukur: tv=0.4 → hasil tetap
+      // 2.0, deviasi 1.6 = 3x step; tv=-1.6 → hasil tetap 2.0). Gejala user:
+      // "spam tarik besar lalu mengecil → stuck di ukuran besar, berasa nabrak
+      // & nyangkut". Berlaku SEMUA mode (1/2/4/6) karena satu jalur ini.
+      // SEKARANG: clamp finalStep ke step MINIMUM yang VALID (|scale| >= minAbs).
+      // → block selalu MENGIKUTI drag (tidak nyangkut), DAN tetap tidak bisa
+      //   mengecil di bawah minimum (aturan Phase 82 tetap dihormati).
+      const kMin = Math.ceil((minAbs - Math.abs(s0)) / stepScale);
+      if (finalStep < kMin) finalStep = kMin;
       lastStepMap[a] = finalStep;
       const finalScale = sgn * Math.max(Math.abs(s0 + finalStep * stepScale), minAbs);
       object.scale[a] = finalScale;
