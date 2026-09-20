@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import GizmoBlockInfoPanel from '../components/GizmoBlockInfoPanel';
 import PhysicsAnchorPanel from '../components/PhysicsAnchorPanel';
+import TransparencyModal from '../components/TransparencyModal';
 import ScaleModeModal from '../components/ScaleModeModal';
 import ScaleNumberModal from '../components/ScaleNumberModal';
 import { ChunkManager } from '../lib/ChunkManager.js';
@@ -35,7 +36,12 @@ import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
 import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
-import { attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe, disposeDeleteWireframeMaterial, setDeleteWireframeResolution } from '../utils/deleteWireframe.js';
+import {
+  attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe,
+  disposeDeleteWireframeMaterial, setDeleteWireframeResolution,
+  attachPropertyHoverOutline, detachPropertyHoverOutline,
+  attachPropertySelectOutline, detachPropertySelectOutline,
+} from '../utils/deleteWireframe.js';
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
@@ -582,6 +588,8 @@ export default function BlockSimulator3D({ setPage }) {
   // ── PHYSICS (fitur baru 2026-09-20) ──
   // Block yang dipilih memakai tool "property" (panel Anchor). null = tak ada.
   const [physicsTarget, setPhysicsTarget] = useState(null);
+  // Modal Transparency (tombol di panel Property — membuka jendela input).
+  const [showTransparencyModal, setShowTransparencyModal] = useState(false);
   // Akumulator waktu fisika + jumlah block bergerak (perf). Ref, bukan state,
   // supaya loop tidak memicu re-render.
   const physAccRef = useRef(0);
@@ -13227,6 +13235,8 @@ Now you can apply Displacement for detailed effect.`);
     // Berlaku untuk APAPUN target delete: block biasa + nested mesh hasil
     // import GLB (EdgesGeometry otomatis ambil rusuk tajam geometry itu).
     let highlightedBlock = null;
+    // Block yang sedang di-hover dengan tool property (outline tebal).
+    let propHoverBlockRef = { current: null };
     // Helper emissive — MASIH DIPAKAI oleh selection highlight
     // (highlightSelected/unhighlightSelected, baris setEmissive(block, ...)).
     // Dulunya satu blok dengan outline shell lama; dipertahankan PERSIS
@@ -13775,6 +13785,9 @@ Now you can apply Displacement for detailed effect.`);
           // panel opsi). Kalau gizmo ikut ter-attach, block akan "ditarik" gizmo
           // saat jatuh + muncul panah yang tidak diminta.
           if (currentTool === 'property') {
+            // Persist outline TIPIS ke SEMUA block terpilih (multi-select sah).
+            // (Gizmo TIDAK di-attach — hanya outline + panel.)
+            threeRef.current.selectedBlocks.forEach((b) => attachPropertySelectOutline(b));
             openPhysicsPanel(hit);
           } else {
             // Attach gizmo ke selection (1 blok = langsung, >1 = group)
@@ -13845,9 +13858,12 @@ Now you can apply Displacement for detailed effect.`);
         threeRef.current.cloneGhost = null;
       }
       threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
+      // Lepas outline PERSIST property (tipis) dari semua block yang dilepas.
+      threeRef.current.selectedBlocks.forEach(b => detachPropertySelectOutline(b));
       threeRef.current.selectedBlocks.clear();
       transformControls.detach();
       setSelectedCount(0);
+      setPhysicsTarget(null);   // panel Property hilang saat tidak ada terpilih
     };
 
     // selectBlock — restored 2026-09-02 (was accidentally deleted during Group/Ungroup
@@ -14514,6 +14530,24 @@ Now you can apply Displacement for detailed effect.`);
         } else {
           highlightBlock(null);
         }
+      } else if (currentTool === 'property') {
+        // Hover PROPERTY: outline TEBAL hijau tua terang (#12B34A) saat kursor di
+        // atas block. TIDAK memakai highlightBlock (slot itu milik delete/paint/
+        // scale) — pakai slot KHUSUS (__propHoverOutline) supaya bisa tampil
+        // BERSAMAAN dengan outline PERSIST tipis milik block yang terpilih.
+        ghostBlock.visible = false;
+        ghostEdges.visible = false;
+        highlightBlock(null);
+        const blockMeshes = threeRef.current.blocks;
+        const hits = raycaster.intersectObjects(blockMeshes, true);
+        const hovered = hits.length > 0 ? hits[0].object : null;
+        // Lepas hover dari block sebelumnya (kecuali block itu masih terpilih →
+        // outline persist-nya yang menempel, bukan hover).
+        if (propHoverBlockRef.current && propHoverBlockRef.current !== hovered) {
+          detachPropertyHoverOutline(propHoverBlockRef.current);
+        }
+        propHoverBlockRef.current = hovered;
+        if (hovered) attachPropertyHoverOutline(hovered);
       } else {
         // Tool move/rotate/eyedropper/shape — hide ghost + delete highlight
         // (scale kini punya cabang sendiri dengan outline oranye di atas)
@@ -15381,6 +15415,40 @@ Now you can apply Displacement for detailed effect.`);
         }
       });
     } catch (e) { /* jangan gagalkan toggle */ }
+  };
+
+  // ── TRANSPARENCY (fitur baru 2026-09-20) ──
+  // Buka jendela input (pola tombol "+" panel Scale). Bukan checkbox.
+  const openTransparencyModal = (block) => {
+    if (!block) return;
+    physicsTargetRef.current = block;
+    setShowTransparencyModal(true);
+  };
+  // Terapkan transparansi: 0% = solid (opacity 1), 100% = invisible total.
+  // Material block TIDAK di-share (makeBlockMaterial buat baru per block) →
+  // aman mengubah opacity per-block tanpa memengaruhi block lain.
+  const applyTransparency = (block, pct) => {
+    if (!block) return;
+    const p = Math.max(0, Math.min(100, Math.round(pct)));
+    block.userData.transparencyPct = p;
+    const opacity = 1 - (p / 100);
+    const mats = Array.isArray(block.material) ? block.material : [block.material];
+    mats.forEach((m) => {
+      if (!m) return;
+      if (p > 0) {
+        m.transparent = true;
+        m.opacity = opacity;
+        m.depthWrite = opacity > 0.5;   // hindari artefak saat sangat transparan
+      } else {
+        // 0% = kembali solid sepenuhnya (transparent dimatikan).
+        m.transparent = false;
+        m.opacity = 1;
+        m.depthWrite = true;
+      }
+      m.needsUpdate = true;
+    });
+    setShowTransparencyModal(false);
+    if (threeRef.current && threeRef.current.recordHistory) threeRef.current.recordHistory();
   };
 
   // Hapus block karena jatuh ke VOID (menembus dasar dunia dengan Collision OFF).
@@ -19182,10 +19250,11 @@ Now you can apply Displacement for detailed effect.`);
                   property — SEKSI EMBEDDED di dalam panel ini (aturan #74:
                   satu wilayah, satu background; JANGAN position:absolute
                   sendiri di dalam panel yang sudah absolute). ══ */}
-            {tool === 'property' && (
+            {tool === 'property' && physicsTarget && (
               <PhysicsAnchorPanel
                 target={physicsTarget}
                 onChange={setPhysicsOption}
+                onOpenTransparency={openTransparencyModal}
               />
             )}
 
@@ -23734,6 +23803,13 @@ Now you can apply Displacement for detailed effect.`);
           value={scaleNumberValue}
           onConfirm={handleScaleNumberConfirm}
           onCancel={handleScaleNumberCancel}
+        />
+      )}
+      {showTransparencyModal && (
+        <TransparencyModal
+          value={(physicsTargetRef.current && physicsTargetRef.current.userData && physicsTargetRef.current.userData.transparencyPct) || 0}
+          onConfirm={(pct) => applyTransparency(physicsTargetRef.current, pct)}
+          onCancel={() => setShowTransparencyModal(false)}
         />
       )}
       {showScaleModeModal && (

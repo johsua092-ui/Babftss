@@ -171,6 +171,109 @@ export function attachDeleteWireframe(block) {
 }
 
 /**
+ * ── OUTLINE PROPERTY (fitur baru 2026-09-20) ──
+ * Dua varian bingkai yang bisa HIDUP BERSAMAAN di satu block (slot terpisah):
+ *   1. HOVER  (__propHoverOutline) — tebal 0.13 (sama seperti scale), warna
+ *      "hijau tua terang" #12B34A. Muncul saat kursor di atas block; hilang
+ *      saat kursor menjauh (kecuali block itu sedang terpilih).
+ *   2. PERSIST (__propSelOutline) — TIPIS (0.045), warna SAMA. Menetap selama
+ *      block terpilih (klik dengan tool property); lepas saat di-unselect.
+ *
+ * KENAPA DUA SLOT: pemilih (persist) & hover harus tampil BERSAMAAN pada block
+ * yang sama (mis. block terpilih lalu kursor mendekat → tetap tipis, bukan
+ * berubah jadi tebal). Slot tunggal (__deleteOutline) akan saling menimpa.
+ *
+ * TERUKUR (kenapa konstanta, bukan properti uniform): ShaderMaterial di-cache
+ * PER WARNA (matCache) → material di-share antar block. Mengubah
+ * material.uniforms.uFrameWorld.value akan mengubah SEMUA block dengan warna itu.
+ * Solusi: buat material BERKAS PER KETEBALAN (key cache "warna|tebal") supaya
+ * masing-masing ketebalan punya uniform sendiri (pola warisan #28: material
+ * yang perlu beda properti WAJIB dipisah, bukan diubah runtime).
+ */
+export const PROP_SEL_WIDTH = 0.045;   // tipis (block terpilih)
+export const PROP_COLOR = '#12B34A';   // hijau tua terang
+
+function getMaterialWidth(hexColor, frameWidth) {
+  const key = (hexColor instanceof THREE.Color) ? '#' + hexColor.getHexString()
+    : typeof hexColor === 'number' ? '#' + new THREE.Color(hexColor).getHexString()
+    : String(hexColor);
+  const ck = key + '|' + frameWidth;
+  if (!matCache.has(ck)) {
+    let color;
+    if (typeof hexColor === 'number') color = new THREE.Color(hexColor);
+    else color = new THREE.Color(key);
+    matCache.set(ck, new THREE.ShaderMaterial({
+      uniforms: {
+        uFrameWorld: { value: frameWidth },
+        uColor: { value: color },
+      },
+      vertexShader: FRAME_VERT,
+      fragmentShader: FRAME_FRAG,
+      transparent: false,
+      depthTest: true,
+      depthWrite: true,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    }));
+  }
+  return matCache.get(ck);
+}
+
+/** Pasang bingkai dengan slot + ketebalan tertentu (idempoten per slot). */
+function attachFrameSlot(block, slot, hexColor, frameWidth) {
+  if (!block) return null;
+  if (!block.userData) block.userData = {};
+  if (block.userData[slot]) return block.userData[slot];
+  const shell = new THREE.Mesh(getSharedGeometry(), getMaterialWidth(hexColor, frameWidth));
+  try {
+    block.geometry.computeBoundingBox();
+    const bb = block.geometry.boundingBox;
+    const sx = (bb.max.x - bb.min.x) || 1;
+    const sy = (bb.max.y - bb.min.y) || 1;
+    const sz = (bb.max.z - bb.min.z) || 1;
+    shell.scale.set(sx, sy, sz);
+    shell.position.set(
+      (bb.max.x + bb.min.x) / 2,
+      (bb.max.y + bb.min.y) / 2,
+      (bb.max.z + bb.min.z) / 2,
+    );
+  } catch (e) { /* geometry aneh → fallback scale 1 */ }
+  block.add(shell);
+  shell.raycast = () => {};
+  shell.renderOrder = 2;
+  const handle = { line: shell };
+  block.userData[slot] = handle;
+  return handle;
+}
+
+/** Lepas bingkai dari slot tertentu (idempoten). */
+function detachFrameSlot(block, slot) {
+  if (!block || !block.userData) return;
+  const handle = block.userData[slot];
+  if (!handle) return;
+  try { if (handle.line.parent) handle.line.parent.remove(handle.line); } catch (e) { /* disposed */ }
+  delete block.userData[slot];
+}
+
+/** Outline HOVER property (tebal) — muncul saat kursor di atas block. */
+export function attachPropertyHoverOutline(block) {
+  return attachFrameSlot(block, '__propHoverOutline', PROP_COLOR, FRAME_WORLD_WIDTH);
+}
+export function detachPropertyHoverOutline(block) {
+  detachFrameSlot(block, '__propHoverOutline');
+}
+
+/** Outline PERSIST property (tipis) — menetap selama block terpilih. */
+export function attachPropertySelectOutline(block) {
+  return attachFrameSlot(block, '__propSelOutline', PROP_COLOR, PROP_SEL_WIDTH);
+}
+export function detachPropertySelectOutline(block) {
+  detachFrameSlot(block, '__propSelOutline');
+}
+
+/**
  * Lepas bingkai dari block (idempoten + aman untuk block sudah dispose).
  */
 export function detachDeleteWireframe(block) {
