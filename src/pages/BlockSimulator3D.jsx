@@ -19079,12 +19079,15 @@ Now you can apply Displacement for detailed effect.`);
             // user: bug hanya muncul saat centang Select Box.
             maxWidth: 208,
           }}>
-            {/* Header — identik dgn header "Colors" (Orbitron uppercase) */}
+            {/* Header — identik dgn header "Colors" (Orbitron uppercase).
+                NAMA berubah per tool: tool 'property' → "Property Options"
+                (panel ini HANYA berisi Anchor, bukan opsi gizmo); anggota
+                keluarga-5 → "Gizmo Options" (perilaku lama, tidak diubah). */}
             <div style={{
               fontSize: 10, fontWeight: 700, color: textSecondary,
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
-            }}>Gizmo Options</div>
+            }}>{tool === 'property' ? 'Property Options' : 'Gizmo Options'}</div>
 
             {/* ══ Phase 72 v2 (2026-09-15, revisi user: "info & options = SATU
                   WILAYAH yang sama — jangan 2 kotak terpisah"): seksi INFO BLOCK
@@ -19131,6 +19134,13 @@ Now you can apply Displacement for detailed effect.`);
               }} />
             )}
 
+            {/* ── Baris opsi KELUARGA-5 (Arrow Match Rotation + Select Box) ──
+                  ATURAN: opsi ini HANYA untuk anggota keluarga-5
+                  (move/rotate/scale/clone/mirror). Tool 'property' BUKAN
+                  anggota keluarga-5 → TIDAK boleh melihat opsi ini (hanya
+                  Anchor). Sebelumnya 'property' ikut ditambahkan ke kondisi
+                  panel sehingga seluruh isi keluarga-5 bocor ke panelnya. */}
+            {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror') && (<>
             {/* ── Baris opsi (pola reusable — opsi baru tinggal copy pola ini) ── */}
             <div
               onClick={() => setArrowMatchRotation(v => !v)}
@@ -19238,6 +19248,7 @@ Now you can apply Displacement for detailed effect.`);
               <div>{arrowMatchRotation ? 'Gizmo mengikuti rotasi block' : 'Gizmo selalu tegak lurus dunia'}</div>
               {selectBoxEnabled && <div>Select Box aktif: drag kiri = kotak pilih</div>}
             </div>
+            </>)}
           </div>
         )}
 
