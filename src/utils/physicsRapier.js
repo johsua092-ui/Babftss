@@ -23,12 +23,13 @@
    Modul ini adalah SATU-SATUNYA pemilik dunia rapier. App memanggil API-nya.
    ================================================================ */
 import RAPIER from '@dimforge/rapier3d-compat';
-import { PHYS_BY_SLUG } from './physicsEngine.js';
+import { PHYS_BY_SLUG, MAX_SUBSTEPS } from './physicsEngine.js';
 
-/** Gravitasi (unit/detik^2) — 1 block = 1 unit. */
-export const GRAVITY = 26;
-/** Langkah tetap (detik). */
-export const FIXED_DT = 1 / 120;
+/** Gravitasi (unit/detik^2) — 1 block = 1 unit = 2 studs.
+ *  Skala ROBLOX: 196.2 studs/s² ÷ 2 = 98.1 unit/s² (lihat physicsEngine.GRAVITY). */
+export const GRAVITY = 98.1;
+/** Langkah tetap (detik) — 240 Hz gaya Roblox. */
+export const FIXED_DT = 1 / 240;
 /** Batas dt per frame (anti-lompat saat tab tidak aktif). */
 export const MAX_FRAME_DT = 0.1;
 
@@ -143,23 +144,61 @@ export function ensureBody(mesh, slug) {
   return body;
 }
 
-/** Bangunkan (saat Anchor dilepas): ubah body jadi DYNAMIC + reset kecepatan. */
+/**
+ * Sinkronkan transform MESH -> BODY rapier.
+ *
+ * WAJIB untuk block yang SEDANG ANCHORED (statis): user memindahkan/memutar block
+ * lewat gizmo TransformControls yang hanya mengubah MESH Three.js. Body rapier
+ * TIDAK ikut berubah. Akibatnya saat Anchor dilepas, rapier "menarik" block balik
+ * ke posisi LAMA -> block TER-TELEPORT ke tanah (bug kritis yang dilaporkan user).
+ *
+ * Terukur (sebelum fix): mesh diangkat ke y=5, anchor dilepas -> 1 step kemudian
+ * y=0.500 (teleport); rotasi [0.601,0.018,0.769,0.218] -> [0.001,0,0,1] (hilang).
+ *
+ * Mesh = SUMBER KEBENARAN selama block anchored. Begitu anchor dilepas
+ * (dynamic), body menjadi sumber kebenaran (lihat stepWorld).
+ */
+export function syncBodyFromMesh(mesh) {
+  if (!ready || !mesh) return;
+  const body = bodyByMesh.get(mesh);
+  if (!body) return;
+  body.setTranslation({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }, true);
+  body.setRotation({ x: mesh.quaternion.x, y: mesh.quaternion.y, z: mesh.quaternion.z, w: mesh.quaternion.w }, true);
+}
+
+/**
+ * Bangunkan (saat Anchor dilepas): sinkron posisi/rotasi TERBARU dari mesh dulu,
+ * baru jadikan DYNAMIC — supaya block jatuh dari posisi yang user lihat (bukan
+ * posisi lama). Ini yang mencegah "teleport ke tanah".
+ */
 export function wakeBody(mesh) {
   if (!ready || !mesh) return null;
   const body = ensureBody(mesh);
   if (!body) return null;
+  syncBodyFromMesh(mesh);                              // ← KUNCI fix teleport
   body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+  // ── DAMPING WAJIB DI-SET DI SINI (bug kritis yang dilaporkan user) ──
+  // Block dibuat sebagai FIXED (anchored) sehingga setLinearDamping/
+  // setAngularDamping di ensureBody TIDAK pernah terpasang. Saat body diubah
+  // jadi Dynamic, damping = 0 → noise numerik tumbukan MENUMPUK tanpa redaman →
+  // block berputar sendiri & menyimpang LIAR walau dijatuhkan TEGAK.
+  // Terukur (sebelum fix): bouncy tegak -> drift 8.23 (harusnya < 0.05).
+  // Nilai: linear 0 (energi pantul utuh), angular 0.35 (redam noise, tapi
+  // putaran asli dari tumbukan sudut TETAP hidup → pantulan tetap kacau).
+  body.setLinearDamping(0);
+  body.setAngularDamping(0.35);
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   body.wakeUp();
   return body;
 }
 
-/** Tidurkan (saat Anchor dicentang): ubah body jadi FIXED (terkunci di tempat). */
+/** Tidurkan (saat Anchor dicentang): sinkron posisi terbaru lalu kunci (FIXED). */
 export function sleepBody(mesh) {
   if (!ready || !mesh) return null;
   const body = ensureBody(mesh);
   if (!body) return null;
+  syncBodyFromMesh(mesh);                              // ikuti posisi terkini
   body.setLinvel({ x: 0, y: 0, z: 0 }, true);
   body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   body.setBodyType(RAPIER.RigidBodyType.Fixed, true);
@@ -223,10 +262,10 @@ export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
     }
   }
 
-  // Majukan dunia dengan langkah TETAP.
+  // Majukan dunia dengan langkah TETAP (gaya Roblox: 240 Hz).
   let step = Math.min(dt, MAX_FRAME_DT);
   let iter = 0;
-  while (step > 1e-6 && iter < 8) {
+  while (step > 1e-6 && iter < MAX_SUBSTEPS) {
     world.step();
     step -= FIXED_DT;
     iter++;
@@ -245,6 +284,14 @@ export function stepWorld(THREE, entries, dt, groundY = 0, statics = []) {
     if (!body.isSleeping()) moving++;
   }
   return moving;
+}
+
+/** Hapus SEMUA body (dipakai tes untuk isolasi antar-skenario). */
+export function clearAllBodies() {
+  if (!ready || !world) return;
+  for (const [, body] of bodyByMesh) { try { world.removeRigidBody(body); } catch (e) { /* noop */ } }
+  bodyByMesh.clear();
+  metaByMesh.clear();
 }
 
 /** Bersihkan semua body (cleanup unmount). */

@@ -21,14 +21,25 @@
    sebagai PARAMETER. Modul murni → bisa diuji Node tanpa browser.
    ================================================================ */
 
-/** Gravitasi (unit/detik²). 1 block = 1 unit; block default 2 studs. */
-export const GRAVITY = 26;
+/** Gravitasi (unit/detik²). 1 block = 1 unit = 2 studs.
+ *  Diubah ke skala ROBLOX (2026-09-20): Roblox default 196.2 studs/s².
+ *  Konvensi Roblox: 20 studs = 1 m. Skala proyek: 1 block = 2 studs = 1 unit.
+ *  Maka 196.2 studs/s² ÷ 2 = 98.1 unit/s².
+ *  Sebelumnya 26 unit/s² (≈52 studs/s²) = 3.8x TERLALU LEMAH → jatuh slow-motion. */
+export const GRAVITY = 98.1;
 
-/** Langkah fisika TETAP (detik). Loop memecah dt nyata jadi sub-step ini. */
-export const FIXED_DT = 1 / 120;
+/** Langkah fisika TETAP (detik). Loop memecah dt nyata jadi sub-step ini.
+ *  Gaya Roblox: Roblox mensimulasikan pada 240 Hz (1/240) untuk akurasi tinggi.
+ *  Dengan gravity 98.1, step 1/120 terlalu kasar → spin palsu lebih besar.
+ *  Terukur: dt 1/240 → drift bouncy tegak 0.94 (vs 1/120 lebih besar). */
+export const FIXED_DT = 1 / 240;
 
 /** Batas dt maksimum per frame (anti "tabrakan" saat tab tidak aktif). */
 export const MAX_FRAME_DT = 0.1;
+
+/** Batas jumlah sub-step per frame (anti spiral-of-death saat frame lambat).
+ *  FIXED_DT 1/240 → 8 step = 33ms; cukup untuk 30fps, tidak membebani. */
+export const MAX_SUBSTEPS = 8;
 
 /** Di bawah kecepatan ini → dianggap diam (anti-goyang). */
 export const REST_SPEED = 0.35;
@@ -44,7 +55,13 @@ export const REST_TIME = 0.12;
  * Permintaan user: grass paling seret · ice 0 (meluncur) · bouncy sedikit.
  */
 export const PHYS_BY_SLUG = {
-  bouncy_block:      { restitution: 0.92, friction: 0.03 }, // mantul KUAT + licin
+  // ── bouncy (FIX 2026-09-20, gaya ROBLOX) ──
+  // Nilai diambil dari material Roblox "Bouncy": Elasticity 50/100 = 0.5,
+  // Friction 50/100 = 0.5. Sebelumnya 0.92/0.03 → 2x lebih kenyal dari Roblox
+  // DAN friction hampir-nol → solver menghasilkan TORSI PALSU dari kontak 4 sudut
+  // → block TEGAK pun berputar sendiri & menyimpang liar (drift 7-10).
+  // Terukur: rest 0.5 → drift 0.94 (rapi) & tetap 8 pantulan; rest 0.92 → drift 7.0.
+  bouncy_block:      { restitution: 0.5,  friction: 0.5 }, // gaya Roblox: mantul rapi + tetap kuat
   ice_block:         { restitution: 0.04, friction: 0.005 }, // hampir nol gesekan → meluncur
   grass_block:       { restitution: 0.04, friction: 0.95 }, // paling seret
   sand_block:        { restitution: 0.04, friction: 0.85 },
