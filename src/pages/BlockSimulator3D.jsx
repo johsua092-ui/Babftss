@@ -44,9 +44,17 @@ import {
   applyScaleByMode, computeScaleModeFrame,
 } from '../utils/scaleModes.js';
 import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
+// ── PHYSICS v2 (2026-09-20): MESIN RAPIER (rapier3d) menggantikan mesin AABB.
+// API SAMA PERSIS (initRapierPhysics/ensureBody/wakeBody/sleepBody/stepWorld)
+// sehingga integrasi app nyaris tidak berubah — hanya sumber import yang beda.
+// Alasan: mesin AABB tidak bisa menghasilkan pantulan kacau (rotasi tak
+// berpengaruh, tak ada angular velocity). Terukur: rapier geser 5.9 & putar 3.5
+// vs AABB 0.0000/0.0000. Detail: KONTRAK bab 45.
 import {
-  FIXED_DT, MAX_FRAME_DT, ensureBody, wakeBody, sleepBody, stepWorld,
-} from '../utils/physicsEngine.js';
+  FIXED_DT, MAX_FRAME_DT, GRAVITY,
+  initRapierPhysics, isReady as physicsReady,
+  ensureBody, wakeBody, sleepBody, stepWorld, removeBody,
+} from '../utils/physicsRapier.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -12198,6 +12206,10 @@ Now you can apply Displacement for detailed effect.`);
     // baru texture muncul (lambat). Sekarang semua texture di-fetch SEKALI
     // saat init scene → place tampil instan.
     try { preloadBlockTextures(THREE); } catch (e) { /* preload gagal = fallback on-demand lama */ }
+    // ── PHYSICS v2 (2026-09-20): inisialisasi mesin RAPIER ──
+    // Async (rapier-compat memuat WASM). Aman: kalau gagal, fitur fisika mati
+    // tapi app tetap jalan (guard `physicsReady()` di render loop).
+    try { initRapierPhysics(); } catch (e) { console.warn('[physics] init gagal', e); }
 
     // Grid — 500x500 units (GRID_SIZE * 2), 500 divisions (Task ID 35, 2026-09-02: 100x100→500x500 per request user; dulu 100x100 / 60x60)
     const grid = new THREE.GridHelper(GRID_SIZE * 2, GRID_SIZE * 2, 0x64748b, 0x334155);
@@ -12832,12 +12844,12 @@ Now you can apply Displacement for detailed effect.`);
       // When renderMode === 'mesh': just sets mesh.visible=true, skips CM update.
       // When renderMode === 'instanced': sets mesh.visible=false, syncs to CM.
       syncMeshesToChunks();
-      // ── PHYSICS (fitur baru 2026-09-20) ──
-      // Sub-step TETAP (FIXED_DT) → hasil deterministik & stabil (anti-goyang).
-      // Block ANCHORED tidak diintegrasikan (statis) TAPI jadi penghalang.
-      // Block bergerak di-EXCLUDE dari InstancedMesh (di-render sebagai Mesh
-      // biasa) supaya posisinya halus — lihat syncMeshesToChunks.
-      {
+      // ── PHYSICS v2 (2026-09-20): mesin RAPIER ──
+      // Block ANCHORED (default) = body FIXED (statis, 0 biaya simulasi) tapi
+      // tetap jadi penghalang. Block UNANCHORED = body DYNAMIC (torsi, inersia,
+      // gesekan, putaran — inilah yang bikin pantulan kacau).
+      // Sinkronisasi transform body->mesh dilakukan di dalam stepWorld.
+      if (physicsReady()) {
         const blocksNow = threeRef.current.blocks;
         if (blocksNow && blocksNow.length) {
           let dtReal = 0;
@@ -12849,23 +12861,19 @@ Now you can apply Displacement for detailed effect.`);
           }
           if (dtReal > MAX_FRAME_DT) dtReal = MAX_FRAME_DT;
           if (dtReal > 0) {
-            physAccRef.current += dtReal;
-            let movingEntries = null;
-            let statics = null;
-            while (physAccRef.current >= FIXED_DT) {
-              physAccRef.current -= FIXED_DT;
-              if (!movingEntries) {
-                movingEntries = [];
-                statics = [];
-                for (const b of blocksNow) {
-                  if (b.userData && b.userData.anchored === false) {
-                    movingEntries.push({ mesh: b, body: ensureBody(b) });
-                  } else {
-                    statics.push({ mesh: b });
-                  }
-                }
+            const movingEntries = [];
+            const statics = [];
+            for (const b of blocksNow) {
+              if (b.userData && b.userData.anchored === false) {
+                movingEntries.push({ mesh: b, body: ensureBody(b) });
+              } else {
+                statics.push({ mesh: b });
               }
-              physMovingRef.current = stepWorld(THREE, movingEntries, FIXED_DT, 0, statics);
+            }
+            // Rapier punya langkah tetap internal (world.timestep = FIXED_DT);
+            // stepWorld memajukan dunia sesuai dt nyata (maks 8 langkah).
+            if (movingEntries.length) {
+              physMovingRef.current = stepWorld(THREE, movingEntries, dtReal, 0, statics);
             }
           }
         }

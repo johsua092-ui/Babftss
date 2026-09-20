@@ -44,7 +44,7 @@ export const REST_TIME = 0.12;
  * Permintaan user: grass paling seret · ice 0 (meluncur) · bouncy sedikit.
  */
 export const PHYS_BY_SLUG = {
-  bouncy_block:      { restitution: 0.80, friction: 0.03 }, // mantul + licin
+  bouncy_block:      { restitution: 0.92, friction: 0.03 }, // mantul KUAT + licin
   ice_block:         { restitution: 0.04, friction: 0.005 }, // hampir nol gesekan → meluncur
   grass_block:       { restitution: 0.04, friction: 0.95 }, // paling seret
   sand_block:        { restitution: 0.04, friction: 0.85 },
