@@ -229,5 +229,55 @@ console.log('\n== MODE 1 SIDE world-align (dicabut): offset pakai sumbu DUNIA ==
     'world-align 1side: offset pada sumbu DUNIA X (0.5,0,0) — bukan sumbu block');
 }
 
+console.log('\n== FIX TIER-HARD 2026-09-20: snap + scale balik ke asal → block TIDAK maju 1 studs ==');
+{
+  // BUG LAMA (laporan user, diburu berhari-hari): mode 1side + scale number 2
+  // (snap), drag memanjangkan lalu memendekkan sampai mentok ke ukuran asal →
+  // block MAJU 0.5 unit = 1 studs ke arah sisi yang digenggam.
+  // AKAR: saat delta scale = 0, computeAnchorOffset mengembalikan null; kode
+  // lama hanya men-set position DI DALAM `if (off)` → position tidak direset,
+  // tertinggal offset terakhir (0.5). Terjadi HANYA saat snap (snap
+  // mengkuantisasi scale → delta bisa tepat 0). Akumulatif tiap drag.
+  // FIX: reset position ke startPos SELALU (di luar `if (off)`).
+  const ratios = [];
+  for (let r = 1.0; r <= 3.0 + 1e-9; r += 0.02) ratios.push(r);
+  for (let r = 3.0; r >= 1.0 - 1e-9; r -= 0.02) ratios.push(r);
+
+  // (1) DENGAN snap (skenario user) — harus TIDAK maju
+  const m1 = new THREE.Mesh(GEO);
+  const s0 = { x: 1, y: 1, z: 1 }, p0 = { x: 0, y: 0, z: 0 };
+  for (const r of ratios) applyScaleByMode(THREE, m1, '1side', 'x', +1, s0, p0, r, 0.05, null, 2);
+  console.log('   snap=2, sesudah drag penuh:', 'scaleX=' + m1.scale.x.toFixed(4), 'posX=' + m1.position.x.toFixed(4));
+  check(Math.abs(m1.scale.x - 1.0) < 1e-9, 'snap: scale kembali ke 1.0');
+  check(Math.abs(m1.position.x) < 1e-9, 'snap: posisi kembali 0 → TIDAK maju 1 studs (lama: 0.5)');
+
+  // (2) TANPA snap (kontrol) — tetap benar
+  const m2 = new THREE.Mesh(GEO);
+  for (const r of ratios) applyScaleByMode(THREE, m2, '1side', 'x', +1, s0, p0, r, 0.05, null, null);
+  check(Math.abs(m2.position.x) < 1e-9, 'tanpa snap: posisi kembali 0');
+
+  // (3) ANTI-AKUMULASI — 3x cycle tidak menumpuk
+  const m3 = new THREE.Mesh(GEO);
+  for (let i = 0; i < 3; i++)
+    for (const r of ratios) applyScaleByMode(THREE, m3, '1side', 'x', +1, s0, p0, r, 0.05, null, 2);
+  check(Math.abs(m3.position.x) < 1e-9, '3x cycle snap: TIDAK akumulasi (lama: +0.5 tiap cycle)');
+
+  // (4) SEMANTICS 1side TETAP: sisi seberang diam selama drag (sign=+ → sisi −)
+  const m4 = new THREE.Mesh(GEO);
+  let far0 = null, maxDrift = 0;
+  for (const r of ratios) {
+    applyScaleByMode(THREE, m4, '1side', 'x', +1, s0, p0, r, 0.05, null, 2);
+    const farX = m4.position.x - 0.5 * m4.scale.x;   // pusat wajah sisi −
+    if (far0 === null) far0 = farX;
+    maxDrift = Math.max(maxDrift, Math.abs(farX - far0));
+  }
+  check(maxDrift < 1e-9, '1side semantics TETAP: sisi seberang DIAM (drift=' + maxDrift.toFixed(6) + ')');
+
+  // (5) MODE LAIN TIDAK TERSENTUH — 2side posisi tetap
+  const m5 = new THREE.Mesh(GEO);
+  for (const r of ratios) applyScaleByMode(THREE, m5, '2side', 'x', +1, s0, p0, r, 0.05, null, 2);
+  check(Math.abs(m5.position.x) < 1e-9, '2side: posisi tetap 0 (mode lain utuh)');
+}
+
 console.log(`\nRESULT ${pass}/${pass + fail}`);
 process.exit(fail === 0 ? 0 : 1);

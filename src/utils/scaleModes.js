@@ -401,13 +401,26 @@ export function applyScaleByMode(THREE, object, mode, axisKey, sign, startScale,
   // "1 side jadi 2 side" (sisi seberang bergerak simetris). Phase 83
   // kembalikan computeAnchorOffset SELALU → sisi seberang DIAM (mode 1
   // side true semantics) + pusat bergeser ke titik tengah (ide user).
+  // ── FIX TIER-HARD (2026-09-20): position WAJIB direset SELALU ──
+  // BUG (terukur via probe node, 1 FAIL): saat scale dikembalikan ke ukuran
+  // asal (delta scale = 0), computeAnchorOffset mengembalikan null. Kode lama
+  // hanya men-set position DI DALAM `if (off)` → saat null, position TIDAK
+  // direset dan masih menyimpan offset TERAKHIR (mis. 0.5 unit = 1 studs) →
+  // block "MAJU 1 studs" ke arah sisi yang digenggam (laporan user).
+  // Terjadi HANYA saat snap aktif: snap mengkuantisasi scale ke step, dan pada
+  // step 0 (kembali ke ukuran asal) delta = 0 → null. TANPA snap, delta tidak
+  // pernah tepat 0 → position selalu di-set → bug tidak muncul (terbukti:
+  // probe tanpa snap PASS, dengan snap FAIL).
+  // AKUMULATIF: startPos di-snapshot saat drag mulai TANPA pernah direset,
+  // jadi tiap drag menambah 0.5 unit lagi.
+  // FIX: reset position ke startPos di LUAR `if (off)` — selalu, di mode yang
+  // butuh anchor. Ini juga MEMPERKUAT reversibilitas (warisan #119): saat
+  // scale kembali ke asal, offset = 0 DAN position = startPos.
   if (needsAnchorOffset(m) && startPos) {
+    object.position.set(startPos.x, startPos.y, startPos.z);
     const half = getGeometryHalfSize(object, axisKey);
     const off = computeAnchorOffset(THREE, object, axisKey, sign, startScale[axisKey], object.scale[axisKey], half, frameQuat);
-    if (off) {
-      object.position.set(startPos.x, startPos.y, startPos.z);
-      object.position.add(off);
-    }
+    if (off) object.position.add(off);
   }
   return object.scale;
 }
