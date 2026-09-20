@@ -79,6 +79,22 @@ const pageFallback = (
     </div>
 );
 
+/* ============================================================================
+   ATURAN KEISTIMEWAAN LOCALDEV (bab 31 KONTRAK_PERMANEN.md, perintah user 2026-09-20)
+   ----------------------------------------------------------------------------
+   DI REPO / PRODUCTION: gerbang guest TETAP (guest tidak bisa masuk marketplace,
+   canvas, logic-gates-simulator, block-simulator-3d).
+   DI LOCALDEV (laptop user): guest WAJIB bisa mengakses SELURUH fitur tanpa
+   kecuali — supaya user (frontend) bisa menguji fiturnya sendiri tanpa
+   terbelit gerbang login (kunci Firebase tidak tersedia di laptop).
+
+   Cara kerja: flag env VITE_LOCALDEV_BYPASS_GUEST. TANPA flag ini nilainya
+   false → perilaku 100% sama seperti sebelumnya (produksi aman, inert).
+   Flag hanya dipasang di .env LAPTOP user, JANGAN di Vercel.
+   JANGAN commit/push bypass ini ke origin/main.
+   ============================================================================ */
+const LOCALDEV_GUEST_BYPASS = import.meta.env.VITE_LOCALDEV_BYPASS_GUEST === 'true';
+
 export default function App() {
     const [page, setPage] = useState("welcome");
     const [showLogin, setShowLogin] = useState(false);
@@ -318,7 +334,7 @@ export default function App() {
                     manipulation) `page` diset ke 'block-simulator-3d' padahal user
                     belum login, jangan render <BlockSimulator3D />. Tampilkan layar
                     akses-ditolak inline + tombol Sign In yang membuka LoginModal. */}
-                {user
+                {user || LOCALDEV_GUEST_BYPASS
                     ? <Suspense fallback={pageFallback}><BlockSimulator3D setPage={setPage} /></Suspense>
                     : (
                         <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -410,8 +426,8 @@ export default function App() {
                             label="Marketplace"
                             subtitle="trade parts & designs"
                             top="hsl(350,85%,68%)" bottom="hsl(350,80%,45%)" lip="hsl(350,80%,32%)"
-                            onClick={() => user ? setPage("marketplace") : showGuestAnnouncement()}
-                            locked={!user}
+                            onClick={() => (user || LOCALDEV_GUEST_BYPASS) ? setPage("marketplace") : showGuestAnnouncement()}
+                            locked={!user && !LOCALDEV_GUEST_BYPASS}
                             icon={
                                 <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
                                     <path d="M3 4h2l1.6 9.6a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L20.5 7H6.2" stroke="url(#menuIconGrad)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -425,8 +441,8 @@ export default function App() {
                             label="Canvas"
                             subtitle="free-form sketch"
                             top="hsl(270,70%,68%)" bottom="hsl(270,75%,42%)" lip="hsl(270,75%,30%)"
-                            onClick={() => user ? setPage("canvas") : showGuestAnnouncement()}
-                            locked={!user}
+                            onClick={() => (user || LOCALDEV_GUEST_BYPASS) ? setPage("canvas") : showGuestAnnouncement()}
+                            locked={!user && !LOCALDEV_GUEST_BYPASS}
                             icon={
                                 <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
                                     <path d="M15.5 3.5l5 5-11 11-6 1 1-6z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.2)" strokeWidth="0.6"/>
@@ -549,8 +565,8 @@ export default function App() {
                             label="Create Logic Gates Simulator"
                             subtitle="design your own gate"
                             top="hsl(38,92%,60%)" bottom="hsl(30,88%,42%)" lip="hsl(28,88%,30%)"
-                            onClick={() => user ? setPage("logic-gates-simulator") : showGuestAnnouncement()}
-                            locked={!user}
+                            onClick={() => (user || LOCALDEV_GUEST_BYPASS) ? setPage("logic-gates-simulator") : showGuestAnnouncement()}
+                            locked={!user && !LOCALDEV_GUEST_BYPASS}
                             icon={
                                 <svg viewBox="0 0 24 24" fill="none" width="48" height="48">
                                     <path d="M10 3h4v4.2l4.3 8.4A2 2 0 0 1 16.5 18.5h-9a2 2 0 0 1-1.8-2.9L10 7.2z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.22)" strokeWidth="0.6" strokeLinejoin="round"/>

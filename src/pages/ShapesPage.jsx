@@ -1,6 +1,11 @@
 import { ArrowLeft } from 'lucide-react';
 import MenuButton3D from '../components/MenuButton3D';
 
+/* ATURAN KEISTIMEWAAN LOCALDEV (bab 31 KONTRAK_PERMANEN.md, perintah user 2026-09-20).
+   Di production: gerbang guest tetap. Di laptop user: guest boleh akses semua fitur.
+   Tanpa flag env VITE_LOCALDEV_BYPASS_GUEST, nilainya false → perilaku lama (inert). */
+const LOCALDEV_GUEST_BYPASS = import.meta.env.VITE_LOCALDEV_BYPASS_GUEST === 'true';
+
 /**
  * ShapesPage — submenu dari "Shapes" (menu utama).
  *
@@ -74,8 +79,8 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                         label="3D Block Simulator"
                         subtitle="three.js engine"
                         top="hsl(38,90%,60%)" bottom="hsl(38,85%,40%)" lip="hsl(38,85%,26%)"
-                        onClick={() => user ? setPage('block-simulator-3d') : (onGuestClick && onGuestClick())}
-                        locked={!user}
+                        onClick={() => (user || LOCALDEV_GUEST_BYPASS) ? setPage('block-simulator-3d') : (onGuestClick && onGuestClick())}
+                        locked={!user && !LOCALDEV_GUEST_BYPASS}
                         icon={
                             <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <svg viewBox="-5 -8 35 32" fill="none" width="96" height="96" style={{ transform: 'translateY(-3px)' }}>
