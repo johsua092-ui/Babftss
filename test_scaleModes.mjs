@@ -279,5 +279,44 @@ console.log('\n== FIX TIER-HARD 2026-09-20: snap + scale balik ke asal → block
   check(Math.abs(m5.position.x) < 1e-9, '2side: posisi tetap 0 (mode lain utuh)');
 }
 
+console.log('\n== FIX TIER-HARD 2026-09-20 #2: 2side + SNAP + mode 4/6 side (dulu di-skip) ==');
+{
+  // BUG A (laporan user): mode 2side + scale number → "seolah memakai scale 0"
+  //   (= snap MATI). Akar: jalur 2side di-skip dari applyScaleByMode.
+  // BUG B (laporan user): mode 6side kadang mulai sebagai 2side dulu (~90%).
+  //   Akar: snapshot tidak dibuat untuk 2side → seluruh logika mode dilewati.
+  // FIX: SEMUA mode lewat applyScaleByMode (2side kini ikut di-snap).
+  const s0 = { x: 1, y: 1, z: 1 }, p0 = { x: 0, y: 0, z: 0 };
+
+  // (1) 2side + snap 3 studs → nilai harus snap RELATIF (start + n×1.5)
+  const m1 = new THREE.Mesh(GEO);
+  const vals = [];
+  for (const r of [1.2, 1.7, 2.0, 2.7, 3.0]) {
+    applyScaleByMode(THREE, m1, '2side', 'x', +1, s0, p0, r, 0.05, null, 3);
+    vals.push(+m1.scale.x.toFixed(4));
+  }
+  const snapped = vals.every(v => Math.abs(((v - 1) % 1.5 + 1.5) % 1.5) < 1e-9);
+  console.log('   2side+snap3 nilai:', vals.join(', '));
+  check(snapped, '2side + snap 3: nilai snap ke start + n×1.5 (snap AKTIF, bukan bebas)');
+  check(vals.some(v => Math.abs(v - 1) > 1e-9), '2side + snap 3: nilai benar-benar berubah per step');
+
+  // (2) 6side → SEMUA 3 sumbu ter-scale (bukan hanya sumbu digenggam)
+  const m2 = new THREE.Mesh(GEO);
+  applyScaleByMode(THREE, m2, '6side', 'x', +1, s0, p0, 3, 0.05, null, null);
+  check(Math.abs(m2.scale.x - 3) < 1e-6 && Math.abs(m2.scale.y - 3) < 1e-6 && Math.abs(m2.scale.z - 3) < 1e-6,
+    `6side: ketiga sumbu = 3 (dapat ${m2.scale.x},${m2.scale.y},${m2.scale.z})`);
+
+  // (3) 4side → 2 sumbu lain; sumbu digenggam DIAM
+  const m3 = new THREE.Mesh(GEO);
+  applyScaleByMode(THREE, m3, '4side', 'x', +1, s0, p0, 3, 0.05, null, null);
+  check(Math.abs(m3.scale.x - 1) < 1e-6 && Math.abs(m3.scale.y - 3) < 1e-6 && Math.abs(m3.scale.z - 3) < 1e-6,
+    `4side: sumbu digenggam DIAM, 2 sumbu lain scale (dapat ${m3.scale.x},${m3.scale.y},${m3.scale.z})`);
+
+  // (4) 2side TANPA snap → bebas (perilaku lama tetap ada)
+  const m4 = new THREE.Mesh(GEO);
+  applyScaleByMode(THREE, m4, '2side', 'x', +1, s0, p0, 1.7, 0.05, null, null);
+  check(Math.abs(m4.scale.x - 1.7) < 1e-6, `2side tanpa snap: nilai bebas 1.7 (dapat ${m4.scale.x.toFixed(3)})`);
+}
+
 console.log(`\nRESULT ${pass}/${pass + fail}`);
 process.exit(fail === 0 ? 0 : 1);

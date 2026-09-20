@@ -12480,7 +12480,14 @@ Now you can apply Displacement for detailed effect.`);
               THREE, tcSnap.axis, tcSnap.pointStart,
               tcSnap.worldQuaternion, getScaleWorldAlign(tcSnap),
             );
-            if (frame && scaleModeRef.current !== '2side') {
+            // FIX TIER-HARD (2026-09-20) — Bug B: SEMUA mode WAJIB bikin snapshot
+            // (dulu 2side di-skip → seluruh logika mode dilewati → drag pertama
+            // berperilaku 2side walau user sudah pilih 4/6 side = gejala "90%").
+            // FIX Bug A: 2side ikut lewat applyScaleByMode supaya SNAP (scale
+            // number) aktif di 2side (dulu terasa "seolah scale 0" = snap mati).
+            // CATATAN: mode TIDAK disimpan di snapshot — dibaca LIVE dari
+            // scaleModeRef saat apply (ref di-set sinkron oleh modal confirm).
+            if (frame) {
               const o = tcSnap.object;
               scaleDragRef.current = {
                 axisKey: frame.axisKey,
@@ -12499,7 +12506,7 @@ Now you can apply Displacement for detailed effect.`);
                 o.userData.__scaleStartScale = { x: o.scale.x, y: o.scale.y, z: o.scale.z };
               }
             } else {
-              scaleDragRef.current = null;   // 2side / axis tak dikenal → jalur lama
+              scaleDragRef.current = null;   // axis tak dikenal → jalur lama
             }
           } catch (err) {
             scaleDragRef.current = null;     // gagal snapshot → aman: jalur lama
@@ -12580,6 +12587,12 @@ Now you can apply Displacement for detailed effect.`);
           // ratio = nilai sekarang / nilai awal (tanda ikut — konsisten
           // dgn rumus library scale = _scaleStart × tempVector2).
           const ratio = (s0 !== 0) ? (nowVal / s0) : 1;
+          // FIX TIER-HARD (2026-09-20): mode dibaca LIVE dari scaleModeRef.
+          // ref di-set SINKRON oleh handleScaleModeConfirm/handleScaleModeCancel
+          // (baris 624-625 & 640-641) → sudah mode TERBARU saat drag berikutnya.
+          // (Sempat dicoba "freeze mode di snapshot" = SALAH: snapshot dibuat saat
+          //  dragging-changed yang bisa terjadi SEBELUM React ter-render → malah
+          //  mengunci mode BASI. Live ref lebih benar + lebih sederhana.)
           applyScaleByMode(
             THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
