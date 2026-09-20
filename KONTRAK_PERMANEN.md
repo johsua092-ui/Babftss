@@ -3949,3 +3949,65 @@ Risiko: gampang keburu ter-commit/ter-push. Kalau pakai ini, WAJIB cek
 4. Aturan ini **HANYA** berlaku di laptop user. Di server z.ai / CI / Vercel =
    aturan repo berlaku penuh.
 
+---
+
+## 32. WARISAN PENGALAMAN — sesi 2026-09-20 (7 jebakan yang berhasil dikalahkan)
+
+> Ditulis sesuai ATURAN #9 (warisan wajib). Semua butir disertai ANGKA nyata.
+
+**121. DUA FILE BERNAMA SAMA DI DALAM SATU REPO = JEBAKAN HAPUS FATAL.**
+Repo ini punya DUA `KONTRAK_PERMANEN.md`: root (3885 baris, Phase 89, kontrak
+HIDUP) dan `upload/KONTRAK_PERMANEN.md` (2217 baris, Phase 73 v2, BASI — sisa
+upload server z.ai). Perintah user "hapus kontrak permanen md yang di repo"
+AMBIGU: salah tebas = kontrak hidup hilang. CARA AMAN: (a) `git ls-files |
+grep -i kontrak` untuk lihat semua yang di-track; (b) `wc -l` + `git hash-object`
+tiap kandidat; (c) TANYA user bila ambigu (kontrak mewajibkan konfirmasi utk
+hapus). Terbukti: yang dihapus = `upload/` (2217 baris), root UTUH (hash
+`7247d6be...` sama sebelum/sesudah).
+
+**122. SATU FILE `.env` UNTUK DUA ENVIRONMENT = KONFIGURASI SALING MENIMPA.**
+`.env` laptop user isinya HANYA `DATABASE_URL=file:/home/z/my-project/db/custom.db`
+— path itu milik SERVER z.ai, bukan laptop. Teman user push `.env` dari server
+→ menimpa `.env` laptop → kunci `VITE_FIREBASE_*` hilang → tombol Sign In mati
+dengan error "Firebase belum dikonfigurasi" (`src/contexts/AuthContext.jsx:51`).
+DETEKSI CEPAT: bandingkan `cat .env` vs `git show origin/main:.env` — kalau sama
+persis dan isinya aneh (path `/home/z/...`), berarti `.env` di repo adalah milik
+server, bukan laptop. PELAJARAN: `.env` JANGAN di-share antar environment.
+
+**123. KUNCI YANG "HILANG" BISA JADI TIDAK PERNAH ADA DI GIT — CEK RIWAYAT DULU.**
+`git log --all -S"VITE_FIREBASE_API_KEY"` → NOL commit. Jadi bukan "kehapus",
+memang tak pernah ikut. Jangan buang waktu `git checkout` file lama. VERIFIKASI
+lanjutan: kunci Firebase Babftss ternyata ter-inline di BUNDLE PRODUKSI PUBLIK
+(`https://babftss.vercel.app/assets/index-*.js` → `apiKey AIzaSyBu_…`,
+`projectId punya-si-jawa`, `authDomain punya-si-jawa.firebaseapp.com`). Artinya:
+(a) bundle publik = sumber pemulihan konfigurasi klien; (b) PENGINGAT: kunci
+Firebase memang publik by design → keamanan bergantung pada Security Rules.
+
+**124. FOLDER `upload/` = ARTEFAK SERVER z.ai, BUKAN BAGIAN APLIKASI.**
+Isinya cuma file yang di-upload ke `/home/z/my-project/upload/` (ephemeral).
+Tidak dirujuk kode mana pun (grep bersih). Aman dihapus. Kalau ketemu file
+aneh di `upload/`, curigai artefak server, bukan fitur.
+
+**125. SKILL KEMBAR = `skill_view` ERROR "AMBIGUOUS" (gagal load skill).**
+Install lama `obra/superpowers` meninggalkan 11 SKILL.md di ROOT skills dir yang
+DUPLIKAT dengan versi berkategori di `superpowers/` & `software-development/`.
+Gejala: `skill_view("test-driven-development")` → "Ambiguous — refusing to
+guess". AUDIT & FIX terukur: 152 SKILL.md → 11 nama kembar → hapus 12 folder
+duplikat (root-level + 1 subfolder) → 141 unik, **0 kembar**, skill_view normal.
+ATURAN: 1 nama = 1 lokasi. Backup dulu ke luar folder skills (biar tidak
+ter-scan). `.agents/skills` = sistem terpisah, JANGAN sentuh.
+
+**126. MEMORY PENUH MENOLAK `add` — KONSOLIDASI DALAM SATU BATCH.**
+Memory store dibatasi 2200 char. Saat penuh, `add` ditolak. SOLUSI (1 call):
+`operations` berisi beberapa `replace` (meringkas entry lama) + `add` baru —
+limit dicek di AKHIR batch, jadi muat. Terbukti: 2193/2200 → 2117/2200, 10 entry.
+
+**127. `verify_sync.py` PUNYA USER SUDAH USANG — GANTI DENGAN GIT.**
+Skrip itu menunjuk folder `babftss-github-extracted` yang sudah dihapus → error.
+CARA BENAR bandingkan lokal vs repo TANPA download ZIP:
+`git fetch origin --prune` → `git rev-parse HEAD` vs `git rev-parse origin/main`
+→ `git status --short` → `git ls-tree -r origin/main --name-only | wc -l` vs
+hitung file disk. Terbukti 2026-09-20: HEAD == origin/main (`9ab2938`), 325 = 325
+file, 0 beda → lokal SUDAH identik. Ingat: `package-lock.json` selalu tampil
+" M" karena `core.autocrlf` — cek `git diff` (kosong = noise, bukan perubahan).
+
