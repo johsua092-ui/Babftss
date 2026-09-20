@@ -26,6 +26,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import GizmoBlockInfoPanel from '../components/GizmoBlockInfoPanel';
+import PhysicsAnchorPanel from '../components/PhysicsAnchorPanel';
 import ScaleModeModal from '../components/ScaleModeModal';
 import ScaleNumberModal from '../components/ScaleNumberModal';
 import { ChunkManager } from '../lib/ChunkManager.js';
@@ -43,6 +44,9 @@ import {
   applyScaleByMode, computeScaleModeFrame,
 } from '../utils/scaleModes.js';
 import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
+import {
+  FIXED_DT, MAX_FRAME_DT, ensureBody, wakeBody, sleepBody, stepWorld,
+} from '../utils/physicsEngine.js';
 
 /* ================================================================
    3D BLOCK SIMULATOR — Three.js Engine
@@ -566,6 +570,14 @@ export default function BlockSimulator3D({ setPage }) {
   const scaleModeRef = useRef(DEFAULT_SCALE_MODE);
   const [showScaleModeModal, setShowScaleModeModal] = useState(false);
   const [scaleModeModalVariant, setScaleModeModalVariant] = useState('onboarding');
+  // ── PHYSICS (fitur baru 2026-09-20) ──
+  // Block yang dipilih memakai tool "property" (panel Anchor). null = tak ada.
+  const [physicsTarget, setPhysicsTarget] = useState(null);
+  // Akumulator waktu fisika + jumlah block bergerak (perf). Ref, bukan state,
+  // supaya loop tidak memicu re-render.
+  const physAccRef = useRef(0);
+  const physMovingRef = useRef(0);
+  const physicsTargetRef = useRef(null);
   const scaleModeLockedRef = useRef(false);
 
   // ── Phase 74 (2026-09-19, sesi server z.ai): modal ScaleNumberModal —
@@ -12647,7 +12659,9 @@ Now you can apply Displacement for detailed effect.`);
           if (toolName === 'binding') {
             toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon');
           } else if (toolName === 'property') {
-            toast.warning('Tool "Property" masih dalam tahap pengembangan — coming soon');
+            // PHYSICS (2026-09-20): tool "property" TIDAK lagi coming soon —
+            // sekarang membuka panel "Anchor" (jendela seperti scale, kanan atas).
+            setTool('property');
           } else if (toolName === 'paint') {
             // Phase 48: Keybinds '3' — ALWAYS buka modal (infinite), bukan first-time only.
             // Klik tombol manual (kursor) tetap first-time only — jangan diubah.
@@ -12818,6 +12832,44 @@ Now you can apply Displacement for detailed effect.`);
       // When renderMode === 'mesh': just sets mesh.visible=true, skips CM update.
       // When renderMode === 'instanced': sets mesh.visible=false, syncs to CM.
       syncMeshesToChunks();
+      // ── PHYSICS (fitur baru 2026-09-20) ──
+      // Sub-step TETAP (FIXED_DT) → hasil deterministik & stabil (anti-goyang).
+      // Block ANCHORED tidak diintegrasikan (statis) TAPI jadi penghalang.
+      // Block bergerak di-EXCLUDE dari InstancedMesh (di-render sebagai Mesh
+      // biasa) supaya posisinya halus — lihat syncMeshesToChunks.
+      {
+        const blocksNow = threeRef.current.blocks;
+        if (blocksNow && blocksNow.length) {
+          let dtReal = 0;
+          if (typeof performance !== 'undefined' && performance.now) {
+            const now = performance.now();
+            if (!threeRef.current.__physLastT) threeRef.current.__physLastT = now;
+            dtReal = (now - threeRef.current.__physLastT) / 1000;
+            threeRef.current.__physLastT = now;
+          }
+          if (dtReal > MAX_FRAME_DT) dtReal = MAX_FRAME_DT;
+          if (dtReal > 0) {
+            physAccRef.current += dtReal;
+            let movingEntries = null;
+            let statics = null;
+            while (physAccRef.current >= FIXED_DT) {
+              physAccRef.current -= FIXED_DT;
+              if (!movingEntries) {
+                movingEntries = [];
+                statics = [];
+                for (const b of blocksNow) {
+                  if (b.userData && b.userData.anchored === false) {
+                    movingEntries.push({ mesh: b, body: ensureBody(b) });
+                  } else {
+                    statics.push({ mesh: b });
+                  }
+                }
+              }
+              physMovingRef.current = stepWorld(THREE, movingEntries, FIXED_DT, 0, statics);
+            }
+          }
+        }
+      }
       // Phase 37: FPS + draw call tracking — update React state once per second.
       // Avoids per-frame React re-render spam (would tank performance).
       fpsCounterRef.current.frames++;
@@ -12920,10 +12972,15 @@ Now you can apply Displacement for detailed effect.`);
       // Add/update blocks + toggle visibility
       for (let i = 0; i < blocks.length; i++) {
         const mesh = blocks[i];
+        // PHYSICS (2026-09-20): block yang SEDANG JATUH (anchored=false) wajib
+        // dirender sebagai Mesh biasa — InstancedMesh mengkuantisasi posisi ke
+        // sel (Math.round) sehingga gerakan halus akan "loncat". Bukan jatuh =
+        // tetap ikut InstancedMesh seperti semula (nol perubahan perilaku lama).
+        const isFalling = !!(mesh.userData && mesh.userData.anchored === false);
         // When Instanced: hide Mesh (raycaster still hits it — three.js ignores visible).
         // InstancedMesh renders the block instead.
-        mesh.visible = !isInstanced;
-        if (!isInstanced) continue;
+        mesh.visible = isInstanced ? isFalling : true;
+        if (!isInstanced || isFalling) continue;
 
         const x = Math.round(mesh.position.x);
         const y = Math.round(mesh.position.y);
@@ -13630,12 +13687,17 @@ Now you can apply Displacement for detailed effect.`);
           normal.transformDirection(hit.object.matrixWorld);
           applyDecalAt(hit.point, normal);
         }
-      } else if (currentTool === 'move' || currentTool === 'rotate' || currentTool === 'scale') {
+      } else if (currentTool === 'move' || currentTool === 'rotate' || currentTool === 'scale' || currentTool === 'property') {
         // Phase 5: Multi-select support.
         // - Click blok (no modifier): clear selection, select blok itu, attach gizmo.
         // - Shift+click: add to selection (multi-select). Gizmo attach ke blok terakhir.
         // - Ctrl+click: toggle select (add/remove). Gizmo attach ke blok terakhir yang selected.
         // - Click empty: clear selection + detach gizmo.
+        // PHYSICS (2026-09-20): tool 'property' ikut cabang ini supaya bisa
+        // memilih block — tapi di bawah TIDAK meng-attach gizmo; ia membuka
+        // panel Anchor (openPhysicsPanel). Tanpa menambahkan 'property' di sini,
+        // klik pada tool property tidak pernah sampai ke kode pemilihan block
+        // (diam-diam tidak melakukan apa pun — bug yang sempat terjadi).
         const blockMeshes = threeRef.current.blocks;
         // recursive=true supaya mesh hasil import glb (nested) tetap kena raycast
         const hits = raycaster.intersectObjects(blockMeshes, true);
@@ -13686,11 +13748,20 @@ Now you can apply Displacement for detailed effect.`);
             // Normal click: single select
             selectBlock(hit, false);
           }
-          // Attach gizmo ke selection (1 blok = langsung, >1 = group)
-          attachGizmoToSelection();
-          if (currentTool === 'move') transformControls.setMode('translate');
-          else if (currentTool === 'rotate') transformControls.setMode('rotate');
-          else if (currentTool === 'scale') transformControls.setMode('scale');
+          // PHYSICS (2026-09-20): tool "property" → buka panel Anchor utk block
+          // ini (jendela seperti scale, kanan atas, 1 opsi "Anchor" tercentang).
+          // PENTING: tool property TIDAK meng-attach gizmo (user hanya minta
+          // panel opsi). Kalau gizmo ikut ter-attach, block akan "ditarik" gizmo
+          // saat jatuh + muncul panah yang tidak diminta.
+          if (currentTool === 'property') {
+            openPhysicsPanel(hit);
+          } else {
+            // Attach gizmo ke selection (1 blok = langsung, >1 = group)
+            attachGizmoToSelection();
+            if (currentTool === 'move') transformControls.setMode('translate');
+            else if (currentTool === 'rotate') transformControls.setMode('rotate');
+            else if (currentTool === 'scale') transformControls.setMode('scale');
+          }
         } else {
           // FIX Phase 54 revisi kedua (2026-09-07, permintaan user): klik kiri ke
           // AREA KOSONG saat pakai move/rotate/scale → gizmo TIDAK boleh
@@ -13784,6 +13855,8 @@ Now you can apply Displacement for detailed effect.`);
     };
 
     // Buat/update selectionGroup + attach gizmo ke group (bukan ke 1 blok).
+    // (PHYSICS: openPhysicsPanel & setPhysicsAnchor TIDAK di sini — sudah di
+    //  scope KOMPONEN, supaya bisa dipakai JSX. Lihat komentar di sana.)
     // Dipanggil SETELAH selectBlock/toggleSelectBlock di click handler.
     const attachGizmoToSelection = () => {
       const selected = threeRef.current.selectedBlocks;
@@ -15235,6 +15308,36 @@ Now you can apply Displacement for detailed effect.`);
       });
     };
   }, []);
+
+  // ── PHYSICS (fitur baru 2026-09-20): handler di SCOPE KOMPONEN ──
+  // JEBAKAN YANG PERNAH TERJADI (kontrak "REACT LARGE-FILE TRAP"): handler ini
+  // awalnya ditulis DI DALAM useEffect scene (baris ~12xxx–15337) sehingga
+  // TIDAK terlihat oleh JSX (scope berbeda) → runtime
+  // "Uncaught ReferenceError: setPhysicsAnchor is not defined" → halaman BLANK.
+  // WAJIB di scope KOMPONEN (seperti ini), BUKAN di dalam useEffect.
+  //
+  // Anchor DEFAULT = true (terkunci) untuk SEMUA block — termasuk block lama
+  // yang belum punya field (dibaca lewat `!== false`).
+  const openPhysicsPanel = (block) => {
+    if (!block) return;
+    if (block.userData.anchored === undefined) block.userData.anchored = true;
+    physicsTargetRef.current = block;
+    setPhysicsTarget(block);
+    ensureBody(block);
+    if (block.userData.anchored) sleepBody(block);
+  };
+
+  // Ubah status Anchor block yang panelnya sedang terbuka.
+  //   checked=true  → terkunci (berhenti, tidak jatuh)
+  //   checked=false → dilepas → block MULAI JATUH (gravitasi aktif)
+  const setPhysicsAnchor = (block, checked) => {
+    if (!block) return;
+    block.userData.anchored = !!checked;
+    if (checked) sleepBody(block); else wakeBody(block);
+    const tc = threeRef.current && threeRef.current.transformControls;
+    if (tc && tc.object === block) tc.detach();
+    if (threeRef.current && threeRef.current.recordHistory) threeRef.current.recordHistory();
+  };
 
   /* ---------- Styles (reuse dari v1 untuk konsistensi) ---------- */
   const panelBg = '#0e1420';
@@ -18946,7 +19049,7 @@ Now you can apply Displacement for detailed effect.`);
               tidak — hierarki via state, bukan dekorasi.
             • Hover feedback (pola onMouseEnter/Leave spt swatch Colors).
             ATURAN MUTLAK: default TERCENTANG setiap user masuk web. */}
-        {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror') && (
+        {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror' || tool === 'property') && (
           <div style={{
             position: 'absolute', top: 80, right: 16,
             display: 'flex', flexDirection: 'column', gap: 4,
@@ -18991,6 +19094,17 @@ Now you can apply Displacement for detailed effect.`);
                 scaleMode={scaleMode}
                 onOpenScaleMode={handleOpenScaleModeFromPanel}
                 onComingSoon={handleComingSoonClick}
+              />
+            )}
+
+            {/* ══ PHYSICS (fitur baru 2026-09-20): seksi "Anchor" untuk tool
+                  property — SEKSI EMBEDDED di dalam panel ini (aturan #74:
+                  satu wilayah, satu background; JANGAN position:absolute
+                  sendiri di dalam panel yang sudah absolute). ══ */}
+            {tool === 'property' && (
+              <PhysicsAnchorPanel
+                target={physicsTarget}
+                onChange={setPhysicsAnchor}
               />
             )}
 
