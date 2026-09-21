@@ -338,6 +338,26 @@ export default function BlockSimulator3D({ setPage }) {
     //  KLIK block, bukan dari selection/gizmo.)
     if (!inFamily5) {
       threeRef.current.ghostSource = null;      // batalkan restore v13
+      // ── FIX K (bab 60, 2026-09-20): UNEQUIP => HAPUS INGATAN JUGA ──
+      // MASALAH (laporan user): salah satu dari 6 tool (5 keluarga gizmo +
+      // property) dipakai -> klik block -> UNEQUIP -> equip tool lagi =>
+      // block OTOMATIS terpilih (highlight + outline tipis) padahal user
+      // BELUM mengklik apa pun.
+      // AKAR: unequip (tool = null) memanggil clearSelection (benar), TAPI
+      // `lastSelectedBlock` (ingatan block terakhir) TIDAK dihapus -> saat
+      // tool di-equip lagi, FIX C melihat `selectedBlocks.size === 0` +
+      // tool berhak outline -> MEMULIHKAN block lama otomatis.
+      // FIX: saat tool KOSONG (unequip), hapus ingatan juga supaya equip
+      // berikutnya dimulai dari keadaan bersih.
+      // ⚠️ HANYA saat tool kosong! Pindah ke tool LAIN (mis. property->move)
+      //    TETAP butuh ingatan supaya FIX C bisa memulihkan seleksi.
+      //    (Kalau dihapus di clearSelection, property->move akan rusak.)
+      if (!tool) {
+        threeRef.current.lastSelectedBlock = null;
+        if (threeRef.current.setPhysicsTargetFn) {
+          threeRef.current.setPhysicsTargetFn(null);
+        }
+      }
       if (threeRef.current.clearSelection) {
         try { threeRef.current.clearSelection(); } catch (e) { /* jangan gagalkan ganti tool */ }
       }
@@ -12897,8 +12917,18 @@ Now you can apply Displacement for detailed effect.`);
             toast.warning('Tool "Binding" masih dalam tahap pengembangan — coming soon');
           } else if (toolName === 'property') {
             // PHYSICS (2026-09-20): tool "property" TIDAK lagi coming soon —
-            // sekarang membuka panel "Anchor" (jendela seperti scale, kanan atas).
-            setTool('property');
+            // sekarang membuka panel "Property Options" (Anchor/Collision/
+            // Shadow/Transparency).
+            //
+            // ── FIX L (bab 60, 2026-09-20): KEYBIND PROPERTY WAJIB TOGGLE ──
+            // JEBAKAN "DUA JALUR MASUK" KE-3 (bab 44, 58, 60): keybind property
+            // memakai setTool() LANGSUNG, sedangkan keybind tool LAIN (dan
+            // TOMBOL panel) memakai toggleTool(). Akibatnya tekan '6' dua kali
+            // TIDAK meng-unequip property (tool tetap aktif) — BEDA dari tool
+            // lain. User mengira sudah unequip padahal belum → bingung.
+            // Terukur: `property: klik sel=1 -> unequip sel=1 (BUKAN 0!)`.
+            // FIX: pakai toggleTool() supaya perilakunya SAMA dengan tool lain.
+            toggleTool('property');
           } else if (toolName === 'paint') {
             // Phase 48: Keybinds '3' — ALWAYS buka modal (infinite), bukan first-time only.
             // Klik tombol manual (kursor) tetap first-time only — jangan diubah.
