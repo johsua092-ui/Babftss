@@ -385,6 +385,52 @@ export default function BlockSimulator3D({ setPage }) {
     }
 
 
+    // ── FIX C (2026-09-20, tier-hard): PROPERTY ⇄ KELUARGA-5 ──
+    // MASALAH 1 (laporan user): pakai keluarga-5 → klik block (gizmo muncul) →
+    // pindah ke property → BLOCK TIDAK TERPILIH (seharusnya terpilih oleh
+    // property, cuma tanpa gizmo).
+    // MASALAH 2 (kebalikannya): pakai property → pindah ke keluarga-5 → GIZMO
+    // TIDAK MUNCUL (seharusnya muncul).
+    // AKAR: pindah KE property memanggil clearSelection() (wajib, supaya gizmo
+    // lepas) → selection hilang. Pindah KE keluarga-5 setelah property tidak
+    // pernah meng-attach gizmo lagi (attachGizmoToSelection hanya dipanggil dari
+    // klik). TAPI blok yang "terpilih" secara visual adalah blok yang dipegang
+    // property (physicsTargetRef) — jadi kita pulihkan seleksi dari situ.
+    {
+      const inFam5Now = tool === 'move' || tool === 'rotate' || tool === 'scale'
+        || tool === 'clone' || tool === 'mirror';
+      const remembered = threeRef.current.lastSelectedBlock;
+      const alive = !!(remembered && remembered.parent
+        && remembered.userData && remembered.userData.isBlock);
+      // (a) PULIHKAN seleksi yang hilang karena clearSelection saat ganti tool.
+      //     (clone/mirror dikecualikan — mereka punya alur ghost sendiri.)
+      if (alive && threeRef.current.selectedBlocks.size === 0
+          && tool !== 'clone' && tool !== 'mirror') {
+        threeRef.current.selectedBlocks.add(remembered);
+        // JEBAKAN TDZ: `highlightSelected` dideklarasikan JAUH di bawah
+        // (~baris 13900) — memanggilnya di sini = "Cannot access before
+        // initialization" → HALAMAN BLANK. Panggil lewat helper deferred
+        // (dijalankan setelah semua fungsi terdeklarasi).
+        if (threeRef.current.highlightSelectedFn) {
+          threeRef.current.highlightSelectedFn(remembered);
+        } else {
+          const ocT = toolOutlineColor(tool);
+          if (ocT) attachToolSelectOutline(remembered, ocT);
+        }
+        setSelectedCount(1);
+      }
+      // (b) Keluarga-5 (move/rotate/scale) WAJIB punya gizmo ter-attach.
+      //     Kasus nyata: property→move, block tetap terpilih TAPI gizmo tidak
+      //     pernah di-attach (klik tidak terjadi) → gizmo tidak muncul.
+      if ((tool === 'move' || tool === 'rotate' || tool === 'scale')
+          && threeRef.current.selectedBlocks.size > 0 && !tc.object) {
+        if (threeRef.current.attachGizmoToSelection) {
+          threeRef.current.attachGizmoToSelection();
+        }
+      }
+    }
+
+
     // Ubah MODE gizmo sesuai tool
     if (tool === 'clone' || tool === 'mirror' || tool === 'move') {
       tc.setMode('translate');
@@ -416,6 +462,17 @@ export default function BlockSimulator3D({ setPage }) {
         // Kalau tidak di-unhighlight di sini, block asal akan tetap biru
         // FIX BUG 2 (laporan): pakai setBlockHighlight terpusat — guard neon
         threeRef.current.selectedBlocks.forEach(b => setBlockHighlight(b, 'none'));
+        // FIX B (2026-09-20): KOSONGKAN selection saat pindah ke clone/mirror.
+        // JEBAKAN: `clear()` saja TIDAK melepas outline → block asal memegang
+        // outline TIPIS warna move (#0044e0) → JEJAK PERMANEN (gejala "~50%"
+        // karena bergantung jalur/urutan). Lepas outline + emissive per block.
+        // ⚠️ JEBAKAN TDZ: `unhighlightSelected` dideklarasikan JAUH di bawah
+        // (~baris 13915) → memanggil langsung = "Cannot access before
+        // initialization". WAJIB lewat helper deferred di threeRef.
+        threeRef.current.selectedBlocks.forEach(b => {
+          if (threeRef.current.unhighlightSelectedFn) threeRef.current.unhighlightSelectedFn(b);
+          else detachToolSelectOutline(b);      // fallback minimal
+        });
         threeRef.current.selectedBlocks.clear();
         
         // Auto-create ghost di block yang sedang di-select
@@ -12961,6 +13018,11 @@ Now you can apply Displacement for detailed effect.`);
           }
         }
       }
+      // ── FIX A: PENYAPU JEJAK OUTLINE (tiap frame, idempoten) ──
+      // Menjamin tidak ada outline tipis yang tertinggal di block tak terpilih
+      // & warna selalu sesuai tool aktif — apa pun jalur yang bocor sebelumnya.
+      if (threeRef.current.reconcileOutlines) threeRef.current.reconcileOutlines();
+
       // Phase 37: FPS + draw call tracking — update React state once per second.
       // Avoids per-frame React re-render spam (would tank performance).
       fpsCounterRef.current.frames++;
@@ -13904,6 +13966,10 @@ Now you can apply Displacement for detailed effect.`);
       const oc = toolOutlineColor(toolRef.current);
       if (oc) attachToolSelectOutline(block, oc);
       else detachToolSelectOutline(block);
+      // INGAT blok terakhir yang dipilih — dipakai untuk MEMULIHKAN seleksi saat
+      // pindah tool (property ⇄ keluarga-5). Jauh lebih andal daripada membaca
+      // physicsTargetRef (yang hanya terisi saat klik dengan tool property).
+      threeRef.current.lastSelectedBlock = block;
       // FIX BUG GIZMO-NEON (user 2026-09-11): block glow (neon) DILARANG
       // kena highlight emissive — setEmissive akan TIMPA warna flat #FF0000
       // jadi biru (saat dipilih) lalu HITAM saat dilepas = "merah kusam".
@@ -13919,6 +13985,14 @@ Now you can apply Displacement for detailed effect.`);
       if (mats.some(m => m && m.userData && m.userData.isGlowBlock)) return;
       setEmissive(block, 0x000000, 1);
     };
+
+    // ── HELPER DEFERRED (hindari TDZ) — didaftarkan SETELAH kedua fungsi di atas
+    // SELESAI dideklarasikan. ATURAN KERAS: useEffect[tool] (baris ~293) DILARANG
+    // memanggil fungsi yang dideklarasikan di useEffect(scene) (baris ~13900+)
+    // secara LANGSUNG — WAJIB lewat threeRef.*Fn. (TDZ sudah 3x memakan korban:
+    // bab 50, 53, 54 → halaman BLANK.)
+    threeRef.current.highlightSelectedFn = highlightSelected;
+    threeRef.current.unhighlightSelectedFn = unhighlightSelected;
 
     const clearSelection = () => {
       // Jika ada selectionGroup, kembalikan blok ke scene (preserve world position)
@@ -13948,6 +14022,45 @@ Now you can apply Displacement for detailed effect.`);
       setSelectedCount(0);
       setPhysicsTarget(null);   // panel Property hilang saat tidak ada terpilih
     };
+
+    // ══════════════════════════════════════════════════════════════════════
+    // FIX A (2026-09-20, tier-hard): PENYAPU JEJAK OUTLINE (reconcile).
+    // ══════════════════════════════════════════════════════════════════════
+    // MASALAH (laporan user): outline tipis clone/mirror MENEMPEL PERMANEN di
+    // block asal, muncul "acak ~50%". Penyebab: ada jalur yang mengosongkan
+    // selectedBlocks TANPA melepas outline (mis. useEffect[tool] baris ~418
+    // `selectedBlocks.clear()`), dan jalur itu bergantung urutan → nondeterministik.
+    //
+    // FIX: penyapu IDEMPOTEN yang dijalankan SETIAP FRAME. Tidak peduli jalur
+    // mana yang bocor, hasil akhirnya SELALU benar (state-based, bukan
+    // event-based). Aturan: outline tipis HANYA boleh ada di block yang
+    // TERPILIH, dan warnanya WAJIB warna tool aktif.
+    const reconcileOutlines = () => {
+      const oc = toolOutlineColor(toolRef.current);
+      const sel = threeRef.current.selectedBlocks;
+      const list = threeRef.current.blocks || [];
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i];
+        if (!b || !b.userData || !b.userData.isBlock) continue;
+        const hasSel = !!b.userData.__toolSelOutline;
+        const hasHover = !!b.userData.__propHoverOutline;
+        if (!hasSel && !hasHover) continue;           // tidak ada outline → skip
+        const inSel = !!(sel && sel.has(b));
+        if (!oc) {
+          // Tool TIDAK berhak outline (delete/paint/dll) → buang semua.
+          if (hasSel) detachToolSelectOutline(b);
+          if (hasHover) detachToolHoverOutline(b);
+        } else if (inSel) {
+          // Terpilih: hover tebal dilepas (tipis yang menempel), warna tool.
+          if (hasHover) detachToolHoverOutline(b);
+          if (!hasSel) attachToolSelectOutline(b, oc);
+        } else if (hasSel && !hasHover) {
+          // TIDAK terpilih & tidak sedang di-hover → ini JEJAK → lepas.
+          detachToolSelectOutline(b);
+        }
+      }
+    };
+    threeRef.current.reconcileOutlines = reconcileOutlines;
 
     // selectBlock — restored 2026-09-02 (was accidentally deleted during Group/Ungroup
     // removal in commit 62adcc4). Without this function, clicking a block with Move/
