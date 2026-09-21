@@ -106,9 +106,10 @@ const TOOL_ACCENT = {
   move: '#0044E0',
   clone: '#0096FF',
   mirror: '#9D00FF',
+  rotate: '#32CD32',   // FIX AJ (bab 76): hijau muda khas rotate (permintaan user)
 };
 // Tool yang punya panel "… Options" + preview + tombol "+" (tanpa gear kecuali scale).
-const TOOLS_WITH_STEP = ['scale', 'move', 'clone', 'mirror'];
+const TOOLS_WITH_STEP = ['scale', 'move', 'clone', 'mirror', 'rotate'];
 // Nama header panel per tool (satu sumber kebenaran).
 const TOOL_HEADER = {
   property: 'Property Options',
@@ -116,9 +117,19 @@ const TOOL_HEADER = {
   move: 'Move/Clone/Mirror Options',
   clone: 'Move/Clone/Mirror Options',
   mirror: 'Move/Clone/Mirror Options',
+  rotate: 'Rotate Options',
 };
+// Preset tabel modal "+" per tool. Rotate = DERAJAT (permintaan user).
+const ROTATE_PRESETS = [
+  { val: 0,     desc: 'no snap (bebas)' },
+  { val: 0.01,  desc: 'sangat halus' },
+  { val: 0.001, desc: 'paling halus' },
+  { val: 15,    desc: 'default (1/24 putaran)' },
+  { val: 30,    desc: '1/12 putaran' },
+  { val: 45,    desc: '1/8 putaran' },
+];
 // Nama tool untuk teks placeholder preview.
-const TOOL_LABEL = { scale: 'Scale', move: 'Move', clone: 'Clone', mirror: 'Mirror' };
+const TOOL_LABEL = { scale: 'Scale', move: 'Move', clone: 'Clone', mirror: 'Mirror', rotate: 'Rotate' };
 // ── FIX M (bab 61, 2026-09-20): SYARAT MUTLAK GESTURE PENGGANDA ──
 // Clone/mirror HANYA sah kalau user benar-benar MENGGESER (klik-tahan-geser-lepas).
 // Klik biasa / tahan tanpa geser = BUKAN penggandaan.
@@ -126,7 +137,7 @@ const TOOL_LABEL = { scale: 'Scale', move: 'Move', clone: 'Clone', mirror: 'Mirr
 //   • tidak bergantung zoom kamera (presisi tetap sama),
 //   • tidak bergantung ukuran canvas / DPI.
 const GHOST_MIN_TRAVEL = 0.02;   // unit (dunia) — geser minimum agar dianggap drag
-const GHOST_MIN_ANGLE  = 0.01;   // radian (~0.57 derajat) untuk mode rotate
+const GHOST_MIN_ANGLE  = 0.01;   // radian (~0.57 degree) untuk mode rotate
 
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
    (GridHelper 60x60) + block isometrik hijau di atasnya. 3 sisi kubus
@@ -934,6 +945,29 @@ export default function BlockSimulator3D({ setPage }) {
   // window kecil di mana event handler baca null → snap tidak aktif. Default 2 = safe.
   const scaleNumberStepRef = useRef(2);  // ref default 2 supaya event handler baca 2 sebelum first render
   useEffect(() => { scaleNumberStepRef.current = scaleNumberStep; }, [scaleNumberStep]);
+  // ── FIX AJ (bab 76): STEP ROTASI (DERAJAT) — khusus tool rotate ──
+  // Permintaan user: "rotate pakai sistem pengukuran bernama DERAJAT, bukan
+  // studs. Default 15." Step ini HANYA untuk rotate (tidak dibagi dengan
+  // scale/move/clone/mirror yang memakai studs).
+  const [rotateStep, setRotateStep] = useState(15);   // degree
+  const rotateStepRef = useRef(15);
+  useEffect(() => { rotateStepRef.current = rotateStep; }, [rotateStep]);
+  // ── FIX AJ-b (bab 76): PASANG rotationSnap SEBELUM drag ──
+  // JEBAKAN: kalau di-set di `objectChange`, itu fire SETELAH TransformControls
+  // menghitung sudut → telat 1 frame (drag pertama TIDAK snap).
+  // TransformControls menghitung `rotationAngle` di pointerMove lalu dispatch
+  // 'objectChange' → snap harus sudah terpasang SEBELUM pointerMove.
+  // useEffect ini jalan saat tool/step berubah → siap sebelum drag.
+  useEffect(() => {
+    const tc = threeRef.current && threeRef.current.transformControls;
+    if (!tc) return;
+    if (tool === 'rotate') {
+      const deg = rotateStep;
+      tc.rotationSnap = (deg && deg > 0) ? (deg * Math.PI / 180) : null;
+    } else {
+      tc.rotationSnap = null;   // tool lain: tidak pakai snap rotasi
+    }
+  }, [tool, rotateStep]);
   useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
   // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
   // frameQuat, startScale, startPos }. Diisi saat 'dragging-changed' start,
@@ -1004,6 +1038,18 @@ export default function BlockSimulator3D({ setPage }) {
     setShowScaleNumberModal(true);
   };
 
+  // ── FIX AJ (bab 76): TOMBOL "+" per tool ──
+  //   rotate → modal DERAJAT (default 15), state terpisah (rotateStep).
+  //   lainnya → modal studs (step bersama scale/move/clone/mirror).
+  const handleStepButtonClick = () => {
+    if (tool === 'rotate') {
+      setScaleNumberValue(rotateStep ?? 15);
+      setShowScaleNumberModal(true);
+      return;
+    }
+    handleComingSoonClick();
+  };
+
   // ── Phase 75 (2026-09-19, sesi server z.ai): handler Konfirmasi
   //    ScaleNumberModal — UBAH SEMANTIK dari SET langsung ke SET STEP.
   //    Input studs = step untuk snap drag bola gizmo (lewat applyScaleByMode
@@ -1018,13 +1064,24 @@ export default function BlockSimulator3D({ setPage }) {
   //    `snapStudStep > 0` → kalau 0 → false → snap tidak aktif. Toast
   //    beda untuk 0 vs > 0 supaya user tahu behavior yang aktif.
   //    ──
-  const handleScaleNumberConfirm = (studs) => {
-    setScaleNumberStep(studs);  // 0 = no snap (applyScaleByMode check > 0)
+  const handleScaleNumberConfirm = (val) => {
+    // FIX AJ (bab 76): rotate memakai DERAJAT (state terpisah).
+    if (tool === 'rotate') {
+      setRotateStep(val);
+      setShowScaleNumberModal(false);
+      if (val === 0) {
+        toast.success('Snap rotasi dimatikan — putar bebas tanpa batasan degree');
+      } else {
+        toast.success(`Step rotasi diset ke ${val} degree — putar untuk snap ke kelipatan ini`);
+      }
+      return;
+    }
+    setScaleNumberStep(val);  // 0 = no snap (applyScaleByMode check > 0)
     setShowScaleNumberModal(false);
-    if (studs === 0) {
+    if (val === 0) {
       toast.success('Snap dimatikan — drag bola gizmo bebas tanpa batasan step');
     } else {
-      toast.success(`Step scale diset ke ${studs} studs — drag bola gizmo untuk snap ke kelipatan ini`);
+      toast.success(`Step diset ke ${val} studs — drag bola gizmo untuk snap ke kelipatan ini`);
     }
   };
 
@@ -4935,7 +4992,7 @@ Now you can apply Displacement for detailed effect.`);
   // Helper function untuk generate object dari jenis tertentu.
   // Pakai THREE.Group supaya 1 object = multiple mesh yang bisa di-select bareng (atau Group).
   // Phase 28+31: Object Rotation — multi-axis (X, Y, Z) saat place object
-  // Rotation dalam derajat (0, 45, 90, 135, 180, 225, 270, 315)
+  // Rotation dalam degree (0, 45, 90, 135, 180, 225, 270, 315)
   const [objectRotationX, setObjectRotationX] = useState(0);
   const [objectRotationY, setObjectRotationY] = useState(0);
   const [objectRotationZ, setObjectRotationZ] = useState(0);
@@ -12748,7 +12805,7 @@ Now you can apply Displacement for detailed effect.`);
       // "banyak cincin" dan terasa berantakan.
       //
       // DESAIN BARU: cincin abu-abu & kuning dimatikan, ketiga busur diubah
-      // jadi lingkaran PENUH 360 derajat, lalu tiap cincin diberi 2 bola solid
+      // jadi lingkaran PENUH 360 degree, lalu tiap cincin diberi 2 bola solid
       // di ujung berseberangan sebagai pegangan visual (warna mengikuti cincin).
       //
       // CATATAN: hanya menyentuh gizmo.rotate. Mode Move (6 panah Phase 49
@@ -13052,6 +13109,9 @@ Now you can apply Displacement for detailed effect.`);
           // studs = 0 → bebas (tidak di-snap)
         }
       }
+      // ── FIX AJ-b (bab 76): snap rotasi DIPASANG di useEffect[tool,rotateStep]
+      // (BUKAN di sini) — karena objectChange fire SETELAH sudut dihitung,
+      // sehingga pemasangan di sini akan telat 1 frame. Lihat useEffect AJ-b.
       // FIX SCALE BUG 1 v2 (user 2026-09-11 "masih jebol ke arah lain lalu
       // malah lanjut scale!"): v1 mempertahankan tanda HASIL drag → crossing
       // nol tetap menghasilkan -0.05 (block terbalik). v2 DRAG-AWARE: tanda
@@ -14869,7 +14929,7 @@ Now you can apply Displacement for detailed effect.`);
       // tidak ter-update). Lalu enabled=true dinyalakan → jari kedua bergeser
       // sedikit → _handleTouchMoveRotate menghitung delta = sekarang − BEKU
       // (bisa ratusan px karena user tadi menggoyang kotak) → kamera tersentak
-      // ratusan derajat sekaligus (terukur harness: azimuth 48.9° + polar
+      // ratusan degree sekaligus (terukur harness: azimuth 48.9° + polar
       // 100.3° dalam SATU move; di device nyata bisa jauh lebih liar).
       // FIX: pulihkan kamera HANYA kalau SEMUA jari sudah lepas dari layar.
       // Kalau masih ada jari tersisa → tandai pending; OrbitControls
@@ -20003,8 +20063,8 @@ Now you can apply Displacement for detailed effect.`);
             }}>
               <button
                 type="button"
-                onClick={handleComingSoonClick}
-                title="Atur step scale (jendela angka)"
+                onClick={handleStepButtonClick}
+                title={tool === 'rotate' ? 'Atur step rotasi (degree)' : 'Atur step (jendela angka)'}
                 aria-label="Atur step scale"
                 style={{
                   width: 36, height: 36, borderRadius: 9,
@@ -24670,8 +24730,11 @@ Now you can apply Displacement for detailed effect.`);
           onConfirm={handleScaleNumberConfirm}
           onCancel={handleScaleNumberCancel}
           hideStudsPreview={tool !== 'scale'}
+          hideConversion={tool === 'rotate'}
           accent={TOOL_ACCENT[tool] || '#f59e0b'}
-          label={`${TOOL_LABEL[tool] || 'Scale'} (studs)`}
+          unit={tool === 'rotate' ? 'degree' : 'studs'}
+          presets={tool === 'rotate' ? ROTATE_PRESETS : null}
+          label={`${TOOL_LABEL[tool] || 'Scale'} (${tool === 'rotate' ? 'degree' : 'studs'})`}
         />
       )}
       {showTransparencyModal && (

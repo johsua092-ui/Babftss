@@ -80,7 +80,14 @@ export default function ScaleNumberModal({
   //   accent: warna aksen tombol/modal (Scale = amber; Move = biru tua;
   //     Clone = biru langit; Mirror = ungu).
   hideStudsPreview = false,
-  accent = accent,
+  accent = ACCENT,
+  // ── FIX AJ (bab 76): ROTATE memakai satuan DERAJAT ──
+  //   unit      : satuan tampilan ('studs' | 'degree')
+  //   presets   : array { val, desc } untuk tabel template (per tool)
+  //   hideConversion: true → sembunyikan baris konversi studs↔block (Rotate)
+  unit = 'studs',
+  presets = null,
+  hideConversion = false,
 }) {
   const [input, setInput] = useState(() => String(value));
   const [closing, setClosing] = useState(false);
@@ -110,7 +117,8 @@ export default function ScaleNumberModal({
     ? input.split('.')[1] || ''
     : '';
   const hasMoreThan3Decimals = decimalPart.length > 3;
-  const valid = isNumber && parsed >= MIN_STUDS && parsed <= MAX_STUDS && !hasMoreThan3Decimals;
+  const maxVal = (unit === 'degree') ? 360 : MAX_STUDS;
+  const valid = isNumber && parsed >= MIN_STUDS && parsed <= maxVal && !hasMoreThan3Decimals;
   const isZero = valid && parsed === 0;  // 0 = snap dimatikan
   const scaleResult = (valid && !isZero) ? (parsed / STUDS_PER_BLOCK) : null;
   const blockResult = (valid && !isZero) ? scaleResult : null;
@@ -186,10 +194,10 @@ export default function ScaleNumberModal({
                 color: '#f5f7fa', fontFamily: 'Orbitron, sans-serif',
                 letterSpacing: '0.5px',
               }}>
-                Scale Number
+                {unit === 'degree' ? 'Rotate Number' : 'Scale Number'}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
-                Masukkan step scale dalam studs (0 = bebas, maks 3 desimal, koma → titik)
+                Masukkan step {unit === 'degree' ? 'rotasi dalam degree' : 'dalam studs'} (0 = bebas, maks 3 desimal, koma → titik)
               </p>
             </div>
           </div>
@@ -198,14 +206,27 @@ export default function ScaleNumberModal({
           <p style={{
             margin: '0 0 18px 0', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6,
           }}>
-            Nilai studs = <b>step</b> untuk snap drag bola gizmo. <b>0 = snap
-            dimatikan</b> (drag bebas tanpa batasan matematika). Maks <b>3 angka
-            di belakang koma</b> (0.001, 0.002, ..., 1.263, dst). Koma <code>,</code>
-            diubah paksa jadi titik <code>.</code> — mis. ketik "1,5" → "1.5".
-            Penunjuk (hasil konversi di bawah) boleh banyak angka, cuma input
-            yang dibatasi 3 desimal. 1 block penuh = 2 studs; 1 studs = setengah
-            block; 0.5 studs = seperempat block. Snap aktif di mode 1/4/6 side.
-            Mode 2 side (bawaan) tidak snap.
+            {unit === 'degree' ? (
+              <>
+                Nilai degree = <b>step</b> untuk snap rotasi. <b>0 = snap
+                dimatikan</b> (putar bebas). Maks <b>3 angka di belakang koma</b>
+                (0.001, 0.002, ..., 15, 30, dst). Koma <code>,</code> diubah
+                paksa jadi titik <code>.</code> — mis. ketik "1,5" → "1.5".
+                Default <b>15 degree</b> (1/24 putaran). Snap membulatkan sudut
+                ke kelipatan nilai ini saat kamu memutar block.
+              </>
+            ) : (
+              <>
+                Nilai studs = <b>step</b> untuk snap drag bola gizmo. <b>0 = snap
+                dimatikan</b> (drag bebas tanpa batasan matematika). Maks <b>3 angka
+                di belakang koma</b> (0.001, 0.002, ..., 1.263, dst). Koma <code>,</code>
+                diubah paksa jadi titik <code>.</code> — mis. ketik "1,5" → "1.5".
+                Penunjuk (hasil konversi di bawah) boleh banyak angka, cuma input
+                yang dibatasi 3 desimal. 1 block penuh = 2 studs; 1 studs = setengah
+                block; 0.5 studs = seperempat block. Snap aktif di mode 1/4/6 side.
+                Mode 2 side (bawaan) tidak snap.
+              </>
+            )}
           </p>
 
           {/* ── INPUT FIELD — body utama modal ini ── */}
@@ -247,7 +268,7 @@ export default function ScaleNumberModal({
             />
             {/* Hasil konversi real-time — supaya user lihat efek input.
                 FIX AH: disembunyikan kalau hideStudsPreview (Move/Clone/Mirror). */}
-            {hideStudsPreview ? null : valid && isZero ? (
+            {(hideConversion || hideStudsPreview) ? null : valid && isZero ? (
               <div style={{
                 fontSize: 12, color: '#86efac',
                 fontFamily: 'Inter, sans-serif', fontWeight: 600,
@@ -272,7 +293,7 @@ export default function ScaleNumberModal({
                 fontSize: 12, color: '#fca5a5',
                 fontFamily: 'Inter, sans-serif',
               }}>
-                Masukkan angka {MIN_STUDS}–{MAX_STUDS} studs, maks 3 angka di
+                Masukkan angka {MIN_STUDS}–{maxVal} {unit}, maks 3 angka di
                 belakang koma (mis. 0.001). Pakai titik, bukan koma.
               </div>
             )}
@@ -290,15 +311,15 @@ export default function ScaleNumberModal({
             backgroundColor: 'rgba(30, 41, 59, 0.35)',
             border: '1px solid rgba(148,163,184,0.14)',
           }}>
-            {[
-              { studs: 0,     desc: 'no snap (bebas)' },
-              { studs: 0.001, desc: '1/2000 block' },
-              { studs: 0.01,  desc: '1/200 block' },
-              { studs: 0.1,   desc: '1/20 block' },
-              { studs: 1,     desc: 'setengah block' },
-              { studs: 2,     desc: '1 block (default)' },
-            ].map((row) => (
-              <div key={row.studs} style={{
+            {(presets || [
+              { val: 0,     desc: 'no snap (bebas)' },
+              { val: 0.001, desc: '1/2000 block' },
+              { val: 0.01,  desc: '1/200 block' },
+              { val: 0.1,   desc: '1/20 block' },
+              { val: 1,     desc: 'setengah block' },
+              { val: 2,     desc: '1 block (default)' },
+            ]).map((row) => (
+              <div key={row.val} style={{
                 display: 'flex', flexDirection: 'column', gap: 2,
                 padding: '4px 6px', borderRadius: 6,
                 backgroundColor: `rgba(${accentRgb},0.06)`,  // FIX AI: ikut accent
@@ -306,7 +327,7 @@ export default function ScaleNumberModal({
                 <span style={{
                   fontSize: 13, fontWeight: 700, color: accent,
                   fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums',
-                }}>{row.studs} studs</span>
+                }}>{row.val} {unit}</span>
                 <span style={{
                   fontSize: 10, color: '#94a3b8',
                   fontFamily: 'Inter, sans-serif',
