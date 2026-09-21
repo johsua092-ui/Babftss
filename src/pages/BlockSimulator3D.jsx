@@ -352,6 +352,22 @@ export default function BlockSimulator3D({ setPage }) {
     //  KLIK block, bukan dari selection/gizmo.)
     if (!inFamily5) {
       threeRef.current.ghostSource = null;      // batalkan restore v13
+      // ── FIX U (bab 65): PROPERTY JANGAN HANCURKAN SELEKSI ──
+      // JEBAKAN TERUKUR: property masuk cabang `!inFamily5` → clearSelection()
+      // menghapus SEMUA seleksi (5 block). Lalu FIX C hanya memulihkan SATU
+      // block (lastSelectedBlock) → seleksi 5 → 1 (terukur: `sel=[4]`), dan
+      // panel Property jatuh ke mode "belum ada block terpilih" (hanya Select
+      // Box) → user kehilangan Anchor/Collision/Shadow/Transparency.
+      // AKAR: property = "SETENGAH ANGGOTA KELUARGA" (bab 63) → dia BOLEH
+      // mempertahankan seleksi (multi-select dari Select Box). Yang property
+      // TIDAK butuh hanyalah GIZMO. Jadi: bongkar group + detach gizmo,
+      // TAPI PERTAHANKAN selectedBlocks + highlight + outline.
+      if (tool === 'property') {
+        if (threeRef.current.dissolveSelectionGroup) {
+          try { threeRef.current.dissolveSelectionGroup(); } catch (e) { /* jangan gagalkan */ }
+        }
+        try { tc.detach(); } catch (e) { /* jangan gagalkan */ }
+      } else
       // ── FIX K (bab 60, 2026-09-20): UNEQUIP => HAPUS INGATAN JUGA ──
       // MASALAH (laporan user): salah satu dari 6 tool (5 keluarga gizmo +
       // property) dipakai -> klik block -> UNEQUIP -> equip tool lagi =>
@@ -372,7 +388,7 @@ export default function BlockSimulator3D({ setPage }) {
           threeRef.current.setPhysicsTargetFn(null);
         }
       }
-      if (threeRef.current.clearSelection) {
+      if (tool !== 'property' && threeRef.current.clearSelection) {
         try { threeRef.current.clearSelection(); } catch (e) { /* jangan gagalkan ganti tool */ }
       }
     }
@@ -477,7 +493,13 @@ export default function BlockSimulator3D({ setPage }) {
       if (tool === 'property') {
         let _pt = null;
         threeRef.current.selectedBlocks.forEach((b) => { _pt = b; });
-        if (_pt && _pt !== physicsTargetRef.current) {
+        // ── FIX W (bab 65): BANDINGKAN DENGAN STATE, BUKAN REF ──
+        // JEBAKAN TERUKUR: guard lama memakai `_pt !== physicsTargetRef.current`
+        // (REF). Kalau REF sudah terisi tapi STATE React masih null → perbandingan
+        // FALSE → setPhysicsTargetFn DILEWATI → panel Property hanya Select Box.
+        // (physState selalu -1 walau physRef sudah terisi = bukti desync.)
+        // FIX: bandingkan dengan physicsTargetStateRef (pelacak STATE).
+        if (_pt && _pt !== physicsTargetStateRef.current) {
           if (threeRef.current.setPhysicsTargetFn) {
             threeRef.current.setPhysicsTargetFn(_pt);
           } else {
@@ -859,6 +881,7 @@ export default function BlockSimulator3D({ setPage }) {
   const physAccRef = useRef(0);
   const physMovingRef = useRef(0);
   const physicsTargetRef = useRef(null);
+  const physicsTargetStateRef = useRef(null);   // FIX V: lacak state physicsTarget
   const scaleModeLockedRef = useRef(false);
 
   // ── Phase 74 (2026-09-19, sesi server z.ai): modal ScaleNumberModal —
@@ -14301,6 +14324,7 @@ Now you can apply Displacement for detailed effect.`);
       threeRef.current.selectedBlocks.clear();
       transformControls.detach();
       setSelectedCount(0);
+      physicsTargetStateRef.current = null;   // FIX V: jaga sinkron ref<->state
       setPhysicsTarget(null);   // panel Property hilang saat tidak ada terpilih
     };
 
@@ -14353,7 +14377,10 @@ Now you can apply Displacement for detailed effect.`);
         const _tl = toolRef.current;
         if (_tl === 'property') {
           // Panel Property WAJIB menunjuk block terpilih.
-          if (last && last !== physicsTargetRef.current
+          // FIX W-b (bab 65): bandingkan dengan STATE tracker (bukan ref) —
+          // lihat penjelasan FIX W. Kalau ref terisi tapi state null, guard
+          // berbasis ref akan MEMBLOKIR sinkronisasi panel selamanya.
+          if (last && last !== physicsTargetStateRef.current
               && threeRef.current.setPhysicsTargetFn) {
             threeRef.current.setPhysicsTargetFn(last);
           }
@@ -14381,6 +14408,7 @@ Now you can apply Displacement for detailed effect.`);
       }
     };
     threeRef.current.reconcileOutlines = reconcileOutlines;
+
 
     // selectBlock — restored 2026-09-02 (was accidentally deleted during Group/Ungroup
     // removal in commit 62adcc4). Without this function, clicking a block with Move/
@@ -16039,9 +16067,19 @@ Now you can apply Displacement for detailed effect.`);
   // Helper deferred untuk sinkron panel Property dari useEffect[tool]
   // (hindari TDZ — lihat FIX G). setPhysicsTarget ada di scope KOMPONEN (baris
   // ~735), jadi aman didaftarkan di sini (bukan di useEffect scene).
+  // ── FIX V (bab 65): CEGAH DESYNC ref <-> state ──
+  // JEBAKAN TERUKUR: FIX G membandingkan `_pt !== physicsTargetRef.current`
+  // (REF) lalu memanggil setPhysicsTargetFn. Kalau REF sudah terisi (mis. oleh
+  // FIX H di reconcile) tapi STATE React masih null → perbandingan FALSE →
+  // panggilan DILEWATI → `physicsTarget` (state) tetap null → panel Property
+  // hanya merender Select Box (Anchor/Collision/Shadow/Transparency HILANG).
+  // FIX: lacak state di ref terpisah, dan panggil setState HANYA saat berubah.
   threeRef.current.setPhysicsTargetFn = (blk) => {
     physicsTargetRef.current = blk;
-    setPhysicsTarget(blk);
+    if (physicsTargetStateRef.current !== blk) {
+      physicsTargetStateRef.current = blk;
+      setPhysicsTarget(blk);
+    }
   };
 
   // Ekspos ke threeRef SETELAH deklarasi (JEBAKAN TDZ: menaruh baris ini SEBELUM
