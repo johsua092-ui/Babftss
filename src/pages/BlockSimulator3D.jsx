@@ -419,6 +419,23 @@ export default function BlockSimulator3D({ setPage }) {
         }
         setSelectedCount(1);
       }
+      // (a2) FIX G (2026-09-20, tier-hard bandel): SINKRONKAN physicsTarget.
+      // JEBAKAN (terukur): `physicsTargetRef` HANYA di-update saat KLIK. Pindah
+      // tool TANPA klik → panel Property tetap menunjuk block LAMA:
+      //   S2b_pindah_property: selIdx=[1] (ghost) tapi physicsTargetIdx=0 (ASAL!)
+      // FIX: saat tool=property & ada block terpilih, panel WAJIB menunjuk block
+      // terpilih (bukan sisa klik lama). Pakai helper deferred (hindari TDZ).
+      if (tool === 'property') {
+        let _pt = null;
+        threeRef.current.selectedBlocks.forEach((b) => { _pt = b; });
+        if (_pt && _pt !== physicsTargetRef.current) {
+          if (threeRef.current.setPhysicsTargetFn) {
+            threeRef.current.setPhysicsTargetFn(_pt);
+          } else {
+            physicsTargetRef.current = _pt;
+          }
+        }
+      }
       // (b) Keluarga-5 (move/rotate/scale) WAJIB punya gizmo ter-attach.
       //     Kasus nyata: property→move, block tetap terpilih TAPI gizmo tidak
       //     pernah di-attach (klik tidak terjadi) → gizmo tidak muncul.
@@ -460,8 +477,35 @@ export default function BlockSimulator3D({ setPage }) {
       // Sekarang: kalau tc.object adalah ghost clone/mirror yang MASIH HIDUP
       // (== threeRef.current.cloneGhost), gizmo TETAP attach ke ghost itu —
       // cukup re-highlight supaya block terlihat. Warna panah diatur di bawah.
-      if ((tool === 'clone' || tool === 'mirror') && tc.object) {
-        const sourceBlock = tc.object;
+      // ══════════════════════════════════════════════════════════════════
+      // FIX F (2026-09-20, tier-hard bandel): SUMBER BLOCK UNIFIKASI
+      // ══════════════════════════════════════════════════════════════════
+      // JEBAKAN SEBENARNYA (terukur): guard lama `&& tc.object` membuat pindah
+      // dari PROPERTY (tc.object = null) MELEWATI SELURUH blok ini → ghost
+      // tidak dibuat → GIZMO TIDAK MUNCUL. Inilah jawaban "kenapa HANYA clone
+      // & mirror yang bermasalah": move/rotate/scale tidak punya guard ini.
+      // Terukur: `S1b_pindah_clone: tcObject=false · nBlocks=1` (ghost gagal).
+      //
+      // FIX: sumber block diambil dari KONDISI APA PUN, berurutan:
+      //   1) tc.object (kalau ada & bukan ghost)
+      //   2) block TERPILIH (mis. hasil klik dengan tool property)
+      //   3) lastSelectedBlock (ingatan block terakhir)
+      // Tidak lagi bergantung pada gizmo yang sudah ter-attach.
+      let _cloneSource = null;
+      if (tool === 'clone' || tool === 'mirror') {
+        if (tc.object && !(tc.object.userData && tc.object.userData.cloneGhost)) {
+          _cloneSource = tc.object;
+        } else if (!tc.object) {
+          let _pick = null;
+          threeRef.current.selectedBlocks.forEach((b) => { _pick = b; });
+          if (!_pick) _pick = threeRef.current.lastSelectedBlock;
+          if (_pick && _pick.userData && _pick.userData.isBlock && !_pick.userData.cloneGhost) {
+            _cloneSource = _pick;
+          }
+        }
+      }
+      if ((tool === 'clone' || tool === 'mirror') && _cloneSource) {
+        const sourceBlock = _cloneSource;
         const isLiveGhost = sourceBlock
           && sourceBlock.userData.cloneGhost
           && threeRef.current.cloneGhost === sourceBlock;
@@ -584,6 +628,7 @@ export default function BlockSimulator3D({ setPage }) {
       tc.setMode('scale');
       console.log('[Phase 50 v9] setMode scale');
     }
+
 
     // Ubah WARNA gizmo sesuai tool
     if (tool === 'clone') {
@@ -14083,6 +14128,18 @@ Now you can apply Displacement for detailed effect.`);
         let last = null;
         sel.forEach((b) => { last = b; });
         if (last) threeRef.current.lastSelectedBlock = last;
+
+        // ── FIX H (sabuk keamanan, state-based) ──
+        // Sinkronkan panel Property + pastikan ghost clone/mirror ada. Menjamin
+        // konsistensi walau ada jalur yang terlewat (pola reconcile bab 55).
+        const _tl = toolRef.current;
+        if (_tl === 'property') {
+          // Panel Property WAJIB menunjuk block terpilih.
+          if (last && last !== physicsTargetRef.current
+              && threeRef.current.setPhysicsTargetFn) {
+            threeRef.current.setPhysicsTargetFn(last);
+          }
+        }
       }
       for (let i = 0; i < list.length; i++) {
         const b = list[i];
@@ -15717,6 +15774,14 @@ Now you can apply Displacement for detailed effect.`);
       setBlockCount(threeRef.current.blocks.length);
       if (threeRef.current.recordHistory) threeRef.current.recordHistory();
     } catch (e) { console.warn('[physics] gagal hapus block void', e); }
+  };
+
+  // Helper deferred untuk sinkron panel Property dari useEffect[tool]
+  // (hindari TDZ — lihat FIX G). setPhysicsTarget ada di scope KOMPONEN (baris
+  // ~735), jadi aman didaftarkan di sini (bukan di useEffect scene).
+  threeRef.current.setPhysicsTargetFn = (blk) => {
+    physicsTargetRef.current = blk;
+    setPhysicsTarget(blk);
   };
 
   // Ekspos ke threeRef SETELAH deklarasi (JEBAKAN TDZ: menaruh baris ini SEBELUM
