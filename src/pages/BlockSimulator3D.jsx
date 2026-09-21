@@ -967,6 +967,9 @@ export default function BlockSimulator3D({ setPage }) {
     } else {
       tc.rotationSnap = null;   // tool lain: tidak pakai snap rotasi
     }
+    // FIX AK-b (bab 77): bersihkan `axis` STALE saat ganti tool — supaya
+    // guard marquee tidak terblokir oleh sisa hover dari tool sebelumnya.
+    try { tc.axis = null; } catch (e) { /* lanjut */ }
   }, [tool, rotateStep]);
   useEffect(() => { scaleModeRef.current = scaleMode; }, [scaleMode]);
   // Snapshot drag scale untuk mode 1/4/6 side (Phase 73): { axisKey, sign,
@@ -14782,8 +14785,55 @@ Now you can apply Displacement for detailed effect.`);
       if (e.target !== renderer.domElement) return;
       // Jangan curi drag dari gizmo (hover axis) — biarkan TC kerja
       if (transformControls.dragging) return;
-      const hoverAxis = transformControls.axis;
-      if (hoverAxis) return; // pointer di atas panah/bola → drag gizmo
+      // ── FIX AK (bab 77): `tc.axis` STALE = select box GAGAL ~50% ──
+      // AKAR (terverifikasi di source three.js):
+      //   • pointerHover() set `tc.axis` saat kursor lewat panah/bola gizmo,
+      //   • pointerUp() reset `axis = null` HANYA kalau `dragging === true`.
+      // Jadi kalau kursor PERNAH melewati panah lalu pindah ke area kosong
+      // TANPA memicu pointerHover baru (mis. keluar-masuk canvas, atau canvas
+      // tidak menerima event hover), `tc.axis` tetap 'X'/'Y'/'Z' → guard di
+      // bawah mem-BLOKIR marquee → "klik-tahan tidak bisa" (acak ~50%).
+      // FIX: validasi ulang axis dengan RAYCAST KE PICKER GIZMO saat mousedown.
+      // Kalau raycast TIDAK mengenai picker (tidak di atas panah/bola) →
+      // anggap axis stale → bersihkan → lanjutkan marquee.
+      // ── FIX AK v2 (bab 77): JARAK ke pusat gizmo, BUKAN raycast picker ──
+      // TERUKUR: raycast ke `_gizmo.picker[mode]` selalu HIT untuk mode
+      // rotate/clone/mirror di sekitar block (cincin picker three.js besar —
+      // radius ~0.2 unit × skala gizmo) → marquee SELALU diblokir saat klik di
+      // dekat block (trace: `axis="X"` → `stop:hoverAxis`).
+      // FIX: hitung jarak kursor ke PUSAT gizmo di layar. Blokir marquee HANYA
+      // kalau kursor SANGAT dekat pusat (< AMBANG px) — itu area handle yang
+      // benar-benar dipakai user untuk drag gizmo. Di luar itu → marquee jalan.
+      let hoverAxis = transformControls.axis;
+      if (hoverAxis) {
+        // FIX AK-c (bab 77): kalau gizmo TIDAK attach ke objek apa pun
+        // (`object` undefined) → TIDAK ADA handle → axis PASTI STALE →
+        // WAJIB izinkan marquee. (Jebakan: fallback ke (0,0,0) membuat
+        // proyeksi origin bisa dekat kursor → salah blokir; terukur
+        // Move 2/3 vs Scale/Clone/Mirror/Rotate 0/3.)
+        if (!transformControls.object) {
+          transformControls.axis = null;
+          hoverAxis = null;
+        } else {
+          const _rect = renderer.domElement.getBoundingClientRect();
+          const _gp = new THREE.Vector3();
+          try {
+            transformControls.object.getWorldPosition(_gp);
+          } catch (err) { /* tanpa pusat → anggap jauh */ }
+          const _proj = _gp.clone().project(camera);
+          const _cx = _rect.left + (_proj.x + 1) / 2 * _rect.width;
+          const _cy = _rect.top + (-_proj.y + 1) / 2 * _rect.height;
+          const _dist = Math.hypot(e.clientX - _cx, e.clientY - _cy);
+          // Ambang 90px: cukup untuk klik panah/bola, tidak menutup marquee
+          // di area sekitar block (terukur: cincin picker rotate ~80-140px).
+          const GIZMO_HIT_PX = 90;
+          if (_dist > GIZMO_HIT_PX) {
+            transformControls.axis = null;   // di luar handle → izin marquee
+            hoverAxis = null;
+          }
+        }
+      }
+      if (hoverAxis) return; // pointer BENAR-BENAR di atas panah/bola → drag gizmo
       marqueeState.active = true;
       const rect = renderer.domElement.getBoundingClientRect();
       marqueeStart = {
@@ -20163,6 +20213,7 @@ Now you can apply Displacement for detailed effect.`);
                 showStuds={tool === 'scale'}
                 showMode={tool === 'scale'}
                 accent={TOOL_ACCENT[tool] || '#f59e0b'}
+                degreeStep={tool === 'rotate' ? (rotateStep ?? 15) : null}
               />
             )}
 

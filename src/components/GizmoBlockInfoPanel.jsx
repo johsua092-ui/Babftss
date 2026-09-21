@@ -92,7 +92,11 @@ export default function GizmoBlockInfoPanel({
   //              Mirror ungu).
   showStuds = true,
   showMode = true,
-  accent = accent,
+  accent = ACCENT,   // FIX AL: bug latens `accent = accent` (self-ref) diperbaiki
+  // ── FIX AL (bab 77): baris "Degree 15°" untuk tool ROTATE ──
+  // Menampilkan STEP degree yang dipakai user (BUKAN sudut block).
+  // Fresh/baru diletakkan = 15 (default). null = tool non-rotate (tidak tampil).
+  degreeStep = null,
 }) {
   const [info, setInfo] = useState(null); // {slug,label,scaleLabel,isMulti}
 
@@ -211,6 +215,30 @@ export default function GizmoBlockInfoPanel({
       }}>
         {isMulti ? 'Multi-Block' : (def ? def.name : 'Belum ada block')}
       </div>
+
+      {/* ── FIX AL (bab 77): BARIS "Degree 15°" — khusus ROTATE ──
+             Menampilkan STEP degree yang dipakai (bukan sudut block).
+             Fresh/baru = 15 (default). Format: `Degree  15°`. ── */}
+      {degreeStep !== null && degreeStep !== undefined && (
+        <div style={{
+          marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 10px', borderRadius: 8,
+          backgroundColor: 'rgba(30, 41, 59, 0.5)',
+          border: '1px solid rgba(148,163,184,0.14)',
+        }}>
+          <span style={{
+            fontSize: 9, fontWeight: 700, color: '#94a3b8',
+            fontFamily: 'Orbitron, sans-serif', textTransform: 'uppercase',
+            letterSpacing: '0.5px', flexShrink: 0,
+          }}>Degree</span>
+          <span style={{
+            flex: 1, textAlign: 'center',
+            fontSize: 12.5, fontWeight: 700, color: accent,
+            fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap', overflow: 'hidden',
+          }}>{degreeStep}°</span>
+        </div>
+      )}
 
       {/* ── Baris dimensi studs (P, L, T) — di bawah gambar view.
              FIX AH: hanya untuk Scale (showStuds). ── */}
