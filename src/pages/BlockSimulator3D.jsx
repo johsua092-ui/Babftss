@@ -299,6 +299,7 @@ export default function BlockSimulator3D({ setPage }) {
     const tc = threeRef.current.transformControls;
     const helper = threeRef.current.transformHelper;
 
+
     console.log('[Phase 50 v9] Tool berubah:', tool, '| transformHelper:', !!helper);
 
     // ── Phase 54, 2026-09-07: GIZMO AUTO-HIDE ──
@@ -692,7 +693,22 @@ export default function BlockSimulator3D({ setPage }) {
     // hidup. Sebelumnya ghost di-dispose di sini, lalu useEffect[tool] menemukan
     // tc.object = ghost ber-flag cloneGhost → detach() jalan TANPA membuat ghost
     // baru (kondisi !cloneGhost = false) → 6 panah hilang + block tak ter-highlight.
-    const keepGhost = finalTool === 'clone' || finalTool === 'mirror';
+    // ── FIX I (bab 58, 2026-09-20): 'property' IKUT MENAHAN GHOST ──
+    // JEBAKAN "DUA JALUR MASUK" (bab 44): tombol panel memakai toggleTool (di sini),
+    // sedangkan keybind memanggil setTool() LANGSUNG. Dua jalur = perilaku BEDA.
+    // MASALAH (laporan user): clone/mirror -> gizmo muncul -> pindah PROPERTY
+    // (lewat TOMBOL) => block TIDAK terpilih.
+    // AKAR (terukur di jalur tombol): toggleTool MEMBUANG ghost lebih dulu
+    // (finalTool='property' tidak termasuk keepGhost) → saat useEffect[tool]
+    // jalan, clearSelection TIDAK bisa mem-finalkan ghost (sudah mati) →
+    // lastSelectedBlock menunjuk ghost MATI (indexOf = -1) → FIX C gagal
+    // memulihkan seleksi → BLOCK TIDAK TERPILIH.
+    //   Terukur: `tool_start: ghost=false · last=-1 · sel=[]`
+    //   (jalur keybind berhasil: `sel=[1] · physT=1`)
+    // FIX: 'property' ikut MENAHAN ghost → clearSelection (tool='property')
+    // mem-finalkannya → block hasil clone/mirror tetap ada & terpilih.
+    const keepGhost = finalTool === 'clone' || finalTool === 'mirror'
+      || finalTool === 'property';
     // Ghost clone/mirror dibatalkan saat tool diganti / dimatikan.
     if (!keepGhost && threeRef.current && threeRef.current.cloneGhost) {
       try {
@@ -703,6 +719,12 @@ export default function BlockSimulator3D({ setPage }) {
         // ke ghost yang sudah di-dispose → bola/panah hilang + tak ada
         // highlight saat pindah ke rotate/move/scale (gejala: rotate→clone→rotate).
         threeRef.current.ghostSource = (g.userData && g.userData.ghostSource) || null;
+        // FIX I-b (bab 58): ingatan block TIDAK BOLEH menunjuk ghost MATI.
+        // Kalau ghost dibuang (tool tujuan bukan property/clone/mirror), alihkan
+        // ingatan ke block ASAL supaya restore tetap bisa bekerja.
+        if (threeRef.current.lastSelectedBlock === g) {
+          threeRef.current.lastSelectedBlock = threeRef.current.ghostSource || null;
+        }
         // FIX v13: DETACH gizmo dari ghost SEBELUM dispose — menghilangkan
         // warning "attached object must be part of scene graph" + mencegah
         // gizmo menempel pada objek mati.
