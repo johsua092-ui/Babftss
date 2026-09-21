@@ -19939,16 +19939,20 @@ Now you can apply Displacement for detailed effect.`);
             display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8,
             zIndex: 5,
           }}>
-            {/* Kolom tombol — DI LUAR kotak panel, di sebelah KIRI-nya.
+            {/* ── FIX AG (bab 73, laporan user): TOMBOL + & GEAR HANYA SCALE ──
+                MASALAH: tombol "+" & gear TETAP MUNCUL walau tool diganti ke
+                move/rotate/clone/mirror/property. Padahal itu fitur MILIK SCALE.
+                AKAR: kolom tombol dirender TANPA syarat tool (induknya berlaku
+                untuk 6 tool).
+                FIX: render kolom tombol HANYA saat `tool === 'scale'`. ── */}
+            {tool === 'scale' && (
+            /* Kolom tombol — DI LUAR kotak panel, di sebelah KIRI-nya.
                 ── FIX AB (bab 69, permintaan user) ──
-                1. LATAR BELAKANG GELAP khusus untuk 2 tombol: warna & gaya SAMA
-                   dengan kotak panel (bg rgba(14,20,32,0.92), border #1e293b,
-                   radius 14, blur, shadow) supaya tombol tidak "tembus/transparan"
-                   dan mudah dilihat. Padding 6px -> latar NGE PAS mengikuti
-                   ukuran tombol (tidak keluar-keluar).
-                2. TURUN sedikit (marginTop 12) supaya sejajar dengan header
-                   kotak panel "Scale Options" (panel mulai y=147, header y=160).
-                Tombol sendiri TETAP oranye (border #f59e0b). */}
+                1. LATAR BELAKANG GELAP khusus untuk 2 tombol: gaya SAMA dengan
+                   kotak panel (bg rgba(14,20,32,0.92), border #1e293b, radius 14,
+                   blur, shadow) supaya tombol tidak "tembus/transparan".
+                2. SEJAJAR dengan atas kotak panel "Scale Options" (marginTop 0).
+                Tombol sendiri TETAP oranye (border #f59e0b). */
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
               // FIX AB-b (bab 69): marginTop 0 → TEPAT SEJAJAR dengan atas
@@ -20001,6 +20005,7 @@ Now you can apply Displacement for detailed effect.`);
                 </svg>
               </button>
             </div>
+            )}
 
             {/* ── PANEL OPSI (kotak) — elemen flow di dalam wrapper ── */}
             <div style={{
