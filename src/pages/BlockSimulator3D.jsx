@@ -12834,6 +12834,32 @@ Now you can apply Displacement for detailed effect.`);
             // scaleModeRef saat apply (ref di-set sinkron oleh modal confirm).
             if (frame) {
               const o = tcSnap.object;
+              // ── FIX AD (bab 70): DETEKSI MULTI-SELECT ──
+              // MASALAH (laporan user): scale BANYAK block → mereka "KABUR JAUH".
+              // AKAR: saat multi-select, gizmo attach ke selectionGroup. Mode
+              // default '1side' memanggil needsAnchorOffset() → menggeser
+              // object.position (pivot GROUP) ke tengah block yang digenggam →
+              // seluruh grup BERGESER. Juga tiap block punya posisi relatif
+              // thd pivot, jadi menggeser pivot = menggeser semua.
+              // FIX: saat MULTI-SELECT, PAKSA mode '6side' (scale dari PUSAT) —
+              // pusat DIAM, jadi semua block tetap di tempatnya & hanya "badan"
+              // mereka yang membesar/mengecil. Ini yang user mau.
+              const _isMultiSel = !!(o && o.isGroup);
+              // FIX AD-c (bab 70): simpan posisi RELATIF awal tiap anak supaya
+              // bisa dikompensasi saat group di-scale (block tetap di tempat).
+              if (_isMultiSel && o.children) {
+                // WAJIB updateMatrixWorld DULU — kalau tidak, getWorldPosition
+                // memakai matrixWorld STALE (jejak bab 70) → acuan SALAH.
+                try { o.updateMatrixWorld(true); } catch (e) { /* lanjut */ }
+                o.children.forEach((ch) => {
+                  if (!ch.userData) ch.userData = {};
+                  // Simpan WORLD position AWAL (absolut) — acuan TETAP saat
+                  // kompensasi → IDEMPOTEN (aman walau objectChange berkali-kali).
+                  const _wp = new THREE.Vector3();
+                  ch.getWorldPosition(_wp);
+                  ch.userData.__worldStart = { x: _wp.x, y: _wp.y, z: _wp.z };
+                });
+              }
               scaleDragRef.current = {
                 axisKey: frame.axisKey,
                 sign: frame.sign,
@@ -12841,6 +12867,7 @@ Now you can apply Displacement for detailed effect.`);
                 startScale: { x: o.scale.x, y: o.scale.y, z: o.scale.z },
                 startPos: { x: o.position.x, y: o.position.y, z: o.position.z },
                 snapStudStep: scaleNumberStepRef.current,  // Phase 75: step untuk snap
+                isMulti: _isMultiSel,                       // FIX AD
               };
               // Phase 87 fix: simpan di userData supaya applyGeometryOffset
               // bisa dipanggil kalau objectChange fire SETELAH dragging-changed
@@ -12858,6 +12885,12 @@ Now you can apply Displacement for detailed effect.`);
           }
         }
       } else {
+        // FIX AD-c (bab 70): bersihkan acuan world setelah drag selesai.
+        if (transformControls.object && transformControls.object.children) {
+          transformControls.object.children.forEach((ch) => {
+            if (ch.userData) delete ch.userData.__worldStart;
+          });
+        }
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
         // di place/restore pakai fallback tanda nilai saat itu).
         if (transformControls.getMode() === 'scale' && transformControls.object) {
@@ -13006,11 +13039,44 @@ Now you can apply Displacement for detailed effect.`);
           // (Sempat dicoba "freeze mode di snapshot" = SALAH: snapshot dibuat saat
           //  dragging-changed yang bisa terjadi SEBELUM React ter-render → malah
           //  mengunci mode BASI. Live ref lebih benar + lebih sederhana.)
+          // FIX AD (bab 70): MULTI-SELECT → PAKSA '6side' (pusat diam) supaya
+          // block TIDAK bergeser dari tempatnya (hanya badannya yang terscale).
+          const _effMode = sd.isMulti ? '6side' : scaleModeRef.current;
           applyScaleByMode(
-            THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
+            THREE, obj, _effMode, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
             sd.snapStudStep,
           );
+          // FIX AD-b: untuk multi-select, PASTIKAN pivot group TIDAK bergeser
+          // (applyScaleByMode bisa menggeser object.position utk mode anchor;
+          // 6side tidak, tapi ini sabuk pengaman supaya pusat benar-benar diam).
+          if (sd.isMulti && sd.startPos) {
+            obj.position.set(sd.startPos.x, sd.startPos.y, sd.startPos.z);
+            // ── FIX AD-c (bab 70): KOMPENSASI POSISI RELATIF ANAK ──
+            // JEBAKAN TERUKUR: saat GROUP di-scale, scale ikut diterapkan ke
+            // POSISI RELATIF anak (world = group.pos + child.pos × group.scale)
+            // → anak MENJAUH dari pivot. Terukur: (5.5,·,7.5)/(8.5,·,6.5)/
+            // (10.5,·,5.5) → menyebar ke (0.5,·,9.5)/(9.5,·,6.5)/(15.5,·,3.5).
+            // User mau: block "DIAM di tempatnya, badan mereka yang terscale".
+            // FIX: bagi posisi relatif dengan rasio scale grup (per-sumbu) supaya
+            // world position anak TETAP. Simpan posisi relatif AWAL saat drag mulai.
+            // IDEMPOTEN: acuan = WORLD position awal (tetap). Karena
+            // world = groupPos + groupScale × childPos, maka:
+            //   childPos = (worldAwal − groupPos) / groupScale   (per-sumbu)
+            // Hasil sama berapa kali pun dijalankan (tidak menumpuk).
+            const _gs = obj.scale;
+            const _gp = obj.position;
+            obj.children.forEach((ch) => {
+              if (!ch.userData || !ch.userData.isBlock) return;
+              const w0 = ch.userData.__worldStart;
+              if (!w0) return;
+              ch.position.set(
+                _gs.x !== 0 ? (w0.x - _gp.x) / _gs.x : (w0.x - _gp.x),
+                _gs.y !== 0 ? (w0.y - _gp.y) / _gs.y : (w0.y - _gp.y),
+                _gs.z !== 0 ? (w0.z - _gp.z) / _gs.z : (w0.z - _gp.z),
+              );
+            });
+          }
           // Phase 88: HAPUS applyGeometryOffset (Phase 87). Geometry translate
           // menyebabkan pivot TIDAK di tengah geometry → "inti block melesat keluar".
           // Tanpa geometry translate, pivot selalu di tengah geometry (geometry center = 0).
@@ -14280,9 +14346,29 @@ Now you can apply Displacement for detailed effect.`);
       if (transformControls.object === selectionGroup) {
         try { transformControls.detach(); } catch (e) { /* lanjut */ }
       }
-      // Kembalikan SEMUA anak ke scene (preserve world transform)
+      // ── FIX AC (bab 70): PULIHKAN WORLD TRANSFORM SECARA EKSPLISIT ──
+      // MASALAH (laporan user): select box → block "KABUR JAUH" dari tempatnya.
+      // Terukur: (5.5,0.5,7.5) → (-2.5,0,1) — seluruh grup bergeser ke origin.
+      // AKAR: `selectionGroup.attach(child)` mengubah `child.position` menjadi
+      // RELATIF terhadap pivot group. Saat bongkar, `scene.attach(child)`
+      // TIDAK memulihkan world position (matrixWorld bisa stale / urutan tak
+      // terjamin) → block tertinggal di posisi RELATIF (kecil, dekat origin).
+      // FIX: hitung world transform dari `child.matrixWorld` (decompose) lalu
+      // SET ULANG secara eksplisit setelah `scene.add`. Tidak lagi bergantung
+      // pada perilaku `attach()` — deterministik.
+      const _wp = new THREE.Vector3();
+      const _wq = new THREE.Quaternion();
+      const _ws = new THREE.Vector3();
+      selectionGroup.updateMatrixWorld(true);
       selectionGroup.children.slice().forEach((child) => {
-        try { scene.attach(child); } catch (e) { /* lanjut anak lain */ }
+        try {
+          child.matrixWorld.decompose(_wp, _wq, _ws);
+          scene.add(child);
+          child.position.copy(_wp);
+          child.quaternion.copy(_wq);
+          child.scale.copy(_ws);
+          child.updateMatrixWorld(true);
+        } catch (e) { /* lanjut anak lain */ }
       });
       scene.remove(selectionGroup);
       selectionGroup = null;
@@ -14447,21 +14533,15 @@ Now you can apply Displacement for detailed effect.`);
       }
       if (selected.size === 1) {
         // Single select — attach langsung ke blok (tidak perlu group)
-        if (selectionGroup) {
-          // Kembalikan blok ke scene dulu
-          selected.forEach(b => scene.attach(b));
-          scene.remove(selectionGroup);
-          selectionGroup = null;
-        }
+        // FIX AC-b (bab 70): bongkar group lewat helper (world transform eksplisit).
+        dissolveSelectionGroup();
         const block = selected.values().next().value;
         transformControls.attach(block);
       } else {
         // Multi-select — buat group, reparent semua blok terpilih ke group
-        if (selectionGroup) {
-          // Sudah ada group — kembalikan blok ke scene dulu
-          selected.forEach(b => scene.attach(b));
-          scene.remove(selectionGroup);
-        }
+        // FIX AC-b (bab 70): bongkar group lama lewat helper yang memulihkan
+        // world transform secara eksplisit (anti "block kabur").
+        dissolveSelectionGroup();
         // FIX Phase 56 (2026-09-09, permintaan user): gizmo multi-select
         // wajib muncul TEPAT di TITIK TENGAH AREA semua block terpilih,
         // bukan di pusat area build. Sebelumnya: Group polos → origin
@@ -14476,7 +14556,38 @@ Now you can apply Displacement for detailed effect.`);
         const pivot = getSelectionPivot([...selected]);
         if (pivot) selectionGroup.position.copy(pivot);
         scene.add(selectionGroup);
-        selected.forEach(b => selectionGroup.attach(b)); // preserve world position
+        // ── FIX AC-c (bab 70): REPARENT TANPA MERUSAK POSISI WORLD ──
+        // JEBAKAN TERUKUR: `selectionGroup.attach(b)` bergantung pada
+        // matrixWorld yang bisa STALE (parent/scene belum updateMatrixWorld)
+        // → child.position dihitung salah → saat dibongkar, block tertinggal
+        // di posisi RELATIF (dekat origin) = "block KABUR JAUH".
+        // Terukur: (5.5,0.5,7.5) → (-2.5,0,1) setelah select box.
+        // FIX: hitung posisi/quaternion/scale RELATIF terhadap group SECARA
+        // EKSPLISIT dari nilai world yang sudah kita tahu (bukan bergantung
+        // matrixWorld). Group TANPA rotasi/scale (identitas) → relatif = world
+        // − group.position. Deterministik & tidak bergantung urutan update.
+        scene.updateMatrixWorld(true);
+        const _gInv = new THREE.Matrix4();
+        selected.forEach(b => {
+          // world transform SEKARANG (sebelum reparent) — ambil eksplisit
+          const _wp = new THREE.Vector3();
+          const _wq = new THREE.Quaternion();
+          const _ws = new THREE.Vector3();
+          b.updateMatrixWorld(true);
+          b.matrixWorld.decompose(_wp, _wq, _ws);
+          // reparent TANPA attach() (hindari matrixWorld stale)
+          selectionGroup.add(b);
+          // set transform RELATIF: group identitas (tanpa rotasi/scale) →
+          // relatif = world − group.position
+          b.position.set(
+            _wp.x - selectionGroup.position.x,
+            _wp.y - selectionGroup.position.y,
+            _wp.z - selectionGroup.position.z,
+          );
+          b.quaternion.copy(_wq);
+          b.scale.copy(_ws);
+          b.updateMatrixWorld(true);
+        });
         transformControls.attach(selectionGroup);
       }
     };

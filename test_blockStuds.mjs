@@ -34,5 +34,10 @@ eq('P=x L=z T=y (x1,z3,y2 → P2 L6 T4)', scaleToStuds({ x: 1, y: 2, z: 3 }), [2
 console.log('== clamp 0.05 (MIN_ABS_SCALE app) ==');
 eq('0.05 → 0.1 studs', scaleToStudsLabel({ x: 0.05, y: 0.05, z: 0.05 }), '0.1, 0.1, 0.1');
 
-console.log('RESULT ' + pass + '/' + (pass + fail));
-process.exit(fail === 0 ? 0 : 1);
+console.log('');
+console.log('== presisi MAKS 3 desimal (permintaan user 2026-09-20) ==');
+eq('1.4685 → P=2.937 (3 desimal)', scaleToStudsLabel({ x: 1.4685, y: 1, z: 1 }), '2.937, 2, 2');
+eq('1.47 → P=2.94 (trailing zero dibuang)', scaleToStudsLabel({ x: 1.47, y: 1, z: 1 }), '2.94, 2, 2');
+eq('1.5 → P=3 (bukan 3.000)', scaleToStudsLabel({ x: 1.5, y: 1, z: 1 }), '3, 2, 2');
+eq('0.9876 → P=1.975 (3 desimal)', scaleToStudsLabel({ x: 0.9876, y: 1, z: 1 }), '1.975, 2, 2');
+eq('1.23456 → P=2.469 (dibulatkan 3 desimal)', scaleToStudsLabel({ x: 1.23456, y: 1, z: 1 }), '2.469, 2, 2');

@@ -21,11 +21,18 @@
 /** 1 block normal (1 unit dunia) = 2 studs. MUTLAK, jangan diubah. */
 export const STUDS_PER_BLOCK = 2;
 
-/** Format studs 1 desimal, buang ".0" (2.5 → "2.5", 2 → "2"). */
+/**
+ * Format studs MAKS 3 desimal (permintaan user 2026-09-20: "maks 3 angka di
+ * belakang koma, wajib, supaya makin presisi").
+ * Buang trailing zero supaya rapi: 2.000 → "2", 2.500 → "2.5", 2.940 → "2.94",
+ * 2.937 → "2.937". Tidak pernah menampilkan ".000" yang mubazir.
+ */
 function fmtStuds(n) {
   const v = Math.abs(n);
-  const s = v.toFixed(1);
-  return s.endsWith('.0') ? s.slice(0, -2) : s;
+  // toFixed(3) → buang trailing zero & titik desimal yang menggantung.
+  let s = v.toFixed(3);
+  if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '');
+  return s;
 }
 
 /**
