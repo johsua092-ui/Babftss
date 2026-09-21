@@ -19818,9 +19818,27 @@ Now you can apply Displacement for detailed effect.`);
             display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8,
             zIndex: 5,
           }}>
-            {/* Kolom tombol — DI LUAR kotak panel, di sebelah KIRI-nya. */}
+            {/* Kolom tombol — DI LUAR kotak panel, di sebelah KIRI-nya.
+                ── FIX AB (bab 69, permintaan user) ──
+                1. LATAR BELAKANG GELAP khusus untuk 2 tombol: warna & gaya SAMA
+                   dengan kotak panel (bg rgba(14,20,32,0.92), border #1e293b,
+                   radius 14, blur, shadow) supaya tombol tidak "tembus/transparan"
+                   dan mudah dilihat. Padding 6px -> latar NGE PAS mengikuti
+                   ukuran tombol (tidak keluar-keluar).
+                2. TURUN sedikit (marginTop 12) supaya sejajar dengan header
+                   kotak panel "Scale Options" (panel mulai y=147, header y=160).
+                Tombol sendiri TETAP oranye (border #f59e0b). */}
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
+              // FIX AB-b (bab 69): marginTop 0 → TEPAT SEJAJAR dengan atas
+              // kotak panel "Scale Options" (terukur: panel y=147, kolom y=147).
+              marginTop: 0,
+              backgroundColor: 'rgba(14, 20, 32, 0.92)',
+              border: `1px solid ${panelBorder}`,
+              borderRadius: 14,
+              padding: 6,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             }}>
               <button
                 type="button"
