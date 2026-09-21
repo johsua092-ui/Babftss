@@ -99,6 +99,14 @@ const COLORS = [
 ];
 
 const GRID_SIZE = 250; // grid = GRID_SIZE * 2 = 500 unit → 500x500 cell (Task ID 35, 2026-09-02: 100→500 per request user; sebelumnya 50 = 100x100, sebelumnya 30 = 60x60)
+// ── FIX M (bab 61, 2026-09-20): SYARAT MUTLAK GESTURE PENGGANDA ──
+// Clone/mirror HANYA sah kalau user benar-benar MENGGESER (klik-tahan-geser-lepas).
+// Klik biasa / tahan tanpa geser = BUKAN penggandaan.
+// Ambang dihitung dari NILAI TRANSFORM (bukan piksel) supaya:
+//   • tidak bergantung zoom kamera (presisi tetap sama),
+//   • tidak bergantung ukuran canvas / DPI.
+const GHOST_MIN_TRAVEL = 0.02;   // unit (dunia) — geser minimum agar dianggap drag
+const GHOST_MIN_ANGLE  = 0.01;   // radian (~0.57 derajat) untuk mode rotate
 
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
    (GridHelper 60x60) + block isometrik hijau di atasnya. 3 sisi kubus
@@ -236,6 +244,10 @@ export default function BlockSimulator3D({ setPage }) {
   const selectedBlockTypeRef = useRef(DEFAULT_BLOCK_SLUG);
   useEffect(() => { selectedBlockTypeRef.current = selectedBlockType; }, [selectedBlockType]);
   const toolRef = useRef(null);
+  // FIX M (bab 61): pelacak gesture drag gizmo untuk clone/mirror.
+  // Diisi saat drag MULAI (snapshot transform), dibaca saat drag SELESAI untuk
+  // memutuskan: benar-benar digeser (finalkan ghost) atau cuma klik (batalkan).
+  const ghostDragRef = useRef(null);
   // Phase 52, 2026-09-07: "arrow match rotation" — 1 keluarga untuk 5 tool
   // (move, rotate, scale, clone, mirror). ATURAN MUTLAK: default = true
   // (TERCENTANG) setiap user masuk web — tidak dipersist, jadi fresh entry
@@ -12710,6 +12722,29 @@ Now you can apply Displacement for detailed effect.`);
       if (e.value) {
         // Drag DIMULAI pada tool clone/mirror → ghost sementara dibuat di klik.
         // Tidak ada aksi khusus; block asli tetap aman (gizmo attach ke ghost).
+        //
+        // ── FIX M (bab 61, 2026-09-20): SNAPSHOT GESTURE PENGGANDA ──
+        // JEBAKAN TERUKUR: three.js TransformControls memancarkan
+        // dragging-changed=true saat POINTER-DOWN dan false saat POINTER-UP —
+        // TANPA memeriksa apakah objek BENAR-BENAR bergerak. Akibatnya KLIK
+        // BIASA pada panah gizmo (tanpa geser) pun memicu blok finalisasi ghost
+        // → block LANGSUNG tergandakan + tool pindah ke move.
+        // Terukur: klik panah X (tanpa geser) → nBlocks 1→2 (tergandakan).
+        // FIX: catat transform SAAT MULAI; nanti dibandingkan saat SELESAI.
+        // Aturan user: syarat mutlak = klik-TAHAN-GESER-LEPAS. Klik saja atau
+        // tahan tanpa geser = BUKAN penggandaan (tool tetap clone/mirror).
+        if ((toolRef.current === 'clone' || toolRef.current === 'mirror')
+            && threeRef.current.cloneGhost) {
+          const _g = threeRef.current.cloneGhost;
+          ghostDragRef.current = {
+            object: _g,
+            pos: { x: _g.position.x, y: _g.position.y, z: _g.position.z },
+            quat: { x: _g.quaternion.x, y: _g.quaternion.y, z: _g.quaternion.z, w: _g.quaternion.w },
+            scale: { x: _g.scale.x, y: _g.scale.y, z: _g.scale.z },
+          };
+        } else {
+          ghostDragRef.current = null;
+        }
         // SCALE v2 (user 2026-09-11, "jebol ke arah lain lalu malah lanjut
         // scale!"): snapshot tanda scale saat drag MULAI — clamp drag-aware
         // mengunci tanda hasil ke tanda awal, crossing nol hanya mentok
@@ -12784,6 +12819,64 @@ Now you can apply Displacement for detailed effect.`);
         // hapus penanda ghost (tidak akan dibuang cleanup), gizmo sudah
         // ter-attach ke ghost → 6 panah langsung pindah ke block baru.
         if ((toolRef.current === 'clone' || toolRef.current === 'mirror') && threeRef.current.cloneGhost) {
+          // ── FIX M (bab 61): SYARAT MUTLAK — HARUS BENAR-BENAR DIGESER ──
+          // Bandingkan transform sekarang vs snapshot saat drag mulai.
+          // Klik biasa / tahan tanpa geser => TIDAK ADA perubahan => JANGAN
+          // finalkan ghost; batalkan saja (tool tetap clone/mirror, nBlocks tetap).
+          const _snap = ghostDragRef.current;
+          ghostDragRef.current = null;
+          const _gNow = threeRef.current.cloneGhost;
+          let _moved = false;
+          if (_snap && _snap.object === _gNow) {
+            const _dp = Math.hypot(
+              _gNow.position.x - _snap.pos.x,
+              _gNow.position.y - _snap.pos.y,
+              _gNow.position.z - _snap.pos.z,
+            );
+            const _q0 = new THREE.Quaternion(_snap.quat.x, _snap.quat.y, _snap.quat.z, _snap.quat.w);
+            const _ang = _q0.angleTo(_gNow.quaternion);
+            const _ds = Math.max(
+              Math.abs(_gNow.scale.x - _snap.scale.x),
+              Math.abs(_gNow.scale.y - _snap.scale.y),
+              Math.abs(_gNow.scale.z - _snap.scale.z),
+            );
+            _moved = (_dp > GHOST_MIN_TRAVEL) || (_ang > GHOST_MIN_ANGLE) || (_ds > GHOST_MIN_TRAVEL);
+          } else {
+            // Tidak ada snapshot (mis. drag dimulai bukan dari ghost) → anggap
+            // TIDAK digeser supaya klik tak sengaja tidak menggandakan.
+            _moved = false;
+          }
+          if (!_moved) {
+            // BATALKAN: buang ghost, kembalikan seleksi ke block ASAL, tetap
+            // di tool clone/mirror (jangan pindah ke move).
+            const _src = _gNow.userData && _gNow.userData.ghostSource;
+            const _scene = threeRef.current.scene;
+            if (_scene) _scene.remove(_gNow);
+            threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== _gNow);
+            if (_gNow.geometry) _gNow.geometry.dispose();
+            if (Array.isArray(_gNow.material)) _gNow.material.forEach(m => m.dispose());
+            else if (_gNow.material) _gNow.material.dispose();
+            threeRef.current.cloneGhost = null;
+            threeRef.current.selectedBlocks.forEach(b => detachToolSelectOutline(b));
+            threeRef.current.selectedBlocks.clear();
+            if (_src && _src.parent) {
+              threeRef.current.selectedBlocks.add(_src);
+              if (threeRef.current.highlightSelectedFn) threeRef.current.highlightSelectedFn(_src);
+            }
+            setSelectedCount(_src && _src.parent ? 1 : 0);
+            // FIX M-b: SINKRONKAN JUMLAH BLOCK DI UI.
+            // Ghost ikut dihitung di UI (perilaku lama), jadi saat ghost
+            // DIBATALKAN, UI wajib ikut turun — kalau tidak, user melihat
+            // "2 Blocks" padahal blocknya cuma 1 (terukur: uiBlocks=2 vs
+            // threeRef.blocks.length=1).
+            setBlockCount(threeRef.current.blocks.length);
+            if (threeRef.current.attachGizmoToSelection) {
+              try { threeRef.current.attachGizmoToSelection(); } catch (e) { /* jangan gagalkan */ }
+            }
+            console.log('[FIX M] Klik tanpa geser → ghost DIBATALKAN (tidak menggandakan)');
+            if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+            return;
+          }
           const g = threeRef.current.cloneGhost;
           delete g.userData.cloneGhost;
           threeRef.current.cloneGhost = null;
