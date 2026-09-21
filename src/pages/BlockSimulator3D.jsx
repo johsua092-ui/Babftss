@@ -248,6 +248,8 @@ export default function BlockSimulator3D({ setPage }) {
   // Diisi saat drag MULAI (snapshot transform), dibaca saat drag SELESAI untuk
   // memutuskan: benar-benar digeser (finalkan ghost) atau cuma klik (batalkan).
   const ghostDragRef = useRef(null);
+  // FIX O-b: pembanding jumlah block terakhir (hindari setState tiap frame).
+  const blockCountRef = useRef(0);
   // Phase 52, 2026-09-07: "arrow match rotation" — 1 keluarga untuk 5 tool
   // (move, rotate, scale, clone, mirror). ATURAN MUTLAK: default = true
   // (TERCENTANG) setiap user masuk web — tidak dipersist, jadi fresh entry
@@ -5170,7 +5172,9 @@ Now you can apply Displacement for detailed effect.`);
     if (!s.controls) return;
     const inFamily5 = tool === 'move' || tool === 'rotate' || tool === 'scale'
       || tool === 'clone' || tool === 'mirror';
-    if (inFamily5 && selectBoxEnabled) {
+    // FIX P (bab 63): 'property' juga memakai Select Box (tanpa gizmo) →
+    // drag kiri = marquee kalau select box aktif, supaya konsisten.
+    if ((inFamily5 || tool === 'property') && selectBoxEnabled) {
       s.controls.mouseButtons.LEFT = null;   // drag kiri = marquee
     } else {
       s.controls.mouseButtons.LEFT = THREE.MOUSE.PAN; // drag kiri = kamera
@@ -12889,6 +12893,12 @@ Now you can apply Displacement for detailed effect.`);
           threeRef.current.selectedBlocks.add(g);
           detachToolSelectOutline(g);   // buang warna clone/mirror
           attachToolSelectOutline(g, TOOL_OUTLINE_COLORS.move);  // warna move
+          // ── FIX O (bab 63): COUNTER BLOCK SEGERA (anti-lelet) ──
+          // MASALAH (laporan user): penghitung block di kanan atas LAMBAT/TELAT
+          // saat menggandakan. AKAR: jalur finalisasi ghost TIDAK memanggil
+          // setBlockCount → UI menunggu event lain (telat beberapa frame).
+          // FIX: panggil langsung di sini (data sudah final saat ini juga).
+          setBlockCount(threeRef.current.blocks.length);
           // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
           // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
           // DIBATALKAN (klik empty / ganti tool sebelum drag).
@@ -14273,6 +14283,15 @@ Now you can apply Displacement for detailed effect.`);
       // FIX: lastSelectedBlock disinkronkan dari SELEKSI NYATA tiap frame
       // (state-based, bukan event-based). Set = urutan penyisipan → elemen
       // TERAKHIR = block yang paling baru dipilih.
+      // ── FIX O-b (bab 63): SINKRONKAN COUNTER BLOCK TIAP FRAME (anti-lelet) ──
+      // State-based: apa pun jalur yang mengubah jumlah block (place, delete,
+      // clone/mirror, undo/redo, clear, import), counter PASTI ikut dalam 1 frame.
+      // Menghitung .length (bukan ukuran visual) → block yang di-scale SANGAT
+      // KECIL / tipis / sangat besar TETAP dihitung 1 (block tetap block).
+      if (list.length !== blockCountRef.current) {
+        blockCountRef.current = list.length;
+        setBlockCount(list.length);
+      }
       if (sel && sel.size > 0) {
         let last = null;
         sel.forEach((b) => { last = b; });
@@ -14451,8 +14470,12 @@ Now you can apply Displacement for detailed effect.`);
       // Tool unequip (null) atau tool lain (place/delete/paint/dll) → fitur
       // otomatis OFF — panel Gizmo Options memang hanya tampil di keluarga-5,
       // jadi guard ini menjamin engine juga menolak di semua jalur lain.
+      // FIX P (bab 63): 'property' DIIZINKAN memakai Select Box (permintaan user:
+      // property = "setengah anggota keluarga" — tanpa gizmo, tapi boleh select
+      // box). Tool lain tetap ditolak.
       const t = toolRef.current;
-      if (t !== 'move' && t !== 'rotate' && t !== 'scale' && t !== 'clone' && t !== 'mirror') return;
+      if (t !== 'move' && t !== 'rotate' && t !== 'scale' && t !== 'clone'
+          && t !== 'mirror' && t !== 'property') return;
       if (e.button !== 0) return;
       if (e.target !== renderer.domElement) return;
       // Jangan curi drag dari gizmo (hover axis) — biarkan TC kerja
@@ -19729,11 +19752,16 @@ Now you can apply Displacement for detailed effect.`);
                   property — SEKSI EMBEDDED di dalam panel ini (aturan #74:
                   satu wilayah, satu background; JANGAN position:absolute
                   sendiri di dalam panel yang sudah absolute). ══ */}
-            {tool === 'property' && physicsTarget && (
+            {/* FIX P (bab 63): panel Property SELALU tampil saat tool property —
+                kalau belum ada block terpilih, PhysicsAnchorPanel hanya
+                menampilkan Select Box (1 tombol). */}
+            {tool === 'property' && (
               <PhysicsAnchorPanel
                 target={physicsTarget}
                 onChange={setPhysicsOption}
                 onOpenTransparency={openTransparencyModal}
+                selectBox={selectBoxEnabled}
+                onToggleSelectBox={() => setSelectBoxEnabled(v => !v)}
               />
             )}
 

@@ -25,8 +25,10 @@ const ACCENT_GREEN = '#22C55E';   // aksen hijau terang (tombol Transparency)
 const TEXT_SECONDARY = '#94a3b8';
 const TEXT_PRIMARY = '#e2e8f0';
 
-/** Satu baris opsi (checkbox + label + hint) — reusable untuk semua opsi. */
-function OptionRow({ label, checked, onToggle, hintOn, hintOff }) {
+/** Satu baris opsi (checkbox + label + hint) — reusable untuk semua opsi.
+ *  `accent` bisa dikustom supaya Select Box bisa pakai warna hijau property
+ *  (#12B34A) sementara opsi lain tetap oranye (#f59e0b). */
+function OptionRow({ label, checked, onToggle, hintOn, hintOff, accent = ACCENT }) {
   const [hover, setHover] = useState(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -48,7 +50,7 @@ function OptionRow({ label, checked, onToggle, hintOn, hintOff }) {
       >
         <span style={{
           width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-          backgroundColor: checked ? ACCENT : 'rgba(148,163,184,0.22)',
+          backgroundColor: checked ? accent : 'rgba(148,163,184,0.22)',
           border: checked ? 'none' : '1px solid rgba(148,163,184,0.45)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'all 0.15s ease',
@@ -73,7 +75,12 @@ function OptionRow({ label, checked, onToggle, hintOn, hintOff }) {
   );
 }
 
-export default function PhysicsAnchorPanel({ target, onChange, onOpenTransparency }) {
+const PROP_GREEN = '#12B34A';   // hijau property (warna asli tool property)
+
+export default function PhysicsAnchorPanel({
+  target, onChange, onOpenTransparency,
+  selectBox = true, onToggleSelectBox,
+}) {
   // Baca status dari block (default semua NYALA — dibaca lewat `!== false`).
   const [anchored, setAnchored] = useState(true);
   const [collision, setCollision] = useState(true);
@@ -86,10 +93,26 @@ export default function PhysicsAnchorPanel({ target, onChange, onOpenTransparenc
     setShadow(target.userData.noShadow !== true);
   }, [target]);
 
-  // TIDAK ada block terpilih → panel TIDAK dirender (permintaan user: opsi ini
-  // "untuk siapa?" kalau belum ada yang dipilih; kekuatan hanya berlaku untuk
-  // block yang sudah terpilih).
-  if (!target) return null;
+  // ── FIX P (bab 63): BELUM ADA BLOCK TERPILIH → HANYA SELECT BOX ──
+  // Permintaan user: kalau property dipakai tapi belum pilih block, panel
+  // menampilkan HANYA tombol Select Box (tercentang) — 1 tombol saja, karena
+  // opsi lain (Anchor/Collision/Shadow/Transparency) "untuk siapa?" kalau belum
+  // ada block yang dipilih. Select Box tetap berguna: user memakainya UNTUK
+  // MEMILIH block (drag kotak).
+  if (!target) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <OptionRow
+          label="Select Box"
+          checked={selectBox}
+          onToggle={() => onToggleSelectBox && onToggleSelectBox()}
+          accent={PROP_GREEN}
+          hintOn="Select Box aktif — drag kiri = kotak pilih block."
+          hintOff="Select Box nonaktif — semua tool ber-select-box ikut mati."
+        />
+      </div>
+    );
+  }
 
   const toggleAnchor = () => {
     const next = !anchored;
@@ -180,6 +203,19 @@ export default function PhysicsAnchorPanel({ target, onChange, onOpenTransparenc
             : `Block transparan ${transparencyPct}% — klik untuk ubah.`}
         </div>
       </div>
+
+      {/* ── SELECT BOX (permintaan user bab 63): tepat DI BAWAH Transparency.
+             Warna hijau property (#12B34A) — bukan oranye keluarga-5.
+             Checkbox ini GLOBAL: kalau dicabut, SEMUA tool yang punya
+             select box ikut tidak bisa memakainya. ── */}
+      <OptionRow
+        label="Select Box"
+        checked={selectBox}
+        onToggle={() => onToggleSelectBox && onToggleSelectBox()}
+        accent={PROP_GREEN}
+        hintOn="Select Box aktif — drag kiri = kotak pilih block."
+        hintOff="Select Box nonaktif — semua tool ber-select-box ikut mati."
+      />
     </div>
   );
 }

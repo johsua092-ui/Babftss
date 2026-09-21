@@ -157,6 +157,10 @@ export const MARQUEE_COLOR_BY_TOOL = {
   scale: '#EFBF04',
   clone: '#0096FF',
   mirror: '#9D00FF',
+  // FIX P (bab 63): property boleh memakai Select Box → warna kotaknya
+  // hijau property (#12B34A) supaya identitas tool tetap konsisten
+  // (satu sumber kebenaran warna per tool).
+  property: '#12B34A',
 };
 
 // ══════════════════════════════════════════════════════════════════════
