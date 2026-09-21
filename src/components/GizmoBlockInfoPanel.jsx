@@ -85,6 +85,14 @@ function readGizmoTarget(threeRef) {
 export default function GizmoBlockInfoPanel({
   threeRef, toolName = 'Scale',
   scaleMode = DEFAULT_SCALE_MODE, onOpenScaleMode = null, onComingSoon = null,
+  // ── FIX AH (bab 74): dipakai BERSAMA Scale + Move + Clone + Mirror ──
+  //   showStuds: tampilkan baris "Studs 2, 2, 2" (hanya Scale).
+  //   showMode : tampilkan "Mode: X Side" (hanya Scale).
+  //   accent   : warna aksen (Scale amber; Move biru tua; Clone biru langit;
+  //              Mirror ungu).
+  showStuds = true,
+  showMode = true,
+  accent = accent,
 }) {
   const [info, setInfo] = useState(null); // {slug,label,scaleLabel,isMulti}
 
@@ -204,7 +212,9 @@ export default function GizmoBlockInfoPanel({
         {isMulti ? 'Multi-Block' : (def ? def.name : 'Belum ada block')}
       </div>
 
-      {/* ── Baris dimensi studs (P, L, T) — di bawah gambar view ── */}
+      {/* ── Baris dimensi studs (P, L, T) — di bawah gambar view.
+             FIX AH: hanya untuk Scale (showStuds). ── */}
+      {showStuds && (
       <div style={{
         marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
         padding: '6px 10px', borderRadius: 8,
@@ -223,24 +233,28 @@ export default function GizmoBlockInfoPanel({
           whiteSpace: 'nowrap', overflow: 'hidden',
         }}>{scaleLabel}</span>
       </div>
+      )}
 
       {/* ── Mode scaling aktif (Phase 73) — caption kecil, sinkron dgn
-             tombol "+". Menegaskan aturan yang sedang berlaku. ── */}
+             tombol "+". FIX AH: hanya Scale (showMode). ── */}
+      {showMode && (
       <div style={{
         marginTop: 4, textAlign: 'center',
-        fontSize: 9.5, color: ACCENT,
+        fontSize: 9.5, color: accent,
         fontFamily: 'Inter, sans-serif', fontWeight: 600,
       }}>
         Mode: {SCALE_MODE_LABEL[activeMode]}
       </div>
+      )}
 
-      {/* Petunjuk urutan — caption kecil.
-          v4: PUTIH (2.70:1 → 18.27:1). */}
+      {/* Petunjuk urutan — caption kecil. FIX AH: hanya Scale. */}
+      {showStuds && (
       <div style={{
         marginTop: 2, textAlign: 'center',
         fontSize: 8.5, color: '#FFFFFF',
         fontFamily: 'Inter, sans-serif',
       }}>Panjang, Lebar, Tinggi (studs)</div>
+      )}
     </div>
   );
 }

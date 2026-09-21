@@ -99,6 +99,26 @@ const COLORS = [
 ];
 
 const GRID_SIZE = 250; // grid = GRID_SIZE * 2 = 500 unit → 500x500 cell (Task ID 35, 2026-09-02: 100→500 per request user; sebelumnya 50 = 100x100, sebelumnya 30 = 60x60)
+// ── FIX AH (bab 74): aksen warna per tool (satu sumber kebenaran) ──
+// Scale = amber; Move = biru tua; Clone = biru langit; Mirror = ungu.
+const TOOL_ACCENT = {
+  scale: '#f59e0b',
+  move: '#0044E0',
+  clone: '#0096FF',
+  mirror: '#9D00FF',
+};
+// Tool yang punya panel "… Options" + preview + tombol "+" (tanpa gear kecuali scale).
+const TOOLS_WITH_STEP = ['scale', 'move', 'clone', 'mirror'];
+// Nama header panel per tool (satu sumber kebenaran).
+const TOOL_HEADER = {
+  property: 'Property Options',
+  scale: 'Scale Options',
+  move: 'Move/Clone/Mirror Options',
+  clone: 'Move/Clone/Mirror Options',
+  mirror: 'Move/Clone/Mirror Options',
+};
+// Nama tool untuk teks placeholder preview.
+const TOOL_LABEL = { scale: 'Scale', move: 'Move', clone: 'Clone', mirror: 'Mirror' };
 // ── FIX M (bab 61, 2026-09-20): SYARAT MUTLAK GESTURE PENGGANDA ──
 // Clone/mirror HANYA sah kalau user benar-benar MENGGESER (klik-tahan-geser-lepas).
 // Klik biasa / tahan tanpa geser = BUKAN penggandaan.
@@ -13012,11 +13032,25 @@ Now you can apply Displacement for detailed effect.`);
       if (!obj) return;
       if (transformControls.getMode() === 'translate') {
         if (!snapMoveRef.current) return;
-        // Snap ke cell center (Math.floor + 0.5)
-        obj.position.x = Math.floor(obj.position.x) + 0.5;
-        obj.position.z = Math.floor(obj.position.z) + 0.5;
-        // Y tetap bebas (bisa di taruh di ketinggian berapa aja, misal 1.5, 2.5)
-        obj.position.y = Math.round(obj.position.y * 2) / 2; // snap ke 0.5 increment
+        // ── FIX AH (bab 74): STEP MOVE = nilai studs dari tombol "+" ──
+        // Permintaan user: "jika user ganti nilai studsnya maka itu akan
+        // mempengaruhi berapa studs blok ketika tahan geser. Default 2 studs
+        // (sama seperti scale) — kalau diubah jadi 1 studs maka geraknya 1
+        // studs". STEP INI DIPAKAI BERSAMA Scale/Move/Clone/Mirror
+        // (scaleNumberStepRef) — ganti di satu tool, ikut di tool lain.
+        // Konversi: 1 block = 2 studs = 1 unit → unit = studs / 2.
+        // studs = 0 → snap dimatikan (drag bebas).
+        const _stepStuds = scaleNumberStepRef.current;
+        if (_stepStuds && _stepStuds > 0) {
+          const stepUnit = _stepStuds / STUDS_PER_BLOCK;   // 2 studs -> 1 unit
+          if (stepUnit > 0) {
+            obj.position.x = Math.round(obj.position.x / stepUnit) * stepUnit;
+            obj.position.z = Math.round(obj.position.z / stepUnit) * stepUnit;
+            obj.position.y = Math.round(obj.position.y / stepUnit) * stepUnit;
+          }
+        } else {
+          // studs = 0 → bebas (tidak di-snap)
+        }
       }
       // FIX SCALE BUG 1 v2 (user 2026-09-11 "masih jebol ke arah lain lalu
       // malah lanjut scale!"): v1 mempertahankan tanda HASIL drag → crossing
@@ -19945,8 +19979,10 @@ Now you can apply Displacement for detailed effect.`);
                 AKAR: kolom tombol dirender TANPA syarat tool (induknya berlaku
                 untuk 6 tool).
                 FIX: render kolom tombol HANYA saat `tool === 'scale'`. ── */}
-            {tool === 'scale' && (
+            {TOOLS_WITH_STEP.includes(tool) && (
             /* Kolom tombol — DI LUAR kotak panel, di sebelah KIRI-nya.
+               FIX AH (bab 74): tampil untuk Scale/Move/Clone/Mirror;
+               GEAR hanya Scale; warna aksen per tool (TOOL_ACCENT).
                 ── FIX AB (bab 69, permintaan user) ──
                 1. LATAR BELAKANG GELAP khusus untuk 2 tombol: gaya SAMA dengan
                    kotak panel (bg rgba(14,20,32,0.92), border #1e293b, radius 14,
@@ -19973,17 +20009,21 @@ Now you can apply Displacement for detailed effect.`);
                 style={{
                   width: 36, height: 36, borderRadius: 9,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'rgba(245,158,11,0.14)',
-                  border: '1px solid #f59e0b', color: '#f59e0b',
+                  backgroundColor: `${TOOL_ACCENT[tool] || '#f59e0b'}24`,
+                  border: `1px solid ${TOOL_ACCENT[tool] || '#f59e0b'}`,
+                  color: TOOL_ACCENT[tool] || '#f59e0b',
                   cursor: 'pointer', padding: 0, transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${TOOL_ACCENT[tool] || '#f59e0b'}47`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = `${TOOL_ACCENT[tool] || '#f59e0b'}24`; }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </button>
+              {/* FIX AH (bab 74): GEAR hanya untuk tool SCALE (mode 1/2/4/6 side
+                  hanya relevan untuk scale). Move/Clone/Mirror: hanya "+". */}
+              {tool === 'scale' && (
               <button
                 type="button"
                 onClick={handleOpenScaleModeFromPanel}
@@ -19992,18 +20032,20 @@ Now you can apply Displacement for detailed effect.`);
                 style={{
                   width: 36, height: 36, borderRadius: 9,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'rgba(245,158,11,0.14)',
-                  border: '1px solid #f59e0b', color: '#f59e0b',
+                  backgroundColor: `${TOOL_ACCENT[tool] || '#f59e0b'}24`,
+                  border: `1px solid ${TOOL_ACCENT[tool] || '#f59e0b'}`,
+                  color: TOOL_ACCENT[tool] || '#f59e0b',
                   cursor: 'pointer', padding: 0, transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${TOOL_ACCENT[tool] || '#f59e0b'}47`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = `${TOOL_ACCENT[tool] || '#f59e0b'}24`; }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
               </button>
+              )}
             </div>
             )}
 
@@ -20038,14 +20080,7 @@ Now you can apply Displacement for detailed effect.`);
               fontSize: 10, fontWeight: 700, color: textSecondary,
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
-            }}>{{
-              property: 'Property Options',
-              scale: 'Scale Options',
-              move: 'Gizmo Options',
-              rotate: 'Gizmo Options',
-              clone: 'Gizmo Options',
-              mirror: 'Gizmo Options',
-            }[tool] || 'Gizmo Options'}</div>
+            }}>{TOOL_HEADER[tool] || 'Gizmo Options'}</div>
 
             {/* ══ Phase 72 v2 (2026-09-15, revisi user: "info & options = SATU
                   WILAYAH yang sama — jangan 2 kotak terpisah"): seksi INFO BLOCK
@@ -20056,13 +20091,18 @@ Now you can apply Displacement for detailed effect.`);
                   Komponen self-contained: poll 10Hz baca tc.object sendiri,
                   NOL modifikasi engine/state page. Anggota keluarga-5 lain
                   (move/rotate/clone/mirror) menyusul di seksi yang sama. ══ */}
-            {tool === 'scale' && (
+            {/* FIX AH (bab 74): preview + tombol "+" dipakai BERSAMA oleh
+                Scale/Move/Clone/Mirror. Studs & Mode HANYA Scale. */}
+            {TOOLS_WITH_STEP.includes(tool) && (
               <GizmoBlockInfoPanel
                 threeRef={threeRef}
-                toolName="Scale"
+                toolName={TOOL_LABEL[tool] || 'Scale'}
                 scaleMode={scaleMode}
                 onOpenScaleMode={handleOpenScaleModeFromPanel}
                 onComingSoon={handleComingSoonClick}
+                showStuds={tool === 'scale'}
+                showMode={tool === 'scale'}
+                accent={TOOL_ACCENT[tool] || '#f59e0b'}
               />
             )}
 
@@ -24629,6 +24669,8 @@ Now you can apply Displacement for detailed effect.`);
           value={scaleNumberValue}
           onConfirm={handleScaleNumberConfirm}
           onCancel={handleScaleNumberCancel}
+          hideStudsPreview={tool !== 'scale'}
+          accent={TOOL_ACCENT[tool] || '#f59e0b'}
         />
       )}
       {showTransparencyModal && (

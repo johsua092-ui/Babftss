@@ -63,6 +63,13 @@ const STEP = 0.001;   // Phase 77: 0.001 supaya user bisa input 0.001, 0.002, ..
 
 export default function ScaleNumberModal({
   value = DEFAULT_STUDS, onConfirm, onCancel,
+  // FIX AH (bab 74): dipakai BERSAMA oleh Scale + Move + Clone + Mirror.
+  //   hideStudsPreview: true → sembunyikan baris preview "= X studs" & info
+  //     "1 block = N studs" (dipakai Move/Clone/Mirror; Scale tetap menampilkan).
+  //   accent: warna aksen tombol/modal (Scale = amber; Move = biru tua;
+  //     Clone = biru langit; Mirror = ungu).
+  hideStudsPreview = false,
+  accent = accent,
 }) {
   const [input, setInput] = useState(() => String(value));
   const [closing, setClosing] = useState(false);
@@ -136,7 +143,7 @@ export default function ScaleNumberModal({
           onClick={(e) => e.stopPropagation()}
           style={{
             backgroundColor: PANEL_BG,
-            border: `2px solid ${ACCENT}`,
+            border: `2px solid ${accent}`,
             borderRadius: 16,
             padding: '24px 32px',
             width: 'min(560px, calc(100vw - 32px))',
@@ -153,9 +160,9 @@ export default function ScaleNumberModal({
             <div style={{
               width: 48, height: 48, borderRadius: 12,
               backgroundColor: 'rgba(245, 158, 11, 0.15)',
-              border: `1px solid ${ACCENT}`,
+              border: `1px solid ${accent}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: ACCENT, flexShrink: 0,
+              color: accent, flexShrink: 0,
             }}>
               <Maximize size={24} />
             </div>
@@ -197,7 +204,7 @@ export default function ScaleNumberModal({
               fontFamily: 'Orbitron, sans-serif', textTransform: 'uppercase',
               letterSpacing: '0.5px',
             }}>
-              Scale (studs)
+              {hideStudsPreview ? 'Nilai (studs)' : 'Scale (studs)'}
             </label>
             <input
               id="scale-number-input"
@@ -218,14 +225,15 @@ export default function ScaleNumberModal({
                 width: '100%', boxSizing: 'border-box',
                 padding: '12px 14px', borderRadius: 10,
                 backgroundColor: 'rgba(30, 41, 59, 0.5)',
-                border: `1.5px solid ${valid ? ACCENT : 'rgba(148,163,184,0.22)'}`,
+                border: `1.5px solid ${valid ? accent : 'rgba(148,163,184,0.22)'}`,
                 color: '#e2e8f0', fontSize: 18, fontWeight: 700,
                 fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums',
                 outline: 'none', transition: 'border-color 0.15s ease',
               }}
             />
-            {/* Hasil konversi real-time — supaya user lihat efek input */}
-            {valid && isZero ? (
+            {/* Hasil konversi real-time — supaya user lihat efek input.
+                FIX AH: disembunyikan kalau hideStudsPreview (Move/Clone/Mirror). */}
+            {hideStudsPreview ? null : valid && isZero ? (
               <div style={{
                 fontSize: 12, color: '#86efac',
                 fontFamily: 'Inter, sans-serif', fontWeight: 600,
@@ -238,10 +246,10 @@ export default function ScaleNumberModal({
                 fontSize: 12, color: '#94a3b8',
                 fontFamily: 'Inter, sans-serif',
               }}>
-                <span>= scale factor <span style={{ color: ACCENT, fontWeight: 700 }}>
+                <span>= scale factor <span style={{ color: accent, fontWeight: 700 }}>
                   {scaleResult.toFixed(3)}
                 </span></span>
-                <span>= <span style={{ color: ACCENT, fontWeight: 700 }}>
+                <span>= <span style={{ color: accent, fontWeight: 700 }}>
                   {blockResult.toFixed(3)}
                 </span> block per step</span>
               </div>
@@ -256,7 +264,9 @@ export default function ScaleNumberModal({
             )}
           </div>
 
-          {/* Tabel konversi cepat — supaya user paham matematika studs */}
+          {/* Tabel konversi cepat — supaya user paham matematika studs.
+              FIX AH: disembunyikan kalau hideStudsPreview (Move/Clone/Mirror). */}
+          {hideStudsPreview ? null : (
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
             gap: 6, marginBottom: 18,
@@ -278,7 +288,7 @@ export default function ScaleNumberModal({
                 backgroundColor: 'rgba(245,158,11,0.06)',
               }}>
                 <span style={{
-                  fontSize: 13, fontWeight: 700, color: ACCENT,
+                  fontSize: 13, fontWeight: 700, color: accent,
                   fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums',
                 }}>{row.studs} studs</span>
                 <span style={{
@@ -288,6 +298,7 @@ export default function ScaleNumberModal({
               </div>
             ))}
           </div>
+          )}
 
           {/* Footer: Batal (outline) + Konfirmasi (solid amber).
               Sama persis dengan ScaleModeModal footer:
@@ -321,8 +332,8 @@ export default function ScaleNumberModal({
               disabled={!valid}
               style={{
                 flex: 1, padding: '10px 24px', borderRadius: 8,
-                backgroundColor: valid ? ACCENT : 'rgba(245,158,11,0.3)',
-                border: `1px solid ${valid ? ACCENT : 'rgba(245,158,11,0.5)'}`,
+                backgroundColor: valid ? accent : 'rgba(245,158,11,0.3)',
+                border: `1px solid ${valid ? accent : 'rgba(245,158,11,0.5)'}`,
                 color: '#0e1420', fontSize: 13, fontWeight: 700,
                 cursor: valid ? 'pointer' : 'not-allowed',
                 transition: 'all 0.15s ease',
