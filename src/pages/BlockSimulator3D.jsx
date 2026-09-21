@@ -19827,14 +19827,23 @@ Now you can apply Displacement for detailed effect.`);
             maxWidth: 208,
           }}>
             {/* Header — identik dgn header "Colors" (Orbitron uppercase).
-                NAMA berubah per tool: tool 'property' → "Property Options"
-                (panel ini HANYA berisi Anchor, bukan opsi gizmo); anggota
-                keluarga-5 → "Gizmo Options" (perilaku lama, tidak diubah). */}
+                NAMA berubah per tool (permintaan user 2026-09-20):
+                  • property → "Property Options"
+                  • scale    → "Scale Options"   ← user: "harusnya kan Scale Options"
+                  • move/rotate/clone/mirror → "Gizmo Options" (perilaku lama).
+                Satu sumber kebenaran: peta TOOL → nama header. */}
             <div style={{
               fontSize: 10, fontWeight: 700, color: textSecondary,
               textTransform: 'uppercase', letterSpacing: '1px',
               marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
-            }}>{tool === 'property' ? 'Property Options' : 'Gizmo Options'}</div>
+            }}>{{
+              property: 'Property Options',
+              scale: 'Scale Options',
+              move: 'Gizmo Options',
+              rotate: 'Gizmo Options',
+              clone: 'Gizmo Options',
+              mirror: 'Gizmo Options',
+            }[tool] || 'Gizmo Options'}</div>
 
             {/* ══ Phase 72 v2 (2026-09-15, revisi user: "info & options = SATU
                   WILAYAH yang sama — jangan 2 kotak terpisah"): seksi INFO BLOCK

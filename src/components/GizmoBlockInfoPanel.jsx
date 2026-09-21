@@ -204,14 +204,24 @@ export default function GizmoBlockInfoPanel({
             </button>
 
         {isMulti ? (
-          /* Multi-select: 3 ikon ketumpuk — menandakan banyak block */
-          <div style={{ position: 'relative', width: 84, height: 84 }}>
-            <img src={getBlockIconPath('stone_block')} alt="multi"
-              style={{ position: 'absolute', left: 4, top: 4, width: 60, height: 60, objectFit: 'contain', opacity: 0.45, filter: 'saturate(0.4)' }} />
+          /* Multi-select: 4 ikon berjejer (ketumpuk) — menandakan banyak block.
+             URUTAN (permintaan user 2026-09-20): paling DEPAN = wood, lalu
+             titanium, lalu plastic, lalu brick (paling BELAKANG).
+             Urutan array = urutan render; elemen TERAKHIR = paling belakang
+             secara visual, jadi kita render dari BELAKANG ke DEPAN. */
+          <div style={{ position: 'relative', width: 96, height: 96 }}>
+            {/* brick — paling BELAKANG */}
+            <img src={getBlockIconPath('brick_block')} alt="multi"
+              style={{ position: 'absolute', left: 0, top: 0, width: 60, height: 60, objectFit: 'contain', opacity: 0.4, filter: 'saturate(0.4)' }} />
+            {/* plastic */}
+            <img src={getBlockIconPath('plastic_block')} alt="multi"
+              style={{ position: 'absolute', left: 12, top: 8, width: 60, height: 60, objectFit: 'contain', opacity: 0.62, filter: 'saturate(0.7)' }} />
+            {/* titanium */}
+            <img src={getBlockIconPath('titanium_block')} alt="multi"
+              style={{ position: 'absolute', left: 24, top: 16, width: 60, height: 60, objectFit: 'contain', opacity: 0.82 }} />
+            {/* wood — paling DEPAN (paling jelas) */}
             <img src={getBlockIconPath('wood_block')} alt="multi"
-              style={{ position: 'absolute', left: 16, top: 12, width: 60, height: 60, objectFit: 'contain', opacity: 0.7 }} />
-            <img src={getBlockIconPath('neon_block')} alt="multi"
-              style={{ position: 'absolute', left: 28, top: 20, width: 60, height: 60, objectFit: 'contain' }} />
+              style={{ position: 'absolute', left: 36, top: 24, width: 60, height: 60, objectFit: 'contain' }} />
           </div>
         ) : slug ? (
           <img
