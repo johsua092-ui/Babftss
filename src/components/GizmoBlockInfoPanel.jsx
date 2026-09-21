@@ -131,93 +131,93 @@ export default function GizmoBlockInfoPanel({
       //    di dalam panel induk (satu wilayah, satu background). ──
       return (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {/* ── Kotak view 3D block (100% sesuai jenis) — position:relative
-                 supaya tombol "+" bisa di pojok kiri atas. ── */}
+          {/* ── BARIS: [tombol + & gear] DI KIRI  |  [kotak view] ──
+                 Permintaan user (2026-09-20): tombol "+" & gear dipindah KELUAR
+                 dari kotak, tepat di KIRI area kotak, dan diperbesar supaya
+                 nyaman diklik dengan kursor (26px -> 36px). ── */}
           <div style={{
-            position: 'relative',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 6, borderRadius: 10,
-            backgroundColor: 'rgba(30, 41, 59, 0.45)',
-            border: `1px solid ${empty ? 'rgba(148,163,184,0.14)' : 'rgba(245,158,11,0.35)'}`,
-            minHeight: 96,
+            display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8,
           }}>
-            {/* ─ Phase 73 v3 (2026-09-19): TOMBOL "+" — pojok KIRI ATAS
-                   kotak view. Behavior BERUBAH: tidak lagi membuka modal
-                   Scale Mode, sekarang "coming soon" (panggil onComingSoon
-                   → caller handle lewat sonner toast). Icon tetap Plus
-                   lucide, style tetap sama dengan tombol + lama (Phase 73 v2). ── */}
-            <button
-              type="button"
-              onClick={() => onComingSoon && onComingSoon()}
-              title="Coming soon"
-              aria-label="Coming soon"
-              style={{
-                position: 'absolute', top: 6, left: 6,
-                width: 26, height: 26, borderRadius: 7,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                backgroundColor: 'rgba(245,158,11,0.14)',
-                border: `1px solid ${ACCENT}`,
-                color: ACCENT,
-                cursor: 'pointer', padding: 0, zIndex: 3,
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
-              }}
-            >
-              <Plus size={16} strokeWidth={2.6} />
-            </button>
+            {/* Kolom tombol (kiri kotak) */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
+            }}>
+              {/* TOMBOL "+" — behavior: coming soon (panggil onComingSoon). */}
+              <button
+                type="button"
+                onClick={() => onComingSoon && onComingSoon()}
+                title="Coming soon"
+                aria-label="Coming soon"
+                style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'rgba(245,158,11,0.14)',
+                  border: `1px solid ${ACCENT}`,
+                  color: ACCENT,
+                  cursor: 'pointer', padding: 0,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
+                }}
+              >
+                <Plus size={20} strokeWidth={2.6} />
+              </button>
 
-            {/* ─ Phase 73 v3 (2026-09-19): TOMBOL GEAR — pojok KIRI ATAS
-                   kotak view, DI BAWAH tombol "+" (top:38, jarak 6px dari
-                   tombol + yang berakhir di top:32). Menggantikan peran
-                   tombol "+" lama (sebelum v3): klik = buka MODAL "Scale
-                   Mode" yang megah. Icon Settings lucide (gear), accent
-                   amber, style identik dengan tombol "+" di atas supaya
-                   simetris. ── */}
-            <button
-              type="button"
-              onClick={() => onOpenScaleMode && onOpenScaleMode()}
-              title="Pilih mode scaling (1/2/4/6 side)"
-              aria-label="Pilih mode scaling"
-              style={{
-                position: 'absolute', top: 38, left: 6,
-                width: 26, height: 26, borderRadius: 7,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                backgroundColor: 'rgba(245,158,11,0.14)',
-                border: `1px solid ${ACCENT}`,
-                color: ACCENT,
-                cursor: 'pointer', padding: 0, zIndex: 3,
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
-              }}
-            >
-              <Settings size={16} strokeWidth={2.6} />
-            </button>
+              {/* TOMBOL GEAR — buka MODAL "Scale Mode" (1/2/4/6 side). */}
+              <button
+                type="button"
+                onClick={() => onOpenScaleMode && onOpenScaleMode()}
+                title="Pilih mode scaling (1/2/4/6 side)"
+                aria-label="Pilih mode scaling"
+                style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'rgba(245,158,11,0.14)',
+                  border: `1px solid ${ACCENT}`,
+                  color: ACCENT,
+                  cursor: 'pointer', padding: 0,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
+                }}
+              >
+                <Settings size={20} strokeWidth={2.6} />
+              </button>
+            </div>
+
+            {/* ── Kotak view 3D block (100% sesuai jenis) ── */}
+            <div style={{
+              position: 'relative', flex: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 6, borderRadius: 10,
+              backgroundColor: 'rgba(30, 41, 59, 0.45)',
+              border: `1px solid ${empty ? 'rgba(148,163,184,0.14)' : 'rgba(245,158,11,0.35)'}`,
+              minHeight: 96,
+            }}>
 
         {isMulti ? (
           /* Multi-select: 4 ikon berjejer (ketumpuk) — menandakan banyak block.
-             URUTAN (permintaan user 2026-09-20): paling DEPAN = wood, lalu
-             titanium, lalu plastic, lalu brick (paling BELAKANG).
-             Urutan array = urutan render; elemen TERAKHIR = paling belakang
+             URUTAN (permintaan user 2026-09-20, revisi): paling DEPAN = wood,
+             lalu brick, lalu plastic, lalu titanium (paling BELAKANG).
+             Urutan array = urutan render; elemen TERAKHIR = paling DEPAN
              secara visual, jadi kita render dari BELAKANG ke DEPAN. */
           <div style={{ position: 'relative', width: 96, height: 96 }}>
-            {/* brick — paling BELAKANG */}
-            <img src={getBlockIconPath('brick_block')} alt="multi"
+            {/* titanium — paling BELAKANG */}
+            <img src={getBlockIconPath('titanium_block')} alt="multi"
               style={{ position: 'absolute', left: 0, top: 0, width: 60, height: 60, objectFit: 'contain', opacity: 0.4, filter: 'saturate(0.4)' }} />
             {/* plastic */}
             <img src={getBlockIconPath('plastic_block')} alt="multi"
               style={{ position: 'absolute', left: 12, top: 8, width: 60, height: 60, objectFit: 'contain', opacity: 0.62, filter: 'saturate(0.7)' }} />
-            {/* titanium */}
-            <img src={getBlockIconPath('titanium_block')} alt="multi"
+            {/* brick */}
+            <img src={getBlockIconPath('brick_block')} alt="multi"
               style={{ position: 'absolute', left: 24, top: 16, width: 60, height: 60, objectFit: 'contain', opacity: 0.82 }} />
             {/* wood — paling DEPAN (paling jelas) */}
             <img src={getBlockIconPath('wood_block')} alt="multi"
@@ -244,7 +244,8 @@ export default function GizmoBlockInfoPanel({
             Pilih block<br />untuk {toolName.toLowerCase()}
           </div>
         )}
-      </div>
+            </div>
+          </div>
 
       {/* Nama jenis — kecil di bawah view.
           v4: state kosong ("Belum ada block") PUTIH (3.00:1 → 18.27:1);
