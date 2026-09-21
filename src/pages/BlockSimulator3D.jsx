@@ -12847,33 +12847,23 @@ Now you can apply Displacement for detailed effect.`);
             _moved = false;
           }
           if (!_moved) {
-            // BATALKAN: buang ghost, kembalikan seleksi ke block ASAL, tetap
-            // di tool clone/mirror (jangan pindah ke move).
-            const _src = _gNow.userData && _gNow.userData.ghostSource;
-            const _scene = threeRef.current.scene;
-            if (_scene) _scene.remove(_gNow);
-            threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== _gNow);
-            if (_gNow.geometry) _gNow.geometry.dispose();
-            if (Array.isArray(_gNow.material)) _gNow.material.forEach(m => m.dispose());
-            else if (_gNow.material) _gNow.material.dispose();
-            threeRef.current.cloneGhost = null;
-            threeRef.current.selectedBlocks.forEach(b => detachToolSelectOutline(b));
-            threeRef.current.selectedBlocks.clear();
-            if (_src && _src.parent) {
-              threeRef.current.selectedBlocks.add(_src);
-              if (threeRef.current.highlightSelectedFn) threeRef.current.highlightSelectedFn(_src);
+            // ── FIX M2 (bab 62, 2026-09-20): RESET TRANSFORM, JANGAN BUANG GHOST ──
+            // MASALAH (laporan user): klik panah 1x (tanpa geser) lalu drag =
+            // "tool pengganda MALAH JADI MOVE". Kok bisa?
+            // AKAR: FIX M versi pertama MEMBUANG ghost lalu meng-attach gizmo ke
+            // block ASAL. Drag berikutnya = MENGGERAKKAN BLOCK ASAL (perilaku
+            // Move) — bukan menggandakan. User melihat "jadi move".
+            // FIX: jangan buang ghost — cukup KEMBALIKAN transform ghost ke
+            // snapshot (posisi/rotasi/scale awal). Ghost tetap hidup, gizmo tetap
+            // attach ke ghost → drag berikutnya = drag GHOST = MENGGANDAKAN. ✅
+            // Efek visual: klik tanpa geser = tidak ada perubahan (benar), dan
+            // user bisa langsung lanjut drag untuk menggandakan.
+            if (_snap) {
+              _gNow.position.set(_snap.pos.x, _snap.pos.y, _snap.pos.z);
+              _gNow.quaternion.set(_snap.quat.x, _snap.quat.y, _snap.quat.z, _snap.quat.w);
+              _gNow.scale.set(_snap.scale.x, _snap.scale.y, _snap.scale.z);
             }
-            setSelectedCount(_src && _src.parent ? 1 : 0);
-            // FIX M-b: SINKRONKAN JUMLAH BLOCK DI UI.
-            // Ghost ikut dihitung di UI (perilaku lama), jadi saat ghost
-            // DIBATALKAN, UI wajib ikut turun — kalau tidak, user melihat
-            // "2 Blocks" padahal blocknya cuma 1 (terukur: uiBlocks=2 vs
-            // threeRef.blocks.length=1).
-            setBlockCount(threeRef.current.blocks.length);
-            if (threeRef.current.attachGizmoToSelection) {
-              try { threeRef.current.attachGizmoToSelection(); } catch (e) { /* jangan gagalkan */ }
-            }
-            console.log('[FIX M] Klik tanpa geser → ghost DIBATALKAN (tidak menggandakan)');
+            console.log('[FIX M2] Klik tanpa geser → ghost DI-RESET (tidak menggandakan, tool tetap ' + toolRef.current + ')');
             if (threeRef.current.recordHistory) threeRef.current.recordHistory();
             return;
           }
@@ -14884,6 +14874,25 @@ Now you can apply Displacement for detailed effect.`);
     // Clear All function — accessible dari JSX via threeRef.current
     // Cleanup semua block + imported objects + selection + transformControls + highlightedBlock
     threeRef.current.clearAllBlocks = () => {
+      // ── FIX N (bab 62, 2026-09-20): BERSIHKAN STATE GHOST/SELEKSI ──
+      // MASALAH (laporan user): clone/mirror dipakai -> Clear All -> pakai tool
+      // clone/mirror lagi => block "HANTU" ter-select lengkap dengan gizmo,
+      // padahal blocknya sudah dihapus. Saat tool di-unequip, hantu LENYAP.
+      // AKAR: clearAllBlocks menghapus block + mengosongkan selectedBlocks,
+      // TAPI TIDAK membersihkan state ghost:
+      //   • cloneGhost masih menunjuk objek MATI (sudah di-remove dari scene)
+      //   • ghostSource / lastSelectedBlock masih menunjuk objek MATI
+      //   • physicsTargetRef masih menunjuk objek MATI
+      // Saat tool clone/mirror dipakai lagi, FIX F mengambil "sumber" dari state
+      // basi itu → membuat ghost dari objek MATI → tampak seperti HANTU.
+      // FIX: nolkan SEMUA state yang menunjuk objek, di sini.
+      threeRef.current.cloneGhost = null;
+      threeRef.current.ghostSource = null;
+      threeRef.current.lastSelectedBlock = null;
+      ghostDragRef.current = null;
+      if (threeRef.current.setPhysicsTargetFn) {
+        try { threeRef.current.setPhysicsTargetFn(null); } catch (e) { /* jangan gagalkan */ }
+      }
       // Detach transformControls kalau ada object yang di-attach
       if (transformControls.object) transformControls.detach();
       // Clear highlighted block + reset referensi hover outline
