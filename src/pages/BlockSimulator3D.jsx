@@ -405,8 +405,22 @@ export default function BlockSimulator3D({ setPage }) {
         && remembered.userData && remembered.userData.isBlock);
       // (a) PULIHKAN seleksi yang hilang karena clearSelection saat ganti tool.
       //     (clone/mirror dikecualikan — mereka punya alur ghost sendiri.)
+      //
+      // ── FIX J (bab 59, 2026-09-20): UNEQUIP / TOOL TAK BERHAK JANGAN RESTORE ──
+      // MASALAH (laporan user): clone/mirror -> property (berhasil) -> UNEQUIP
+      // property => block tiba-tiba ter-highlight BIRU tanpa garis outline.
+      // AKAR (terkonfirmasi dari kode): saat unequip, tool = null ->
+      //   `tool !== 'clone' && tool !== 'mirror'` tetap TRUE untuk null →
+      //   blok ini JALAN → highlightSelectedFn(remembered) → setEmissive BIRU,
+      //   TAPI toolOutlineColor(null) = null → detachToolSelectOutline →
+      //   hasil: BIRU TANPA outline (persis keluhan user).
+      //   Juga berlaku untuk tool tak berhak lain (delete/paint/dll).
+      // ATURAN: pemulihan seleksi HANYA untuk tool yang BERHAK outline
+      // (6 tool: move/rotate/scale/clone/mirror/property). Tool lain &
+      // unequip (null) => biarkan kosong (sesuai perilaku lama pra-FIX C).
       if (alive && threeRef.current.selectedBlocks.size === 0
-          && tool !== 'clone' && tool !== 'mirror') {
+          && tool !== 'clone' && tool !== 'mirror'
+          && !!toolOutlineColor(tool)) {
         threeRef.current.selectedBlocks.add(remembered);
         // JEBAKAN TDZ: `highlightSelected` dideklarasikan JAUH di bawah
         // (~baris 13900) — memanggilnya di sini = "Cannot access before
