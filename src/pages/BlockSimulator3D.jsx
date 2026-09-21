@@ -540,17 +540,34 @@ export default function BlockSimulator3D({ setPage }) {
       //   2) block TERPILIH (mis. hasil klik dengan tool property)
       //   3) lastSelectedBlock (ingatan block terakhir)
       // Tidak lagi bergantung pada gizmo yang sudah ter-attach.
+      // ── FIX T (bab 64): SUMBER HARUS BLOCK ASLI, BUKAN GROUP MULTI-SELECT ──
+      // JEBAKAN TERUKUR: saat MULTI-SELECT, `tc.object` = **selectionGroup**
+      // (THREE.Group), BUKAN block. Kode lama menerima tc.object apa adanya →
+      // `_cloneSource` = GROUP → `group.userData.isBlock` = undefined →
+      //   • ghost TIDAK dibuat → GIZMO HILANG saat pindah ke clone/mirror
+      //   • selection dikosongkan → balik ke rotate hanya menyisakan 1 block
+      // FIX: WAJIB validasi `userData.isBlock` (block asli, bukan Group),
+      // lalu fallback berurutan ke block TERPILIH → ingatan terakhir.
       let _cloneSource = null;
       if (tool === 'clone' || tool === 'mirror') {
-        if (tc.object && !(tc.object.userData && tc.object.userData.cloneGhost)) {
+        const _isRealBlock = (o) => !!(o && o.userData && o.userData.isBlock
+          && !o.userData.cloneGhost);
+        // 1) tc.object — hanya kalau BLOCK asli (bukan Group, bukan ghost)
+        if (_isRealBlock(tc.object)) {
           _cloneSource = tc.object;
-        } else if (!tc.object) {
+        }
+        // 2) block TERPILIH (lewati Group; ambil block asli pertama)
+        if (!_cloneSource) {
           let _pick = null;
-          threeRef.current.selectedBlocks.forEach((b) => { _pick = b; });
-          if (!_pick) _pick = threeRef.current.lastSelectedBlock;
-          if (_pick && _pick.userData && _pick.userData.isBlock && !_pick.userData.cloneGhost) {
-            _cloneSource = _pick;
-          }
+          threeRef.current.selectedBlocks.forEach((b) => {
+            if (!_pick && _isRealBlock(b)) _pick = b;
+          });
+          if (_pick) _cloneSource = _pick;
+        }
+        // 3) ingatan block terakhir
+        if (!_cloneSource) {
+          const _mem = threeRef.current.lastSelectedBlock;
+          if (_isRealBlock(_mem)) _cloneSource = _mem;
         }
       }
       if ((tool === 'clone' || tool === 'mirror') && _cloneSource) {
@@ -566,6 +583,12 @@ export default function BlockSimulator3D({ setPage }) {
         // Bug fix: source block masih ter-highlight dari operasi Move sebelumnya
         // Kalau tidak di-unhighlight di sini, block asal akan tetap biru
         // FIX BUG 2 (laporan): pakai setBlockHighlight terpusat — guard neon
+        // FIX Q-b (bab 64): bongkar selectionGroup DULU. Kalau tidak, block
+        // (hasil select box multi) tetap ter-reparent di group → gizmo hilang /
+        // block lenyap / block gaib saat pindah clone/mirror.
+        if (threeRef.current.dissolveSelectionGroup) {
+          try { threeRef.current.dissolveSelectionGroup(); } catch (e) { /* jangan gagalkan */ }
+        }
         threeRef.current.selectedBlocks.forEach(b => setBlockHighlight(b, 'none'));
         // FIX B (2026-09-20): KOSONGKAN selection saat pindah ke clone/mirror.
         // JEBAKAN: `clear()` saja TIDAK melepas outline → block asal memegang
@@ -624,6 +647,11 @@ export default function BlockSimulator3D({ setPage }) {
             scene.add(ghost);
             threeRef.current.blocks.push(ghost);
             threeRef.current.cloneGhost = ghost;
+            // FIX S (bab 64): COUNTER SEGERA saat ghost dibuat.
+            // Ghost sudah masuk `blocks` -> user melihat block baru di layar,
+            // jadi counter WAJIB ikut saat itu juga (dulu menunggu 1 frame →
+            // terasa "lelet banget" saat clone/mirror).
+            setBlockCount(threeRef.current.blocks.length);
             
             // Attach gizmo ke ghost → 6 panah muncul di ghost
             tc.attach(ghost);
@@ -14210,15 +14238,37 @@ Now you can apply Displacement for detailed effect.`);
     threeRef.current.highlightSelectedFn = highlightSelected;
     threeRef.current.unhighlightSelectedFn = unhighlightSelected;
 
+    // ── FIX Q (bab 64): BONGKAR selectionGroup DENGAN BENAR ──
+    // JEBAKAN TERUKUR: clearSelection lama memakai
+    // `selectedBlocks.forEach(b => scene.attach(b))`. Kalau `selectedBlocks`
+    // sudah DIKOSONGKAN lebih dulu oleh jalur lain (mis. FIX F pindah ke
+    // clone/mirror), loop itu TIDAK mengembalikan apa pun → block TETAP
+    // ter-reparent di dalam selectionGroup. Saat group di-remove dari scene,
+    // block menjadi TIDAK ter-render tapi MASIH ada di `threeRef.current.blocks`
+    // = **"BLOCK GAIB"** (kelihatan sebagian, tapi tidak bisa diklik/raycast).
+    // FIX: bongkar lewat ANAK GROUP (bukan selectedBlocks), jadi selalu benar
+    // walau selection sudah dikosongkan.
+    const dissolveSelectionGroup = () => {
+      if (!selectionGroup) return;
+      // PENTING: kalau gizmo sedang attach ke GROUP ini, detach DULU —
+      // kalau tidak, `transformControls.object` tetap menunjuk group MATI,
+      // dan jalur lain (mis. FIX F clone/mirror) akan mengambil "sumber block"
+      // dari objek mati itu → ghost tidak dibuat / gizmo hilang.
+      if (transformControls.object === selectionGroup) {
+        try { transformControls.detach(); } catch (e) { /* lanjut */ }
+      }
+      // Kembalikan SEMUA anak ke scene (preserve world transform)
+      selectionGroup.children.slice().forEach((child) => {
+        try { scene.attach(child); } catch (e) { /* lanjut anak lain */ }
+      });
+      scene.remove(selectionGroup);
+      selectionGroup = null;
+    };
+    threeRef.current.dissolveSelectionGroup = dissolveSelectionGroup;
+
     const clearSelection = () => {
       // Jika ada selectionGroup, kembalikan blok ke scene (preserve world position)
-      if (selectionGroup) {
-        threeRef.current.selectedBlocks.forEach(b => {
-          scene.attach(b); // reparent ke scene, preserve world transform
-        });
-        scene.remove(selectionGroup);
-        selectionGroup = null;
-      }
+      dissolveSelectionGroup();
       // ── GHOST CLONE/MIRROR ──
       // ATURAN (fix laporan user 2026-09-20): kalau pindah ke PROPERTY, ghost
       // FINALKAN (jadi block permanen) — JANGAN dibuang. User mengharapkan
@@ -14453,7 +14503,16 @@ Now you can apply Displacement for detailed effect.`);
           );
           clearSelection();
           hits.forEach(b => { selectBlock(b, true); });
-          attachGizmoToSelection();
+          // ── FIX R (bab 64): PROPERTY DILARANG DAPAT GIZMO ──
+          // JEBAKAN TERUKUR: dulu attachGizmoToSelection() dipanggil TANPA cek
+          // tool → memakai Select Box dengan tool PROPERTY memunculkan gizmo
+          // (kadang sisa mode move/rotate) padahal property TIDAK boleh punya
+          // gizmo. Panel Property disinkronkan oleh reconcileOutlines (FIX H).
+          const _tR = toolRef.current;
+          if (_tR === 'move' || _tR === 'rotate' || _tR === 'scale'
+              || _tR === 'clone' || _tR === 'mirror') {
+            attachGizmoToSelection();
+          }
         }
       }
       if (marqueeEl) { marqueeEl.remove(); marqueeEl = null; }
@@ -14609,7 +14668,12 @@ Now you can apply Displacement for detailed effect.`);
         );
         clearSelection();
         hits.forEach(b => { selectBlock(b, true); });
-        attachGizmoToSelection();
+        // FIX R-b (bab 64): property TIDAK boleh dapat gizmo (lihat FIX R).
+        const _tP = toolRef.current;
+        if (_tP === 'move' || _tP === 'rotate' || _tP === 'scale'
+            || _tP === 'clone' || _tP === 'mirror') {
+          attachGizmoToSelection();
+        }
       }
       if (st.el) { st.el.remove(); }
       // FIX Phase 56 (2026-09-09, laporan user — "boom kamera meledak"):
@@ -14913,6 +14977,11 @@ Now you can apply Displacement for detailed effect.`);
       threeRef.current.ghostSource = null;
       threeRef.current.lastSelectedBlock = null;
       ghostDragRef.current = null;
+      // FIX Q-c: bongkar selectionGroup (kalau ada) sebelum menghapus block —
+      // supaya tidak ada anak group yang tertinggal jadi "block gaib".
+      if (threeRef.current.dissolveSelectionGroup) {
+        try { threeRef.current.dissolveSelectionGroup(); } catch (e) { /* jangan gagalkan */ }
+      }
       if (threeRef.current.setPhysicsTargetFn) {
         try { threeRef.current.setPhysicsTargetFn(null); } catch (e) { /* jangan gagalkan */ }
       }
