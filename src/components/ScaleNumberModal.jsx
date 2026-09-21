@@ -54,6 +54,15 @@ import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
    ================================================================ */
 
 const ACCENT = '#f59e0b';
+
+/** Hex (#rrggbb) -> "r,g,b" supaya bisa dipakai di rgba(...) dengan alpha. */
+function hexToRgb(hex) {
+  const h = String(hex || '').replace('#', '');
+  const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const v = parseInt(n, 16);
+  if (!isFinite(v)) return '245,158,11';
+  return `${(v >> 16) & 255},${(v >> 8) & 255},${v & 255}`;
+}
 const PANEL_BG = 'rgba(14, 20, 32, 0.98)';
 const ANIM_MS = 200;
 const MIN_STUDS = 0;     // Phase 76: 0 supaya user bisa input 0 (no snap) + nilai kecil 0.01, 0.02, ...
@@ -63,6 +72,8 @@ const STEP = 0.001;   // Phase 77: 0.001 supaya user bisa input 0.001, 0.002, ..
 
 export default function ScaleNumberModal({
   value = DEFAULT_STUDS, onConfirm, onCancel,
+  // FIX AI (bab 75): label input per tool ("Scale (studs)" / "Move (studs)" / ...).
+  label = 'Scale (studs)',
   // FIX AH (bab 74): dipakai BERSAMA oleh Scale + Move + Clone + Mirror.
   //   hideStudsPreview: true → sembunyikan baris preview "= X studs" & info
   //     "1 block = N studs" (dipakai Move/Clone/Mirror; Scale tetap menampilkan).
@@ -73,6 +84,9 @@ export default function ScaleNumberModal({
 }) {
   const [input, setInput] = useState(() => String(value));
   const [closing, setClosing] = useState(false);
+  // FIX AI (bab 75): turunan warna accent untuk rgba(...) — biar seluruh modal
+  // ikut warna tool (Move biru tua, Clone biru langit, Mirror ungu).
+  const accentRgb = hexToRgb(accent);
 
   // Selalu sinkron kalau prop value berubah saat modal terbuka.
   useEffect(() => { setInput(String(value)); }, [value]);
@@ -148,7 +162,7 @@ export default function ScaleNumberModal({
             padding: '24px 32px',
             width: 'min(560px, calc(100vw - 32px))',
             boxSizing: 'border-box',
-            boxShadow: `0 20px 60px rgba(245,158,11,0.35), 0 0 100px rgba(245,158,11,0.18)`,
+            boxShadow: `0 20px 60px rgba(${accentRgb},0.35), 0 0 100px rgba(${accentRgb},0.18)`,
             fontFamily: 'Inter, sans-serif',
             transformOrigin: 'top right',
             animation: closing
@@ -204,7 +218,7 @@ export default function ScaleNumberModal({
               fontFamily: 'Orbitron, sans-serif', textTransform: 'uppercase',
               letterSpacing: '0.5px',
             }}>
-              {hideStudsPreview ? 'Nilai (studs)' : 'Scale (studs)'}
+              {label}
             </label>
             <input
               id="scale-number-input"
@@ -265,8 +279,10 @@ export default function ScaleNumberModal({
           </div>
 
           {/* Tabel konversi cepat — supaya user paham matematika studs.
-              FIX AH: disembunyikan kalau hideStudsPreview (Move/Clone/Mirror). */}
-          {hideStudsPreview ? null : (
+              FIX AI (bab 75): SELALU tampil (permintaan user: tabel ini harus
+              ada di tombol "+" untuk SEMUA tool — Scale/Move/Clone/Mirror).
+              Yang disembunyikan saat hideStudsPreview hanyalah baris hasil
+              konversi ("= scale factor / = block per step") — bukan tabel ini. */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
             gap: 6, marginBottom: 18,
@@ -285,7 +301,7 @@ export default function ScaleNumberModal({
               <div key={row.studs} style={{
                 display: 'flex', flexDirection: 'column', gap: 2,
                 padding: '4px 6px', borderRadius: 6,
-                backgroundColor: 'rgba(245,158,11,0.06)',
+                backgroundColor: `rgba(${accentRgb},0.06)`,  // FIX AI: ikut accent
               }}>
                 <span style={{
                   fontSize: 13, fontWeight: 700, color: accent,
@@ -298,7 +314,6 @@ export default function ScaleNumberModal({
               </div>
             ))}
           </div>
-          )}
 
           {/* Footer: Batal (outline) + Konfirmasi (solid amber).
               Sama persis dengan ScaleModeModal footer:
@@ -332,13 +347,13 @@ export default function ScaleNumberModal({
               disabled={!valid}
               style={{
                 flex: 1, padding: '10px 24px', borderRadius: 8,
-                backgroundColor: valid ? accent : 'rgba(245,158,11,0.3)',
-                border: `1px solid ${valid ? accent : 'rgba(245,158,11,0.5)'}`,
+                backgroundColor: valid ? accent : `rgba(${accentRgb},0.3)`,
+                border: `1px solid ${valid ? accent : `rgba(${accentRgb},0.5)`}`,
                 color: '#0e1420', fontSize: 13, fontWeight: 700,
                 cursor: valid ? 'pointer' : 'not-allowed',
                 transition: 'all 0.15s ease',
                 fontFamily: 'Inter, sans-serif',
-                boxShadow: valid ? '0 4px 12px rgba(245,158,11,0.4)' : 'none',
+                boxShadow: valid ? `0 4px 12px rgba(${accentRgb},0.4)` : 'none',
               }}
             >
               Konfirmasi

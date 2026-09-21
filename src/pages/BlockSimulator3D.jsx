@@ -24671,6 +24671,7 @@ Now you can apply Displacement for detailed effect.`);
           onCancel={handleScaleNumberCancel}
           hideStudsPreview={tool !== 'scale'}
           accent={TOOL_ACCENT[tool] || '#f59e0b'}
+          label={`${TOOL_LABEL[tool] || 'Scale'} (studs)`}
         />
       )}
       {showTransparencyModal && (
