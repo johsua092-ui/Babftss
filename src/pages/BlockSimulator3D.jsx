@@ -40,7 +40,7 @@ import {
   attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe,
   disposeDeleteWireframeMaterial, setDeleteWireframeResolution,
   attachPropertyHoverOutline, detachPropertyHoverOutline,
-  attachToolSelectOutline, detachToolSelectOutline, toolOutlineColor,
+  attachToolSelectOutline, detachToolSelectOutline, toolOutlineColor, TOOL_OUTLINE_COLORS,
   attachToolHoverOutline, detachToolHoverOutline, detachAllToolOutlines,
 } from '../utils/deleteWireframe.js';
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
@@ -326,7 +326,16 @@ export default function BlockSimulator3D({ setPage }) {
       else if (_hb) detachToolHoverOutline(_hb);            // tak berhak → lepas
       if (!_hc) threeRef.current.propHoverBlockRef.current = null;
     }
-    if (!inFamily5 && tool !== 'property') {
+    // ── FIX BUG "PROPERTY KERASUKAN GIZMO" (user 2026-09-20) ──
+    // JEBAKAN: pengecualian `tool !== 'property'` (ditambahkan bab 53) membuat
+    // pindah DARI keluarga-5 KE property TIDAK clearSelection → gizmo tetap
+    // ter-attach + mode masih move/rotate/scale → property "kerasukan gizmo"
+    // (seolah jadi move/rotate/scale/clone/mirror).
+    // ATURAN BENAR: property TIDAK butuh gizmo. Pindah KE property (atau tool
+    // non-keluarga-5 mana pun) WAJIB clearSelection → gizmo lepas.
+    // (Panel Property tidak terpengaruh: panel dikendalikan physicsTarget dari
+    //  KLIK block, bukan dari selection/gizmo.)
+    if (!inFamily5) {
       threeRef.current.ghostSource = null;      // batalkan restore v13
       if (threeRef.current.clearSelection) {
         try { threeRef.current.clearSelection(); } catch (e) { /* jangan gagalkan ganti tool */ }
@@ -346,8 +355,7 @@ export default function BlockSimulator3D({ setPage }) {
     // move/rotate/scale dan men-attach gizmo) → block tetap terpilih TAPI
     // warna outline-nya masih warna tool LAMA. Sekarang: kalau ada block
     // terpilih, re-attach + pasang warna outline tool BARU (idempoten).
-    const _hasSel = threeRef.current.selectedBlocks && threeRef.current.selectedBlocks.size > 0;
-    if (tool !== 'clone' && tool !== 'mirror' && (!tc.object || _hasSel) && threeRef.current.ghostSource) {
+    if (tool !== 'clone' && tool !== 'mirror' && !tc.object && threeRef.current.ghostSource) {
       const src = threeRef.current.ghostSource;
       threeRef.current.ghostSource = null;
       if (src && src.parent && src.userData.isBlock) {
@@ -375,6 +383,7 @@ export default function BlockSimulator3D({ setPage }) {
         else detachToolSelectOutline(b);
       });
     }
+
 
     // Ubah MODE gizmo sesuai tool
     if (tool === 'clone' || tool === 'mirror' || tool === 'move') {
@@ -459,6 +468,9 @@ export default function BlockSimulator3D({ setPage }) {
             // Highlight ghost supaya terlihat mana yang akan di-drag
             // FIX BUG 2 (laporan): terpusat — clone NEON tetap merah (guard)
             setBlockHighlight(ghost, 'select');
+            // Outline TIPIS warna clone/mirror untuk ghost (aturan bab 53:
+            // clone/mirror berhak). Dilepas saat drag selesai / dibatalkan.
+            attachToolSelectOutline(ghost, TOOL_OUTLINE_COLORS[tool]);
             threeRef.current.selectedBlocks.add(ghost);
             console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
           }
@@ -488,6 +500,9 @@ export default function BlockSimulator3D({ setPage }) {
           // FIX BUG 2 (laporan): re-highlight source via fungsi terpusat —
           // block NEON tidak tersentuh (guard isGlowBlock).
           setBlockHighlight(sourceBlock, 'select');
+          // Outline ikut tool tujuan (clone↔mirror punya warna berbeda).
+          detachToolSelectOutline(sourceBlock);
+          attachToolSelectOutline(sourceBlock, TOOL_OUTLINE_COLORS[tool]);
           threeRef.current.selectedBlocks.clear();
           threeRef.current.selectedBlocks.add(sourceBlock);
           console.log('[Phase 50 v12] Ghost dipertahankan saat pindah ke', tool);
@@ -12607,6 +12622,20 @@ Now you can apply Displacement for detailed effect.`);
           // — sebelumnya ghost commit TIDAK PERNAH mengembalikan emissive
           // biru → hasil clone "biru permanen").
           setBlockHighlightRef.current(g, 'none');
+          // ── FIX BUG "JEJAK OUTLINE PERMANEN" (user 2026-09-20) ──
+          // Block ASAL (dan block lain) masih memegang outline TIPIS warna
+          // clone/mirror karena highlightSelected() dipanggil saat tool itu
+          // aktif → meninggalkan JEJAK PERMANEN walau tool sudah pindah.
+          // Bersihkan: lepas outline SEMUA block kecuali block hasil, lalu
+          // jadikan block hasil satu-satunya yang terpilih (outline-nya
+          // dipasang ulang oleh useEffect[tool] dengan warna tool BARU).
+          threeRef.current.selectedBlocks.forEach(b => {
+            if (b !== g) detachToolSelectOutline(b);
+          });
+          threeRef.current.selectedBlocks.clear();
+          threeRef.current.selectedBlocks.add(g);
+          detachToolSelectOutline(g);   // buang warna clone/mirror
+          attachToolSelectOutline(g, TOOL_OUTLINE_COLORS.move);  // warna move
           // NOTE: geometry & material ghost TIDAK di-dispose — ghost sudah menjadi
           // block permanen (masih dipakai). Cleanup hanya terjadi saat ghost
           // DIBATALKAN (klik empty / ganti tool sebelum drag).
