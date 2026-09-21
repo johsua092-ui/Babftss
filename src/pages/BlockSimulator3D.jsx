@@ -19805,8 +19805,66 @@ Now you can apply Displacement for detailed effect.`);
             • Hover feedback (pola onMouseEnter/Leave spt swatch Colors).
             ATURAN MUTLAK: default TERCENTANG setiap user masuk web. */}
         {(tool === 'move' || tool === 'rotate' || tool === 'scale' || tool === 'clone' || tool === 'mirror' || tool === 'property') && (
+          /* ── FIX AA (bab 68): TOMBOL + & GEAR DI LUAR KOTAK PANEL ──
+             Permintaan user: tombol harus BENAR-BENAR keluar dari kotak
+             "Scale Options" (yang punya background/border/header), diletakkan
+             tepat di SEBELAH KIRI kotak panel itu (panel mentok kanan layar).
+             STRUKTUR: wrapper flex-ROW (absolute, top:80 right:16) berisi:
+               [ kolom tombol (kiri) ]  [ panel opsi (kanan) ]
+             Panel opsi TIDAK lagi punya position/right sendiri (jadi elemen
+             flow di dalam wrapper). ── */
           <div style={{
             position: 'absolute', top: 80, right: 16,
+            display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+            zIndex: 5,
+          }}>
+            {/* Kolom tombol — DI LUAR kotak panel, di sebelah KIRI-nya. */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={handleComingSoonClick}
+                title="Atur step scale (jendela angka)"
+                aria-label="Atur step scale"
+                style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'rgba(245,158,11,0.14)',
+                  border: '1px solid #f59e0b', color: '#f59e0b',
+                  cursor: 'pointer', padding: 0, transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)'; }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenScaleModeFromPanel}
+                title="Pilih mode scaling (1/2/4/6 side)"
+                aria-label="Pilih mode scaling"
+                style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: 'rgba(245,158,11,0.14)',
+                  border: '1px solid #f59e0b', color: '#f59e0b',
+                  cursor: 'pointer', padding: 0, transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)'; }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+            </div>
+
+            {/* ── PANEL OPSI (kotak) — elemen flow di dalam wrapper ── */}
+            <div style={{
             display: 'flex', flexDirection: 'column', gap: 4,
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
@@ -20011,6 +20069,7 @@ Now you can apply Displacement for detailed effect.`);
               {selectBoxEnabled && <div>Select Box aktif: drag kiri = kotak pilih</div>}
             </div>
             </>)}
+            </div>
           </div>
         )}
 

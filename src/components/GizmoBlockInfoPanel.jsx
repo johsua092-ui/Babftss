@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Plus, Settings } from 'lucide-react';
 import { getBlockDef, getBlockIconPath } from '../utils/blockMaterials.js';
 import { scaleToStudsLabel, STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 import {
@@ -131,67 +130,13 @@ export default function GizmoBlockInfoPanel({
       //    di dalam panel induk (satu wilayah, satu background). ──
       return (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {/* ── BARIS: [tombol + & gear] DI KIRI  |  [kotak view] ──
-                 Permintaan user (2026-09-20): tombol "+" & gear dipindah KELUAR
-                 dari kotak, tepat di KIRI area kotak, dan diperbesar supaya
-                 nyaman diklik dengan kursor (26px -> 36px). ── */}
-          <div style={{
-            display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8,
-          }}>
-            {/* Kolom tombol (kiri kotak) */}
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
-            }}>
-              {/* TOMBOL "+" — behavior: coming soon (panggil onComingSoon). */}
-              <button
-                type="button"
-                onClick={() => onComingSoon && onComingSoon()}
-                title="Coming soon"
-                aria-label="Coming soon"
-                style={{
-                  width: 36, height: 36, borderRadius: 9,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'rgba(245,158,11,0.14)',
-                  border: `1px solid ${ACCENT}`,
-                  color: ACCENT,
-                  cursor: 'pointer', padding: 0,
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
-                }}
-              >
-                <Plus size={20} strokeWidth={2.6} />
-              </button>
-
-              {/* TOMBOL GEAR — buka MODAL "Scale Mode" (1/2/4/6 side). */}
-              <button
-                type="button"
-                onClick={() => onOpenScaleMode && onOpenScaleMode()}
-                title="Pilih mode scaling (1/2/4/6 side)"
-                aria-label="Pilih mode scaling"
-                style={{
-                  width: 36, height: 36, borderRadius: 9,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: 'rgba(245,158,11,0.14)',
-                  border: `1px solid ${ACCENT}`,
-                  color: ACCENT,
-                  cursor: 'pointer', padding: 0,
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.28)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.14)';
-                }}
-              >
-                <Settings size={20} strokeWidth={2.6} />
-              </button>
-            </div>
+          {/* FIX AA (bab 68): wrapper flex-row DIHAPUS — tombol sudah keluar
+              dari komponen ini. Komponen ini hanya kotak view (flow normal). */}
+          <div>
+            {/* FIX AA (bab 68): tombol "+" & gear DIPINDAH KELUAR dari kotak
+                ini → sekarang dirender oleh BlockSimulator3D.jsx di sebelah
+                KIRI kotak panel (persis permintaan user: keluar dari kotak
+                "Scale Options"). Komponen ini kini HANYA kotak view. */}
 
             {/* ── Kotak view 3D block (100% sesuai jenis) ── */}
             <div style={{
