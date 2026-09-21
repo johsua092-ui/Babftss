@@ -13039,11 +13039,16 @@ Now you can apply Displacement for detailed effect.`);
           // (Sempat dicoba "freeze mode di snapshot" = SALAH: snapshot dibuat saat
           //  dragging-changed yang bisa terjadi SEBELUM React ter-render → malah
           //  mengunci mode BASI. Live ref lebih benar + lebih sederhana.)
-          // FIX AD (bab 70): MULTI-SELECT → PAKSA '6side' (pusat diam) supaya
-          // block TIDAK bergeser dari tempatnya (hanya badannya yang terscale).
-          const _effMode = sd.isMulti ? '6side' : scaleModeRef.current;
+          // ── FIX AE (bab 71): HORMATI MODE PILIHAN USER — JANGAN PAKSA ──
+          // MASALAH (laporan user): pakai mode 1 Side tapi hasilnya terasa
+          // seperti 6 Side. AKAR: FIX AD (bab 70) MEMAKSA `'6side'` untuk
+          // multi-select → pilihan mode user DIIABAIKAN sepenuhnya.
+          // (Itu solusi malas: "kabur" sebenarnya sudah teratasi oleh FIX AC —
+          //  reparent yang benar; tidak perlu mengubah mode.)
+          // FIX: SELALU pakai mode yang dipilih user (`scaleModeRef.current`),
+          // untuk single MAUPUN multi-select. Mode = hak user.
           applyScaleByMode(
-            THREE, obj, _effMode, sd.axisKey, sd.sign,
+            THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
             sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
             sd.snapStudStep,
           );
