@@ -422,13 +422,25 @@ export default function BlockSimulator3D({ setPage }) {
       // (b) Keluarga-5 (move/rotate/scale) WAJIB punya gizmo ter-attach.
       //     Kasus nyata: property→move, block tetap terpilih TAPI gizmo tidak
       //     pernah di-attach (klik tidak terjadi) → gizmo tidak muncul.
+      //     Kasus #2 (laporan user): clone/mirror → property → pindah tool
+      //     → gizmo lenyap karena restore memakai block yang salah; setelah
+      //     FIX D (lastSelectedBlock tersinkron) jalur ini yang memulihkannya.
       if ((tool === 'move' || tool === 'rotate' || tool === 'scale')
           && threeRef.current.selectedBlocks.size > 0 && !tc.object) {
         if (threeRef.current.attachGizmoToSelection) {
           threeRef.current.attachGizmoToSelection();
         }
       }
+      // (c) SABUK KEAMANAN: kalau tool keluarga-5 & ada seleksi tapi gizmo
+      //     tetap tidak ter-attach (mis. transformControls.object hilang karena
+      //     jalur lain), attach ulang SEKARANG — jangan menunggu frame berikut.
+      if ((tool === 'move' || tool === 'rotate' || tool === 'scale')
+          && threeRef.current.selectedBlocks.size > 0 && !tc.object
+          && threeRef.current.attachGizmoToSelection) {
+        try { threeRef.current.attachGizmoToSelection(); } catch (e) { /* jangan gagalkan */ }
+      }
     }
+
 
 
     // Ubah MODE gizmo sesuai tool
@@ -14003,15 +14015,30 @@ Now you can apply Displacement for detailed effect.`);
         scene.remove(selectionGroup);
         selectionGroup = null;
       }
-      // Phase 50 v4: buang ghost clone/mirror yang belum di-finalkan (drag belum selesai)
+      // ── GHOST CLONE/MIRROR ──
+      // ATURAN (fix laporan user 2026-09-20): kalau pindah ke PROPERTY, ghost
+      // FINALKAN (jadi block permanen) — JANGAN dibuang. User mengharapkan
+      // "block yang sudah digandakan" tetap ada & itulah yang terpilih.
+      //   Bukti bug lama: mirror -> klik (ghost) -> pindah property
+      //   => nBlocks 2 -> 1 (ghost DIBUANG) => block hasil HILANG => gizmo lenyap
+      //   & yang terpilih malah block ASAL.
+      // Untuk tool LAIN (delete/paint/dll) tetap perilaku lama: ghost = operasi
+      // yang dibatalkan → dibuang (user tidak mengharapkan block baru muncul).
       if (threeRef.current.cloneGhost) {
         const g = threeRef.current.cloneGhost;
-        scene.remove(g);
-        threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== g);
-        // Geometry AMAN di-dispose: ghost ini benar2 sementara (belum jadi block permanen)
-        if (g.geometry) g.geometry.dispose();
-        if (Array.isArray(g.material)) g.material.forEach(m => m.dispose());
-        else if (g.material) g.material.dispose();
+        const keepGhost = toolRef.current === 'property';
+        if (keepGhost) {
+          // Finalkan: hapus penanda ghost → jadi block permanen.
+          delete g.userData.cloneGhost;
+          g.userData.ghostSource = undefined;
+        } else {
+          scene.remove(g);
+          threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== g);
+          // Geometry AMAN di-dispose: ghost ini benar2 sementara (belum final)
+          if (g.geometry) g.geometry.dispose();
+          if (Array.isArray(g.material)) g.material.forEach(m => m.dispose());
+          else if (g.material) g.material.dispose();
+        }
         threeRef.current.cloneGhost = null;
       }
       threeRef.current.selectedBlocks.forEach(b => unhighlightSelected(b));
@@ -14039,6 +14066,24 @@ Now you can apply Displacement for detailed effect.`);
       const oc = toolOutlineColor(toolRef.current);
       const sel = threeRef.current.selectedBlocks;
       const list = threeRef.current.blocks || [];
+
+      // ── FIX D (2026-09-20, tier-hard #2): SINKRONKAN lastSelectedBlock ──
+      // MASALAH (laporan user): setelah clone/mirror, `lastSelectedBlock` masih
+      // menunjuk block ASAL (lama) karena jalur clone/mirror memakai
+      // `setBlockHighlight(...)` LANGSUNG, bukan `highlightSelected(...)`
+      // (satu-satunya tempat lastSelectedBlock di-set). Akibatnya:
+      //   • mirror → property → pindah tool  = GIZMO LENYAP (memulihkan block
+      //     yang salah)
+      //   • clone selesai → property = yang terselect block ASAL, bukan hasil
+      //     clone.
+      // FIX: lastSelectedBlock disinkronkan dari SELEKSI NYATA tiap frame
+      // (state-based, bukan event-based). Set = urutan penyisipan → elemen
+      // TERAKHIR = block yang paling baru dipilih.
+      if (sel && sel.size > 0) {
+        let last = null;
+        sel.forEach((b) => { last = b; });
+        if (last) threeRef.current.lastSelectedBlock = last;
+      }
       for (let i = 0; i < list.length; i++) {
         const b = list[i];
         if (!b || !b.userData || !b.userData.isBlock) continue;
