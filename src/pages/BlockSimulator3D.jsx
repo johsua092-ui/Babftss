@@ -12848,16 +12848,16 @@ Now you can apply Displacement for detailed effect.`);
               // FIX AD-c (bab 70): simpan posisi RELATIF awal tiap anak supaya
               // bisa dikompensasi saat group di-scale (block tetap di tempat).
               if (_isMultiSel && o.children) {
-                // WAJIB updateMatrixWorld DULU — kalau tidak, getWorldPosition
-                // memakai matrixWorld STALE (jejak bab 70) → acuan SALAH.
-                try { o.updateMatrixWorld(true); } catch (e) { /* lanjut */ }
+                // ── FIX AF (bab 72): SNAPSHOT PER-BLOCK ──
+                // Grup = ALAT UKUR saja. Saat drag, kita terapkan scale ke
+                // SETIAP BLOCK (di tempatnya masing-masing), bukan ke grup.
+                // Simpan scale + posisi LOKAL awal tiap anak.
                 o.children.forEach((ch) => {
                   if (!ch.userData) ch.userData = {};
-                  // Simpan WORLD position AWAL (absolut) — acuan TETAP saat
-                  // kompensasi → IDEMPOTEN (aman walau objectChange berkali-kali).
-                  const _wp = new THREE.Vector3();
-                  ch.getWorldPosition(_wp);
-                  ch.userData.__worldStart = { x: _wp.x, y: _wp.y, z: _wp.z };
+                  ch.userData.__scaleStartPer = {
+                    scale: { x: ch.scale.x, y: ch.scale.y, z: ch.scale.z },
+                    pos: { x: ch.position.x, y: ch.position.y, z: ch.position.z },
+                  };
                 });
               }
               scaleDragRef.current = {
@@ -12888,7 +12888,10 @@ Now you can apply Displacement for detailed effect.`);
         // FIX AD-c (bab 70): bersihkan acuan world setelah drag selesai.
         if (transformControls.object && transformControls.object.children) {
           transformControls.object.children.forEach((ch) => {
-            if (ch.userData) delete ch.userData.__worldStart;
+            if (ch.userData) {
+              delete ch.userData.__worldStart;      // warisan bab 70 (tak dipakai lagi)
+              delete ch.userData.__scaleStartPer;   // FIX AF
+            }
           });
         }
         // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
@@ -13039,58 +13042,60 @@ Now you can apply Displacement for detailed effect.`);
           // (Sempat dicoba "freeze mode di snapshot" = SALAH: snapshot dibuat saat
           //  dragging-changed yang bisa terjadi SEBELUM React ter-render → malah
           //  mengunci mode BASI. Live ref lebih benar + lebih sederhana.)
-          // ── FIX AE (bab 71): HORMATI MODE PILIHAN USER — JANGAN PAKSA ──
-          // MASALAH (laporan user): pakai mode 1 Side tapi hasilnya terasa
-          // seperti 6 Side. AKAR: FIX AD (bab 70) MEMAKSA `'6side'` untuk
-          // multi-select → pilihan mode user DIIABAIKAN sepenuhnya.
-          // (Itu solusi malas: "kabur" sebenarnya sudah teratasi oleh FIX AC —
-          //  reparent yang benar; tidak perlu mengubah mode.)
-          // FIX: SELALU pakai mode yang dipilih user (`scaleModeRef.current`),
-          // untuk single MAUPUN multi-select. Mode = hak user.
-          applyScaleByMode(
-            THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
-            sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
-            sd.snapStudStep,
-          );
-          // FIX AD-b: untuk multi-select, PASTIKAN pivot group TIDAK bergeser
-          // (applyScaleByMode bisa menggeser object.position utk mode anchor;
-          // 6side tidak, tapi ini sabuk pengaman supaya pusat benar-benar diam).
-          if (sd.isMulti && sd.startPos) {
-            obj.position.set(sd.startPos.x, sd.startPos.y, sd.startPos.z);
-            // ── FIX AD-c (bab 70): KOMPENSASI POSISI RELATIF ANAK ──
-            // JEBAKAN TERUKUR: saat GROUP di-scale, scale ikut diterapkan ke
-            // POSISI RELATIF anak (world = group.pos + child.pos × group.scale)
-            // → anak MENJAUH dari pivot. Terukur: (5.5,·,7.5)/(8.5,·,6.5)/
-            // (10.5,·,5.5) → menyebar ke (0.5,·,9.5)/(9.5,·,6.5)/(15.5,·,3.5).
-            // User mau: block "DIAM di tempatnya, badan mereka yang terscale".
-            // FIX: bagi posisi relatif dengan rasio scale grup (per-sumbu) supaya
-            // world position anak TETAP. Simpan posisi relatif AWAL saat drag mulai.
-            // IDEMPOTEN: acuan = WORLD position awal (tetap). Karena
-            // world = groupPos + groupScale × childPos, maka:
-            //   childPos = (worldAwal − groupPos) / groupScale   (per-sumbu)
-            // Hasil sama berapa kali pun dijalankan (tidak menumpuk).
-            const _gs = obj.scale;
-            const _gp = obj.position;
+          // ══ FIX AF (bab 72): MULTI-SELECT = SCALE PER-BLOCK (BUKAN GRUP) ══
+          // MASALAH (laporan user): mode "1 Side" terasa seperti "2 Side".
+          // AKAR: kita meng-scale GROUP. applyScaleByMode(1side) memang
+          // menggeser PIVOT grup (sisi seberang diam) — TAPI FIX AD-b
+          // MEMBATALKAN pergeseran itu (obj.position dikembalikan) + kompensasi
+          // posisi anak → hasil akhir = tumbuh SIMETRIS dari pusat = persis
+          // perilaku 2side. Karena group hanya satu objek, "1 sisi" tidak bisa
+          // diwujudkan pada group: tiap block punya sisi seberang sendiri.
+          //
+          // FIX: GROUP = ALAT UKUR saja. Saat drag, terapkan mode ke SETIAP
+          // BLOCK secara INDIVIDU (di posisi lokal masing-masing). Maka:
+          //   • 1side → tiap block bergeser ke satu arah (sisi seberang diam) ✅
+          //   • 2side → tiap block membesar simetris dari pusatnya (diam) ✅
+          //   • 4side/6side → sama, simetris (diam) ✅
+          // Block TIDAK bergeser dari tempatnya (posisi lokal dipertahankan).
+          if (sd.isMulti && obj.children && obj.children.length) {
             obj.children.forEach((ch) => {
               if (!ch.userData || !ch.userData.isBlock) return;
-              const w0 = ch.userData.__worldStart;
-              if (!w0) return;
-              ch.position.set(
-                _gs.x !== 0 ? (w0.x - _gp.x) / _gs.x : (w0.x - _gp.x),
-                _gs.y !== 0 ? (w0.y - _gp.y) / _gs.y : (w0.y - _gp.y),
-                _gs.z !== 0 ? (w0.z - _gp.z) / _gs.z : (w0.z - _gp.z),
+              const snap = ch.userData.__scaleStartPer;
+              if (!snap) return;
+              // Terapkan mode ke BLOCK (bukan grup) — scale+posisi lokalnya.
+              applyScaleByMode(
+                THREE, ch, scaleModeRef.current, sd.axisKey, sd.sign,
+                snap.scale, snap.pos, ratio, 0.05, sd.frameQuat,
+                sd.snapStudStep,
               );
+              // UV tiling per-block (grup tidak punya geometry UV).
+              syncBlockTextureTiling(ch);
             });
+            // GRUP sendiri TIDAK di-scale (tetap 1,1,1) supaya posisi lokal anak
+            // tidak ikut terskala → block tetap di tempatnya.
+            obj.scale.set(1, 1, 1);
+            obj.position.set(sd.startPos.x, sd.startPos.y, sd.startPos.z);
+          } else {
+            // Single-select: jalur lama (mode diterapkan ke objek block itu).
+            applyScaleByMode(
+              THREE, obj, scaleModeRef.current, sd.axisKey, sd.sign,
+              sd.startScale, sd.startPos, ratio, 0.05, sd.frameQuat,
+              sd.snapStudStep,
+            );
           }
           // Phase 88: HAPUS applyGeometryOffset (Phase 87). Geometry translate
           // menyebabkan pivot TIDAK di tengah geometry → "inti block melesat keluar".
           // Tanpa geometry translate, pivot selalu di tengah geometry (geometry center = 0).
           // Sisi bergerak simetris (scale dari pusat). TIDAK ada "melesat".
         }
-        clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
-        // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
-        // memanjang, CROP saat mengecil; TIDAK melar (absolut semua block).
-        syncBlockTextureTiling(obj);
+        // FIX AF (bab 72): untuk MULTI-select, clamp + UV sudah dikerjakan
+        // PER-BLOCK di atas. Grup sendiri TIDAK di-scale → jangan clamp grup.
+        if (!(sd && sd.isMulti)) {
+          clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
+          // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
+          // memanjang, CROP saat mengecil; TIDAK melar (absolut semua block).
+          syncBlockTextureTiling(obj);
+        }
       }
     };
     transformControls.addEventListener('objectChange', onTransformObjectChange);
