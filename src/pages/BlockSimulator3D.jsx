@@ -51,6 +51,10 @@ import {
   applyScaleByMode, computeScaleModeFrame,
 } from '../utils/scaleModes.js';
 import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
+// ── BUILD AREA 'BABFT' (2026-09-23): map Build a Boat for Treasure (replika dari
+//    data terukur `Build a boat (1).rbxl`, read-only). Modul self-contained +
+//    idempoten + punya dispose(). Gagal -> return null, init scene TIDAK terganggu.
+import { buildBabftMap } from '../utils/babftMapBuilder.js';
 // ── PHYSICS v2 (2026-09-20): MESIN RAPIER (rapier3d) menggantikan mesin AABB.
 // API SAMA PERSIS (initRapierPhysics/ensureBody/wakeBody/sleepBody/stepWorld)
 // sehingga integrasi app nyaris tidak berubah — hanya sumber import yang beda.
@@ -12682,6 +12686,33 @@ Now you can apply Displacement for detailed effect.`);
       newGround.userData.isGround = true;
       scene.add(newGround);
       threeRef.current.ground = newGround;
+
+      // ── BUILD AREA 'BABFT' — pasang / lepas MAP (2026-09-23) ──
+      // Replika map Build a Boat for Treasure dari data terukur (read-only).
+      // Idempoten: selalu lepas map lama dulu, baru pasang yang baru.
+      const mapLama = threeRef.current.babftMap;
+      if (mapLama) {
+        try { mapLama.userData.dispose && mapLama.userData.dispose(); } catch (_) {}
+        threeRef.current.babftMap = null;
+      }
+      if (area === 'babft') {
+        const peta = buildBabftMap(THREE);
+        if (peta) {
+          scene.add(peta);
+          threeRef.current.babftMap = peta;
+          // Atur kamera supaya seluruh map terlihat (bukti visual + UX).
+          camera.position.set(0, 260, 235);
+          controls.target.set(0, 0, 0);
+          controls.update();
+        } else {
+          toast.error('Map Babft gagal dimuat (fitur lain tetap aman)');
+        }
+      } else {
+        // Balik ke Default → kembalikan kamera ke tampilan awal.
+        camera.position.set(18, 14, 18);
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
     }
     threeRef.current.switchBuildArea = switchBuildArea;
 
@@ -16164,6 +16195,11 @@ Now you can apply Displacement for detailed effect.`);
       if (threeRef.current.chunkManager) {
         threeRef.current.chunkManager.dispose();
         threeRef.current.chunkManager = null;
+      }
+      // Build Area Babft: bebaskan map (geometry + material) supaya tidak bocor
+      if (threeRef.current.babftMap) {
+        try { threeRef.current.babftMap.userData.dispose && threeRef.current.babftMap.userData.dispose(); } catch (_) {}
+        threeRef.current.babftMap = null;
       }
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
