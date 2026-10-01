@@ -88,6 +88,13 @@ export default function ScaleNumberModal({
   unit = 'studs',
   presets = null,
   hideConversion = false,
+  // FIX (2026-10-01, laporan user): ICON & JUDUL mengikuti TOOL masing-masing.
+  //   Icon: scale=Maximize, move=Move, clone=Copy, mirror=FlipHorizontal,
+  //         rotate=RotateCw, place=Hammer (dikirim dari pemanggil).
+  //   title: 'Scale Number' / 'Move Number' (move/clone/mirror) /
+  //          'Rotate Number' (degree) / 'Place Number'.
+  Icon = Maximize,
+  title = null,
 }) {
   const [input, setInput] = useState(() => String(value));
   const [closing, setClosing] = useState(false);
@@ -181,12 +188,15 @@ export default function ScaleNumberModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <div style={{
               width: 48, height: 48, borderRadius: 12,
-              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+              // FIX (2026-10-01, laporan user): background icon ikut warna TOOL
+              // (dulu HARDCODE oranye rgba(245,158,11,0.15) → icon move/clone/
+              // mirror salah warna). Sekarang turunan accentRgb per tool.
+              backgroundColor: `rgba(${accentRgb}, 0.15)`,
               border: `1px solid ${accent}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: accent, flexShrink: 0,
             }}>
-              <Maximize size={24} />
+              <Icon size={24} />
             </div>
             <div style={{ flex: 1 }}>
               <h3 style={{
@@ -194,7 +204,7 @@ export default function ScaleNumberModal({
                 color: '#f5f7fa', fontFamily: 'Orbitron, sans-serif',
                 letterSpacing: '0.5px',
               }}>
-                {unit === 'degree' ? 'Rotate Number' : (label && label.indexOf('Place') === 0 ? 'Place Number' : 'Scale Number')}
+                {title || (unit === 'degree' ? 'Rotate Number' : (label && label.indexOf('Place') === 0 ? 'Place Number' : 'Scale Number'))}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
                 Masukkan step {unit === 'degree' ? 'rotasi dalam degree' : 'dalam studs'} (0 = bebas, maks 3 desimal, koma → titik)

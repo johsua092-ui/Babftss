@@ -150,6 +150,17 @@ const PLACE_PRESETS = [
 ];
 // Nama tool untuk teks placeholder preview.
 const TOOL_LABEL = { scale: 'Scale', move: 'Move', clone: 'Clone', mirror: 'Mirror', rotate: 'Rotate' };
+// FIX (2026-10-01, laporan user): modal "+" memakai ICON + JUDUL tool masing-masing.
+// Icon = ikon tool yg sama dgn tombol Build Tools. Judul: move/clone/mirror =
+// "Move Number" (permintaan user: "bukan scale number melainkan move number").
+const TOOL_MODAL_ICON = {
+  scale: Maximize, move: Move, clone: Copy, mirror: FlipHorizontal,
+  rotate: RotateCw, place: Hammer,
+};
+const TOOL_MODAL_TITLE = {
+  scale: 'Scale Number', move: 'Move Number', clone: 'Move Number',
+  mirror: 'Move Number', rotate: 'Rotate Number', place: 'Place Number',
+};
 // ── FIX M (bab 61, 2026-09-20): SYARAT MUTLAK GESTURE PENGGANDA ──
 // Clone/mirror HANYA sah kalau user benar-benar MENGGESER (klik-tahan-geser-lepas).
 // Klik biasa / tahan tanpa geser = BUKAN penggandaan.
@@ -12636,7 +12647,15 @@ Now you can apply Displacement for detailed effect.`);
     try { initRapierPhysics(); } catch (e) { console.warn('[physics] init gagal', e); }
 
     // Grid — 500x500 units (GRID_SIZE * 2), 500 divisions (Task ID 35, 2026-09-02: 100x100→500x500 per request user; dulu 100x100 / 60x60)
+    // FIX (2026-10-01, permintaan user): grid diselaraskan agar block yang
+    // ditempatkan (default 2 studs = 1 unit → posisi X.5 = TENGAH sel) duduk
+    // RAPIH di tengah kotak grid (satisfying). GridHelper bawaan menaruh GARIS
+    // di koordinat bulat (sel dari -0.5..0.5) → block X.5 jatuh di PERTEMUAN
+    // garis. Geser grid +0.5 supaya GARIS ada di koordinat X.5 (tengah sel
+    // bergeser) → block (X.5) tepat di TENGAH kotak.
+    // ⚠️ Grid = VISUAL saja (tidak menghalangi) — hanya posisi visual yang digeser.
     const grid = new THREE.GridHelper(GRID_SIZE * 2, GRID_SIZE * 2, 0x64748b, 0x334155);
+    grid.position.set(0.5, 0, 0.5);
     grid.material.opacity = 0.5;
     grid.material.transparent = true;
     scene.add(grid);
@@ -24998,6 +25017,8 @@ Now you can apply Displacement for detailed effect.`);
           unit={tool === 'rotate' ? 'degree' : 'studs'}
           presets={tool === 'rotate' ? ROTATE_PRESETS : (tool === 'place' ? PLACE_PRESETS : null)}
           label={tool === 'place' ? 'Place (studs)' : `${TOOL_LABEL[tool] || 'Scale'} (${tool === 'rotate' ? 'degree' : 'studs'})`}
+          Icon={TOOL_MODAL_ICON[tool] || Maximize}
+          title={TOOL_MODAL_TITLE[tool] || 'Scale Number'}
         />
       )}
       {showTransparencyModal && (

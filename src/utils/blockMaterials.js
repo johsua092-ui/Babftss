@@ -423,7 +423,11 @@ export function attachBlockGlow(THREE, block) {
   // badan block (vision: "dua block bertumpuk"). DIBATALKAN — aura tetap
   // depthTest true (default) → aura ter-occlude block, hanya memancar di luar
   // siluet. depthWrite false sudah cukup (dari getAuraSpriteMaterial).
-  sprite.scale.setScalar(2.6);
+  // FIX (2026-10-01, laporan user: "neon saat pertama ditempatkan ukuran glow-nya
+  // BEDA dgn yang sudah diubah"): default aura disamakan dgn nilai yang dipakai
+  // saat DICAT (2.04) supaya neon baru & neon dicat tampil KONSISTEN.
+  // (Riwayat: 2.6 → 3.4 → 1.7 → 2.04.)
+  sprite.scale.setScalar(2.04);
   sprite.raycast = () => {};
   sprite.renderOrder = 3;
   block.add(sprite);
