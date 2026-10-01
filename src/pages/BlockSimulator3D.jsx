@@ -50,6 +50,9 @@ import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlo
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
 // TETAP UTUH (serat kayu/bata/rumput) + warna bebas dari ColorWheelPicker.
 import { applyTintToMaterial, applyNeonColor, applySmoothColor, isSmoothBlock, getAuraMaterialFor, preloadTintTextures, disposeTintTextures } from '../utils/blockTint.js';
+// SISTEM METADATA INTERNAL (underground) — baca presisi posisi/rotasi/scale +
+// 6 arah sisi (x-/x+/y-/y+/z-/z+) untuk tiap objek. TIDAK ada UI user.
+import { computeBlockMetadata, updateBlockMeta, getBlockMeta, registerBlockMeta, unregisterBlockMeta, refreshAllMeta, getAllMeta, getMetaByUuid, clearRegistry } from '../utils/blockMeta.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
@@ -13091,6 +13094,9 @@ Now you can apply Displacement for detailed effect.`);
         }
         // Drag SELESAI — bersihkan snapshot drag scale + move.
         moveDragRef.current = null;
+        // SISTEM METADATA INTERNAL: refresh meta objek setelah drag (pos/rot/
+        // scale + 6 sisi ter-update presisi) — engine selalu baca data akurat.
+        try { if (transformControls.object) registerBlockMeta(THREE, transformControls.object); } catch (e) {}
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           // Phase 88: HAPUS RE-APPLY applyGeometryOffset (Phase 87).
           // Geometry translate dihapus. Pivot tetap di tengah geometry.
@@ -14183,6 +14189,8 @@ Now you can apply Displacement for detailed effect.`);
           if (blockDef.glow) attachBlockGlow(THREE, block);
           scene.add(block);
           threeRef.current.blocks.push(block);
+          // SISTEM METADATA INTERNAL: register block baru (pos/rot/scale + 6 sisi).
+          try { registerBlockMeta(THREE, block); } catch (e) {}
           // ── Symmetry Mode: auto-mirror block baru ──
           // Kalau symmetryMode on DAN block baru TIDAK di axis plane (kalau di axis plane = posisi 0,
           // mirror = diri sendiri, redundan), buat mirror block.
@@ -15412,6 +15420,8 @@ Now you can apply Displacement for detailed effect.`);
         threeRef.current.blocks.push(block);
       });
       setBlockCount(threeRef.current.blocks.length);
+      // SISTEM METADATA INTERNAL: refresh semua meta setelah restore (undo/redo).
+      try { refreshAllMeta(THREE, threeRef.current.blocks); } catch (e) {}
     };
 
     // Record current state to undo stack (call after each action).
@@ -15763,10 +15773,13 @@ Now you can apply Displacement for detailed effect.`);
       const box2 = new THREE.Box3().setFromObject(rootObject);
       const center2 = box2.getCenter(new THREE.Vector3());
       const size2 = box2.getSize(new THREE.Vector3());
-      // Geser supaya center X/Z = 0, bottom Y = 0 (di atas grid)
+      // ── PRINSIP KOORDINAT USER (2026-10-01) ──
+      // TITIK PALING TENGAH objek = origin (0,0,0). Dulu: center X/Z = 0 tapi
+      // bottom Y = 0. Sekarang SEMUA sumbu di-center → position objek = PUSAT
+      // (konsisten dgn block simulator, di mana position = titik tengah block).
       rootObject.position.x += -center2.x;
+      rootObject.position.y += -center2.y;
       rootObject.position.z += -center2.z;
-      rootObject.position.y += -box2.min.y;
       rootObject.updateMatrixWorld(true);
 
       // ── FLATTEN: bake world transform ke setiap mesh, pindah ke scene langsung ──
@@ -15787,6 +15800,8 @@ Now you can apply Displacement for detailed effect.`);
           mesh.material.emissive = new THREE.Color(0);
         }
         threeRef.current.blocks.push(mesh);
+        // SISTEM METADATA INTERNAL: register presisi (pos/rot/scale + 6 sisi).
+        try { registerBlockMeta(THREE, mesh); } catch (e) {}
       });
       // Buang group root kosong
       scene.remove(rootObject);
@@ -16352,6 +16367,17 @@ Now you can apply Displacement for detailed effect.`);
     threeRef.current.importModelFile = importModelFile;
     threeRef.current.exportGltf = exportGltf;
     threeRef.current.exportScene = exportScene;
+
+    // ── SISTEM METADATA INTERNAL (underground) ──
+    // API presisi untuk ENGINE (bukan UI user): baca posisi/rotasi/scale +
+    // 6 arah sisi tiap objek. Tersembunyi dari user (tidak ada tombol).
+    threeRef.current.getBlockMeta = (mesh, fresh) => (fresh ? computeBlockMetadata(THREE, mesh) : getBlockMeta(mesh));
+    threeRef.current.getBlockMetaByUuid = getMetaByUuid;
+    threeRef.current.getAllBlockMeta = getAllMeta;
+    threeRef.current.refreshBlockMeta = () => refreshAllMeta(THREE, threeRef.current.blocks);
+    threeRef.current.unregisterBlockMeta = unregisterBlockMeta;
+    threeRef.current.clearBlockMetaRegistry = clearRegistry;
+    threeRef.current.__metaModule = { computeBlockMetadata, registerBlockMeta, updateBlockMeta, getBlockMeta, getAllMeta, getMetaByUuid, refreshAllMeta };
 
     // Hidden file input untuk import model (multi-format).
     const fileInputRef = document.createElement('input');
