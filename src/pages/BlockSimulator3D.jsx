@@ -45,6 +45,11 @@ import {
 } from '../utils/deleteWireframe.js';
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
+// Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
+// tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
+// tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
+// TETAP UTUH (serat kayu/bata/rumput) + warna bebas dari ColorWheelPicker.
+import { applyTintToMaterial, preloadTintTextures, disposeTintTextures } from '../utils/blockTint.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
@@ -12588,6 +12593,9 @@ Now you can apply Displacement for detailed effect.`);
     // baru texture muncul (lambat). Sekarang semua texture di-fetch SEKALI
     // saat init scene → place tampil instan.
     try { preloadBlockTextures(THREE); } catch (e) { /* preload gagal = fallback on-demand lama */ }
+    // Phase 88 (2026-10-01): preload tekstur NEUTRAL (grayscale dataset user)
+    // untuk fitur paint bertekstur — supaya paint pertama tidak menunggu load.
+    try { preloadTintTextures(THREE, BLOCK_LIBRARY.map(b => b.slug)); } catch (e) {}
     // ── PHYSICS v2 (2026-09-20): inisialisasi mesin RAPIER ──
     // Async (rapier-compat memuat WASM). Aman: kalau gagal, fitur fisika mati
     // tapi app tetap jalan (guard `physicsReady()` di render loop).
@@ -14110,17 +14118,26 @@ Now you can apply Displacement for detailed effect.`);
           // Helper untuk apply paint ke material
           const applyPaint = (mesh) => {
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            const slug = (mesh.userData && mesh.userData.blockSlug) || null;
             mats.forEach(m => {
               if (!m) return;
               // FIX (temuan Claude): block neon (isGlowBlock) di-skip —
               // mengecat color (hitam) dgn warna lain + emissive merah =
               // campuran aneh; neon mempertahankan identitas glow-nya.
               if (m.userData && m.userData.isGlowBlock) return;
-              if (m.color) m.color.set(color);
-              // Hapus pattern texture kalau ada (paint solid color)
-              if (m.map) {
-                m.map = null;
-                m.needsUpdate = true;
+              // ── Phase 88 (2026-10-01): TEKSTUR BERWARNA (bukan buang tekstur) ──
+              // DULU: `m.map = null` → block jadi permukaan MULUS warna rata
+              // (serat kayu/bata hilang) = keluhan user. SEKARANG: tekstur
+              // NEUTRAL (grayscale dari dataset 5-warna user) di-TINT warna
+              // user → warna bebas (ColorWheelPicker) + tekstur TETAP UTUH.
+              // PBR (roughness/metalness/envMap/emissive) TIDAK disentuh:
+              // glass tetap transparan, gold tetap kilau. Neon di-skip di atas.
+              // Block TANPA slug (kubus polos era lama) → fallback warna polos.
+              if (slug) {
+                const ok = applyTintToMaterial(THREE, m, slug, color);
+                if (!ok && m.color) m.color.set(color); // tekstur belum siap → warna polos dulu
+              } else if (m.color) {
+                m.color.set(color);
               }
             });
           };
@@ -14183,6 +14200,10 @@ Now you can apply Displacement for detailed effect.`);
           // FIX BUG GLOW-CLONE (user 2026-09-11): copy blockSlug + pasang
           // aura glow lagi (sprite child tidak ikut material.clone()).
           ghost.userData.blockSlug = source.userData.blockSlug || null;
+          // Phase 88: bawa warna PAINT ke ghost (tekstur berwarna ikut hasil
+          // clone/mirror). Material sudah ter-clone dari source → map+color
+          // ikut; paintColor disimpan supaya snapshot berikutnya benar.
+          ghost.userData.paintColor = (source.material && source.material.userData && source.material.userData.paintColor) || null;
           if (ghost.userData.blockSlug && getBlockDef(ghost.userData.blockSlug).glow) {
             attachBlockGlow(THREE, ghost);
           }
@@ -14252,6 +14273,8 @@ Now you can apply Displacement for detailed effect.`);
           // FIX BUG GLOW-CLONE (user 2026-09-11): mirror neon juga wajib
           // ber-aura + blockSlug (sprite child tidak ikut material.clone()).
           mirrorMesh.userData.blockSlug = source.userData.blockSlug || null;
+          // Phase 88: bawa warna PAINT ke mirror (tekstur berwarna ikut).
+          mirrorMesh.userData.paintColor = (source.material && source.material.userData && source.material.userData.paintColor) || null;
           if (mirrorMesh.userData.blockSlug && getBlockDef(mirrorMesh.userData.blockSlug).glow) {
             attachBlockGlow(THREE, mirrorMesh);
           }
@@ -15109,6 +15132,10 @@ Now you can apply Displacement for detailed effect.`);
         // (emissive+flag utuh) + attachBlockGlow (aura) — undo/redo aman.
         const blockSlug = b.userData.blockSlug || null;
         const isGlow = mats.some(m => m && m.userData && m.userData.isGlowBlock);
+        // Phase 88 (2026-10-01): simpan warna PAINT (kalau block pernah dicat)
+        // → restoreState bisa memasang kembali tekstur berwarna. Tanpa ini,
+        // undo/redo mengembalikan block ke tekstur ASLI (warna paint hilang).
+        const paintColor = (colorMat && colorMat.userData && colorMat.userData.paintColor) || null;
         return {
           px: worldPos.x, py: worldPos.y, pz: worldPos.z,
           rx: euler.x, ry: euler.y, rz: euler.z,
@@ -15117,6 +15144,7 @@ Now you can apply Displacement for detailed effect.`);
           geo: b.geometry,
           blockSlug, // NEW (Bug 1)
           isGlow,    // NEW (Bug 1)
+          paintColor, // NEW Phase 88 (warna bertekstur)
         };
       });
     };
@@ -15178,6 +15206,12 @@ Now you can apply Displacement for detailed effect.`);
         let mat;
         if (s.blockSlug) {
           mat = makeBlockMaterial(THREE, s.blockSlug);
+          // Phase 88: kalau block pernah DICAT, pasang kembali tekstur
+          // berwarnanya (grayscale × warna tersimpan). Tanpa ini, undo/redo
+          // mengembalikan block ke tekstur ASLI (warna paint hilang).
+          if (s.paintColor) {
+            try { applyTintToMaterial(THREE, mat, s.blockSlug, s.paintColor); } catch (e) {}
+          }
         } else {
           mat = new THREE.MeshStandardMaterial({
             color: new THREE.Color(s.color),
@@ -16233,6 +16267,7 @@ Now you can apply Displacement for detailed effect.`);
       threeRef.current.blocks.forEach(b => detachDeleteWireframe(b));
       disposeDeleteWireframeMaterial();
       disposeCrystalResources(); // Phase 69 v2: texture+material kristal bola gizmo
+      disposeTintTextures();     // Phase 88: cache tekstur berwarna (paint)
       // Cleanup Phase 12: file input
       if (threeRef.current.fileInputRef) {
         document.body.removeChild(threeRef.current.fileInputRef);
