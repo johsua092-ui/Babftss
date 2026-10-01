@@ -137,6 +137,17 @@ const ROTATE_PRESETS = [
   { val: 30,    desc: '1/12 putaran' },
   { val: 45,    desc: '1/8 putaran' },
 ];
+// Preset tabel modal "+" untuk tool PLACE (permintaan user 2026-10-01):
+// akurasi penempatan block — 0 (bebas/halus) s/d 2 (default, per-block).
+const PLACE_PRESETS = [
+  { val: 0,    desc: 'bebas (paling halus)' },
+  { val: 0.001, desc: 'sangat halus' },
+  { val: 0.01, desc: 'halus' },
+  { val: 0.1,  desc: '1/20 block' },
+  { val: 0.5,  desc: '1/4 block' },
+  { val: 1,    desc: 'setengah block' },
+  { val: 2,    desc: 'default (per block)' },
+];
 // Nama tool untuk teks placeholder preview.
 const TOOL_LABEL = { scale: 'Scale', move: 'Move', clone: 'Clone', mirror: 'Mirror', rotate: 'Rotate' };
 // ── FIX M (bab 61, 2026-09-20): SYARAT MUTLAK GESTURE PENGGANDA ──
@@ -954,6 +965,12 @@ export default function BlockSimulator3D({ setPage }) {
   // window kecil di mana event handler baca null → snap tidak aktif. Default 2 = safe.
   const scaleNumberStepRef = useRef(2);  // ref default 2 supaya event handler baca 2 sebelum first render
   useEffect(() => { scaleNumberStepRef.current = scaleNumberStep; }, [scaleNumberStep]);
+  // ── Place snap (permintaan user 2026-10-01): akurasi penempatan block. ──
+  // Default 2 studs = 1 unit = per-block (perilaku lama). Bisa diatur 0..2.
+  // 0 = bebas (posisi tepat di titik kursor, tanpa snap).
+  const [placeSnapStuds, setPlaceSnapStuds] = useState(2);
+  const placeSnapStudsRef = useRef(2);
+  useEffect(() => { placeSnapStudsRef.current = placeSnapStuds; }, [placeSnapStuds]);
   // ── FIX AJ (bab 76): STEP ROTASI (DERAJAT) — khusus tool rotate ──
   // Permintaan user: "rotate pakai sistem pengukuran bernama DERAJAT, bukan
   // studs. Default 15." Step ini HANYA untuk rotate (tidak dibagi dengan
@@ -1059,6 +1076,12 @@ export default function BlockSimulator3D({ setPage }) {
       setShowScaleNumberModal(true);
       return;
     }
+    if (tool === 'place') {
+      // Place: akurasi penempatan (0..2 studs). Default 2 = per-block.
+      setScaleNumberValue(placeSnapStuds ?? 2);
+      setShowScaleNumberModal(true);
+      return;
+    }
     handleComingSoonClick();
   };
 
@@ -1085,6 +1108,17 @@ export default function BlockSimulator3D({ setPage }) {
         toast.success('Snap rotasi dimatikan — putar bebas tanpa batasan degree');
       } else {
         toast.success(`Step rotasi diset ke ${val} degree — putar untuk snap ke kelipatan ini`);
+      }
+      return;
+    }
+    // PLACE (permintaan user 2026-10-01): akurasi penempatan block.
+    if (tool === 'place') {
+      setPlaceSnapStuds(val);
+      setShowScaleNumberModal(false);
+      if (val === 0) {
+        toast.success('Penempatan bebas — block diletakkan tepat di titik kursor');
+      } else {
+        toast.success(`Akurasi penempatan diset ke ${val} studs — block snap ke kelipatan ini`);
       }
       return;
     }
@@ -13792,19 +13826,26 @@ Now you can apply Displacement for detailed effect.`);
     // Block 1x1 centered at (0.5, 0.5, 0.5) → duduk di dalam cell (0,0)-(1,1). Perfect.
     const calcPlacePos = (hit) => {
       let posX, posY, posZ;
+      // ── PLACE SNAP (permintaan user 2026-10-01): akurasi dari TOOLS ──
+      // placeSnapStuds (studs) → unit = studs/2. 2 studs = 1 unit (per-block,
+      // perilaku lama). 0 = BEBAS (posisi tepat di titik kursor, tanpa snap).
+      // Rumus: round(v / step) * step  (step = 1 → cell center X.5).
+      const _ps = placeSnapStudsRef.current;
+      const _su = (_ps && _ps > 0) ? (_ps / STUDS_PER_BLOCK) : 0;
+      const snapV = (v) => _su > 0 ? Math.round(v / _su) * _su : v;
       if (hit.object === ground) {
-        // Hit ground → snap to cell center, Y = 0.5
-        posX = Math.floor(hit.point.x) + 0.5;
-        posZ = Math.floor(hit.point.z) + 0.5;
+        // Hit ground → snap X/Z, Y = 0.5 (duduk di lantai)
+        posX = snapV(hit.point.x);
+        posZ = snapV(hit.point.z);
         posY = 0.5;
       } else {
-        // Hit block face → offset by face normal → snap to cell center
+        // Hit block face → offset by face normal → snap
         const n = hit.face.normal.clone();
         n.transformDirection(hit.object.matrixWorld);
         const placePoint = hit.point.clone().add(n.multiplyScalar(0.5));
-        posX = Math.floor(placePoint.x) + 0.5;
-        posY = Math.floor(placePoint.y) + 0.5;
-        posZ = Math.floor(placePoint.z) + 0.5;
+        posX = snapV(placePoint.x);
+        posY = snapV(placePoint.y);
+        posZ = snapV(placePoint.z);
       }
       return { posX, posY, posZ };
     };
@@ -14032,7 +14073,9 @@ Now you can apply Displacement for detailed effect.`);
         const hits = raycaster.intersectObjects(targets, false);
         if (hits.length > 0) {
           const { posX, posY, posZ } = calcPlacePos(hits[0]);
-          if ((threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) || posY < 0) return;
+          // Build area = VISUAL saja (permintaan user 2026-10-01: grid TIDAK
+          // boleh menghalangi). Hanya sisa guard Y (jangan di bawah lantai).
+          if (posY < 0) return;
           const geo = new THREE.BoxGeometry(1, 1, 1);
           // Phase 63 (2026-09-11): place menaruh BLOCK dari Block Library
           // (dataset user) — material dari registry blockMaterials.js
@@ -14098,7 +14141,8 @@ Now you can apply Displacement for detailed effect.`);
             posX = Math.floor(placePoint.x) + 0.5;
             posZ = Math.floor(placePoint.z) + 0.5;
           }
-          if (threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) return;
+          // Build area = VISUAL saja (grid TIDAK menghalangi) — permintaan user
+          // 2026-10-01: "build area tidak punya wewenang mengatur/menghalangi".
 
           const st = shapeTypeRef.current;
           const sz = Math.max(0.5, shapeSizeRef.current);
@@ -14184,9 +14228,9 @@ Now you can apply Displacement for detailed effect.`);
             if (isGlow && mesh.userData && mesh.userData.__glow) {
               try {
                 mesh.userData.__glow.material = getAuraMaterialFor(THREE, color);
-                // Kurangi efek glow 50% (permintaan user 2026-10-01: "ukuran
-                // glownya kegedean, kurangi 50%"). Scale 3.4 → 1.7 (=50%).
-                mesh.userData.__glow.scale.setScalar(1.7);
+                // Glow neon: naik +20% (permintaan user 2026-10-01: "terlalu
+                // ekstrem nuruninnya, naikin +20%"). 1.7 → 2.04.
+                mesh.userData.__glow.scale.setScalar(2.04);
               } catch (e) {}
             }
           };
@@ -14354,8 +14398,8 @@ Now you can apply Displacement for detailed effect.`);
           // Posisi di ground / di atas block: snap ke cell center X.5
           let posX = Math.floor(hit.point.x) + 0.5;
           let posZ = Math.floor(hit.point.z) + 0.5;
-          // Clamp ke grid
-          if (threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) return;
+          // Build area = VISUAL saja (grid TIDAK menghalangi) — permintaan user
+          // 2026-10-01: "build area tidak punya wewenang mengatur/menghalangi".
           const kind = selectedObjRef.current;
           if (!kind) {
             return;
@@ -15447,7 +15491,8 @@ Now you can apply Displacement for detailed effect.`);
         const hits = raycaster.intersectObjects(targets, true);
         if (hits.length > 0) {
           const { posX, posY, posZ } = calcPlacePos(hits[0]);
-          if ((threeRef.current.isOutsideBuildArea ? threeRef.current.isOutsideBuildArea(posX, posZ) : (Math.abs(posX) > GRID_SIZE || Math.abs(posZ) > GRID_SIZE)) || posY < 0) {
+          // Build area = VISUAL saja (grid TIDAK menghalangi). Sisa guard Y.
+          if (posY < 0) {
             ghostBlock.visible = false;
             ghostEdges.visible = false;
             return;
@@ -20501,6 +20546,46 @@ Now you can apply Displacement for detailed effect.`);
         {tool === 'place' && (
           <div style={{
             position: 'absolute', top: 80, right: 16,
+            display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+            zIndex: 5,
+          }}>
+            {/* ── TOMBOL "+" PLACE (permintaan user 2026-10-01): atur AKURASI
+                penempatan block (0..2 studs). Warna ORANYE (#f59e0b) sesuai
+                permintaan user. Struktur kolom tombol = SAMA seperti keluarga
+                step (Scale/Move/...) — DI LUAR kotak panel, di sebelah KIRI. ── */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
+              marginTop: 0,
+              backgroundColor: 'rgba(14, 20, 32, 0.92)',
+              border: `1px solid ${panelBorder}`,
+              borderRadius: 14,
+              padding: 6,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            }}>
+              <button
+                type="button"
+                onClick={handleStepButtonClick}
+                title="Atur akurasi penempatan block (studs)"
+                aria-label="Atur akurasi penempatan"
+                style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: '#f59e0b24',
+                  border: '1px solid #f59e0b',
+                  color: '#f59e0b',
+                  cursor: 'pointer', padding: 0, transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f59e0b47'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#f59e0b24'; }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            </div>
+            {/* ── PANEL BLOCK LIBRARY (kotak) — elemen flow di dalam wrapper ── */}
+            <div style={{
             display: 'flex', flexDirection: 'column', gap: 6,
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
@@ -20661,6 +20746,7 @@ Now you can apply Displacement for detailed effect.`);
                 )}
               </div>
             )}
+          </div>
           </div>
         )}
 
@@ -24910,8 +24996,8 @@ Now you can apply Displacement for detailed effect.`);
           hideConversion={tool === 'rotate'}
           accent={TOOL_ACCENT[tool] || '#f59e0b'}
           unit={tool === 'rotate' ? 'degree' : 'studs'}
-          presets={tool === 'rotate' ? ROTATE_PRESETS : null}
-          label={`${TOOL_LABEL[tool] || 'Scale'} (${tool === 'rotate' ? 'degree' : 'studs'})`}
+          presets={tool === 'rotate' ? ROTATE_PRESETS : (tool === 'place' ? PLACE_PRESETS : null)}
+          label={tool === 'place' ? 'Place (studs)' : `${TOOL_LABEL[tool] || 'Scale'} (${tool === 'rotate' ? 'degree' : 'studs'})`}
         />
       )}
       {showTransparencyModal && (

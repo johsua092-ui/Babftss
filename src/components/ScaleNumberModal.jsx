@@ -194,7 +194,7 @@ export default function ScaleNumberModal({
                 color: '#f5f7fa', fontFamily: 'Orbitron, sans-serif',
                 letterSpacing: '0.5px',
               }}>
-                {unit === 'degree' ? 'Rotate Number' : 'Scale Number'}
+                {unit === 'degree' ? 'Rotate Number' : (label && label.indexOf('Place') === 0 ? 'Place Number' : 'Scale Number')}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
                 Masukkan step {unit === 'degree' ? 'rotasi dalam degree' : 'dalam studs'} (0 = bebas, maks 3 desimal, koma → titik)
