@@ -49,7 +49,7 @@ import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlo
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
 // TETAP UTUH (serat kayu/bata/rumput) + warna bebas dari ColorWheelPicker.
-import { applyTintToMaterial, preloadTintTextures, disposeTintTextures } from '../utils/blockTint.js';
+import { applyTintToMaterial, applyNeonColor, applySmoothColor, isSmoothBlock, getAuraMaterialFor, preloadTintTextures, disposeTintTextures } from '../utils/blockTint.js';
 import { clampBlockScale, syncBlockTextureTiling, snapshotScaleDragStart, clearScaleDragStart } from '../utils/blockScale.js';
 import {
   DEFAULT_SCALE_MODE, normalizeScaleMode, SCALE_MODE_LABEL,
@@ -13286,17 +13286,23 @@ Now you can apply Displacement for detailed effect.`);
             // FIX: pakai toggleTool() supaya perilakunya SAMA dengan tool lain.
             toggleTool('property');
           } else if (toolName === 'paint') {
-            // Phase 48: Keybinds '3' — ALWAYS buka modal (infinite), bukan first-time only.
-            // Klik tombol manual (kursor) tetap first-time only — jangan diubah.
-            // Hanya keybinds yang always buka modal setiap kali ditekan.
-            // Set tool paint active (SET, bukan toggle) supaya tidak toggle OFF saat tekan '3' lagi.
+            // ── FIX BUG (2026-10-01, laporan user) ──
+            // DULU (Phase 48): keybind '3' SELALU buka modal ("infinite") →
+            // setelah user set warna (Confirm), spam '3' buka modal TERUS.
+            // User mau: '3' = FIRST-TIME ONLY (sama seperti klik TOMBOL);
+            // buka modal lagi HANYA lewat gerigi/gear di tombol Paint.
+            // Terukur: Cancel → paintCustomColor tetap null → '3' buka lagi (BENAR);
+            //           Confirm → paintCustomColor terisi → '3' TIDAK buka (FIX).
+            // Tool tetap di-SET (bukan toggle) supaya '3' tidak mematikan paint.
             setTool('paint');
-            setColorPicker({
-              targetMeshes: null,
-              hex: paintCustomColorRef.current || colorRef.current,
-              originalHex: paintCustomColorRef.current || colorRef.current,
-              mode: 'picker',
-            });
+            if (!paintCustomColorRef.current) {
+              setColorPicker({
+                targetMeshes: null,
+                hex: paintCustomColorRef.current || colorRef.current,
+                originalHex: paintCustomColorRef.current || colorRef.current,
+                mode: 'picker',
+              });
+            }
           } else {
             toggleTool(toolName);
           }
@@ -14119,27 +14125,37 @@ Now you can apply Displacement for detailed effect.`);
           const applyPaint = (mesh) => {
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
             const slug = (mesh.userData && mesh.userData.blockSlug) || null;
+            const isGlow = mats.some(m => m && m.userData && m.userData.isGlowBlock);
             mats.forEach(m => {
               if (!m) return;
-              // FIX (temuan Claude): block neon (isGlowBlock) di-skip —
-              // mengecat color (hitam) dgn warna lain + emissive merah =
-              // campuran aneh; neon mempertahankan identitas glow-nya.
-              if (m.userData && m.userData.isGlowBlock) return;
-              // ── Phase 88 (2026-10-01): TEKSTUR BERWARNA (bukan buang tekstur) ──
-              // DULU: `m.map = null` → block jadi permukaan MULUS warna rata
-              // (serat kayu/bata hilang) = keluhan user. SEKARANG: tekstur
-              // NEUTRAL (grayscale dari dataset 5-warna user) di-TINT warna
-              // user → warna bebas (ColorWheelPicker) + tekstur TETAP UTUH.
-              // PBR (roughness/metalness/envMap/emissive) TIDAK disentuh:
-              // glass tetap transparan, gold tetap kilau. Neon di-skip di atas.
-              // Block TANPA slug (kubus polos era lama) → fallback warna polos.
+              // ── Phase 89 (2026-10-01, permintaan user): NEON BISA DIWARNAI ──
+              // DULU neon di-skip total (tidak bisa diwarnai sama sekali).
+              // SEKARANG: warna user masuk ke EMISSIVE (badan neon = flat
+              // self-illumination) + AURA ikut warna → warna menyeluruh &
+              // universal (merah=merah, ungu=ungu, dst).
+              if (m.userData && m.userData.isGlowBlock) {
+                applyNeonColor(THREE, m, color);
+                return;
+              }
+              // ── Tekstur BERWARNA (Phase 88) + block mulus/glass (Phase 89) ──
               if (slug) {
-                const ok = applyTintToMaterial(THREE, m, slug, color);
-                if (!ok && m.color) m.color.set(color); // tekstur belum siap → warna polos dulu
+                if (isSmoothBlock(slug)) {
+                  // Block MULUS (glass/metal/gold/plastic/ice): warna RATA +
+                  // PBR disesuaikan (glass transparan merata, gold kilau lembut,
+                  // metal tetap kusam) → bersih, tanpa artefak tekstur.
+                  applySmoothColor(THREE, m, slug, color);
+                } else {
+                  const ok = applyTintToMaterial(THREE, m, slug, color);
+                  if (!ok && m.color) m.color.set(color); // tekstur belum siap → warna polos dulu
+                }
               } else if (m.color) {
                 m.color.set(color);
               }
             });
+            // NEON: aura ikut warna user (sprite child).
+            if (isGlow && mesh.userData && mesh.userData.__glow) {
+              try { mesh.userData.__glow.material = getAuraMaterialFor(THREE, color); } catch (e) {}
+            }
           };
           // Paint blok yang diklik
           applyPaint(hit);
@@ -15206,11 +15222,15 @@ Now you can apply Displacement for detailed effect.`);
         let mat;
         if (s.blockSlug) {
           mat = makeBlockMaterial(THREE, s.blockSlug);
-          // Phase 88: kalau block pernah DICAT, pasang kembali tekstur
-          // berwarnanya (grayscale × warna tersimpan). Tanpa ini, undo/redo
-          // mengembalikan block ke tekstur ASLI (warna paint hilang).
+          // Phase 88/89: kalau block pernah DICAT, pulihkan warnanya.
+          // Neon (glow) → emissive berwarna; lainnya → tekstur berwarna.
           if (s.paintColor) {
-            try { applyTintToMaterial(THREE, mat, s.blockSlug, s.paintColor); } catch (e) {}
+            try {
+              const isGlowMat = !!(mat.userData && mat.userData.isGlowBlock);
+              if (isGlowMat) applyNeonColor(THREE, mat, s.paintColor);
+              else if (isSmoothBlock(s.blockSlug)) applySmoothColor(THREE, mat, s.blockSlug, s.paintColor);
+              else applyTintToMaterial(THREE, mat, s.blockSlug, s.paintColor);
+            } catch (e) {}
           }
         } else {
           mat = new THREE.MeshStandardMaterial({

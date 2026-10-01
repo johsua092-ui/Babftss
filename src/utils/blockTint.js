@@ -220,9 +220,122 @@ export function applyTintToMaterial(THREE, mat, slug, hex) {
   return false;
 }
 
+/**
+ * Terapkan WARNA ke material block NEON (glow): emissive + aura sprite ikut
+ * warna user → warna menyeluruh & universal (permintaan user 2026-10-01:
+ * "warna auto di sekujur tubuh block neon juga ikut berubah").
+ * Bukan tekstur (neon = flat emissive) — jadi tint tidak berlaku; cukup ganti
+ * emissive + aura, lalu simpan userData.paintColor untuk undo/redo.
+ */
+export function applyNeonColor(THREE, mat, hex) {
+  if (!mat) return;
+  const col = new THREE.Color(hex);
+  if (mat.color) mat.color.set(0x000000);   // badan tetap hitam (flat, hanya emissive)
+  if (mat.emissive) mat.emissive.copy(col);
+  mat.toneMapped = false;                    // warna murni (ACES merusak saturasi)
+  mat.needsUpdate = true;
+  mat.userData = mat.userData || {};
+  mat.userData.paintColor = hex;
+}
+
+/**
+ * AURA BERWARNA untuk neon yang dicat (permintaan user 2026-10-01).
+ * Aura default (merah, di blockMaterials.js) TIDAK disentuh — fungsi ini hanya
+ * membuat aura BARU berwarna user. Tekstur = gradient radial PUTIH (r=g=b) →
+ * material.color = hex → glow berwarna murni. Material di-cache PER-WARNA
+ * (block sewarna share — aman; beda warna beda material).
+ */
+let _whiteAuraTex = null;
+const _auraMatCache = new Map();
+
+function getWhiteAuraTexture(THREE) {
+  if (_whiteAuraTex) return _whiteAuraTex;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0.0, 'rgba(255,255,255,0.85)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(0.65, 'rgba(255,255,255,0.15)');
+  grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  _whiteAuraTex = new THREE.CanvasTexture(canvas);
+  _whiteAuraTex.colorSpace = THREE.SRGBColorSpace;
+  return _whiteAuraTex;
+}
+
+export function getAuraMaterialFor(THREE, hex) {
+  const key = String(hex || '#ff0000').toLowerCase();
+  if (_auraMatCache.has(key)) return _auraMatCache.get(key);
+  const mat = new THREE.SpriteMaterial({
+    map: getWhiteAuraTexture(THREE),
+    color: new THREE.Color(key),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+    fog: false,
+  });
+  _auraMatCache.set(key, mat);
+  return mat;
+}
+
+/**
+ * BLOCK MULUS (tanpa pola bermakna): glass, metal, gold, plastic, ice.
+ * Permukaannya rata (stddev luminance < 6, terukur) — "teksturnya" sebenarnya
+ * adalah kilau/transparansi (PBR), BUKAN pola. Kalau di-tint pakai tekstur,
+ * malah memunculkan artefak (vignette glass gelap, gradasi gold bergerigi).
+ * SOLUSI (permintaan user 2026-10-01: metal "hampir mulus", gold "mengkilap",
+ * glass "merata sekujur"): pakai WARNA RATA + PERTAHANKAN PBR → bersih.
+ */
+export const SMOOTH_BLOCKS = ['glass_block', 'metal_block', 'gold_block', 'plastic_block', 'ice_block'];
+export function isSmoothBlock(slug) { return SMOOTH_BLOCKS.indexOf(slug) >= 0; }
+
+/**
+ * Warna RATA untuk block mulus + PBR disesuaikan agar sesuai permintaan user:
+ *  - glass : semi-transparan penuh (opacity 0.62, depthWrite false) — warna
+ *            merata sekujur tubuh.
+ *  - gold  : kilau lembut (metalness 0.45, roughness 0.22) → "warna mengkilap"
+ *            tanpa pantulan panel yang bergerigi.
+ *  - metal : tetap kusam (roughness 0.35) → "hampir mulus seperti plastik".
+ * PBR lain TIDAK disentuh; unpainted TIDAK terpengaruh.
+ */
+export function applySmoothColor(THREE, mat, slug, hex) {
+  if (!mat) return;
+  mat.map = null;                     // warna rata (tanpa tekstur → bersih)
+  if (mat.color) mat.color.set(hex);
+  mat.userData = mat.userData || {};
+  mat.userData.paintColor = hex;
+  if (slug === 'glass_block') {
+    mat.transparent = true;
+    mat.opacity = 0.62;
+    mat.depthWrite = false;
+  }
+  if (slug === 'gold_block') {
+    // GOLD = logam mulia BERKILAU (permintaan user: "merah=merah mengkilap,
+    // ungu=ungu mengkilap"). Kalibrasi (2026-10-01, 2 iterasi terukur):
+    // metalness 0.72 (iterasi-1) → TERLALU metalik: refleksi env gelap × warna
+    // user = terlihat datar (vision 3/10 "tidak mengkilap"). 
+    // SOLUSI: metalness 0.45 (masih ada diffuse color) + roughness 0.06
+    // (highlight SPEKULAR TAJAM dari lampu directional) + envMapIntensity 2.2
+    // (refleksi lingkungan kuat) → kilau nyata + warna user tetap hidup.
+    mat.metalness = 0.45;
+    mat.roughness = 0.06;
+    if (mat.envMapIntensity != null) mat.envMapIntensity = 2.2;
+    if (mat.emissiveIntensity != null) mat.emissiveIntensity = 0;
+  }
+  mat.needsUpdate = true;
+}
+
 /** Bersihkan cache (dispose) — dipanggil saat unmount scene. */
 export function disposeTintTextures() {
   _cache.forEach((t) => { try { if (t && t.dispose) t.dispose(); } catch (e) {} });
   _cache.clear();
+  _auraMatCache.forEach((m) => { try { if (m && m.dispose) m.dispose(); } catch (e) {} });
+  _auraMatCache.clear();
+  try { if (_whiteAuraTex && _whiteAuraTex.dispose) _whiteAuraTex.dispose(); } catch (e) {}
+  _whiteAuraTex = null;
   _loader = null;
 }
