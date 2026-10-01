@@ -1013,6 +1013,13 @@ export default function BlockSimulator3D({ setPage }) {
   // frameQuat, startScale, startPos }. Diisi saat 'dragging-changed' start,
   // dibaca/diterapkan di objectChange. null = mode 2side (jalur lama apa adanya).
   const scaleDragRef = useRef(null);
+  // ── FIX (2026-10-01, laporan user): snapshot frame drag MOVE ──
+  // { frameQuat (quaternion block saat drag mulai), startPos }. Dipakai supaya
+  // snap move terjadi di RUANG LOKAL block saat arrowMatch ON (gizmo mengikuti
+  // rotasi) — BUKAN grid dunia. Tanpa ini, drag diagonal dunia ditabrak balik
+  // ke grid dunia = BERGETAR ("nabrak grid tak terlihat"). Diisi di
+  // 'dragging-changed' true, dibersihkan di false.
+  const moveDragRef = useRef(null);
 
   // ─ Phase 73: TRIGGER modal "Scale Mode" (permintaan user) ──
   // Muncul tiap kali user meng-equip tool 'scale' SELAMA belum dikonfirmasi.
@@ -13056,6 +13063,22 @@ Now you can apply Displacement for detailed effect.`);
             scaleDragRef.current = null;     // gagal snapshot → aman: jalur lama
           }
         }
+        // ── FIX (2026-10-01, laporan user "geser bergetar seperti nabrak grid
+        // tak terlihat saat arrow match rotation ON"): SNAPSHOT FRAME DRAG MOVE.
+        // Snapshot quaternion block + posisi awal saat drag mulai → dipakai
+        // objectChange untuk snap di RUANG LOKAL block (sumbu block) saat
+        // space='local'. Block TIDAK dirotasi saat move (hanya translate) →
+        // quaternion konstan selama drag, jadi aman di-snapshot sekali.
+        if (transformControls.getMode() === 'translate' && transformControls.object) {
+          const mo = transformControls.object;
+          mo.updateMatrixWorld(true);
+          const _mq = new THREE.Quaternion();
+          mo.getWorldQuaternion(_mq);
+          moveDragRef.current = {
+            frameQuat: _mq.clone(),
+            startPos: { x: mo.position.x, y: mo.position.y, z: mo.position.z },
+          };
+        }
       } else {
         // FIX AD-c (bab 70): bersihkan acuan world setelah drag selesai.
         if (transformControls.object && transformControls.object.children) {
@@ -13066,8 +13089,8 @@ Now you can apply Displacement for detailed effect.`);
             }
           });
         }
-        // Drag SELESAI — bersihkan snapshot drag scale (clamp berikutnya
-        // di place/restore pakai fallback tanda nilai saat itu).
+        // Drag SELESAI — bersihkan snapshot drag scale + move.
+        moveDragRef.current = null;
         if (transformControls.getMode() === 'scale' && transformControls.object) {
           // Phase 88: HAPUS RE-APPLY applyGeometryOffset (Phase 87).
           // Geometry translate dihapus. Pivot tetap di tengah geometry.
@@ -13196,9 +13219,44 @@ Now you can apply Displacement for detailed effect.`);
         if (_stepStuds && _stepStuds > 0) {
           const stepUnit = _stepStuds / STUDS_PER_BLOCK;   // 2 studs -> 1 unit
           if (stepUnit > 0) {
-            obj.position.x = Math.round(obj.position.x / stepUnit) * stepUnit;
-            obj.position.z = Math.round(obj.position.z / stepUnit) * stepUnit;
-            obj.position.y = Math.round(obj.position.y / stepUnit) * stepUnit;
+            // ── FIX (2026-10-01, laporan user): snap di RUANG LOKAL block ──
+            // MASALAH: dulu snap memaksa grid DUNIA (obj.position.x/z/y =
+            // round(...)). Saat arrowMatch ON (gizmo mengikuti rotasi block),
+            // drag sumbu LOKAL menghasilkan gerak diagonal DUNIA → ditabrak
+            // balik ke grid dunia = BERGETAR ("nabrak grid tak terlihat").
+            // FIX: snap di RUANG LOKAL block (sumbu block): geser lokal =
+            // (pos - startPos) di-rotate ke lokal → round per-sumbu → balik ke
+            // dunia. Saat space='world' (arrowMatch OFF) → tetap snap dunia.
+            const _md = moveDragRef.current;
+            if (arrowMatchRef.current && _md && _md.frameQuat && _md.startPos) {
+              const _q = _md.frameQuat;                 // quaternion block (frame lokal)
+              const _qInv = _q.clone().invert();
+              // delta dunia dari titik awal drag
+              const _dW = new THREE.Vector3(
+                obj.position.x - _md.startPos.x,
+                obj.position.y - _md.startPos.y,
+                obj.position.z - _md.startPos.z,
+              );
+              // delta LOKAL (sumbu block)
+              const _dL = _dW.clone().applyQuaternion(_qInv);
+              // snap per-sumbu LOKAL (block TIDAK dirotasi saat move → frameQuat
+              // konstan, jadi round lokal konsisten = tidak bergetar)
+              _dL.x = Math.round(_dL.x / stepUnit) * stepUnit;
+              _dL.y = Math.round(_dL.y / stepUnit) * stepUnit;
+              _dL.z = Math.round(_dL.z / stepUnit) * stepUnit;
+              // kembali ke dunia
+              const _dW2 = _dL.clone().applyQuaternion(_q);
+              obj.position.set(
+                _md.startPos.x + _dW2.x,
+                _md.startPos.y + _dW2.y,
+                _md.startPos.z + _dW2.z,
+              );
+            } else {
+              // arrowMatch OFF → snap grid DUNIA (perilaku lama)
+              obj.position.x = Math.round(obj.position.x / stepUnit) * stepUnit;
+              obj.position.z = Math.round(obj.position.z / stepUnit) * stepUnit;
+              obj.position.y = Math.round(obj.position.y / stepUnit) * stepUnit;
+            }
           }
         } else {
           // studs = 0 → bebas (tidak di-snap)
