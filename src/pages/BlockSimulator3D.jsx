@@ -13258,10 +13258,28 @@ Now you can apply Displacement for detailed effect.`);
                 _md.startPos.z + _dW2.z,
               );
             } else {
-              // arrowMatch OFF → snap grid DUNIA (perilaku lama)
-              obj.position.x = Math.round(obj.position.x / stepUnit) * stepUnit;
-              obj.position.z = Math.round(obj.position.z / stepUnit) * stepUnit;
-              obj.position.y = Math.round(obj.position.y / stepUnit) * stepUnit;
+              // ── FIX (2026-10-01, laporan user: "geser samping block NAIK
+              // sendiri, geser atas nambah ke atas") ──
+              // MASALAH: snap ABSOLUT (round(pos/step)*step) memaksa sumbu yang
+              // TIDAK digeser ikut melompat. Block di tanah y=0.5 → round(0.5)=1
+              // → NAIK 0.5 TANPA SEBAB saat geser samping. Terukur: y 0.5→1.0.
+              // FIX: DELTA-BASED relatif titik awal drag (startPos) → sumbu yang
+              // tidak digeser delta=0 → TIDAK bergerak; sumbu yang digeser snap
+              // ke kelipatan step relatif start. Cell-center (X.5) TETAP benar
+              // (startPos block place = X.5 → x = X.5 + round(dx)*1 = X.5).
+              const _md2 = moveDragRef.current;
+              if (_md2 && _md2.startPos) {
+                const s = _md2.startPos;
+                const sx = s.x + Math.round((obj.position.x - s.x) / stepUnit) * stepUnit;
+                const sy = s.y + Math.round((obj.position.y - s.y) / stepUnit) * stepUnit;
+                const sz = s.z + Math.round((obj.position.z - s.z) / stepUnit) * stepUnit;
+                obj.position.set(sx, sy, sz);
+              } else {
+                // fallback (tanpa snapshot): perilaku lama (absolut)
+                obj.position.x = Math.round(obj.position.x / stepUnit) * stepUnit;
+                obj.position.z = Math.round(obj.position.z / stepUnit) * stepUnit;
+                obj.position.y = Math.round(obj.position.y / stepUnit) * stepUnit;
+              }
             }
           }
         } else {
