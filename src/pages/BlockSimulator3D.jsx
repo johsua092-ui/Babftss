@@ -13286,16 +13286,15 @@ Now you can apply Displacement for detailed effect.`);
             // FIX: pakai toggleTool() supaya perilakunya SAMA dengan tool lain.
             toggleTool('property');
           } else if (toolName === 'paint') {
-            // ── FIX BUG (2026-10-01, laporan user) ──
-            // DULU (Phase 48): keybind '3' SELALU buka modal ("infinite") →
-            // setelah user set warna (Confirm), spam '3' buka modal TERUS.
-            // User mau: '3' = FIRST-TIME ONLY (sama seperti klik TOMBOL);
-            // buka modal lagi HANYA lewat gerigi/gear di tombol Paint.
-            // Terukur: Cancel → paintCustomColor tetap null → '3' buka lagi (BENAR);
-            //           Confirm → paintCustomColor terisi → '3' TIDAK buka (FIX).
-            // Tool tetap di-SET (bukan toggle) supaya '3' tidak mematikan paint.
-            setTool('paint');
-            if (!paintCustomColorRef.current) {
+            // ── FIX (2026-10-01, laporan user) ──
+            // Dulu keybind '3' pakai setTool() → TIDAK PERNAH unequip (tekan 2x
+            // tetap terpakai), BEDA dari tool lain yang toggle. Sekarang pakai
+            // toggleTool('paint') = EQUIP/UNEQUIP seperti tool lain.
+            // Modal dibuka HANYA saat PERTAMA equip (belum ada warna) — SAMA
+            // seperti klik TOMBOL panel. Pakai REF (bukan state) karena handler
+            // ini closure (state basi).
+            // ⚠️ HANYA cabang 'paint' ini yang diubah — tool lain TIDAK disentuh.
+            if (toolRef.current !== 'paint' && !paintCustomColorRef.current) {
               setColorPicker({
                 targetMeshes: null,
                 hex: paintCustomColorRef.current || colorRef.current,
@@ -13303,6 +13302,7 @@ Now you can apply Displacement for detailed effect.`);
                 mode: 'picker',
               });
             }
+            toggleTool('paint');
           } else {
             toggleTool(toolName);
           }
@@ -14184,7 +14184,9 @@ Now you can apply Displacement for detailed effect.`);
             if (isGlow && mesh.userData && mesh.userData.__glow) {
               try {
                 mesh.userData.__glow.material = getAuraMaterialFor(THREE, color);
-                mesh.userData.__glow.scale.setScalar(3.4);   // 2.6 → 3.4 (menutup penuh)
+                // Kurangi efek glow 50% (permintaan user 2026-10-01: "ukuran
+                // glownya kegedean, kurangi 50%"). Scale 3.4 → 1.7 (=50%).
+                mesh.userData.__glow.scale.setScalar(1.7);
               } catch (e) {}
             }
           };
