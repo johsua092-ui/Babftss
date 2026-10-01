@@ -14179,9 +14179,13 @@ Now you can apply Displacement for detailed effect.`);
                 m.color.set(color);
               }
             });
-            // NEON: aura ikut warna user (sprite child).
+            // NEON: aura ikut warna user + DIPERBESAR supaya menutup penuh
+            // (permintaan user: "nutupnya gak full, ada yang bolong").
             if (isGlow && mesh.userData && mesh.userData.__glow) {
-              try { mesh.userData.__glow.material = getAuraMaterialFor(THREE, color); } catch (e) {}
+              try {
+                mesh.userData.__glow.material = getAuraMaterialFor(THREE, color);
+                mesh.userData.__glow.scale.setScalar(3.4);   // 2.6 → 3.4 (menutup penuh)
+              } catch (e) {}
             }
           };
           // Paint blok yang diklik

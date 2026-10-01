@@ -263,15 +263,17 @@ function getWhiteAuraTexture(THREE) {
   const canvas = document.createElement('canvas');
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext('2d');
-  // Aura = gradient radial PENUH, IDENTIK dgn aura asli neon (blockMaterials.js)
-  // supaya neon dicat tampil SAMA seperti neon asli (yang vision nilai "utuh"),
-  // hanya warnanya berbeda. (Percobaan "cincin" 2026-10-01 SALAH: cincin berada
-  // di dalam block → tampak seperti bingkai di badan.)
+  // Aura = gradient radial yang DIPENUHI (permintaan user 2026-10-01: "nutupnya
+  // gak full, ada yang bolong"). Gradient lama (0.85→0.45→0.15) terlalu cepat
+  // redup → sudut/bidang block yang jauh dari pusat dapat alpha kecil = "bolong".
+  // Sekarang alpha DITAHAN tinggi sampai ~0.55 sprite (menutupi seluruh siluet
+  // block dari sudut mana pun), baru meredup halus di tepi luar.
   const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  grad.addColorStop(0.0, 'rgba(255,255,255,0.85)');
-  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
-  grad.addColorStop(0.65, 'rgba(255,255,255,0.15)');
-  grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.00, 'rgba(255,255,255,0.62)');
+  grad.addColorStop(0.50, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(0.72, 'rgba(255,255,255,0.26)');
+  grad.addColorStop(0.90, 'rgba(255,255,255,0.07)');
+  grad.addColorStop(1.00, 'rgba(255,255,255,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
   _whiteAuraTex = new THREE.CanvasTexture(canvas);
@@ -288,6 +290,12 @@ export function getAuraMaterialFor(THREE, hex) {
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    // FIX (2026-10-01, laporan user "aura nutupnya gak full, ada yang bolong
+    // saat dilihat dari sudut lain"): dengan depthTest true, bagian aura yang
+    // berada di belakang permukaan block ter-CLIP → saat kamera diorbit, clip
+    // bergeser = "bolong-bolong". depthTest FALSE → aura menutup PENUH dari
+    // sudut mana pun (user suka efek menutupinya, minta full).
+    depthTest: false,
     toneMapped: false,
     fog: false,
   });

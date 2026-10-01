@@ -258,6 +258,12 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   const [dragging, setDragging] = useState(false);
   const [hexInput, setHexInput] = useState(hex.toUpperCase());
   const [hexFocused, setHexFocused] = useState(false);
+  // ── HUE 360 = 0 (permintaan user 2026-10-01) ──
+  // Slider hue boleh sampai 360. 360 = 0 (merah) TAPI tampilan tetap "360" dan
+  // thumb tetap di ATAS (tidak teleport ke bawah). Caranya: simpan nilai slider
+  // TERPISAH dari hue hasil-parsing warna (parsing selalu memberi 0 utk merah,
+  // jadi tak bisa membedakan 0 vs 360).
+  const [hueDisplay, setHueDisplay] = useState(null); // null = turunkan dari hue
 
   // Sync hexInput when parent hex changes and input is not focused
   useEffect(() => {
@@ -266,6 +272,12 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
 
   const [r0, g0, b0] = hexToRgb(hex);
   const [hue, sat, val] = rgbToHsv(r0, g0, b0);
+  // HUE 360 = 0: hueDisplay menyimpan nilai slider hue (bisa 360). Direset HANYA
+  // oleh sumber NON-hue (wheel / RGB / hex) — lihat clearHueDisplay() di bawah.
+  // JANGAN reset lewat efek [hex] (race: nilai 360 bisa ke-reset oleh perubahan
+  // hue antara saat drag cepat — terbukti non-deterministik).
+  const hueShown = hueDisplay == null ? Math.round(hue) : hueDisplay;
+  const clearHueDisplay = useCallback(() => { setHueDisplay(null); }, []);
   const WHEEL_SIZE = 280;
   const wheelR = WHEEL_SIZE / 2;
 
@@ -339,6 +351,7 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
     if (angle < 0) angle += 360;
     angle = (angle + 90) % 360;
     const newSat = Math.min(1, dist / wheelR);
+    setHueDisplay(null);   // wheel = sumber NON-hue → reset tampilan hue
     onChange(hsvToHex(angle, newSat, val));
   }, [wheelR, val, onChange]);
 
@@ -365,16 +378,19 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   // jadi warna tak berubah & thumb tak bergerak. Solusi: kalau saturasi ~0,
   // naikkan ke penuh saat drag Color → warna langsung terlihat & thumb bergerak.
   const onHueChange = useCallback(v => {
+    // HUE 360 = 0: izinkan sampai 360; warna dihitung dari (v % 360) → 360 = merah.
+    const vv = Math.max(0, Math.min(360, Math.round(v)));
+    setHueDisplay(vv);
     const s = sat > 0.01 ? sat : 1.0;
-    onChange(hsvToHex(Math.min(v, 359), s, val));
+    onChange(hsvToHex(vv % 360, s, val));
   }, [sat, val, onChange]);
-  const onSatChange = useCallback(v => onChange(hsvToHex(hue, v / 100, val)), [hue, val, onChange]);
-  const onValChange = useCallback(v => onChange(hsvToHex(hue, sat, v / 100)), [hue, sat, onChange]);
+  const onSatChange = useCallback(v => { clearHueDisplay(); onChange(hsvToHex(hue, v / 100, val)); }, [hue, val, onChange, clearHueDisplay]);
+  const onValChange = useCallback(v => { clearHueDisplay(); onChange(hsvToHex(hue, sat, v / 100)); }, [hue, sat, onChange, clearHueDisplay]);
 
   // ── RGB slider handlers ──
-  const onRChange = useCallback(v => { const [_, g, b] = hexToRgb(hex); onChange(rgbToHex(v, g, b)); }, [hex, onChange]);
-  const onGChange = useCallback(v => { const [r, _, b] = hexToRgb(hex); onChange(rgbToHex(r, v, b)); }, [hex, onChange]);
-  const onBChange = useCallback(v => { const [r, g, _] = hexToRgb(hex); onChange(rgbToHex(r, g, v)); }, [hex, onChange]);
+  const onRChange = useCallback(v => { clearHueDisplay(); const [_, g, b] = hexToRgb(hex); onChange(rgbToHex(v, g, b)); }, [hex, onChange, clearHueDisplay]);
+  const onGChange = useCallback(v => { clearHueDisplay(); const [r, _, b] = hexToRgb(hex); onChange(rgbToHex(r, v, b)); }, [hex, onChange, clearHueDisplay]);
+  const onBChange = useCallback(v => { clearHueDisplay(); const [r, g, _] = hexToRgb(hex); onChange(rgbToHex(r, g, v)); }, [hex, onChange, clearHueDisplay]);
 
   // HSV input change handlers (accept typed values)
   const onHueInput = useCallback(v => { const n = parseInt(v); if (!isNaN(n)) onHueChange(Math.max(0, Math.min(360, n))); }, [onHueChange]);
@@ -418,8 +434,8 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
         />
         {/* HSV vertical sliders */}
         <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
-          <VSlider gradient={hueGrad} value={Math.round(hue)} maxVal={360} onChange={onHueChange}
-            label="Color" inputVal={Math.round(hue)} onInputChange={onHueInput} />
+          <VSlider gradient={hueGrad} value={hueShown} maxVal={360} onChange={onHueChange}
+            label="Color" inputVal={hueShown} onInputChange={onHueInput} />
           <VSlider gradient={satGrad} value={Math.round(sat * 100)} maxVal={100} onChange={onSatChange}
             label="Saturation" inputVal={Math.round(sat * 100)} onInputChange={onSatInput} />
           <VSlider gradient={valGrad} value={Math.round(val * 100)} maxVal={100} onChange={onValChange}
