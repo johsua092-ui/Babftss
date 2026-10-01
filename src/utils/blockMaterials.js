@@ -278,6 +278,12 @@ export function makeBlockMaterial(THREE, slug) {
     roughness: def.roughness,
     metalness: def.metalness,
     ...(def.transparent ? { transparent: true, opacity: def.opacity } : {}),
+    // FIX BUG 4 (2026-10-01, laporan user: "transparansi glass berubah
+    // tergantung sudut pandang"): material transparan TANPA depthWrite:false
+    // menulis ke depth buffer → wajah yang sudah dirender menutupi wajah lain
+    // secara tidak konsisten antar sudut. depthWrite:false → semua wajah
+    // ter-blend merata dari sudut mana pun (kaca konsisten).
+    ...(def.transparent ? { depthWrite: false } : {}),
     ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity } : {}),
   });
   if (!tex.userData.isReady && tex.userData.onReady) {
@@ -413,6 +419,10 @@ export function attachBlockGlow(THREE, block) {
   if (!block || !block.isMesh) return null;
   if (block.userData.__glow) return block.userData.__glow;
   const sprite = new THREE.Sprite(getAuraSpriteMaterial(THREE));
+  // CATATAN (2026-10-01): percobaan depthTest=false MALAH bikin aura menimpa
+  // badan block (vision: "dua block bertumpuk"). DIBATALKAN — aura tetap
+  // depthTest true (default) → aura ter-occlude block, hanya memancar di luar
+  // siluet. depthWrite false sudah cukup (dari getAuraSpriteMaterial).
   sprite.scale.setScalar(2.6);
   sprite.raycast = () => {};
   sprite.renderOrder = 3;

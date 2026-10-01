@@ -13324,26 +13324,50 @@ Now you can apply Displacement for detailed effect.`);
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    // ── FIX BUG 2 (2026-10-01, laporan user: "kamera jalan sendiri tanpa henti") ──
+    // Kalau tab/window kehilangan fokus saat tombol (W/A/S/D/Q/E/Shift) masih
+    // DITEKAN, event 'keyup' TIDAK pernah terkirim → keys tetap `true` selamanya
+    // → kamera terus bergerak walau user tidak menyentuh apa pun. FIX: reset
+    // SEMUA tombol saat window blur (dan saat tab disembunyikan) → kamera HANYA
+    // bergerak kalau user BENAR-BENAR menekan tombol.
+    const resetKeys = () => {
+      keys.w = false; keys.a = false; keys.s = false; keys.d = false;
+      keys.q = false; keys.e = false; keys.shift = false;
+    };
+    const onBlur = () => resetKeys();
+    const onVisibility = () => { if (document.hidden) resetKeys(); };
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onVisibility);
 
-    // Fly camera constants
-    const FLY_SPEED = 0.3;      // normal speed (units per frame at 60fps)
-    const FLY_SPRINT = 0.8;     // sprint speed (Shift held)
+    // Fly camera constants — FIX BUG 3 (2026-10-01): dulu per-FRAME (0.3/0.8)
+    // → kaku & bergantung FPS. Sekarang per-DETIK (unit/detik) + velocity
+    // di-haluskan (lerp) → gerak MULUS seperti spectator Minecraft.
+    // TOMBOL TIDAK BERUBAH (W/A/S/D/Q/E/Shift tetap sama).
+    const FLY_SPEED = 18;       // unit/detik (normal)
+    const FLY_SPRINT = 48;      // unit/detik (Shift)
     const CAM_MIN_Y = 1.0;      // camera tidak bisa go below this (prevent go through ground)
+    // Velocity yang di-haluskan (accel/decel lembut) — persisten antar frame.
+    const flyVel = new THREE.Vector3();
 
     // Animation loop — render every frame + apply fly camera movement
     const animate = () => {
       threeRef.current.animationId = requestAnimationFrame(animate);
 
-      // ── Fly camera movement ──
-      // WASD moves camera relative to its current facing direction (horizontal only,
-      // biar tidak naik/turun saat look up/down — Q/E handles vertical).
+      // ── Fly camera movement (FIX BUG 3: mulus + delta-time) ──
+      // WASD gerak horizontal relatif arah hadap kamera; Q/E vertikal.
+      // Kecepatan per-DETIK + velocity di-haluskan → tidak kaku, tidak
+      // bergantung FPS. Hanya bergerak kalau ada tombol yang DITEKAN (BUG 2).
+      const _nowT = performance.now();
+      const _dt = threeRef.current._camPrevT
+        ? Math.min(0.05, (_nowT - threeRef.current._camPrevT) / 1000)
+        : 0.016;
+      threeRef.current._camPrevT = _nowT;
+
       const speed = keys.shift ? FLY_SPRINT : FLY_SPEED;
-      // Get camera forward direction (horizontal only — zero out Y, normalize)
       const forward = new THREE.Vector3();
       camera.getWorldDirection(forward);
       forward.y = 0;
       forward.normalize();
-      // Right = forward × up
       const right = new THREE.Vector3();
       right.crossVectors(forward, camera.up).normalize();
 
@@ -13355,14 +13379,17 @@ Now you can apply Displacement for detailed effect.`);
       if (keys.e) move.y += 1;  // E = up (world Y+)
       if (keys.q) move.y -= 1;  // Q = down (world Y-)
 
-      if (move.lengthSq() > 0) {
-        move.normalize().multiplyScalar(speed);
-        // Move BOTH camera AND orbit target — supaya orbit tetap konsisten
-        // (kalau cuma camera yang gerak, target tetap di tempat → orbit aneh).
-        camera.position.add(move);
-        controls.target.add(move);
-        // Clamp camera Y — prevent go through ground
+      if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+      // Haluskan velocity (accel/decel lembut = rasa spectator).
+      flyVel.lerp(move, 1 - Math.pow(0.0016, _dt));
+
+      if (flyVel.lengthSq() > 0.0001) {
+        const step = flyVel.clone().multiplyScalar(_dt);
+        camera.position.add(step);
+        controls.target.add(step);
         if (camera.position.y < CAM_MIN_Y) camera.position.y = CAM_MIN_Y;
+      } else {
+        flyVel.set(0, 0, 0);
       }
 
       controls.update();
@@ -16257,6 +16284,8 @@ Now you can apply Displacement for detailed effect.`);
       }
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('keydown', onUndoKeyDown);
       renderer.domElement.removeEventListener('mousemove', onCanvasMouseMove);
       renderer.domElement.removeEventListener('mouseleave', onCanvasMouseLeave);
@@ -24914,7 +24943,9 @@ Now you can apply Displacement for detailed effect.`);
             boxShadow: '0 20px 60px rgba(6, 182, 212, 0.3), 0 0 100px rgba(6, 182, 212, 0.15)',
             fontFamily: 'Inter, sans-serif',
             animation: 'slideUp 0.3s ease-out',
-          }}>
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
               marginBottom: 20,
@@ -25029,7 +25060,6 @@ Now you can apply Displacement for detailed effect.`);
             alignItems: 'center',
             justifyContent: 'center',
           }}
-          onClick={() => setColorPicker(null)}
         >
           {/* Mobile scroll arrows — FIXED on screen, outside modal */}
           {typeof window !== 'undefined' && window.innerWidth < 768 && (

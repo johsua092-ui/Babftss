@@ -230,8 +230,17 @@ export function applyTintToMaterial(THREE, mat, slug, hex) {
 export function applyNeonColor(THREE, mat, hex) {
   if (!mat) return;
   const col = new THREE.Color(hex);
-  if (mat.color) mat.color.set(0x000000);   // badan tetap hitam (flat, hanya emissive)
+  // ⚠️ JEBAKAN (2026-10-01, laporan user "neon seperti 2 block dalam 1,
+  // makin jelas saat kamera digeser, terutama warna TERANG"): body neon =
+  // MeshStandardMaterial color HITAM + emissive. Dua hal yang WAJIB:
+  // (1) color TETAP HITAM — kalau putih, sisi gelap (rusuk) ikut terang →
+  //     muncul "bingkai terang" mengelilingi panel = terlihat 2 block.
+  // (2) emissiveIntensity DITURUNKAN ke 1.0 (asli 1.4) — kalau terlalu terang
+  //     (overexposed), shading antar-sisi rata & aura tampak sebagai lapisan
+  //     terpisah = ilusi 2 block. Terukur (vision): terang 4/10 vs gelap 6/10.
+  if (mat.color) mat.color.set(0x000000);
   if (mat.emissive) mat.emissive.copy(col);
+  mat.emissiveIntensity = 1.0;
   mat.toneMapped = false;                    // warna murni (ACES merusak saturasi)
   mat.needsUpdate = true;
   mat.userData = mat.userData || {};
@@ -254,6 +263,10 @@ function getWhiteAuraTexture(THREE) {
   const canvas = document.createElement('canvas');
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext('2d');
+  // Aura = gradient radial PENUH, IDENTIK dgn aura asli neon (blockMaterials.js)
+  // supaya neon dicat tampil SAMA seperti neon asli (yang vision nilai "utuh"),
+  // hanya warnanya berbeda. (Percobaan "cincin" 2026-10-01 SALAH: cincin berada
+  // di dalam block → tampak seperti bingkai di badan.)
   const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   grad.addColorStop(0.0, 'rgba(255,255,255,0.85)');
   grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
@@ -312,6 +325,10 @@ export function applySmoothColor(THREE, mat, slug, hex) {
     mat.transparent = true;
     mat.opacity = 0.62;
     mat.depthWrite = false;
+    // CATATAN (2026-10-01): percobaan DoubleSide MEMUNCULKAN garis triangulasi
+    // di permukaan (vision: "transparansi tidak rata, ada garis diagonal").
+    // DIBATALKAN — tetap FrontSide (default). Transparansi glass ditangani
+    // lewat opacity + depthWrite false.
   }
   if (slug === 'gold_block') {
     // GOLD = logam mulia BERKILAU (permintaan user: "merah=merah mengkilap,

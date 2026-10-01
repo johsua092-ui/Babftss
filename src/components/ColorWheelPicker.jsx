@@ -360,7 +360,14 @@ export default function ColorWheelPicker({ hex, onChange, onPickColor }) {
   // round-trip via hex selalu mengembalikan h=0 → thumb "pentok ke atas"
   // TELEPORT ke bawah (terukur: 360→#ff0000→h=0→thumb fraksi 1.00).
   // 359° → #ff0004 → round-trip h≈359 → thumb diam di atas.
-  const onHueChange = useCallback(v => onChange(hsvToHex(Math.min(v, 359), sat, val)), [sat, val, onChange]);
+  // FIX (2026-10-01, laporan user): geser slider "Color" (hue) terasa "terkunci"
+  // saat warna masih PUTIH (saturasi 0) — karena hue TIDAK terlihat pada putih,
+  // jadi warna tak berubah & thumb tak bergerak. Solusi: kalau saturasi ~0,
+  // naikkan ke penuh saat drag Color → warna langsung terlihat & thumb bergerak.
+  const onHueChange = useCallback(v => {
+    const s = sat > 0.01 ? sat : 1.0;
+    onChange(hsvToHex(Math.min(v, 359), s, val));
+  }, [sat, val, onChange]);
   const onSatChange = useCallback(v => onChange(hsvToHex(hue, v / 100, val)), [hue, val, onChange]);
   const onValChange = useCallback(v => onChange(hsvToHex(hue, sat, v / 100)), [hue, sat, onChange]);
 
