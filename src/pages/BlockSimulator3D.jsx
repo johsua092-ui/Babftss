@@ -1023,6 +1023,13 @@ export default function BlockSimulator3D({ setPage }) {
   // ke grid dunia = BERGETAR ("nabrak grid tak terlihat"). Diisi di
   // 'dragging-changed' true, dibersihkan di false.
   const moveDragRef = useRef(null);
+  // ── FIX (2026-10-01, laporan user): CLONE/MIRROR MULTI-SELECT (select box) ──
+  // Ghost clone/mirror HANYA dibuat utk 1 block (useEffect[tool]). Saat user
+  // select box (multi) dgn tool clone/mirror, gizmo attach ke selectionGroup
+  // TANPA ghost → finalisasi drag (butuh cloneGhost) DILEWATI → drag hanya
+  // MENGGESER block asli (bukan menggandakan). Snapshot di sini; finalisasi di
+  // drag-END akan MENDUPLIKASI block & MENGEMBALIKAN aslinya.
+  const multiCloneDragRef = useRef(null);
 
   // ─ Phase 73: TRIGGER modal "Scale Mode" (permintaan user) ──
   // Muncul tiap kali user meng-equip tool 'scale' SELAMA belum dikonfirmasi.
@@ -13081,6 +13088,34 @@ Now you can apply Displacement for detailed effect.`);
             frameQuat: _mq.clone(),
             startPos: { x: mo.position.x, y: mo.position.y, z: mo.position.z },
           };
+          // ── FIX (2026-10-01, laporan user): CLONE/MIRROR MULTI-SELECT ──
+          // Saat tool clone/mirror & gizmo attach ke selectionGroup (select box
+          // multi) — TIDAK ada ghost (ghost hanya utk 1 block). Snapshot posisi
+          // LOKAL tiap block sekarang; finalisasi di drag-END akan menduplikasi
+          // block & mengembalikan yang asli ke posisi ini.
+          if ((toolRef.current === 'clone' || toolRef.current === 'mirror')
+              && mo.isGroup && !threeRef.current.cloneGhost) {
+            const _items = [];
+            mo.children.slice().forEach((ch) => {
+              if (ch.userData && ch.userData.isBlock) {
+                // Simpan WORLD transform (bukan lokal) — supaya restore SETELAH
+                // dissolveSelectionGroup (yang mengubah child.position jadi world)
+                // tetap benar. Group identitas (tanpa rot/scale) → world = groupPos+local.
+                ch.updateMatrixWorld(true);
+                const _wp = new THREE.Vector3(), _wq = new THREE.Quaternion(), _ws = new THREE.Vector3();
+                ch.matrixWorld.decompose(_wp, _wq, _ws);
+                _items.push({ src: ch, worldPos: _wp.clone(), worldQuat: _wq.clone(), worldScale: _ws.clone() });
+              }
+            });
+            multiCloneDragRef.current = {
+              group: mo,
+              items: _items,
+              startGroupPos: mo.position.clone(),
+              tool: toolRef.current,
+            };
+          } else {
+            multiCloneDragRef.current = null;
+          }
         }
       } else {
         // FIX AD-c (bab 70): bersihkan acuan world setelah drag selesai.
@@ -13104,6 +13139,75 @@ Now you can apply Displacement for detailed effect.`);
           scaleDragRef.current = null;   // Phase 73: bersihkan snapshot mode
           if (transformControls.object.userData) {
             delete transformControls.object.userData.__snapLastStep;
+          }
+        }
+        // ── FIX (2026-10-01, laporan user): CLONE/MIRROR MULTI-SELECT (select box) ──
+        // Gizmo attach ke selectionGroup TANPA ghost → finalisasi ghost (di bawah)
+        // DILEWATI → drag hanya menggeser block asli. FIX: DUPLIKASI block &
+        // KEMBALIKAN yang asli ke posisi semula (block baru = hasil gandaan).
+        if (multiCloneDragRef.current && threeRef.current.selectedBlocks) {
+          const _mc = multiCloneDragRef.current;
+          multiCloneDragRef.current = null;
+          const _tool = _mc.tool;
+          const _g = _mc.group;
+          const _moved = _mc.startGroupPos && _g
+            ? Math.hypot(_g.position.x - _mc.startGroupPos.x, _g.position.y - _mc.startGroupPos.y, _g.position.z - _mc.startGroupPos.z) > 0.02
+            : false;
+          if (_moved && threeRef.current.dissolveSelectionGroup) {
+            try {
+              threeRef.current.dissolveSelectionGroup();   // bongkar group, pulihkan world transform
+              const _newBlocks = [];
+              _mc.items.forEach((it) => {
+                const src = it.src;
+                // 1) kembalikan block ASLI ke WORLD transform awal
+                //    (setelah dissolve, src.position = WORLD → restore pakai world)
+                src.position.copy(it.worldPos);
+                src.quaternion.copy(it.worldQuat);
+                src.scale.copy(it.worldScale);
+                src.updateMatrixWorld(true);
+                // 2) buat DUPLIKAT di posisi HASIL drag (src sekarang sudah di posisi baru)
+                const dupGeo = src.geometry.clone();
+                const dupMat = Array.isArray(src.material) ? src.material.map(m => m.clone()) : src.material.clone();
+                const dup = new THREE.Mesh(dupGeo, dupMat);
+                dup.position.copy(src.position);
+                if (_tool === 'mirror') {
+                  // mirror kaca sejati (det −1), posisi persis source
+                  applyMirrorGlass(dup, src);
+                } else {
+                  dup.quaternion.copy(src.quaternion);
+                  dup.scale.copy(src.scale);
+                }
+                dup.castShadow = true;
+                dup.receiveShadow = true;
+                dup.userData.isBlock = true;
+                dup.userData.importedGlb = !!src.userData.importedGlb;
+                dup.userData.blockSlug = src.userData.blockSlug || null;
+                dup.userData.paintColor = (src.material && src.material.userData && src.material.userData.paintColor) || null;
+                if (dup.userData.blockSlug && getBlockDef(dup.userData.blockSlug).glow) {
+                  attachBlockGlow(THREE, dup);
+                }
+                scene.add(dup);
+                threeRef.current.blocks.push(dup);
+                try { registerBlockMeta(THREE, dup); } catch (e) {}
+                _newBlocks.push(dup);
+              });
+              // Seleksi = block hasil gandaan
+              threeRef.current.selectedBlocks.clear();
+              _newBlocks.forEach(b => {
+                threeRef.current.selectedBlocks.add(b);
+                try { setBlockHighlightRef.current(b, 'select'); } catch (e) {}
+              });
+              if (threeRef.current.attachGizmoToSelection) {
+                try { threeRef.current.attachGizmoToSelection(); } catch (e) {}
+              }
+              setBlockCount(threeRef.current.blocks.length);
+              if (threeRef.current.recordHistory) threeRef.current.recordHistory();
+              try { refreshAllMeta(THREE, threeRef.current.blocks); } catch (e) {}
+              toast.success(_tool === 'mirror' ? 'Block di-mirror (multi-select)' : 'Block di-clone (multi-select)');
+            } catch (e) { /* jangan gagalkan */ }
+          } else if (!_moved && threeRef.current.attachGizmoToSelection) {
+            // klik tanpa geser → tidak menggandakan; kembalikan gizmo ke selection
+            try { threeRef.current.attachGizmoToSelection(); } catch (e) {}
           }
         }
         // Drag SELESAI.
