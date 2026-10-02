@@ -13174,23 +13174,30 @@ Now you can apply Displacement for detailed effect.`);
               const _newBlocks = [];
               _mc.items.forEach((it) => {
                 const src = it.src;
-                // 1) kembalikan block ASLI ke WORLD transform awal
-                //    (setelah dissolve, src.position = WORLD → restore pakai world)
-                src.position.copy(it.worldPos);
-                src.quaternion.copy(it.worldQuat);
-                src.scale.copy(it.worldScale);
+                // ── FIX (2026-10-01, laporan user: "geser muncul 2, tapi saat
+                // dilepas block TIDAK ADA + gizmo balik ke block asli") ──
+                // URUTAN SALAH: dulu ASLI dikembalikan DULU ke posisi awal, baru
+                // duplikat dibuat dari src.position → src SUDAH di posisi awal →
+                // duplikat dibuat MENUMPUK di posisi ASAL, posisi geser kosong
+                // ("block tidak ada"), gizmo kembali ke asli.
+                // FIX: BUAT DUPLIKAT DULU di posisi HASIL GESER (src masih di posisi
+                // baru hasil drag), BARU kembalikan ASLI ke world semula.
+                // 1) buat DUPLIKAT di posisi HASIL drag (src.position = hasil drag)
                 src.updateMatrixWorld(true);
-                // 2) buat DUPLIKAT di posisi HASIL drag (src sekarang sudah di posisi baru)
+                const _dw = new THREE.Vector3(), _dq = new THREE.Quaternion(), _ds = new THREE.Vector3();
+                src.matrixWorld.decompose(_dw, _dq, _ds);
                 const dupGeo = src.geometry.clone();
                 const dupMat = Array.isArray(src.material) ? src.material.map(m => m.clone()) : src.material.clone();
                 const dup = new THREE.Mesh(dupGeo, dupMat);
-                dup.position.copy(src.position);
+                dup.position.copy(_dw);
                 if (_tool === 'mirror') {
                   // mirror kaca sejati (det −1), posisi persis source
-                  applyMirrorGlass(dup, src);
+                  dup.quaternion.copy(_dq);
+                  dup.scale.copy(_ds);
+                  applyMirrorGlass(dup, { position: _dw, quaternion: _dq, scale: _ds });
                 } else {
-                  dup.quaternion.copy(src.quaternion);
-                  dup.scale.copy(src.scale);
+                  dup.quaternion.copy(_dq);
+                  dup.scale.copy(_ds);
                 }
                 dup.castShadow = true;
                 dup.receiveShadow = true;
@@ -13205,6 +13212,11 @@ Now you can apply Displacement for detailed effect.`);
                 threeRef.current.blocks.push(dup);
                 try { registerBlockMeta(THREE, dup); } catch (e) {}
                 _newBlocks.push(dup);
+                // 2) BARU kembalikan block ASLI ke WORLD transform awal
+                src.position.copy(it.worldPos);
+                src.quaternion.copy(it.worldQuat);
+                src.scale.copy(it.worldScale);
+                src.updateMatrixWorld(true);
               });
               // Seleksi = block hasil gandaan
               threeRef.current.selectedBlocks.clear();
