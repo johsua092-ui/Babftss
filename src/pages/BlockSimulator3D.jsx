@@ -13113,13 +13113,20 @@ Now you can apply Displacement for detailed effect.`);
             const _items = [];
             mo.children.slice().forEach((ch) => {
               if (ch.userData && ch.userData.isBlock) {
-                // Simpan WORLD transform (bukan lokal) — supaya restore SETELAH
-                // dissolveSelectionGroup (yang mengubah child.position jadi world)
-                // tetap benar. Group identitas (tanpa rot/scale) → world = groupPos+local.
+                // Snapshot posisi LOKAL + rotasi/scale. Posisi DUPLIKAT nanti
+                // dihitung = worldPos + deltaGroup (delta = pergeseran group),
+                // TIDAK bergantung perilaku dissolve (yang terbukti tak jadi
+                // world di harness). Robust.
                 ch.updateMatrixWorld(true);
-                const _wp = new THREE.Vector3(), _wq = new THREE.Quaternion(), _ws = new THREE.Vector3();
-                ch.matrixWorld.decompose(_wp, _wq, _ws);
-                _items.push({ src: ch, worldPos: _wp.clone(), worldQuat: _wq.clone(), worldScale: _ws.clone() });
+                const _wp = new THREE.Vector3();
+                ch.getWorldPosition(_wp);
+                _items.push({
+                  src: ch,
+                  worldPos: _wp.clone(),
+                  localPos: ch.position.clone(),
+                  quat: ch.quaternion.clone(),
+                  scale: ch.scale.clone(),
+                });
               }
             });
             multiCloneDragRef.current = {
@@ -13170,34 +13177,33 @@ Now you can apply Displacement for detailed effect.`);
             : false;
           if (_moved && threeRef.current.dissolveSelectionGroup) {
             try {
-              threeRef.current.dissolveSelectionGroup();   // bongkar group, pulihkan world transform
+              // Delta pergeseran group (dari snapshot) — dipakai utk posisi duplikat.
+              const _delta = _g && _mc.startGroupPos
+                ? { x: _g.position.x - _mc.startGroupPos.x, y: _g.position.y - _mc.startGroupPos.y, z: _g.position.z - _mc.startGroupPos.z }
+                : { x: 0, y: 0, z: 0 };
+              threeRef.current.dissolveSelectionGroup();   // bongkar group
               const _newBlocks = [];
               _mc.items.forEach((it) => {
                 const src = it.src;
-                // ── FIX (2026-10-01, laporan user: "geser muncul 2, tapi saat
-                // dilepas block TIDAK ADA + gizmo balik ke block asli") ──
-                // URUTAN SALAH: dulu ASLI dikembalikan DULU ke posisi awal, baru
-                // duplikat dibuat dari src.position → src SUDAH di posisi awal →
-                // duplikat dibuat MENUMPUK di posisi ASAL, posisi geser kosong
-                // ("block tidak ada"), gizmo kembali ke asli.
-                // FIX: BUAT DUPLIKAT DULU di posisi HASIL GESER (src masih di posisi
-                // baru hasil drag), BARU kembalikan ASLI ke world semula.
-                // 1) buat DUPLIKAT di posisi HASIL drag (src.position = hasil drag)
-                src.updateMatrixWorld(true);
-                const _dw = new THREE.Vector3(), _dq = new THREE.Quaternion(), _ds = new THREE.Vector3();
-                src.matrixWorld.decompose(_dw, _dq, _ds);
+                // ── FIX (2026-10-01): posisi duplikat = worldPos + deltaGroup. ──
+                // TERUKUR: src.position setelah dissolve TETAP LOKAL (bukan world) di
+                // harness → duplikat nyasar ke origin. Solusi robust: hitung dari
+                // snapshot worldPos + delta geser group (tidak bergantung dissolve).
+                const _px = it.worldPos.x + _delta.x;
+                const _py = it.worldPos.y + _delta.y;
+                const _pz = it.worldPos.z + _delta.z;
                 const dupGeo = src.geometry.clone();
                 const dupMat = Array.isArray(src.material) ? src.material.map(m => m.clone()) : src.material.clone();
                 const dup = new THREE.Mesh(dupGeo, dupMat);
-                dup.position.copy(_dw);
+                dup.position.set(_px, _py, _pz);
                 if (_tool === 'mirror') {
-                  // mirror kaca sejati (det −1), posisi persis source
-                  dup.quaternion.copy(_dq);
-                  dup.scale.copy(_ds);
-                  applyMirrorGlass(dup, { position: _dw, quaternion: _dq, scale: _ds });
+                  dup.quaternion.copy(it.quat);
+                  dup.scale.copy(it.scale);
+                  mirrorQuaternionX(dup.quaternion, it.quat);
+                  dup.scale.x = -dup.scale.x;
                 } else {
-                  dup.quaternion.copy(_dq);
-                  dup.scale.copy(_ds);
+                  dup.quaternion.copy(it.quat);
+                  dup.scale.copy(it.scale);
                 }
                 dup.castShadow = true;
                 dup.receiveShadow = true;
@@ -13212,10 +13218,12 @@ Now you can apply Displacement for detailed effect.`);
                 threeRef.current.blocks.push(dup);
                 try { registerBlockMeta(THREE, dup); } catch (e) {}
                 _newBlocks.push(dup);
-                // 2) BARU kembalikan block ASLI ke WORLD transform awal
+                // 2) BARU kembalikan block ASLI ke posisi/rotasi/scale AWAL
+                //    (setelah dissolve, block di SCENE → pakai WORLD position;
+                //     TERUKUR: localPos membuat asli nyasar dekat origin)
                 src.position.copy(it.worldPos);
-                src.quaternion.copy(it.worldQuat);
-                src.scale.copy(it.worldScale);
+                src.quaternion.copy(it.quat);
+                src.scale.copy(it.scale);
                 src.updateMatrixWorld(true);
               });
               // Seleksi = block hasil gandaan
