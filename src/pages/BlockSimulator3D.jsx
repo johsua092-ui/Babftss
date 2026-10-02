@@ -336,6 +336,28 @@ export default function BlockSimulator3D({ setPage }) {
   useEffect(() => { selectBoxRef.current = selectBoxEnabled; }, [selectBoxEnabled]);
   const colorRef = useRef('#ffffff'); // sinkron default putih (currentColor)
   useEffect(() => { toolRef.current = tool; }, [tool]);
+  // ── FIX (2026-10-01, FITUR KHUSUS PC): SHIFT = MULTI-SELECT MODE ──
+  // ⚠️ JEBAKAN TDZ (tertangkap via browser): `shiftHeld` HARUS dideklarasikan
+  // SEBELUM useEffect di bawah (baris ~343) — kalau di bawah = ReferenceError
+  // 'Cannot access shiftHeld before initialization' → HALAMAN BLANK.
+  // (verify_tdz.mjs TIDAK menangkap ini — hanya scan useEffect[tool].)
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const shiftHeldRef = useRef(false);
+  const SHIFT_MULTISELECT_TOOLS = ['scale', 'property', 'move', 'rotate', 'clone', 'mirror'];
+  const GIZMO_TOOLS = ['move', 'rotate', 'scale', 'clone', 'mirror'];
+  // ── FIX (2026-10-01, FITUR KHUSUS PC): efek SHIFT ditahan ──
+  // Saat Shift ditahan: (a) GIZMO disembunyikan (tools yg punya gizmo) + tidak
+  // bisa diklik, (b) Shift TIDAK memicu fly-camera (WASD speed-up) → user bebas
+  // multi-select. Lepas Shift → gizmo muncul kembali.
+  useEffect(() => {
+    const isPc = typeof window !== 'undefined' && window.innerWidth >= 768;
+    const hasGizmo = GIZMO_TOOLS.includes(tool);
+    const hide = isPc && shiftHeld && hasGizmo;
+    if (threeRef.current.setGizmoVisible) threeRef.current.setGizmoVisible(!hide);
+    // CATATAN: `keys` (fly-camera) ada di dalam useEffect(scene) — TIDAK bisa
+    // diakses di sini (ReferenceError). Gating fly-speed dilakukan di animate
+    // loop (lihat `const speed = ...` di dalam scene effect) via shiftHeldRef.
+  }, [shiftHeld, tool]);
 
   // ── FIX BUG 2 (laporan-bug-neon-block, 2026-09-11): SATU fungsi terpusat
   // untuk highlight/unhighlight emissive block. Sebelumnya logic ini
@@ -1045,6 +1067,8 @@ export default function BlockSimulator3D({ setPage }) {
   // MENGGESER block asli (bukan menggandakan). Snapshot di sini; finalisasi di
   // drag-END akan MENDUPLIKASI block & MENGEMBALIKAN aslinya.
   const multiCloneDragRef = useRef(null);
+  // (SHIFT multi-select state SUDAH dideklarasikan di atas — sebelum useEffect
+  //  [shiftHeld,tool] — untuk hindari TDZ. Lihat komentar di sana.)
 
   // ─ Phase 73: TRIGGER modal "Scale Mode" (permintaan user) ──
   // Muncul tiap kali user meng-equip tool 'scale' SELAMA belum dikonfirmasi.
@@ -12836,6 +12860,21 @@ Now you can apply Displacement for detailed effect.`);
     // scene.add(transformControls) TIDAK VALID — gizmo tidak masuk scene.
     // Harus pakai transformControls.getHelper() untuk dapat Object3D yang di-add ke scene.
     const transformControls = new TransformControls(camera, renderer.domElement);
+    // ── FIX (2026-10-01, FITUR KHUSUS PC): bungkus attach() supaya MENGHORMATI
+    // shift-hide. TransformControls.attach() men-set _root.visible=true (baris
+    // 806) → membatalkan penyembunyian gizmo saat Shift ditahan. Wrapper ini
+    // memaksa visible=false kalau shiftHeldRef aktif + tool punya gizmo.
+    const _origTcAttach = transformControls.attach.bind(transformControls);
+    transformControls.attach = function (obj) {
+      _origTcAttach(obj);
+      try {
+        const isPc = typeof window !== 'undefined' && window.innerWidth >= 768;
+        if (isPc && shiftHeldRef.current && GIZMO_TOOLS.includes(toolRef.current) && this._root) {
+          this._root.visible = false;
+        }
+      } catch (e) {}
+      return this;
+    };
     // v0.185: TransformControls auto-sizes berdasar jarak kamera, tapi untuk
     // mesh yang di-scale besar (20×), gizmo bisa terlalu kecil/njelimet.
     // Set size eksplisit supaya gizmo konsisten (besar dan mudah drag).
@@ -13525,7 +13564,7 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'd') keys.d = true;
       else if (k === 'q') keys.q = true;
       else if (k === 'e') keys.e = true;
-      else if (e.key === 'Shift') keys.shift = true;
+      else if (e.key === 'Shift') { keys.shift = true; if (!shiftHeldRef.current) { shiftHeldRef.current = true; setShiftHeld(true); } }
       // Phase 47, 2026-09-03: Tool keybinds (PC only, window.innerWidth >= 768).
       // 1=delete, 2=place, 3=paint, 4=binding, 5=scale, 6=property,
       // 7=move, 8=rotate, 9=clone, 0=mirror.
@@ -13594,7 +13633,7 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'd') keys.d = false;
       else if (k === 'q') keys.q = false;
       else if (k === 'e') keys.e = false;
-      else if (e.key === 'Shift') keys.shift = false;
+      else if (e.key === 'Shift') { keys.shift = false; if (shiftHeldRef.current) { shiftHeldRef.current = false; setShiftHeld(false); } }
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -13607,6 +13646,7 @@ Now you can apply Displacement for detailed effect.`);
     const resetKeys = () => {
       keys.w = false; keys.a = false; keys.s = false; keys.d = false;
       keys.q = false; keys.e = false; keys.shift = false;
+      if (shiftHeldRef.current) { shiftHeldRef.current = false; setShiftHeld(false); }  // FIX: reset shift saat blur
     };
     const onBlur = () => resetKeys();
     const onVisibility = () => { if (document.hidden) resetKeys(); };
@@ -13637,7 +13677,11 @@ Now you can apply Displacement for detailed effect.`);
         : 0.016;
       threeRef.current._camPrevT = _nowT;
 
-      const speed = keys.shift ? FLY_SPRINT : FLY_SPEED;
+      // FIX (2026-10-01): saat SHIFT ditahan utk multi-select (tool ber-gizmo di
+      // PC), JANGAN percepat fly-camera — supaya shift murni utk seleksi.
+      const _shiftForFly = keys.shift && !(typeof window !== 'undefined' && window.innerWidth >= 768
+        && shiftHeldRef.current && GIZMO_TOOLS.includes(toolRef.current));
+      const speed = _shiftForFly ? FLY_SPRINT : FLY_SPEED;
       const forward = new THREE.Vector3();
       camera.getWorldDirection(forward);
       forward.y = 0;
@@ -14510,6 +14554,25 @@ Now you can apply Displacement for detailed effect.`);
           }
         }
       } else if (currentTool === 'clone') {
+        // ── FIX (2026-10-01, FITUR PC SHIFT MULTI-SELECT): saat SHIFT ditahan,
+        // clone JANGAN buat ghost 1-block; lakukan TOGGLE SELECT (multi-select).
+        if (e.shiftKey && threeRef.current.shiftSelectActive) {
+          if (threeRef.current.cloneGhost) {
+            const _g = threeRef.current.cloneGhost;
+            scene.remove(_g);
+            threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== _g);
+            threeRef.current.selectedBlocks.delete(_g);   // buang ghost dari seleksi juga
+            try { unhighlightSelected(_g); } catch (e) {}
+            if (_g.geometry) _g.geometry.dispose();
+            if (Array.isArray(_g.material)) _g.material.forEach(m => m.dispose()); else if (_g.material) _g.material.dispose();
+            threeRef.current.cloneGhost = null;
+          }
+          const _sh = raycaster.intersectObjects(threeRef.current.blocks, true);
+          if (_sh.length > 0) {
+            toggleSelectBlock(_sh[0].object);
+            if (threeRef.current.attachGizmoToSelection) { try { threeRef.current.attachGizmoToSelection(); } catch (e) {} }
+          }
+        } else {
         // ── Phase 50 v4: CLONE pakai gizmo Move penuh (usulan tim) ──
         // Klik block → gizmo 6 panah muncul PERSIS seperti Move, block TIDAK
         // langsung di-clone. User klik-tahan 1 panah → drag → block baru
@@ -14572,7 +14635,27 @@ Now you can apply Displacement for detailed effect.`);
           highlightSelected(ghost);
           threeRef.current.selectedBlocks.add(ghost);
         }
+        }   // ── tutup `else` (shift-guard clone) ──
       } else if (currentTool === 'mirror') {
+        // ── FIX (2026-10-01, FITUR PC SHIFT MULTI-SELECT): saat SHIFT ditahan,
+        // mirror JANGAN buat ghost; lakukan TOGGLE SELECT.
+        if (e.shiftKey && threeRef.current.shiftSelectActive) {
+          if (threeRef.current.cloneGhost) {
+            const _g = threeRef.current.cloneGhost;
+            scene.remove(_g);
+            threeRef.current.blocks = threeRef.current.blocks.filter(b => b !== _g);
+            threeRef.current.selectedBlocks.delete(_g);   // buang ghost dari seleksi juga
+            try { unhighlightSelected(_g); } catch (e) {}
+            if (_g.geometry) _g.geometry.dispose();
+            if (Array.isArray(_g.material)) _g.material.forEach(m => m.dispose()); else if (_g.material) _g.material.dispose();
+            threeRef.current.cloneGhost = null;
+          }
+          const _sh = raycaster.intersectObjects(threeRef.current.blocks, true);
+          if (_sh.length > 0) {
+            toggleSelectBlock(_sh[0].object);
+            if (threeRef.current.attachGizmoToSelection) { try { threeRef.current.attachGizmoToSelection(); } catch (e) {} }
+          }
+        } else {
         // Mirror tool — klik block → duplikat yang di-FLIP di sumbu X (hardcode,
         // pilihan axis X/Y/Z sudah dihapus 2026-09-02 per request user — hanya
         // butuh 1 Mirror asli).
@@ -14639,6 +14722,7 @@ Now you can apply Displacement for detailed effect.`);
           highlightSelected(mirrorMesh);
           threeRef.current.selectedBlocks.add(mirrorMesh);
         }
+        }   // ── tutup `else` (shift-guard mirror) ──
       } else if (currentTool === 'object') {
         // Phase 18: Object Library — klik grid → taruh pre-built model.
         // Pakai raycaster ke ground/block, dapat posisi, lalu generateObject ke sana.
@@ -14690,7 +14774,7 @@ Now you can apply Displacement for detailed effect.`);
           normal.transformDirection(hit.object.matrixWorld);
           applyDecalAt(hit.point, normal);
         }
-      } else if (currentTool === 'move' || currentTool === 'rotate' || currentTool === 'scale' || currentTool === 'property') {
+      } else if (currentTool === 'move' || currentTool === 'rotate' || currentTool === 'scale' || currentTool === 'property' || currentTool === 'clone' || currentTool === 'mirror') {
         // Phase 5: Multi-select support.
         // - Click blok (no modifier): clear selection, select blok itu, attach gizmo.
         // - Shift+click: add to selection (multi-select). Gizmo attach ke blok terakhir.
@@ -14742,8 +14826,11 @@ Now you can apply Displacement for detailed effect.`);
 
         if (hit) {
           if (e.shiftKey) {
-            // Shift+click: add to selection
-            selectBlock(hit, true);
+            // ── FIX (2026-10-01, permintaan user): Shift+klik = TOGGLE ──
+            // Dulu "add to selection" saja → block yang sudah terpilih TIDAK
+            // bisa di-unselect. Sekarang TOGGLE: klik block terpilih = lepas,
+            // klik block belum = tambah. (Fitur PC: shift = multi-select mode.)
+            toggleSelectBlock(hit);
           } else if (e.ctrlKey || e.metaKey) {
             // Ctrl/Cmd+click: toggle
             toggleSelectBlock(hit);
@@ -16534,7 +16621,25 @@ Now you can apply Displacement for detailed effect.`);
     threeRef.current.exportGltf = exportGltf;
     threeRef.current.exportScene = exportScene;
 
+    // ── FIX (2026-10-01, FITUR KHUSUS PC): HIDE/SHOW GIZMO saat SHIFT ditahan ──
+    // Saat user TAHAN Shift: gizmo tools-yg-punya-gizmo DISEMBUNYIKAN (tidak
+    // terlihat + tidak bisa diklik) → user bebas shift multi-select/unselect.
+    // Lepas Shift → gizmo muncul lagi + bisa dipakai. Visibility = satu baris.
+    threeRef.current.setGizmoVisible = (visible) => {
+      try {
+        const tc = threeRef.current.transformControls;
+        if (!tc) return;
+        if (tc._root) tc._root.visible = visible;
+        // enabled=false → TransformControls pointerHover/Down/Move `return` awal
+        // (baris 1022/1037/...) → gizmo TIDAK BISA diklik sama sekali saat hidden.
+        tc.enabled = visible;
+      } catch (e) {}
+    };
+
     // ── SISTEM METADATA INTERNAL (underground) ──
+    // Penanda tool boleh shift-multiselect (dibaca click handler utk cabang
+    // clone/mirror — fallthrough ke jalur multi-select saat shift).
+    threeRef.current.shiftSelectActive = SHIFT_MULTISELECT_TOOLS;
     // API presisi untuk ENGINE (bukan UI user): baca posisi/rotasi/scale +
     // 6 arah sisi tiap objek. Tersembunyi dari user (tidak ada tombol).
     threeRef.current.getBlockMeta = (mesh, fresh) => (fresh ? computeBlockMetadata(THREE, mesh) : getBlockMeta(mesh));
