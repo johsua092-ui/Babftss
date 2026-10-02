@@ -663,7 +663,22 @@ export default function BlockSimulator3D({ setPage }) {
           && sourceBlock.userData.cloneGhost
           && threeRef.current.cloneGhost === sourceBlock;
 
-        if (!isLiveGhost) {
+        // ── FIX (2026-10-01, laporan user: "udah kepilih banyak block, malah
+        // milih 1 block aja untuk digandakan") ──
+        // MASALAH: saat masuk clone/mirror DENGAN MULTI-SELECT (select box),
+        // jalur di bawah MEMBONGKAR group + MEMBUAT ghost 1 block + MENGOSONGKAN
+        // seleksi (selectedBlocks.clear + add ghost) → seleksi 4 block jadi 1 →
+        // drag hanya menggandakan 1 block.
+        // FIX: kalau MULTI-SELECT (selectedBlocks.size > 1) → JANGAN sentuh
+        // seleksi/group/ghost. Jalur drag-END (multiCloneDragRef) yang menangani
+        // penggandaan SEMUA block terpilih. Pindah tool cukup setMode (di atas).
+        const _isMultiSelect = threeRef.current.selectedBlocks
+          && threeRef.current.selectedBlocks.size > 1;
+        if (_isMultiSelect) {
+          // biarkan group + seleksi utuh; gizmo tetap attach ke group.
+          console.log('[multi-select] clone/mirror: seleksi dipertahankan (' +
+            threeRef.current.selectedBlocks.size + ' block)');
+        } else if (!isLiveGhost) {
         tc.detach();
         
         // Phase 50 v10: Unhighlight source block SEBELUM auto-create ghost
