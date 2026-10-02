@@ -13944,9 +13944,18 @@ Now you can apply Displacement for detailed effect.`);
         const n = hit.face.normal.clone();
         n.transformDirection(hit.object.matrixWorld);
         const placePoint = hit.point.clone().add(n.multiplyScalar(0.5));
-        posX = snapV(placePoint.x);
-        posY = snapV(placePoint.y);
-        posZ = snapV(placePoint.z);
+        // ── FIX (2026-10-01, laporan user: "taruh di atas block → ada GAP 1 stud") ──
+        // MASALAH: snap ABSOLUT (round(v)) menghancurkan posisi yang sudah BENAR.
+        // Block A di lantai y=0.5 → atasnya 1.0. Klik muka atas → placePoint.y=1.5
+        // (posisi NEMPEL yang benar) → tapi round(1.5)=2 → block baru di y=2 →
+        // GAP 0.5 unit (=1 stud). Terukur.
+        // FIX: snap RELATIF ke posisi BLOCK SUMBER (hit.object) yang sudah
+        // ter-align → bertumpuk FLUSH (nempel). Tangensial ikut grid sumber.
+        const src = hit.object.position;
+        const snapRel = (v, s) => (_su > 0 ? s + Math.round((v - s) / _su) * _su : v);
+        posX = snapRel(placePoint.x, src.x);
+        posY = snapRel(placePoint.y, src.y);
+        posZ = snapRel(placePoint.z, src.z);
       }
       return { posX, posY, posZ };
     };
