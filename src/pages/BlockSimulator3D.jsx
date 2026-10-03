@@ -13256,6 +13256,7 @@ Now you can apply Displacement for detailed effect.`);
             try {
               if (_items.length && mo) {
                 const _col = TOOL_OUTLINE_COLORS[toolRef.current] || '#0096FF';
+                const _isMirror = (toolRef.current === 'mirror');
                 const _pg = new THREE.Group();
                 _pg.userData.__clonePreview = true;
                 _items.forEach((it) => {
@@ -13269,8 +13270,21 @@ Now you can apply Displacement for detailed effect.`);
                   // posisi LOKAL relatif group (SAMA seperti ch.position saat ini) —
                   // TIDAK dikompensasi → ikut bergerak bersama group = preview.
                   _line.position.copy(it.localPos);
-                  _line.quaternion.copy(ch.quaternion);
-                  _line.scale.copy(ch.scale);
+                  // ── FIX (2026-10-04, laporan user): OUTLINE MIRROR harus BERLAWANAN ──
+                  // JEBAKAN TERUKUR: outline mirror IDENTIK dengan clone
+                  // (Q=[0.42,0.693,0.485,0.329] det=+1 untuk keduanya) → user tidak
+                  // tahu sedang MIRROR. FIX: untuk MIRROR, konjugasi refleksi rotasi
+                  // (`mirrorQuaternionAxis`) + `scale[axis] = −scale[axis]` → det −1
+                  // = outline tampak "kaca" (berlawanan arah), sesuai maksud user.
+                  if (_isMirror) {
+                    const _ax = multiCloneDragRef.current.axisKey || 'x';
+                    mirrorQuaternionAxis(_line.quaternion, ch.quaternion, _ax);
+                    _line.scale.copy(ch.scale);
+                    _line.scale[_ax] = -_line.scale[_ax];
+                  } else {
+                    _line.quaternion.copy(ch.quaternion);
+                    _line.scale.copy(ch.scale);
+                  }
                   _line.renderOrder = 3;
                   _line.raycast = () => {};
                   _pg.add(_line);
@@ -13531,32 +13545,6 @@ Now you can apply Displacement for detailed effect.`);
     const onTransformObjectChange = () => {
       const obj = transformControls.object;
       if (!obj) return;
-      // temp var (module-level scope) untuk kompensasi block asal clone/mirror.
-      const _gqTmp = _cloneGqTmp;
-      const _tmpV = _cloneTmpV;
-      // ── FIX (2026-10-04, permintaan TESTER): BLOCK ASAL DIAM saat drag clone/mirror ──
-      // Saat tool clone/mirror & multi-select, gizmo menggerakkan selectionGroup.
-      // Kita KOMPENSASI posisi tiap block ASAL supaya tetap di posisi world
-      // semula → user melihat block asal DIAM (apa adanya), sementara OUTLINE
-      // (child group, warna tool) bergerak sebagai PREVIEW.
-      // DIHITUNG dari state NYATA tiap frame (idempoten, tidak menyimpan delta).
-      try {
-        const _mc = multiCloneDragRef.current;
-        if (_mc && _mc.previewGroup && obj === _mc.group
-            && (toolRef.current === 'clone' || toolRef.current === 'mirror')) {
-          const gq = _mc.group.quaternion;
-          const gqi = _gqTmp.copy(gq).invert();
-          const gp = _mc.group.position;
-          _mc.items.forEach((it) => {
-            const ch = it.src;
-            if (!ch) return;
-            // lokal = inv(groupQuat) · (worldAwal − groupPos)
-            _tmpV.copy(it.worldPos).sub(gp).applyQuaternion(gqi);
-            if (!ch.position.equals(_tmpV)) ch.position.copy(_tmpV);
-            ch.updateMatrixWorld(true);
-          });
-        }
-      } catch (e) { /* jangan gagalkan jalur lain */ }
       if (transformControls.getMode() === 'translate') {
         if (!snapMoveRef.current) return;
         // ── FIX AH (bab 74): STEP MOVE = nilai studs dari tombol "+" ──
@@ -14050,6 +14038,28 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         renderer.render(scene, camera);
       }
+      // ── FIX (2026-10-04, laporan user): BLOCK ASAL DIAM (clone/mirror multi) ──
+      // JEBAKAN TERUKUR: dikompensasi di `objectChange` (SEBELUM snap-move) → snap
+      // menggeser group setelahnya → block asal ikut bergeser = GETAR (terukur:
+      // groupPos −0.066 → 0.934 → 1.934; block asal world −0.365 → 0.3405 → 0.2057).
+      // FIX: kompensasi di RENDER LOOP = SETELAH semua transform (snap) selesai.
+      // Idempoten (dihitung dari state nyata tiap frame, bukan menambah delta).
+      try {
+        const _mc = multiCloneDragRef.current;
+        if (_mc && _mc.previewGroup && transformControls.dragging
+            && (toolRef.current === 'clone' || toolRef.current === 'mirror')) {
+          const gp = _mc.group.position;
+          const gqi = _cloneGqTmp.copy(_mc.group.quaternion).invert();
+          _mc.items.forEach((it) => {
+            const ch = it.src;
+            if (!ch) return;
+            // lokal = inv(groupQuat) · (worldAwal − groupPos)
+            _cloneTmpV.copy(it.worldPos).sub(gp).applyQuaternion(gqi);
+            if (!ch.position.equals(_cloneTmpV)) ch.position.copy(_cloneTmpV);
+          });
+          _mc.group.updateMatrixWorld(true);
+        }
+      } catch (e) {}
       // ── FITUR (2026-10-03): update GARIS BANTU MIRROR (invisible) ──
       // Tiap frame: hitung titik tengah (block asal ↔ block digeser) saat tool
       // mirror & sedang drag. Garis TETAP `visible=false` (user tidak melihat).
