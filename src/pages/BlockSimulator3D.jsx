@@ -13433,6 +13433,19 @@ Now you can apply Displacement for detailed effect.`);
             } catch (e) { /* jangan gagalkan */ }
           } else if (!_moved && threeRef.current.attachGizmoToSelection) {
             // klik tanpa geser → tidak menggandakan; kembalikan gizmo ke selection
+            // ── FIX (2026-10-04, laporan tester): OUTLINE WAJIB HILANG saat klik-tahan
+            // LEPAS tanpa geser. JEBAKAN: cleanup outline hanya ada di cabang `_moved`
+            // (geser) → cabang ini (tanpa geser) meninggalkan outline di layar.
+            try {
+              if (_mc.previewGroup) {
+                _mc.previewGroup.children.slice().forEach((c) => {
+                  try { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); } catch (e) {}
+                });
+                if (_mc.previewGroup.parent) _mc.previewGroup.parent.remove(_mc.previewGroup);
+                _mc.previewGroup = null;
+                _mc.previewLines = null;
+              }
+            } catch (e) {}
             try { threeRef.current.attachGizmoToSelection(); } catch (e) {}
           }
         }
