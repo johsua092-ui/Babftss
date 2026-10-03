@@ -77,17 +77,17 @@ export function mirrorQuaternionX(qOut, qIn) {
 export function mirrorQuaternionAxis(qOut, qIn, axis) {
   const a = (axis === 'y' || axis === 'z') ? axis : 'x';
   _m.makeRotationFromQuaternion(qIn);
-  const e = _m.elements; // column-major: e[col*4 + row]
-  // baris ke-a dan kolom ke-a dinegasi (diagonal dinegasi 2x = tetap)
+  const e = _m.elements; // COLUMN-MAJOR: (row r, col c) = e[c*4 + r]
+  // R' = S·R·S  →  negasi elemen (baris ke-a) DAN (kolom ke-a); diagonal tetap.
   if (a === 'x') {
-    e[1] = -e[1]; e[2] = -e[2];   // kolom 0
-    e[4] = -e[4]; e[8] = -e[8];   // baris 0
+    e[4] = -e[4]; e[8] = -e[8];   // baris 0: (0,1),(0,2)
+    e[1] = -e[1]; e[2] = -e[2];   // kolom 0: (1,0),(2,0)
   } else if (a === 'y') {
-    e[0] = -e[0]; e[2] = -e[2];   // kolom 1 (e01, e21)
-    e[5] = -e[5]; e[9] = -e[9];   // baris 1 (e10, e12)
+    e[1] = -e[1]; e[9] = -e[9];   // baris 1: (1,0),(1,2)
+    e[4] = -e[4]; e[6] = -e[6];   // kolom 1: (0,1),(2,1)
   } else {
-    e[0] = -e[0]; e[1] = -e[1];   // kolom 2 (e02, e12)
-    e[6] = -e[6]; e[7] = -e[7];   // baris 2 (e20, e21)
+    e[2] = -e[2]; e[6] = -e[6];   // baris 2: (2,0),(2,1)
+    e[8] = -e[8]; e[9] = -e[9];   // kolom 2: (0,2),(1,2)
   }
   return qOut.setFromRotationMatrix(_m);
 }
