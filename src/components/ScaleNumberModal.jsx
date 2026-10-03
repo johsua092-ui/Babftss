@@ -55,6 +55,80 @@ import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 
 const ACCENT = '#f59e0b';
 
+/* ── FITUR (2026-10-04, permintaan user): KOMPONEN PANEL OPSI PLACE ──
+   Toggle bergaya centang (bisa dicabut/diaktifkan) + input angka berlabel. */
+
+/** Toggle "centang" — kotak centang + label + deskripsi. */
+function PlaceToggle({ label, desc, checked, accent, onChange }) {
+  const rgb = hexToRgb(accent);
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12,
+        padding: '10px 12px', borderRadius: 10, textAlign: 'left',
+        backgroundColor: checked ? `rgba(${rgb},0.10)` : 'rgba(30,41,59,0.35)',
+        border: `1.5px solid ${checked ? accent : 'rgba(148,163,184,0.20)'}`,
+        cursor: 'pointer', transition: 'all 0.15s ease', width: '100%',
+      }}
+    >
+      <span style={{
+        width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: checked ? accent : 'transparent',
+        border: `1.5px solid ${checked ? accent : 'rgba(148,163,184,0.45)'}`,
+        color: '#0e1420', fontSize: 14, fontWeight: 900, lineHeight: 1,
+      }}>{checked ? '✓' : ''}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{
+          fontSize: 13, fontWeight: 700,
+          color: checked ? '#e2e8f0' : '#94a3b8',
+          fontFamily: 'Inter, sans-serif',
+        }}>{label}</span>
+        <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'Inter, sans-serif' }}>
+          {desc}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** Input angka berlabel (Move: / Rotation:) — commit saat blur/Enter. */
+function PlaceNumberInput({ label, unit, value, accent, accentRgb, onCommit }) {
+  const [txt, setTxt] = useState(() => String(value));
+  useEffect(() => { setTxt(String(value)); }, [value]);
+  const commit = () => {
+    const v = parseFloat(String(txt).replace(/,/g, '.'));
+    if (!isNaN(v) && isFinite(v) && v >= 0) onCommit && onCommit(v);
+    else setTxt(String(value));
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{
+        fontSize: 12, fontWeight: 700, color: '#94a3b8', minWidth: 66,
+        fontFamily: 'Orbitron, sans-serif', textTransform: 'uppercase', letterSpacing: '0.5px',
+      }}>{label}</span>
+      <input
+        type="text" inputMode="decimal" value={txt}
+        onChange={(e) => setTxt(e.target.value.replace(/,/g, '.'))}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+        style={{
+          flex: 1, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 8,
+          backgroundColor: 'rgba(30, 41, 59, 0.5)',
+          border: `1.5px solid rgba(${accentRgb},0.35)`,
+          color: '#e2e8f0', fontSize: 15, fontWeight: 700,
+          fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums', outline: 'none',
+        }}
+      />
+      <span style={{ fontSize: 11, color: '#64748b', minWidth: 42, fontFamily: 'Inter, sans-serif' }}>
+        {unit}
+      </span>
+    </div>
+  );
+}
+
 /** Hex (#rrggbb) -> "r,g,b" supaya bisa dipakai di rgba(...) dengan alpha. */
 function hexToRgb(hex) {
   const h = String(hex || '').replace('#', '');
@@ -95,9 +169,18 @@ export default function ScaleNumberModal({
   //          'Rotate Number' (degree) / 'Place Number'.
   Icon = Maximize,
   title = null,
+  // ── FITUR (2026-10-04, permintaan user): PANEL OPSI PLACE ──
+  // Kalau `placeOptions` diisi (object), modal ini berubah jadi PANEL OPSI PLACE:
+  // deskripsi lama DIHAPUS, diganti toggle Anchor Block / Match Rotation +
+  // input step Move / Rotation. Hanya dipakai tool 'place'.
+  placeOptions = null,
+  onPlaceOptionsChange = null,
 }) {
   const [input, setInput] = useState(() => String(value));
   const [closing, setClosing] = useState(false);
+  // FITUR (2026-10-04): mode PANEL OPSI PLACE (bukan input angka biasa).
+  const isPlace = !!placeOptions;
+  const po = placeOptions || {};
   // FIX AI (bab 75): turunan warna accent untuk rgba(...) — biar seluruh modal
   // ikut warna tool (Move biru tua, Clone biru langit, Mirror ungu).
   const accentRgb = hexToRgb(accent);
@@ -207,12 +290,17 @@ export default function ScaleNumberModal({
                 {title || (unit === 'degree' ? 'Rotate Number' : (label && label.indexOf('Place') === 0 ? 'Place Number' : 'Scale Number'))}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#94a3b8' }}>
-                Masukkan step {unit === 'degree' ? 'rotasi dalam degree' : 'dalam studs'} (0 = bebas, maks 3 desimal, koma → titik)
+                {isPlace ? 'Atur opsi penempatan block'
+                  : `Masukkan step ${unit === 'degree' ? 'rotasi dalam degree' : 'dalam studs'} (0 = bebas, maks 3 desimal, koma → titik)`}
               </p>
             </div>
           </div>
 
-          {/* Penjelasan singkat — fondasi matematika studs + behavior step */}
+          {/* Penjelasan singkat — fondasi matematika studs + behavior step.
+              ── FITUR (2026-10-04, permintaan user): untuk tool PLACE, deskripsi
+              LAMA (tentang studs/snap) DIHAPUS BERSIH → diganti PANEL OPSI PLACE
+              (Anchor Block / Match Rotation / Move / Rotation). ── */}
+          {isPlace ? null : (
           <p style={{
             margin: '0 0 18px 0', fontSize: 13, color: '#cbd5e1', lineHeight: 1.6,
           }}>
@@ -238,7 +326,52 @@ export default function ScaleNumberModal({
               </>
             )}
           </p>
+          )}
 
+          {/* ── FITUR (2026-10-04, permintaan user): PANEL OPSI PLACE ──
+              Menggantikan area input angka + tabel (deskripsi lama dihapus). */}
+          {isPlace ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
+              {/* Toggle 1: ANCHOR BLOCK — default TERcentang */}
+              <PlaceToggle
+                label="Anchor Block"
+                desc="Block yang ditaruh langsung terkunci (tidak jatuh)."
+                checked={!!po.anchor}
+                accent={accent}
+                onChange={(v) => onPlaceOptionsChange && onPlaceOptionsChange({ anchor: v })}
+              />
+              {/* Toggle 2: MATCH ROTATION — default TIDAK tercentang */}
+              <PlaceToggle
+                label="Match Rotation"
+                desc="Ghost menyesuaikan rotasi sisi block target (ikut miring)."
+                checked={!!po.matchRotation}
+                accent={accent}
+                onChange={(v) => onPlaceOptionsChange && onPlaceOptionsChange({ matchRotation: v })}
+              />
+              {/* Input step Move (studs) */}
+              <PlaceNumberInput
+                label="Move:"
+                unit="studs"
+                value={po.moveStuds}
+                accent={accent}
+                accentRgb={accentRgb}
+                onCommit={(v) => onPlaceOptionsChange && onPlaceOptionsChange({ moveStuds: v })}
+              />
+              {/* Input step Rotation (degree) — default 90 */}
+              <PlaceNumberInput
+                label="Rotation:"
+                unit="degree"
+                value={po.rotationDeg}
+                accent={accent}
+                accentRgb={accentRgb}
+                onCommit={(v) => onPlaceOptionsChange && onPlaceOptionsChange({ rotationDeg: v })}
+              />
+              <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>
+                Tekan <b style={{ color: accent }}>R</b> untuk memutar ghost sebesar nilai Rotation (PC).
+              </div>
+            </div>
+          ) : (
+          <>
           {/* ── INPUT FIELD — body utama modal ini ── */}
           <div style={{
             display: 'flex', flexDirection: 'column', gap: 8,
@@ -313,7 +446,9 @@ export default function ScaleNumberModal({
               FIX AI (bab 75): SELALU tampil (permintaan user: tabel ini harus
               ada di tombol "+" untuk SEMUA tool — Scale/Move/Clone/Mirror).
               Yang disembunyikan saat hideStudsPreview hanyalah baris hasil
-              konversi ("= scale factor / = block per step") — bukan tabel ini. */}
+              konversi ("= scale factor / = block per step") — bukan tabel ini.
+              FITUR (2026-10-04): DISEMBUNYIKAN untuk tool PLACE (diganti panel opsi). */}
+          {!isPlace && (
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
             gap: 6, marginBottom: 18,
@@ -345,6 +480,9 @@ export default function ScaleNumberModal({
               </div>
             ))}
           </div>
+          )}
+          </>
+          )}
 
           {/* Footer: Batal (outline) + Konfirmasi (solid amber).
               Sama persis dengan ScaleModeModal footer:
@@ -371,8 +509,9 @@ export default function ScaleNumberModal({
                 e.currentTarget.style.color = '#94a3b8';
               }}
             >
-              Batal
+              {isPlace ? 'Tutup' : 'Batal'}
             </button>
+            {!isPlace && (
             <button
               onClick={() => valid && finishClose(() => onConfirm && onConfirm(parsed))}
               disabled={!valid}
@@ -389,6 +528,7 @@ export default function ScaleNumberModal({
             >
               Konfirmasi
             </button>
+            )}
           </div>
         </div>
       </div>

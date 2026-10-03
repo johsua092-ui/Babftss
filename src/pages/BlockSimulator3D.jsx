@@ -976,6 +976,13 @@ export default function BlockSimulator3D({ setPage }) {
         threeRef.current.cloneGhost = null;
       } catch (e) { /* jangan ganggu toggleTool */ }
     }
+    // ── FITUR (2026-10-04, permintaan user): reset rotasi ghost saat PINDAH TOOL.
+    // Kalau tool akhir bukan 'place', ghost tidak dipakai → langkah rotasi direset
+    // supaya tidak nyangkut ke sesi place berikutnya.
+    if (finalTool !== 'place' && placeRotStepsRef.current !== 0) {
+      placeRotStepsRef.current = 0;
+      setPlaceRotSteps(0);
+    }
     return t === nextTool ? null : nextTool;
   });
   useEffect(() => { colorRef.current = currentColor; }, [currentColor]);
@@ -1059,6 +1066,33 @@ export default function BlockSimulator3D({ setPage }) {
   const [placeSnapStuds, setPlaceSnapStuds] = useState(2);
   const placeSnapStudsRef = useRef(2);
   useEffect(() => { placeSnapStudsRef.current = placeSnapStuds; }, [placeSnapStuds]);
+
+  // ══ FITUR (2026-10-04, permintaan user): PANEL "PLACE OPTIONS" ══
+  // 1. Anchor Block   — default TERcentang. Block yang ditaruh langsung terkunci.
+  //                     Kalau dimatikan → block baru `anchored=false` (JATUH kalau
+  //                     tidak bersandar pada block ber-anchor).
+  // 2. Match Rotation — default TIDAK tercentang. Kalau ON → ghost block menyesuaikan
+  //                     rotasi dengan SISI block target (ikut miring). Kalau OFF →
+  //                     ghost selalu tegak lurus (default lama).
+  // 3. Step "Move:"   — input studs (sama konsep dgn placeSnapStuds lama).
+  // 4. Step "Rotation:" — input degree (default 90). Dipakai keybind 'R' untuk
+  //                     memutar GHOST block per tekan (90° → 4 kali = 360°).
+  const [placeAnchorOn, setPlaceAnchorOn] = useState(true);
+  const placeAnchorOnRef = useRef(true);
+  useEffect(() => { placeAnchorOnRef.current = placeAnchorOn; }, [placeAnchorOn]);
+  const [placeMatchRotation, setPlaceMatchRotation] = useState(false);
+  const placeMatchRotationRef = useRef(false);
+  useEffect(() => { placeMatchRotationRef.current = placeMatchRotation; }, [placeMatchRotation]);
+  const [placeMoveStuds, setPlaceMoveStuds] = useState(2);
+  const placeMoveStudsRef = useRef(2);
+  useEffect(() => { placeMoveStudsRef.current = placeMoveStuds; }, [placeMoveStuds]);
+  const [placeRotationDeg, setPlaceRotationDeg] = useState(90);
+  const placeRotationDegRef = useRef(90);
+  useEffect(() => { placeRotationDegRef.current = placeRotationDeg; }, [placeRotationDeg]);
+  // Jumlah langkah rotasi ghost (dari keybind 'R'). Kelipatan placeRotationDeg.
+  const [placeRotSteps, setPlaceRotSteps] = useState(0);
+  const placeRotStepsRef = useRef(0);
+  useEffect(() => { placeRotStepsRef.current = placeRotSteps; }, [placeRotSteps]);
   // ── FIX AJ (bab 76): STEP ROTASI (DERAJAT) — khusus tool rotate ──
   // Permintaan user: "rotate pakai sistem pengukuran bernama DERAJAT, bukan
   // studs. Default 15." Step ini HANYA untuk rotate (tidak dibagi dengan
@@ -13730,6 +13764,20 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'q') keys.q = true;
       else if (k === 'e') keys.e = true;
       else if (e.key === 'Shift') { keys.shift = true; if (!shiftHeldRef.current) { shiftHeldRef.current = true; setShiftHeld(true); } }
+      // ── FITUR (2026-10-04, permintaan user): KEYBIND 'R' = ROTATE GHOST ──
+      // PC saja (>=768px). Tiap tekan R menambah 1 langkah rotasi (× placeRotationDeg,
+      // default 90°) pada GHOST block tool place. Ghost = penunjuk sudah berapa kali
+      // di-rotate. HANYA aktif saat tool = 'place'.
+      if (k === 'r' && typeof window !== 'undefined' && window.innerWidth >= 768
+          && toolRef.current === 'place') {
+        e.preventDefault();
+        const next = (placeRotStepsRef.current || 0) + 1;
+        setPlaceRotSteps(next);
+        placeRotStepsRef.current = next;
+        try { if (threeRef.current.applyGhostRotation) threeRef.current.applyGhostRotation(); } catch (err) {}
+        const _deg = placeRotationDegRef.current || 90;
+        toast.success(`Ghost diputar ${next * _deg}°`);
+      }
       // Phase 47, 2026-09-03: Tool keybinds (PC only, window.innerWidth >= 768).
       // 1=delete, 2=place, 3=paint, 4=binding, 5=scale, 6=property,
       // 7=move, 8=rotate, 9=clone, 0=mirror.
@@ -14371,6 +14419,20 @@ Now you can apply Displacement for detailed effect.`);
     );
     ghostEdges.visible = false;
     scene.add(ghostEdges);
+    // ── FITUR (2026-10-04, permintaan user): ROTASI GHOST dari keybind 'R' ──
+    // `placeRotSteps` = berapa kali user menekan R. Rotasi = steps × placeRotationDeg
+    // (default 90°). Ghost block inilah "penunjuk" sudah berapa kali di-rotate.
+    threeRef.current.applyGhostRotation = () => {
+      const steps = placeRotStepsRef.current || 0;
+      const deg = placeRotationDegRef.current || 90;
+      const rad = THREE.MathUtils.degToRad(steps * deg);
+      ghostBlock.rotation.set(0, rad, 0);
+      ghostEdges.rotation.set(0, rad, 0);
+    };
+    threeRef.current.applyGhostRotation();
+    // Expose ghost untuk verifikasi (test harness).
+    threeRef.current.ghostBlock = ghostBlock;
+    threeRef.current.ghostEdges = ghostEdges;
 
     // Symmetry mirror plane — visual indicator (semi-transparent pink plane)
     // menunjukkan di mana plane cermin virtual. Muncul saat Symmetry Mode ON.
@@ -14578,9 +14640,20 @@ Now you can apply Displacement for detailed effect.`);
           mat.userData.blockType = blockDef.slug; // identitas jenis utk undo/snapshot
           const block = new THREE.Mesh(geo, mat);
           block.position.set(posX, posY, posZ);
+          // ── FITUR (2026-10-04, permintaan user): block ditaruh dengan ROTASI
+          // GHOST (dari keybind 'R' + Match Rotation) — supaya yang muncul =
+          // PERSIS seperti preview ghost.
+          if (ghostBlock.visible) {
+            block.quaternion.copy(ghostBlock.quaternion);
+          }
           block.castShadow = true;
           block.receiveShadow = true;
           block.userData.isBlock = true;
+          // ── FITUR (2026-10-04, permintaan user): ANCHOR BLOCK (panel Place) ──
+          // Default tercentang → block terkunci (tidak jatuh). Kalau dimatikan →
+          // block baru `anchored=false` → JATUH bila tidak bersandar pada block
+          // ber-anchor (perilaku fisika yang sudah ada).
+          block.userData.anchored = !!placeAnchorOnRef.current;
           // FIX BUG 1 (laporan-bug-neon-block, 2026-09-11): simpan slug block
           // library di userData — snapshotState membacanya supaya undo/redo
           // bisa rebuild material block yang BENAR (neon: emissive+aura),
@@ -16194,8 +16267,30 @@ Now you can apply Displacement for detailed effect.`);
           }
           ghostBlock.position.set(posX, posY, posZ);
           syncGhostMaterial(); // Phase 63: texture block terpilih (idempoten)
+          // ── FITUR (2026-10-04, permintaan user): ROTASI GHOST + MATCH ROTATION ──
+          // (a) Rotasi dasar dari keybind 'R' (steps × placeRotationDeg).
+          // (b) MATCH ROTATION: kalau ON & menempel di SISI block target yang
+          //     dirotasi → ghost ikut rotasi block target (menempel rapi).
+          //     Kalau OFF → ghost selalu tegak lurus (default lama).
+          const _gSteps = placeRotStepsRef.current || 0;
+          const _gDeg = placeRotationDegRef.current || 90;
+          const _gBase = THREE.MathUtils.degToRad(_gSteps * _gDeg);
+          let _gQuat = null;
+          if (placeMatchRotationRef.current && hits[0].object !== ground && hits[0].object.userData
+              && hits[0].object.userData.isBlock) {
+            // Ambil rotasi WORLD block target (sisi tempat ghost menempel).
+            _gQuat = new THREE.Quaternion();
+            hits[0].object.getWorldQuaternion(_gQuat);
+            // Tambah rotasi step 'R' (relatif sumbu Y lokal block target).
+            const _spin = new THREE.Quaternion().setFromAxisAngle(
+              new THREE.Vector3(0, 1, 0), _gBase);
+            _gQuat.multiply(_spin);
+          }
+          if (_gQuat) ghostBlock.quaternion.copy(_gQuat);
+          else ghostBlock.rotation.set(0, _gBase, 0);
           ghostBlock.visible = true;
           ghostEdges.position.copy(ghostBlock.position);
+          ghostEdges.quaternion.copy(ghostBlock.quaternion);
           ghostEdges.visible = true;
         } else {
           ghostBlock.visible = false;
@@ -25737,7 +25832,21 @@ Now you can apply Displacement for detailed effect.`);
           presets={tool === 'rotate' ? ROTATE_PRESETS : (tool === 'place' ? PLACE_PRESETS : null)}
           label={tool === 'place' ? 'Place (studs)' : `${TOOL_LABEL[tool] || 'Scale'} (${tool === 'rotate' ? 'degree' : 'studs'})`}
           Icon={TOOL_MODAL_ICON[tool] || Maximize}
-          title={TOOL_MODAL_TITLE[tool] || 'Scale Number'}
+          title={tool === 'place' ? 'Place Options' : (TOOL_MODAL_TITLE[tool] || 'Scale Number')}
+          // ── FITUR (2026-10-04, permintaan user): panel opsi khusus tool PLACE ──
+          placeOptions={tool === 'place' ? {
+            anchor: placeAnchorOn,
+            matchRotation: placeMatchRotation,
+            moveStuds: placeMoveStuds,
+            rotationDeg: placeRotationDeg,
+          } : null}
+          onPlaceOptionsChange={(patch) => {
+            if (!patch) return;
+            if ('anchor' in patch) setPlaceAnchorOn(!!patch.anchor);
+            if ('matchRotation' in patch) setPlaceMatchRotation(!!patch.matchRotation);
+            if ('moveStuds' in patch) { setPlaceMoveStuds(patch.moveStuds); setPlaceSnapStuds(patch.moveStuds); }
+            if ('rotationDeg' in patch) setPlaceRotationDeg(patch.rotationDeg);
+          }}
         />
       )}
       {showTransparencyModal && (
