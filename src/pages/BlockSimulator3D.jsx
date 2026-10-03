@@ -16629,9 +16629,18 @@ Now you can apply Displacement for detailed effect.`);
       try {
         const tc = threeRef.current.transformControls;
         if (!tc) return;
-        if (tc._root) tc._root.visible = visible;
+        // ── FIX REGRESI (2026-10-03): JANGAN munculkan gizmo kalau TIDAK ADA
+        // objek ter-attach. `detach()` library men-set _root.visible=false
+        // (TransformControls.js baris 822) & default-nya false (baris 1120).
+        // Memaksa visible=true tanpa objek → gizmo MELAYANG di tengah viewport
+        // (terukur: vision 10/10 + pixel scan pada halaman 0 block).
+        const show = visible && !!tc.object;
+        if (tc._root) tc._root.visible = show;
         // enabled=false → TransformControls pointerHover/Down/Move `return` awal
         // (baris 1022/1037/...) → gizmo TIDAK BISA diklik sama sekali saat hidden.
+        // PENTING: `enabled` mengikuti `visible` (bukan `show`) supaya saat user
+        // lalu memilih block (attach → _root.visible=true), gizmo LANGSUNG bisa
+        // diklik tanpa perlu setGizmoVisible dipanggil lagi.
         tc.enabled = visible;
       } catch (e) {}
     };
