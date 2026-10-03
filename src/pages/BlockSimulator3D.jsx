@@ -229,6 +229,9 @@ function BuildAreaIcon({ size = 20 }) {
   );
 }
 
+const _cloneGqTmp = new THREE.Quaternion();
+const _cloneTmpV = new THREE.Vector3();
+
 export default function BlockSimulator3D({ setPage }) {
   const containerRef = useRef(null);
 
@@ -13235,6 +13238,48 @@ Now you can apply Displacement for detailed effect.`);
               mirrorX: mo.position.x,
               tool: toolRef.current,
             };
+
+            // ══ FIX (2026-10-04, permintaan TESTER): BLOCK ASAL DIAM + OUTLINE PREVIEW ══
+            // KONSEP TESTER: block asal terlihat APA ADANYA (tidak berubah/diam),
+            // user "menarik OUTLINE" keluar; saat dilepas → blok hasil muncul.
+            //
+            // ⚠️ CARA yang DITOLAK (terukur gagal): mengganti objek gizmo ke
+            // previewGroup — posisinya di-reset jalur lain (reconcile/useEffect),
+            // jadi gizmo tidak bergerak & finalisasi tidak jalan. BERISIKO.
+            //
+            // ✅ CARA DIPILIH (aman — gizmo TETAP di selectionGroup, NOL perubahan
+            // pada jalur drag/snap/gizmo):
+            //   1. Outline (LineSegments, warna tool) ditambahkan sebagai CHILD
+            //      selectionGroup → otomatis IKUT BERGERAK bersama group = PREVIEW.
+            //   2. Block ASAL dikompensasi tiap frame (di onTransformObjectChange)
+            //      agar TETAP di posisi world-nya = terlihat DIAM.
+            try {
+              if (_items.length && mo) {
+                const _col = TOOL_OUTLINE_COLORS[toolRef.current] || '#0096FF';
+                const _pg = new THREE.Group();
+                _pg.userData.__clonePreview = true;
+                _items.forEach((it) => {
+                  const ch = it.src;
+                  let _eg;
+                  try { _eg = new THREE.EdgesGeometry(ch.geometry); }
+                  catch (e) { _eg = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)); }
+                  const _line = new THREE.LineSegments(_eg, new THREE.LineBasicMaterial({
+                    color: new THREE.Color(_col), depthTest: false, transparent: true, opacity: 0.95,
+                  }));
+                  // posisi LOKAL relatif group (SAMA seperti ch.position saat ini) —
+                  // TIDAK dikompensasi → ikut bergerak bersama group = preview.
+                  _line.position.copy(it.localPos);
+                  _line.quaternion.copy(ch.quaternion);
+                  _line.scale.copy(ch.scale);
+                  _line.renderOrder = 3;
+                  _line.raycast = () => {};
+                  _pg.add(_line);
+                });
+                mo.add(_pg);                       // child group → ikut bergerak
+                multiCloneDragRef.current.previewGroup = _pg;
+                console.log('[FIX tester] outline preview dibuat (' + _items.length + ' block) — block ASAL DIAM');
+              }
+            } catch (e) { /* jangan gagalkan drag */ }
           } else {
             multiCloneDragRef.current = null;
           }
@@ -13272,16 +13317,28 @@ Now you can apply Displacement for detailed effect.`);
           multiCloneDragRef.current = null;
           const _tool = _mc.tool;
           const _g = _mc.group;
-          const _moved = _mc.startGroupPos && _g
-            ? Math.hypot(_g.position.x - _mc.startGroupPos.x, _g.position.y - _mc.startGroupPos.y, _g.position.z - _mc.startGroupPos.z) > 0.02
+          // Gizmo TETAP di selectionGroup (tidak diubah) → posisinya = posisi drag.
+          const _pv = _g;
+          const _moved = _mc.startGroupPos && _pv
+            ? Math.hypot(_pv.position.x - _mc.startGroupPos.x, _pv.position.y - _mc.startGroupPos.y, _pv.position.z - _mc.startGroupPos.z) > 0.02
             : false;
           if (_moved && threeRef.current.dissolveSelectionGroup) {
+            
             try {
-              // Delta pergeseran group (dari snapshot) — dipakai utk posisi duplikat.
-              const _delta = _g && _mc.startGroupPos
-                ? { x: _g.position.x - _mc.startGroupPos.x, y: _g.position.y - _mc.startGroupPos.y, z: _g.position.z - _mc.startGroupPos.z }
+              // Delta pergeseran = posisi group saat ini − posisi awal.
+              const _delta = _pv && _mc.startGroupPos
+                ? { x: _pv.position.x - _mc.startGroupPos.x, y: _pv.position.y - _mc.startGroupPos.y, z: _pv.position.z - _mc.startGroupPos.z }
                 : { x: 0, y: 0, z: 0 };
-              threeRef.current.dissolveSelectionGroup();   // bongkar group
+              // Lepas OUTLINE preview (child group) sebelum group dibongkar.
+              try {
+                if (_mc.previewGroup) {
+                  _mc.previewGroup.children.slice().forEach((c) => {
+                    try { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); } catch (e) {}
+                  });
+                  if (_mc.previewGroup.parent) _mc.previewGroup.parent.remove(_mc.previewGroup);
+                }
+              } catch (e) {}
+              threeRef.current.dissolveSelectionGroup();   // bongkar group (block asal tetap)
               const _newBlocks = [];
               _mc.items.forEach((it) => {
                 const src = it.src;
@@ -13474,6 +13531,32 @@ Now you can apply Displacement for detailed effect.`);
     const onTransformObjectChange = () => {
       const obj = transformControls.object;
       if (!obj) return;
+      // temp var (module-level scope) untuk kompensasi block asal clone/mirror.
+      const _gqTmp = _cloneGqTmp;
+      const _tmpV = _cloneTmpV;
+      // ── FIX (2026-10-04, permintaan TESTER): BLOCK ASAL DIAM saat drag clone/mirror ──
+      // Saat tool clone/mirror & multi-select, gizmo menggerakkan selectionGroup.
+      // Kita KOMPENSASI posisi tiap block ASAL supaya tetap di posisi world
+      // semula → user melihat block asal DIAM (apa adanya), sementara OUTLINE
+      // (child group, warna tool) bergerak sebagai PREVIEW.
+      // DIHITUNG dari state NYATA tiap frame (idempoten, tidak menyimpan delta).
+      try {
+        const _mc = multiCloneDragRef.current;
+        if (_mc && _mc.previewGroup && obj === _mc.group
+            && (toolRef.current === 'clone' || toolRef.current === 'mirror')) {
+          const gq = _mc.group.quaternion;
+          const gqi = _gqTmp.copy(gq).invert();
+          const gp = _mc.group.position;
+          _mc.items.forEach((it) => {
+            const ch = it.src;
+            if (!ch) return;
+            // lokal = inv(groupQuat) · (worldAwal − groupPos)
+            _tmpV.copy(it.worldPos).sub(gp).applyQuaternion(gqi);
+            if (!ch.position.equals(_tmpV)) ch.position.copy(_tmpV);
+            ch.updateMatrixWorld(true);
+          });
+        }
+      } catch (e) { /* jangan gagalkan jalur lain */ }
       if (transformControls.getMode() === 'translate') {
         if (!snapMoveRef.current) return;
         // ── FIX AH (bab 74): STEP MOVE = nilai studs dari tombol "+" ──
