@@ -702,13 +702,29 @@ export default function BlockSimulator3D({ setPage }) {
             threeRef.current.selectedBlocks.size + ' block)');
           // ── FIX (2026-10-03, laporan user): GIZMO IKUT ARAH BLOCK (multi) ──
           // Gizmo TEGAK walau block dirotasi ngasal. Panggil attachGizmoToSelection
-          // (bangun ulang group) lalu setGizmoOrientation (putar GIZMO saja).
+          // (bangun ulang group). CATATAN: gizmo dibiarkan TEGAK untuk multi-select
+          // (lihat "CATATAN DESAIN" di dekat dissolveSelectionGroup).
           if (threeRef.current.attachGizmoToSelection) {
             try { threeRef.current.attachGizmoToSelection(); } catch (e) {}
           }
-          if (threeRef.current.setGizmoOrientation) {
-            try { threeRef.current.setGizmoOrientation(); } catch (e) {}
-          }
+          // ── FIX (2026-10-03): MULTI-SELECT → space 'world' (gizmo TEGAK) ──
+          // Banyak block dengan rotasi acak TIDAK punya "arah" tunggal; 'local'
+          // membuat gizmo tampak miring kacau. Paksa 'world' + reset handle ke
+          // identity supaya gizmo benar-benar TEGAK & drag prediktabel.
+          try {
+            const _tc = threeRef.current.transformControls;
+            if (_tc && _tc.object && _tc.object.isGroup) {
+              _tc.space = 'world';
+              const _gz = _tc._root && _tc._root._gizmo && _tc._root._gizmo.gizmo
+                && _tc._root._gizmo.gizmo.translate;
+              if (_gz && _gz.children) {
+                for (let _i = 0; _i < _gz.children.length; _i++) {
+                  const _c = _gz.children[_i];
+                  if (_c && _c.isMesh) _c.quaternion.identity();
+                }
+              }
+            }
+          } catch (e) {}
         } else if (!isLiveGhost) {
         tc.detach();
         
@@ -866,8 +882,16 @@ export default function BlockSimulator3D({ setPage }) {
     const tc = threeRef.current && threeRef.current.transformControls;
     if (!tc) return;
     const match = arrowMatchRotation;
+    // ── FIX (2026-10-03): MULTI-SELECT (group) → PAKSA space 'world' ──
+    // JEBAKAN TERUKUR: 'local' membuat gizmo mengikuti orientasi GROUP. Untuk
+    // banyak block dengan rotasi ACAK, orientasi itu TIDAK PUNYA ARTI (rata-rata
+    // quaternion saling meniadakan) → gizmo tampak "MIRING KACAU"/"mental"
+    // (vision 2-4/10). Karena `_root` menimpa transform visual, space saja TIDAK
+    // cukup untuk membuat gizmo benar-benar tegak → space 'world' + handle
+    // di-reset ke identity saat group (lihat attachGizmoToSelection).
+    const _isGroup = !!(tc.object && tc.object.isGroup);
     setScaleWorldAlign(tc, match);   // flag bola scale (jebakan #5b)
-    tc.space = match ? 'local' : 'world'; // translate + rotate
+    tc.space = (match && !_isGroup) ? 'local' : 'world'; // translate + rotate
     console.log('[Phase 52] arrowMatchRotation =', match, '→ space', tc.space);
     // dep [tool] juga: re-apply setiap ganti tool — menjamin flag vs checkbox
     // selalu sinkron (menutup race: init scene bisa selesai SETELAH render
@@ -13901,15 +13925,6 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         renderer.render(scene, camera);
       }
-      // ── FIX (2026-10-03, laporan user): GIZMO IKUT ARAH BLOCK (multi-select) ──
-      // Re-apply SETIAP FRAME supaya tidak bisa di-reset jalur lain (attach/update
-      // library). Memutar GIZMO saja (bukan group) → rotasi/scale/snap multi TIDAK
-      // terpengaruh. Idempoten & murah (hanya saat clone/mirror + multi-select).
-      try {
-        if (!transformControls.dragging && threeRef.current.setGizmoOrientation) {
-          threeRef.current.setGizmoOrientation();
-        }
-      } catch (e) {}
     };
     animate();
 
@@ -14995,63 +15010,18 @@ Now you can apply Displacement for detailed effect.`);
     };
     threeRef.current.dissolveSelectionGroup = dissolveSelectionGroup;
 
-    // ── FIX (2026-10-03): GIZMO IKUT ARAH BLOCK (multi-select, clone/mirror) ──
-    // JEBAKAN TERUKUR: `selectionGroup` TANPA rotasi → gizmo TEGAK walau block
-    // dirotasi ngasal. ⚠️ CARA LAMA (DIBATALKAN, menyebabkan 3 regresi): memutar
-    // GROUP + kompensasi anak → rotasi multi MATI, snap-move terdistorsi (0.454),
-    // drift. JANGAN pernah memutar selectionGroup.
-    // CARA BARU: putar GIZMO saja. TAPI `_root.quaternion` DITIMPA tiap frame oleh
-    // library (TransformControlsRoot.updateMatrixWorld baris terakhir:
-    // `_tempMatrix.decompose(this.position, this.quaternion, this.scale)`).
-    // → WAJIB monkeypatch `_root.updateMatrixWorld`: jalankan asli DULU, baru
-    //   terapkan orientasi kita (pola wajib kontrak bab 3 #2: "bungkus
-    //   updateMatrixWorld, terapkan SESUDAH fungsi asli").
-    let _rootUpdatePatched = false;
-    let _origRootUpdate = null;
-    const _applyGizmoOrientation = (root) => {
-      const tc = threeRef.current.transformControls;
-      if (!tc) return;
-      const obj = tc.object;
-      if (!obj || !obj.isGroup) return;
-      if (toolRef.current !== 'clone' && toolRef.current !== 'mirror') return;
-      const kids = obj.children.filter((c) => c && c.userData && c.userData.isBlock);
-      if (!kids.length) return;
-      const aq = new THREE.Quaternion(0, 0, 0, 0);
-      kids.forEach((b) => {
-        const q = b.quaternion;
-        if (aq.dot(q) < 0) aq.set(aq.x - q.x, aq.y - q.y, aq.z - q.z, aq.w - q.w);
-        else aq.set(aq.x + q.x, aq.y + q.y, aq.z + q.z, aq.w + q.w);
-      });
-      if (aq.lengthSq() < 1e-8) return;
-      aq.normalize();
-      // PENTING: JANGAN panggil root.updateMatrixWorld() di sini — fungsi itu
-      // sudah di-patch → REKURSI (terukur: quaternion ter-reset jadi identity).
-      // Cukup recompose matrix lokal + sebarkan ke anak.
-      root.quaternion.copy(aq);
-      root.updateMatrix();
-      root.matrixWorld.copy(root.matrix);   // parent (_root) selalu di scene (identity)
-      for (let i = 0; i < root.children.length; i++) {
-        root.children[i].updateMatrixWorld(true);
-      }
-    };
-    const ensureGizmoRootPatch = () => {
-      const tc = threeRef.current.transformControls;
-      if (!tc || !tc._root) return;
-      if (_rootUpdatePatched) return;
-      _origRootUpdate = tc._root.updateMatrixWorld.bind(tc._root);
-      tc._root.updateMatrixWorld = function (force) {
-        _origRootUpdate(force);
-        try { _applyGizmoOrientation(this); } catch (e) {}
-      };
-      _rootUpdatePatched = true;
-    };
-    const setGizmoOrientation = () => {
-      ensureGizmoRootPatch();
-      const tc = threeRef.current.transformControls;
-      if (!tc || !tc._root) return;
-      try { _applyGizmoOrientation(tc._root); } catch (e) {}
-    };
-    threeRef.current.setGizmoOrientation = setGizmoOrientation;
+    // ── CATATAN DESAIN (2026-10-03): GIZMO TEGAK untuk multi-select ──
+    // RIWAYAT: sempat dicoba membuat gizmo "mengikuti arah block" saat clone/mirror
+    // multi-select. GAGAL & DIBATALKAN karena:
+    //  (a) memutar `selectionGroup` → merusak rotasi+scale+snap multi (bab 107);
+    //  (b) memutar `_root` gizmo → handle gizmo diputar mengelilingi origin →
+    //      gizmo MELAYANG jauh dari block (terukur 7.29 unit);
+    //  (c) rata-rata quaternion block acak → saling meniadakan → arah ACAK
+    //      ("mental", resultan 3.58/5 & 3.83/6);
+    //  (d) ikut block pertama → deterministik tapi tetap tampak "miring kacau".
+    // KEPUTUSAN FINAL: **gizmo TEGAK (world-aligned)** saat multi-select = RAPI.
+    // Gizmo mengikuti arah block HANYA saat 1 block (perilaku bawaan Three.js,
+    // sudah benar). TIDAK perlu kode tambahan — jangan tambahkan lagi.
 
     const clearSelection = () => {
       // Jika ada selectionGroup, kembalikan blok ke scene (preserve world position)
@@ -15267,11 +15237,7 @@ Now you can apply Displacement for detailed effect.`);
           b.updateMatrixWorld(true);
         });
         transformControls.attach(selectionGroup);
-        // ── FIX (2026-10-03): gizmo IKUT ARAH BLOCK (multi-select, clone/mirror) ──
-        // Putar GIZMO saja (group tetap identity) — tidak menyentuh transform block.
-        try {
-          if (threeRef.current.setGizmoOrientation) threeRef.current.setGizmoOrientation();
-        } catch (e) {}
+        // (Gizmo dibiarkan TEGAK untuk multi-select — lihat "CATATAN DESAIN".)
       }
     };
 
