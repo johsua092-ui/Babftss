@@ -700,6 +700,15 @@ export default function BlockSimulator3D({ setPage }) {
           // biarkan group + seleksi utuh; gizmo tetap attach ke group.
           console.log('[multi-select] clone/mirror: seleksi dipertahankan (' +
             threeRef.current.selectedBlocks.size + ' block)');
+          // ── FIX (2026-10-03, laporan user): GIZMO IKUT ARAH BLOCK (multi) ──
+          // JEBAKAN TERUKUR: saat masuk clone/mirror dengan MULTI-SELECT, cabang
+          // ini HANYA log — gizmo TIDAK di-align → tetap TEGAK walau block
+          // dirotasi ngasal (user: "harusnya gizmonya mengikuti arah blocknya
+          // bukan tegak"). Panggil attachGizmoToSelection() → group dibangun
+          // ulang + di-align ke arah block (alignSelectionGroupToBlocks).
+          if (threeRef.current.attachGizmoToSelection) {
+            try { threeRef.current.attachGizmoToSelection(); } catch (e) {}
+          }
         } else if (!isLiveGhost) {
         tc.detach();
         
@@ -13159,12 +13168,22 @@ Now you can apply Displacement for detailed effect.`);
                 ch.updateMatrixWorld(true);
                 const _wp = new THREE.Vector3();
                 ch.getWorldPosition(_wp);
+                // ── FIX (2026-10-03): simpan quaternion WORLD, BUKAN lokal ──
+                // JEBAKAN TERUKUR: sejak group DI-ALIGN ke arah block (gizmo ikut
+                // rotasi block), `ch.quaternion` = LOKAL (relatif group yang
+                // berotasi) → memakainya untuk memulihkan block ASAL membuat
+                // rotasi asli BERUBAH (terukur: [0.769,0.205,0.521,-0.308] →
+                // [0.192,-0.154,-0.04,0.968]). Sebelumnya aman karena group
+                // identity. WAJIB pakai WORLD (invarian terhadap rotasi group).
+                const _wq = new THREE.Quaternion();
+                const _ws = new THREE.Vector3();
+                ch.matrixWorld.decompose(new THREE.Vector3(), _wq, _ws);
                 _items.push({
                   src: ch,
                   worldPos: _wp.clone(),
                   localPos: ch.position.clone(),
-                  quat: ch.quaternion.clone(),
-                  scale: ch.scale.clone(),
+                  quat: _wq.clone(),
+                  scale: _ws.clone(),
                 });
               }
             });
@@ -13264,6 +13283,14 @@ Now you can apply Displacement for detailed effect.`);
                 src.quaternion.copy(it.quat);
                 src.scale.copy(it.scale);
                 src.updateMatrixWorld(true);
+                // ── FIX (2026-10-03, laporan user): BLOCK ASAL JANGAN TER-HIGHLIGHT ──
+                // JEBAKAN TERUKUR: jalur multi-select hanya clear()+add() — TIDAK
+                // pernah memanggil setBlockHighlight(src,'none') → block ASAL tetap
+                // memegang emissive biru #1a8cff setelah digandakan (user:
+                // "harusnya block asal tidak terhighlight" — 100% berlawanan).
+                // Jalur single-block sudah benar (baris ~716). Samakan.
+                try { setBlockHighlightRef.current(src, 'none'); } catch (e) {}
+                try { if (threeRef.current.unhighlightSelectedFn) threeRef.current.unhighlightSelectedFn(src); } catch (e) {}
               });
               // Seleksi = block hasil gandaan
               threeRef.current.selectedBlocks.clear();
@@ -13274,10 +13301,24 @@ Now you can apply Displacement for detailed effect.`);
               if (threeRef.current.attachGizmoToSelection) {
                 try { threeRef.current.attachGizmoToSelection(); } catch (e) {}
               }
+              // ── FIX (2026-10-03, laporan user): GIZMO IKUT ARAH BLOCK ──
+              // Dijalankan lewat attachGizmoToSelection() di atas, yang memanggil
+              // `alignSelectionGroupToBlocks` (idempoten, pakai quat WORLD).
+              // JEBAKAN TERUKUR: blok align INLINE di sini (versi awal, pakai
+              // quat LOKAL) TIDAK idempoten → dipanggil 2x bersama yang di
+              // attachGizmoToSelection = drift posisi (terukur: block hasil
+              // turun 0.454 unit, y 0.5→0.046). DIHAPUS.
               setBlockCount(threeRef.current.blocks.length);
               if (threeRef.current.recordHistory) threeRef.current.recordHistory();
               try { refreshAllMeta(THREE, threeRef.current.blocks); } catch (e) {}
               toast.success(_tool === 'mirror' ? 'Block di-mirror (multi-select)' : 'Block di-clone (multi-select)');
+              // ── FIX (2026-10-03, laporan user): LANGSUNG PINDAH KE MODE MOVE ──
+              // JEBAKAN: jalur SINGLE-block memindahkan tool ke 'move' setelah drag
+              // selesai (setTool('move'), baris ~13377), tapi jalur MULTI-SELECT
+              // TIDAK → user tetap terjebak di tool clone/mirror padahal drag sudah
+              // selesai (user: "harusnya langsung pindah ke mode move" — 100%
+              // berlawanan). Samakan perilakunya.
+              try { setTool('move'); } catch (e) {}
             } catch (e) { /* jangan gagalkan */ }
           } else if (!_moved && threeRef.current.attachGizmoToSelection) {
             // klik tanpa geser → tidak menggandakan; kembalikan gizmo ke selection
@@ -13412,7 +13453,14 @@ Now you can apply Displacement for detailed effect.`);
             // (pos - startPos) di-rotate ke lokal → round per-sumbu → balik ke
             // dunia. Saat space='world' (arrowMatch OFF) → tetap snap dunia.
             const _md = moveDragRef.current;
-            if (arrowMatchRef.current && _md && _md.frameQuat && _md.startPos) {
+            // ── FIX (2026-10-03): MULTI-SELECT (group) → JANGAN snap lokal ──
+            // JEBAKAN TERUKUR: group multi-select DI-ALIGN ke rata-rata orientasi
+            // block (supaya gizmo ikut arah block). Tapi `frameQuat` group =
+            // orientasi SINTETIS → memutar delta dunia ke kerangka itu lalu
+            // membulatkan per-sumbu MEN-DISTORSI delta (terukur: geser sumbu X
+            // dunia 3 unit → block HASIL turun 0.454, y 0.5→0.046). Group pakai
+            // snap DELTA-DUNIA (cabang else) yang tidak bergantung kerangka.
+            if (arrowMatchRef.current && !obj.isGroup && _md && _md.frameQuat && _md.startPos) {
               const _q = _md.frameQuat;                 // quaternion block (frame lokal)
               const _qInv = _q.clone().invert();
               // delta dunia dari titik awal drag
@@ -13882,6 +13930,26 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         renderer.render(scene, camera);
       }
+      // ── FIX (2026-10-03, laporan user): GIZMO IKUT ARAH BLOCK (multi-select) ──
+      // JEBAKAN TERUKUR: `selectionGroup` di-align sekali (alignSelectionGroupToBlocks)
+      // TAPI ada jalur lain yang me-RESET quaternion group ke identity setelahnya
+      // (terukur: align set [0.636,-0.238,0.718,-0.15] → 1 frame kemudian [0,0,0,1])
+      // → gizmo kembali TEGAK walau block dirotasi. Re-apply SETIAP FRAME = tidak
+      // bisa di-reset lagi (idempoten: keluar cepat kalau sudah searah).
+      // PENTING: align HANYA saat tool clone/mirror. Untuk tool LAIN group
+      // dikembalikan ke IDENTITY (perilaku lama) supaya scale/rotate multi-select
+      // (bab 70/72) TIDAK terpengaruh rotasi group.
+      try {
+        if (!transformControls.dragging && threeRef.current.alignSelectionGroupToBlocks) {
+          if (toolRef.current === 'clone' || toolRef.current === 'mirror') {
+            threeRef.current.alignSelectionGroupToBlocks();
+          } else if (threeRef.current.transformControls
+                     && threeRef.current.transformControls.object
+                     && threeRef.current.transformControls.object.isGroup) {
+            threeRef.current.alignSelectionGroupToBlocks(new THREE.Quaternion(0, 0, 0, 1));
+          }
+        }
+      } catch (e) {}
     };
     animate();
 
@@ -14967,6 +15035,58 @@ Now you can apply Displacement for detailed effect.`);
     };
     threeRef.current.dissolveSelectionGroup = dissolveSelectionGroup;
 
+    // ── FIX (2026-10-03, laporan user): GIZMO MULTI-SELECT IKUT ARAH BLOCK ──
+    // JEBAKAN TERUKUR: `selectionGroup` dibuat TANPA rotasi (identity) → gizmo
+    // selalu TEGAK walau block dirotasi ngasal (user: "harusnya gizmonya
+    // mengikuti arah blocknya bukan tegak"). Bukti RED: gizmoQuat [0,0,0,1]
+    // padahal block [0.769,0.205,0.521,-0.308].
+    // FIX: putar group = rata-rata orientasi block (sign-aligned supaya tidak
+    // lompat saat dot<0), lalu KOMPENSASI tiap anak → world transform TIDAK
+    // berubah (kalau tidak, block ikut berputar mengelilingi pivot = melompat).
+    // Idempoten: kalau group sudah searah, hasilnya sama (aman dipanggil ulang).
+    const alignSelectionGroupToBlocks = (targetQuat) => {
+      if (!selectionGroup) return;
+      const kids = selectionGroup.children.filter((c) => c && c.userData && c.userData.isBlock);
+      if (!kids.length) return;
+      selectionGroup.updateMatrixWorld(true);
+      // WAJIB pakai quaternion WORLD (invarian) — BUKAN lokal. JEBAKAN TERUKUR:
+      // memakai quaternion LOKAL membuat fungsi TIDAK IDEMPOTEN → panggilan ke-2
+      // menghasilkan aq = identity (karena lokal sudah ter-kompensasi) → group
+      // ter-reset + block BERGESER (regresi "block kabur" muncul lagi).
+      const worlds = kids.map((b) => {
+        const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+        b.matrixWorld.decompose(p, q, s);
+        return { p, q, s };
+      });
+      let aq;
+      if (targetQuat) {
+        // Target EKSPLISIT (mis. identity untuk reset saat tool non-clone/mirror).
+        aq = targetQuat.clone();
+      } else {
+        aq = new THREE.Quaternion(0, 0, 0, 0);
+        worlds.forEach((w) => {
+          const q = w.q;
+          if (aq.dot(q) < 0) aq.set(aq.x - q.x, aq.y - q.y, aq.z - q.z, aq.w - q.w);
+          else aq.set(aq.x + q.x, aq.y + q.y, aq.z + q.z, aq.w + q.w);
+        });
+        if (aq.lengthSq() < 1e-8) return;   // orientasi saling meniadakan → biarkan tegak
+        aq.normalize();
+      }
+      // sudah searah? → tidak perlu apa-apa (idempoten, hindari jitter)
+      if (Math.abs(selectionGroup.quaternion.dot(aq)) > 0.999999) return;
+      selectionGroup.quaternion.copy(aq);
+      selectionGroup.updateMatrixWorld(true);
+      const gi = aq.clone().invert();
+      const gp = selectionGroup.position;
+      kids.forEach((b, i) => {
+        b.position.copy(worlds[i].p).sub(gp).applyQuaternion(gi);
+        b.quaternion.copy(gi).multiply(worlds[i].q);
+        b.scale.copy(worlds[i].s);
+        b.updateMatrixWorld(true);
+      });
+    };
+    threeRef.current.alignSelectionGroupToBlocks = alignSelectionGroupToBlocks;
+
     const clearSelection = () => {
       // Jika ada selectionGroup, kembalikan blok ke scene (preserve world position)
       dissolveSelectionGroup();
@@ -15181,6 +15301,14 @@ Now you can apply Displacement for detailed effect.`);
           b.updateMatrixWorld(true);
         });
         transformControls.attach(selectionGroup);
+        // ── FIX (2026-10-03): gizmo IKUT ARAH BLOCK saat multi-select ──
+        // (user: "harusnya gizmonya mengikuti arah blocknya bukan tegak").
+        // Putar group searah rata-rata block + kompensasi anak (world tetap).
+        try {
+          if (threeRef.current.alignSelectionGroupToBlocks) {
+            threeRef.current.alignSelectionGroupToBlocks();
+          }
+        } catch (e) {}
       }
     };
 
