@@ -15162,34 +15162,38 @@ Now you can apply Displacement for detailed effect.`);
         const _isMirror = (_mc.tool === 'mirror');
         const _ax = _mc.axisKey || 'x';
         const gp = _mc.group.position;
-        const pg = _mc.previewGroup;
-        // ── PENTING: hitung transform outline di RUANG WORLD, lalu set
-        // `matrixAutoUpdate=false` + `matrix` LANGSUNG → posisi PASTI benar
-        // (tidak bergantung rantai parent / konversi lokal yang rawan salah).
+        // ── SATU SUMBER DELTA: `_delta` = pergeseran group dari posisi awal.
+        // Dipakai SAMA PERSIS oleh finalisasi multi-clone/mirror (`_delta`).
+        // JEBAKAN TERUKUR: outline memakai `2·gp − worldPos` (gp live) sementara
+        // finalisasi memakai `2·(start+delta) − (worldPos+delta)` → NILAI BEDA →
+        // outline "meluncur 2×" & tidak cocok dengan hasil.
+        const _delta = {
+          x: gp.x - _mc.startGroupPos.x,
+          y: gp.y - _mc.startGroupPos.y,
+          z: gp.z - _mc.startGroupPos.z,
+        };
         _mc.previewLines.forEach((rec) => {
           const line = rec.line;
           const it = rec.item;
           if (!line || !it) return;
-          // POSISI WORLD hasil (rumus SAMA dgn finalisasi multi-clone/mirror).
-          const wx = it.worldPos.x, wy = it.worldPos.y, wz = it.worldPos.z;
-          let px = wx, py = wy, pz = wz;
+          // POSISI = rumus PERSIS finalisasi: (worldPos + delta), lalu cermin
+          // untuk mirror: `p[axis] = 2·(start[axis]+delta[axis]) − p[axis]`.
+          let px = it.worldPos.x + _delta.x;
+          let py = it.worldPos.y + _delta.y;
+          let pz = it.worldPos.z + _delta.z;
           if (_isMirror) {
-            const _pc = _mc.startGroupPos[_ax] + (gp[_ax] - _mc.startGroupPos[_ax]);
+            const _pc = _mc.startGroupPos[_ax] + _delta[_ax];
             if (_ax === 'x') px = 2 * _pc - px;
             else if (_ax === 'y') py = 2 * _pc - py;
             else pz = 2 * _pc - pz;
           }
-          // ROTASI WORLD
           const _q = new THREE.Quaternion();
           if (_isMirror) mirrorQuaternionAxis(_q, it.quat, _ax);
           else _q.copy(it.quat);
           const _s = it.scale.clone();
           if (_isMirror) _s[_ax] = -_s[_ax];
-          // set matrix WORLD langsung (parent = group identitas → world = local)
           line.matrixAutoUpdate = false;
-          line.matrix.compose(
-            new THREE.Vector3(px, py, pz), _q, _s,
-          );
+          line.matrix.compose(new THREE.Vector3(px, py, pz), _q, _s);
           line.matrixWorld.copy(line.matrix);
         });
       } catch (e) {}
