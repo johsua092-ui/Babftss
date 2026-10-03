@@ -13256,9 +13256,9 @@ Now you can apply Displacement for detailed effect.`);
             try {
               if (_items.length && mo) {
                 const _col = TOOL_OUTLINE_COLORS[toolRef.current] || '#0096FF';
-                const _isMirror = (toolRef.current === 'mirror');
                 const _pg = new THREE.Group();
                 _pg.userData.__clonePreview = true;
+                const _lines = [];
                 _items.forEach((it) => {
                   const ch = it.src;
                   let _eg;
@@ -13267,30 +13267,26 @@ Now you can apply Displacement for detailed effect.`);
                   const _line = new THREE.LineSegments(_eg, new THREE.LineBasicMaterial({
                     color: new THREE.Color(_col), depthTest: false, transparent: true, opacity: 0.95,
                   }));
-                  // posisi LOKAL relatif group (SAMA seperti ch.position saat ini) —
-                  // TIDAK dikompensasi → ikut bergerak bersama group = preview.
-                  _line.position.copy(it.localPos);
-                  // ── FIX (2026-10-04, laporan user): OUTLINE MIRROR harus BERLAWANAN ──
-                  // JEBAKAN TERUKUR: outline mirror IDENTIK dengan clone
-                  // (Q=[0.42,0.693,0.485,0.329] det=+1 untuk keduanya) → user tidak
-                  // tahu sedang MIRROR. FIX: untuk MIRROR, konjugasi refleksi rotasi
-                  // (`mirrorQuaternionAxis`) + `scale[axis] = −scale[axis]` → det −1
-                  // = outline tampak "kaca" (berlawanan arah), sesuai maksud user.
-                  if (_isMirror) {
-                    const _ax = multiCloneDragRef.current.axisKey || 'x';
-                    mirrorQuaternionAxis(_line.quaternion, ch.quaternion, _ax);
-                    _line.scale.copy(ch.scale);
-                    _line.scale[_ax] = -_line.scale[_ax];
-                  } else {
-                    _line.quaternion.copy(ch.quaternion);
-                    _line.scale.copy(ch.scale);
-                  }
                   _line.renderOrder = 3;
                   _line.raycast = () => {};
                   _pg.add(_line);
+                  _lines.push({ line: _line, src: ch, item: it });
                 });
-                mo.add(_pg);                       // child group → ikut bergerak
+                // ⚠️ `_pg` di SCENE (bukan child group) + posisi/rotasi IDENTITY →
+                // matrixWorld anak = matrix-nya sendiri → transform WORLD bisa di-set
+                // LANGSUNG tanpa konversi lokal (menghindari salah frame).
+                _pg.position.set(0, 0, 0);
+                _pg.quaternion.identity();
+                _pg.updateMatrixWorld(true);
+                scene.add(_pg);
                 multiCloneDragRef.current.previewGroup = _pg;
+                multiCloneDragRef.current.previewLines = _lines;
+                // ── FIX (2026-10-04): transform outline DIHITUNG ULANG tiap frame
+                // (di render loop) supaya PERSIS sama dengan hasil akhir — termasuk
+                // POSISI yang dicerminkan. JEBAKAN TERUKUR: hanya mencerminkan
+                // quaternion → posisi outline TERTUKAR ([2.57,1.401] vs hasil
+                // [3.43,1.401]) = outline "gak karuan".
+                try { if (threeRef.current.updateClonePreview) threeRef.current.updateClonePreview(); } catch (e) {}
                 console.log('[FIX tester] outline preview dibuat (' + _items.length + ' block) — block ASAL DIAM');
               }
             } catch (e) { /* jangan gagalkan drag */ }
@@ -14026,23 +14022,13 @@ Now you can apply Displacement for detailed effect.`);
         fpsCounterRef.current.frames = 0;
         fpsCounterRef.current.lastTime = _now;
       }
-      // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
-      // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
-      // Direct render = lebih cepat, untuk saat bloom dimatikan.
-      // GLOW v4 (2026-09-11): aura neon = SPRITE radial (attachBlockGlow),
-      // bukan bloom — bloom diuji 7 ronde utk block besar = overexposed
-      // (menutupi block sendiri). Render loop kembali sederhana: composer
-      // hanya saat user menyalakan Bloom (perilaku Phase 13 asli).
-      if (bloomOnRef.current) {
-        composer.render();
-      } else {
-        renderer.render(scene, camera);
-      }
       // ── FIX (2026-10-04, laporan user): BLOCK ASAL DIAM (clone/mirror multi) ──
-      // JEBAKAN TERUKUR: dikompensasi di `objectChange` (SEBELUM snap-move) → snap
-      // menggeser group setelahnya → block asal ikut bergeser = GETAR (terukur:
-      // groupPos −0.066 → 0.934 → 1.934; block asal world −0.365 → 0.3405 → 0.2057).
-      // FIX: kompensasi di RENDER LOOP = SETELAH semua transform (snap) selesai.
+      // ⚠️ WAJIB DIJALANKAN **SEBELUM** render()! JEBAKAN TERUKUR: kalau sesudah
+      // render(), setiap frame DI-RENDER dengan posisi BELUM dikompensasi → terlihat
+      // BERGETAR di layar walau datanya stabil (ukur `getWorldPosition` = 0.0000,
+      // tapi layar menampilkan nilai sebelum kompensasi).
+      // Kompensasi di sini = SETELAH semua transform/snap (objectChange & snap-move
+      // selesai di pointerMove, sebelum rAF) → posisi final sebelum digambar.
       // Idempoten (dihitung dari state nyata tiap frame, bukan menambah delta).
       try {
         const _mc = multiCloneDragRef.current;
@@ -14058,8 +14044,22 @@ Now you can apply Displacement for detailed effect.`);
             if (!ch.position.equals(_cloneTmpV)) ch.position.copy(_cloneTmpV);
           });
           _mc.group.updateMatrixWorld(true);
+          // Outline preview: hitung ulang tiap frame → PERSIS hasil akhir.
+          if (threeRef.current.updateClonePreview) threeRef.current.updateClonePreview();
         }
       } catch (e) {}
+      // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
+      // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
+      // Direct render = lebih cepat, untuk saat bloom dimatikan.
+      // GLOW v4 (2026-09-11): aura neon = SPRITE radial (attachBlockGlow),
+      // bukan bloom — bloom diuji 7 ronde utk block besar = overexposed
+      // (menutupi block sendiri). Render loop kembali sederhana: composer
+      // hanya saat user menyalakan Bloom (perilaku Phase 13 asli).
+      if (bloomOnRef.current) {
+        composer.render();
+      } else {
+        renderer.render(scene, camera);
+      }
       // ── FITUR (2026-10-03): update GARIS BANTU MIRROR (invisible) ──
       // Tiap frame: hitung titik tengah (block asal ↔ block digeser) saat tool
       // mirror & sedang drag. Garis TETAP `visible=false` (user tidak melihat).
@@ -15150,6 +15150,51 @@ Now you can apply Displacement for detailed effect.`);
       selectionGroup = null;
     };
     threeRef.current.dissolveSelectionGroup = dissolveSelectionGroup;
+
+    // ── FITUR (2026-10-04, permintaan TESTER): UPDATE OUTLINE PREVIEW ──
+    // Menghitung transform tiap garis outline supaya PERSIS sama dengan hasil akhir
+    // (block yang akan dibuat saat drag dilepas) — termasuk POSISI untuk mirror.
+    // Dipanggil tiap frame di render loop + saat outline dibuat.
+    const updateClonePreview = () => {
+      try {
+        const _mc = multiCloneDragRef.current;
+        if (!_mc || !_mc.previewLines || !_mc.previewGroup) return;
+        const _isMirror = (_mc.tool === 'mirror');
+        const _ax = _mc.axisKey || 'x';
+        const gp = _mc.group.position;
+        const pg = _mc.previewGroup;
+        // ── PENTING: hitung transform outline di RUANG WORLD, lalu set
+        // `matrixAutoUpdate=false` + `matrix` LANGSUNG → posisi PASTI benar
+        // (tidak bergantung rantai parent / konversi lokal yang rawan salah).
+        _mc.previewLines.forEach((rec) => {
+          const line = rec.line;
+          const it = rec.item;
+          if (!line || !it) return;
+          // POSISI WORLD hasil (rumus SAMA dgn finalisasi multi-clone/mirror).
+          const wx = it.worldPos.x, wy = it.worldPos.y, wz = it.worldPos.z;
+          let px = wx, py = wy, pz = wz;
+          if (_isMirror) {
+            const _pc = _mc.startGroupPos[_ax] + (gp[_ax] - _mc.startGroupPos[_ax]);
+            if (_ax === 'x') px = 2 * _pc - px;
+            else if (_ax === 'y') py = 2 * _pc - py;
+            else pz = 2 * _pc - pz;
+          }
+          // ROTASI WORLD
+          const _q = new THREE.Quaternion();
+          if (_isMirror) mirrorQuaternionAxis(_q, it.quat, _ax);
+          else _q.copy(it.quat);
+          const _s = it.scale.clone();
+          if (_isMirror) _s[_ax] = -_s[_ax];
+          // set matrix WORLD langsung (parent = group identitas → world = local)
+          line.matrixAutoUpdate = false;
+          line.matrix.compose(
+            new THREE.Vector3(px, py, pz), _q, _s,
+          );
+          line.matrixWorld.copy(line.matrix);
+        });
+      } catch (e) {}
+    };
+    threeRef.current.updateClonePreview = updateClonePreview;
 
     // ── FITUR (2026-10-03, permintaan user): GARIS BANTU MIRROR (INVISIBLE) ──
     // Permintaan user (verbatim inti): "ketika user pakai MIRROR lalu terdeteksi
