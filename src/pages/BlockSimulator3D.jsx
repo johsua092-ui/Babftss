@@ -13206,6 +13206,10 @@ Now you can apply Displacement for detailed effect.`);
               group: mo,
               items: _items,
               startGroupPos: mo.position.clone(),
+              // ── FIX (2026-10-03): bidang cermin = posisi group SAAT DRAG MULAI ──
+              // Dipakai untuk mencerminkan POSISI duplikat (x → 2·mirrorX − x) supaya
+              // MIRROR benar-benar CERMIN (bukan cuma digeser + orientasi di-flip).
+              mirrorX: mo.position.x,
               tool: toolRef.current,
             };
           } else {
@@ -13268,13 +13272,23 @@ Now you can apply Displacement for detailed effect.`);
                 const dupGeo = src.geometry.clone();
                 const dupMat = Array.isArray(src.material) ? src.material.map(m => m.clone()) : src.material.clone();
                 const dup = new THREE.Mesh(dupGeo, dupMat);
-                dup.position.set(_px, _py, _pz);
                 if (_tool === 'mirror') {
+                  // ── FIX (2026-10-03, laporan user + uji semua-sisi): CERMIN SEJATI ──
+                  // BUG TERUKUR (uji 1 tengah + 3 sisi, diangkat, rotate acak, mirror):
+                  //   posisi relatif hasil = posisi relatif asal → "COCOK? False" untuk
+                  //   cermin, "True" untuk translasi murni; ketiga sumbu pandang (X/Y/Z)
+                  //   SAMA (bukan cermin) — hanya ORIENTASI tiap block yang di-flip
+                  //   (det −1), SUSUNAN strukturnya TIDAK dicerminkan.
+                  // FIX: cerminkan POSISI juga. Refleksi terhadap bidang cermin di
+                  //   x = _mc.mirrorX (posisi group saat drag mulai): x → 2·mirrorX − x.
+                  const _mx = _mc.mirrorX != null ? _mc.mirrorX : _mc.startGroupPos.x;
+                  dup.position.set(2 * _mx - _px, _py, _pz);
                   dup.quaternion.copy(it.quat);
                   dup.scale.copy(it.scale);
                   mirrorQuaternionX(dup.quaternion, it.quat);
                   dup.scale.x = -dup.scale.x;
                 } else {
+                  dup.position.set(_px, _py, _pz);
                   dup.quaternion.copy(it.quat);
                   dup.scale.copy(it.scale);
                 }
