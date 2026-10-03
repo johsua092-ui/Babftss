@@ -882,16 +882,17 @@ export default function BlockSimulator3D({ setPage }) {
     const tc = threeRef.current && threeRef.current.transformControls;
     if (!tc) return;
     const match = arrowMatchRotation;
-    // ── FIX (2026-10-03): MULTI-SELECT (group) → PAKSA space 'world' ──
-    // JEBAKAN TERUKUR: 'local' membuat gizmo mengikuti orientasi GROUP. Untuk
-    // banyak block dengan rotasi ACAK, orientasi itu TIDAK PUNYA ARTI (rata-rata
-    // quaternion saling meniadakan) → gizmo tampak "MIRING KACAU"/"mental"
-    // (vision 2-4/10). Karena `_root` menimpa transform visual, space saja TIDAK
-    // cukup untuk membuat gizmo benar-benar tegak → space 'world' + handle
-    // di-reset ke identity saat group (lihat attachGizmoToSelection).
+    // ── FIX (2026-10-03): MULTI-SELECT → space 'world' HANYA untuk CLONE/MIRROR ──
+    // JEBAKAN TERUKUR: sebelumnya saya paksa 'world' untuk SEMUA multi-select →
+    // ROTATE multi-select ikut jadi TEGAK walau arrowMatch NYALA (user:
+    // "gizmo rotate maksa tegak padahal arrow match rotationnya nyala") = REGRESI.
+    // ATURAN: hanya CLONE/MIRROR multi-select yang dipaksa 'world' (banyak block
+    // rotasi acak tidak punya arah tunggal → tegak = rapi, bab 108). Tool LAIN
+    // (move/rotate/scale) TETAP mengikuti arrowMatch (perilaku lama, sudah benar).
     const _isGroup = !!(tc.object && tc.object.isGroup);
+    const _toolWantsWorldMulti = (toolRef.current === 'clone' || toolRef.current === 'mirror');
     setScaleWorldAlign(tc, match);   // flag bola scale (jebakan #5b)
-    tc.space = (match && !_isGroup) ? 'local' : 'world'; // translate + rotate
+    tc.space = (match && !(_isGroup && _toolWantsWorldMulti)) ? 'local' : 'world';
     console.log('[Phase 52] arrowMatchRotation =', match, '→ space', tc.space);
     // dep [tool] juga: re-apply setiap ganti tool — menjamin flag vs checkbox
     // selalu sinkron (menutup race: init scene bisa selesai SETELAH render
@@ -13925,6 +13926,12 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         renderer.render(scene, camera);
       }
+      // ── FITUR (2026-10-03): update GARIS BANTU MIRROR (invisible) ──
+      // Tiap frame: hitung titik tengah (block asal ↔ block digeser) saat tool
+      // mirror & sedang drag. Garis TETAP `visible=false` (user tidak melihat).
+      try {
+        if (threeRef.current.updateMirrorLine) threeRef.current.updateMirrorLine();
+      } catch (e) {}
     };
     animate();
 
@@ -15009,6 +15016,101 @@ Now you can apply Displacement for detailed effect.`);
       selectionGroup = null;
     };
     threeRef.current.dissolveSelectionGroup = dissolveSelectionGroup;
+
+    // ── FITUR (2026-10-03, permintaan user): GARIS BANTU MIRROR (INVISIBLE) ──
+    // Permintaan user (verbatim inti): "ketika user pakai MIRROR lalu terdeteksi
+    // KLIK-TAHAN-GESER, munculkan GARIS di antara block ASAL dan block yang sedang
+    // digeser — TEPAT DI TENGAH. Makin dekat ke block asal → garis makin mendekati
+    // block asal; makin jauh → menjauhi, tapi SELALU tepat di tengah. Garis ini
+    // INVISIBLE (mustahil dilihat user), HANYA sistem yang tahu — supaya kenyamanan
+    // user tidak terganggu."
+    // Implementasi: objek THREE.Line tersembunyi (`visible=false`) yang posisinya
+    // di-update tiap frame ke titik tengah (blockAsal ↔ blockDigeser). Meski tidak
+    // dirender, geometrinya nyata → bisa dipakai sistem (mis. engine/debug internal)
+    // lewat `threeRef.current.mirrorGuide` / `mirrorGuideMid`.
+    let mirrorLine = null;
+    const ensureMirrorLine = () => {
+      if (mirrorLine) return mirrorLine;
+      const scene = threeRef.current.scene;
+      if (!scene) return null;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0,
+        depthTest: false, depthWrite: false,
+      });
+      mirrorLine = new THREE.Line(geo, mat);
+      mirrorLine.frustumCulled = false;
+      mirrorLine.matrixAutoUpdate = false;
+      mirrorLine.visible = false;      // INVISIBLE — user mustahil melihat
+      mirrorLine.userData.mirrorGuide = true;
+      scene.add(mirrorLine);
+      return mirrorLine;
+    };
+    // Titik posisi ASAL (block sumber) saat drag mirror berlangsung.
+    const getMirrorSrcPoint = () => {
+      const tc = threeRef.current.transformControls;
+      if (!tc || !tc.object) return null;
+      const o = tc.object;
+      // Single-block: block ASAL disimpan di userData.ghostSource (ghost = duplikat).
+      if (o.userData && o.userData.ghostSource && o.userData.ghostSource.parent) {
+        const w = new THREE.Vector3();
+        o.userData.ghostSource.getWorldPosition(w);
+        return w;
+      }
+      // Multi-select: centroid posisi ASAL dari snapshot multiCloneDragRef.
+      const mc = multiCloneDragRef.current;
+      if (mc && mc.items && mc.items.length) {
+        const c = new THREE.Vector3();
+        mc.items.forEach((it) => c.add(it.worldPos));
+        c.multiplyScalar(1 / mc.items.length);
+        return c;
+      }
+      return null;
+    };
+    const updateMirrorLine = () => {
+      try {
+        const tc = threeRef.current.transformControls;
+        const line = ensureMirrorLine();
+        if (!line || !tc) return;
+        // Aktif HANYA saat tool mirror & sedang drag.
+        if (toolRef.current !== 'mirror' || !tc.dragging) {
+          if (line.visible) line.visible = false;
+          threeRef.current.mirrorGuide = null;
+          threeRef.current.mirrorGuideMid = null;
+          return;
+        }
+        const obj = tc.object;
+        const src = getMirrorSrcPoint();
+        if (!obj || !src) { line.visible = false; return; }
+        const cur = new THREE.Vector3();
+        obj.getWorldPosition(cur);
+        const dir = new THREE.Vector3().subVectors(cur, src);
+        if (dir.lengthSq() < 1e-8) { line.visible = false; return; }
+        const dist = dir.length();
+        dir.normalize();
+        // TITIK TENGAH (selalu tepat di tengah antara block asal & yang digeser).
+        const mid = new THREE.Vector3(
+          (src.x + cur.x) / 2, (src.y + cur.y) / 2, (src.z + cur.z) / 2,
+        );
+        // Panjang garis bantu mengikuti jarak (min 0.5 unit), sejajar arah geser.
+        const half = Math.max(0.5, dist * 0.5);
+        const p1 = mid.clone().addScaledVector(dir, -half);
+        const p2 = mid.clone().addScaledVector(dir, half);
+        const pos = line.geometry.getAttribute('position');
+        pos.setXYZ(0, p1.x, p1.y, p1.z);
+        pos.setXYZ(1, p2.x, p2.y, p2.z);
+        pos.needsUpdate = true;
+        line.geometry.computeBoundingSphere();
+        line.visible = false;   // TETAP INVISIBLE (hanya sistem yang tahu)
+        // Info untuk sistem (bukan UI): titik tengah + jarak.
+        threeRef.current.mirrorGuideMid = { x: mid.x, y: mid.y, z: mid.z };
+        threeRef.current.mirrorGuide = {
+          mid, p1, p2, src: src.clone(), cur: cur.clone(), distance: dist,
+        };
+      } catch (e) {}
+    };
+    threeRef.current.updateMirrorLine = updateMirrorLine;
 
     // ── CATATAN DESAIN (2026-10-03): GIZMO TEGAK untuk multi-select ──
     // RIWAYAT: sempat dicoba membuat gizmo "mengikuti arah block" saat clone/mirror
