@@ -35,7 +35,7 @@ import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoC
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
-import { applyMirrorGlass, mirrorQuaternionX } from '../utils/mirrorGhost.js';
+import { applyMirrorGlass, mirrorQuaternionX, mirrorQuaternionAxis } from '../utils/mirrorGhost.js';
 import {
   attachDeleteWireframe, attachPaintedFrame, detachDeleteWireframe,
   disposeDeleteWireframeMaterial, setDeleteWireframeResolution,
@@ -13175,6 +13175,16 @@ Now you can apply Displacement for detailed effect.`);
           moveDragRef.current = {
             frameQuat: _mq.clone(),
             startPos: { x: mo.position.x, y: mo.position.y, z: mo.position.z },
+            // ── FIX (2026-10-03, permintaan user): simpan SUMBU yang digenggam ──
+            // Dipakai MIRROR untuk menentukan BIDANG CERMIN (tegak lurus sumbu ini).
+            // Diambil dari transformControls.axis (mis. 'X'/'Y'/'Z', 'XY'/'YZ'/'XZ').
+            axisKey: (function () {
+              const _a = transformControls.axis;
+              if (!_a) return 'x';
+              if (_a.indexOf('Y') >= 0) return 'y';
+              if (_a.indexOf('Z') >= 0) return 'z';
+              return 'x';
+            })(),
           };
           // ── FIX (2026-10-01, laporan user): CLONE/MIRROR MULTI-SELECT ──
           // Saat tool clone/mirror & gizmo attach ke selectionGroup (select box
@@ -13206,9 +13216,15 @@ Now you can apply Displacement for detailed effect.`);
               group: mo,
               items: _items,
               startGroupPos: mo.position.clone(),
-              // ── FIX (2026-10-03): bidang cermin = posisi group SAAT DRAG MULAI ──
-              // Dipakai untuk mencerminkan POSISI duplikat (x → 2·mirrorX − x) supaya
-              // MIRROR benar-benar CERMIN (bukan cuma digeser + orientasi di-flip).
+              // ── FIX (2026-10-03, permintaan user): BIDANG CERMIN = SUMBU YANG
+              // DIGENGGAM. "saya klik tahan gizmo di x+ maka disitulah garis mirror
+              // muncul" → mirror mencerminkan pada sumbu handle yang di-drag, dengan
+              // bidang di koordinat handle itu (bukan selalu sumbu X).
+              axisKey: (moveDragRef.current && moveDragRef.current.axisKey) || 'x',
+              planeCoord: (function () {
+                const _ax = (moveDragRef.current && moveDragRef.current.axisKey) || 'x';
+                return mo.position[_ax];   // handle ada di pusat group (gizmo di pivot)
+              })(),
               mirrorX: mo.position.x,
               tool: toolRef.current,
             };
@@ -13274,19 +13290,22 @@ Now you can apply Displacement for detailed effect.`);
                 const dup = new THREE.Mesh(dupGeo, dupMat);
                 if (_tool === 'mirror') {
                   // ── FIX (2026-10-03, laporan user + uji semua-sisi): CERMIN SEJATI ──
-                  // BUG TERUKUR (uji 1 tengah + 3 sisi, diangkat, rotate acak, mirror):
-                  //   posisi relatif hasil = posisi relatif asal → "COCOK? False" untuk
-                  //   cermin, "True" untuk translasi murni; ketiga sumbu pandang (X/Y/Z)
-                  //   SAMA (bukan cermin) — hanya ORIENTASI tiap block yang di-flip
-                  //   (det −1), SUSUNAN strukturnya TIDAK dicerminkan.
-                  // FIX: cerminkan POSISI juga. Refleksi terhadap bidang cermin di
-                  //   x = _mc.mirrorX (posisi group saat drag mulai): x → 2·mirrorX − x.
-                  const _mx = _mc.mirrorX != null ? _mc.mirrorX : _mc.startGroupPos.x;
-                  dup.position.set(2 * _mx - _px, _py, _pz);
+                  // BUG TERUKUR: (a) mirror hanya "digeser + orientasi di-flip" (susunan
+                  // tidak dicerminkan); (b) HARDCODE sumbu X — drag sumbu Z tetap
+                  // mencerminkan X (permintaan user: "saya klik tahan gizmo di x+ maka
+                  // disitulah garis mirror muncul" = bidang cermin tegak lurus SUMBU
+                  // YANG DIGENGGAM).
+                  // FIX: cerminkan POSISI pada sumbu yang digenggam (`_mc.axisKey`),
+                  // bidang cermin di koordinat handle yang digenggam (`_mc.planeCoord`).
+                  const _ax = _mc.axisKey || 'x';
+                  const _pc = (_mc.planeCoord != null) ? _mc.planeCoord : _mc.startGroupPos[_ax];
+                  const _pos = { x: _px, y: _py, z: _pz };
+                  _pos[_ax] = 2 * _pc - _pos[_ax];
+                  dup.position.set(_pos.x, _pos.y, _pos.z);
                   dup.quaternion.copy(it.quat);
                   dup.scale.copy(it.scale);
-                  mirrorQuaternionX(dup.quaternion, it.quat);
-                  dup.scale.x = -dup.scale.x;
+                  mirrorQuaternionAxis(dup.quaternion, it.quat, _ax);
+                  dup.scale[_ax] = -dup.scale[_ax];
                 } else {
                   dup.position.set(_px, _py, _pz);
                   dup.quaternion.copy(it.quat);

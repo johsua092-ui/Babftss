@@ -62,6 +62,63 @@ export function mirrorQuaternionX(qOut, qIn) {
 }
 
 /**
+ * KONJUGASI REFLEKSI UNTUK SUMBU APA PUN (2026-10-03, permintaan user):
+ * "saya klik tahan gizmo di x+ maka disitulah garis mirror muncul" →
+ * BIDANG CERMIN = tegak lurus SUMBU YANG DIGENGGAM (bukan selalu X).
+ *
+ * R' = S·R·S dengan S = diag(−1,1,1) utk X, diag(1,−1,1) utk Y,
+ * diag(1,1,−1) utk Z. Rumus cepat pada matriks rotasi (kolom-mayor):
+ * negasi elemen BARIS ke-a & KOLOM ke-a (kecuali diagonal e[a][a]).
+ * Hasil tetap rotasi valid (det +1); digabung scale[axis]=−1 → kaca det −1.
+ * @param {THREE.Quaternion} qOut hasil
+ * @param {THREE.Quaternion} qIn  rotasi source
+ * @param {'x'|'y'|'z'} axis sumbu normal bidang cermin
+ */
+export function mirrorQuaternionAxis(qOut, qIn, axis) {
+  const a = (axis === 'y' || axis === 'z') ? axis : 'x';
+  _m.makeRotationFromQuaternion(qIn);
+  const e = _m.elements; // column-major: e[col*4 + row]
+  // baris ke-a dan kolom ke-a dinegasi (diagonal dinegasi 2x = tetap)
+  if (a === 'x') {
+    e[1] = -e[1]; e[2] = -e[2];   // kolom 0
+    e[4] = -e[4]; e[8] = -e[8];   // baris 0
+  } else if (a === 'y') {
+    e[0] = -e[0]; e[2] = -e[2];   // kolom 1 (e01, e21)
+    e[5] = -e[5]; e[9] = -e[9];   // baris 1 (e10, e12)
+  } else {
+    e[0] = -e[0]; e[1] = -e[1];   // kolom 2 (e02, e12)
+    e[6] = -e[6]; e[7] = -e[7];   // baris 2 (e20, e21)
+  }
+  return qOut.setFromRotationMatrix(_m);
+}
+
+/**
+ * Terapkan BAYANGAN KACA untuk SUMBU apa pun (posisi dicerminkan terhadap
+ * bidang tegak lurus `axis` yang berada di `planeCoord`).
+ * @param {THREE.Mesh} ghost
+ * @param {THREE.Mesh|THREE.Object3D} source
+ * @param {'x'|'y'|'z'} axis
+ * @param {number} planeCoord koordinat bidang cermin pada sumbu itu
+ */
+export function applyMirrorGlassAxis(ghost, source, axis, planeCoord) {
+  if (!ghost || !source) return ghost;
+  try {
+    const a = (axis === 'y' || axis === 'z') ? axis : 'x';
+    ghost.position.copy(source.position);
+    // cerminkan KOORDINAT pada sumbu cermin
+    if (typeof planeCoord === 'number' && isFinite(planeCoord)) {
+      ghost.position[a] = 2 * planeCoord - source.position[a];
+    }
+    mirrorQuaternionAxis(ghost.quaternion, source.quaternion, a);
+    ghost.scale.copy(source.scale);
+    ghost.scale[a] = -ghost.scale[a]; // refleksi sejati det −1
+  } catch (e) {
+    // Jangan pernah crash jalur klik — ghost tetap berdiri meski gagal flip
+  }
+  return ghost;
+}
+
+/**
  * Terapkan BAYANGAN KACA lengkap ke mesh ghost.
  * - rotation  = konjugasi refleksi dari source (kaca normal sumbu X)
  * - scale.x   = −scale.x source (dipertahankan beserta scale y/z)
