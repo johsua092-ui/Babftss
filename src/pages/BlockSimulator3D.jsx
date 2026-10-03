@@ -14371,19 +14371,37 @@ Now you can apply Displacement for detailed effect.`);
         // Hit block face → offset by face normal → snap
         const n = hit.face.normal.clone();
         n.transformDirection(hit.object.matrixWorld);
-        const placePoint = hit.point.clone().add(n.multiplyScalar(0.5));
-        // ── FIX (2026-10-01, laporan user: "taruh di atas block → ada GAP 1 stud") ──
-        // MASALAH: snap ABSOLUT (round(v)) menghancurkan posisi yang sudah BENAR.
-        // Block A di lantai y=0.5 → atasnya 1.0. Klik muka atas → placePoint.y=1.5
-        // (posisi NEMPEL yang benar) → tapi round(1.5)=2 → block baru di y=2 →
-        // GAP 0.5 unit (=1 stud). Terukur.
-        // FIX: snap RELATIF ke posisi BLOCK SUMBER (hit.object) yang sudah
-        // ter-align → bertumpuk FLUSH (nempel). Tangensial ikut grid sumber.
-        const src = hit.object.position;
-        const snapRel = (v, s) => (_su > 0 ? s + Math.round((v - s) / _su) * _su : v);
-        posX = snapRel(placePoint.x, src.x);
-        posY = snapRel(placePoint.y, src.y);
-        posZ = snapRel(placePoint.z, src.z);
+        // ── FIX (2026-10-04, laporan user): MATCH ROTATION → NEMPEL EXACT ──
+        // BUG TERUKUR: sisi block yang DIROTASI tidak sejajar grid, jadi snap grid
+        // (`round`) merusak posisi nempel → ghost melenceng & ada gap.
+        // Terukur: target Q=[0,0.296,0,0.955] (rot 34° Y), face=[0.413,1,-0.282],
+        // tapi ghost=[1,1,-1] → jarak pusat 1.4142 (harusnya 1.0000).
+        // FIX: kalau Match Rotation ON → posisi = TEPAT di permukaan (tanpa snap),
+        // dengan offset setengah tebal block TARGET (ikut scale-nya).
+        if (placeMatchRotationRef.current) {
+          // Sumbu lokal yang menghadap normal (dari face normal lokal ±1).
+          const fn = hit.face.normal;
+          const ax = (Math.abs(fn.x) >= Math.abs(fn.y) && Math.abs(fn.x) >= Math.abs(fn.z))
+            ? 'x' : (Math.abs(fn.y) >= Math.abs(fn.z) ? 'y' : 'z');
+          const _s = hit.object.scale[ax];
+          const _half = 0.5 * Math.abs(_s || 1);
+          const placePoint = hit.point.clone().add(n.multiplyScalar(_half));
+          posX = placePoint.x; posY = placePoint.y; posZ = placePoint.z;
+        } else {
+          const placePoint = hit.point.clone().add(n.multiplyScalar(0.5));
+          // ── FIX (2026-10-01, laporan user: "taruh di atas block → ada GAP 1 stud") ──
+          // MASALAH: snap ABSOLUT (round(v)) menghancurkan posisi yang sudah BENAR.
+          // Block A di lantai y=0.5 → atasnya 1.0. Klik muka atas → placePoint.y=1.5
+          // (posisi NEMPEL yang benar) → tapi round(1.5)=2 → block baru di y=2 → GAP
+          // 0.5 unit (=1 stud). Terukur.
+          // FIX: snap RELATIF ke posisi BLOCK SUMBER (hit.object) yang sudah
+          // ter-align → bertumpuk FLUSH (nempel). Tangensial ikut grid sumber.
+          const src = hit.object.position;
+          const snapRel = (v, s) => (_su > 0 ? s + Math.round((v - s) / _su) * _su : v);
+          posX = snapRel(placePoint.x, src.x);
+          posY = snapRel(placePoint.y, src.y);
+          posZ = snapRel(placePoint.z, src.z);
+        }
       }
       return { posX, posY, posZ };
     };
@@ -21417,6 +21435,10 @@ Now you can apply Displacement for detailed effect.`);
                 </svg>
               </button>
             </div>
+            {/* ── FIX (2026-10-04, permintaan user): WRAPPER KOLOM — panel Blocks
+                DI ATAS, kotak "Selected" DI BAWAH-nya (wrapper luar = row, jadi
+                perlu kolom ini supaya keduanya tersusun vertikal). ── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
             {/* ── PANEL BLOCK LIBRARY (kotak) — elemen flow di dalam wrapper ── */}
             <div style={{
             display: 'flex', flexDirection: 'column', gap: 6,
@@ -21469,10 +21491,9 @@ Now you can apply Displacement for detailed effect.`);
                 </div>
               );
             })()}
-            {/* Nama block terpilih — info kecil di bawah grid */}
-            <div style={{ fontSize: 9, color: '#f59e0b', fontWeight: 600, marginTop: 2 }}>
-              Selected: {getBlockDef(selectedBlockType).name}
-            </div>
+            {/* ── FIX (2026-10-04, permintaan user): teks "Selected:" DIPINDAH
+                KELUAR dari kotak ini → ke kotak AREA TERPISAH di bawah (lihat
+                setelah penutup wrapper). Di sini hanya grid ikon block. ── */}
             {/* Phase 27: Multi-color Painter — Pattern selector (muncul saat tool=paint) */}
             {tool === 'paint' && (
               <div style={{
@@ -21579,6 +21600,36 @@ Now you can apply Displacement for detailed effect.`);
                 )}
               </div>
             )}
+          </div>
+          {/* ── FIX (2026-10-04, permintaan user): KOTAK AREA TERPISAH untuk teks
+              "Selected:" — DI LUAR kotak panel Blocks (di bawahnya). Teks
+              diperbesar + tebal agar user jelas melihat apa yang terpilih.
+              Format: "<Nama> Block" (mis. "Wood Block") — karena tipe inti
+              simulator ini identitasnya "Block" (nanti ada item non-Block). ── */}
+          <div style={{
+            marginTop: 8,
+            backgroundColor: 'rgba(14, 20, 32, 0.92)',
+            padding: '10px 12px', borderRadius: 14,
+            border: `1px solid ${panelBorder}`,
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            zIndex: 5,
+            maxWidth: (typeof window !== 'undefined' && window.innerWidth < 768) ? 150 : 168,
+            boxSizing: 'border-box',
+          }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: textSecondary,
+              textTransform: 'uppercase', letterSpacing: '1px',
+              marginBottom: 3, fontFamily: 'Orbitron, sans-serif',
+            }}>Selected</div>
+            <div style={{
+              fontSize: 15, fontWeight: 800, color: '#f59e0b',
+              fontFamily: 'Inter, sans-serif', lineHeight: 1.25,
+              overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {getBlockDef(selectedBlockType).name} Block
+            </div>
+          </div>
           </div>
           </div>
         )}

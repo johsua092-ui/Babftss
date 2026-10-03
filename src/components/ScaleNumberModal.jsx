@@ -104,25 +104,31 @@ function PlaceNumberInput({ label, unit, value, accent, accentRgb, onCommit }) {
     else setTxt(String(value));
   };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{
-        fontSize: 12, fontWeight: 700, color: '#94a3b8', minWidth: 66,
+        fontSize: 12, fontWeight: 700, color: '#94a3b8', minWidth: 60,
         fontFamily: 'Orbitron, sans-serif', textTransform: 'uppercase', letterSpacing: '0.5px',
       }}>{label}</span>
+      {/* ── FIX (2026-10-04, permintaan user): kolom input diperkecil (secukupnya),
+          teks satuan (studs/degree) diperbesar + PUTIH (#FFFFFF) agar jelas. ── */}
       <input
         type="text" inputMode="decimal" value={txt}
         onChange={(e) => setTxt(e.target.value.replace(/,/g, '.'))}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
         style={{
-          flex: 1, boxSizing: 'border-box', padding: '8px 12px', borderRadius: 8,
+          width: 68, flexShrink: 0, boxSizing: 'border-box', padding: '7px 9px', borderRadius: 8,
           backgroundColor: 'rgba(30, 41, 59, 0.5)',
           border: `1.5px solid rgba(${accentRgb},0.35)`,
           color: '#e2e8f0', fontSize: 15, fontWeight: 700,
-          fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums', outline: 'none',
+          fontFamily: 'Inter, sans-serif', fontVariantNumeric: 'tabular-nums',
+          outline: 'none', textAlign: 'center',
         }}
       />
-      <span style={{ fontSize: 11, color: '#64748b', minWidth: 42, fontFamily: 'Inter, sans-serif' }}>
+      <span style={{
+        fontSize: 14, fontWeight: 800, color: '#FFFFFF',
+        fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap',
+      }}>
         {unit}
       </span>
     </div>
