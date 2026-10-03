@@ -317,6 +317,41 @@ export function hideTranslateHelperLines(transformControls, options = {}) {
   return { ok: true, hidden };
 }
 
+/**
+ * SEMBUNYIKAN GARIS BANTU PANJANG (TAK HINGGA) — TANPA MENGHAPUS
+ * (2026-10-03, permintaan user): "kalau user rotate ada garis tipis putih yang
+ * panjangnya tak hingga — bisa dibuat invisible? Fitur garis itu SANGAT PENTING,
+ * JANGAN dihilangkan, tapi invisible supaya user mustahil melihatnya; dia tetap
+ * ADA di situ untuk membantu akurasi."
+ *
+ * `_gizmo.helper[rotate|translate|scale]` = `Line` dengan skala 1e6 (spans
+ * tak hingga). Cara: set `material.visible = false` (BUKAN `object.visible=false`)
+ * supaya geometri/hitungan tetap ada & tetap dipakai library, tetapi TIDAK
+ * dirender → user mustahil melihat. Idempoten (aman dipanggil berkali-kali).
+ * @returns {{ok:boolean, dimmed:string[]}}
+ */
+export function hideHelperLinesInvisible(transformControls) {
+  const gizmoRoot = transformControls && transformControls._gizmo;
+  if (!gizmoRoot || !gizmoRoot.helper) {
+    return { ok: false, dimmed: [], reason: 'helper tidak ditemukan' };
+  }
+  const dimmed = [];
+  ['translate', 'rotate', 'scale'].forEach((mode) => {
+    const grp = gizmoRoot.helper[mode];
+    if (!grp || !grp.children) return;
+    grp.children.forEach((ch, i) => {
+      // Hanya elemen `Line` (garis panjang); jangan sentuh mesh penanda kecil.
+      if (!ch || !ch.isLine) return;
+      if (ch.material) {
+        ch.material.visible = false;   // TIDAK dirender, TAPI tetap ada
+        ch.material.needsUpdate = true;
+      }
+      dimmed.push(`${mode}:${ch.name || i}`);
+    });
+  });
+  return { ok: true, dimmed };
+}
+
 /* ================================================================
  * SOLO DRAG (Phase 49 v11)
  * ================================================================

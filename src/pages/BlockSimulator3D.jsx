@@ -31,7 +31,7 @@ import TransparencyModal from '../components/TransparencyModal';
 import ScaleModeModal from '../components/ScaleModeModal';
 import ScaleNumberModal from '../components/ScaleNumberModal';
 import { ChunkManager } from '../lib/ChunkManager.js';
-import { makeSixArrows, hideTranslateHelperLines, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
+import { makeSixArrows, hideTranslateHelperLines, hideHelperLinesInvisible, enableSoloDragArrow, setGizmoColor, resetGizmoColors } from '../utils/gizmoSixArrows.js';
 import { restyleRotateGizmo } from '../utils/gizmoRotateRings.js';
 import { restyleScaleGizmoBalls, setScaleWorldAlign, getScaleWorldAlign } from '../utils/gizmoScaleBalls.js';
 import { getBlocksInScreenRect, MARQUEE_COLOR_BY_TOOL, evaluatePinchSelectBox, getSelectionPivot } from '../utils/marqueeSelect.js';
@@ -12974,6 +12974,13 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         console.warn('[Phase 49 v10] Garis bantu tidak ditemukan:', helperLines.reason);
       }
+      // ── FIX (2026-10-03, permintaan user): GARIS BANTU ROTATE (tak hingga)
+      // dibuat INVISIBLE — TIDAK dihapus. Fitur garis tetap ADA (untuk akurasi),
+      // tapi `material.visible=false` → user mustahil melihatnya.
+      try {
+        const dim = hideHelperLinesInvisible(transformControls);
+        if (dim.ok) console.log(`[FIX] Garis bantu dibuat invisible: ${dim.dimmed.join(', ')}`);
+      } catch (e) { /* jangan gagalkan init */ }
 
       // Phase 49 v11, 2026-09-04: Solo drag — saat user klik-tahan SATU panah
       // lalu menggesernya, 5 panah lain disembunyikan SEMENTARA sehingga hanya
@@ -13289,16 +13296,17 @@ Now you can apply Displacement for detailed effect.`);
                 const dupMat = Array.isArray(src.material) ? src.material.map(m => m.clone()) : src.material.clone();
                 const dup = new THREE.Mesh(dupGeo, dupMat);
                 if (_tool === 'mirror') {
-                  // ── FIX (2026-10-03, laporan user + uji semua-sisi): CERMIN SEJATI ──
-                  // BUG TERUKUR: (a) mirror hanya "digeser + orientasi di-flip" (susunan
-                  // tidak dicerminkan); (b) HARDCODE sumbu X — drag sumbu Z tetap
-                  // mencerminkan X (permintaan user: "saya klik tahan gizmo di x+ maka
-                  // disitulah garis mirror muncul" = bidang cermin tegak lurus SUMBU
-                  // YANG DIGENGGAM).
-                  // FIX: cerminkan POSISI pada sumbu yang digenggam (`_mc.axisKey`),
-                  // bidang cermin di koordinat handle yang digenggam (`_mc.planeCoord`).
+                  // ── FIX (2026-10-03, laporan user): BIDANG CERMIN = POSISI SAAT
+                  // LEPAS (handle yang digenggam), BUKAN posisi awal drag. ──
+                  // BUG TERUKUR: memakai posisi group SAAT DRAG MULAI membuat hasil
+                  // terpantul ke SISI BERLAWANAN arah geser (user: "geser ke kiri
+                  // lalu lepas → termirror di sebelah KANAN"; "geser ke atas →
+                  // muncul di BAWAH"). Terukur: drag +X 5 → mirror di x=−5.
+                  // FIX: bidang cermin = posisi group SETELAH digeser
+                  // (startGroupPos + delta) → hasil di SISI YANG SAMA dengan arah
+                  // geser. Terukur: drag +X 5 → mirror di x=+10 (kanan) ✓.
                   const _ax = _mc.axisKey || 'x';
-                  const _pc = (_mc.planeCoord != null) ? _mc.planeCoord : _mc.startGroupPos[_ax];
+                  const _pc = _mc.startGroupPos[_ax] + (_delta[_ax] || 0);
                   const _pos = { x: _px, y: _py, z: _pz };
                   _pos[_ax] = 2 * _pc - _pos[_ax];
                   dup.position.set(_pos.x, _pos.y, _pos.z);
