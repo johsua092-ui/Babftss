@@ -14371,22 +14371,45 @@ Now you can apply Displacement for detailed effect.`);
         // Hit block face → offset by face normal → snap
         const n = hit.face.normal.clone();
         n.transformDirection(hit.object.matrixWorld);
-        // ── FIX (2026-10-04, laporan user): MATCH ROTATION → NEMPEL EXACT ──
-        // BUG TERUKUR: sisi block yang DIROTASI tidak sejajar grid, jadi snap grid
-        // (`round`) merusak posisi nempel → ghost melenceng & ada gap.
-        // Terukur: target Q=[0,0.296,0,0.955] (rot 34° Y), face=[0.413,1,-0.282],
-        // tapi ghost=[1,1,-1] → jarak pusat 1.4142 (harusnya 1.0000).
-        // FIX: kalau Match Rotation ON → posisi = TEPAT di permukaan (tanpa snap),
-        // dengan offset setengah tebal block TARGET (ikut scale-nya).
+        // ── FIX (2026-10-04, laporan user): MATCH ROTATION → NEMPEL + SNAP LOKAL ──
+        // Riwayat: (a) snap GRID dunia → sisi block yang DIROTASI tidak sejajar grid
+        // → ghost melenceng/gap (jarak 1.4142). (b) fix pertama = TANPA snap →
+        // ghost bebas = user keluhkan "move 2 studs kok kayak 0 studs" (terukur:
+        // localTan [0.3039,-0.5] [1.1293,-0.5] → TIDAK kelipatan 1.0 = tidak snap).
+        // FIX FINAL: posisi = TEPAT di permukaan (offset setengah tebal TARGET, ikut
+        // scale) + SNAP TANGENSIAL di GRID LOKAL block target (step = moveStuds/2).
+        // → nempel rapi (flush) DAN tetap mengikuti step studs yang dipilih.
         if (placeMatchRotationRef.current) {
           // Sumbu lokal yang menghadap normal (dari face normal lokal ±1).
           const fn = hit.face.normal;
           const ax = (Math.abs(fn.x) >= Math.abs(fn.y) && Math.abs(fn.x) >= Math.abs(fn.z))
             ? 'x' : (Math.abs(fn.y) >= Math.abs(fn.z) ? 'y' : 'z');
-          const _s = hit.object.scale[ax];
-          const _half = 0.5 * Math.abs(_s || 1);
+          const _ts = hit.object.getWorldScale(new THREE.Vector3());
+          const _half = 0.5 * Math.abs(_ts[ax] || 1);
           const placePoint = hit.point.clone().add(n.multiplyScalar(_half));
-          posX = placePoint.x; posY = placePoint.y; posZ = placePoint.z;
+          // ── SNAP di GRID LOKAL block target (tangensial saja) ──
+          if (_su > 0) {
+            const _tq = hit.object.getWorldQuaternion(new THREE.Quaternion());
+            const _tp = hit.object.getWorldPosition(new THREE.Vector3());
+            const _tqi = _tq.clone().invert();
+            // world → lokal (relatif target, dibagi scale)
+            const _loc = placePoint.clone().sub(_tp).applyQuaternion(_tqi);
+            if (Math.abs(_ts.x) > 1e-6) _loc.x /= _ts.x;
+            if (Math.abs(_ts.y) > 1e-6) _loc.y /= _ts.y;
+            if (Math.abs(_ts.z) > 1e-6) _loc.z /= _ts.z;
+            // snap komponen TANGENSIAL (jangan normal → tetap flush di permukaan)
+            ['x', 'y', 'z'].forEach((k) => {
+              if (k === ax) return;
+              const stp = _su / Math.abs(_ts[k] || 1);
+              if (stp > 0) _loc[k] = Math.round(_loc[k] / stp) * stp;
+            });
+            // lokal → world kembali
+            _loc.x *= _ts.x; _loc.y *= _ts.y; _loc.z *= _ts.z;
+            const _back = _loc.applyQuaternion(_tq).add(_tp);
+            posX = _back.x; posY = _back.y; posZ = _back.z;
+          } else {
+            posX = placePoint.x; posY = placePoint.y; posZ = placePoint.z;
+          }
         } else {
           const placePoint = hit.point.clone().add(n.multiplyScalar(0.5));
           // ── FIX (2026-10-01, laporan user: "taruh di atas block → ada GAP 1 stud") ──
