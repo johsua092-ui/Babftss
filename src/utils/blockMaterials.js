@@ -70,6 +70,10 @@ export const BLOCK_LIBRARY = [
   { slug: 'concrete_rod',      name: 'Concrete Rod', label: 'Concrete Rod', roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
   { slug: 'marble_rod',        name: 'Marble Rod',   label: 'Marble Rod',   roughness: 0.14, metalness: 0.05, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
   { slug: 'titanium_rod',      name: 'Titanium Rod', label: 'Titanium Rod', roughness: 0.28, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  // ── NSI LEVEL 2 (dekorasi) — 2026-10-04, permintaan user ──
+  // SEAT: bangku 4 kaki (1x1x1 block = 2x2x2 studs). Bingkai/kaki = tekstur kayu;
+  // dudukan tengah = gelap (vertex color). Punya ARAH HADAP (panah hijau di ghost).
+  { slug: 'seat',              name: 'Seat',        label: 'Seat',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -188,6 +192,8 @@ export const BLOCK_PLACEHOLDER = {
   wood_rod: 0xc8a24a, stone_rod: 0x8a8a8a, rusted_rod: 0x9c5f3f,
   metal_rod: 0xb9c1cc, concrete_rod: 0xa8a49c, marble_rod: 0xe8e4dc,
   titanium_rod: 0xcdd6de,
+  // NSI Level 2: Seat — placeholder warna kayu (anti "hitam dulu").
+  seat: 0xc8a24a,
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):

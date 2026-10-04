@@ -46,7 +46,7 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG } from '../utils/blockShapes.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -14522,6 +14522,20 @@ Now you can apply Displacement for detailed effect.`);
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })
     );
     let ghostCurrentSlug = null;
+    // ── NSI FACING (2026-10-04, permintaan user): PANAH HIJAU arah hadap ──
+    // Dibuat SEBELUM syncGhostMaterial() (anti-TDZ). Dibuat sebagai ANAK dari
+    // ghostBlock → otomatis ikut posisi & rotasi ghost, DAN otomatis ikut
+    // tersembunyi saat ghost disembunyikan (Three.js tidak merender anak dari
+    // objek invisible) → panah MUSTAHIL tertinggal setelah block ditaruh.
+    // depthTest:false + renderOrder tinggi → selalu terlihat di atas ghost.
+    const facingArrow = new THREE.Mesh(
+      makeFacingArrowGeometry(THREE, getNsiSize(NSI_FACING_DEFAULT_SLUG)[1] / 2),
+      new THREE.MeshBasicMaterial({ color: NSI_FACING_ARROW_COLOR, transparent: true, opacity: 0.95, depthTest: false })
+    );
+    facingArrow.renderOrder = 999;
+    facingArrow.visible = false;
+    ghostBlock.add(facingArrow);
+    threeRef.current.facingArrow = facingArrow;
     const syncGhostMaterial = () => {
       const slug = selectedBlockTypeRef.current;
       if (slug === ghostCurrentSlug) return; // idempoten
@@ -14544,6 +14558,10 @@ Now you can apply Displacement for detailed effect.`);
       // makeBlockMaterial + transparansi preview (tester 2026-09-11:
       // anti-hitam idempoten — ghost ikut placeholder/auto-reset).
       ghostBlock.material = makeBlockMaterial(THREE, def.slug);
+      // NSI Seat: ghost juga butuh vertexColors (dudukan gelap).
+      if (ghostBlock.geometry && ghostBlock.geometry.attributes && ghostBlock.geometry.attributes.color) {
+        ghostBlock.material.vertexColors = true;
+      }
       ghostBlock.material.transparent = true;
       ghostBlock.material.depthWrite = false;
       ghostBlock.material.opacity = def.transparent ? Math.min(0.75, def.opacity + 0.15) : 0.55;
@@ -14779,6 +14797,10 @@ Now you can apply Displacement for detailed effect.`);
           // saat texture belum siap + AUTO-RESET putih saat texture termuat
           // (tint permanen merusak warna — terukur 129,81,16 → 76,29,3).
           const mat = makeBlockMaterial(THREE, blockDef.slug);
+          // ── NSI SEAT (2026-10-04): geometri Seat punya atribut `color`
+          // (vertex color) → material WAJIB vertexColors:true supaya dudukan
+          // gelap & sisi lain tekstur. Tetap SATU material (bukan array).
+          if (geo.attributes && geo.attributes.color) mat.vertexColors = true;
           mat.userData.blockType = blockDef.slug; // identitas jenis utk undo/snapshot
           const block = new THREE.Mesh(geo, mat);
           block.position.set(posX, posY, posZ);
@@ -14787,6 +14809,20 @@ Now you can apply Displacement for detailed effect.`);
           // PERSIS seperti preview ghost.
           if (ghostBlock.visible) {
             block.quaternion.copy(ghostBlock.quaternion);
+          }
+          // ── FACING (2026-10-04, permintaan user): arah hadap DISIMPAN untuk
+          // SEMUA item TANPA TERKECUALI (bukan hanya Seat). Verbatim: *"facingnya
+          // itu berlaku untuk semua yang ada disini ingat 'seluruhnya' berarti
+          // 'semuanya' tanpa terkecuali tapi mustahil dilihat oleh user"*.
+          // → Data SISTEM saja (userData.facing: North/South/East/West), TIDAK
+          //   ada tampilan UI apa pun. Panah hijau hanya di ghost (hilang saat
+          //   ditaruh).
+          try {
+            const _fw = new THREE.Vector3(0, 0, -1).applyQuaternion(block.quaternion);
+            block.userData.facing = directionFromVector(_fw.x, _fw.z);
+          } catch (e) { block.userData.facing = 'North'; }
+          if (hasFacing(blockDef.slug) && threeRef.current.facingArrow) {
+            threeRef.current.facingArrow.visible = false;
           }
           block.castShadow = true;
           block.receiveShadow = true;
@@ -16518,6 +16554,24 @@ Now you can apply Displacement for detailed effect.`);
           ghostEdges.position.copy(ghostBlock.position);
           ghostEdges.quaternion.copy(ghostBlock.quaternion);
           ghostEdges.visible = true;
+          // ── NSI FACING (2026-10-04, permintaan user): PANAH HIJAU arah hadap ──
+          // Panah = ANAK ghostBlock → posisi/rotasi OTOMATIS ikut (tidak perlu
+          // disinkronkan). Di sini cukup nyalakan/matikan sesuai jenis item.
+          const _fa = threeRef.current.facingArrow;
+          if (_fa) {
+            const _wantFace = hasFacing(selectedBlockTypeRef.current);
+            _fa.visible = _wantFace;
+            // ── FIX (2026-10-04, laporan user: "panah ijonya kenapa ngambang?"):
+            // panah WAJIB menempel di permukaan dudukan. Geometri panah dibuat
+            // dengan asumsi tinggi = NSI_FACING_DEFAULT_SLUG (Seat, 0.5 block),
+            // jadi kalau item ber-arah lain tingginya beda → geser panah
+            // setinggi selisihnya supaya SELALU menempel.
+            if (_wantFace) {
+              const _hTop = getNsiSize(selectedBlockTypeRef.current)[1] / 2;
+              const _hRef = getNsiSize(NSI_FACING_DEFAULT_SLUG)[1] / 2;
+              _fa.position.y = _hTop - _hRef;
+            }
+          }
         } else {
           ghostBlock.visible = false;
           ghostEdges.visible = false;
@@ -21955,6 +22009,12 @@ Now you can apply Displacement for detailed effect.`);
             }}>
               {getBlockDef(selectedBlockType).label || `${getBlockDef(selectedBlockType).name} Block`}
             </div>
+            {/* ── CATATAN (2026-10-04, permintaan user): HUD ARAH MATA ANGIN
+                DIHAPUS. Verbatim: *"fitur facing utara selatan barat timur tidak
+                perlu ada disini, maksudnya mustahil dilihat oleh user, tapi itu
+                ada dan bisa dibaca oleh sistem dan untuk keperluan sistem saja"*.
+                → Arah hadap tetap DIHITUNG & DISIMPAN di userData.facing untuk
+                SEMUA item (tanpa terkecuali), tapi TIDAK ditampilkan di UI. ── */}
           </div>
           </div>
           </div>

@@ -52,6 +52,15 @@ export const NSI_RAMP_NAME = 'Wedge';
 export const NSI_TRUSS_SLUG = 'truss';
 export const NSI_TRUSS_NAME = 'Truss';
 
+// ── NSI LEVEL 2 #1: SEAT (kursi dekorasi) — konstanta (dipakai NSI_SIZES) ──
+// TINGGI = 0.5 BLOCK (1 stud), BUKAN 1 block. KOREKSI USER (2026-10-04):
+// *"dia itu tingginya setengah block atau 1 studs aja ini malah 2 studs"*.
+// Diverifikasi 3 cara: zoom foto (permukaan dudukan sejajar TENGAH block kayu)
+// → tinggi kursi = 0.5 block. Lebar/panjang tetap 1 block.
+export const NSI_SEAT_SLUG = 'seat';
+export const NSI_SEAT_NAME = 'Seat';
+export const NSI_SEAT_SIZE = [1, 0.5, 1];   // 2 x 1 x 2 studs
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -89,6 +98,7 @@ export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
   [NSI_TRUSS_SLUG]: [1, 2, 1],
+  [NSI_SEAT_SLUG]: [1, 0.5, 1],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -99,7 +109,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -173,7 +183,23 @@ export function makeRampGeometry(THREE) {
  * - Winding otomatis menghadap KELUAR (menjauhi centroid) → tidak ada muka hilang.
  * - UV box-mapping (WAJIB untuk material bertekstur; tanpa UV → render hitam).
  */
-function _buildFaces(THREE, faces) {
+/**
+ * Bangun BufferGeometry dari daftar muka.
+ *
+ * `opts.autoFix` (default TRUE) = perbaiki winding otomatis berdasarkan CENTROID
+ * global. Wajib untuk bentuk yang titiknya ditulis tangan (Wedge/Ramp) yang
+ * urutannya bebas.
+ *
+ * ⚠️ JEBAKAN TERUKUR (2026-10-04, bug "kaki Seat tipis seperti kertas"):
+ * autoFix BERDASARKAN CENTROID GLOBAL SALAH untuk bentuk yang tersusun dari
+ * BANYAK KOTAK (Seat, Truss). Muka-DALAM setiap kotak (mis. sisi dalam kaki
+ * yang menghadap tengah item) akan dibalik → muka hilang → kotak tampak
+ * "kopong/lembaran 2D". Padahal `_box`/`_beam` SUDAH menghasilkan winding
+ * keluar yang benar (terbukti: cross product tiap muka _box mengarah keluar).
+ * → Untuk bentuk rakitan kotak, panggil dengan { autoFix: false }.
+ */
+function _buildFaces(THREE, faces, opts) {
+  const autoFix = !(opts && opts.autoFix === false);
   // centroid semua titik unik
   const uniq = [];
   faces.forEach((f) => f.forEach((p) => {
@@ -198,7 +224,7 @@ function _buildFaces(THREE, faces) {
     const mid = [(p[0] + q[0] + r[0]) / 3, (p[1] + q[1] + r[1]) / 3, (p[2] + q[2] + r[2]) / 3];
     const out = [mid[0] - cx, mid[1] - cy, mid[2] - cz];
     let A = p, B = q, C = r;
-    if (dot(n, out) < 0) { A = p; B = r; C = q; }
+    if (autoFix && dot(n, out) < 0) { A = p; B = r; C = q; }
     pos.push(...A, ...B, ...C);
     const nn = cross(sub(B, A), sub(C, A));
     const ax = Math.abs(nn[0]), ay = Math.abs(nn[1]), az = Math.abs(nn[2]);
@@ -345,6 +371,95 @@ export function makeRodGeometry(THREE) {
   return _buildFaces(THREE, _box(-hx, hx, -hy, hy, -hz, hz));
 }
 
+// ── NSI LEVEL 2 #1: SEAT (kursi dekorasi) ──
+// PERMINTAAN USER (2026-10-04): item NSI level 2 pertama, nama identitas "Seat".
+// Dari 4 foto + zoom (Wooden Block = pembanding ukuran):
+//   • Bangku TANPA sandaran, 4 kaki balok
+//   • Tinggi 1 block (2 studs), lebar 1 block, panjang 1 block (2x2x2 studs)
+//   • Dudukan CEKUNG (inset) di dalam bingkai kayu
+//   • Rangka/bingkai/kaki = TEKSTUR KAYU (wood_block)
+//   • Dudukan tengah = HITAM KASAR (coal_block = batu bara, paling cocok)
+//   • Kolong BERONGGA (4 kaki, tembus pandang)
+// UNIK (permintaan user): saat GHOST, muncul PANAH HIJAU penunjuk arah hadap
+//   yang IKUT berputar dgn keybind R/T/Y; panah HILANG setelah block ditaruh.
+// (Konstanta NSI_SEAT_SLUG/NAME/SIZE dideklarasikan di atas, dekat NSI_TRUSS.)
+
+/**
+ * Daftar MUKA Seat (sumber tunggal: geometry + ikon).
+ *
+ * KOREKSI USER (2026-10-04) — 2 bug:
+ *  1. *"dia itu tingginya setengah block atau 1 studs aja ini malah 2 studs"*
+ *     → tinggi = 0.5 BLOCK (1 stud), bukan 1 block. Lebar/panjang 1 block.
+ *  2. *"ini aneh kakinya seatnya kamu lihat kok gitu sih?"* → KAKI TERLALU TIPIS
+ *     (LEGB 0.16) sehingga dari sudut pandang tertentu hanya terlihat sebagai
+ *     bidang datar tanpa ketebalan (tertangkap vision: "tipis seperti kertas").
+ *     → LEGB dinaikkan 0.30 (balok kokoh) + di sudut paling LUAR (flush).
+ * Bingkai dinaikkan jadi TH 0.16 (dari 0.25) supaya kolong tetap terlihat
+ * (proporsi foto: kolong ≈ 60-65% tinggi total).
+ */
+export function getSeatFaces() {
+  const E = 0.5;                 // setengah LEBAR/PANJANG (1 block)
+  const YB = -0.25;              // alas (bawah)
+  const TOP = 0.25;              // puncak → tinggi total = 0.5 block (1 stud) ✓
+  const TH = 0.16;               // tebal bingkai atas
+  const FRAME_BOT = TOP - TH;    // 0.09 = alas bingkai (kaki naik SAMPAI sini)
+  const LEGB = 0.30;             // penampang kaki (BALOK KOKOH, bukan lembaran)
+  const SEAT_TOP = TOP - 0.03;   // permukaan dudukan (sedikit cekung dari tepi atas)
+  const IN = 0.14;               // lebar bibir bingkai
+  const faces = [];
+
+  // 1) Bingkai atas (4 bilah membentuk persegi berongga) — kayu
+  faces.push(..._box(-E, E, FRAME_BOT, TOP, -E, -E + IN));       // bilah depan
+  faces.push(..._box(-E, E, FRAME_BOT, TOP, E - IN, E));         // bilah belakang
+  faces.push(..._box(-E, -E + IN, FRAME_BOT, TOP, -E + IN, E - IN)); // bilah kiri
+  faces.push(..._box(E - IN, E, FRAME_BOT, TOP, -E + IN, E - IN));   // bilah kanan
+
+  // 2) 4 KAKI balok di sudut PALING LUAR (flush) — kayu.
+  //    Dari alas (YB) SAMPAI alas bingkai (FRAME_BOT) → menyatu.
+  const legXZ = [
+    [-E + LEGB / 2, -E + LEGB / 2], [E - LEGB / 2, -E + LEGB / 2],
+    [-E + LEGB / 2, E - LEGB / 2],  [E - LEGB / 2, E - LEGB / 2],
+  ];
+  legXZ.forEach(([cx, cz]) => {
+    faces.push(..._box(cx - LEGB / 2, cx + LEGB / 2, YB, FRAME_BOT, cz - LEGB / 2, cz + LEGB / 2));
+  });
+
+  // 3) Dudukan CEKUNG (inset) — hitam kasar (vertex color).
+  faces.push(..._box(-E + IN, E - IN, FRAME_BOT, SEAT_TOP, -E + IN, E - IN));
+
+  return faces;
+}
+
+/**
+ * Buat geometri SEAT. Bounding box 1x1x1, pusat di origin (Y = atas).
+ *
+ * CATATAN MATERIAL: Seat punya 2 tekstur (kayu + hitam) TAPI tetap SATU material
+ * (multi-material array DILARANG — terbukti `.material.map`/`.material.metalness`
+ * dipakai langsung oleh tool paint/property/scale → array akan merusaknya).
+ * Solusi: muka kayu = warna putih (tekstur asli), muka dudukan = warna gelap
+ * (menggelapkan tekstur kayu jadi hitam) via VERTEX COLOR.
+ */
+export function makeSeatGeometry(THREE) {
+  const faces = getSeatFaces();
+  // autoFix:false — muka sudah ber-winding KELUAR yang benar dari `_box`
+  // (kalau di-autofix centroid-global, sisi DALAM kaki terbalik → kaki tampak
+  //  tipis/kopong seperti kertas).
+  const geo = _buildFaces(THREE, faces, { autoFix: false });
+  // Vertex color: hitam untuk muka dudukan, putih untuk sisanya.
+  const pos = geo.getAttribute('position');
+  const col = [];
+  // Dudukan = 6 muka terakhir (12 segitiga) → hitam.
+  const nTri = pos.count / 3;
+  const seatTriStart = nTri - 12;
+  for (let t = 0; t < nTri; t++) {
+    const dark = t >= seatTriStart;
+    const c = dark ? 0.13 : 1.0;   // 0.13 = gelap (abu-hitam), 1.0 = tekstur apa adanya
+    for (let k = 0; k < 3; k++) col.push(c, c, c);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+
 /**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
@@ -352,6 +467,71 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WEDGE_SLUG) return makeWedgeGeometry(THREE);
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
   if (slug === NSI_TRUSS_SLUG) return makeTrussGeometry(THREE);
+  if (slug === NSI_SEAT_SLUG) return makeSeatGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── ARAH HADAP (FACING) — NSI yang punya orientasi (mis. Seat) ──
+// PERMINTAAN USER (2026-10-04): *"ketika dalam mode ghost block ada muncul
+// panah hijau dan jika user klik R atau T atau Y maka itu ikut berubah yang
+// mana itu menandakan kursinya arah kemana dan itu wajib dan dicatat facing ke
+// arah mana, oh ya disini harus jelas ya, mana utara selatan barat timur... dan
+// panah hijau itu akan hilang jika block ditaruh, hanya tersedia di ghostblock
+// saja"*.
+// ══════════════════════════════════════════════════════════════════════════
+export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG];
+export function hasFacing(slug) {
+  return NSI_FACING_SLUGS.indexOf(slug) >= 0;
+}
+// Slug acuan geometri panah (tinggi item acuan = tinggi geometri panah).
+export const NSI_FACING_DEFAULT_SLUG = NSI_SEAT_SLUG;
+
+// Arah mata angin. Konvensi: NORTH = −Z, EAST = +X, SOUTH = +Z, WEST = −X
+// (sudut pandang awal kamera = menghadap dari timur laut ke origin).
+export const FACING_NORTH = 'North';
+export function directionFromVector(dx, dz) {
+  if (Math.abs(dx) >= Math.abs(dz)) return dx >= 0 ? 'East' : 'West';
+  return dz <= 0 ? 'North' : 'South';
+}
+
+/** Prisma segitiga (tri = 3 titik XZ) dari y0 ke y1. */
+function _triPrism(tri, y0, y1) {
+  const t = tri.map(([x, z]) => [x, y1, z]);
+  const b = tri.map(([x, z]) => [x, y0, z]);
+  return [
+    [t[0], t[1], t[2]],              // atas
+    [b[0], b[1], b[2]],              // bawah
+    [b[0], b[1], t[1], t[0]],        // sisi 1
+    [b[1], b[2], t[2], t[1]],        // sisi 2
+    [b[2], b[0], t[0], t[2]],        // sisi 3
+  ];
+}
+
+/**
+ * PANAH HIJAU penunjuk arah hadap — HANYA untuk ghost (hilang saat ditaruh).
+ * Panah mendatar, menunjuk −Z (= NORTH) saat rotasi 0.
+ *
+ * KOREKSI USER (2026-10-04): *"itu panah ijonya kenapa ngambang gitu sih?
+ * nempel dong ke dudukan seatnya"* → panah WAJIB duduk TEPAT di permukaan
+ * dudukan item (bukan melayang di atasnya).
+ * `topY` = setengah tinggi item (mis. Seat = 0.5 block → 0.25).
+ * Panah diletakkan sedikit DI BAWAH permukaan itu (tipis 0.026 block) supaya
+ * benar-benar menempel/menapak di dudukan.
+ */
+export const NSI_FACING_ARROW_COLOR = 0x22e04a;
+export function makeFacingArrowGeometry(THREE, topY) {
+  const TOP = (typeof topY === 'number' && topY > 0) ? topY : 0.25;
+  const Y1 = TOP - 0.004;          // permukaan atas panah ≈ permukaan dudukan
+  const Y0 = TOP - 0.030;          // tebal panah 0.026 block (tipis, menempel)
+  const faces = [
+    // batang (shaft) memanjang Z
+    ..._box(-0.05, 0.05, Y0, Y1, -0.04, 0.30),
+    // kepala (head) segitiga menunjuk −Z
+    ..._triPrism([[0, -0.36], [-0.16, -0.02], [0.16, -0.02]], Y0, Y1),
+  ];
+  // autoFix:false — muka sudah ber-winding benar dari `_box`/`_triPrism`
+  // (lihat catatan jebakan di _buildFaces).
+  return _buildFaces(THREE, faces, { autoFix: false });
 }
