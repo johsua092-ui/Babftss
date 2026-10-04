@@ -45,6 +45,8 @@ import {
 } from '../utils/deleteWireframe.js';
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
+// NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR } from '../utils/blockShapes.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -854,6 +856,22 @@ export default function BlockSimulator3D({ setPage }) {
       tc.setMode('rotate');
       console.log('[Phase 50 v9] setMode rotate');
     } else if (tool === 'scale') {
+      // ── NSI GUARD (2026-10-04, permintaan user): item NSI TIDAK bisa di-scale ──
+      // Kalau objek ter-attach (atau block terpilih) adalah NSI → JANGAN pasang
+      // gizmo scale; munculkan peringatan. Tool lain tetap normal.
+      try {
+        const _sc = threeRef.current.selectedBlocks;
+        const _objs = _sc ? Array.from(_sc) : [];
+        const _tcObj = tc && tc.object;
+        const _isNsiSel = _objs.some(b => b && b.userData && isNsi(b.userData.blockSlug))
+          || (_tcObj && _tcObj.userData && isNsi(_tcObj.userData.blockSlug));
+        if (_isNsiSel) {
+          if (threeRef.current.setGizmoVisible) threeRef.current.setGizmoVisible(false);
+          if (tc) tc.detach();
+          toast.warning('Non-scalable item — tidak bisa di-scale');
+          return;   // jangan pasang gizmo scale untuk NSI
+        }
+      } catch (e) { /* jangan gagalkan switch tool */ }
       tc.setMode('scale');
       console.log('[Phase 50 v9] setMode scale');
     }
@@ -977,11 +995,12 @@ export default function BlockSimulator3D({ setPage }) {
       } catch (e) { /* jangan ganggu toggleTool */ }
     }
     // ── FITUR (2026-10-04, permintaan user): reset rotasi ghost saat PINDAH TOOL.
-    // Kalau tool akhir bukan 'place', ghost tidak dipakai → langkah rotasi direset
-    // supaya tidak nyangkut ke sesi place berikutnya.
-    if (finalTool !== 'place' && placeRotStepsRef.current !== 0) {
-      placeRotStepsRef.current = 0;
-      setPlaceRotSteps(0);
+    // Kalau tool akhir bukan 'place', ghost tidak dipakai → langkah rotasi (3 sumbu)
+    // direset supaya tidak nyangkut ke sesi place berikutnya.
+    if (finalTool !== 'place') {
+      if (placeRotStepsXRef.current !== 0) { placeRotStepsXRef.current = 0; setPlaceRotStepsX(0); }
+      if (placeRotStepsYRef.current !== 0) { placeRotStepsYRef.current = 0; setPlaceRotStepsY(0); }
+      if (placeRotStepsZRef.current !== 0) { placeRotStepsZRef.current = 0; setPlaceRotStepsZ(0); }
     }
     return t === nextTool ? null : nextTool;
   });
@@ -1089,10 +1108,18 @@ export default function BlockSimulator3D({ setPage }) {
   const [placeRotationDeg, setPlaceRotationDeg] = useState(90);
   const placeRotationDegRef = useRef(90);
   useEffect(() => { placeRotationDegRef.current = placeRotationDeg; }, [placeRotationDeg]);
-  // Jumlah langkah rotasi ghost (dari keybind 'R'). Kelipatan placeRotationDeg.
-  const [placeRotSteps, setPlaceRotSteps] = useState(0);
-  const placeRotStepsRef = useRef(0);
-  useEffect(() => { placeRotStepsRef.current = placeRotSteps; }, [placeRotSteps]);
+  // ── FITUR (2026-10-04, permintaan user): 3 SUMBU ROTATE MANUAL via keybind ──
+  // R = sumbu X (kanan→kiri), T = sumbu Y (atas→bawah), Y = sumbu Z (belakang→depan).
+  // Masing-masing menyimpan jumlah langkah sendiri; total rotasi = steps × Rotation.
+  const [placeRotStepsX, setPlaceRotStepsX] = useState(0);
+  const placeRotStepsXRef = useRef(0);
+  useEffect(() => { placeRotStepsXRef.current = placeRotStepsX; }, [placeRotStepsX]);
+  const [placeRotStepsY, setPlaceRotStepsY] = useState(0);
+  const placeRotStepsYRef = useRef(0);
+  useEffect(() => { placeRotStepsYRef.current = placeRotStepsY; }, [placeRotStepsY]);
+  const [placeRotStepsZ, setPlaceRotStepsZ] = useState(0);
+  const placeRotStepsZRef = useRef(0);
+  useEffect(() => { placeRotStepsZRef.current = placeRotStepsZ; }, [placeRotStepsZ]);
   // ── FIX AJ (bab 76): STEP ROTASI (DERAJAT) — khusus tool rotate ──
   // Permintaan user: "rotate pakai sistem pengukuran bernama DERAJAT, bukan
   // studs. Default 15." Step ini HANYA untuk rotate (tidak dibagi dengan
@@ -13126,6 +13153,20 @@ Now you can apply Displacement for detailed effect.`);
         // mengunci tanda hasil ke tanda awal, crossing nol hanya mentok
         // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
         if (transformControls.getMode() === 'scale' && transformControls.object) {
+          // ── NSI GUARD (2026-10-04, permintaan user): NSI TIDAK bisa di-scale ──
+          // JEBAKAN: gizmo bisa sudah ter-attach dari tool lain sebelum user
+          // pindah ke scale → tanpa guard ini, drag tetap men-scale NSI.
+          try {
+            const _o = transformControls.object;
+            const _kids = (_o && _o.isGroup && _o.children) ? _o.children : [_o];
+            const _hasNsi = _kids.some(k => k && k.userData && isNsi(k.userData.blockSlug));
+            if (_hasNsi) {
+              if (threeRef.current.setGizmoVisible) threeRef.current.setGizmoVisible(false);
+              transformControls.detach();
+              toast.warning('Non-scalable item — tidak bisa di-scale');
+              return;
+            }
+          } catch (e) { /* jangan gagalkan drag */ }
           snapshotScaleDragStart(transformControls.object);
           // Phase 88: HAPUS clone geometry (Phase 87). Geometry translate
           // menyebabkan pivot TIDAK di tengah geometry → "inti block melesat keluar".
@@ -13764,19 +13805,25 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'q') keys.q = true;
       else if (k === 'e') keys.e = true;
       else if (e.key === 'Shift') { keys.shift = true; if (!shiftHeldRef.current) { shiftHeldRef.current = true; setShiftHeld(true); } }
-      // ── FITUR (2026-10-04, permintaan user): KEYBIND 'R' = ROTATE GHOST ──
-      // PC saja (>=768px). Tiap tekan R menambah 1 langkah rotasi (× placeRotationDeg,
-      // default 90°) pada GHOST block tool place. Ghost = penunjuk sudah berapa kali
-      // di-rotate. HANYA aktif saat tool = 'place'.
-      if (k === 'r' && typeof window !== 'undefined' && window.innerWidth >= 768
-          && toolRef.current === 'place') {
+      // ── FITUR (2026-10-04, permintaan user): 3 KEYBIND ROTATE GHOST ──
+      // PC saja (>=768px). Tiap tekan menambah 1 langkah rotasi (× Rotation, default
+      // 90°) pada GHOST block tool place — 3 SUMBU supaya lengkap & nyaman:
+      //   R = sumbu X (kanan→kiri) · T = sumbu Y (atas→bawah) · Y = sumbu Z (belakang→depan)
+      // Ghost = penunjuk sudah berapa kali di-rotate. HANYA aktif saat tool = 'place'.
+      if (typeof window !== 'undefined' && window.innerWidth >= 768
+          && toolRef.current === 'place'
+          && (k === 'r' || k === 't' || k === 'y')) {
         e.preventDefault();
-        const next = (placeRotStepsRef.current || 0) + 1;
-        setPlaceRotSteps(next);
-        placeRotStepsRef.current = next;
+        const _axis = (k === 'r') ? 'x' : (k === 't' ? 'y' : 'z');
+        const _setS = (_axis === 'x') ? setPlaceRotStepsX : (_axis === 'y' ? setPlaceRotStepsY : setPlaceRotStepsZ);
+        const _refS = (_axis === 'x') ? placeRotStepsXRef : (_axis === 'y' ? placeRotStepsYRef : placeRotStepsZRef);
+        const next = (_refS.current || 0) + 1;
+        _setS(next);
+        _refS.current = next;
         try { if (threeRef.current.applyGhostRotation) threeRef.current.applyGhostRotation(); } catch (err) {}
         const _deg = placeRotationDegRef.current || 90;
-        toast.success(`Ghost diputar ${next * _deg}°`);
+        const _nm = (_axis === 'x') ? 'X (kanan→kiri)' : (_axis === 'y' ? 'Y (atas→bawah)' : 'Z (belakang→depan)');
+        toast.success(`Ghost diputar sumbu ${_nm} ${next * _deg}°`);
       }
       // Phase 47, 2026-09-03: Tool keybinds (PC only, window.innerWidth >= 768).
       // 1=delete, 2=place, 3=paint, 4=binding, 5=scale, 6=property,
@@ -14440,6 +14487,12 @@ Now you can apply Displacement for detailed effect.`);
       const slug = selectedBlockTypeRef.current;
       if (slug === ghostCurrentSlug) return; // idempoten
       ghostCurrentSlug = slug;
+      // ── NSI (2026-10-04): ghost memakai GEOMETRI KHUSUS kalau NSI (Wedge) ──
+      try {
+        const _gNsi = makeNsiGeometry(THREE, slug);
+        if (ghostBlock.geometry && ghostBlock.geometry.dispose) ghostBlock.geometry.dispose();
+        ghostBlock.geometry = _gNsi || new THREE.BoxGeometry(1, 1, 1);
+      } catch (e) {}
       if (ghostBlock.material && ghostBlock.material.dispose) ghostBlock.material.dispose();
       const def = getBlockDef(slug);
       // makeBlockMaterial + transparansi preview (tester 2026-09-11:
@@ -14460,15 +14513,18 @@ Now you can apply Displacement for detailed effect.`);
     );
     ghostEdges.visible = false;
     scene.add(ghostEdges);
-    // ── FITUR (2026-10-04, permintaan user): ROTASI GHOST dari keybind 'R' ──
-    // `placeRotSteps` = berapa kali user menekan R. Rotasi = steps × placeRotationDeg
+    // ── FITUR (2026-10-04, permintaan user): ROTASI GHOST 3 SUMBU ──
+    // R = sumbu X · T = sumbu Y · Y = sumbu Z. Masing-masing steps × Rotation
     // (default 90°). Ghost block inilah "penunjuk" sudah berapa kali di-rotate.
     threeRef.current.applyGhostRotation = () => {
-      const steps = placeRotStepsRef.current || 0;
       const deg = placeRotationDegRef.current || 90;
-      const rad = THREE.MathUtils.degToRad(steps * deg);
-      ghostBlock.rotation.set(0, rad, 0);
-      ghostEdges.rotation.set(0, rad, 0);
+      const rad = THREE.MathUtils.degToRad(deg);
+      const rx = (placeRotStepsXRef.current || 0) * rad;
+      const ry = (placeRotStepsYRef.current || 0) * rad;
+      const rz = (placeRotStepsZRef.current || 0) * rad;
+      // Euler order 'YXZ' supaya hasil 3 sumbu stabil & tidak gimbal-lock.
+      ghostBlock.rotation.set(rx, ry, rz, 'YXZ');
+      ghostEdges.rotation.set(rx, ry, rz, 'YXZ');
     };
     threeRef.current.applyGhostRotation();
     // Expose ghost untuk verifikasi (test harness).
@@ -14669,7 +14725,12 @@ Now you can apply Displacement for detailed effect.`);
           // Build area = VISUAL saja (permintaan user 2026-10-01: grid TIDAK
           // boleh menghalangi). Hanya sisa guard Y (jangan di bawah lantai).
           if (posY < 0) return;
-          const geo = new THREE.BoxGeometry(1, 1, 1);
+          // ── NSI (Non-Scalable Item) — 2026-10-04, permintaan user ──
+          // Block NSI (mis. Wedge) memakai GEOMETRI KHUSUS (bukan kubus) dan
+          // TIDAK bisa di-scale. Geometri tetap 1x1x1 (bounding box 1 block).
+          const _nsiDef0 = getBlockDef(selectedBlockTypeRef.current);
+          const _nsiGeo0 = makeNsiGeometry(THREE, _nsiDef0.slug);
+          const geo = _nsiGeo0 || new THREE.BoxGeometry(1, 1, 1);
           // Phase 63 (2026-09-11): place menaruh BLOCK dari Block Library
           // (dataset user) — material dari registry blockMaterials.js
           // (texture tampak2D + PBR per jenis). Place TIDAK lagi set warna.
@@ -16313,22 +16374,21 @@ Now you can apply Displacement for detailed effect.`);
           // (b) MATCH ROTATION: kalau ON & menempel di SISI block target yang
           //     dirotasi → ghost ikut rotasi block target (menempel rapi).
           //     Kalau OFF → ghost selalu tegak lurus (default lama).
-          const _gSteps = placeRotStepsRef.current || 0;
           const _gDeg = placeRotationDegRef.current || 90;
-          const _gBase = THREE.MathUtils.degToRad(_gSteps * _gDeg);
-          let _gQuat = null;
+          const _gRad = THREE.MathUtils.degToRad(_gDeg);
+          const _gEuler = new THREE.Euler(
+            (placeRotStepsXRef.current || 0) * _gRad,
+            (placeRotStepsYRef.current || 0) * _gRad,
+            (placeRotStepsZRef.current || 0) * _gRad, 'YXZ');
+          const _gQuat = new THREE.Quaternion().setFromEuler(_gEuler);   // 3 sumbu (R/T/Y)
           if (placeMatchRotationRef.current && hits[0].object !== ground && hits[0].object.userData
               && hits[0].object.userData.isBlock) {
-            // Ambil rotasi WORLD block target (sisi tempat ghost menempel).
-            _gQuat = new THREE.Quaternion();
-            hits[0].object.getWorldQuaternion(_gQuat);
-            // Tambah rotasi step 'R' (relatif sumbu Y lokal block target).
-            const _spin = new THREE.Quaternion().setFromAxisAngle(
-              new THREE.Vector3(0, 1, 0), _gBase);
-            _gQuat.multiply(_spin);
+            // Match Rotation: kalikan rotasi block target (WORLD) dgn rotasi ghost.
+            const _tq = new THREE.Quaternion();
+            hits[0].object.getWorldQuaternion(_tq);
+            _gQuat.premultiply(_tq);
           }
-          if (_gQuat) ghostBlock.quaternion.copy(_gQuat);
-          else ghostBlock.rotation.set(0, _gBase, 0);
+          ghostBlock.quaternion.copy(_gQuat);
           ghostBlock.visible = true;
           ghostEdges.position.copy(ghostBlock.position);
           ghostEdges.quaternion.copy(ghostBlock.quaternion);
@@ -21650,7 +21710,7 @@ Now you can apply Displacement for detailed effect.`);
               fontFamily: 'Inter, sans-serif', lineHeight: 1.25,
               overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
-              {getBlockDef(selectedBlockType).name} Block
+              {getBlockDef(selectedBlockType).label || `${getBlockDef(selectedBlockType).name} Block`}
             </div>
           </div>
           </div>

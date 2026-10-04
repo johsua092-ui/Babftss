@@ -373,7 +373,7 @@ export default function ScaleNumberModal({
                 onCommit={(v) => onPlaceOptionsChange && onPlaceOptionsChange({ rotationDeg: v })}
               />
               <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>
-                Tekan <b style={{ color: accent }}>R</b> untuk memutar ghost sebesar nilai Rotation (PC).
+                Tekan <b style={{ color: accent }}>R</b> (kanan→kiri), <b style={{ color: accent }}>T</b> (atas→bawah), <b style={{ color: accent }}>Y</b> (belakang→depan) untuk memutar ghost sebesar nilai Rotation (PC).
               </div>
             </div>
           ) : (

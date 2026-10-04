@@ -50,6 +50,14 @@ export const BLOCK_LIBRARY = [
   { slug: 'bouncy_block',      name: 'Bouncy',       roughness: 0.6,  metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'grass_block',       name: 'Grass',        roughness: 1.0,  metalness: 0.0, transparent: false, opacity: 1.0 },
   { slug: 'sand_block',        name: 'Sand',         roughness: 1.0,  metalness: 0.0, transparent: false, opacity: 1.0 },
+  // ── NSI (Non-Scalable Item) — 2026-10-04, permintaan user ──
+  // Geometri KHUSUS (bukan kubus) → TIDAK bisa di-scale. Lihat utils/blockShapes.js.
+  // Warna identitas: RGB(213,115,61) (#D5733D).
+  // NAMA (koreksi user): "Corner Wedge" — BUKAN "Wedge" (Wedge = bentuk ramp
+  // biasa, akan dibuat terpisah dari dataset user).
+  { slug: 'corner_wedge',      name: 'Corner Wedge', label: 'Corner Wedge', roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  // NSI #2: WEDGE (ramp / prisma segitiga siku-siku) — 1 bidang miring lurus.
+  { slug: 'wedge',             name: 'Wedge',        label: 'Wedge', roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
