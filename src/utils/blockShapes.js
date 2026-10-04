@@ -61,6 +61,21 @@ export const NSI_SEAT_SLUG = 'seat';
 export const NSI_SEAT_NAME = 'Seat';
 export const NSI_SEAT_SIZE = [1, 0.5, 1];   // 2 x 1 x 2 studs
 
+// ── NSI LEVEL 2 #2: STEP (undakan/bangku panjang) — konstanta ──
+// PERMINTAAN USER (2026-10-04): *"nama identitasnya 'Step' ... tingginya 1 studs
+// sama kayak seats cuman ini panjang ke kiri atau kanan bangkunya itu 2 block
+// tapi lebarnya itu 1 block aja"*.
+// → Ukuran: 2 × 0.5 × 1 block = 4 × 1 × 2 studs.
+// Dari 4 foto + zoom (Wooden Block = pembanding):
+//   • 1 undakan datar (BUKAN tangga bertingkat), permukaan atas rata satu bidang
+//   • penopang vertikal di ujung KIRI & KANAN (profil huruf "U" terbalik)
+//   • kolong tengah berongga (tembus)
+//   • semua kotak tajam (tidak ada bagian membulat)
+//   • tekstur kayu + detail paku
+export const NSI_STEP_SLUG = 'step';
+export const NSI_STEP_NAME = 'Step';
+export const NSI_STEP_SIZE = [2, 0.5, 1];   // 4 x 1 x 2 studs
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -99,6 +114,7 @@ export const NSI_SIZES = {
   [NSI_RAMP_SLUG]: [1, 1, 1],
   [NSI_TRUSS_SLUG]: [1, 2, 1],
   [NSI_SEAT_SLUG]: [1, 0.5, 1],
+  [NSI_STEP_SLUG]: [2, 0.5, 1],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -109,7 +125,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -461,6 +477,42 @@ export function makeSeatGeometry(THREE) {
 }
 
 /**
+ * Daftar MUKA Step (sumber tunggal: geometry + ikon).
+ *
+ * Bentuk (dari 4 foto + zoom, Wooden Block = pembanding):
+ *   • 1 undakan datar (plat atas) permukaan rata satu bidang — BUKAN tangga
+ *   • penopang vertikal di ujung KIRI & KANAN (profil "U" terbalik)
+ *   • kolong tengah BERONGGA (tembus)
+ *   • semua kotak tajam (tanpa bagian membulat)
+ * Ukuran: 2 × 0.5 × 1 block = 4 × 1 × 2 studs.
+ */
+export function getStepFaces() {
+  const EX = 1.0;                // setengah PANJANG (2 block = 4 studs)
+  const EZ = 0.5;                // setengah LEBAR (1 block = 2 studs)
+  const YB = -0.25;              // alas
+  const TOP = 0.25;              // puncak → tinggi 0.5 block (1 stud) ✓
+  const TH = 0.16;               // tebal plat undakan
+  const PLATE_BOT = TOP - TH;    // alas plat (penopang naik SAMPAI sini)
+  const SUP = 0.30;              // lebar penopang (X) — balok kokoh
+  const faces = [];
+
+  // 1) Plat undakan (permukaan atas rata) — kayu
+  faces.push(..._box(-EX, EX, PLATE_BOT, TOP, -EZ, EZ));
+
+  // 2) Penopang vertikal ujung KIRI & KANAN (dari alas sampai alas plat)
+  faces.push(..._box(-EX, -EX + SUP, YB, PLATE_BOT, -EZ, EZ));
+  faces.push(..._box(EX - SUP, EX, YB, PLATE_BOT, -EZ, EZ));
+
+  return faces;
+}
+
+/** Buat geometri STEP (2 × 0.5 × 1 block). */
+export function makeStepGeometry(THREE) {
+  // autoFix:false — muka sudah ber-winding KELUAR yang benar dari `_box`.
+  return _buildFaces(THREE, getStepFaces(), { autoFix: false });
+}
+
+/**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
 export function makeNsiGeometry(THREE, slug) {
@@ -468,6 +520,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
   if (slug === NSI_TRUSS_SLUG) return makeTrussGeometry(THREE);
   if (slug === NSI_SEAT_SLUG) return makeSeatGeometry(THREE);
+  if (slug === NSI_STEP_SLUG) return makeStepGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }
