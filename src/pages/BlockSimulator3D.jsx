@@ -311,6 +311,15 @@ export default function BlockSimulator3D({ setPage }) {
   // Panel kanan saat tool place = BLOCK LIBRARY (21 block dari dataset user
   // di folder image — urutan 01..42). selectedBlockType = slug block aktif.
   const [selectedBlockType, setSelectedBlockType] = useState(DEFAULT_BLOCK_SLUG);
+  // ── FITUR (2026-10-04, permintaan user): TAB KATEGORI NSI DI PANEL PLACE ──
+  // "rumah" untuk NSI level 1/2/3 + mode cari-semua:
+  //   'block'  = ikon KUBUS MIRING  → block biasa + NSI level 1 (numpang)
+  //   'nsi2'   = ikon BENDERA MIRING → hanya NSI level 2  (masih kosong)
+  //   'nsi3'   = ikon BINTANG KUNING → hanya NSI level 3  (masih kosong)
+  //   'search' = ikon KACA PEMBESAR → SEMUA (block + NSI 1/2/3) + kolom cari
+  // Default = 'block' (kubus) sesuai permintaan user.
+  const [blockPanelTab, setBlockPanelTab] = useState('block');
+  const [blockSearchQuery, setBlockSearchQuery] = useState('');
   const selectedBlockTypeRef = useRef(DEFAULT_BLOCK_SLUG);
   useEffect(() => { selectedBlockTypeRef.current = selectedBlockType; }, [selectedBlockType]);
   const toolRef = useRef(null);
@@ -21653,16 +21662,134 @@ Now you can apply Displacement for detailed effect.`);
                 warna, tapi MEMILIH BLOCK dari dataset user (21 jenis,
                 urutan 01..42: tampak3D = ikon, tampak2D = texture 3D).
                 Pattern painter (tool paint, nested di bawah) TIDAK tersentuh. */}
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: textSecondary,
-              textTransform: 'uppercase', letterSpacing: '1px',
-              marginBottom: 4, fontFamily: 'Orbitron, sans-serif',
-            }}>Blocks</div>
+            {/* ── FITUR (2026-10-04, permintaan user): TAB KATEGORI NSI ──
+                Teks "Blocks" DIHAPUS → diganti 4 ikon berwarna:
+                  🧊 kubus miring   = Blocks + NSI Level 1 (numpang) — DEFAULT
+                  🚩 bendera miring = NSI Level 2 (rumah, masih kosong)
+                  ⭐ bintang kuning = NSI Level 3 (rumah, masih kosong)
+                  🔎 kaca pembesar  = SEMUA (Blocks + NSI 1/2/3) + kolom cari
+                Desain (revisi user: "yang bagus... punya warna background
+                tapi sedikit aja biar menarik, gak kaku"): tiap tombol punya
+                warna aksen sendiri → gradient lembut + glow saat aktif. ── */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              {[
+                { id: 'block',  title: 'Blocks + NSI Level 1',            color: [245, 158, 11] },
+                { id: 'nsi2',   title: 'NSI Level 2 (Normal)',            color: [56, 189, 248] },
+                { id: 'nsi3',   title: 'NSI Level 3 (Hard)',              color: [250, 204, 21] },
+                { id: 'search', title: 'Cari semua (Blocks + NSI 1/2/3)', color: [167, 139, 250] },
+              ].map(tabDef => {
+                const active = blockPanelTab === tabDef.id;
+                const [r, g, b] = tabDef.color;
+                const rgb = `${r},${g},${b}`;
+                const stroke = active ? `rgb(${rgb})` : '#94a3b8';
+                const shadowOn = `0 0 12px rgba(${rgb},0.55), inset 0 1px 0 rgba(255,255,255,0.14)`;
+                const shadowOff = `inset 0 1px 0 rgba(255,255,255,0.06)`;
+                return (
+                  <button
+                    key={tabDef.id}
+                    onClick={() => setBlockPanelTab(tabDef.id)}
+                    title={tabDef.title}
+                    style={{
+                      flex: 1, height: 34, padding: 0, borderRadius: 10,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: `1.5px solid rgba(${rgb},${active ? 0.9 : 0.32})`,
+                      background: active
+                        ? `linear-gradient(160deg, rgba(${rgb},0.40), rgba(${rgb},0.10))`
+                        : `linear-gradient(160deg, rgba(${rgb},0.15), rgba(${rgb},0.03))`,
+                      cursor: 'pointer',
+                      boxShadow: active ? shadowOn : shadowOff,
+                      transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s, background 0.18s',
+                      transform: active ? 'translateY(-1px)' : 'none',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'translateY(-1px) scale(1.06)';
+                      e.currentTarget.style.boxShadow = `0 0 14px rgba(${rgb},0.6), inset 0 1px 0 rgba(255,255,255,0.16)`;
+                      e.currentTarget.style.borderColor = `rgba(${rgb},0.95)`;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = active ? 'translateY(-1px)' : 'none';
+                      e.currentTarget.style.boxShadow = active ? shadowOn : shadowOff;
+                      e.currentTarget.style.borderColor = `rgba(${rgb},${active ? 0.9 : 0.32})`;
+                    }}
+                  >
+                    {tabDef.id === 'block' && (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.9" strokeLinejoin="round">
+                        <path d="M12 2.6 21.2 7.3v9.4L12 21.4 2.8 16.7V7.3z" />
+                        <path d="M12 21.4V12M12 12 2.8 7.3M12 12l9.2-4.7" />
+                      </svg>
+                    )}
+                    {tabDef.id === 'nsi2' && (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6.6 21.4V2.6" />
+                        <path d="M6.6 3.4h10.6l-2.7 3.6 2.7 3.6H6.6z" />
+                      </svg>
+                    )}
+                    {tabDef.id === 'nsi3' && (
+                      <svg width="19" height="19" viewBox="0 0 24 24" fill={active ? '#fde047' : '#facc15'} stroke="#eab308" strokeWidth="0.8" strokeLinejoin="round"
+                        style={{ filter: active ? 'drop-shadow(0 0 4px rgba(250,204,21,0.85))' : 'none' }}>
+                        <path d="M12 1.9l3.1 6.5 7.1.9-5.2 4.9 1.4 7-6.4-3.4-6.4 3.4 1.4-7L1.8 9.3l7.1-.9z" />
+                      </svg>
+                    )}
+                    {tabDef.id === 'search' && (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round">
+                        <circle cx="10.6" cy="10.6" r="6.6" />
+                        <path d="M15.6 15.6 21 21" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {blockPanelTab === 'search' && (
+              <input
+                type="text"
+                value={blockSearchQuery}
+                onChange={(e) => setBlockSearchQuery(e.target.value)}
+                placeholder="Cari nama..."
+                style={{
+                  width: '100%', boxSizing: 'border-box', marginBottom: 6,
+                  padding: '5px 8px', borderRadius: 7,
+                  border: '1px solid rgba(148,163,184,0.3)',
+                  backgroundColor: 'rgba(15,23,42,0.9)',
+                  color: '#e2e8f0', fontSize: 11, fontFamily: 'Inter, sans-serif',
+                  outline: 'none',
+                }}
+              />
+            )}
             {(() => {
               const cols = typeof window !== 'undefined' && window.innerWidth < 768 ? 3 : 4;
+              // ── FILTER per tab ── (level 0 = block biasa, 1/2/3 = NSI)
+              const lvlOf = (b) => (b.nsi ? (b.nsiLevel || 1) : 0);
+              let items;
+              if (blockPanelTab === 'block') {
+                items = BLOCK_LIBRARY.filter(b => lvlOf(b) <= 1);
+              } else if (blockPanelTab === 'nsi2') {
+                items = BLOCK_LIBRARY.filter(b => lvlOf(b) === 2);
+              } else if (blockPanelTab === 'nsi3') {
+                items = BLOCK_LIBRARY.filter(b => lvlOf(b) === 3);
+              } else {
+                const q = (blockSearchQuery || '').trim().toLowerCase();
+                items = BLOCK_LIBRARY.filter(b => !q
+                  || (b.name || '').toLowerCase().includes(q)
+                  || (b.label || '').toLowerCase().includes(q)
+                  || (b.slug || '').toLowerCase().includes(q));
+              }
+              if (items.length === 0) {
+                return (
+                  <div style={{
+                    maxWidth: cols === 3 ? 150 : 168, padding: '10px 6px',
+                    fontSize: 10, color: textSecondary, textAlign: 'center',
+                    fontFamily: 'Inter, sans-serif', lineHeight: 1.5,
+                  }}>
+                    {blockPanelTab === 'nsi2' && 'Belum ada NSI Level 2'}
+                    {blockPanelTab === 'nsi3' && 'Belum ada NSI Level 3'}
+                    {blockPanelTab === 'search' && 'Tidak ditemukan'}
+                  </div>
+                );
+              }
               return (
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 6, maxWidth: cols === 3 ? 150 : 168 }}>
-                  {BLOCK_LIBRARY.map(b => (
+                  {items.map(b => (
                     <button
                       key={b.slug}
                       onClick={() => setSelectedBlockType(b.slug)}

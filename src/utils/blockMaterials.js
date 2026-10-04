@@ -55,21 +55,21 @@ export const BLOCK_LIBRARY = [
   // Warna identitas: RGB(213,115,61) (#D5733D).
   // NAMA (koreksi user): "Corner Wedge" — BUKAN "Wedge" (Wedge = bentuk ramp
   // biasa, akan dibuat terpisah dari dataset user).
-  { slug: 'corner_wedge',      name: 'Corner Wedge', label: 'Corner Wedge', roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'corner_wedge',      name: 'Corner Wedge', label: 'Corner Wedge', roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
   // NSI #2: WEDGE (ramp / prisma segitiga siku-siku) — 1 bidang miring lurus.
-  { slug: 'wedge',             name: 'Wedge',        label: 'Wedge',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'wedge',             name: 'Wedge',        label: 'Wedge',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
   // NSI #3: TRUSS (rangka batang terbuka / open lattice frame) — 20 batang.
-  { slug: 'truss',             name: 'Truss',        label: 'Truss',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'truss',             name: 'Truss',        label: 'Truss',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
   // ── NSI #4: ROD (7 varian) — 2026-10-04, permintaan user ──
   // Kotak ramping 1 x 3 x 1 studs (0.5 x 1.5 x 0.5 block). Tekstur = 100%
   // block dasarnya (PBR properties disamakan agar terasa identik).
-  { slug: 'wood_rod',          name: 'Wood Rod',     label: 'Wood Rod',     roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
-  { slug: 'stone_rod',         name: 'Stone Rod',    label: 'Stone Rod',    roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
-  { slug: 'rusted_rod',        name: 'Rusted Rod',   label: 'Rusted Rod',   roughness: 0.9,  metalness: 0.1, transparent: false, opacity: 1.0, nsi: true },
-  { slug: 'metal_rod',         name: 'Metal Rod',    label: 'Metal Rod',    roughness: 0.24, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true },
-  { slug: 'concrete_rod',      name: 'Concrete Rod', label: 'Concrete Rod', roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
-  { slug: 'marble_rod',        name: 'Marble Rod',   label: 'Marble Rod',   roughness: 0.14, metalness: 0.05, transparent: false, opacity: 1.0, nsi: true },
-  { slug: 'titanium_rod',      name: 'Titanium Rod', label: 'Titanium Rod', roughness: 0.28, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'wood_rod',          name: 'Wood Rod',     label: 'Wood Rod',     roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  { slug: 'stone_rod',         name: 'Stone Rod',    label: 'Stone Rod',    roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  { slug: 'rusted_rod',        name: 'Rusted Rod',   label: 'Rusted Rod',   roughness: 0.9,  metalness: 0.1, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  { slug: 'metal_rod',         name: 'Metal Rod',    label: 'Metal Rod',    roughness: 0.24, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  { slug: 'concrete_rod',      name: 'Concrete Rod', label: 'Concrete Rod', roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  { slug: 'marble_rod',        name: 'Marble Rod',   label: 'Marble Rod',   roughness: 0.14, metalness: 0.05, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
+  { slug: 'titanium_rod',      name: 'Titanium Rod', label: 'Titanium Rod', roughness: 0.28, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 1 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
