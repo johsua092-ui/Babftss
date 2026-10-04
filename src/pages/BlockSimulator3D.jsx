@@ -562,7 +562,11 @@ export default function BlockSimulator3D({ setPage }) {
       // unequip (null) => biarkan kosong (sesuai perilaku lama pra-FIX C).
       if (alive && threeRef.current.selectedBlocks.size === 0
           && tool !== 'clone' && tool !== 'mirror'
-          && !!toolOutlineColor(tool)) {
+          && !!toolOutlineColor(tool)
+          // ── NSI (2026-10-04, permintaan user): blok NSI TIDAK boleh dipulihkan
+          // saat tool = scale — bagi scale, hitbox NSI "hilang" (tidak bisa
+          // diklik/dipilih). Tool lain tetap memulihkan seperti biasa.
+          && !(tool === 'scale' && isNsi(remembered.userData && remembered.userData.blockSlug))) {
         threeRef.current.selectedBlocks.add(remembered);
         // JEBAKAN TDZ: `highlightSelected` dideklarasikan JAUH di bawah
         // (~baris 13900) — memanggilnya di sini = "Cannot access before
@@ -14423,6 +14427,19 @@ Now you can apply Displacement for detailed effect.`);
         // Hit block face → offset by face normal → snap
         const n = hit.face.normal.clone();
         n.transformDirection(hit.object.matrixWorld);
+        // ── FIX (2026-10-04, NSI Rod): OFFSET NORMAL = setengah UKURAN ITEM BARU ──
+        // JEBAKAN TERUKUR: offset di-hardcode 0.5 (asumsi item setebal 1 block).
+        // Rod tebal 0.5 block → pusat salah 0.25 → Rod AMBLAS 0.25 ke dalam block
+        // di bawahnya. Rumus benar: pusat = titikPermukaan + (ukuranBaru/2).
+        // Untuk block biasa (1 block) hasilnya tetap 0.5 → NOL regresi.
+        // ⚠️ WAJIB di dalam blok ini: `n` baru ada setelah dideklarasikan di atas.
+        const _nsiSz = getNsiSize(selectedBlockTypeRef.current);
+        const _axIdx = (Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z))
+          ? 0 : (Math.abs(n.y) >= Math.abs(n.z) ? 1 : 2);
+        const _halfNew = _nsiSz[_axIdx] / 2;
+        // NSI yang tebalnya BUKAN 1 block: JANGAN snap pada sumbu normal
+        // (snap akan merusak posisi flush — terukur).
+        const _skipSnapAxis = Math.abs(_nsiSz[_axIdx] - 1) > 1e-6;
         // ── FIX (2026-10-04, laporan user): MATCH ROTATION → NEMPEL + SNAP LOKAL ──
         // Riwayat: (a) snap GRID dunia → sisi block yang DIROTASI tidak sejajar grid
         // → ghost melenceng/gap (jarak 1.4142). (b) fix pertama = TANPA snap →
@@ -14463,7 +14480,7 @@ Now you can apply Displacement for detailed effect.`);
             posX = placePoint.x; posY = placePoint.y; posZ = placePoint.z;
           }
         } else {
-          const placePoint = hit.point.clone().add(n.multiplyScalar(0.5));
+          const placePoint = hit.point.clone().add(n.multiplyScalar(_halfNew));
           // ── FIX (2026-10-01, laporan user: "taruh di atas block → ada GAP 1 stud") ──
           // MASALAH: snap ABSOLUT (round(v)) menghancurkan posisi yang sudah BENAR.
           // Block A di lantai y=0.5 → atasnya 1.0. Klik muka atas → placePoint.y=1.5
@@ -14471,11 +14488,12 @@ Now you can apply Displacement for detailed effect.`);
           // 0.5 unit (=1 stud). Terukur.
           // FIX: snap RELATIF ke posisi BLOCK SUMBER (hit.object) yang sudah
           // ter-align → bertumpuk FLUSH (nempel). Tangensial ikut grid sumber.
+          // (NSI tebal != 1 block: sumbu normal DILEWATI — anti amblas/gap.)
           const src = hit.object.position;
           const snapRel = (v, s) => (_su > 0 ? s + Math.round((v - s) / _su) * _su : v);
-          posX = snapRel(placePoint.x, src.x);
-          posY = snapRel(placePoint.y, src.y);
-          posZ = snapRel(placePoint.z, src.z);
+          posX = (_skipSnapAxis && _axIdx === 0) ? placePoint.x : snapRel(placePoint.x, src.x);
+          posY = (_skipSnapAxis && _axIdx === 1) ? placePoint.y : snapRel(placePoint.y, src.y);
+          posZ = (_skipSnapAxis && _axIdx === 2) ? placePoint.z : snapRel(placePoint.z, src.z);
         }
       }
       return { posX, posY, posZ };
@@ -14487,6 +14505,13 @@ Now you can apply Displacement for detailed effect.`);
     // saat selectedBlockType ganti (idempoten — tidak rebuild tiap mousemove).
     const ghostGeo = new THREE.BoxGeometry(1, 1, 1);
     const ghostBlock = new THREE.Mesh(ghostGeo, null);
+    // ── FIX (2026-10-04, NSI Rod): ghostEdges dibuat SEBELUM syncGhostMaterial()
+    // dipanggil — kalau tidak, `ghostEdges` belum terdeklarasi (TDZ) dan outline
+    // tidak pernah di-rebuild. Wajib: buat dulu, panggil sync setelahnya.
+    const ghostEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(ghostGeo),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })
+    );
     let ghostCurrentSlug = null;
     const syncGhostMaterial = () => {
       const slug = selectedBlockTypeRef.current;
@@ -14497,6 +14522,13 @@ Now you can apply Displacement for detailed effect.`);
         const _gNsi = makeNsiGeometry(THREE, slug);
         if (ghostBlock.geometry && ghostBlock.geometry.dispose) ghostBlock.geometry.dispose();
         ghostBlock.geometry = _gNsi || new THREE.BoxGeometry(1, 1, 1);
+      } catch (e) {}
+      // ── FIX (2026-10-04, NSI Rod): OUTLINE ghost WAJIB ikut geometri baru.
+      // BUG: `ghostEdges` dibuat dari geometri LAMA (kotak 1x1x1) → pada Rod
+      // (0.5x1.5x0.5) outline kotak besar menyesatkan.
+      try {
+        if (ghostEdges.geometry && ghostEdges.geometry.dispose) ghostEdges.geometry.dispose();
+        ghostEdges.geometry = new THREE.EdgesGeometry(ghostBlock.geometry);
       } catch (e) {}
       if (ghostBlock.material && ghostBlock.material.dispose) ghostBlock.material.dispose();
       const def = getBlockDef(slug);
@@ -14510,12 +14542,6 @@ Now you can apply Displacement for detailed effect.`);
     syncGhostMaterial();
     ghostBlock.visible = false;
     scene.add(ghostBlock);
-
-    // Ghost edges — outline garis tepi biar lebih jelas keliatan.
-    const ghostEdges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(ghostGeo),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })
-    );
     ghostEdges.visible = false;
     scene.add(ghostEdges);
     // ── FITUR (2026-10-04, permintaan user): ROTASI GHOST 3 SUMBU ──
@@ -15627,7 +15653,50 @@ Now you can apply Displacement for detailed effect.`);
     // Rotate/Scale tool throws ReferenceError → attachGizmoToSelection never reached
     // → gizmo never appears. Basic version without group auto-select (removed with
     // Group/Ungroup feature).
+    // ══════════════════════════════════════════════════════════════════════
+    // ── NSI GUARD — HITBOX HILANG (2026-10-04, permintaan user) ──
+    // Usulan user (verbatim): *"yang NSI itu sama sekali tidak bisa di klik dan
+    // diabaikan oleh scale, jadi hitbox langsung hilang jika scale ketemu dengan
+    // nsi, jadi tidak ada outline ataupun block yang tidak bisa di klik karena
+    // hitbox kliknya aja hilang sementara gak ada itu cuma visual yang dilihat
+    // disitu"* + *"user memakai scale tools lalu ada 2 block yaitu block normal
+    // dan NSI nah user iseng memakai select box pada keduanya dan yang terjadi
+    // yang terselect adalah yang block normal, karena nsi sudah tidak ada hitbox
+    // jika ketemu dengan scale, dia hilang lenyap tak bersisa, jadi ampuh tidak
+    // akan bisa jebol"*.
+    //
+    // DESAIN: saat tool AKTIF = 'scale', blok NSI menjadi "hantu" — TETAP
+    // terlihat (visual) tapi TIDAK terlihat oleh SEMUA jalur seleksi (klik,
+    // shift/ctrl multi-select, select box/marquee, pinch, restore antar-tool).
+    // Penjaga ditaruh di TITIK PUSAT seleksi (selectBlock/toggleSelectBlock) +
+    // penyaring di marquee → tidak mungkin ada jalur yang lolos.
+    // Tool LAIN (move/rotate/clone/mirror/property/delete/paint/place) TIDAK
+    // terpengaruh — NSI tetap bisa dipakai normal di semua tool itu.
+    // ══════════════════════════════════════════════════════════════════════
+    const _nsiOf = (obj) => {
+      let o = obj;
+      while (o) {
+        if (o.userData && isNsi(o.userData.blockSlug)) return true;
+        o = o.parent;
+      }
+      return false;
+    };
+    const _isScaleGhost = (block) => toolRef.current === 'scale' && _nsiOf(block);
+
     const selectBlock = (block, additive) => {
+      if (!block) return;
+      if (_isScaleGhost(block)) {
+        // Tool scale + NSI → blok ini "hantu": tidak bisa dipilih sama sekali.
+        // Bersihkan kalau sempat terpilih (anti-state-tertinggal), lalu beri
+        // tahu user SEKALI per klik supaya tidak terasa "rusak".
+        if (threeRef.current.selectedBlocks.has(block)) {
+          threeRef.current.selectedBlocks.delete(block);
+          unhighlightSelected(block);
+          setSelectedCount(threeRef.current.selectedBlocks.size);
+        }
+        toast.warning('Non-scalable item — tidak bisa di-scale');
+        return;
+      }
       if (!additive) {
         clearSelection();
       }
@@ -15637,6 +15706,16 @@ Now you can apply Displacement for detailed effect.`);
     };
 
     const toggleSelectBlock = (block) => {
+      if (!block) return;
+      if (_isScaleGhost(block)) {
+        if (threeRef.current.selectedBlocks.has(block)) {
+          threeRef.current.selectedBlocks.delete(block);
+          unhighlightSelected(block);
+          setSelectedCount(threeRef.current.selectedBlocks.size);
+        }
+        toast.warning('Non-scalable item — tidak bisa di-scale');
+        return;
+      }
       if (threeRef.current.selectedBlocks.has(block)) {
         threeRef.current.selectedBlocks.delete(block);
         unhighlightSelected(block);
@@ -15762,13 +15841,39 @@ Now you can apply Displacement for detailed effect.`);
         const mw = Math.abs(x - startX), mh = Math.abs(y - startY);
         // Seleksi hanya kalau drag cukup besar (bukan klik)
         if (mw > 5 && mh > 5) {
+          // ── NSI (2026-10-04, permintaan user): Select Box DILARANG menyapu
+          // blok NSI saat tool = scale (hitbox-nya "hilang" bagi scale).
+          // Terukur sebelum fix: drag marquee mengelilingi Rod di mode scale →
+          // nSel=1, tcObj=True, tcMode=scale (NSI tetap bisa di-scale = JEBOL).
+          const _tMarq = toolRef.current;
+          const _cand = (_tMarq === 'scale')
+            ? threeRef.current.blocks.filter((b) => !_nsiOf(b))
+            : threeRef.current.blocks;
           const hits = getBlocksInScreenRect(
-            threeRef.current.blocks, camera,
+            _cand, camera,
             { x: mx, y: my, w: mw, h: mh },
             rect.width, rect.height,
           );
           clearSelection();
           hits.forEach(b => { selectBlock(b, true); });
+          // ── NSI (2026-10-04, permintaan user): di mode SCALE, seleksi hanya
+          // lewat Select Box (klik biasa = mulai marquee, bukan seleksi).
+          // Kalau kotak menyentuh blok NSI → beri PERINGATAN bahwa item itu
+          // non-scalable (blok NSI sendiri sudah disaring keluar dari `_cand`
+          // di atas, jadi tidak ikut terpilih = "hitbox hilang bagi scale").
+          if (_tMarq === 'scale') {
+            try {
+              const _nsiOnly = threeRef.current.blocks.filter((b) => _nsiOf(b));
+              if (_nsiOnly.length) {
+                const _nh = getBlocksInScreenRect(
+                  _nsiOnly, camera,
+                  { x: mx, y: my, w: mw, h: mh },
+                  rect.width, rect.height,
+                );
+                if (_nh.length > 0) toast.warning('Non-scalable item — tidak bisa di-scale');
+              }
+            } catch (e) { /* jangan gagalkan seleksi */ }
+          }
           // ── FIX R (bab 64): PROPERTY DILARANG DAPAT GIZMO ──
           // JEBAKAN TERUKUR: dulu attachGizmoToSelection() dipanggil TANPA cek
           // tool → memakai Select Box dengan tool PROPERTY memunculkan gizmo
@@ -15974,8 +16079,14 @@ Now you can apply Displacement for detailed effect.`);
         // Seleksi final — persis logika marqueeFinish
         const rect = renderer.domElement.getBoundingClientRect();
         const br = st.boxRect;
+        // ── NSI (2026-10-04, permintaan user): pinch select box juga DILARANG
+        // menyapu blok NSI saat tool = scale (hitbox NSI "hilang" bagi scale).
+        const _tPinch = toolRef.current;
+        const _candP = (_tPinch === 'scale')
+          ? threeRef.current.blocks.filter((b) => !_nsiOf(b))
+          : threeRef.current.blocks;
         const hits = getBlocksInScreenRect(
-          threeRef.current.blocks, camera,
+          _candP, camera,
           { x: br.x, y: br.y, w: br.w, h: br.h },
           rect.width, rect.height,
         );

@@ -52,6 +52,32 @@ export const NSI_RAMP_NAME = 'Wedge';
 export const NSI_TRUSS_SLUG = 'truss';
 export const NSI_TRUSS_NAME = 'Truss';
 
+// ── NSI #4: ROD (7 varian) ──
+// PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
+// block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
+// studs ... contoh 'Wood Rod' berarti dia teksturnya 100% memakai tekstur wooden
+// block tapi panjang 1 studs, lebar 1 studs, tinggi 3 studs."*
+// → Ukuran: 1 × 3 × 1 studs = 0.5 × 1.5 × 0.5 block.
+// → Tekstur: 100% dari block dasarnya (Wood/Stone/Rusted/Metal/Concrete/Marble/
+//   Titanium). Texel density SAMA dengan block dasar (1 tile = 1 block = 2 studs)
+//   → UV di-skala per muka sesuai ukuran muka dalam satuan block (anti-melar).
+// → NSI: TIDAK bisa di-scale.
+export const NSI_ROD_SLUGS = [
+  'wood_rod', 'stone_rod', 'rusted_rod', 'metal_rod',
+  'concrete_rod', 'marble_rod', 'titanium_rod',
+];
+export const NSI_ROD_NAMES = {
+  wood_rod: 'Wood Rod',
+  stone_rod: 'Stone Rod',
+  rusted_rod: 'Rusted Rod',
+  metal_rod: 'Metal Rod',
+  concrete_rod: 'Concrete Rod',
+  marble_rod: 'Marble Rod',
+  titanium_rod: 'Titanium Rod',
+};
+// Ukuran Rod dalam satuan BLOCK [lebar(x), tinggi(y), kedalaman(z)].
+export const NSI_ROD_SIZE = [0.5, 1.5, 0.5];
+
 /**
  * UKURAN NSI dalam satuan BLOCK [lebar(x), tinggi(y), kedalaman(z)].
  * WAJIB dipakai saat menaruh block (posY = setengah tinggi) supaya item yang
@@ -64,6 +90,8 @@ export const NSI_SIZES = {
   [NSI_RAMP_SLUG]: [1, 1, 1],
   [NSI_TRUSS_SLUG]: [1, 2, 1],
 };
+// Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
+NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
 /** Ukuran item (block) berdasarkan slug. Non-NSI = [1,1,1]. */
 export function getNsiSize(slug) {
@@ -71,7 +99,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -303,11 +331,27 @@ function _beam(p, q, t) {
 }
 
 /**
+ * Buat geometri ROD (kotak ramping): lebar 0.5 block, tinggi 1.5 block,
+ * kedalaman 0.5 block (= 1 x 3 x 1 studs). Pusat di origin, Y = atas.
+ *
+ * UV: `_buildFaces` memetakan uv = koordinat (block) + 0.5 → texel density
+ * SAMA dengan block dasar (1 tile = 1 block). Karena koordinat rod hanya
+ * 0.5/1.5 block, tekstur otomatis "di-crop" proporsional → tidak melar
+ * (terukur: muka samping = 0.5 x 1.5 tile, muka atas = 0.5 x 0.5 tile).
+ */
+export function makeRodGeometry(THREE) {
+  const E = NSI_ROD_SIZE;      // [0.5, 1.5, 0.5] block
+  const hx = E[0] / 2, hy = E[1] / 2, hz = E[2] / 2;
+  return _buildFaces(THREE, _box(-hx, hx, -hy, hy, -hz, hz));
+}
+
+/**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
 export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WEDGE_SLUG) return makeWedgeGeometry(THREE);
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
   if (slug === NSI_TRUSS_SLUG) return makeTrussGeometry(THREE);
+  if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }

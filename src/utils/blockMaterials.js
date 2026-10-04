@@ -60,16 +60,40 @@ export const BLOCK_LIBRARY = [
   { slug: 'wedge',             name: 'Wedge',        label: 'Wedge',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
   // NSI #3: TRUSS (rangka batang terbuka / open lattice frame) — 20 batang.
   { slug: 'truss',             name: 'Truss',        label: 'Truss',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  // ── NSI #4: ROD (7 varian) — 2026-10-04, permintaan user ──
+  // Kotak ramping 1 x 3 x 1 studs (0.5 x 1.5 x 0.5 block). Tekstur = 100%
+  // block dasarnya (PBR properties disamakan agar terasa identik).
+  { slug: 'wood_rod',          name: 'Wood Rod',     label: 'Wood Rod',     roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'stone_rod',         name: 'Stone Rod',    label: 'Stone Rod',    roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'rusted_rod',        name: 'Rusted Rod',   label: 'Rusted Rod',   roughness: 0.9,  metalness: 0.1, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'metal_rod',         name: 'Metal Rod',    label: 'Metal Rod',    roughness: 0.24, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'concrete_rod',      name: 'Concrete Rod', label: 'Concrete Rod', roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'marble_rod',        name: 'Marble Rod',   label: 'Marble Rod',   roughness: 0.14, metalness: 0.05, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'titanium_rod',      name: 'Titanium Rod', label: 'Titanium Rod', roughness: 0.28, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
+
+// ── NSI #4: ROD — tekstur 100% dari block dasarnya (permintaan user) ──
+// Tidak ada file tex/wood_rod.png; path di-MAP ke tex/wood_block.png supaya
+// tekstur dijamin identik (single source) dan tidak ada duplikasi file.
+const ROD_BASE_TEX = {
+  wood_rod: 'wood_block',
+  stone_rod: 'stone_block',
+  rusted_rod: 'rusted_block',
+  metal_rod: 'metal_block',
+  concrete_rod: 'concrete_block',
+  marble_rod: 'marble_block',
+  titanium_rod: 'titanium_block',
+};
 
 export function getBlockDef(slug) {
   return BLOCK_LIBRARY.find(b => b.slug === slug) || BLOCK_LIBRARY[0];
 }
 
 export function getBlockTexPath(slug) {
-  return `/blocks/tex/${slug}.png`;
+  const src = ROD_BASE_TEX[slug] || slug;
+  return `/blocks/tex/${src}.png`;
 }
 
 export function getBlockIconPath(slug) {
@@ -160,6 +184,10 @@ export const BLOCK_PLACEHOLDER = {
   brick_block: 0xb0603c, plastic_block: 0x74c7ec, toy_block: 0x64d487,
   ice_block: 0x9de0f0, neon_block: 0xff2a1a, coal_block: 0x232323,
   bouncy_block: 0xe86aa0, grass_block: 0x69c34c, sand_block: 0xe3d28f,
+  // NSI #4: Rod — placeholder = warna dominan block dasarnya (anti "hitam dulu").
+  wood_rod: 0xc8a24a, stone_rod: 0x8a8a8a, rusted_rod: 0x9c5f3f,
+  metal_rod: 0xb9c1cc, concrete_rod: 0xa8a49c, marble_rod: 0xe8e4dc,
+  titanium_rod: 0xcdd6de,
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
