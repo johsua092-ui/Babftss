@@ -46,7 +46,7 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize } from '../utils/blockShapes.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -14409,11 +14409,16 @@ Now you can apply Displacement for detailed effect.`);
       const _ps = placeSnapStudsRef.current;
       const _su = (_ps && _ps > 0) ? (_ps / STUDS_PER_BLOCK) : 0;
       const snapV = (v) => _su > 0 ? Math.round(v / _su) * _su : v;
+      // ── FIX (2026-10-04, laporan user: "Truss amblas ke bawah saat ditaruh") ──
+      // JEBAKAN TERUKUR: posY untuk block di LANTAI di-hardcode 0.5 (asumsi tinggi
+      // 1 block). Item NSI yang LEBIH TINGGI (Truss = 2 block) jadi tenggelam
+      // separuh ke bawah lantai. → pakai setengah TINGGI sebenarnya dari NSI.
+      const _hHalf = getNsiSize(selectedBlockTypeRef.current)[1] / 2;
       if (hit.object === ground) {
-        // Hit ground → snap X/Z, Y = 0.5 (duduk di lantai)
+        // Hit ground → snap X/Z, Y = setengah tinggi (duduk tepat di lantai)
         posX = snapV(hit.point.x);
         posZ = snapV(hit.point.z);
-        posY = 0.5;
+        posY = _hHalf;
       } else {
         // Hit block face → offset by face normal → snap
         const n = hit.face.normal.clone();

@@ -57,7 +57,9 @@ export const BLOCK_LIBRARY = [
   // biasa, akan dibuat terpisah dari dataset user).
   { slug: 'corner_wedge',      name: 'Corner Wedge', label: 'Corner Wedge', roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
   // NSI #2: WEDGE (ramp / prisma segitiga siku-siku) — 1 bidang miring lurus.
-  { slug: 'wedge',             name: 'Wedge',        label: 'Wedge', roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  { slug: 'wedge',             name: 'Wedge',        label: 'Wedge',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
+  // NSI #3: TRUSS (rangka batang terbuka / open lattice frame) — 20 batang.
+  { slug: 'truss',             name: 'Truss',        label: 'Truss',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';

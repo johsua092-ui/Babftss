@@ -41,8 +41,37 @@ export const NSI_WEDGE_COLOR = '#D5733D';
 export const NSI_RAMP_SLUG = 'wedge';
 export const NSI_RAMP_NAME = 'Wedge';
 
+// ── NSI #3: TRUSS (rangka batang terbuka / open lattice frame) ──
+// KOREKSI USER (2026-10-04): *"trusnya kenapa hanya setinggi 1 block? harusnya
+// setinggi 2 block dong atau 4 studs"* → Truss = 1 item TINGGI 2 BLOCK.
+// Dari 5 foto user (Wooden Block = referensi) + verifikasi 3 sumber:
+//   • 4 batang vertikal (tinggi penuh 2 block)
+//   • 12 batang horizontal = 3 bingkai (bawah, TENGAH, atas) × 4
+//   • 16 batang diagonal = X-bracing 2 tingkat di 4 sisi tegak
+//   Rongga tengah TEMBUS PANDANG. Sambungan = butt joint + baut (tanpa pelat).
+export const NSI_TRUSS_SLUG = 'truss';
+export const NSI_TRUSS_NAME = 'Truss';
+
+/**
+ * UKURAN NSI dalam satuan BLOCK [lebar(x), tinggi(y), kedalaman(z)].
+ * WAJIB dipakai saat menaruh block (posY = setengah tinggi) supaya item yang
+ * lebih tinggi dari 1 block TIDAK amblas ke lantai.
+ *   BUG TERUKUR (2026-10-04): posY di-hardcode 0.5 → Truss (tinggi 2 block)
+ *   tenggelam separuh ke bawah lantai.
+ */
+export const NSI_SIZES = {
+  [NSI_WEDGE_SLUG]: [1, 1, 1],
+  [NSI_RAMP_SLUG]: [1, 1, 1],
+  [NSI_TRUSS_SLUG]: [1, 2, 1],
+};
+
+/** Ukuran item (block) berdasarkan slug. Non-NSI = [1,1,1]. */
+export function getNsiSize(slug) {
+  return NSI_SIZES[slug] || [1, 1, 1];
+}
+
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -166,10 +195,119 @@ function _buildFaces(THREE, faces) {
 }
 
 /**
+ * Buat geometri TRUSS (rangka batang terbuka). Bounding box 1 x 2 x 1 block
+ * (= 2 x 4 x 2 studs), pusat di origin. Y = atas.
+ *
+ * KOREKSI USER (2026-10-04): *"trusnya kenapa hanya setinggi 1 block? harusnya
+ * setinggi 2 block dong atau 4 studs"* — jadi Truss = 1 item TINGGI 2 BLOCK.
+ * Garis tengah yang terlihat di foto = RAIL TENGAH (bukan sambungan 2 item).
+ *
+ * Struktur (dari 5 foto user):
+ *   • 4 batang vertikal di sudut (tinggi penuh 2 block)
+ *   • 12 batang horizontal = 3 bingkai (bawah, TENGAH, atas) x 4 batang
+ *   • 16 batang diagonal = X-bracing 2 tingkat di 4 sisi tegak (4 X per 2 tingkat)
+ * Ketebalan batang = 1/8 block. Rongga tengah tembus pandang (open frame).
+ */
+export function makeTrussGeometry(THREE) {
+  return _buildFaces(THREE, getTrussFaces());
+}
+
+/**
+ * Daftar MUKA Truss (sumber tunggal). Dipakai untuk geometry & untuk render ikon
+ * (biar ikon selalu mengikuti geometri — tidak ada duplikasi yang bisa drift).
+ */
+export function getTrussFaces() {
+  const EX = 0.5;             // setengah lebar (x)
+  const EZ = 0.5;             // setengah kedalaman (z)
+  const EY = 1.0;             // setengah tinggi = 1 block (total 2 block)
+  const B = 0.125;            // tebal batang (=1/8 block)
+  const CX = EX - B / 2;      // garis tengah batang sudut (x)
+  const CZ = EZ - B / 2;      // garis tengah batang sudut (z)
+  const faces = [];
+
+  // ── 4 batang VERTIKAL (sudut, tinggi penuh) ──
+  [[-CX, -CZ], [CX, -CZ], [-CX, CZ], [CX, CZ]].forEach(([x, z]) => {
+    faces.push(..._box(x - B / 2, x + B / 2, -EY, EY, z - B / 2, z + B / 2));
+  });
+
+  // ── 12 batang HORIZONTAL: 3 bingkai (bawah, TENGAH, atas) ──
+  const YS = [-EY + B / 2, 0, EY - B / 2];
+  YS.forEach((y) => {
+    faces.push(..._box(-CX, CX, y - B / 2, y + B / 2, -EZ, -EZ + B));   // sisi z = -EZ
+    faces.push(..._box(-CX, CX, y - B / 2, y + B / 2, EZ - B, EZ));     // sisi z = +EZ
+    faces.push(..._box(-EX, -EX + B, y - B / 2, y + B / 2, -CZ, CZ));   // sisi x = -EX
+    faces.push(..._box(EX - B, EX, y - B / 2, y + B / 2, -CZ, CZ));     // sisi x = +EX
+  });
+
+  // ── 16 batang DIAGONAL: X-bracing 2 tingkat di 4 sisi tegak ──
+  const YL = -EY + B / 2, YM = 0, YU = EY - B / 2;   // garis tengah rail bawah/tengah/atas
+  // Sisi z = ±(EZ−B/2): diagonal pada bidang X–Y
+  [-CZ, CZ].forEach((z) => {
+    // tingkat bawah
+    faces.push(..._beam([-CX, YL, z], [CX, YM, z], B));
+    faces.push(..._beam([CX, YL, z], [-CX, YM, z], B));
+    // tingkat atas
+    faces.push(..._beam([-CX, YM, z], [CX, YU, z], B));
+    faces.push(..._beam([CX, YM, z], [-CX, YU, z], B));
+  });
+  // Sisi x = ±(EX−B/2): diagonal pada bidang Z–Y
+  [-CX, CX].forEach((x) => {
+    faces.push(..._beam([x, YL, -CZ], [x, YM, CZ], B));
+    faces.push(..._beam([x, YL, CZ], [x, YM, -CZ], B));
+    faces.push(..._beam([x, YM, -CZ], [x, YU, CZ], B));
+    faces.push(..._beam([x, YM, CZ], [x, YU, -CZ], B));
+  });
+
+  return faces;
+}
+
+/** Kotak axis-aligned → 6 muka persegi (untuk batang lurus). */
+function _box(x0, x1, y0, y1, z0, z1) {
+  const p = (x, y, z) => [x, y, z];
+  return [
+    [p(x0, y0, z1), p(x1, y0, z1), p(x1, y1, z1), p(x0, y1, z1)],
+    [p(x0, y0, z0), p(x0, y1, z0), p(x1, y1, z0), p(x1, y0, z0)],
+    [p(x0, y0, z0), p(x1, y0, z0), p(x1, y0, z1), p(x0, y0, z1)],
+    [p(x0, y1, z0), p(x0, y1, z1), p(x1, y1, z1), p(x1, y1, z0)],
+    [p(x0, y0, z0), p(x0, y0, z1), p(x0, y1, z1), p(x0, y1, z0)],
+    [p(x1, y0, z0), p(x1, y1, z0), p(x1, y1, z1), p(x1, y0, z1)],
+  ];
+}
+
+/** Batang miring dari titik p ke q dengan penampang bujur sangkar sisi t → 6 muka. */
+function _beam(p, q, t) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+
+  const dir = norm(sub(q, p));
+  let ref = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = norm(cross(dir, ref));
+  const v = norm(cross(dir, u));
+  const h = t / 2;
+  const cornersAt = (pt) => [
+    add(pt, add([u[0] * h, u[1] * h, u[2] * h], [v[0] * h, v[1] * h, v[2] * h])),
+    add(pt, add([u[0] * h, u[1] * h, u[2] * h], [-v[0] * h, -v[1] * h, -v[2] * h])),
+    add(pt, add([-u[0] * h, -u[1] * h, -u[2] * h], [-v[0] * h, -v[1] * h, -v[2] * h])),
+    add(pt, add([-u[0] * h, -u[1] * h, -u[2] * h], [v[0] * h, v[1] * h, v[2] * h])),
+  ];
+  const A = cornersAt(p), Bc = cornersAt(q);
+  return [
+    A, Bc,
+    [A[0], A[1], Bc[1], Bc[0]],
+    [A[3], A[2], Bc[2], Bc[3]],
+    [A[0], A[3], Bc[3], Bc[0]],
+    [A[1], A[2], Bc[2], Bc[1]],
+  ];
+}
+
+/**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
 export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WEDGE_SLUG) return makeWedgeGeometry(THREE);
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
+  if (slug === NSI_TRUSS_SLUG) return makeTrussGeometry(THREE);
   return null;
 }
