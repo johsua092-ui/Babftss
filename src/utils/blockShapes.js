@@ -76,6 +76,17 @@ export const NSI_STEP_SLUG = 'step';
 export const NSI_STEP_NAME = 'Step';
 export const NSI_STEP_SIZE = [2, 0.5, 1];   // 4 x 1 x 2 studs
 
+// ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) — konstanta ──
+// KONFIRMASI USER (2026-10-04): tinggi 36 studs, diameter geladak bundar 10 studs.
+// Batas "maks 2x2x2 studs" = HANYA Level 1 (easy) → Level 2 bebas.
+// TANPA facing (bukan item ber-arah).
+// Terukur dari 4 foto: diameter tiang ~1.6 studs; geladak ~9 studs tinggi
+// (lantai ~3 + pagar ~6) di ~16-25 studs dari bawah; 8 baluster + ring gelap;
+// ujung dome membulat; bendera segitiga MERAH (RGB 165,10,7).
+export const NSI_MAST_SLUG = 'mast';
+export const NSI_MAST_NAME = 'Mast';
+export const NSI_MAST_SIZE = [5, 18, 5];    // geladak 10 studs = 5 block; tinggi 36 studs = 18 block
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -115,6 +126,7 @@ export const NSI_SIZES = {
   [NSI_TRUSS_SLUG]: [1, 2, 1],
   [NSI_SEAT_SLUG]: [1, 0.5, 1],
   [NSI_STEP_SLUG]: [2, 0.5, 1],
+  [NSI_MAST_SLUG]: [5, 18, 5],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -125,7 +137,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -344,6 +356,27 @@ function _box(x0, x1, y0, y1, z0, z1) {
   ];
 }
 
+/**
+ * Kotak ber-ROTASI pada sumbu Y (radial). Dipakai untuk tiang penyangga Mast
+ * supaya arahnya MENGIKUTI lingkaran platform (koreksi user 2026-10-04:
+ * *"arahnya balok-balok penyangga ikutin si platform bundar ini jadi lebih
+ * rapi"*). Winding SAMA dengan `_box` (rotasi mempertahankan orientasi) →
+ * aman dipakai dengan autoFix:false.
+ */
+function _boxRotY(cx, cz, w, d, y0, y1, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  const P = (lx, y, lz) => [cx + lx * c - lz * s, y, cz + lx * s + lz * c];
+  const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
+  return [
+    [P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)],
+    [P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0), P(x1, y0, z0)],
+    [P(x0, y0, z0), P(x1, y0, z0), P(x1, y0, z1), P(x0, y0, z1)],
+    [P(x0, y1, z0), P(x0, y1, z1), P(x1, y1, z1), P(x1, y1, z0)],
+    [P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0)],
+    [P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1), P(x1, y0, z1)],
+  ];
+}
+
 /** Batang miring dari titik p ke q dengan penampang bujur sangkar sisi t → 6 muka. */
 function _beam(p, q, t) {
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -512,6 +545,296 @@ export function makeStepGeometry(THREE) {
   return _buildFaces(THREE, getStepFaces(), { autoFix: false });
 }
 
+// ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) ──
+// KONFIRMASI USER (2026-10-04): tinggi 36 studs (=18 block), geladak bundar
+// diameter 10 studs (=5 block). TANPA facing. Batas 2x2x2 studs = Level 1 saja.
+//
+// JEBAKAN YANG DIHINDARI: item ini rakitan BANYAK bagian (silinder, geladak,
+// 8 baluster, ring, dome, bendera). autoFix centroid-GLOBAL salah untuk
+// rakitan (muka-dalam terbalik). Solusi: bangun TIAP BAGIAN terpisah dengan
+// autoFix per-bagian (centroid tiap bagian ada DI DALAM bagian itu) → benar.
+// Khusus baluster (kotak) pakai _box yang windingnya sudah TERBUKTI benar
+// (autoFix:false), sama seperti Seat.
+
+/** Cincin sisi silinder (seg quads) — winding diperbaiki autoFix per-bagian. */
+function _cylSide(r, y0, y1, seg) {
+  const fs = [];
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+    fs.push([
+      [Math.cos(a0) * r, y0, Math.sin(a0) * r],
+      [Math.cos(a1) * r, y0, Math.sin(a1) * r],
+      [Math.cos(a1) * r, y1, Math.sin(a1) * r],
+      [Math.cos(a0) * r, y1, Math.sin(a0) * r],
+    ]);
+  }
+  return fs;
+}
+
+/** Tutup datar silinder (fan segitiga). */
+function _capFan(r, y, seg) {
+  const fs = [];
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+    fs.push([[0, y, 0], [Math.cos(a0) * r, y, Math.sin(a0) * r], [Math.cos(a1) * r, y, Math.sin(a1) * r]]);
+  }
+  return fs;
+}
+
+/** Cincin datar (annulus) — quads antara radius dalam & luar. */
+function _ringFan(rIn, rOut, y, seg) {
+  const fs = [];
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+    const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+    fs.push([
+      [c0 * rIn, y, s0 * rIn], [c1 * rIn, y, s1 * rIn],
+      [c1 * rOut, y, s1 * rOut], [c0 * rOut, y, s0 * rOut],
+    ]);
+  }
+  return fs;
+}
+
+/** Kubah (dome) low-poly: cincin bawah → cincin tengah → puncak. */
+function _domeFaces(r, yBase, seg) {
+  // Bola SETENGAH yang lebih halus (3 ring) — koreksi Gemini: ujung tiang
+  // referensi membulat mulus seperti kapsul, bukan mengerucut/terpancung.
+  const fs = [];
+  const RINGS = [[0.86, 0.51], [0.60, 0.80], [0.32, 0.95]];  // [radiusFrac, heightFrac]
+  let prev = null;
+  for (let ri = 0; ri <= RINGS.length; ri++) {
+    const cur = ri === RINGS.length
+      ? null
+      : { r: r * RINGS[ri][0], y: yBase + r * RINGS[ri][1] };
+    if (ri > 0) {
+      for (let i = 0; i < seg; i++) {
+        const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+        if (cur) {
+          fs.push([
+            [Math.cos(a0) * prev.r, prev.y, Math.sin(a0) * prev.r],
+            [Math.cos(a1) * prev.r, prev.y, Math.sin(a1) * prev.r],
+            [Math.cos(a1) * cur.r, cur.y, Math.sin(a1) * cur.r],
+            [Math.cos(a0) * cur.r, cur.y, Math.sin(a0) * cur.r],
+          ]);
+        } else {
+          fs.push([
+            [Math.cos(a0) * prev.r, prev.y, Math.sin(a0) * prev.r],
+            [Math.cos(a1) * prev.r, prev.y, Math.sin(a1) * prev.r],
+            [0, yBase + r, 0],
+          ]);
+        }
+      }
+    }
+    prev = cur;
+  }
+  // ring bawah (dari tepi tiang ke ring pertama)
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+    fs.push([
+      [Math.cos(a0) * r, yBase, Math.sin(a0) * r],
+      [Math.cos(a1) * r, yBase, Math.sin(a1) * r],
+      [Math.cos(a1) * r * RINGS[0][0], yBase + r * RINGS[0][1], Math.sin(a1) * r * RINGS[0][0]],
+      [Math.cos(a0) * r * RINGS[0][0], yBase + r * RINGS[0][1], Math.sin(a0) * r * RINGS[0][0]],
+    ]);
+  }
+  return fs;
+}
+
+/** Prisma dari segitiga di bidang XY (dipadatkan tipis pada Z). */
+function _triPrismXY(tri, z0, z1) {
+  const A = tri.map(([x, y]) => [x, y, z1]);
+  const B = tri.map(([x, y]) => [x, y, z0]);
+  return [
+    [A[0], A[1], A[2]],
+    [B[0], B[1], B[2]],
+    [B[0], B[1], A[1], A[0]],
+    [B[1], B[2], A[2], A[1]],
+    [B[2], B[0], A[0], A[2]],
+  ];
+}
+
+/** Gabung beberapa BufferGeometry (position+uv+color) jadi satu. */
+function _mergeGeos(THREE, geos) {
+  const pos = [], uv = [], col = [];
+  geos.forEach((g) => {
+    const p = g.getAttribute('position');
+    const u = g.getAttribute('uv');
+    const c = g.getAttribute('color');
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      uv.push(u.getX(i), u.getY(i));
+      col.push(c ? c.getX(i) : 1, c ? c.getY(i) : 1, c ? c.getZ(i) : 1);
+    }
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  out.computeVertexNormals();
+  return out;
+}
+
+/**
+ * Bagian-bagian Mast. Setiap bagian dibangun terpisah lalu digabung.
+ * Tinggi total 18 block (y −9..+9); geladak ⌀5 block (10 studs) di ~55% tinggi.
+ * Tiang ⌀0.8 block (1.6 studs) — lebar/panjang maks 2x2 studs, tinggi 36 studs.
+ */
+export function getMastParts() {
+  // ── UKURAN FINAL (2026-10-04) ──
+  // KOREKSI USER: *"batang panjang silindernya harus ikutin maksimal lebar dan
+  // panjang 2x2 studs tapi kalau tinggi tetep kayak gitu, lah kalau gitu yang
+  // lain ukurannya ngikut dong jadi kecil?"* → BENAR. Skala foto dulu salah
+  // (memakai geladak 10 studs sebagai acuan padahal geladak bagian objek yg sama).
+  // UKUR ULANG dari 2 foto bersih: tiang 31/34 px, geladak 191/214 px
+  //   → tiang 1.6 studs (= 0.8 block) & geladak 9.9 studs (≈10 ✓) saat
+  //     skala 19.4 px/stud. TINGGI TETAP 36 studs (tidak di-scale).
+  const POLE_R = 0.5;        // radius tiang → ⌀1.0 block = 2.0 studs (TEPAT batas maks user 2x2 studs)
+  const DECK_R = 2.5;        // radius geladak → ⌀5 block = 10 studs (user)
+  const YB = -9.0;           // alas
+  const POLE_TOP = 8.5;      // ujung tiang (dome menutup sampai +9.0 tepat = 18 block)
+  // Geladak: terukur 56-57% dari ALAS (bukan 43%) → y ≈ +1.2 block.
+  // KOREKSI USER (2026-10-04): *"letak geladaknya disitu emang? kok saya merasa ada
+  // janggal, bukannya gak ditengah banget dan harus setidaknya deket dikit ke
+  // bendera"* → BENAR, dinaikkan dari 0.65 → 1.2.
+  // KOREKSI USER (2026-10-04, lanjutan): *"geladaknya naiki keatas dikit, jadi
+  // lebih dekat ke bendera"* → SELURUH rakitan geladak (lantai + tiang penyangga
+  // + 2 cincin) NAIK +1.0 block serentak supaya tetap rapi & makin dekat bendera.
+  const DECK_LIFT = 1.0;     // tambahan kenaikan geladak (block)
+  const DECK_Y1 = 1.35 + DECK_LIFT;   // lantai atas geladak
+  const DECK_Y0 = 1.05 + DECK_LIFT;   // lantai bawah (slab 0.3 block)
+  const RAIL_Y1 = 2.25 + DECK_LIFT;   // puncak tiang penyangga (0.4 block)
+  const RING_Y1 = 2.50 + DECK_LIFT;   // puncak ring gelap (0.25 block)
+  const SEG = 12;
+  // KOREKSI USER (2026-10-04): *"tiang tiang penyangga balok kayunya itu jorokin
+  // keluar, ikutin mentok paling luar platform bundar tersebut, dan juga
+  // cincinnya juga ikut membesar karena itu penyangganya ditaruh keluar — ingat
+  // ada 2 cincin"* + *"itu kayak gak rapi gitu, arahnya balok-balok penyangga
+  // ikutin si platform bundar ini jadi lebih rapi, itu saya liatnya kayak ada
+  // menonjol dikit keluar"* → tiang DIPUTAR RADIAL mengikuti lingkaran, ditaruh
+  // di TENGAH SISI DATAR poligon (facet) supaya tepi luarnya PAS dengan tepi
+  // geladak (tidak ada sudut yang menonjol keluar).
+  const FACET_R = DECK_R * Math.cos(Math.PI / SEG);  // 2.415 = jarak sisi datar poligon
+  const BAL_B = 0.5;                 // lebar tiang penyangga (kotak)
+  const BAL_R = FACET_R - BAL_B / 2; // 2.165 → tepi LUAR tiang PAS di tepi geladak
+  // KOREKSI USER (2026-10-04): *"luas geladak jadi makin sempit, bisa gedein
+  // atau luasin dikit?"* → BENAR, cincin saya kecilkan (2.415) sehingga ruang
+  // dalam menyempit. Cincin dikembalikan FLUSH ke tepi geladak (2.5) supaya
+  // luas lantai dalam kembali lega.
+  const RING_ROUT = DECK_R;          // 2.50 → flush tepi geladak (lebar penuh)
+  const RING_RIN = RING_ROUT - 0.5;  // 2.00 (tebal cincin 0.5 block)
+  // Bendera: DIUKUR dari foto (Gemini + grid): pangkal x200→ujung x76 = 124 px,
+  // tinggi y60..150 = 90 px, skala 19.1 px/stud → panjang 6.5 studs = 3.25 block,
+  // tinggi 4.7 studs = 2.35 block. KOREKSI USER: *"benderanya jadi kecil banget"*
+  // → diperbesar sesuai foto (ujung memang melewati tepi geladak, itu desainnya).
+  const FLAG_Y0 = 6.15, FLAG_Y1 = 8.5, FLAG_LEN = 3.25, FLAG_T = 0.06;
+  const parts = [];
+
+  // 1) TIANG (silinder + tutup)
+  {
+    const fs = [..._cylSide(POLE_R, YB, POLE_TOP, SEG)];
+    fs.push(..._capFan(POLE_R, POLE_TOP, SEG));
+    fs.push(..._capFan(POLE_R, YB, SEG));
+    parts.push({ faces: fs, tag: 'wood', autoFix: true });
+  }
+  // 2) DOME ujung tiang (menutup sampai tinggi penuh +9.0)
+  parts.push({ faces: _domeFaces(POLE_R, POLE_TOP, SEG), tag: 'wood', autoFix: true });
+  // 3) LANTAI geladak (slab silinder) — MENONJOL lebih lebar dari dinding
+  //    (catatan Claude: "alasnya menonjol sedikit lebih lebar daripada
+  //    dindingnya, membentuk semacam bibir di bagian bawah").
+  {
+    const fs = [..._cylSide(DECK_R, DECK_Y0, DECK_Y1, SEG)];
+    fs.push(..._capFan(DECK_R, DECK_Y1, SEG));
+    fs.push(..._capFan(DECK_R, DECK_Y0, SEG));
+    parts.push({ faces: fs, tag: 'wood', autoFix: true });
+  }
+  // 4) PAGAR = TIANG-TIANG PENYANGGA KOTAK (bolong, TANPA dinding penghubung)
+  //    KOREKSI USER (2026-10-04): *"di geladak ada tiang kotak-kotak kecil
+  //    penyangga dan ada banyak kan? harusnya hanya ada tiang penyangga kotak
+  //    kotak, disitu langsung bolong, tapi kenapa sampai nambahin kayak dinding
+  //    penghubung? itu tidak perlu! buang itu!"* → BENAR. Dinding silinder
+  //    (dulu 4a/4b) DIBUANG. Sisakan tiang-tiang kotak berdiri sendiri dengan
+  //    celah BOLONG tembus antar tiang. autoFix:false (kotak, winding benar).
+  {
+    const fs = [];
+    const N = 12;                       // 12 tiang penyangga mengelilingi geladak
+    // Tiang DIPUTAR RADIAL (mengikuti lingkaran) & ditaruh di TENGAH SISI DATAR
+    // poligon → tepi luarnya PAS dengan tepi geladak, tidak ada yang menonjol.
+    // Lebar tangensial = 2πR/N × 0.8 (celah lega seperti referensi).
+    const arc = (2 * Math.PI * BAL_R) / N;
+    const BAL_W = Math.min(BAL_B, arc * 0.8);   // lebar tangensial
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + Math.PI / N;   // tengah facet
+      const cx = Math.cos(a) * BAL_R, cz = Math.sin(a) * BAL_R;
+      // tiang penyangga penuh dari lantai sampai bibir atas (celah bolong)
+      fs.push(..._boxRotY(cx, cz, BAL_B, BAL_W, DECK_Y1, RAIL_Y1, a));
+    }
+    parts.push({ faces: fs, tag: 'wood', autoFix: false });
+  }
+  // 5) RING GELAP di bibir atas pagar
+  //    ⚠️ BUG TERUKUR (laporan user 2026-10-04: *"yang melingkar itu loh kayak
+  //    tembus gitu"*): sama seperti dinding — silinder DALAM ring ter-flip oleh
+  //    autoFix centroid → tembus pandang. FIX: pisah LUAR (autoFix true) vs
+  //    DALAM (autoFix false = winding asli menghadap ke dalam, tepat).
+  //
+  // 5) CINCIN KAYU + CINCIN HITAM di bibir atas
+  //    KOREKSI USER: *"tepat di bawah cincin hitam itu harusnya dilapisi kayu
+  //    melingkar jadi cincin kayu, sebelum nyentuh penyangga-penyangga balok"*
+  //    → tambah CINCIN KAYU melingkar di bawah cincin hitam.
+  {
+    // 5a) CINCIN KAYU (tepat di bawah cincin hitam)
+    const wrIn = RING_RIN - 0.02, wrOut = RING_ROUT;
+    parts.push({
+      faces: [
+        ..._cylSide(wrOut, RAIL_Y1 - 0.22, RAIL_Y1, SEG),   // sisi luar
+        ..._ringFan(wrIn, wrOut, RAIL_Y1, SEG),             // atas
+      ],
+      tag: 'wood', autoFix: true,
+    });
+    parts.push({
+      faces: _cylSide(wrIn, RAIL_Y1 - 0.22, RAIL_Y1, SEG),  // sisi dalam (anti-tembus)
+      tag: 'wood', autoFix: false,
+    });
+    // 5b) CINCIN HITAM (pita gelap) di atas cincin kayu
+    parts.push({
+      faces: [
+        ..._cylSide(RING_ROUT, RAIL_Y1, RING_Y1, SEG),
+        ..._ringFan(RING_RIN, RING_ROUT, RING_Y1, SEG),
+        ..._ringFan(RING_RIN, RING_ROUT, RAIL_Y1, SEG),
+      ],
+      tag: 'dark', autoFix: true,
+    });
+    parts.push({
+      faces: _cylSide(RING_RIN, RAIL_Y1, RING_Y1, SEG),
+      tag: 'dark', autoFix: false,
+    });
+  }
+  // 6) BENDERA segitiga MERAH
+  parts.push({
+    faces: _triPrismXY(
+      [[0, FLAG_Y0], [0, FLAG_Y1], [-FLAG_LEN, (FLAG_Y0 + FLAG_Y1) / 2]],
+      -FLAG_T, FLAG_T,
+    ),
+    tag: 'red', autoFix: true,
+  });
+
+  return parts;
+}
+
+/** Buat geometri MAST (5 x 18 x 5 block = 10 x 36 x 10 studs). */
+export function makeMastGeometry(THREE) {
+  const geos = getMastParts().map((p) => {
+    const g = _buildFaces(THREE, p.faces, { autoFix: p.autoFix !== false });
+    const n = g.getAttribute('position').count;
+    const c = p.tag === 'dark' ? [0.10, 0.13, 0.10]
+      : (p.tag === 'red' ? [0.87, 0.07, 0.08] : [1, 1, 1]);
+    const col = [];
+    for (let i = 0; i < n; i++) col.push(c[0], c[1], c[2]);
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    return g;
+  });
+  return _mergeGeos(THREE, geos);
+}
+
 /**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
@@ -521,6 +844,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_TRUSS_SLUG) return makeTrussGeometry(THREE);
   if (slug === NSI_SEAT_SLUG) return makeSeatGeometry(THREE);
   if (slug === NSI_STEP_SLUG) return makeStepGeometry(THREE);
+  if (slug === NSI_MAST_SLUG) return makeMastGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }
