@@ -87,6 +87,19 @@ export const NSI_MAST_SLUG = 'mast';
 export const NSI_MAST_NAME = 'Mast';
 export const NSI_MAST_SIZE = [5, 18, 5];    // geladak 10 studs = 5 block; tinggi 36 studs = 18 block
 
+// ── NSI LEVEL 2 #4: HELM (roda kemudi kapal) — konstanta ──
+// PERMINTAAN USER (2026-10-05): *"nama identitasnya adalah 'Helm' tinggi 5 studs,
+// panjang 2 studs, lebar 2 studs"*.
+// CATATAN USER (verbatim): *"iya itu memang kemudi, tapi identitasnya adalah
+// 'Helm' terdengar aneh tapi aturannya emang gitu, jadi patuhi aturan saya"*.
+// → Ukuran: 1 × 2.5 × 1 block = 2 × 5 × 2 studs.
+// Terukur dari 5 foto + grid (Gemini): roda kemudi ⌀262 px, tinggi total 465 px,
+// alas 44 px & lebar 198 px (rasio 0.756 → alas ≈ 1 block), 8 jeruji/jari-jari,
+// TANPA facing (hijau di foto = bounding box editor, bukan panah).
+export const NSI_HELM_SLUG = 'helm';
+export const NSI_HELM_NAME = 'Helm';
+export const NSI_HELM_SIZE = [1, 2.5, 1];   // 2 x 5 x 2 studs
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -127,6 +140,7 @@ export const NSI_SIZES = {
   [NSI_SEAT_SLUG]: [1, 0.5, 1],
   [NSI_STEP_SLUG]: [2, 0.5, 1],
   [NSI_MAST_SLUG]: [5, 18, 5],
+  [NSI_HELM_SLUG]: [1, 2.5, 1],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -137,7 +151,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -835,6 +849,139 @@ export function makeMastGeometry(THREE) {
   return _mergeGeos(THREE, geos);
 }
 
+/** Kotak di bidang XY yang DIPUTAR mengelilingi sumbu Z (untuk roda kemudi). */
+function _boxRotZ(cx, cy, lenX, lenY, z0, z1, ang) {
+  const base = _box(-lenX / 2, lenX / 2, -lenY / 2, lenY / 2, z0, z1);
+  const c = Math.cos(ang), s = Math.sin(ang);
+  return base.map((f) => f.map((p) => [
+    cx + p[0] * c - p[1] * s,
+    cy + p[0] * s + p[1] * c,
+    p[2],
+  ]));
+}
+
+/** Prisma bersegi (silinder) sejajar sumbu Z, pusat (0, cy), jari-jari r. */
+function _prismZ(r, cy, z0, z1, seg) {
+  const faces = [];
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+    const x0 = Math.cos(a0) * r, y0 = cy + Math.sin(a0) * r;
+    const x1 = Math.cos(a1) * r, y1 = cy + Math.sin(a1) * r;
+    // sisi (normal keluar)
+    faces.push([
+      [x0, y0, z0], [x1, y1, z0], [x1, y1, z1],
+      [x0, y0, z0], [x1, y1, z1], [x0, y0, z1],
+    ]);
+    // tutup depan (z1, +Z) & belakang (z0, −Z)
+    faces.push([[0, cy, z1], [x0, y0, z1], [x1, y1, z1]]);
+    faces.push([[0, cy, z0], [x1, y1, z0], [x0, y0, z0]]);
+  }
+  return faces;
+}
+
+/**
+ * ── NSI LEVEL 2 #4: HELM (roda kemudi kapal) ──
+ * PERMINTAAN USER (2026-10-05): tinggi 5 studs, panjang 2 studs, lebar 2 studs.
+ * CATATAN USER (verbatim): *"iya itu memang kemudi, tapi identitasnya adalah
+ * 'Helm' terdengar aneh tapi aturannya emang gitu, jadi patuhi aturan saya"* →
+ * identitas tetap "Helm" walau bentuknya roda kemudi (patuhi aturan user).
+ *
+ * Ukuran: 1 × 2.5 × 1 block = 2 × 5 × 2 studs (alas di y = −1.25).
+ * CATATAN PENTING: karena lebar hanya 1 block, roda kemudi (dengan pegangan)
+ * WAJIB muat dalam ±0.5 block → jari-jari luar 0.5 block (bukan 0.705 yang
+ * membuat lebar 1.85 block = MELANGGAR spesifikasi user).
+ *
+ * 6 bagian (semua kotak/prisma ber-winding benar → autoFix aman):
+ *   1. alas persegi 1×1 block          2. tiang penyangga vertikal
+ *   3. pelek roda (16 kotak berotasi)  4. 8 jeruji (kotak berotasi)
+ *   5. hub tengah (prisma, GELAP)      6. 8 pegangan di ujung jeruji
+ */
+export function getHelmParts() {
+  const YB = -1.25;                 // alas bawah → tinggi total 2.5 block
+  const BASE_W = 1.0;               // alas 1 block (lebar & panjang)
+  const BASE_H = 0.17;
+  const BASE_TOP = YB + BASE_H;     // −1.08
+  const R_OUT = 0.5;                // jari-jari TERLUAR (pegangan) = 0.5 block
+  const WHEEL_CY = 1.25 - R_OUT;    // 0.75 → puncak objek tepat +1.25
+  const GRIP_L = 0.06;              // KECIL (koreksi user: "bikin grip kecil aja")
+  const RIM_RO = R_OUT - GRIP_L;    // 0.44 jari-jari luar pelek
+  const RIM_T = 0.11;               // tebal pelek
+  const RIM_RI = RIM_RO - RIM_T;    // 0.33 jari-jari dalam pelek
+  const RIM_D = 0.14;               // kedalaman pelek (arah Z)
+  const SPOKE_T = 0.07;
+  const HUB_R = 0.12;
+  const HUB_D = 0.18;
+  const GRIP_R = 0.03;              // KECIL (koreksi user)
+  const SEG = 16;
+  const NS = 8;                     // 8 jeruji (terukur dari foto)
+
+  const parts = [];
+  const zA = -RIM_D / 2, zB = RIM_D / 2;
+
+  // 1) ALAS persegi
+  parts.push({ faces: _box(-BASE_W / 2, BASE_W / 2, YB, BASE_TOP, -BASE_W / 2, BASE_W / 2), tag: 'wood' });
+
+  // 2) TIANG penyangga
+  {
+    const tw = 0.16;
+    parts.push({ faces: _box(-tw / 2, tw / 2, BASE_TOP, WHEEL_CY, -tw / 2, tw / 2), tag: 'wood' });
+  }
+
+  // 3) PELEK roda — 16 kotak kecil berotasi mengelilingi lingkaran (bidang XY)
+  {
+    const rc = (RIM_RO + RIM_RI) / 2;
+    const tanW = 2 * rc * Math.sin(Math.PI / SEG) * 1.06;   // sedikit tumpang tindih
+    const fs = [];
+    for (let i = 0; i < SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      fs.push(..._boxRotZ(Math.cos(a) * rc, WHEEL_CY + Math.sin(a) * rc, RIM_T, tanW, zA, zB, a));
+    }
+    parts.push({ faces: fs, tag: 'wood' });
+  }
+
+  // 4) 8 JERUJI (dari hub ke pelek, berotasi radial)
+  {
+    const r0 = HUB_R * 0.8, r1 = RIM_RI + 0.02;
+    const len = r1 - r0, rc = (r0 + r1) / 2;
+    const fs = [];
+    for (let i = 0; i < NS; i++) {
+      const a = (i / NS) * Math.PI * 2;
+      fs.push(..._boxRotZ(Math.cos(a) * rc, WHEEL_CY + Math.sin(a) * rc, len, SPOKE_T, zA, zB, a));
+    }
+    parts.push({ faces: fs, tag: 'wood' });
+  }
+
+  // 5) HUB tengah (prisma sejajar Z) — GELAP
+  parts.push({ faces: _prismZ(HUB_R, WHEEL_CY, -HUB_D / 2, HUB_D / 2, 8), tag: 'dark' });
+
+  // 6) 8 PEGANGAN menonjol keluar pelek
+  {
+    const rc = RIM_RO + GRIP_L / 2;
+    const fs = [];
+    for (let i = 0; i < NS; i++) {
+      const a = (i / NS) * Math.PI * 2;
+      fs.push(..._boxRotZ(Math.cos(a) * rc, WHEEL_CY + Math.sin(a) * rc, GRIP_L, GRIP_R * 2, zA, zB, a));
+    }
+    parts.push({ faces: fs, tag: 'wood' });
+  }
+
+  return parts;
+}
+
+/** Buat geometri HELM (1 x 2.5 x 1 block = 2 x 5 x 2 studs). */
+export function makeHelmGeometry(THREE) {
+  const geos = getHelmParts().map((p) => {
+    const g = _buildFaces(THREE, p.faces, { autoFix: true });
+    const n = g.getAttribute('position').count;
+    const c = p.tag === 'dark' ? [0.12, 0.14, 0.12] : [1, 1, 1];
+    const col = [];
+    for (let i = 0; i < n; i++) col.push(c[0], c[1], c[2]);
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    return g;
+  });
+  return _mergeGeos(THREE, geos);
+}
+
 /**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
@@ -845,6 +992,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_SEAT_SLUG) return makeSeatGeometry(THREE);
   if (slug === NSI_STEP_SLUG) return makeStepGeometry(THREE);
   if (slug === NSI_MAST_SLUG) return makeMastGeometry(THREE);
+  if (slug === NSI_HELM_SLUG) return makeHelmGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }

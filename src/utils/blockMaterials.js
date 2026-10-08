@@ -80,6 +80,8 @@ export const BLOCK_LIBRARY = [
   // MAST: tiang kapal / crow's nest. Tinggi 36 studs (=18 block), geladak
   // bundar ⌀10 studs (=5 block). TANPA facing. Batas 2x2x2 = Level 1 saja.
   { slug: 'mast',              name: 'Mast',        label: 'Mast',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // HELM: roda kemudi kapal (identitas "Helm" — sesuai aturan user). 2x5x2 studs.
+  { slug: 'helm',              name: 'Helm',        label: 'Helm',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -199,7 +201,7 @@ export const BLOCK_PLACEHOLDER = {
   metal_rod: 0xb9c1cc, concrete_rod: 0xa8a49c, marble_rod: 0xe8e4dc,
   titanium_rod: 0xcdd6de,
   // NSI Level 2: Seat & Step — placeholder warna kayu.
-  seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a,
+  seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc8a24a,
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
