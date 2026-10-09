@@ -91,6 +91,8 @@ export const BLOCK_LIBRARY = [
   // 5.5x7x0.5 studs (2.75x3.5x0.25 block). Kaca panel = alpha per-vertex,
   // sama seperti Window (bukan material array).
   { slug: 'door',              name: 'Door',        label: 'Door',        roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // HATCH: palka kayu INTERAKTIF (buka dgn MENGANGKAT) — 4x1x4 studs
+  { slug: 'hatch',             name: 'Hatch',       label: 'Hatch',       roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -213,6 +215,7 @@ export const BLOCK_PLACEHOLDER = {
   seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc4622a,
   window: 0xc8a24a,   // bingkai kayu (kaca = alpha per-vertex, bukan tint)
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
+  hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
@@ -357,7 +360,7 @@ export function makeBlockMaterial(THREE, slug) {
   // "kayu terlihat transparan". FIX: depthWrite WAJIB true untuk Window.
   // (Kaca tetap tembus karena alpha per-vertex + blending tetap aktif.)
   // DOOR: alasan sama persis (kayu wajib solid, kaca tetap tembus).
-  if (def.slug === 'window' || def.slug === 'door') mat.depthWrite = true;
+  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch') mat.depthWrite = true;
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca

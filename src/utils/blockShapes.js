@@ -132,6 +132,17 @@ export const NSI_DOOR_SLUG = 'door';
 export const NSI_DOOR_NAME = 'Door';
 export const NSI_DOOR_SIZE = [2.75, 3.5, 0.25];   // 5.5 x 7 x 0.5 studs
 
+// ── NSI LEVEL 2 #7: HATCH (palka/trapdoor INTERAKTIF) ──────────────────
+// PERMINTAAN USER (2026-10-09, verbatim): *"identitas nya adalah 'Hatch', dia
+// bisa dibuka tutup hanya saja dia bukan pintu, gini deh tau trapdoor di
+// minecraft? dan bukanya gimana itu? ya kayak gitu mirip kok ... Hatch :
+// panjang 4 studs, lebar 4 studs, tinggi 1 studs"*
+// → pelat HORIZONTAL 4x4 studs, tebal 1 studs, DIBUKA dengan mengangkat
+//   (engsel di sisi belakang z−), persis seperti trapdoor Minecraft.
+export const NSI_HATCH_SLUG = 'hatch';
+export const NSI_HATCH_NAME = 'Hatch';
+export const NSI_HATCH_SIZE = [2, 0.5, 2];   // 4 x 1 x 4 studs
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -175,6 +186,7 @@ export const NSI_SIZES = {
   [NSI_HELM_SLUG]: [1, 2.5, 1],
   [NSI_WINDOW_SLUG]: [2, 2, 0.5],
   [NSI_DOOR_SLUG]: [2.75, 3.5, 0.25],
+  [NSI_HATCH_SLUG]: [2, 0.5, 2],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -185,7 +197,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1613,6 +1625,16 @@ export function getDoorParts() {
 export const DOOR_HINGE_X = -1.375;   // sumbu putar di tepi KIRI (lokal, relatif pusat)
 export const DOOR_OPEN_ANGLE = -Math.PI / 2;   // terbuka 90° (ayun keluar)
 
+// ── NSI L2 #7 HATCH: engsel di tepi KIRI (x−) → dibuka MENGANGKAT ke atas.
+//    ⚠️ KOREKSI USER (2026-10-10, verbatim): *"titik kamu taruh engsel itu salah
+//    tapi animasi bukanya benar, gini deh itu kamu taruh engsel diatas kan?
+//    harusnya samping kiri (titik terjauh gagang, bukan titik terdekat gagang)"*.
+//    Gagang ada di sisi KANAN → engsel WAJIB di sisi KIRI = titik TERJAUH gagang.
+//    Tetap MENGANGKAT (sisi kanan/gagang naik), hanya SUMBU engselnya pindah
+//    dari belakang (z−) ke kiri (x−) → rotasi pada sumbu Z, sudut POSITIF.
+export const HATCH_HINGE_X = -1.0;              // sumbu putar di tepi KIRI
+export const HATCH_OPEN_ANGLE = Math.PI / 2;    // angkat 90° (positif, sumbu Z)
+
 export function getWindowParts() {
   const EX = 1.0;             // setengah lebar (x) = 1 block → total 2 block (4 studs)
   const EY = 1.0;             // setengah tinggi (y) = 1 block → total 2 block (4 studs)
@@ -1737,6 +1759,125 @@ export function makeDoorGeometry(THREE) {
 }
 
 /**
+ * ── NSI LEVEL 2 #7: HATCH (palka/trapdoor INTERAKTIF) ─────────────────────
+ * PERMINTAAN USER (2026-10-09, verbatim): *"identitas nya adalah 'Hatch', dia
+ * bisa dibuka tutup hanya saja dia bukan pintu, gini deh tau trapdoor di
+ * minecraft? dan bukanya gimana itu? ya kayak gitu mirip kok ... Hatch :
+ * panjang 4 studs, lebar 4 studs, tinggi 1 studs"*
+ *
+ * BENTUK (terukur dari 5 foto referensi):
+ *   • PELAT HORIZONTAL 2×0.5×2 block = 4×1×4 studs (persegi; rasio foto 1.04–1.15)
+ *   • BINGKAI kayu tebal di ke-4 tepi + DAUN pintu menjorok ke DALAM
+ *   • CELAH/lubang memanjang tembus di daun (ventilasi / lubang intip)
+ *   • GAGANG kecil menonjol ke atas di sisi KANAN
+ *
+ * ⚠️ BUKA/TUTUP: engsel di tepi BELAKANG (z−), daun MENGANGKAT ke atas
+ *    (persis trapdoor Minecraft) — lihat HATCH_HINGE_X / HATCH_OPEN_ANGLE.
+ */
+export function getHatchParts() {
+  const EX = 1.0;            // setengah panjang (x) = 1 block → total 2 (4 studs)
+  const EZ = 1.0;            // setengah lebar  (z) = 1 block → total 2 (4 studs)
+  const EY = 0.25;           // setengah tinggi (y) = 0.25 block → total 0.5 (1 stud)
+  // ── KOREKSI DESAIN (2026-10-10, kritik Claude — perbandingan ORI vs KARYA) ──
+  //  Referensi terukur: kerangka ORANYE KEMERAHAN [221,118,47] vs panel KUNING
+  //  EMAS [228,151,50] → KONTRAS TINGGI. Punya saya dulu keduanya kuning mustard
+  //  (kontras rendah). Panel juga MENJOROK ke dalam (dinding dalam terlihat).
+  const FR = 0.20;           // tebal BINGKAI luar
+  const WALL = 0.045;        // tebal DINDING DALAM (gelap, terlihat krn menjorok)
+  const LIFT = 0.085;        // kedalaman panel menjorok (dulu 0.055 → kurang terlihat)
+  const parts = [];
+
+  const ix0 = -EX + FR, ix1 = EX - FR;      // batas dalam bingkai
+  const iz0 = -EZ + FR, iz1 = EZ - FR;
+
+  // ── 1) BINGKAI kayu (4 batang) di ke-4 tepi ──
+  parts.push({ faces: _box(-EX, EX, -EY, EY, -EZ, -EZ + FR), tag: 'wood' });        // tepi BELAKANG
+  parts.push({ faces: _box(-EX, EX, -EY, EY, EZ - FR, EZ), tag: 'wood' });          // tepi DEPAN
+  parts.push({ faces: _box(-EX, -EX + FR, -EY, EY, -EZ + FR, EZ - FR), tag: 'wood' });
+  parts.push({ faces: _box(EX - FR, EX, -EY, EY, -EZ + FR, EZ - FR), tag: 'wood' });
+
+  // ── 2) DINDING DALAM (cincin) — merah kecokelatan GELAP ──
+  //  Terlihat karena panel menjorok ke dalam (kritik Claude #5).
+  const wx0 = ix0 + WALL, wx1 = ix1 - WALL;   // batas daun (panel)
+  const wz0 = iz0 + WALL, wz1 = iz1 - WALL;
+  parts.push({ faces: _box(ix0, ix1, -EY, EY, iz0, wz0), tag: 'inner' });   // dinding belakang
+  parts.push({ faces: _box(ix0, ix1, -EY, EY, wz1, iz1), tag: 'inner' });   // dinding depan
+  parts.push({ faces: _box(ix0, wx0, -EY, EY, wz0, wz1), tag: 'inner' });   // dinding kiri
+  parts.push({ faces: _box(wx1, ix1, -EY, EY, wz0, wz1), tag: 'inner' });   // dinding kanan
+
+  // ── 3) DAUN panel — dipotong 4 bagian mengelilingi CELAH supaya celah TEMBUS ──
+  const yTop = EY - LIFT;                     // permukaan daun (menjorok)
+  const PW = wx1 - wx0, PD = wz1 - wz0;       // ukuran panel dalam
+  // ⚠️ CELAH dikoreksi (kritik #2): dulu 2.25:1 & terlalu ke tengah/atas.
+  //    Referensi ~6:1 (panjang:pipih), x 20%–80% lebar panel, di bagian BAWAH.
+  const slX0 = wx0 + PW * 0.20, slX1 = wx0 + PW * 0.80;
+  const slZ0 = wz0 + PD * 0.70, slZ1 = wz0 + PD * 0.80;
+  parts.push({ faces: _box(wx0, wx1, -EY, yTop, wz0, slZ0), tag: 'leaf' });   // belakang celah
+  parts.push({ faces: _box(wx0, wx1, -EY, yTop, slZ1, wz1), tag: 'leaf' });   // depan celah
+  parts.push({ faces: _box(wx0, slX0, -EY, yTop, slZ0, slZ1), tag: 'leaf' }); // kiri celah
+  parts.push({ faces: _box(slX1, wx1, -EY, yTop, slZ0, slZ1), tag: 'leaf' }); // kanan celah
+
+  // ── 4) GAGANG: BATANG (bukan kubus) — kritik #1 "kesalahan terbesar" ──
+  //  Referensi: batang vertikal tinggi & sempit ≈1:5, abu-abu sedang, di sisi
+  //  KANAN sedikit di atas tengah, RATA/pipih (bukan kubus menonjol).
+  const hw = 0.105;                     // lebar (x) — tipis
+  const hl = 0.45;                      // panjang (z) — batang memanjang
+  const hx = wx1 - 0.16;                // dekat tepi dalam kanan
+  const hz = wz0 + PD * 0.45;           // sedikit di atas tengah panel
+  parts.push({
+    faces: _box(hx - hw / 2, hx + hw / 2, yTop, EY, hz - hl / 2, hz + hl / 2),
+    tag: 'metal',
+  });
+
+  return parts;
+}
+
+/** Buat geometri HATCH (2 x 0.5 x 2 block = 4 x 1 x 4 studs). */
+export function makeHatchGeometry(THREE) {
+  const parts = getHatchParts();
+  const pos = [], uv = [], col = [];
+  // ⚠️ Tekstur Hatch = GRAYSCALE (hatch.png, sama pola dgn Door) supaya
+  //    vertex color MENGENDALIKAN warna penuh (akar "warna jadi hitam", bab 135).
+  const UVBRIGHT = 0.020, UVBRIGHTX = 0.985;
+  parts.forEach((p) => {
+    const g = _buildFaces(THREE, p.faces, { autoFix: false });
+    _fixWindingByVolume(g);
+    const P = g.getAttribute('position'), U = g.getAttribute('uv');
+    let c, uvConst = false;
+    if (p.tag === 'metal') {
+      // GAGANG: abu-abu SEDANG (kritik #1: dulu "pucat kehijauan" → terlalu pucat).
+      // Referensi terukur RGB[106,108,121] = abu-abu netral sedang.
+      c = [1.02, 1.04, 1.17, 1.0];
+      uvConst = true;
+    } else if (p.tag === 'leaf') {
+      // PANEL: KUNING EMAS — c DIKALIBRASI dari render nyata (iterasi 2):
+      //   render [183,130,67] vs target [228,151,50] → faktor [1.246,1.162,0.746]
+      c = [3.389, 2.207, 0.299, 1.0];
+    } else if (p.tag === 'inner') {
+      // DINDING DALAM: merah kecokelatan GELAP (referensi "dinding dalam gelap")
+      // → memberi kesan cekungan/kedalaman (kritik #5).
+      c = [1.05, 0.50, 0.10, 1.0];
+    } else {
+      // KERANGKA: ORANYE KEMERAHAN — c DIKALIBRASI dari render nyata (iterasi 2):
+      //   render [170,121,62] vs target [221,118,47] → faktor [1.3,0.975,0.758]
+      //   → output ~[221,121,47] = ORANYE KEMERAHAN (kontras G 33 dari panel) ✓
+      c = [2.99, 1.024, 0.182, 1.0];
+    }
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      uv.push(uvConst ? UVBRIGHTX : U.getX(i), uvConst ? UVBRIGHT : U.getY(i));
+      col.push(c[0], c[1], c[2], c[3]);
+    }
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  out.computeVertexNormals();
+  return out;
+}
+
+/**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
 export function makeNsiGeometry(THREE, slug) {
@@ -1749,6 +1890,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_HELM_SLUG) return makeHelmGeometry(THREE);
   if (slug === NSI_WINDOW_SLUG) return makeWindowGeometry(THREE);
   if (slug === NSI_DOOR_SLUG) return makeDoorGeometry(THREE);
+  if (slug === NSI_HATCH_SLUG) return makeHatchGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }

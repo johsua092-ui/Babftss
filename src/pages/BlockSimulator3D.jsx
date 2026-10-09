@@ -46,7 +46,7 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE } from '../utils/blockShapes.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -14238,6 +14238,46 @@ Now you can apply Displacement for detailed effect.`);
           ).applyQuaternion(_baseQ);
           _b.position.copy(_basePos).add(_off);
         }
+        // ── NSI HATCH (2026-10-09, dikoreksi 2026-10-10): ANIMASI MENGANGKAT ──
+        // Engsel di x = HATCH_HINGE_X (tepi KIRI = titik TERJAUH dari gagang).
+        // Daun berputar pada sumbu Z → sisi KANAN (tempat gagang) TERANGKAT ke atas.
+        // ⚠️ KOREKSI USER: dulu engsel di BELAKANG (sumbu X) — salah; gagang ada di
+        //    kanan, jadi engsel WAJIB di kiri. Animasi mengangkat TIDAK berubah.
+        for (let _i = 0; _i < _blocks.length; _i++) {
+          const _b = _blocks[_i];
+          if (!_b || !_b.userData || !_b.userData.isHatch) continue;
+          const _st = _b.userData.hatch;
+          if (!_st) continue;
+          const _EXH = HATCH_HINGE_X;                // −1 = tepi kiri (lokal)
+          const _Z = new THREE.Vector3(0, 0, 1);     // sumbu putar = Z
+          // ⚠️ RUMUS (TERVERIFIKASI): agar engsel TETAP di tempat,
+          //    offset = engselLokal − q·engselLokal.
+          //    Engsel di x=_EXH (y=0): q·engsel = (_EXH·cosθ, _EXH·sinθ) →
+          //    offset = (_EXH·(1−cosθ), −_EXH·sinθ). Dengan _EXH=−1 →
+          //    offset = (cosθ−1, sinθ). θ POSITIF → sisi kanan/gagang NAIK.
+          // 1) UN-APPLY sudut yang sedang terpasang → dapatkan basis
+          const _qNow = new THREE.Quaternion().setFromAxisAngle(_Z, _st.angle);
+          const _baseQ = _b.quaternion.clone().multiply(_qNow.clone().invert());
+          const _offNow = new THREE.Vector3(
+            _EXH * (1 - Math.cos(_st.angle)), -_EXH * Math.sin(_st.angle), 0
+          ).applyQuaternion(_baseQ);
+          const _basePos = _b.position.clone().sub(_offNow);
+          // 2) Tentukan sudut baru (halus 12%/frame)
+          const _diff = _st.target - _st.angle;
+          let _newA = _st.angle;
+          if (Math.abs(_diff) >= 1e-4) _newA = _st.angle + _diff * 0.12;
+          else _newA = _st.target;
+          if (Math.abs(_newA - _st.angle) < 1e-7 && _st.applied === _newA) continue;
+          _st.angle = _newA;
+          _st.applied = _newA;
+          // 3) APPLY: orientasi + posisi
+          _b.quaternion.copy(_baseQ)
+            .multiply(new THREE.Quaternion().setFromAxisAngle(_Z, _newA));
+          const _off = new THREE.Vector3(
+            _EXH * (1 - Math.cos(_newA)), -_EXH * Math.sin(_newA), 0
+          ).applyQuaternion(_baseQ);
+          _b.position.copy(_basePos).add(_off);
+        }
       } catch (e) {}
     };
     animate();
@@ -14795,13 +14835,20 @@ Now you can apply Displacement for detailed effect.`);
         if (_doorHits.length > 0) {
           // Telusuri ke atas sampai menemukan block pintu (kalau kena anak mesh)
           let _d = _doorHits[0].object;
-          while (_d && !(_d.userData && _d.userData.isDoor) && _d.parent) _d = _d.parent;
+          while (_d && !(_d.userData && (_d.userData.isDoor || _d.userData.isHatch)) && _d.parent) _d = _d.parent;
           if (_d && _d.userData && _d.userData.isDoor) {
             const _dd = _d.userData.door || (_d.userData.door = { angle: 0, target: 0 });
             // Toggle: buka ↔ tutup
             const _openNow = Math.abs(_dd.target) > 1e-6;
             _dd.target = _openNow ? 0 : DOOR_OPEN_ANGLE;
             return;   // klik pada pintu hanya untuk buka/tutup
+          }
+          // ── NSI HATCH: klik → MENGANGKAT (engsel tepi belakang) ──
+          if (_d && _d.userData && _d.userData.isHatch) {
+            const _hd = _d.userData.hatch || (_d.userData.hatch = { angle: 0, target: 0 });
+            const _openNow = Math.abs(_hd.target) > 1e-6;
+            _hd.target = _openNow ? 0 : HATCH_OPEN_ANGLE;
+            return;   // klik pada palka hanya untuk buka/tutup
           }
         }
       }
@@ -14932,6 +14979,14 @@ Now you can apply Displacement for detailed effect.`);
           if (blockDef.slug === 'door') {
             block.userData.isDoor = true;
             block.userData.door = { angle: 0, target: 0 };
+          }
+          // ── NSI HATCH (2026-10-09, permintaan user): PALKA INTERAKTIF ──
+          // Verbatim: *"dia bisa dibuka tutup ... tau trapdoor di minecraft?
+          // dan bukanya gimana itu? ya kayak gitu mirip kok"*
+          // → dibuka dgn MENGANGKAT (engsel di tepi belakang z−).
+          if (blockDef.slug === 'hatch') {
+            block.userData.isHatch = true;
+            block.userData.hatch = { angle: 0, target: 0 };
           }
           // SCALE BUG 2 FIX: tiling awal (basis UV dicatat; scale 1,1,1 =
           // uv 0..1 — pemanggilan ini menyiapkan basis supaya drag scale
@@ -16307,16 +16362,23 @@ Now you can apply Displacement for detailed effect.`);
     const redoStack = [];
 
     // Snapshot semua blok ke array of plain objects (serializable).
-      // ── NSI DOOR (2026-10-09): status pintu WAJIB ikut tersalin ──
+      // ── NSI INTERAKTIF (2026-10-09): pintu & palka bisa dibuka-tutup ──
+      // DOOR  (L2 #6): engsel tepi KIRI  → ayun ke samping (DOOR_HINGE_X)
+      // HATCH (L2 #7): engsel tepi KIRI → MENGANGKAT ke atas (HATCH_HINGE_X)
       // Dipakai di SEMUA jalur pembuatan mesh (place, clone, mirror, restore
-      // undo/redo). Tanpa ini, pintu hasil clone/undo kehilangan `door` →
-      // animasi membaca undefined → NaN → pintu lenyap.
+      // undo/redo). Tanpa ini, mesh hasil clone/undo kehilangan status →
+      // animasi membaca undefined → NaN → objek lenyap.
       const syncDoorUserData = (srcUD, dstUD) => {
         if (!srcUD || !dstUD) return;
         if (srcUD.isDoor || srcUD.blockSlug === 'door') {
           dstUD.isDoor = true;
           const s = srcUD.door || { angle: 0, target: 0 };
           dstUD.door = { angle: s.angle || 0, target: s.target || 0, applied: s.applied };
+        }
+        if (srcUD.isHatch || srcUD.blockSlug === 'hatch') {
+          dstUD.isHatch = true;
+          const s = srcUD.hatch || { angle: 0, target: 0 };
+          dstUD.hatch = { angle: s.angle || 0, target: s.target || 0, applied: s.applied };
         }
       };
 
@@ -16384,6 +16446,8 @@ Now you can apply Displacement for detailed effect.`);
           // pintu (terbuka/tertutup) — transform di atas sudah memuat posisi
           // terbuka, tapi `userData.door` wajib ikut supaya klik tetap bekerja.
           doorAngle: (b.userData && b.userData.door) ? b.userData.door.angle : null,
+          // NSI HATCH: sama — sudut bukaan ikut tersimpan
+          hatchAngle: (b.userData && b.userData.hatch) ? b.userData.hatch.angle : null,
         };
       });
     };
@@ -16480,6 +16544,14 @@ Now you can apply Displacement for detailed effect.`);
           block.userData.door = {
             angle: (typeof s.doorAngle === 'number') ? s.doorAngle : 0,
             target: (typeof s.doorAngle === 'number') ? s.doorAngle : 0,
+          };
+        }
+        // NSI HATCH: pulihkan status buka/tutup (sama seperti Door)
+        if (s.blockSlug === 'hatch' || s.hatchAngle !== null && s.hatchAngle !== undefined) {
+          block.userData.isHatch = true;
+          block.userData.hatch = {
+            angle: (typeof s.hatchAngle === 'number') ? s.hatchAngle : 0,
+            target: (typeof s.hatchAngle === 'number') ? s.hatchAngle : 0,
           };
         }
         if (s.isGlow) attachBlockGlow(THREE, block);
