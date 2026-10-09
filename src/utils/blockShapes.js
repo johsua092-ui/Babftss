@@ -100,6 +100,25 @@ export const NSI_HELM_SLUG = 'helm';
 export const NSI_HELM_NAME = 'Helm';
 export const NSI_HELM_SIZE = [1, 2.5, 1];   // 2 x 5 x 2 studs
 
+// ── NSI LEVEL 2 #5: WINDOW (jendela kayu + kaca) — konstanta ──
+// PERMINTAAN USER (2026-10-09, verbatim): *"identitasnya adalah 'Window'
+// Window : panjang 4 studs, tinggi 4 studs, lebar 1 studs, dan panjang serta
+// tinggi kaca di dalam window mengikuti bentuk dalemannya bingkai window
+// tersebut, tapi ketebalan kacanya itu 0.2 studs"*.
+// → Ukuran: 4 × 4 × 1 studs = 2 × 2 × 0.5 block.
+// Dibaca dari 2 gambar referensi (folder image/folder kerja) via GEMINI
+// (baca_gambar.py) + diukur numerik:
+//   • bingkai kayu BALOK PERSEGI BERONGGA (4 batang: atas/bawah/kiri/kanan)
+//   • 1 pane tunggal — TIDAK ada silang/pembagi/muntin di tengah
+//   • kaca persegi mengikuti bukaan dalam, MENJOROK ke dalam (recessed)
+//   • tepi siku 90° TAJAM (tanpa bevel/chamfer)
+//   • TIDAK ada bagian yang menonjol keluar (sisi luar rata/flush)
+//   • kayu cokelat-jingga hangat (serat papan), kaca bening kebiruan
+// TANPA facing (user tidak meminta; konsisten dgn Helm/Mast).
+export const NSI_WINDOW_SLUG = 'window';
+export const NSI_WINDOW_NAME = 'Window';
+export const NSI_WINDOW_SIZE = [2, 2, 0.5];   // 4 x 4 x 1 studs
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -141,6 +160,7 @@ export const NSI_SIZES = {
   [NSI_STEP_SLUG]: [2, 0.5, 1],
   [NSI_MAST_SLUG]: [5, 18, 5],
   [NSI_HELM_SLUG]: [1, 2.5, 1],
+  [NSI_WINDOW_SLUG]: [2, 2, 0.5],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -151,7 +171,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1353,6 +1373,80 @@ export function makeHelmGeometry(THREE) {
 }
 
 /**
+ * Bagian-bagian WINDOW (jendela kayu + kaca). Sumber tunggal (dipakai geometri
+ * & render ikon). Pusat di origin; Y = atas.
+ *
+ * TERUKUR dari 2 gambar referensi (Gemini + pengukuran piksel):
+ *   • bingkai = 4 batang kayu (atas/bawah/kiri/kanan) membentuk persegi BERONGGA
+ *   • ketebalan bingkai ≈ 0.34 block (0.68 studs) — rasio bukaan terukur
+ *     0.56–0.71 dari lebar → ambil tengahnya
+ *   • 1 pane kaca tunggal, mengikuti bukaan dalam, MENJOROK ke dalam (recessed)
+ *   • kaca tebal 0.2 studs = 0.1 block (PERMINTAAN USER, verbatim)
+ *   • tepi siku 90° tajam (tanpa bevel) — semua memakai _box
+ *   • TIDAK ada bagian menonjol keluar
+ */
+export function getWindowParts() {
+  const EX = 1.0;             // setengah lebar (x) = 1 block → total 2 block (4 studs)
+  const EY = 1.0;             // setengah tinggi (y) = 1 block → total 2 block (4 studs)
+  const EZ = 0.25;            // setengah tebal (z) = 0.25 block → total 0.5 block (1 stud)
+  const FR = 0.23;            // tebal bingkai kayu (KOREKSI 2026-10-09, laporan user
+                              // "bingkainya ketebalan": semula 0.34 = 17% per sisi,
+                              // referensi terukur 10–12% per sisi → 0.23 = 11.5%)
+  const GT = 0.10;            // tebal kaca = 0.2 studs (permintaan user)
+  const parts = [];
+
+  // ── bingkai kayu: 4 batang ──
+  // atas & bawah (memanjang penuh)
+  parts.push({ faces: _box(-EX, EX, EY - FR, EY, -EZ, EZ), tag: 'wood' });
+  parts.push({ faces: _box(-EX, EX, -EY, -EY + FR, -EZ, EZ), tag: 'wood' });
+  // kiri & kanan (di antara batang atas/bawah → tidak tumpang tindih)
+  parts.push({ faces: _box(-EX, -EX + FR, -EY + FR, EY - FR, -EZ, EZ), tag: 'wood' });
+  parts.push({ faces: _box(EX - FR, EX, -EY + FR, EY - FR, -EZ, EZ), tag: 'wood' });
+
+  // ── kaca: mengikuti BUKAAN DALAM, ditaruh TEPAT DI TENGAH kedalaman ──
+  // ⚠️ KOREKSI (2026-10-09, laporan user "kaca gak pas di tengah, dari satu sisi
+  //    kelihatan tebal"): semula kaca di z 0.080..0.180 (menjorok ke DEPAN) →
+  //    dari sisi belakang tampak tebal & asimetris. Sekarang kaca dipusatkan:
+  //    z = −GT/2 .. +GT/2 → tebal terlihat SAMA dari depan maupun belakang.
+  parts.push({
+    faces: _box(-EX + FR, EX - FR, -EY + FR, EY - FR, -GT / 2, GT / 2),
+    tag: 'glass',
+  });
+
+  return parts;
+}
+
+/** Buat geometri WINDOW (2 x 2 x 0.5 block = 4 x 4 x 1 studs). */
+export function makeWindowGeometry(THREE) {
+  const parts = getWindowParts();
+  const pos = [], uv = [], col = [];
+  parts.forEach((p) => {
+    // ⚠️ autoFix: false (rakitan banyak kotak) — winding diperbaiki per komponen
+    // lewat voting arah normal (_fixWindingByVolume), sama seperti Helm.
+    const g = _buildFaces(THREE, p.faces, { autoFix: false });
+    _fixWindingByVolume(g);
+    const P = g.getAttribute('position'), U = g.getAttribute('uv');
+    const isGlass = p.tag === 'glass';
+    // kayu: putih (tekstur asli) alpha 1 · kaca: kebiruan + alpha 0.42
+    const c = isGlass ? [0.74, 0.85, 0.94, 0.42] : [1, 1, 1, 1];
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      // ⚠️ kaca: UV KONSTAN (satu titik) supaya TIDAK memakai serat kayu —
+      // kalau memakai UV posisi, kaca akan tampak "kayu biru" (salah).
+      uv.push(isGlass ? 0.5 : U.getX(i), isGlass ? 0.5 : U.getY(i));
+      col.push(c[0], c[1], c[2], c[3]);
+    }
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  // itemSize 4 → Three.js aktifkan USE_COLOR_ALPHA (alpha per-vertex)
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  out.computeVertexNormals();
+  return out;
+}
+
+/**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
 export function makeNsiGeometry(THREE, slug) {
@@ -1363,6 +1457,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_STEP_SLUG) return makeStepGeometry(THREE);
   if (slug === NSI_MAST_SLUG) return makeMastGeometry(THREE);
   if (slug === NSI_HELM_SLUG) return makeHelmGeometry(THREE);
+  if (slug === NSI_WINDOW_SLUG) return makeWindowGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }

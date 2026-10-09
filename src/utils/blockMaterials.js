@@ -82,6 +82,11 @@ export const BLOCK_LIBRARY = [
   { slug: 'mast',              name: 'Mast',        label: 'Mast',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
   // HELM: roda kemudi kapal (identitas "Helm" — sesuai aturan user). 2x5x2 studs.
   { slug: 'helm',              name: 'Helm',        label: 'Helm',        roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // WINDOW: jendela kayu + 1 pane kaca. 4x4x1 studs (2x2x0.5 block). Kaca
+  // transparan lewat ALPHA PER-VERTEX (vertex color itemSize 4) — BUKAN material
+  // array (kontrak: multi-material array DILARANG). Material induk WAJIB
+  // transparent:true + depthWrite:false supaya alpha per-vertex dihormati.
+  { slug: 'window',            name: 'Window',      label: 'Window',      roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -202,6 +207,7 @@ export const BLOCK_PLACEHOLDER = {
   titanium_rod: 0xcdd6de,
   // NSI Level 2: Seat & Step — placeholder warna kayu.
   seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc4622a,
+  window: 0xc8a24a,   // bingkai kayu (kaca = alpha per-vertex, bukan tint)
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
@@ -338,6 +344,14 @@ export function makeBlockMaterial(THREE, slug) {
     ...(def.transparent ? { depthWrite: false } : {}),
     ...(def.emissive ? { emissive: def.emissive, emissiveIntensity: def.emissiveIntensity } : {}),
   });
+  // ── WINDOW (2026-10-09, laporan user "kayunya transparan") ──
+  // NSI Window memakai ALPHA PER-VERTEX (itemSize 4): bingkai kayu alpha 1,
+  // kaca alpha 0.42. Material WAJIB transparent:true supaya alpha dihormati,
+  // TAPI `depthWrite:false` (bawaan block transparan) membuat BINGKAI KAYU
+  // tidak menulis kedalaman → sisi belakang kayu menembus sisi depan →
+  // "kayu terlihat transparan". FIX: depthWrite WAJIB true untuk Window.
+  // (Kaca tetap tembus karena alpha per-vertex + blending tetap aktif.)
+  if (def.slug === 'window') mat.depthWrite = true;
   if (!tex.userData.isReady && tex.userData.onReady) {
     tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
   }
