@@ -119,6 +119,19 @@ export const NSI_WINDOW_SLUG = 'window';
 export const NSI_WINDOW_NAME = 'Window';
 export const NSI_WINDOW_SIZE = [2, 2, 0.5];   // 4 x 4 x 1 studs
 
+// ── NSI LEVEL 2 #6: DOOR (pintu INTERAKTIF) — NSI PERTAMA yang bisa di-KLIK ──
+// PERMINTAAN USER (2026-10-09, verbatim):
+//   "identitasnya adalah 'Door' dan dia adalah NSI pertama yang bisa di click,
+//    jika di klik kiri atau di sentuh di hp dia akan kebuka si 'Door' nya"
+//   "Door : panjang kanan kiri 5.5 studs, lebar (ketebalan) pintu 0.5 studs,
+//    tinggi 7 studs"
+// → 5.5 x 7 x 0.5 studs = 2.75 x 3.5 x 0.25 block
+// Klik BIASA (tool null = tanpa tool aktif / sentuh di HP) → pintu terbuka.
+// Screenshot versi property = hanya untuk menunjukkan AREA/boundary bukaan.
+export const NSI_DOOR_SLUG = 'door';
+export const NSI_DOOR_NAME = 'Door';
+export const NSI_DOOR_SIZE = [2.75, 3.5, 0.25];   // 5.5 x 7 x 0.5 studs
+
 // ── NSI #4: ROD (7 varian) ──
 // PERMINTAAN USER (2026-10-04): *"block kotak dengan tekstur sama dengan nama
 // block tersebut tapi dia panjang dan lebarnya sama 1 studs, tapi tingginya 3
@@ -161,6 +174,7 @@ export const NSI_SIZES = {
   [NSI_MAST_SLUG]: [5, 18, 5],
   [NSI_HELM_SLUG]: [1, 2.5, 1],
   [NSI_WINDOW_SLUG]: [2, 2, 0.5],
+  [NSI_DOOR_SLUG]: [2.75, 3.5, 0.25],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -171,7 +185,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -905,6 +919,28 @@ function _domeFaces(r, yBase, seg) {
   return fs;
 }
 
+/**
+ * BOLA PENUH (sphere) — untuk gagang pintu. Dua kubah (atas & bawah) yang
+ * disatukan, sehingga tertutup dari SEGALA sudut pandang (tidak "bolong").
+ * Winding diperbaiki otomatis oleh _fixWindingByVolume (voting normal).
+ */
+function _sphereFaces(r, cx, cy, cz, seg = 12, rings = 5) {
+  const fs = [];
+  const P = (rr, th, ph) => [
+    cx + rr * Math.sin(ph) * Math.cos(th),
+    cy + rr * Math.cos(ph),
+    cz + rr * Math.sin(ph) * Math.sin(th),
+  ];
+  for (let i = 0; i < rings; i++) {
+    const ph0 = (i / rings) * Math.PI, ph1 = ((i + 1) / rings) * Math.PI;
+    for (let j = 0; j < seg; j++) {
+      const th0 = (j / seg) * Math.PI * 2, th1 = ((j + 1) / seg) * Math.PI * 2;
+      fs.push([P(r, th0, ph0), P(r, th1, ph0), P(r, th1, ph1), P(r, th0, ph1)]);
+    }
+  }
+  return fs;
+}
+
 /** Prisma dari segitiga di bidang XY (dipadatkan tipis pada Z). */
 function _triPrismXY(tri, z0, z1) {
   const A = tri.map(([x, y]) => [x, y, z1]);
@@ -1385,6 +1421,198 @@ export function makeHelmGeometry(THREE) {
  *   • tepi siku 90° tajam (tanpa bevel) — semua memakai _box
  *   • TIDAK ada bagian menonjol keluar
  */
+/**
+ * ── NSI LEVEL 2 #6: DOOR (pintu INTERAKTIF) ─────────────────────────────
+ * PERMINTAAN USER (2026-10-09, verbatim): *"identitasnya adalah 'Door' dan dia
+ * adalah NSI pertama yang bisa di click, jika di klik kiri atau di sentuh di hp
+ * dia akan kebuka si 'Door' nya"* · *"Door : panjang kanan kiri 5.5 studs, lebar
+ * (ketebalan) pintu 0.5 studs, tinggi 7 studs"*
+ *
+ * UKURAN: 5.5 × 7 × 0.5 studs = 2.75 × 3.5 × 0.25 block (bbox TEPAT).
+ *
+ * TERUKUR dari 4 gambar referensi (Gemini + pengukuran piksel):
+ *   • Daun pintu kayu persegi panjang + 4 panel kaca (2×2): 2 atas TINGGI
+ *     (memanjang vertikal), 2 bawah PENDEK (hampir bujur sangkar)
+ *   • Tepi luar daun LEBIH TEBAL (profil bingkai) membingkai area panel
+ *   • Gagang BULAT (knob) + leher silinder, di sisi BEBAS (berlawanan engsel)
+ *   • Engsel di sisi KIRI (sumbu putar di tepi kiri), pintu membuka ~90°
+ *   • Warna kayu: cokelat jingga hangat
+ *
+ * SUSUNAN KOORDINAT (penting untuk animasi):
+ *   • Origin = PUSAT bbox (agar penempatan app benar tanpa perubahan)
+ *   • Sumbu engsel = garis x = -EX (tepi kiri), vertikal (Y)
+ *   • Saat terbuka: daun + kaca + gagang diputar mengelilingi sumbu engsel
+ *     (rotasi Y negatif → daun mengayun keluar)
+ */
+export function getDoorParts() {
+  const EX = 1.375;           // setengah lebar (x) = 1.375 block → total 2.75 (5.5 studs)
+  const EY = 1.75;            // setengah tinggi (y) = 1.75 block → total 3.5 (7 studs)
+  // ── KETEBALAN (Z) — total bbox WAJIB TEPAT 0.25 block (0.5 studs) ──
+  // ⚠️ JEBAKAN TERUKUR (2026-10-09): gagang BULAT menonjol keluar muka pintu.
+  // Kalau daun dibuat 0.25 block PENUH, gagang menonjol → bbox Z jadi 0.31
+  // (melebihi spek 0.5 studs) → penempatan/snap jadi salah.
+  // SOLUSI: total 0.25 dibagi → daun 0.20 block (0.40 studs), gagang menonjol
+  // 0.05 block (0.10 studs). Total = 0.5 studs ✓
+  // ⚠️⚠️ KOREKSI (2026-10-09, permintaan user — verbatim: *"sisi belakang kaya
+  //    kosong gitu harusnya copy dari depan gitu jadi depan belakang sama cuman
+  //    beda arahnya gitu sama dan posisi gagang juga sama disitu aja ga kebalik
+  //    tetep sama"*).
+  //    AKAR TERUKUR: daun TIDAK simetris (DZ0=−0.125, DZ1=+0.075) dan list emas,
+  //    garis panel, serta gagang HANYA ada di z POSITIF (muka depan) → dari
+  //    belakang tampak polos/kosong.
+  //    FIX: daun DIPUSATKAN di z=0 (tebal 0.15) supaya **muka DEPAN TETAP di
+  //    +0.075 (tampilan depan 100% TIDAK berubah)** dan muka BELAKANG jadi
+  //    CERMINAN SEMPURNA. Gagang menonjol 0.05 ke DEPAN dan ke BELAKANG →
+  //    bbox Z tetap TEPAT 0.25 block (0.5 studs) ✓
+  const DZ0 = -0.075;         // muka BELAKANG daun (= −muka depan → simetris)
+  const DZ1 = 0.075;          // muka DEPAN daun (NILAI LAMA — tidak diubah)
+  const DZC = (DZ0 + DZ1) / 2;// pusat tebal daun = 0 (kaca otomatis terpusat)
+  const GT = 0.06;            // tebal kaca
+  const GE = 0.060;           // lebar list EMAS. ⚠️ TERUKUR: GE 0.044 masih hanya
+                              // 70 px di render (0.03%) = nyaris tak terlihat.
+                              // Referensi: list emas JELAS terlihat → perbesar.
+  const EZ0 = DZ1 - 0.006;    // list emas menonjol dari muka daun (anti z-fighting)
+  const EZ1 = DZ1 + 0.016;
+  // ⚠️ CERMIN BELAKANG (permintaan user 2026-10-09: *"sisi belakang kaya kosong
+  //    harusnya copy dari depan"*): list emas & garis panel WAJIB ada di KEDUA
+  //    muka. Cermin pada z=0 → X & Y TIDAK berubah (posisi tetap sama).
+  const EZ0b = DZ0 + 0.006;   // = −EZ0
+  const EZ1b = DZ0 - 0.016;   // = −EZ1
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PROPORSI — DIUKUR dari 2 foto referensi (kritik Claude + ukur piksel).
+  // Fraksi LEBAR (dari 2.75 block) dan TINGGI (dari 3.5 block):
+  //   margin kayu  kiri/kanan 22%   ·  atas 14%  ·  bawah 20%
+  //   jendela 19%  ·  strip tengah 18%   (lebar)
+  //   jendela ATAS 42% tinggi  ·  palang tengah 12%  ·  jendela BAWAH 12%
+  // → hasil: 2 jendela TINGGI di atas + 2 jendela KECIL (hampir persegi) di
+  //   bawah. TIDAK ADA baris ketiga (bug lama: pita tengah kosong → 6 bukaan).
+  // ══════════════════════════════════════════════════════════════════════
+  const W = EX * 2, H = EY * 2;
+  const mX = W * 0.22;        // margin kiri/kanan (0.605)
+  const mT = H * 0.14;        // margin atas (0.49)
+  const mB = H * 0.20;        // margin bawah (0.70)
+  const winW = W * 0.19;      // lebar jendela (0.5225)
+  const midW = W * 0.18;      // strip kayu tengah (0.495)
+  const upH = H * 0.42;       // tinggi jendela ATAS (1.47)
+  const railH = H * 0.12;     // palang tengah (0.42)
+  const loH = H * 0.12;       // tinggi jendela BAWAH (0.42)
+
+  // batas vertikal (dari atas ke bawah)
+  const yTop = EY, yTopBarB = EY - mT;              // 1.75 .. 1.26
+  const yUpB = yTopBarB - upH;                      // 1.26 .. -0.21
+  const yRailB = yUpB - railH;                      // -0.21 .. -0.63
+  const yLoB = yRailB - loH;                        // -0.63 .. -1.05
+  const yBotB = -EY;                                // -1.05 .. -1.75
+  // batas horizontal (dari kiri ke kanan) — URUT, jangan lompat:
+  //   margin kiri → jendela kiri → strip tengah → jendela kanan → margin kanan
+  const xL = -EX, xLB = -EX + mX;                   // -1.375 .. -0.770
+  const xWL1 = xLB + winW;                          // -0.770 .. -0.2475 (kanan jendela KIRI)
+  const xMR0 = xWL1 + midW;                         // -0.2475 .. 0.2475 (strip tengah)
+  const xWR1 = xMR0 + winW;                         // 0.2475 .. 0.770  (kanan jendela KANAN)
+  const xRB = EX - mX;                              // 0.770 .. 1.375   (margin kanan)
+  // ⚠️ BUG TERUKUR (2026-10-09, vision: "bukaan kanan atas kurus"): batas
+  //    jendela KANAN semula `[xWR1, xRB]` — padahal xWR1 (0.770) == xRB (0.770)
+  //    → lebar 0.0 (celah kurus). Yang BENAR: `[xMR0, xWR1]`. Nilai sama-sama
+  //    benar, NAMANYA yang tertukar — verifikasi dengan ANGKA, jangan nama.
+  // jendela BAWAH — KOREKSI (2026-10-09, kritik Claude #6/#7 "tidak segaris"):
+  //   semula di-inset 0.062 → tepi vertikal TIDAK segaris dgn jendela atas.
+  //   Referensi: tiap jendela kecil TEPAT di bawah jendela tingginya (segari).
+  //   FIX: pakai batas X yang SAMA dgn jendela atas (tanpa inset).
+  const loX0 = xLB, loX1 = xWL1;
+  const loX2 = xMR0, loX3 = xWR1;
+
+  const parts = [];
+  const W_ = (x0, x1, y0, y1) => ({ faces: _box(x0, x1, y0, y1, DZ0, DZ1), tag: 'wood' });
+
+  // ── 1) KAYU SOLID (daun pintu) — semua area SELAIN 4 lubang jendela ──
+  // ⚠️ BUG TERUKUR (2026-10-09, vision "celah gelap memanjang di samping jendela"):
+  //    strip tengah semula `W_(xMR0−midW/2, xMR0+midW/2)` = [0.0, 0.495] — hanya
+  //    menutup separuh! Sisi kiri strip [−0.2475, 0.0] KOSONG → lubang memanjang
+  //    (kiri/kanan jendela). Yang BENAR: strip = RUANG ANTARA 2 jendela, yaitu
+  //    [xWL1, xMR0] (pusat 0, lebar midW). PELAJARAN: jangan hitung ulang batas
+  //    dari pusat — PAKAI variabel batas yang sudah ada.
+  parts.push(W_(xL, EX, yTopBarB, yTop));            // palang ATAS (marg. atas)
+  parts.push(W_(xL, EX, yBotB, yLoB));               // palang BAWAH (marg. bawah)
+  parts.push(W_(xL, xLB, yLoB, yTopBarB));           // batang KIRI (sisi engsel)
+  parts.push(W_(xRB, EX, yLoB, yTopBarB));           // batang KANAN (sisi gagang)
+  parts.push(W_(xWL1, xMR0, yLoB, yTopBarB));        // strip TENGAH [xWL1, xMR0]
+  parts.push(W_(xLB, xWL1, yRailB, yUpB));           // palang tengah KIRI
+  parts.push(W_(xMR0, xWR1, yRailB, yUpB));          // palang tengah KANAN
+  // pengisi samping jendela BAWAH (karena di-inset) — pakai batas yang BENAR
+  parts.push(W_(xLB, loX0, yLoB, yRailB));           // kiri  jendela bawah-kiri
+  parts.push(W_(loX1, xWL1, yLoB, yRailB));          // kanan jendela bawah-kiri
+  parts.push(W_(xMR0, loX2, yLoB, yRailB));          // kiri  jendela bawah-kanan
+  parts.push(W_(loX3, xWR1, yLoB, yRailB));          // kanan jendela bawah-kanan
+
+  // ── 2) GARIS PANEL DALAM (kritik Claude #8, KOREKSI #10) ──
+  //      Semula garis HITAM tipis (tampak "gambar garis"). Referensi: lekukan
+  //      menjorok HALUS berwarna KAYU (sedikit lebih gelap), jarak lebih rapi.
+  //      FIX: pakai tag 'panel' (warna kayu lebih gelap, BUKAN hitam) +
+  //      posisi lebih masuk dari tepi (inset 0.13) supaya tampak rapi.
+  const PX = 0.13, PY = 0.13, PL = 0.032;     // inset & lebar alur
+  const pz0 = DZ1 - 0.004, pz1 = DZ1 + 0.008;
+  const pz0b = DZ0 + 0.004, pz1b = DZ0 - 0.008;   // CERMIN belakang
+  const pl = (x0, x1, y0, y1) => parts.push({ faces: _box(x0, x1, y0, y1, pz0, pz1), tag: 'panel' });
+  const plb = (x0, x1, y0, y1) => parts.push({ faces: _box(x0, x1, y0, y1, pz0b, pz1b), tag: 'panel' });
+  pl(xL + PX, EX - PX, yTop - PY - PL, yTop - PY);        // atas
+  pl(xL + PX, EX - PX, -EY + PY, -EY + PY + PL);          // bawah
+  pl(xL + PX, xL + PX + PL, -EY + PY, yTop - PY);         // kiri
+  pl(EX - PX - PL, EX - PX, -EY + PY, yTop - PY);         // kanan
+  // cerminan belakang (X & Y sama persis — cermin pada z=0)
+  plb(xL + PX, EX - PX, yTop - PY - PL, yTop - PY);
+  plb(xL + PX, EX - PX, -EY + PY, -EY + PY + PL);
+  plb(xL + PX, xL + PX + PL, -EY + PY, yTop - PY);
+  plb(EX - PX - PL, EX - PX, -EY + PY, yTop - PY);
+
+  // ── 3) KACA + 4) LIST EMAS: 4 panel (2 TINGGI atas, 2 KECIL bawah) ──
+  const panels = [
+    [xLB, xWL1, yUpB, yTopBarB],    // atas-kiri  (TINGGI)
+    [xMR0, xWR1, yUpB, yTopBarB],   // atas-kanan (TINGGI)
+    [loX0, loX1, yLoB, yRailB],     // bawah-kiri (KECIL)
+    [loX2, loX3, yLoB, yRailB],     // bawah-kanan(KECIL)
+  ];
+  panels.forEach(([x0, x1, y0, y1]) => {
+    // kaca mengikuti bukaan dalam, TEPAT DI TENGAH kedalaman
+    parts.push({ faces: _box(x0, x1, y0, y1, DZC - GT / 2, DZC + GT / 2), tag: 'glass' });
+    // list EMAS tipis di sekeliling tiap jendela (4 batang, menonjol sedikit)
+    parts.push({ faces: _box(x0 - GE, x1 + GE, y1, y1 + GE, EZ0, EZ1), tag: 'gold' });  // atas
+    parts.push({ faces: _box(x0 - GE, x1 + GE, y0 - GE, y0, EZ0, EZ1), tag: 'gold' });  // bawah
+    parts.push({ faces: _box(x0 - GE, x0, y0, y1, EZ0, EZ1), tag: 'gold' });            // kiri
+    parts.push({ faces: _box(x1, x1 + GE, y0, y1, EZ0, EZ1), tag: 'gold' });            // kanan
+    // ⚠️ CERMIN BELAKANG (permintaan user: *"sisi belakang kaya kosong, harusnya
+    //    copy dari depan"*): list emas IDENTIK di muka belakang (X&Y sama persis).
+    parts.push({ faces: _box(x0 - GE, x1 + GE, y1, y1 + GE, EZ0b, EZ1b), tag: 'gold' });
+    parts.push({ faces: _box(x0 - GE, x1 + GE, y0 - GE, y0, EZ0b, EZ1b), tag: 'gold' });
+    parts.push({ faces: _box(x0 - GE, x0, y0, y1, EZ0b, EZ1b), tag: 'gold' });
+    parts.push({ faces: _box(x1, x1 + GE, y0, y1, EZ0b, EZ1b), tag: 'gold' });
+  });
+
+  // ── 5) GAGANG: bola EMAS + leher, sisi KANAN, ketinggian TENGAH ──
+  // Referensi + kritik Claude #9: bola emas LEBIH BESAR, mengilap, sedikit
+  // masuk dari tepi. KOREKSI: ketinggian = 41% dari BAWAH (referensi 58–60%
+  // dari atas) supaya ergonomis — semula 38% (terlalu rendah, kritik "terlalu rendah").
+  const kr = 0.085;                     // jari-jari bola gagang (diperbesar)
+  const kx = EX - 0.18;                 // MASUK dari tepi kanan (X SAMA di 2 sisi)
+  const ky = -EY + H * 0.41;            // ketinggian 41% dari bawah (= 59% dari atas)
+  const kz = 0.125 - kr * 0.974918;     // ⚠️ rasio 0.974918 = radius EFEKTIF terukur
+                                        // bola seg-14/ring-6 → puncak TEPAT di +0.125
+  // ⚠️ GAGANG 2 SISI (permintaan user: *"posisi gagang juga sama disitu aja ga
+  //    kebalik tetep sama"*): cermin pada z=0 → X & Y TIDAK berubah (tetap di
+  //    sisi KANAN, ketinggian sama) → dari belakang tampak sama, tidak kebalik.
+  const kzb = -0.125 + kr * 0.974918;   // puncak belakang TEPAT di −0.125
+  parts.push({ faces: _cylBetween([kx, ky, DZ1 - 0.02], [kx, ky, kz], kr * 0.5, 10), tag: 'gold' });
+  parts.push({ faces: _sphereFaces(kr, kx, ky, kz, 14, 6), tag: 'gold' });
+  parts.push({ faces: _cylBetween([kx, ky, DZ0 + 0.02], [kx, ky, kzb], kr * 0.5, 10), tag: 'gold' });
+  parts.push({ faces: _sphereFaces(kr, kx, ky, kzb, 14, 6), tag: 'gold' });
+
+  return parts;
+}
+
+/** Info engsel pintu (dipakai app untuk animasi buka/tutup). */
+export const DOOR_HINGE_X = -1.375;   // sumbu putar di tepi KIRI (lokal, relatif pusat)
+export const DOOR_OPEN_ANGLE = -Math.PI / 2;   // terbuka 90° (ayun keluar)
+
 export function getWindowParts() {
   const EX = 1.0;             // setengah lebar (x) = 1 block → total 2 block (4 studs)
   const EY = 1.0;             // setengah tinggi (y) = 1 block → total 2 block (4 studs)
@@ -1446,6 +1674,68 @@ export function makeWindowGeometry(THREE) {
   return out;
 }
 
+/** Buat geometri DOOR (2.75 x 3.5 x 0.25 block = 5.5 x 7 x 0.5 studs).
+ * ⚠️ INTERAKTIF: pintu bisa DIBUKA dengan klik biasa (NSI pertama).
+ *    Daun pintu + engsel dibuat di geometri ini (satu mesh, ringan);
+ *    ANIMASI buka/tutup dijalankan app lewat `userData.door`. */
+export function makeDoorGeometry(THREE) {
+  const parts = getDoorParts();
+  const pos = [], uv = [], col = [];
+  // ⚠️⚠️ AKAR "EMAS/KACA HITAM" (terukur 2026-10-09, kritik Claude #6 & #9):
+  //    Tekstur kayu `wood_block.png` di UV(0.5,0.5) = RGB[30,16,6] ≈ HITAM.
+  //    Vertex color = PENGALI: emas [1.55,1.18,0.42] × [0.12,0.06,0.02]
+  //    = [0.18,0.07,0.01] → HITAM. Kaca [0.74,0.85,0.94] × hitam → BIRU TUA.
+  //    FIX: tekstur pintu = GRAYSCALE (door.png, dari wood_block: |R−G|=0)
+  //    sehingga vertex color MENGENDALIKAN warna penuh. Warna di bawah
+  //    DIKALIBRASI dari referensi: C = warna_ref / 255 / (grayscale rata2 0.59).
+  //    Ref KAYU RGB[183,162,48] · Ref KACA RGB[123,149,89] (hijau sage).
+  const UVBRIGHT = 0.020;   // v texel TERANG (untuk UV konstan kaca & emas)
+  const UVBRIGHTX = 0.985;
+  parts.forEach((p) => {
+    // ⚠️ autoFix: false (rakitan banyak kotak) — winding diperbaiki per komponen
+    // lewat voting arah normal (_fixWindingByVolume), sama seperti Helm/Window.
+    const g = _buildFaces(THREE, p.faces, { autoFix: false });
+    _fixWindingByVolume(g);
+    const P = g.getAttribute('position'), U = g.getAttribute('uv');
+    let c, uvConst = false;
+    if (p.tag === 'glass') {
+      // kaca: hijau-sage semi-tembus. ⚠️ c dikoreksi dari RENDER NYATA
+      // (ukur piksel): viewer punya tone-map ACES yang memampatkan warna,
+      // jadi c harus > target/255/grayscale. Terukur: kayu c1.896 → render 162.
+      c = [2.30, 3.30, 1.05, 0.62];
+      uvConst = false;   // ⚠️ KACA BERTEKSTUR (kritik #13): pakai UV posisi →
+                         //    tekstur buram halus terlihat (referensi std 14.9%)
+    } else if (p.tag === 'gold') {
+      // ⚠️ AKAR "list emas tak terlihat" (TERUKUR: 0 piksel emas di render):
+      //    c emas 1.621 lebih KECIL dari kayu 1.896 → emas tampak GELAP.
+      //    FIX: emas WAJIB paling terang + jenuh (ref 255,205,60 vs kayu 183,163,48).
+      c = [3.60, 2.90, 0.22, 1.0];
+      uvConst = true;
+    } else if (p.tag === 'panel') {
+      // alur panel dalam: KAYU lebih gelap (bukan hitam) — kritik #10
+      c = [1.40, 0.78, 0.11, 1.0];
+      uvConst = false;
+    } else {
+      // KAYU: ⚠️ KONTRAS (kritik #8: "emas menyatu dgn kayu"). Kayu dibikin
+      // lebih COKELAT/merah (G diturunkan 25%) supaya list emas menonjol jelas.
+      // Ref kayu [183,163,48] terlalu kuning-terang → G diturunkan.
+      c = [2.05, 1.18, 0.13, 1.0];
+    }
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      uv.push(uvConst ? UVBRIGHTX : U.getX(i), uvConst ? UVBRIGHT : U.getY(i));
+      col.push(c[0], c[1], c[2], c[3]);
+    }
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  // itemSize 4 → Three.js aktifkan USE_COLOR_ALPHA (alpha per-vertex)
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  out.computeVertexNormals();
+  return out;
+}
+
 /**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
@@ -1458,6 +1748,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_MAST_SLUG) return makeMastGeometry(THREE);
   if (slug === NSI_HELM_SLUG) return makeHelmGeometry(THREE);
   if (slug === NSI_WINDOW_SLUG) return makeWindowGeometry(THREE);
+  if (slug === NSI_DOOR_SLUG) return makeDoorGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }

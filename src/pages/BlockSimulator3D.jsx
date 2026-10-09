@@ -46,7 +46,7 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE } from '../utils/blockShapes.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -14187,6 +14187,58 @@ Now you can apply Displacement for detailed effect.`);
       try {
         if (threeRef.current.updateMirrorLine) threeRef.current.updateMirrorLine();
       } catch (e) {}
+
+      // ── NSI DOOR (2026-10-09, permintaan user): ANIMASI BUKA/TUTUP PINTU ──
+      // Pintu adalah mesh TUNGGAL (bukan group). SOLUSI: gerakkan SELURUH mesh —
+      // posisi diputar mengelilingi SUMBU ENGSEL (tepi kiri) + orientasi ikut
+      // diputar → daun mengayun keluar seperti pintu asli.
+      //
+      // ⚠️ KUNCI ANTI-DRIFT (terukur 2026-10-09): jangan menyimpan "basis" dari
+      //    frame pertama. Kalau user MEMINDAHKAN/MEMUTAR pintu saat TERBUKA,
+      //    basis lama jadi basi → pintu MELOMPAT. Karena itu basis DIHITUNG ULANG
+      //    tiap frame dari keadaan mesh saat ini dengan meng-UN-APPLY sudut yang
+      //    sedang terpasang (`st.angle`). Dengan begitu tool apa pun (move/
+      //    rotate/scale/clone/mirror/undo) tetap benar secara otomatis.
+      //
+      // Matematika (rotasi mengelilingi Y LOKAL block = rotasi di sisi KANAN):
+      //   quat_dunia = baseQ · qY(θ)
+      //   pos_dunia  = basePos + baseQ · localOffset(θ)
+      //   localOffset(θ) = engsel→pusat yang diputar = (−EX + EX·cosθ, 0, −EX·sinθ)
+      //   → baseQ   = quat_dunia · qY(θ)⁻¹        (un-apply)
+      //   → basePos = pos_dunia − baseQ · localOffset(θ)
+      try {
+        const _blocks = threeRef.current.blocks;
+        for (let _i = 0; _i < _blocks.length; _i++) {
+          const _b = _blocks[_i];
+          if (!_b || !_b.userData || !_b.userData.isDoor) continue;
+          const _st = _b.userData.door;
+          if (!_st) continue;
+          const _EX = -DOOR_HINGE_X;                 // jarak engsel→pusat (lokal)
+          const _Y = new THREE.Vector3(0, 1, 0);
+          // 1) UN-APPLY sudut yang sedang terpasang → dapatkan basis
+          const _qNow = new THREE.Quaternion().setFromAxisAngle(_Y, _st.angle);
+          const _baseQ = _b.quaternion.clone().multiply(_qNow.clone().invert());
+          const _offNow = new THREE.Vector3(
+            -_EX + _EX * Math.cos(_st.angle), 0, -_EX * Math.sin(_st.angle)
+          ).applyQuaternion(_baseQ);
+          const _basePos = _b.position.clone().sub(_offNow);
+          // 2) Tentukan sudut baru (gerak halus 12%/frame ≈0.5s @60fps)
+          const _diff = _st.target - _st.angle;
+          let _newA = _st.angle;
+          if (Math.abs(_diff) >= 1e-4) _newA = _st.angle + _diff * 0.12;
+          else _newA = _st.target;   // sudah dekat → kunci TEPAT (anti drift)
+          if (Math.abs(_newA - _st.angle) < 1e-7 && _st.applied === _newA) continue;
+          _st.angle = _newA;
+          _st.applied = _newA;
+          // 3) APPLY: orientasi + posisi
+          _b.quaternion.copy(_baseQ)
+            .multiply(new THREE.Quaternion().setFromAxisAngle(_Y, _newA));
+          const _off = new THREE.Vector3(
+            -_EX + _EX * Math.cos(_newA), 0, -_EX * Math.sin(_newA)
+          ).applyQuaternion(_baseQ);
+          _b.position.copy(_basePos).add(_off);
+        }
+      } catch (e) {}
     };
     animate();
 
@@ -14221,6 +14273,9 @@ Now you can apply Displacement for detailed effect.`);
       ground, grid,
       symmetryPlane: null, // akan di-assign setelah plane dibuat
     };
+    // ── DEBUG DEV-ONLY (2026-10-09): ekspos threeRef agar bisa DIUKUR lewat
+    //    browser automation. Tidak ada efek di produksi (import.meta.env.DEV).
+    if (import.meta.env && import.meta.env.DEV) window.__threeRef = threeRef;
 
     // Phase 36: Create ChunkManager — shared geometry + material for all chunks.
     // Geometry = unit box (same as block default). Per-instance scale handles size variety.
@@ -14719,6 +14774,38 @@ Now you can apply Displacement for detailed effect.`);
       const currentTool = toolRef.current;
       const color = colorRef.current;
 
+      // ── NSI DOOR (2026-10-09, permintaan user): KLIK BIASA → pintu kebuka ──
+      // Verbatim: *"dia adalah NSI pertama yang bisa di click, jika di klik kiri
+      // atau di sentuh di hp dia akan kebuka si 'Door' nya"* + *"harusnya saya
+      // klik sembarang di area door apapun yang penting dalam lingkup area door
+      // tersebut harusnya bisa langsung kebuka"*.
+      //
+      // ⚠️ BUG TERUKUR (2026-10-09, laporan user "gabisa saya klik... gak mau
+      //    kebuka"): semula handler ini hanya jalan saat `currentTool === null`.
+      //    TAPI setelah user MENARUH pintu dgn tool Place, `tool` TETAP 'place'
+      //    (tidak auto-reset) → klik berikutnya menaruh block baru, pintu TIDAK
+      //    pernah kebuka. FIX: izinkan juga saat tool 'place' — klik pada BADAN
+      //    PINTU selalu berarti "buka/tutup", bukan menaruh block (pintu hanya
+      //    tebal 0.5 studs, menaruh block di situ memang tidak masuk akal).
+      //    Tool lain (delete/paint/property/move/rotate/scale/clone/mirror/
+      //    shape/object/decal) TIDAK terpengaruh → perilaku lama utuh.
+      const _doorToolOk = (currentTool === null || currentTool === 'place');
+      if (_doorToolOk) {
+        const _doorHits = raycaster.intersectObjects(threeRef.current.blocks, true);
+        if (_doorHits.length > 0) {
+          // Telusuri ke atas sampai menemukan block pintu (kalau kena anak mesh)
+          let _d = _doorHits[0].object;
+          while (_d && !(_d.userData && _d.userData.isDoor) && _d.parent) _d = _d.parent;
+          if (_d && _d.userData && _d.userData.isDoor) {
+            const _dd = _d.userData.door || (_d.userData.door = { angle: 0, target: 0 });
+            // Toggle: buka ↔ tutup
+            const _openNow = Math.abs(_dd.target) > 1e-6;
+            _dd.target = _openNow ? 0 : DOOR_OPEN_ANGLE;
+            return;   // klik pada pintu hanya untuk buka/tutup
+          }
+        }
+      }
+
       if (currentTool === 'delete') {
         const blockMeshes = threeRef.current.blocks;
         // recursive=true supaya mesh hasil import glb (yang sering punya nested mesh) tetap kena raycast
@@ -14837,6 +14924,15 @@ Now you can apply Displacement for detailed effect.`);
           // bisa rebuild material block yang BENAR (neon: emissive+aura),
           // bukan material generik warna-dari-color (neon color = hitam!).
           block.userData.blockSlug = blockDef.slug;
+          // ── NSI DOOR (2026-10-09, permintaan user): PINTU INTERAKTIF ──
+          // NSI pertama yang bisa di-KLIK (klik biasa / sentuh di HP) → kebuka.
+          // Status disimpan di userData.door; ANIMASI dijalankan di animate()
+          // lewat offset posisi+rotasi (BUKAN rebuild geometri) supaya aman
+          // untuk undo/redo, clone/mirror, dan semua tool.
+          if (blockDef.slug === 'door') {
+            block.userData.isDoor = true;
+            block.userData.door = { angle: 0, target: 0 };
+          }
           // SCALE BUG 2 FIX: tiling awal (basis UV dicatat; scale 1,1,1 =
           // uv 0..1 — pemanggilan ini menyiapkan basis supaya drag scale
           // pertama langsung benar). Absolut semua block kubus.
@@ -15055,6 +15151,8 @@ Now you can apply Displacement for detailed effect.`);
           // FIX BUG GLOW-CLONE (user 2026-09-11): copy blockSlug + pasang
           // aura glow lagi (sprite child tidak ikut material.clone()).
           ghost.userData.blockSlug = source.userData.blockSlug || null;
+          // NSI DOOR: status buka/tutup ikut ke ghost clone
+          syncDoorUserData(source.userData, ghost.userData);
           // Phase 88: bawa warna PAINT ke ghost (tekstur berwarna ikut hasil
           // clone/mirror). Material sudah ter-clone dari source → map+color
           // ikut; paintColor disimpan supaya snapshot berikutnya benar.
@@ -15148,6 +15246,8 @@ Now you can apply Displacement for detailed effect.`);
           // FIX BUG GLOW-CLONE (user 2026-09-11): mirror neon juga wajib
           // ber-aura + blockSlug (sprite child tidak ikut material.clone()).
           mirrorMesh.userData.blockSlug = source.userData.blockSlug || null;
+          // NSI DOOR: status buka/tutup ikut ke mesh mirror
+          syncDoorUserData(source.userData, mirrorMesh.userData);
           // Phase 88: bawa warna PAINT ke mirror (tekstur berwarna ikut).
           mirrorMesh.userData.paintColor = (source.material && source.material.userData && source.material.userData.paintColor) || null;
           if (mirrorMesh.userData.blockSlug && getBlockDef(mirrorMesh.userData.blockSlug).glow) {
@@ -16207,6 +16307,19 @@ Now you can apply Displacement for detailed effect.`);
     const redoStack = [];
 
     // Snapshot semua blok ke array of plain objects (serializable).
+      // ── NSI DOOR (2026-10-09): status pintu WAJIB ikut tersalin ──
+      // Dipakai di SEMUA jalur pembuatan mesh (place, clone, mirror, restore
+      // undo/redo). Tanpa ini, pintu hasil clone/undo kehilangan `door` →
+      // animasi membaca undefined → NaN → pintu lenyap.
+      const syncDoorUserData = (srcUD, dstUD) => {
+        if (!srcUD || !dstUD) return;
+        if (srcUD.isDoor || srcUD.blockSlug === 'door') {
+          dstUD.isDoor = true;
+          const s = srcUD.door || { angle: 0, target: 0 };
+          dstUD.door = { angle: s.angle || 0, target: s.target || 0, applied: s.applied };
+        }
+      };
+
     const snapshotState = () => {
       // Ambil world position/rotation/scale supaya benar walau block ada di dalam gltf.scene group
       const worldPos = new THREE.Vector3();
@@ -16267,6 +16380,10 @@ Now you can apply Displacement for detailed effect.`);
           blockSlug, // NEW (Bug 1)
           isGlow,    // NEW (Bug 1)
           paintColor, // NEW Phase 88 (warna bertekstur)
+          // NSI DOOR: simpan sudut bukaan supaya undo/redo memulihkan status
+          // pintu (terbuka/tertutup) — transform di atas sudah memuat posisi
+          // terbuka, tapi `userData.door` wajib ikut supaya klik tetap bekerja.
+          doorAngle: (b.userData && b.userData.door) ? b.userData.door.angle : null,
         };
       });
     };
@@ -16355,6 +16472,16 @@ Now you can apply Displacement for detailed effect.`);
         // FIX BUG 1: simpan blockSlug lagi utk snapshot berikutnya (undo/redo
         // berantai) + pasang ulang aura glow utk neon.
         block.userData.blockSlug = s.blockSlug || null;
+        // NSI DOOR: pulihkan status buka/tutup setelah undo/redo.
+        // Transform sudah dipulihkan di atas; yang perlu dibuat ulang hanya
+        // `userData.door` (kalau tidak, pintu tidak bisa diklik lagi).
+        if (s.blockSlug === 'door' || s.doorAngle !== null && s.doorAngle !== undefined) {
+          block.userData.isDoor = true;
+          block.userData.door = {
+            angle: (typeof s.doorAngle === 'number') ? s.doorAngle : 0,
+            target: (typeof s.doorAngle === 'number') ? s.doorAngle : 0,
+          };
+        }
         if (s.isGlow) attachBlockGlow(THREE, block);
         // SCALE BUG 2 FIX: block hasil restore sering punya scale tersimpan
         // (mis. pipih 0.5,2,3) — tiling WAJIB dihitung ulang supaya
