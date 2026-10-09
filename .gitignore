@@ -186,3 +186,6 @@ skills/
 
 # Kontrak permanen = dokumen LOKAL user (sengaja TIDAK di repo sejak 2026-09-20)
 KONTRAK_PERMANEN.md
+
+# Dev viewer lokal (JANGAN di-commit / JANGAN masuk Vercel)
+nsi_viewer.html

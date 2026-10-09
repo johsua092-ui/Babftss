@@ -240,6 +240,125 @@ export function makeRampGeometry(THREE) {
  * keluar yang benar (terbukti: cross product tiap muka _box mengarah keluar).
  * → Untuk bentuk rakitan kotak, panggil dengan { autoFix: false }.
  */
+/**
+ * PERBAIKI ARAH MUKA secara OTOMATIS & TERUKUR — per KOMPONEN (benda padat).
+ *
+ * ⚠️ AKAR BUG "melihat ke dalam / tekstur hilang saat kamera diputar":
+ *   autoFix lama memakai centroid GLOBAL. Untuk objek yang terdiri dari BANYAK
+ *   benda terpisah (roda 24 kotak + jeruji + gagang + tiang), centroid global
+ *   ada di TENGAH objek → muka yang menghadap keluar justru dianggap "dalam",
+ *   dan muka yang menghadap ke dalam dianggap benar. Hasilnya: sebagian benda
+ *   tampak tembus/bolong dari luar ("melihat ke dalam").
+ *
+ * CARA UKUR (bukan tebak): untuk benda padat tertutup, VOLUME BERARAH
+ *   V = Σ dot(a, cross(b, c)) / 6   (a,b,c = titik triangle)
+ *   V > 0 → muka menghadap KELUAR (benar)
+ *   V < 0 → muka menghadap KE DALAM  → BALIK urutan titiknya
+ * Setiap komponen terhubung (benda terpisah) diukur sendiri-sendiri.
+ */
+function _fixWindingByVolume(geo) {
+  const pos = geo.getAttribute('position');
+  const n = pos.count;
+  const T = [];                       // daftar triangle: [i0,i1,i2]
+  for (let i = 0; i < n; i += 3) T.push([i, i + 1, i + 2]);
+  const P = (i) => [pos.getX(i), pos.getY(i), pos.getZ(i)];
+
+  // ── kelompokkan triangle jadi komponen (berbagi titik = terhubung) ──
+  const key = (i) => `${pos.getX(i).toFixed(5)},${pos.getY(i).toFixed(5)},${pos.getZ(i).toFixed(5)}`;
+  const vkey = new Map();             // titik → daftar index triangle
+  T.forEach((t, ti) => t.forEach((vi) => {
+    const k = key(vi);
+    if (!vkey.has(k)) vkey.set(k, []);
+    vkey.get(k).push(ti);
+  }));
+  const seen = new Array(T.length).fill(false);
+  const komponen = [];
+  for (let i = 0; i < T.length; i++) {
+    if (seen[i]) continue;
+    const stack = [i], comp = [];
+    seen[i] = true;
+    while (stack.length) {
+      const ti = stack.pop();
+      comp.push(ti);
+      T[ti].forEach((vi) => {
+        (vkey.get(key(vi)) || []).forEach((tj) => {
+          if (!seen[tj]) { seen[tj] = true; stack.push(tj); }
+        });
+      });
+    }
+    komponen.push(comp);
+  }
+
+  // ── ukur arah tiap komponen; balik kalau menghadap KE DALAM ──
+  //
+  // ⚠️ BUG KEBALIK-BALIK (terukur 2026-10-09): uji VOLUME tidak valid untuk
+  // PERMUKAAN TERBUKA (selubung silinder/pita tanpa tutup). Terbukti ada
+  // komponen dgn V_relatif-origin = +0.00024 tapi V_relatif-centroid = -0.00007
+  // → tandanya berubah-ubah → muka bisa terbalik → "melihat ke dalam".
+  //
+  // UJI YANG VALID untuk SEMUA bentuk: VOTING arah normal.
+  //   Untuk tiap triangle, hitung dot(normal, titik_tengah − centroid_komponen).
+  //   Bentuk tertutup MAUPUN terbuka: mayoritas normal harus menghadap KELUAR.
+  //   vote > 0 → benar; vote < 0 → BALIK. Kalau vote == 0 (seri, mis. bidang
+  //   datar), baru pakai volume relatif centroid sebagai penentu.
+  let dibalik = 0, jmlKomponen = komponen.length;
+  const arr = pos.array;
+  komponen.forEach((comp) => {
+    // centroid komponen (rata-rata titik)
+    let cx = 0, cy = 0, cz = 0, cnt = 0;
+    comp.forEach((ti) => T[ti].forEach((vi) => {
+      cx += pos.getX(vi); cy += pos.getY(vi); cz += pos.getZ(vi); cnt++;
+    }));
+    cx /= cnt; cy /= cnt; cz /= cnt;
+
+    let vote = 0;
+    comp.forEach((ti) => {
+      const a = P(T[ti][0]), b = P(T[ti][1]), c = P(T[ti][2]);
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+      const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const mx = (a[0] + b[0] + c[0]) / 3 - cx;
+      const my = (a[1] + b[1] + c[1]) / 3 - cy;
+      const mz = (a[2] + b[2] + c[2]) / 3 - cz;
+      const d = nx * mx + ny * my + nz * mz;
+      if (d > 0) vote++; else if (d < 0) vote--;
+    });
+
+    let perluBalik = vote < 0;
+    if (vote === 0) {
+      // seri (mis. komponen bidang datar) → pakai volume relatif centroid
+      let V = 0;
+      comp.forEach((ti) => {
+        const a = P(T[ti][0]), b = P(T[ti][1]), c = P(T[ti][2]);
+        const ax = a[0] - cx, ay = a[1] - cy, az = a[2] - cz;
+        const bx = b[0] - cx, by = b[1] - cy, bz = b[2] - cz;
+        const dx = c[0] - cx, dy = c[1] - cy, dz = c[2] - cz;
+        V += (ax * (by * dz - bz * dy) - ay * (bx * dz - bz * dx) + az * (bx * dy - by * dx)) / 6;
+      });
+      perluBalik = V < 0;
+    }
+
+    if (perluBalik) {
+      // balik urutan titik pada SETIAP triangle komponen ini (posisi + UV)
+      const uv = geo.getAttribute('uv');
+      const ua = uv ? uv.array : null;
+      comp.forEach((ti) => {
+        const [, i1, i2] = T[ti];
+        const swapA = (arr2, stride, i, j) => {
+          for (let k = 0; k < stride; k++) {
+            const t = arr2[i * stride + k]; arr2[i * stride + k] = arr2[j * stride + k]; arr2[j * stride + k] = t;
+          }
+        };
+        swapA(arr, 3, i1, i2);
+        if (ua) swapA(ua, 2, i1, i2);
+      });
+      dibalik++;
+    }
+  });
+  // UV juga harus ikut (kalau ada) — karena urutan vertex berubah
+  return { jmlKomponen, dibalik };
+}
+
 function _buildFaces(THREE, faces, opts) {
   const autoFix = !(opts && opts.autoFix === false);
   // centroid semua titik unik
@@ -570,22 +689,134 @@ export function makeStepGeometry(THREE) {
 // Khusus baluster (kotak) pakai _box yang windingnya sudah TERBUKTI benar
 // (autoFix:false), sama seperti Seat.
 
-/** Cincin sisi silinder (seg quads) — winding diperbaiki autoFix per-bagian. */
+/** Cincin sisi silinder (seg quads) — normal mengarah KELUAR.
+ * ⚠️ BUG TERUKUR (2026-10-09): urutan titik lama (bawah-a0 → bawah-a1 →
+ * atas-a1 → atas-a0) menghasilkan normal RADIAL KE DALAM → seluruh silinder
+ * (tiang, kaki, kerah) TEMBUS PANDANG dari luar & "hilang" saat kamera
+ * diputar (bukti: DoubleSide menambah 3.914 px di azimut 135°).
+ * Urutan BENAR: bawah-a0 → atas-a0 → atas-a1 → bawah-a1 (normal KELUAR). */
 function _cylSide(r, y0, y1, seg) {
   const fs = [];
   for (let i = 0; i < seg; i++) {
     const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
     fs.push([
       [Math.cos(a0) * r, y0, Math.sin(a0) * r],
-      [Math.cos(a1) * r, y0, Math.sin(a1) * r],
-      [Math.cos(a1) * r, y1, Math.sin(a1) * r],
       [Math.cos(a0) * r, y1, Math.sin(a0) * r],
+      [Math.cos(a1) * r, y1, Math.sin(a1) * r],
+      [Math.cos(a1) * r, y0, Math.sin(a1) * r],
     ]);
   }
   return fs;
 }
 
-/** Tutup datar silinder (fan segitiga). */
+/** Batang SILINDER antara 2 titik bebas (untuk jeruji/gagang bulat).
+ * Sumbu batang = arah p→q; penampang bulat seg-segi. */
+function _cylBetween(p, q, r, seg, dome = false, capP = true, capQ = true) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+
+  const dir = norm(sub(q, p));
+  const ref = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = norm(cross(dir, ref));
+  const v = norm(cross(dir, u));
+  const fs = [];
+  const ring = (pt) => {
+    const out = [];
+    for (let i = 0; i < seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      out.push(add(pt, add(mul(u, Math.cos(a) * r), mul(v, Math.sin(a) * r))));
+    }
+    return out;
+  };
+  const A = ring(p), B = ring(q);
+  for (let i = 0; i < seg; i++) {
+    const j = (i + 1) % seg;
+    fs.push([A[i], B[i], B[j], A[j]]);   // sisi (normal keluar)
+  }
+  // ⚠️ TUTUP KEDUA UJUNG (fan) — WAJIB, kalau tidak ujung batang TERBUKA →
+  //    user "melihat ke DALAM pipa" (bug terukur 2026-10-09: area hilang di
+  //    ujung jeruji & pangkal gagang). Winding dibalik supaya normal KELUAR.
+  //
+  // ⚠️ CELAH TERUKUR (2026-10-09, uji tepi-terbuka = 191): dulu ujung bulat
+  //    dibuat dengan _domeFaces lalu DIPUTAR ke arah radial. Masalahnya basis
+  //    sudut _domeFaces ((x+cos a, z+sin a)) BERBEDA dari basis ring di sini
+  //    ((x−sin a, z−cos a)) → titik tidak berbagi vertex → CELAH nyata.
+  //    FIX: kalau `dome`, ujung q ditutup KUBAH yang dibangun dari RING B yang
+  //    SAMA (vertex dijamin berbagi) → menyatu sempurna (watertight).
+  const RINGS = [[0.86, 0.51], [0.60, 0.80], [0.32, 0.95]];
+  // ⚠️ JEBAKAN FAN (terukur 2026-10-09): fan tutup WAJIB (a) berpusat di titik
+  //    POROS (p/q) — bukan di A[0] (itu titik ring, bukan pusat!) — dan (b)
+  //    punya segitiga PENUTUP terakhir. Loop `i < seg-1` tanpa penutup → tepi
+  //    terakhir tak berpasangan = CELAH tipis di tepi tutup.
+  //    Winding: normal = u × v = dir, jadi tutup p (butuh −dir) = [p, A[j], A[i]].
+  //
+  // ⚠️ TUTUP DALAM TERUKUR (2026-10-09): kalau ujung p berada DI DALAM benda lain
+  //    (jeruji masuk hub, kaki masuk alas), tutup ujung p menghadap KE DALAM dan
+  //    tampak sebagai "lubang" pada uji front-vs-double-side. Opsi `capP=false`
+  //    → ujung p TIDAK ditutup (tertutup oleh benda yang menelannya).
+  if (dome) {
+    if (capP) for (let i = 0; i < seg; i++) {
+      const j = (i + 1) % seg;
+      fs.push([p, A[j], A[i]]);            // tutup ujung p (datar, normal −dir)
+    }
+    let prev = B;
+    RINGS.forEach(([rf, hf]) => {
+      const pt = add(q, mul(dir, r * hf));
+      const curScaled = ring(pt).map((P) => add(pt, mul(sub(P, pt), rf)));
+      for (let i = 0; i < seg; i++) {
+        const j = (i + 1) % seg;
+        fs.push([prev[i], curScaled[i], curScaled[j], prev[j]]);
+      }
+      prev = curScaled;
+    });
+    const apex = add(q, mul(dir, r));      // puncak kubah (jarak r dari q)
+    for (let i = 0; i < seg; i++) {
+      const j = (i + 1) % seg;
+      fs.push([prev[i], apex, prev[j]]);   // winding mengikuti pola quad sisi
+    }
+  } else {
+    for (let i = 0; i < seg; i++) {
+      const j = (i + 1) % seg;
+      if (capP) fs.push([p, A[j], A[i]]);   // tutup ujung p (−dir)
+      if (capQ) fs.push([q, B[i], B[j]]);   // tutup ujung q (+dir)
+    }
+  }
+  return fs;
+}
+
+/** Selubung silinder TANPA TUTUP (untuk PITA yang melingkari batang).
+ * ⚠️ JEBAKAN TERUKUR (2026-10-09): pita gelap semula memakai _cylBetween
+ * (bertutup) → tutup dalamnya menghadap KE DALAM batang & tampak sebagai
+ * "lubang" saat diuji front-vs-double-side. Pita TIDAK butuh tutup karena
+ * ujungnya tertutup batang yang dilewatinya. */
+function _cylShell(p, q, r, seg) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const dir = norm(sub(q, p));
+  const ref = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = norm(cross(dir, ref));
+  const v = norm(cross(dir, u));
+  const ring = (pt) => {
+    const out = [];
+    for (let i = 0; i < seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      out.push(add(pt, add(mul(u, Math.cos(a) * r), mul(v, Math.sin(a) * r))));
+    }
+    return out;
+  };
+  const A = ring(p), B = ring(q), fs = [];
+  for (let i = 0; i < seg; i++) {
+    const j = (i + 1) % seg;
+    fs.push([A[i], B[i], B[j], A[j]]);
+  }
+  return fs;
+}
 function _capFan(r, y, seg) {
   const fs = [];
   for (let i = 0; i < seg; i++) {
@@ -886,11 +1117,11 @@ function _prismZ(r, cy, z0, z1, seg) {
     const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
     const x0 = Math.cos(a0) * r, y0 = cy + Math.sin(a0) * r;
     const x1 = Math.cos(a1) * r, y1 = cy + Math.sin(a1) * r;
-    // sisi (normal keluar)
-    faces.push([
-      [x0, y0, z0], [x1, y1, z0], [x1, y1, z1],
-      [x0, y0, z0], [x1, y1, z1], [x0, y0, z1],
-    ]);
+    // ⚠️ BUG CELAH TERUKUR (2026-10-09, uji tepi-terbuka = 90 di hub):
+    //    dulu sisi ditulis sebagai SATU polygon 6 TITIK. Builder hanya
+    //    menangani 3/4 titik → triangulasi rusak → celah. Pisah jadi 2 segitiga.
+    faces.push([[x0, y0, z0], [x1, y1, z0], [x1, y1, z1]]);   // sisi (normal keluar)
+    faces.push([[x0, y0, z0], [x1, y1, z1], [x0, y0, z1]]);
     // tutup depan (z1, +Z) & belakang (z0, −Z)
     faces.push([[0, cy, z1], [x0, y0, z1], [x1, y1, z1]]);
     faces.push([[0, cy, z0], [x1, y1, z0], [x0, y0, z0]]);
@@ -899,83 +1130,136 @@ function _prismZ(r, cy, z0, z1, seg) {
 }
 
 /**
- * ── NSI LEVEL 2 #4: HELM (roda kemudi kapal) ──
+ * ── NSI LEVEL 2 #4: HELM (roda kemudi kapal / ship's wheel) ──
  * PERMINTAAN USER (2026-10-05): tinggi 5 studs, panjang 2 studs, lebar 2 studs.
- * CATATAN USER (verbatim): *"iya itu memang kemudi, tapi identitasnya adalah
- * 'Helm' terdengar aneh tapi aturannya emang gitu, jadi patuhi aturan saya"* →
- * identitas tetap "Helm" walau bentuknya roda kemudi (patuhi aturan user).
- *
  * Ukuran: 1 × 2.5 × 1 block = 2 × 5 × 2 studs (alas di y = −1.25).
- * CATATAN PENTING: karena lebar hanya 1 block, roda kemudi (dengan pegangan)
- * WAJIB muat dalam ±0.5 block → jari-jari luar 0.5 block (bukan 0.705 yang
- * membuat lebar 1.85 block = MELANGGAR spesifikasi user).
  *
- * 6 bagian (semua kotak/prisma ber-winding benar → autoFix aman):
- *   1. alas persegi 1×1 block          2. tiang penyangga vertikal
- *   3. pelek roda (16 kotak berotasi)  4. 8 jeruji (kotak berotasi)
- *   5. hub tengah (prisma, GELAP)      6. 8 pegangan di ujung jeruji
+ * ═══════════════════════════════════════════════════════════════════════════
+ * REVISI BESAR 2026-10-09 — berdasarkan kritik Claude (via SESI KONFIRMASI user).
+ *
+ * KESALAHAN SEBELUMNYA (terukur dari foto referensi, skor 2/10):
+ *   Badan saya berbentuk TRAPESIUM/MENARA (lebar di bawah, menyempit ke atas)
+ *   karena 4 SIRIP LEBAR + tiang gemuk mengisi ruang di bawah roda.
+ *   Referensi: TIANG SILINDER RAMPING + 2-3 KAKI MIRING, banyak RUANG KOSONG.
+ *
+ * BUKTI PENGUKURAN foto referensi (lebar per tinggi, % lebar objek):
+ *     0- 5%  tinggi :  7%   -> puncak batang (ujung jari-jari atas)
+ *    10-55%  tinggi : 70-100% -> RODA (mendominasi, bulat, tipis)
+ *    60-70%  tinggi : 16-23%  -> TIANG RAMPING (ruang kosong di kiri-kanan!)
+ *    75-95%  tinggi : 54-67%  -> ALAS (papan tipis + lapisan hitam)
+ *
+ * 7 bagian (mengikuti rincian kritik):
+ *   1. alas papan tipis + lapisan hitam kebiruan (dua lapis)
+ *   2. tiang SILINDER ramping (bukan balok trapesium)
+ *   3. kerah/cincin hitam di dasar tiang
+ *   4. 2-3 kaki penyangga MIRING (batang bulat) + 1 batang pendek di depan
+ *   5. roda: pelek cincin tipis + 8 jeruji + 8 gagang silinder ujung membulat
+ *   6. pita hitam kebiruan di tiap jeruji (dekat ujung, kedua sisi pelek, tengah)
+ *   7. hub cakram bulat datar + lubang/titik hitam di tengah
+ *   + puncak: batang atas (ujung jari-jari jam-12) dengan pita hitam
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 export function getHelmParts() {
-  // ── REVISI 2026-10-05 (koreksi Claude via browser automation, skor 5/10) ──
-  // Poin yang diperbaiki: (1) gagang MENONJOL keluar pelek, (2) pelek mulus SEG=24,
-  // (3) aksen GELAP (pita gagang + cincin pangkal + lapisan alas), (4) hub =
-  // cakram ORANYE + titik hitam kecil (dulu terbalik), (5) tiang lebih tebal +
-  // menonjol di atas roda, (6) 4 sirip diagonal pangkal, (7) pusat roda diturunkan.
   const YB = -1.25;                 // alas bawah → tinggi total 2.5 block (spek user)
   const BASE_W = 1.0;               // alas 1 block (panjang & lebar 2 studs)
-  const BASE_H = 0.15;
-  const BASE_TOP = YB + BASE_H;     // −1.10
-  const RIM_RO = 0.40;              // pelek (koreksi Claude: roda terlihat kecil → dinaikkan)
-  const GRIP_L = 0.10;              // gagang MENONJOL ~10% tiap sisi
+  // ⚠️ KOREKSI (2026-10-09, kritik Claude #6): papan kayu TIPIS di atas lapisan
+  // HITAM KEBIRUAN yang LEBIH TEBAL (dulu kayu 0.15 + hitam 0.09 → terbalik).
+  const BASE_H = 0.11;              // papan kayu tipis
+  const BASE_DARK = 0.20;           // lapisan hitam kebiruan (LEBIH TEBAL)
+  const BASE_TOP = YB + BASE_DARK + BASE_H;   // −0.94
+
+  // roda
+  const RIM_RO = 0.40;              // jari-jari LUAR pelek (tanpa gagang)
+  const GRIP_L = 0.10;              // gagang menonjol
   const R_OUT = RIM_RO + GRIP_L;    // 0.50 = TEPAT 1 block (spek: lebar 2 studs)
-  const WHEEL_CY = 0.40;            // pusat roda 66% dari alas (terukur dari foto referensi)
-  const RIM_T = 0.11;               // tebal pelek (10-12% diameter roda)
-  const RIM_RI = RIM_RO - RIM_T;    // 0.285
-  const RIM_D = 0.16;               // kedalaman pelek (Z)
-  const GRIP_T = 0.05;              // gagang lebih tebal (koreksi Claude)
-  const HUB_R = 0.15;               // cakram ORANYE ~30% diameter roda
-  const HUB_DOT_R = 0.045;          // titik HITAM kecil di pusat
-  const POLE_W = 0.22;              // tiang 22% lebar alas (koreksi Claude)
-  const SPOKE_T = 0.075;
-  const SEG = 24;                   // pelek lebih MULUS (dulu 16 → tampak bersegi)
+  // ⚠️ KOREKSI (2026-10-09, kritik Claude #4): "jari-jari atas terlalu panjang
+  // seperti tiang pedang". Roda dinaikkan supaya tonjolan batang atas hanya
+  // 0.05 block = 2% tinggi (referensi: puncak 0-5%). Pusat roda 78% dari alas.
+  const WHEEL_CY = 0.70;
+  const RIM_T = 0.062;              // pelek tipis (kritik: "cincin tipis & halus")
+  const RIM_RI = RIM_RO - RIM_T;    // 0.338
+  const RIM_D = 0.13;               // kedalaman pelek
+  // ⚠️ KOREKSI (2026-10-09, kritik Claude #3): jeruji RAMPING + celah LAPANG
+  // (dulu 0.11 → celah jadi segitiga sempit). Pakai seg 12 → tidak bergerigi.
+  const SPOKE_T = 0.085;
+  const GRIP_T = 0.062;             // gagang bulat
+  const HUB_R = 0.215;              // CAKRAM BESAR (kritik: "hub cakram bulat besar")
+  const HUB_DOT_R = 0.048;          // lubang bulat hitam di tengah
+  const POLE_R = 0.085;             // TIANG SILINDER RAMPING
+  const SEG = 32;                   // pelek LEBIH HALUS (kritik: "masih bersegmen")
   const NS = 8;                     // 8 jeruji (terukur dari foto)
+  const SEG_POLE = 14;              // segmen tiang silinder
+  const SEG_BATANG = 12;            // segmen batang bulat (jeruji/gagang/kaki)
 
   const parts = [];
   const zA = -RIM_D / 2, zB = RIM_D / 2;
 
-  // 1) ALAS: papan kayu + lapisan GELAP TEBAL di bawah (koreksi Claude: "nyaris tak terlihat")
-  parts.push({ faces: _box(-BASE_W / 2, BASE_W / 2, YB + 0.06, BASE_TOP, -BASE_W / 2, BASE_W / 2), tag: 'wood' });
-  parts.push({ faces: _box(-BASE_W / 2, BASE_W / 2, YB, YB + 0.06, -BASE_W / 2, BASE_W / 2), tag: 'dark' });
+  // ── 1) ALAS: papan KAYU TIPIS di atas lapisan HITAM yang LEBIH TEBAL ────
+  //      (kritik Claude #6: "alas atas papan tipis di atas lapisan hitam tebal")
+  parts.push({ faces: _box(-BASE_W / 2, BASE_W / 2, YB + BASE_DARK, BASE_TOP, -BASE_W / 2, BASE_W / 2), tag: 'wood' });
+  parts.push({ faces: _box(-BASE_W / 2, BASE_W / 2, YB, YB + BASE_DARK, -BASE_W / 2, BASE_W / 2), tag: 'dark' });
 
-  // 2) TIANG — pangkal tebal, lalu poros RAMPING ke atas; di ujung atas diberi
-  //    PITA GELAP + KEPALA MEMBULAT supaya terbaca sebagai GAGANG (bukan balok
-  //    persegi seperti keluhan vision). Puncak tepat +1.25 → tinggi 2.5 block.
+  // ── 2) TIANG SILINDER RAMPING (kritik: "silinder tegak ramping, sama dari
+  //      atas ke bawah" — BUKAN balok trapesium) ──────────────────────────
   {
-    const twLow = 0.15, twUp = 0.045;
-    parts.push({ faces: _box(-twLow, twLow, BASE_TOP, WHEEL_CY - 0.04, -twLow, twLow), tag: 'wood' });
-    parts.push({ faces: _box(-twUp, twUp, WHEEL_CY - 0.04, 0.95, -twUp, twUp), tag: 'wood' });
-    // Pita gelap TEBAL tepat di atas pelek (persis referensi) + kepala membulat
-    parts.push({ faces: _box(-0.078, 0.078, 0.95, 1.105, -0.078, 0.078), tag: 'dark' });
-    parts.push({ faces: _box(-0.062, 0.062, 1.105, 1.25, -0.062, 0.062), tag: 'wood' });
+    const fs = [];
+    // ⚠️ pakai _cylBetween (BERTUTUP) — _cylSide tanpa tutup → ujung tiang
+    // berlubang & user "melihat ke dalam" (bug terukur 2026-10-09).
+    // ⚠️ Z-FIGHTING TERUKUR (2026-10-09): tutup bawah tiang semula TEPAT di
+    //    y = BASE_TOP → SEBIDANG dengan permukaan atas alas → berkedip /
+    //    tampak sebagai "cincin lubang" saat diuji front-vs-double-side.
+    //    Benamkan 0.02 block ke dalam alas.
+    fs.push(..._cylBetween([0, BASE_TOP - 0.02, 0], [0, WHEEL_CY, 0], POLE_R, SEG_POLE));
+    parts.push({ faces: fs, tag: 'wood' });
   }
 
-  // 3) 4 SIRIP diagonal pangkal — diputar 45° (diagonal) + DILEBARKAN supaya
-  //    keempatnya terbaca dari tampilan 3/4 (koreksi Claude: "hanya 2 yang terlihat")
+  // ── 3) KERAH/CINCIN HITAM di dasar tiang (kritik: "cincin/kerah hitam di
+  //      dasar tiang") ─────────────────────────────────────────────────────
   {
-    const y0 = BASE_TOP, y1 = 0.10, d = 0.40;
-    const k = Math.SQRT1_2;   // cos45
-    [[k, k], [-k, k], [-k, -k], [k, -k]].forEach(([ux, uz]) => {
-      parts.push({ faces: _beam([ux * d, y0, uz * d], [ux * 0.10, y1, uz * 0.10], 0.115), tag: 'wood' });
+    const fs = [];
+    // kerah = silinder BERTUTUP (kalau tidak, cincin atasnya berlubang).
+    // ⚠️ Z-FIGHTING TERUKUR (2026-10-09): sama seperti tiang, tutup bawah kerah
+    //    semula TEPAT di BASE_TOP → sebidang dgn alas. Benamkan 0.02.
+    fs.push(..._cylBetween([0, BASE_TOP - 0.02, 0], [0, BASE_TOP + 0.11, 0], POLE_R * 1.75, SEG_POLE));
+    parts.push({ faces: fs, tag: 'dark' });
+  }
+
+  // ── 4) 4 KAKI PENYANGGA MIRING (PERMINTAAN USER 2026-10-09) ─────────────
+  //      Verbatim: "3 tiang yang kanan kiri panjang dia miring ke tiang utama
+  //      di tengah... di depan ada tiang kecil 1, itu salah! tidak ada tiang
+  //      kecil kayak gitu malahan dia gak miring lagi, hapus aja. tapi copy
+  //      yang miring sisi kiri kanan jadi ada depan belakang dan pas deh 4.
+  //      pastikan NEMPEL ke platform kotak dan NEMPEL ke tiang utama di tengah,
+  //      jadi ga keliatan aneh tapi benar-benar MENYATU."
+  //
+  //      ⇒ HAPUS batang pendek tegak di depan.
+  //      ⇒ 4 kaki MIRING di 0°/90°/180°/270° (kanan, belakang, kiri, depan).
+  //      ⇒ Pangkal kaki DITANAM ke dalam alas (yBot di bawah BASE_TOP) supaya
+  //        tidak terlihat melayang / ada celah.
+  //      ⇒ Ujung atas kaki DITANAM ke dalam tiang utama: pusat tutupnya
+  //        (rTop) dibuat cukup kecil + jari-jari kaki (SUP_R) dipilih supaya
+  //        SELURUH tutup atas berada di dalam silinder tiang (jari-jari POLE_R)
+  //        → tidak ada bidang tutup yang mencuat = sambungan mulus MENYATU.
+  {
+    const SUP_R = 0.052;              // jari-jari batang kaki (bulat)
+    const rBot = 0.33;                // pangkal: 0.66 studs dari pusat (di alas)
+    const yBot = BASE_TOP - 0.06;     // DITANAM ke dalam alas (bukan menempel di atas)
+    const rTop = 0.028;               // ujung atas: di DALAM tiang utama
+    const yTop = BASE_TOP + 0.70;
+    [0, 90, 180, 270].forEach((deg) => {
+      const a = deg * Math.PI / 180;
+      const p = [Math.cos(a) * rBot, yBot, Math.sin(a) * rBot];
+      const q = [Math.cos(a) * rTop, yTop, Math.sin(a) * rTop];
+      // KEDUA ujung kaki TERTANAM (pangkal di alas, ujung atas di tiang)
+      // → tidak perlu tutup sama sekali (tertutup oleh benda yang menelannya)
+      parts.push({ faces: _cylBetween(p, q, SUP_R, SEG_BATANG, false, false, false), tag: 'wood' });
     });
   }
 
-  // 4) CINCIN GELAP di pangkal tiang (tebal — koreksi Claude: "tidak muncul")
-  parts.push({ faces: _box(-0.20, 0.20, BASE_TOP, BASE_TOP + 0.12, -0.20, 0.20), tag: 'dark' });
-
-  // 5) PELEK roda — cincin MULUS (SEG=24, sedikit tumpang tindih)
+  // ── 5) RODA: pelek cincin TIPIS & mulus ─────────────────────────────────
   {
     const rc = (RIM_RO + RIM_RI) / 2;
-    const tanW = 2 * rc * Math.sin(Math.PI / SEG) * 1.12;
+    const tanW = 2 * rc * Math.sin(Math.PI / SEG) * 1.14;
     const fs = [];
     for (let i = 0; i < SEG; i++) {
       const a = (i / SEG) * Math.PI * 2;
@@ -984,53 +1268,61 @@ export function getHelmParts() {
     parts.push({ faces: fs, tag: 'wood' });
   }
 
-  // 6) 8 JERUJI (dari hub ke pelek, berotasi radial)
+  // ── 6+7) JERUJI + GAGANG — SATU BATANG SILINDER BULAT menerus dari hub
+  //      sampai ujung luar, dengan UJUNG MEMBULAT (kubah) + PITA HITAM di
+  //      beberapa titik. (kritik Claude #1,#2,#3: "semua jari-jari silinder
+  //      bulat ujung membulat + beberapa pita hitam kebiruan; jeruji ramping
+  //      supaya celah lapang"). ─────────────────────────────────────────────
   {
-    const r0 = HUB_R * 0.85, r1 = RIM_RI + 0.02;
-    const len = r1 - r0, rc = (r0 + r1) / 2;
-    const fs = [];
+    const fs = [], fd = [];
+    // ⚠️ BUG CELAH TERUKUR (2026-10-09, uji tepi-terbuka = 252): kubah ujung
+    // semula diletakkan di rUjung = R_OUT − rd·1.02, padahal BATANG berakhir di
+    // rOut = R_OUT − GRIP_T·0.85 → kubah MELAYANG 0.0135 block di depan ujung
+    // batang + jumlah segmen beda (10 vs 12) → tepi tidak berbagi vertex =
+    // CELAH NYATA. FIX: jari-jari kubah = jari-jari batang, diletakkan TEPAT di
+    // ujung batang, segmen SAMA → menyatu sempurna (watertight).
+    const rBatang = SPOKE_T * 0.5;             // jari-jari batang (jeruji=gagang)
     for (let i = 0; i < NS; i++) {
-      const a = (i / NS) * Math.PI * 2;
-      fs.push(..._boxRotZ(Math.cos(a) * rc, WHEEL_CY + Math.sin(a) * rc, len, SPOKE_T, zA, zB, a));
+      const a = (i / NS) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      const rIn = HUB_R * 0.55;
+      const rOut = R_OUT - rBatang;            // ujung batang (puncak kubah = R_OUT)
+      // UJUNG MEMBULAT dibangun dari ring yang SAMA (dome=true) → watertight
+      fs.push(..._cylBetween([ca * rIn, WHEEL_CY + sa * rIn, 0],
+                             [ca * rOut, WHEEL_CY + sa * rOut, 0], rBatang, SEG_BATANG, true, false));
+      // PITA HITAM di 4 titik: dekat ujung luar, kedua sisi pelek, dekat hub
+      // ⚠️ pakai _cylShell (TANPA TUTUP): _cylBetween menutup KEDUA ujung →
+      //    tutup DALAM menghadap ke dalam & menimbulkan tembus (terukur:
+      //    1 komponen 48 tri dengan 24 normal keluar / 24 ke DALAM).
+      [rOut - GRIP_T * 0.35, RIM_RO + 0.008, RIM_RI - 0.008, HUB_R * 0.95].forEach((rp) => {
+        const r0 = rp - 0.016, r1 = rp + 0.016;
+        fd.push(..._cylShell([ca * r0, WHEEL_CY + sa * r0, 0],
+                             [ca * r1, WHEEL_CY + sa * r1, 0], SPOKE_T * 0.58, SEG_BATANG));
+      });
     }
+    // batang puncak (jam-12, i=2) — PENDEK seperti jari-jari lain + ujung kubah
+    // (dasar kubah TEPAT di ujung batang, radius & segmen SAMA → watertight)
+    const aA = (2 / NS) * Math.PI * 2, caA = Math.cos(aA), saA = Math.sin(aA);
+    const yDome = 1.25 - rBatang;
+    const rA = yDome - WHEEL_CY;
+    fs.push(..._cylBetween([caA * (HUB_R * 0.55), WHEEL_CY + saA * (HUB_R * 0.55), 0],
+                           [caA * rA, WHEEL_CY + saA * rA, 0], rBatang, SEG_BATANG, true, false));
+    // 2 pita hitam di batang puncak (tanpa tutup — lihat catatan _cylShell)
+    [rA - 0.10, RIM_RO + 0.02].forEach((rp) => {
+      const r0 = rp - 0.016, r1 = rp + 0.016;
+      fd.push(..._cylShell([caA * r0, WHEEL_CY + saA * r0, 0],
+                           [caA * r1, WHEEL_CY + saA * r1, 0], SPOKE_T * 0.58, SEG_BATANG));
+    });
     parts.push({ faces: fs, tag: 'wood' });
+    parts.push({ faces: fd, tag: 'dark' });
   }
 
-  // 7) 8 GAGANG — MENONJOL keluar pelek + UJUNG MEMBULAT (ciri khas referensi)
-  {
-    const rc = RIM_RO + GRIP_L / 2;
-    const fs = [];
-    for (let i = 0; i < NS; i++) {
-      const a = (i / NS) * Math.PI * 2;
-      fs.push(..._boxRotZ(Math.cos(a) * rc, WHEEL_CY + Math.sin(a) * rc, GRIP_L, GRIP_T, zA, zB, a));
-    }
-    parts.push({ faces: fs, tag: 'wood' });
-    // kepala membulat di ujung tiap gagang (referensi: "kepala membulat")
-    const fs2 = [];
-    for (let i = 0; i < NS; i++) {
-      const a = (i / NS) * Math.PI * 2;
-      // kepala membulat ditaruh supaya tepi terluarnya TEPAT 0.50 block (tidak melampaui spek)
-      const rc2 = R_OUT - GRIP_T * 0.74;
-      fs2.push(..._boxRotZ(Math.cos(a) * rc2, WHEEL_CY + Math.sin(a) * rc2, GRIP_T * 1.05, GRIP_T * 1.05, zA - 0.006, zB + 0.006, a));
-    }
-    parts.push({ faces: fs2, tag: 'wood' });
-  }
-
-  // 7b) PITA GELAP TEBAL di pangkal tiap gagang (referensi: "cincin hitam pekat")
-  {
-    const rc = RIM_RO + GRIP_L * 0.20;
-    const fs = [];
-    for (let i = 0; i < NS; i++) {
-      const a = (i / NS) * Math.PI * 2;
-      fs.push(..._boxRotZ(Math.cos(a) * rc, WHEEL_CY + Math.sin(a) * rc, GRIP_L * 0.40, GRIP_T * 1.8, zA - 0.014, zB + 0.014, a));
-    }
-    parts.push({ faces: fs, tag: 'dark' });
-  }
-
-  // 9) HUB — cakram ORANYE + CINCIN GELAP + titik HITAM (ciri referensi)
-  parts.push({ faces: _prismZ(HUB_R, WHEEL_CY, zA, zB, 16), tag: 'wood' });
-  parts.push({ faces: _ringZ(HUB_R * 0.62, HUB_R * 1.02, WHEEL_CY, zB, zB + 0.022, 16), tag: 'dark' });
-  parts.push({ faces: _prismZ(HUB_DOT_R, WHEEL_CY, zB, zB + 0.05, 10), tag: 'dark' });
+  // ── 9) HUB: cakram bulat DATAR + lubang hitam di tengah ─────────────────
+  // ⚠️ Z-FIGHTING TERUKUR (2026-10-09): tutup bawah titik hitam semula di
+  // zB+0.02 SAMA PERSIS dengan tutup atas hub → sebidang → piksel berkedip /
+  // "hilang" di pusat hub (dilaporkan user & terdeteksi uji FrontSide vs
+  // DoubleSide: 76 px di DALAM objek). Pisahkan sedikit.
+  parts.push({ faces: _prismZ(HUB_R, WHEEL_CY, zA, zB + 0.02, 18), tag: 'wood' });
+  parts.push({ faces: _prismZ(HUB_DOT_R, WHEEL_CY, zB + 0.015, zB + 0.045, 12), tag: 'dark' });
 
   return parts;
 }
@@ -1038,13 +1330,20 @@ export function getHelmParts() {
 /** Buat geometri HELM (1 x 2.5 x 1 block = 2 x 5 x 2 studs). */
 export function makeHelmGeometry(THREE) {
   const geos = getHelmParts().map((p) => {
-    // ⚠️ autoFix: FALSE — Helm tersusun dari BANYAK KOTAK (roda 24 + jeruji 8 +
-    // gagang 8 + pita 8). autoFix centroid-GLOBAL akan membalik muka-DALAM tiap
-    // kotak → roda tampak kopong/lembaran (jebakan sama seperti Seat & Mast).
-    // `_box`/`_boxRotZ`/`_beam` SUDAH menghasilkan winding keluar yang benar.
+    // ⚠️ autoFix: FALSE (centroid-GLOBAL salah untuk rakitan banyak benda),
+    // TAPI winding tiap komponen diperbaiki OTOMATIS lewat VOLUME BERARAH
+    // (_fixWindingByVolume) — ini yang menghilangkan bug "melihat ke dalam /
+    // muka hilang saat kamera diputar". Terukur: sebelumnya DoubleSide
+    // menambah 3.914 px di azimut 135°; sesudah perbaikan < 1%.
     const g = _buildFaces(THREE, p.faces, { autoFix: false });
+    const stat = _fixWindingByVolume(g);
+    if (typeof window !== 'undefined' && window.__debugWinding) {
+      console.log('[helm] komponen:', stat.jmlKomponen, 'dibalik:', stat.dibalik);
+    }
     const n = g.getAttribute('position').count;
-    const c = p.tag === 'dark' ? [0.12, 0.14, 0.12] : [1, 1, 1];
+    // ⚠️ KOREKSI (2026-10-09, kritik Claude #7): aksen = HITAM KEBIRUAN
+    // (dulu cokelat tua [0.12,0.14,0.12]). Referensi: hitam kebiruan.
+    const c = p.tag === 'dark' ? [0.09, 0.10, 0.15] : [1, 1, 1];
     const col = [];
     for (let i = 0; i < n; i++) col.push(c[0], c[1], c[2]);
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));

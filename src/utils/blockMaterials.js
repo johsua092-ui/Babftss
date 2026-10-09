@@ -201,7 +201,7 @@ export const BLOCK_PLACEHOLDER = {
   metal_rod: 0xb9c1cc, concrete_rod: 0xa8a49c, marble_rod: 0xe8e4dc,
   titanium_rod: 0xcdd6de,
   // NSI Level 2: Seat & Step — placeholder warna kayu.
-  seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc8a24a,
+  seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc4622a,
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
