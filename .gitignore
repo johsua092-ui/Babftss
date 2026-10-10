@@ -189,3 +189,5 @@ KONTRAK_PERMANEN.md
 
 # Dev viewer lokal (JANGAN di-commit / JANGAN masuk Vercel)
 nsi_viewer.html
+nsi_workbench.html
+src/nsi_workbench.jsx

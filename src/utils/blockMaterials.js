@@ -93,6 +93,8 @@ export const BLOCK_LIBRARY = [
   { slug: 'door',              name: 'Door',        label: 'Door',        roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
   // HATCH: palka kayu INTERAKTIF (buka dgn MENGANGKAT) — 4x1x4 studs
   { slug: 'hatch',             name: 'Hatch',       label: 'Hatch',       roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // LEGENDARY CHEST: peti harta (DEKORASI, tidak interaktif). 4.5x3.5x4.5 studs.
+  { slug: 'legendary_chest',   name: 'Legendary Chest', label: 'Legendary Chest', roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -216,6 +218,7 @@ export const BLOCK_PLACEHOLDER = {
   window: 0xc8a24a,   // bingkai kayu (kaca = alpha per-vertex, bukan tint)
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
   hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
+  legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
@@ -360,7 +363,7 @@ export function makeBlockMaterial(THREE, slug) {
   // "kayu terlihat transparan". FIX: depthWrite WAJIB true untuk Window.
   // (Kaca tetap tembus karena alpha per-vertex + blending tetap aktif.)
   // DOOR: alasan sama persis (kayu wajib solid, kaca tetap tembus).
-  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch') mat.depthWrite = true;
+  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch' || def.slug === 'legendary_chest') mat.depthWrite = true;
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca

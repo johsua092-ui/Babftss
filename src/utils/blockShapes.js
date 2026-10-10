@@ -169,6 +169,20 @@ export const NSI_ROD_NAMES = {
 // Ukuran Rod dalam satuan BLOCK [lebar(x), tinggi(y), kedalaman(z)].
 export const NSI_ROD_SIZE = [0.5, 1.5, 0.5];
 
+// ── NSI LEVEL 2 #8: LEGENDARY CHEST (peti harta) — DEKORASI, TIDAK interaktif.
+//    PERMINTAAN USER (2026-10-10, verbatim): *"identitasnya adalah \"Legendary
+//    Chest\" meskipun begitu dia jika di klik tidak terjadi apa apa yang mana
+//    tidak ada fitur apapun jika di klik hanya dekorasi"*.
+//    Ukuran: panjang 4.5 studs, lebar 4.5 studs, tinggi 3.5 studs.
+//    ⚠️ WAJIB dideklarasikan DI SINI (sebelum NSI_SIZES) — kalau di bawah,
+//       `NSI_SIZES` membaca SEBELUM inisialisasi → TDZ ReferenceError (bab 98/126).
+export const NSI_CHEST_SLUG = 'legendary_chest';
+export const NSI_CHEST_NAME = 'Legendary Chest';
+export const NSI_CHEST_SIZE = [2.25, 1.75, 2.25];   // 4.5 x 3.5 x 4.5 studs
+export const CHEST_WOOD_COLOR = 0xb0752f;    // kayu cokelat (foto referensi)
+export const CHEST_METAL_COLOR = 0xd21f8c;   // logam MAGENTA/fuchsia cerah
+export const CHEST_DARK_COLOR = 0x0d0a14;    // lubang kunci & rivet (hitam kebiruan)
+
 /**
  * UKURAN NSI dalam satuan BLOCK [lebar(x), tinggi(y), kedalaman(z)].
  * WAJIB dipakai saat menaruh block (posY = setengah tinggi) supaya item yang
@@ -187,6 +201,7 @@ export const NSI_SIZES = {
   [NSI_WINDOW_SLUG]: [2, 2, 0.5],
   [NSI_DOOR_SLUG]: [2.75, 3.5, 0.25],
   [NSI_HATCH_SLUG]: [2, 0.5, 2],
+  [NSI_CHEST_SLUG]: [2.25, 1.75, 2.25],
 };
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
@@ -197,7 +212,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, NSI_CHEST_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -302,7 +317,7 @@ export function makeRampGeometry(THREE) {
  *   V < 0 → muka menghadap KE DALAM  → BALIK urutan titiknya
  * Setiap komponen terhubung (benda terpisah) diukur sendiri-sendiri.
  */
-function _fixWindingByVolume(geo) {
+export function _fixWindingByVolume(geo) {
   const pos = geo.getAttribute('position');
   const n = pos.count;
   const T = [];                       // daftar triangle: [i0,i1,i2]
@@ -405,7 +420,7 @@ function _fixWindingByVolume(geo) {
   return { jmlKomponen, dibalik };
 }
 
-function _buildFaces(THREE, faces, opts) {
+export function _buildFaces(THREE, faces, opts) {
   const autoFix = !(opts && opts.autoFix === false);
   // centroid semua titik unik
   const uniq = [];
@@ -1878,6 +1893,254 @@ export function makeHatchGeometry(THREE) {
 }
 
 /**
+ * ── NSI LEVEL 2 #8: LEGENDARY CHEST (peti harta) — DEKORASI (TIDAK interaktif) ──
+ * PERMINTAAN USER (2026-10-10, verbatim): *"identitasnya adalah \"Legendary Chest\"
+ * meskipun begitu dia jika di klik tidak terjadi apa apa yang mana tidak ada
+ * fitur apapun jika di klik hanya dekorasi"*. Ukuran: 4.5 × 4.5 × 3.5 studs.
+ *
+ * BENTUK (dari 5 foto: depan/samping kiri/kanan/belakang/atas):
+ * ═══════════════════════════════════════════════════════════════════════════
+ * REVISI BESAR 2026-10-10 — berdasarkan kritik (ORI vs KARYA) via SESI KONFIRMASI.
+ *
+ * KESALAHAN SEBELUMNYA (terukur):
+ *   • SISI SAMPING POLOS — rangka hanya "pita datar di atas tutup + H di depan";
+ *     tidak ada lengkungan yang MEMBUNGKUS peti. (kesalahan terbesar)
+ *   • Pita MENEMPEL RATA (tidak menonjol keluar badan).
+ *   • Ada UNDAKAN/BIBIR tutup yang memutus pita dari tiang.
+ *   • Tiang tipis & lurus (tanpa kaki melebar, ujung rata).
+ *   • Pelat kunci rata & bertangga; lubang kunci kotak kecil.
+ *   • Rivet kotak kecil; tidak ada di belakang.
+ *   • Magenta PUCAT (orchid) & kayu terlalu terang (tan).
+ *
+ * BENTUK BARU (sesuai ORI):
+ *   • RANGKA berbentuk **A dari samping**: tiang bawah → PALANG → tiang atas,
+ *     membentang DEPAN→BELAKANG (membungkus peti), MENONJOL keluar badan.
+ *   • Dari DEPAN membentuk **H** (2 tiang + palang penghubung).
+ *   • Tiang LEBAR (0.40 dari 2.25 = 18%), MENONJOL keluar badan.
+ *   • Rangka DI ATAS tutup = rangka "melewati tutup".
+ *   • Tutup BERSEGI MIRING (chamfer), badan tanpa sudut runcing.
+ *   • Pelat kunci: persegi vertikal + TONJOLAN setengah lingkaran atas-bawah.
+ *   • Lubang kunci: KAPSUL BESAR (kapsul = box + 2 silinder ujung).
+ *   • Rivet BULAT di kaki rangka (depan 2 + belakang 2).
+ *   • Warna: KAYU cokelat gelap [110,68,37] · MAGENTA JENUH [180,4,180].
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+/**
+ * Polygon 2D bersudut dipotong (octagon) — untuk BADAN ber-chamfer.
+ * R = setengah ukuran, cc = besar potongan sudut.
+ */
+function _octagon(R, cc) {
+  // ⚠️ URUTAN CCW (searah jarum jam di sumbu Y) — kalau terbalik, muka tutup
+  //    menghadap ke DALAM (autoFix centroid-global tidak menolong).
+  return [
+    [R, R - cc], [R - cc, R], [-(R - cc), R], [-R, R - cc],
+    [-R, -(R - cc)], [-(R - cc), -R], [R - cc, -R], [R, -(R - cc)],
+  ].reverse();
+}
+
+/**
+ * Octagon dengan radius X & Z BERBEDA (badan peti: lebar ≠ kedalaman).
+ * RX = setengah lebar (x), RZ = setengah kedalaman (z), cc = besar chamfer.
+ */
+function _octagonXZ(RX, RZ, cc) {
+  const cx = Math.min(cc, RX * 0.9), cz = Math.min(cc, RZ * 0.9);
+  return [
+    [RX, RZ - cz], [RX - cx, RZ], [-(RX - cx), RZ], [-RX, RZ - cz],
+    [-RX, -(RZ - cz)], [-(RX - cx), -RZ], [RX - cx, -RZ], [RX, -(RZ - cz)],
+  ].reverse();
+}
+
+/**
+ * Ekstrusi polygon 2D sepanjang satu sumbu (chamfer/kaki melebar/ujung miring).
+ * axis: 'x'|'y'|'z' · pts = [[u,v],...] · a0..a1 = rentang sumbu.
+ * ⚠️ Winding ditangani `_fixWindingByVolume` (komponen tertutup → aman).
+ */
+function _extrudePoly(pts, axis, a0, a1) {
+  const M = (u, v, a) => (axis === 'x' ? [a, u, v] : axis === 'y' ? [u, a, v] : [u, v, a]);
+  const faces = [];
+  const n = pts.length;
+  for (let i = 1; i < n - 1; i++) {
+    faces.push([M(pts[0][0], pts[0][1], a0), M(pts[i + 1][0], pts[i + 1][1], a0), M(pts[i][0], pts[i][1], a0)]);
+  }
+  for (let i = 1; i < n - 1; i++) {
+    faces.push([M(pts[0][0], pts[0][1], a1), M(pts[i][0], pts[i][1], a1), M(pts[i + 1][0], pts[i + 1][1], a1)]);
+  }
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n];
+    faces.push([M(p[0], p[1], a0), M(q[0], q[1], a0), M(q[0], q[1], a1), M(p[0], p[1], a1)]);
+  }
+  return faces;
+}
+
+export function getChestParts() {
+  // ── NSI LEVEL 2 #8: LEGENDARY CHEST (peti harta) — DEKORASI, TIDAK interaktif ──
+  // Spek user: panjang 4.5 studs, lebar 4.5 studs, tinggi 3.5 studs
+  //   → 2.25 x 1.75 x 2.25 block.
+  // Referensi: peti kayu + rangka MAGENTA yang MEMBUNGKUS (bentuk "H" dari depan,
+  //   "A" bersegi dari samping) + pelat & lubang kunci + rivet.
+  //
+  // ═══ REVISI 2026-10-10 (kritik #1-#3 paling terlihat) ═══
+  //  ⚠️ AKAR BUG #1 "tiang sisi seperti sirip tipis" (TERUKUR): tiang depan/belakang
+  //     dulu memakai profil YZ setebal P=0.085 saja → dari SAMPING tampak garis
+  //     tipis. FIX: KEDALAMAN tiang = BW (0.40) = sama dengan lebarnya → batang
+  //     rangka SERAGAM di semua sisi.
+  //  ⚠️ AKAR BUG #2 "palang menonjol & undakan": lebar batang tak sama. FIX: semua
+  //     batang memakai tebal SERAGAM BARW = 0.20.
+  //  ⚠️ AKAR BUG #3 "kepingan kayu mengintip di sudut bukaan": kayu dibuat PAS
+  //     di muka rangka → dua permukaan sebidang (z-fighting). FIX: kayu dimasukkan
+  //     SEDIKIT (OV) ke dalam rangka sehingga mukanya tersembunyi.
+  const EX = 1.125;      // setengah panjang (x) = 2.25 block (4.5 studs)
+  const EY = 0.875;      // setengah tinggi (y) = 1.75 block (3.5 studs)
+  const rivT = 0.022;    // tonjolan paku/pelat dari muka rangka (kecil = nyaris rata)
+  const zf = EX - rivT;  // 1.103 = muka LUAR rangka (tiang/bar)
+  // ⚠️ REVISI 2026-10-10 (kritik: "rangka terlalu TIPIS seperti sangkar kawat",
+  //    skor turun 95%→88%): BW dulu 0.20 = hanya 11% lebar badan (≈1/9), padahal
+  //    original ≈ 1/4. Akibatnya peti tampak dikurung rangka kawat.
+  //    FIX: BW = BARW = 0.38 → 0.38/1.486 = 25.6% lebar badan ✓ (kokoh).
+  //    Kayu tetap MENGISI bukaan (RXk = zin + overlap) supaya tidak kembali ke
+  //    bug "balok kecil dijepit sangkar".
+  const BW = 0.38;       // tebal rangka (≈25% lebar badan — original)
+  const zin = zf - BW;   // 0.723 = muka DALAM rangka (batas bukaan)
+  const BARW = 0.38;     // tebal SERAGAM semua batang (palang = tiang)
+  const topCut = 0.15;   // potongan miring ujung atas tiang
+  const footW = 0.22, footH = 0.36;   // kaki melebar (potongan diagonal)
+  const barY0 = -BARW / 2, barY1 = BARW / 2;   // palang tengah SETEBAL tiang
+  // Kayu mengisi BUKAAN + overlap kecil ke dalam rangka (tanpa celah, tanpa
+  // menonjol keluar seperti over-correct sebelumnya).
+  const RXk = zin + 0.02;  // 0.743 = setengah lebar kayu (x)
+  const RZk = zin + 0.02;  // 0.743 = setengah kedalaman kayu (z)
+  const OV = 0.02;       // kayu masuk ke dalam rangka (hindari z-fighting)
+  const parts = [];
+
+  // ── 1) BADAN KAYU: prisma octagon (chamfer) ──
+  //    Badan mengisi BUKAAN (bukan sampai muka luar rangka) — sesuai referensi:
+  //    kayu terlihat "sedikit masuk ke dalam rangka".
+  //    ⚠️ BUG TERUKUR (vision: "strip horizontal gelap di dasar bukaan" = z-fighting):
+  //    kayu dulu mulai TEPAT di -EY, sebidang dengan muka bawah BAR BAWAH → dua
+  //    permukaan berimpit. FIX: kayu dinaikkan 0.015 (masuk ke dalam bar bawah).
+  parts.push({ faces: _extrudePoly(_octagonXZ(RXk, RZk, 0.09), 'y', -EY + 0.015, EY - BARW + OV), tag: 'wood', fix: true });
+  // TUTUP: SATU footprint dengan badan (TANPA undakan/bibir — kritik #5) +
+  //        tepi atas dipotong miring (bersegi, bukan datar — kritik #6).
+  parts.push({ faces: _extrudePoly(_octagonXZ(RXk, RZk, 0.11), 'y', EY - BARW + OV, EY - 0.09), tag: 'wood', fix: true });
+  parts.push({ faces: _extrudePoly(_octagonXZ(RXk - 0.05, RZk - 0.05, 0.10), 'y', EY - 0.09, EY - 0.02), tag: 'wood', fix: true });
+  // dua ALUR GELAP tegas & MENERUS — di DALAM bukaan bawah (y −0.46 & −0.32)
+  // supaya TERLIHAT dari semua sisi (kritik #11: "alur tak terlihat dari samping").
+  const rgx = RXk + 0.006, rgz = RZk + 0.006;
+  for (const gy of [-EY + 0.42, -EY + 0.56]) {
+    parts.push({ faces: _extrudePoly(_octagonXZ(rgx, rgz, 0.10), 'y', gy - 0.020, gy + 0.020), tag: 'groove', fix: true });
+  }
+
+  // ── 2) RANGKA: 2 HOOP (kiri & kanan) — batang SERAGAM, MEMBUNGKUS peti ──
+  const hoops = [[-zf, -zf + BW], [zf - BW, zf]];
+  for (const [a, b] of hoops) {
+    const left = a < 0;
+    // TIANG DEPAN & BELAKANG: KEDALAMAN = BW (bukan sirip) + ujung atas miring
+    const yzDepan = [[-EY, zin], [-EY, zf], [EY - topCut, zf], [EY, zf - topCut], [EY, zin]];
+    const yzBelakang = [[-EY, -zin], [-EY, -zf], [EY - topCut, -zf], [EY, -zf + topCut], [EY, -zin]];
+    parts.push({ faces: _extrudePoly(yzDepan, 'x', a, b), tag: 'metal', fix: true });
+    parts.push({ faces: _extrudePoly(yzBelakang, 'x', a, b), tag: 'metal', fix: true });
+    // BAR ATAS: menutup penuh z, sudut depan & belakang dipotong miring
+    const yzAtas = [[EY - BARW, -zf], [EY - BARW, zf], [EY, zf - topCut], [EY, -zf + topCut]];
+    parts.push({ faces: _extrudePoly(yzAtas, 'x', a, b), tag: 'metal', fix: true });
+    // PALANG TENGAH (tebal = BARW, tidak menonjol melewati tepi)
+    parts.push({ faces: _box(a, b, barY0, barY1, -zin, zin), tag: 'metal' });
+    // BAR BAWAH (tebal = BARW)
+    parts.push({ faces: _box(a, b, -EY, -EY + BARW, -zin, zin), tag: 'metal' });
+    // KAKI MELEBAR (diagonal ke DALAM, selebar bukaan → tidak tampak "balok kecil")
+    const o0 = left ? a : b, i0 = left ? b : a;
+    const iW = i0 + (left ? footW : -footW);
+    const profKaki = left
+      ? [[o0, -EY], [iW, -EY], [i0, -EY + footH], [o0, -EY + footH]]
+      : [[iW, -EY], [o0, -EY], [o0, -EY + footH], [i0, -EY + footH]];
+    parts.push({ faces: _extrudePoly(profKaki, 'z', -zin, zin), tag: 'metal', fix: true });
+  }
+  // PALANG HORIZONTAL penghubung 2 hoop (dari DEPAN membentuk "H")
+  // ⚠️ KOREKSI kritik #3 "palang depan terlalu tipis": barZ dulu 0.085 (tipis) →
+  //    sekarang SETEBAL tiang (BW=0.20) supaya huruf H kokoh.
+  const bx0 = hoops[0][0], bx1 = hoops[1][1];
+  const barZ = BW;
+  parts.push({ faces: _box(bx0, bx1, barY0, barY1, zf - barZ, zf), tag: 'metal' });
+  parts.push({ faces: _box(bx0, bx1, barY0, barY1, -zf, -zf + barZ), tag: 'metal' });
+
+  // ── 3) PELAT KUNCI + LUBANG KUNCI (tengah depan) ──
+  const lpy = (barY0 + barY1) / 2;
+  const lpH = 0.62, lpW = 0.30;
+  const lpZ0 = zf - barZ, lpZ1 = EX - 0.020;
+  parts.push({ faces: _box(-lpW / 2, lpW / 2, lpy - lpH / 2, lpy + lpH / 2, lpZ0, lpZ1), tag: 'metal' });
+  // tonjolan SETENGAH LINGKARAN atas & bawah — lebih sempit dari pelat
+  const bumpR = lpW / 2 - 0.030, bumpSeg = 12;
+  parts.push({ faces: _prismZ(bumpR, lpy + lpH / 2, lpZ0, lpZ1, bumpSeg), tag: 'metal' });
+  parts.push({ faces: _prismZ(bumpR, lpy - lpH / 2, lpZ0, lpZ1, bumpSeg), tag: 'metal' });
+  // LUBANG KUNCI: kapsul vertikal SOLID, MENONJOL dari pelat
+  const kw = 0.115, kh = 0.30;
+  const kz0 = lpZ1 - 0.010, kz1 = EX;
+  parts.push({ faces: _box(-kw / 2, kw / 2, lpy - kh / 2, lpy + kh / 2, kz0, kz1), tag: 'dark' });
+  parts.push({ faces: _prismZ(kw / 2, lpy + kh / 2, kz0, kz1, 10), tag: 'dark' });
+  parts.push({ faces: _prismZ(kw / 2, lpy - kh / 2, kz0, kz1, 10), tag: 'dark' });
+
+  // ── 4) RIVET BULAT (depan 2 · belakang 2 · samping 2) ──
+  const rivY = -EY + 0.22, rivR = 0.088, rivRF = rivR * 0.951;
+  for (const [a, b] of hoops) {
+    const cx = (a + b) / 2;
+    for (const s of [1, -1]) {
+      const off = (s > 0) ? (EX - rivT) : -EX;
+      parts.push({ faces: _prismZ(rivRF, 0, 0, rivT, 10)
+        .map((f) => f.map((p) => [cx + p[0], rivY + p[1], off + p[2]])), tag: 'dark' });
+      parts.push({ faces: _prismZ(rivRF, 0, 0, rivT, 10)
+        .map((f) => f.map((p) => [off + p[2], rivY + p[1], cx - p[0]])), tag: 'dark' });
+    }
+  }
+
+  return parts;
+}
+/** Buat geometri LEGENDARY CHEST (2.25 x 1.75 x 2.25 block = 4.5 x 3.5 x 4.5 studs). */
+export function makeChestGeometry(THREE) {
+  const parts = getChestParts();
+  const pos = [], uv = [], col = [];
+  // Tekstur GRAYSCALE (chest.png) → vertex color mengendalikan warna penuh.
+  const UVBRIGHT = 0.020, UVBRIGHTX = 0.985;
+  parts.forEach((p) => {
+    // ⚠️ Komponen yang digeser/dicermin (rivet, bump) bisa ber-winding terbalik →
+    //    pakai autoFix:true (voting centroid komponen TERTUTUP = aman).
+    const g = _buildFaces(THREE, p.faces, { autoFix: !!p.fix });
+    if (!p.fix) _fixWindingByVolume(g);
+    const P2 = g.getAttribute('position'), U = g.getAttribute('uv');
+    let c, uvConst = false;
+    if (p.tag === 'metal') {
+      // MAGENTA JENUH (referensi terukur [180,4,180] = G≈0!). Kritik: "pink
+      // keunguan PUCAT" → dulu G 0.30 terlalu tinggi. Naikkan R & B, G tetap 0.
+      c = [2.35, 0.06, 2.30, 1.0];
+      uvConst = true;
+    } else if (p.tag === 'dark') {
+      // lubang kunci & rivet: biru sangat gelap (referensi)
+      c = [0.09, 0.08, 0.19, 1.0];
+      uvConst = true;
+    } else if (p.tag === 'groove') {
+      // ALUR GELAP di badan bawah (kritik #11: "alur harus GELAP & tegas")
+      c = [0.42, 0.19, 0.08, 1.0];
+      uvConst = true;
+    } else {
+      // KAYU cokelat GELAP hangat (referensi [110,68,37], G/R 0.618).
+      // ⚠️ KOREKSI (kritik #6 dithering & #13 serat/bercak): kayu pakai
+      //    uvConst = POLOS RATA (tanpa tekstur) → hilangkan artefak & serat.
+      c = [0.92, 0.46, 0.20, 1.0];
+      uvConst = true;
+    }
+    for (let i = 0; i < P2.count; i++) {
+      pos.push(P2.getX(i), P2.getY(i), P2.getZ(i));
+      uv.push(uvConst ? UVBRIGHTX : U.getX(i), uvConst ? UVBRIGHT : U.getY(i));
+      col.push(c[0], c[1], c[2], c[3]);
+    }
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  out.computeVertexNormals();
+  return out;
+}
+
+/**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
 export function makeNsiGeometry(THREE, slug) {
@@ -1891,6 +2154,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WINDOW_SLUG) return makeWindowGeometry(THREE);
   if (slug === NSI_DOOR_SLUG) return makeDoorGeometry(THREE);
   if (slug === NSI_HATCH_SLUG) return makeHatchGeometry(THREE);
+  if (slug === NSI_CHEST_SLUG) return makeChestGeometry(THREE);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }
