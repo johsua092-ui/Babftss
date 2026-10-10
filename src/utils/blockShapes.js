@@ -2093,45 +2093,120 @@ export function getChestParts() {
 
   return parts;
 }
-/** Buat geometri LEGENDARY CHEST (2.25 x 1.75 x 2.25 block = 4.5 x 3.5 x 4.5 studs). */
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * NSI LEVEL 2 #8 — LEGENDARY CHEST — TABEL BAKE  (bab 144)
+ * ══════════════════════════════════════════════════════════════════════════
+ * PERMINTAAN USER (2026-10-11, verbatim): *"SEKARANG YANG BENAR STANDARNYA
+ * ADALAH WAJIB SAMA DENGAN NSI VIEWER"*
+ *
+ * NSI Viewer = PATOKAN BEKU (dikunci rapat, bab 144). Tabel di bawah disalin
+ * APA ADANYA dari scene NSI Viewer (45 part) supaya APP menghasilkan bentuk
+ * yang 100% sama. JANGAN diubah tanpa membandingkan ulang dengan NSI Viewer.
+ *
+ * Format tiap baris: [idxGeometri, px,py,pz, qx,qy,qz,qw, sx,sy,sz, r,g,b]
+ *   idxGeometri → indeks part di `getChestParts()` (geometri ASLI — TIDAK diubah)
+ *   px,py,pz    → posisi LOKAL item (offset item [0,3.375,0] sudah dibuang)
+ *   qx,qy,qz,qw → rotasi (kuaternion)
+ *   sx,sy,sz    → skala (NEGATIF = part dicerminkan)
+ *   r,g,b       → warna vertex ASLI. ⚠️ JANGAN mewarnai dari `tag`: 17 part
+ *                 bertag 'wood' tetapi warnanya MAGENTA (tag TIDAK = warna).
+ *
+ * ⚠️ CATATAN BENTUK (terukur, bukan perkiraan):
+ *   • Geometri 45 part ini SUDAH ADA di `getChestParts()` → cukup dirujuk.
+ *   • 8 part lama (idx 5,7,9,10,11,13,15,16) DIHAPUS oleh user → tidak dipakai.
+ *   • 19 part "adopsi" (rangka penguat) ditambahkan user → ada di tabel ini.
+ */
+export const NSI_CHEST_BAKE = [
+  [8, 1.825, 0.6842, 0, 0, 0, 0, 1, 1, 1, 1.0285, 2.35, 0.06, 2.3],
+  [0, -0.00669, 0.06847, 0.00854, 0, 0, 0, 1, 1.231, 0.9996, 1.2665, 0.92, 0.46, 0.2],
+  [1, 0, 0.08094, -0.3054, -0.34202, 0, 0, 0.93969, 1.2, 1.0045, 0.21744, 0.92, 0.46, 0.2],
+  [2, -0.02079, -4.8269, -0.25884, 0, 0, 0, 1, 1.294, 6.5675, 0.6195, 0.92, 0.46, 0.2],
+  [3, 0, 0, 0.01761, 0, 0, 0, 1, 1.25, 1, 1.27, 0.42, 0.19, 0.08],
+  [4, 0, 0, 0.01535, 0, 0, 0, 1, 1.25, 1, 1.2735, 0.42, 0.19, 0.08],
+  [8, 0, -0.0475, 0, 0, 0, 0, 1, 1, 0.75, 1, 2.35, 0.06, 2.3],
+  [14, 0, -0.0475, 0, 0, 0, 0, 1, 1, 0.75, 1, 2.35, 0.06, 2.3],
+  [17, 0, 0, 0, 0, 0, 0, 1, 0.98, 1, 0.998, 2.35, 0.06, 2.3],
+  [18, 0, -0.0475, 0, 0, 0, 0, 1, 1, 0.75, 1, 2.35, 0.06, 2.3],
+  [19, 0, 0, 0, 0, 0, 0, 1, 1.25, 1, 1, 2.35, 0.06, 2.3],
+  [20, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2.35, 0.06, 2.3],
+  [21, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2.35, 0.06, 2.3],
+  [22, 0, 0, 0, 0, 0, 0, 1, 1.25, 1.1, 1, 0.09, 0.08, 0.19],
+  [23, 0, 0, 0, 0, 0, 0, 1, 1.225, 1.125, 1, 0.09, 0.08, 0.19],
+  [24, 0, 0, 0, 0, 0, 0, 1, 1.225, 1.125, 1, 0.09, 0.08, 0.19],
+  [25, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [26, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [27, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [28, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [29, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [30, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [31, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [32, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0.09, 0.08, 0.19],
+  [10, -0.0003, 0.0015, -0.91287, 0, 0, 0, 1, 0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, -0.0003, 0.0015, -0.91287, 0, 0, 0, 1, -0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, -0.9133, 0.0015, 0.001, 0, 0.70711, 0, 0.70711, -0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, -0.9133, 0.0015, -0.00087, 0, 0.70711, 0, 0.70711, 0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, 0.9137, 0.0015, -0.00087, 0, 0.70711, 0, 0.70711, 0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, 0.9137, 0.0015, 0.001, 0, 0.70711, 0, 0.70711, -0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, -0.0003, 0.0015, 0.91363, 0, 0, 0, 1, -0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [10, -0.0003, 0.0015, 0.91363, 0, 0, 0, 1, 0.999, 1, 0.2615, 2.35, 0.06, 2.3],
+  [0, -0.00669, 0.06847, 0.77586, 0, -1, 0, 0, -1.231, 0.9996, 0.2485, 0.92, 0.46, 0.2],
+  [1, 0, 0.08094, 0.33343, 0, -0.93969, -0.34202, 0, -1.2, 1.0045, 0.21744, 0.92, 0.46, 0.2],
+  [2, -0.00069, -4.8269, 0.4376, 0, -1, 0, 0, -1.286, 6.5675, 0.402, 0.92, 0.46, 0.2],
+  [8, -0.04764, 0.52077, 0.50812, 0.17365, 0, 0, 0.98481, 0.955, 0.847, 0.6585, 2.35, 0.06, 2.3],
+  [8, -0.07421, 0.52077, -0.53492, 0, 0.98481, -0.17365, 0, -0.9305, 0.847, 0.6585, 2.35, 0.06, 2.3],
+  [8, 1.76879, 0.52077, -0.53492, 0, 0.98481, -0.17365, 0, -0.9305, 0.847, 0.6585, 2.35, 0.06, 2.3],
+  [8, 1.79236, 0.52077, 0.50812, 0.17365, 0, 0, 0.98481, 0.955, 0.847, 0.6585, 2.35, 0.06, 2.3],
+  [8, 0, 0.6842, 0, 0, 0, 0, 1, 1, 1, 1.0285, 2.35, 0.06, 2.3],
+  [8, 0, 0.6842, 0, 0, 0, 0, 1, 1, 1, 1.0285, 2.35, 0.06, 2.3],
+  [12, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2.35, 0.06, 2.3],
+  [6, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2.35, 0.06, 2.3],
+  [12, 0, 0, 0, 0, 1, 0, 0, -1, 1, 1, 2.35, 0.06, 2.3],
+  [6, 0, 0, 0, 0, 1, 0, 0, -1, 1, 1, 2.35, 0.06, 2.3],
+];
+
+/**
+ * Buat geometri LEGENDARY CHEST dari TABEL BAKE (patokan NSI Viewer).
+ * 2.25 x 1.75 x 2.25 block = 4.5 x 3.5 x 4.5 studs.
+ */
 export function makeChestGeometry(THREE) {
-  const parts = getChestParts();
+  const asli = getChestParts();
   const pos = [], uv = [], col = [];
-  // Tekstur GRAYSCALE (chest.png) → vertex color mengendalikan warna penuh.
-  const UVBRIGHT = 0.020, UVBRIGHTX = 0.985;
-  parts.forEach((p) => {
-    // ⚠️ Komponen yang digeser/dicermin (rivet, bump) bisa ber-winding terbalik →
-    //    pakai autoFix:true (voting centroid komponen TERTUTUP = aman).
-    const g = _buildFaces(THREE, p.faces, { autoFix: !!p.fix });
-    if (!p.fix) _fixWindingByVolume(g);
-    const P2 = g.getAttribute('position'), U = g.getAttribute('uv');
-    let c, uvConst = false;
-    if (p.tag === 'metal') {
-      // MAGENTA JENUH (referensi terukur [180,4,180] = G≈0!). Kritik: "pink
-      // keunguan PUCAT" → dulu G 0.30 terlalu tinggi. Naikkan R & B, G tetap 0.
-      c = [2.35, 0.06, 2.30, 1.0];
-      uvConst = true;
-    } else if (p.tag === 'dark') {
-      // lubang kunci & rivet: biru sangat gelap (referensi)
-      c = [0.09, 0.08, 0.19, 1.0];
-      uvConst = true;
-    } else if (p.tag === 'groove') {
-      // ALUR GELAP di badan bawah (kritik #11: "alur harus GELAP & tegas")
-      c = [0.42, 0.19, 0.08, 1.0];
-      uvConst = true;
-    } else {
-      // KAYU cokelat GELAP hangat (referensi [110,68,37], G/R 0.618).
-      // ⚠️ KOREKSI (kritik #6 dithering & #13 serat/bercak): kayu pakai
-      //    uvConst = POLOS RATA (tanpa tekstur) → hilangkan artefak & serat.
-      c = [0.92, 0.46, 0.20, 1.0];
-      uvConst = true;
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const m = new THREE.Matrix4();
+  const P3 = new THREE.Vector3(), S3 = new THREE.Vector3();
+
+  for (const baris of NSI_CHEST_BAKE) {
+    const [idx, px, py, pz, qx, qy, qz, qw, sx, sy, sz, cr, cg, cb] = baris;
+    const src = asli[idx];
+    if (!src) continue;                     // idx di luar definisi → lewati
+    const g = _buildFaces(THREE, src.faces, { autoFix: !!src.fix });
+    if (!src.fix) _fixWindingByVolume(g);
+    const GP = g.getAttribute('position'), GU = g.getAttribute('uv');
+
+    // Transformasi part: posisi + rotasi + skala (termasuk cermin).
+    q.set(qx, qy, qz, qw);
+    P3.set(px, py, pz); S3.set(sx, sy, sz);
+    m.compose(P3, q, S3);
+
+    // ⚠️ CERMIN (skala negatif) MEMBALIK winding → normal jadi menghadap ke
+    //    DALAM (part tampak gelap/bolong). FIX: tukar urutan 2 titik terakhir
+    //    setiap segitiga supaya winding kembali menghadap KELUAR.
+    const cermin = (sx * sy * sz) < 0;
+    const n = GP.count;
+
+    for (let i = 0; i + 2 < n; i += 3) {
+      const urut = cermin ? [i, i + 2, i + 1] : [i, i + 1, i + 2];
+      for (const k of urut) {
+        v.set(GP.getX(k), GP.getY(k), GP.getZ(k)).applyMatrix4(m);
+        pos.push(v.x, v.y, v.z);
+        uv.push(GU ? GU.getX(k) : 0.02, GU ? GU.getY(k) : 0.02);
+        col.push(cr, cg, cb, 1.0);
+      }
     }
-    for (let i = 0; i < P2.count; i++) {
-      pos.push(P2.getX(i), P2.getY(i), P2.getZ(i));
-      uv.push(uvConst ? UVBRIGHTX : U.getX(i), uvConst ? UVBRIGHT : U.getY(i));
-      col.push(c[0], c[1], c[2], c[3]);
-    }
-  });
+  }
+
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
