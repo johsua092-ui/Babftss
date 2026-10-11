@@ -46,7 +46,7 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE } from '../utils/blockShapes.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -833,7 +833,12 @@ export default function BlockSimulator3D({ setPage }) {
             // ── FIX bab 167c: jalur ghost otomatis juga wajib (a) bawa TUTUP
             //    small treasure & (b) BAKE cermin PALING AKHIR. ──
             if (tool === 'mirror') {
-              try { if (threeRef.current.attachStLidFn) threeRef.current.attachStLidFn(THREE, sourceBlock, ghost); } catch (e) {}
+              // ── FIX bab 175: URUTAN WAJIB — syncDoorUserData DULU (set flag
+      //   isSmallTreasure/isMediumTreasure), BARU attachStLid (guard-nya
+      //   membaca flag itu). Kalau terbalik → guard gagal → TUTUP HILANG
+      //   (inilah bug "ada Chance tutupnya hilang" yang dilaporkan user).
+      try { if (threeRef.current.syncDoorUserDataFn) threeRef.current.syncDoorUserDataFn(sourceBlock.userData, ghost.userData); } catch (e) {}
+      try { if (threeRef.current.attachStLidFn) threeRef.current.attachStLidFn(THREE, sourceBlock, ghost); } catch (e) {}
               try {
                 const _axG = mirrorAxisFromQuat(sourceBlock.quaternion);
                 ghost.scale[_axG] = -Math.abs(ghost.scale[_axG]);
@@ -865,9 +870,16 @@ export default function BlockSimulator3D({ setPage }) {
             //   → tutup muncul. Clone-2x lewat jalur INI → tutup HILANG.
             // FIX: salin tutup + status buka lewat helper deferred (attachStLid
             //   dideklarasikan di useEffect(scene) yang berbeda).
+            // ── FIX bab 172 (2026-10-12, laporan user "mirror tidak berbalik arah") ──
+            // AKAR TERUKUR: attachStLid dipanggil 2x di jalur ini:
+            //   baris ~836 (SEBELUM bake) → tutup ikut bercermin ✓
+            //   baris ~870 (SESUDAH bake) → tutup KEDUA, TIDAK bercermin ✗
+            // Tutup kedua menutupi yang benar → permata tetap di sisi semula
+            // = "tidak berbalik arah" (terukur: yaw 0°/180° gagal, 90°/270° lolos).
+            // FIX: attachStLid HANYA SEKALI (sebelum bake, di blok tool==='mirror' atas).
+            // syncDoorUserData tetap di sini (idempoten, tidak merusak geometri).
             try {
               if (threeRef.current.syncDoorUserDataFn) threeRef.current.syncDoorUserDataFn(sourceBlock.userData, ghost.userData);
-              if (threeRef.current.attachStLidFn) threeRef.current.attachStLidFn(THREE, sourceBlock, ghost);
             } catch (e) {}
             console.log('[Phase 50 v9] Auto-create ghost + attach gizmo saat switch ke', tool);
           }
@@ -890,6 +902,24 @@ export default function BlockSimulator3D({ setPage }) {
                 mirrorQuaternionAxis(sourceBlock.quaternion, srcOrigin.quaternion, _axM);
                 sourceBlock.scale.copy(srcOrigin.scale);
                 sourceBlock.scale[_axM] = -sourceBlock.scale[_axM]; // kaca sejati det −1
+                // ── FIX bab 173 (2026-10-12, laporan user "kadang tutupnya ilang /
+                //    kadang tidak termirror") ──
+                // AKAR TERUKUR: jalur ini (pindah tool clone↔mirror saat ghost hidup)
+                //   TIDAK pernah (a) buang tutup lama, (b) salin tutup BARU, (c) BAKE.
+                //   Akibat: saat pindah ke MIRROR, ghost masih memakai tutup dari
+                //   orientasi CLONE (tidak bercermin) → "tidak termirror"; dan
+                //   karena tidak di-bake, scale tetap −1 (gejala lama "gizmo kebalik").
+                // FIX: ulangi prosedur mirror penuh — buang tutup lama, salin tutup
+                //   dari SUMBER, lalu BAKE paling akhir (skala kembali POSITIF).
+                try {
+                  for (let _i = sourceBlock.children.length - 1; _i >= 0; _i--) {
+                    const _c = sourceBlock.children[_i];
+                    if (_c.userData && _c.userData.isStLid) sourceBlock.remove(_c);
+                  }
+                  if (threeRef.current.attachStLidFn) threeRef.current.attachStLidFn(THREE, srcOrigin, sourceBlock);
+                  sourceBlock.scale[_axM] = -Math.abs(sourceBlock.scale[_axM]);
+                  bakeMirrorIntoGeometry(sourceBlock, _axM);
+                } catch (e) {}
               } else {
                 sourceBlock.quaternion.copy(srcOrigin.quaternion);
                 sourceBlock.scale.copy(srcOrigin.scale);
@@ -13511,6 +13541,12 @@ Now you can apply Displacement for detailed effect.`);
                   dup.scale.copy(it.scale);
                   mirrorQuaternionAxis(dup.quaternion, it.quat, _ax);
                   dup.scale[_ax] = -dup.scale[_ax];
+                  // ── FIX bab 174 (2026-10-12): jalur MULTI juga WAJIB di-BAKE. ──
+                  // AKAR TERUKUR: jalur ini hanya memakai scale negatif → winding
+                  //   terbalik (volume dunia NEGATIF = wajah menghadap DALAM →
+                  //   "transparan") + TransformControls ambil orientasi dari
+                  //   decompose() yang MEMBUANG tanda → gizmo kebalik arah.
+                  // FIX: bake ke geometri SETELAH anak (tutup) disalin di bawah.
                 } else {
                   dup.position.set(_px, _py, _pz);
                   dup.quaternion.copy(it.quat);
@@ -13526,6 +13562,13 @@ Now you can apply Displacement for detailed effect.`);
                 //    hasil gandaan tampak peti TANPA PENUTUP. Samakan dgn single.
                 try { syncDoorUserData(src.userData, dup.userData); } catch (e) {}
                 try { attachStLid(THREE, src, dup); } catch (e) {}
+                // ── FIX bab 174: BAKE paling akhir (setelah tutup tersalin) ──
+                if (_tool === 'mirror') {
+                  try {
+                    dup.scale[_ax] = -Math.abs(dup.scale[_ax]);
+                    bakeMirrorIntoGeometry(dup, _ax);
+                  } catch (e) {}
+                }
                 try {
                   const _fw = new THREE.Vector3(0, 0, -1).applyQuaternion(dup.quaternion);
                   dup.userData.facing = directionFromVector(_fw.x, _fw.z);
@@ -14335,7 +14378,7 @@ Now you can apply Displacement for detailed effect.`);
         // ⚠️ Tanda NEGATIF = terangkat ke belakang (sudah diverifikasi sandbox).
         for (let _i = 0; _i < _blocks.length; _i++) {
           const _b = _blocks[_i];
-          if (!_b || !_b.userData || !_b.userData.isSmallTreasure) continue;
+          if (!_b || !_b.userData || !(_b.userData.isSmallTreasure || _b.userData.isMediumTreasure)) continue;
           const _st = _b.userData.st;
           if (!_st) continue;
           const _diff = _st.target - _st.angle;
@@ -14714,7 +14757,9 @@ Now you can apply Displacement for detailed effect.`);
         //       di preview. WAJIB pakai geometri PENUH (badan + tutup).
         const _gNsi = (slug === 'small_treasure')
           ? makeSmallTreasureFullGeometry(THREE)
-          : makeNsiGeometry(THREE, slug);
+          : (slug === 'medium_treasure')
+            ? makeMediumTreasureFullGeometry(THREE)
+            : makeNsiGeometry(THREE, slug);
         if (ghostBlock.geometry && ghostBlock.geometry.dispose) ghostBlock.geometry.dispose();
         ghostBlock.geometry = _gNsi || new THREE.BoxGeometry(1, 1, 1);
       } catch (e) {}
@@ -14814,10 +14859,27 @@ Now you can apply Displacement for detailed effect.`);
     const removeDeleteOutline = (block) => {
       detachDeleteWireframe(block || highlightedBlock);
     };
+    // ── FIX bab 175 (J41): walk-up generik ke block INDUK untuk SEMUA raycast hover.
+    const _walkUpToBlock = (obj) => {
+      let o = obj;
+      while (o && o.parent && !threeRef.current.blocks.includes(o)) o = o.parent;
+      return (o && threeRef.current.blocks.includes(o)) ? o : null;
+    };
     // Block di bawah kursor (raycast) — dipakai hover outline 6 tool.
+    // ── FIX bab 175 (J41): WAJIB WALK-UP ke block INDUK ──
+    // AKAR "ada 2 kotak outline (atas & bawah)" (laporan user 2026-10-11):
+    //   objek ber-ANAK-MESH (small/medium treasure: BADAN + TUTUP) →
+    //   hits[0].object bisa = ANAK (tutup). Outline lalu dipasang di TUTUP
+    //   (kotak ATAS) padahal badan juga dapat kotak (kotak BAWAH) = 2 outline.
+    //   Aturan J41: SELALU naik ke block INDUK (anak dari threeRef.blocks).
     const raycastHoveredBlock = () => {
       const hits = raycaster.intersectObjects(threeRef.current.blocks, true);
-      return hits.length > 0 ? hits[0].object : null;
+      if (hits.length === 0) return null;
+      let obj = hits[0].object;
+      while (obj && obj.parent && !threeRef.current.blocks.includes(obj)) {
+        obj = obj.parent;
+      }
+      return (obj && threeRef.current.blocks.includes(obj)) ? obj : null;
     };
 
     const highlightBlock = (block, mode = 'delete') => {
@@ -14912,12 +14974,12 @@ Now you can apply Displacement for detailed effect.`);
         if (_doorHits.length > 0) {
           // Telusuri ke atas sampai menemukan block pintu (kalau kena anak mesh)
           let _d = _doorHits[0].object;
-          while (_d && !(_d.userData && (_d.userData.isDoor || _d.userData.isHatch || _d.userData.isSmallTreasure)) && _d.parent) _d = _d.parent;
+          while (_d && !(_d.userData && (_d.userData.isDoor || _d.userData.isHatch || _d.userData.isSmallTreasure || _d.userData.isMediumTreasure)) && _d.parent) _d = _d.parent;
           // ── NSI SMALL TREASURE: klik → TUTUP TERANGKAT (engsel belakang) ──
-          if (_d && _d.userData && _d.userData.isSmallTreasure) {
+          if (_d && _d.userData && (_d.userData.isSmallTreasure || _d.userData.isMediumTreasure)) {
             const _sd = _d.userData.st || (_d.userData.st = { angle: 0, target: 0 });
             const _openNow = Math.abs(_sd.target) > 1e-6;
-            _sd.target = _openNow ? 0 : ST_OPEN_ANGLE;
+            _sd.target = _openNow ? 0 : MT_OPEN_ANGLE;   // sudut sama utk kedua peti
             return;   // klik pada peti hanya untuk buka/tutup
           }
           if (_d && _d.userData && _d.userData.isDoor) {
@@ -15019,7 +15081,9 @@ Now you can apply Displacement for detailed effect.`);
           // jadi pakai BADAN saja di sini supaya tutup TIDAK DOBEL.
           const _nsiGeo0 = (_nsiDef0.slug === 'small_treasure')
             ? makeSmallTreasureBodyGeometry(THREE)
-            : makeNsiGeometry(THREE, _nsiDef0.slug);
+            : (_nsiDef0.slug === 'medium_treasure')
+              ? makeMediumTreasureBodyGeometry(THREE)
+              : makeNsiGeometry(THREE, _nsiDef0.slug);
           const geo = _nsiGeo0 || new THREE.BoxGeometry(1, 1, 1);
           // Phase 63 (2026-09-11): place menaruh BLOCK dari Block Library
           // (dataset user) — material dari registry blockMaterials.js
@@ -15041,17 +15105,19 @@ Now you can apply Displacement for detailed effect.`);
           // Geometri tutup DIGESER sehingga TITIK ENGSEl jadi origin lokal →
           // cukup `lid.rotation.x = sudut` untuk mengangkat (engsel tetap).
           // ⚠️ Tanda: sudut NEGATIF = tutup terangkat ke belakang.
-          if (blockDef.slug === 'small_treasure') {
+          if (blockDef.slug === 'small_treasure' || blockDef.slug === 'medium_treasure') {
             try {
-              const lidGeo = makeSmallTreasureLidGeometry(THREE);
-              lidGeo.translate(0, -ST_HINGE_Y, -ST_HINGE_Z);
+              const _T = _treasureLid(blockDef.slug);
+              const lidGeo = _T.geo(THREE);
+              lidGeo.translate(0, -_T.hy, -_T.hz);
               const lid = new THREE.Mesh(lidGeo, mat);
-              lid.position.set(0, ST_HINGE_Y, ST_HINGE_Z);
+              lid.position.set(0, _T.hy, _T.hz);
               lid.castShadow = true;
               lid.receiveShadow = true;
               lid.userData.isStLid = true;
               block.add(lid);
-              block.userData.isSmallTreasure = true;
+              if (blockDef.slug === 'medium_treasure') block.userData.isMediumTreasure = true;
+              else block.userData.isSmallTreasure = true;
               block.userData.st = { angle: 0, target: 0 };
             } catch (e) {}
           }
@@ -16550,9 +16616,16 @@ Now you can apply Displacement for detailed effect.`);
       // ── NSI SMALL TREASURE (bab 149): salin mesh TUTUP dari source ke tujuan ──
       // Dipakai jalur clone & mirror. Geometri tutup DIGESER supaya origin
       // lokalnya = titik engsel → cukup `rotation.x = sudut`.
+      // ── bab 169 (Medium Treasure): helper jenis peti (rangka sama, beda tinggi)
+      const _isTreasureUD = (ud) => !!(ud && (ud.isSmallTreasure || ud.isMediumTreasure));
+      const _isTreasureSlug = (sl) => (sl === 'small_treasure' || sl === 'medium_treasure');
+      /** Geometri TUTUP sesuai jenis + titik engselnya. */
+      const _treasureLid = (slug) => (slug === 'medium_treasure')
+        ? { geo: makeMediumTreasureLidGeometry, hy: MT_HINGE_Y, hz: MT_HINGE_Z }
+        : { geo: makeSmallTreasureLidGeometry, hy: ST_HINGE_Y, hz: ST_HINGE_Z };
       const attachStLid = (THREE, srcMesh, dstMesh) => {
         try {
-          if (!dstMesh || !dstMesh.userData || !dstMesh.userData.isSmallTreasure) return;
+          if (!dstMesh || !_isTreasureUD(dstMesh.userData)) return;
           let _srcLid = null;
           for (let _k = 0; _k < srcMesh.children.length; _k++) {
             const _c = srcMesh.children[_k];
@@ -16589,8 +16662,9 @@ Now you can apply Displacement for detailed effect.`);
         // NSI SMALL TREASURE (bab 149): status buka + TUTUP (anak mesh) wajib
         // ikut ke mesh hasil clone/mirror. Kalau tutupnya tidak dibuat ulang,
         // hasil clone tampak seperti kotak terbuka tanpa penutup.
-        if (srcUD.isSmallTreasure || srcUD.blockSlug === 'small_treasure') {
-          dstUD.isSmallTreasure = true;
+        if (_isTreasureUD(srcUD) || _isTreasureSlug(srcUD.blockSlug)) {
+          const _med = (srcUD.isMediumTreasure || srcUD.blockSlug === 'medium_treasure');
+          if (_med) dstUD.isMediumTreasure = true; else dstUD.isSmallTreasure = true;
           const s = srcUD.st || { angle: 0, target: 0 };
           dstUD.st = { angle: s.angle || 0, target: s.target || 0, applied: s.applied };
         }
@@ -16665,6 +16739,8 @@ Now you can apply Displacement for detailed effect.`);
           // NSI HATCH: sama — sudut bukaan ikut tersimpan
           hatchAngle: (b.userData && b.userData.hatch) ? b.userData.hatch.angle : null,
           stAngle: (b.userData && b.userData.st) ? b.userData.st.angle : null,
+          // bab 169: tandai jenis peti supaya restore tahu geometri tutup mana
+          isMediumTreasure: !!(b.userData && b.userData.isMediumTreasure),
         };
       });
     };
@@ -16774,8 +16850,9 @@ Now you can apply Displacement for detailed effect.`);
         // NSI SMALL TREASURE: pulihkan status buka/tutup (bab 149).
         // ⚠️ Mesh hasil restore TIDAK punya anak `lid` → WAJIB dibuat ulang,
         //    kalau tidak peti tidak bisa dibuka lagi setelah undo/redo.
-        if (s.blockSlug === 'small_treasure' || (s.stAngle !== null && s.stAngle !== undefined)) {
-          block.userData.isSmallTreasure = true;
+        if (s.blockSlug === 'small_treasure' || s.blockSlug === 'medium_treasure' || (s.stAngle !== null && s.stAngle !== undefined)) {
+          const _med = (s.blockSlug === 'medium_treasure' || s.isMediumTreasure === true);
+          if (_med) block.userData.isMediumTreasure = true; else block.userData.isSmallTreasure = true;
           const _stA = (typeof s.stAngle === 'number') ? s.stAngle : 0;
           block.userData.st = { angle: _stA, target: _stA };
           try {
@@ -16784,10 +16861,11 @@ Now you can apply Displacement for detailed effect.`);
               if (block.children[_k].userData && block.children[_k].userData.isStLid) { _hasLid = true; break; }
             }
             if (!_hasLid) {
-              const _lg = makeSmallTreasureLidGeometry(THREE);
-              _lg.translate(0, -ST_HINGE_Y, -ST_HINGE_Z);
+              const _T = _treasureLid(_med ? 'medium_treasure' : 'small_treasure');
+              const _lg = _T.geo(THREE);
+              _lg.translate(0, -_T.hy, -_T.hz);
               const _lid = new THREE.Mesh(_lg, block.material);
-              _lid.position.set(0, ST_HINGE_Y, ST_HINGE_Z);
+              _lid.position.set(0, _T.hy, _T.hz);
               _lid.rotation.x = _stA;
               _lid.castShadow = true; _lid.receiveShadow = true;
               _lid.userData.isStLid = true;
@@ -17027,7 +17105,7 @@ Now you can apply Displacement for detailed effect.`);
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
         if (hits.length > 0) {
-          highlightBlock(hits[0].object);
+          highlightBlock(_walkUpToBlock(hits[0].object));   // FIX bab 175: walk-up ke induk
         } else {
           highlightBlock(null);
         }
@@ -17042,7 +17120,7 @@ Now you can apply Displacement for detailed effect.`);
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
         if (hits.length > 0) {
-          highlightBlock(hits[0].object, 'scale');
+          highlightBlock(_walkUpToBlock(hits[0].object), 'scale');   // FIX bab 175
         } else {
           highlightBlock(null);
         }
@@ -17057,7 +17135,7 @@ Now you can apply Displacement for detailed effect.`);
         const blockMeshes = threeRef.current.blocks;
         const hits = raycaster.intersectObjects(blockMeshes, true);
         if (hits.length > 0) {
-          highlightBlock(hits[0].object, 'paint');
+          highlightBlock(_walkUpToBlock(hits[0].object), 'paint');   // FIX bab 175
         } else {
           highlightBlock(null);
         }

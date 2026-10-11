@@ -231,6 +231,28 @@ export const ST_HINGE_Y = 0.09;                   // engsel (lokal, relatif pusa
 export const ST_HINGE_Z = -0.60;                  // tepi BELAKANG
 export const ST_OPEN_ANGLE = -2.06;               // ≈118° (bab 155: original 110-130°)
 
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #10: MEDIUM TREASURE (bab 169) ──
+// PERMINTAAN USER (2026-10-11, verbatim): *"ada 2 item yang sama kayak small
+// chest kerangkanya itu sama, hanya saja ada yang pakai mahkota di chestnya
+// dan ada yang pakai sayap di chestnya ... 2 sisanya adalah Medium treasure
+// dan Big treasure ... yang membedakan hanya aksesorisnya aja"*.
+//   Medium Treasure : panjang 4 studs, lebar 3 studs, TINGGI 4 studs.
+// → 4 x 4 x 3 studs = [2, 2, 1.5] block.
+// RANGKA 100% IDENTIK Small Treasure; yang beda HANYA:
+//   (a) MAHKOTA emas pucat di puncak tutup,
+//   (b) bintang ungu diganti PERMATA CYAN + 2 TARING tulang di muka depan tutup.
+// Karena total tinggi naik 2.5 → 4 studs, badan+tutup DIGESER TURUN
+// (MT_YOFF) supaya bbox tetap TERPUSAT di origin (posY = setengah tinggi).
+// ⚠️ Dimensi WAJIB diukur, bukan dikira (aturan kontrak).
+export const NSI_MT_SLUG = 'medium_treasure';
+export const NSI_MT_NAME = 'Medium Treasure';
+export const NSI_MT_SIZE = [2, 2, 1.5];           // 4 x 4 x 3 studs
+export const MT_YOFF = -0.375;                    // geser badan+tutup → bbox terpusat
+export const MT_HINGE_Y = ST_HINGE_Y + MT_YOFF;   // engsel (lokal Medium)
+export const MT_HINGE_Z = ST_HINGE_Z;             // tepi BELAKANG
+export const MT_OPEN_ANGLE = ST_OPEN_ANGLE;       // ≈118°
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -248,6 +270,8 @@ export const NSI_SIZES = {
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
 // Small Treasure: 4 x 2.5 x 3 studs (bab 149).
 NSI_SIZES[NSI_ST_SLUG] = NSI_ST_SIZE.slice();
+// Medium Treasure: 4 x 4 x 3 studs (bab 169).
+NSI_SIZES[NSI_MT_SLUG] = NSI_MT_SIZE.slice();
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -257,7 +281,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -2370,6 +2394,8 @@ export const ST_WARNA = {
   ungu3: [0.66, 0.22, 1.10, 1.0],
   ungu4: [2.25, 1.45, 2.70, 1.0],
   pile:  [1.6699, 0.6664, 0.0242, 1.0],
+  // ⚠️ bab 169 (Medium Treasure): mahkota = emas PUCAT (lebih terang dari rangka).
+  crown: [1.16, 1.02, 0.40, 1.0],
   cyan:  [0.05, 2.45, 3.30, 1.0],
   red:   [2.45, 0.10, 0.10, 1.0],
   green: [0.06, 2.20, 0.10, 1.0],
@@ -2635,6 +2661,234 @@ function _stBuild(THREE, parts) {
 }
 
 /** Geometri BADAN Small Treasure (statis). */
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #10: MEDIUM TREASURE — GEOMETRI (bab 169) ──
+// Rangka 100% IDENTIK Small Treasure. Pembeda HANYA aksesori:
+//   (a) MAHKOTA emas pucat di puncak tutup (tengah),
+//   (b) PERMATA CYAN + 2 TARING tulang menggantikan BINTANG UNGU.
+// Badan+tutup digeser MT_YOFF ke bawah supaya bbox (badan..puncak mahkota)
+// TERPUSAT di origin → posY = setengah tinggi bekerja benar.
+// ⚠️ Semua part WAJIB digabung per-bentuk (bukan per-face) supaya
+//    _stFaceOutward bisa membetulkan winding (pelajaran bab 150/157).
+// ⚠️ JANGAN pakai _fixWindingByVolume (butuh volume tertutup).
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Geser SEMUA titik part sejauh dy (untuk menurunkan badan+tutup Medium). */
+function _mtShiftY(parts, dy) {
+  return parts.map((pt) => ({
+    tag: pt.tag,
+    faces: pt.faces.map((f) => f.map((v) => [v[0], v[1] + dy, v[2]])),
+  }));
+}
+
+/** Prisma bersegi yang MENYEMPIT di atas (untuk taji mahkota).
+ *  xc = pusat x, y0..y1 = tinggi, w0/w1 = lebar bawah/atas, z0..z1 = kedalaman. */
+function _mtSpike(xc, y0, y1, w0, w1, z0, z1) {
+  const b0 = [xc - w0 / 2, y0, z0], b1 = [xc + w0 / 2, y0, z0];
+  const b2 = [xc + w0 / 2, y0, z1], b3 = [xc - w0 / 2, y0, z1];
+  const t0 = [xc - w1 / 2, y1, z0], t1 = [xc + w1 / 2, y1, z0];
+  const t2 = [xc + w1 / 2, y1, z1], t3 = [xc - w1 / 2, y1, z1];
+  return [
+    [b0, b1, b2, b3],           // alas
+    [t0, t1, t2, t3],           // puncak
+    [b3, b2, t2, t3],           // depan
+    [b0, b1, t1, t0],           // belakang
+    [b0, b3, t3, t0],           // kiri
+    [b1, b2, t2, t1],           // kanan
+  ];
+}
+
+/** FIX bab 170d: PAKSA winding part BENAR lewat VOLUME BERTANDA (bukan centroid).
+ *  AKAR "facet hitam" (terukur: 20 wajah menghadap DALAM di area permata):
+ *  metode centroid hanya andal untuk bentuk CEMBUNG; permata+meja+bahu itu
+ *  CAMPURAN cembung/cekung → orientasi sebagian wajah terbalik.
+ *  Volume bertanda = metode yang sama dengan _stBuild (terbukti andal). */
+function _mtOutward(faces) {
+  let V = 0;
+  for (const f of faces) {
+    for (let i = 1; i < f.length - 1; i++) {
+      const a = f[0], b = f[i], c = f[i + 1];
+      V += (a[0] * (b[1] * c[2] - b[2] * c[1])
+          - a[1] * (b[0] * c[2] - b[2] * c[0])
+          + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+  }
+  if (V >= 0) return faces;
+  return faces.map((f) => f.slice().reverse());
+}
+
+/** FIX bab 170b: taji RUNCIING (piramida apex) — bukan balok ujung datar. */
+function _mtSpikeRuncing(xc, y0, y1, w0, d0) {
+  // ══ bab 170c (review Claude): badan PRISMA 60% + ujung PIRAMIDA 40%.
+  //    Dulu langsung meruncing dari alas → terlihat seperti "duri/mohawk". ══
+  const yB = y0 + (y1 - y0) * 0.60;          // puncak badan prisma
+  const w1 = w0 * 0.72, d1 = d0 * 0.72;      // badan sedikit menyempit
+  const b0 = [xc - w0 / 2, y0, -d0 / 2], b1 = [xc + w0 / 2, y0, -d0 / 2];
+  const b2 = [xc + w0 / 2, y0,  d0 / 2], b3 = [xc - w0 / 2, y0,  d0 / 2];
+  const m0 = [xc - w1 / 2, yB, -d1 / 2], m1 = [xc + w1 / 2, yB, -d1 / 2];
+  const m2 = [xc + w1 / 2, yB,  d1 / 2], m3 = [xc - w1 / 2, yB,  d1 / 2];
+  const A = [xc, y1, 0];                      // apex
+  return [
+    [b0, b1, b2, b3],                         // alas
+    [b3, b2, m2, m3], [b0, b1, m1, m0],       // badan: depan, belakang
+    [b0, b3, m3, m0], [b1, b2, m2, m1],       // badan: kiri, kanan
+    [m3, m2, A], [m1, m0, A],                 // piramida: depan, belakang
+    [m0, m3, A], [m2, m1, A],                 // piramida: kiri, kanan
+  ];
+}
+
+/** FIX bab 171: putar taji mengelilingi sumbu Y + geser ke posisi cincin. */
+function _mtXform(faces, a, tx, tz) {
+  const c = Math.cos(a), sn = Math.sin(a);
+  return faces.map((f) => f.map((v) => {
+    const x = v[0] * c + v[2] * sn;
+    const z = -v[0] * sn + v[2] * c;
+    return [x + tx, v[1], z + tz];
+  }));
+}
+
+/** Part MAHKOTA (koordinat AKHIR Medium, sudah termasuk MT_YOFF). */
+function _mtCrownParts() {
+  const p = [];
+  const YB = 0.625 + MT_YOFF;      // = 0.250
+  const YT = 0.625 - MT_YOFF;      // = 1.000 → puncak taji (bbox atas)
+  // ══ FIX bab 171 (koreksi user: "aslinya MELINGKAR woi, bukan 1 baris") ══
+  //   Mahkota = CINCIN mengelilingi tutup (bukan barisan lurus), 6 taji.
+  const R_OUT = 0.46, R_IN = 0.34;   // diameter luar 0.92 = 46% lebar peti
+  const SEG = 16;
+  const y0 = YB - 0.08, y1 = YB + 0.08;
+  // ── BAND CINCIN (satu part, mengelilingi penuh) ──
+  const bandFaces = [];
+  for (let k = 0; k < SEG; k++) {
+    const a0 = (k / SEG) * Math.PI * 2, a1 = ((k + 1) / SEG) * Math.PI * 2;
+    const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+    const O0b = [R_OUT * c0, y0, R_OUT * s0], O1b = [R_OUT * c1, y0, R_OUT * s1];
+    const O0t = [R_OUT * c0, y1, R_OUT * s0], O1t = [R_OUT * c1, y1, R_OUT * s1];
+    const I0b = [R_IN * c0, y0, R_IN * s0],  I1b = [R_IN * c1, y0, R_IN * s1];
+    const I0t = [R_IN * c0, y1, R_IN * s0],  I1t = [R_IN * c1, y1, R_IN * s1];
+    bandFaces.push([O0b, O1b, O1t, O0t]);   // luar
+    bandFaces.push([I1b, I0b, I0t, I1t]);   // dalam
+    bandFaces.push([I0t, I1t, O1t, O0t]);   // atas
+    bandFaces.push([O0b, O1b, I1b, I0b]);   // bawah
+  }
+  p.push({ faces: _mtOutward(bandFaces), tag: 'crown' });
+  // ── 6 TAJI MENGELILINGI (2 depan TINGGI mengapit celah V + 4 lainnya) ──
+  //   phi diukur dari depan (+z) menuju +x
+  const R_MID = (R_OUT + R_IN) / 2;
+  const spikes = [
+    { phi:  -33, dh: 0.00, w: 0.20, d: 0.22 },   // depan-kiri (TINGGI)
+    { phi:   33, dh: 0.00, w: 0.20, d: 0.22 },   // depan-kanan (TINGGI)
+    { phi:  -95, dh: 0.38, w: 0.15, d: 0.16 },   // samping-kiri
+    { phi:   95, dh: 0.38, w: 0.15, d: 0.16 },   // samping-kanan
+    { phi: -152, dh: 0.44, w: 0.13, d: 0.14 },   // belakang-kiri
+    { phi:  152, dh: 0.44, w: 0.13, d: 0.14 },   // belakang-kanan
+  ];
+  const yB = YB + 0.06;
+  for (const sp of spikes) {
+    const rad = (sp.phi * Math.PI) / 180;
+    const px = R_MID * Math.sin(rad), pz = R_MID * Math.cos(rad);
+    const geo = _mtSpikeRuncing(0, yB, YT - sp.dh, sp.w, sp.d);
+    p.push({ faces: _mtOutward(_mtXform(geo, rad, px, pz)), tag: 'crown' });
+  }
+  return p;
+}
+
+function _mtGemParts() {
+  const p = [];
+  // ══ FIX bab 170d (bukti: meja terlepas & melayang → lubang hitam besar) ══
+  //   AKAR: meja segi-8 dibuat TANPA facet penghubung ke bahu → mesh TERBUKA.
+  //   Sekarang: meja(8) → bahu(8) → apex(1) = mesh TERTUTUP RAPAT (watertight).
+  const yG = -0.310;               // = pusat pita depan Medium (part 4/5/6)
+  const zA = 0.49, zB = 0.72;      // zA 0.49 = menempel muka tutup (z=0.50)
+  const yT = yG + 0.34;            // meja
+  const yM = yG + 0.06;            // bahu (girdle)
+  const yA = yG - 0.30;            // apex (culet)
+  const rT = 0.21;                 // setengah-lebar meja (≈50% girdle 0.42)
+  const rM = 0.42;                 // setengah-lebar girdle
+  const zc = (zA + zB) / 2, rz = (zB - zA) / 2;
+  const cx = 0;
+  // 8 titik per cincin (oktagon, sumbu y) — indeks 0..7
+  const ring = (yy, rr) => {
+    const out = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      out.push([cx + Math.cos(a) * rr, yy, zc + Math.sin(a) * Math.min(rz, rr)]);
+    }
+    return out;
+  };
+  const T = ring(yT, rT);   // meja (kecil)
+  const M = ring(yM, rM);   // girdle (lebar)
+  const APEX = [cx, yA, zc];
+  const faces = [];
+  // muka MEJA (oktagon) — fan dari titik tengah
+  const TC = [cx, yT, zc];
+  for (let k = 0; k < 8; k++) faces.push([TC, T[k], T[(k + 1) % 8]]);
+  // FACET PENGHUBUNG meja → girdle (inilah yang HILANG sebelumnya)
+  for (let k = 0; k < 8; k++) {
+    const k2 = (k + 1) % 8;
+    faces.push([T[k], T[k2], M[k2], M[k]]);
+  }
+  // PAVILIUN girdle → apex
+  for (let k = 0; k < 8; k++) {
+    const k2 = (k + 1) % 8;
+    faces.push([M[k], M[k2], APEX]);
+  }
+  p.push({ faces: _mtOutward(faces), tag: 'cyan' });
+  // ── 2 TARING (mulai x=0.44 → di luar setengah-lebar permata 0.42) ──
+  for (const sx of [-1, 1]) {
+    const xIn = sx * 0.44, xOut = sx * 0.72;
+    const yIn = yG + 0.04, yOut = yG + 0.20;
+    const z0 = zA, z1 = zA + 0.10;
+    const wIn = 0.11;
+    p.push({ faces: _mtOutward([
+      [[xIn, yIn - wIn / 2, z0], [xOut, yOut - wIn / 2, z0], [xOut, yOut + wIn / 2, z0], [xIn, yIn + wIn / 2, z0]],
+      [[xIn, yIn - wIn / 2, z1], [xIn, yIn + wIn / 2, z1], [xOut, yOut + wIn / 2, z1], [xOut, yOut - wIn / 2, z1]],
+      [[xIn, yIn - wIn / 2, z0], [xIn, yIn - wIn / 2, z1], [xIn, yIn + wIn / 2, z1], [xIn, yIn + wIn / 2, z0]],
+      [[xOut, yOut - wIn / 2, z0], [xOut, yOut + wIn / 2, z0], [xOut, yOut + wIn / 2, z1], [xOut, yOut - wIn / 2, z1]],
+      [[xIn, yIn - wIn / 2, z0], [xOut, yOut - wIn / 2, z0], [xOut, yOut - wIn / 2, z1], [xIn, yIn - wIn / 2, z1]],
+      [[xIn, yIn + wIn / 2, z0], [xIn, yIn + wIn / 2, z1], [xOut, yOut + wIn / 2, z1], [xOut, yOut + wIn / 2, z0]],
+    ]), tag: 'bone' });
+  }
+  return p;
+}
+
+/** BADAN Medium Treasure (rangka Small Treasure, digeser turun). */
+export function getMediumTreasureBodyParts() {
+  return _mtShiftY(getSmallTreasureBodyParts(), MT_YOFF);
+}
+
+/** TUTUP Medium Treasure: drum+rok+ring+pita (IDENTIK Small) TANPA bintang,
+ *  lalu + PERMATA CYAN + TARING + MAHKOTA (ikut bergerak saat dibuka). */
+export function getMediumTreasureLidParts() {
+  const small = getSmallTreasureLidParts();
+  // 16 part terakhir = bintang ungu (_stStarX: 8 titik × 2 push) → DIBUANG
+  const tanpaBintang = small.slice(0, small.length - 16);
+  return [..._mtShiftY(tanpaBintang, MT_YOFF), ..._mtGemParts(), ..._mtCrownParts()];
+}
+
+/** Alias untuk NSI WORKBENCH (bab 169) — konversi otomatis 'get' + slug + 'Parts'
+ *  gagal untuk nama ber-underscore ('medium_treasure' → getMedium_treasureParts).
+ *  Sediakan DI SINI supaya file workbench (teritori user) TIDAK disentuh. */
+export function getMedium_treasureParts() {
+  return [...getMediumTreasureBodyParts(), ...getMediumTreasureLidParts()];
+}
+
+/** Geometri BADAN Medium Treasure (statis). */
+export function makeMediumTreasureBodyGeometry(THREE) {
+  return _stBuild(THREE, getMediumTreasureBodyParts());
+}
+
+/** Geometri TUTUP Medium Treasure (bergerak: drum+ring+pita+permata+mahkota). */
+export function makeMediumTreasureLidGeometry(THREE) {
+  return _stBuild(THREE, getMediumTreasureLidParts());
+}
+
+/** Geometri PENUH Medium Treasure (badan+tutup) — preview/workbench. */
+export function makeMediumTreasureFullGeometry(THREE) {
+  return _stBuild(THREE, [...getMediumTreasureBodyParts(), ...getMediumTreasureLidParts()]);
+}
+
 /**
  * ⚠️ ALIAS untuk NSI WORKBENCH (bab 160, 2026-10-11).
  * AKAR: workbench mencari getter dengan konversi otomatis
@@ -2688,6 +2942,8 @@ export function makeNsiGeometry(THREE, slug) {
   // ⚠️ Block yang DITARUH di app TIDAK memakai jalur ini (lihat place path)
   //    karena di sana tutup ditambahkan sebagai ANAK mesh (animasi buka).
   if (slug === NSI_ST_SLUG) return makeSmallTreasureFullGeometry(THREE);
+  // ⚠️ bab 169: Medium Treasure — WAJIB PENUH (badan+tutup+mahkota).
+  if (slug === NSI_MT_SLUG) return makeMediumTreasureFullGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;

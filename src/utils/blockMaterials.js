@@ -109,6 +109,10 @@ export const BLOCK_LIBRARY = [
   // Semua warna dari VERTEX COLOR (rangka emas, badan hitam, pita tulang,
   // bintang ungu, isi emas + 3 permata) — tekstur hanya pengisi halus.
   { slug: 'small_treasure',    name: 'Small Treasure', label: 'Small Treasure', roughness: 0.68, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ── NSI LEVEL 2 #10: MEDIUM TREASURE (bab 169, permintaan user 2026-10-11) ──
+  // RANGKA 100% IDENTIK Small Treasure; pembeda HANYA aksesori: MAHKOTA emas
+  // pucat + PERMATA cyan menggantikan bintang ungu. 4 x 4 x 3 studs.
+  { slug: 'medium_treasure',   name: 'Medium Treasure', label: 'Medium Treasure', roughness: 0.68, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -125,6 +129,7 @@ const CHEST_BASE_TEX = {
   uncommon_chest: 'legendary_chest',
   common_chest: 'legendary_chest',
   small_treasure: 'legendary_chest',   // bab 149: share (nol duplikat)
+  medium_treasure: 'legendary_chest',  // bab 169: share (rangka sama)
 };
 
 const ROD_BASE_TEX = {
@@ -242,6 +247,7 @@ export const BLOCK_PLACEHOLDER = {
   seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc4622a,
   window: 0xc8a24a,   // bingkai kayu (kaca = alpha per-vertex, bukan tint)
   small_treasure: 0x8a6a12,   // bab 149: emas gelap (warna asli = vertex color)
+  medium_treasure: 0x8a6a12,  // bab 169: sama (warna asli = vertex color)
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
   hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
   legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
@@ -410,6 +416,8 @@ export function makeBlockMaterial(THREE, slug) {
   // Halaman uji/sandbox yang sudah disetujui user memakai DoubleSide —
   // jadi ini MENYAMAKAN app dengan sandbox (aturan: wajib sama).
   if (def.slug === 'small_treasure') { mat.side = THREE.DoubleSide; }
+  // bab 169: Medium Treasure dirakit dari banyak part (sama seperti Small) → DoubleSide.
+  if (def.slug === 'medium_treasure') { mat.side = THREE.DoubleSide; }
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca
