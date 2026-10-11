@@ -95,6 +95,15 @@ export const BLOCK_LIBRARY = [
   { slug: 'hatch',             name: 'Hatch',       label: 'Hatch',       roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
   // LEGENDARY CHEST: peti harta (DEKORASI, tidak interaktif). 4.5x3.5x4.5 studs.
   { slug: 'legendary_chest',   name: 'Legendary Chest', label: 'Legendary Chest', roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ── 5 CHEST (bab 147, permintaan user 2026-10-11) ──
+  // BENTUK 100% SAMA dengan Legendary Chest — pembeda HANYA WARNA RANGKA.
+  // Urutan user: ungu → cyan → merah → kuning → hijau.
+  // Tekstur: SHARE legendary_chest.png (lihat CHEST_BASE_TEX) supaya 100% identik
+  // dan tidak ada file duplikat.
+  { slug: 'epic_chest',        name: 'Epic Chest',     label: 'Epic Chest',     roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'rare_chest',        name: 'Rare Chest',     label: 'Rare Chest',     roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'uncommon_chest',    name: 'Uncommon Chest', label: 'Uncommon Chest', roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'common_chest',      name: 'Common chest',   label: 'Common chest',   roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -102,6 +111,16 @@ export const DEFAULT_BLOCK_SLUG = 'wood_block';
 // ── NSI #4: ROD — tekstur 100% dari block dasarnya (permintaan user) ──
 // Tidak ada file tex/wood_rod.png; path di-MAP ke tex/wood_block.png supaya
 // tekstur dijamin identik (single source) dan tidak ada duplikasi file.
+// ── 5 CHEST: tekstur DI-SHARE dari legendary_chest.png (bab 147) ──
+// Pembeda 5 chest murni WARNA VERTEX (rangka), bukan tekstur. Menunjuk ke satu
+// file menjamin tidak ada duplikat + tekstur kayu/baut dijamin identik.
+const CHEST_BASE_TEX = {
+  epic_chest: 'legendary_chest',
+  rare_chest: 'legendary_chest',
+  uncommon_chest: 'legendary_chest',
+  common_chest: 'legendary_chest',
+};
+
 const ROD_BASE_TEX = {
   wood_rod: 'wood_block',
   stone_rod: 'stone_block',
@@ -117,7 +136,7 @@ export function getBlockDef(slug) {
 }
 
 export function getBlockTexPath(slug) {
-  const src = ROD_BASE_TEX[slug] || slug;
+  const src = ROD_BASE_TEX[slug] || CHEST_BASE_TEX[slug] || slug;
   return `/blocks/tex/${src}.png`;
 }
 
@@ -219,6 +238,9 @@ export const BLOCK_PLACEHOLDER = {
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
   hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
   legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
+  // 5 chest: placeholder SAMA (kayu) — pembeda warna rangka = vertex color.
+  epic_chest: 0xb0752f, rare_chest: 0xb0752f,
+  uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 
 // PRELOAD semua texture Block Library (optimasi tester 2026-09-11):
@@ -363,7 +385,8 @@ export function makeBlockMaterial(THREE, slug) {
   // "kayu terlihat transparan". FIX: depthWrite WAJIB true untuk Window.
   // (Kaca tetap tembus karena alpha per-vertex + blending tetap aktif.)
   // DOOR: alasan sama persis (kayu wajib solid, kaca tetap tembus).
-  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch' || def.slug === 'legendary_chest') mat.depthWrite = true;
+  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch'
+      || def.slug === 'legendary_chest' || CHEST_BASE_TEX[def.slug]) mat.depthWrite = true;
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca

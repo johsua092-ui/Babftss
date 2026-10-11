@@ -183,6 +183,29 @@ export const CHEST_WOOD_COLOR = 0xb0752f;    // kayu cokelat (foto referensi)
 export const CHEST_METAL_COLOR = 0xd21f8c;   // logam MAGENTA/fuchsia cerah
 export const CHEST_DARK_COLOR = 0x0d0a14;    // lubang kunci & rivet (hitam kebiruan)
 
+// ── NSI LEVEL 2 #8b–#8e: 5 CHEST (bab 147) ──────────────────────────────
+// PERMINTAAN USER (2026-10-11, verbatim): *"total ada 5 ya... ungu = Legendary
+// Chest, cyan = Epic Chest, merah = Rare Chest, kuning = Uncommon Chest,
+// hijau = Common chest... urutan NSI chest warna warni itu adalah yang pertama
+// ungu dulu, lalu cyan, merah, kuning, hijau"*.
+//
+// ⚠️ BENTUK 100% SAMA — pembeda HANYA WARNA RANGKA (terukur dari 4 gambar
+//    user: bbox 324x241 px identik, tumpang-tindih 99%+, S & V sama;
+//    HANYA HUE yang bergeser). Kayu/alur/baut/kunci = TETAP.
+//    Warna rangka diambil dari HUE gambar user + S/V milik patokan ungu
+//    (H=301.3° S=97.4% V=2.35) supaya satu keluarga warna yang konsisten.
+export const CHEST_VARIANTS = {
+  [NSI_CHEST_SLUG]: { name: 'Legendary Chest', frame: [2.350, 0.060, 2.300], hue: 301 },
+  epic_chest:       { name: 'Epic Chest',      frame: [0.060, 1.930, 2.350], hue: 191 },
+  rare_chest:       { name: 'Rare Chest',      frame: [2.350, 0.098, 0.060], hue: 1 },
+  uncommon_chest:   { name: 'Uncommon Chest',  frame: [2.350, 2.274, 0.060], hue: 58 },
+  common_chest:     { name: 'Common chest',    frame: [0.174, 2.350, 0.060], hue: 117 },
+};
+/** Urutan pengerjaan NSI chest (verbatim user): ungu → cyan → merah → kuning → hijau. */
+export const NSI_CHEST_SLUGS = [NSI_CHEST_SLUG, 'epic_chest', 'rare_chest', 'uncommon_chest', 'common_chest'];
+/** Warna rangka PATOKAN (dipakai untuk mengenali baris rangka di tabel bake). */
+export const CHEST_FRAME_BAKE_COLOR = [2.35, 0.06, 2.30];
+
 /**
  * UKURAN NSI dalam satuan BLOCK [lebar(x), tinggi(y), kedalaman(z)].
  * WAJIB dipakai saat menaruh block (posY = setengah tinggi) supaya item yang
@@ -203,6 +226,8 @@ export const NSI_SIZES = {
   [NSI_HATCH_SLUG]: [2, 0.5, 2],
   [NSI_CHEST_SLUG]: [2.25, 1.75, 2.25],
 };
+// 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
+NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -212,7 +237,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, NSI_CHEST_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -2169,7 +2194,16 @@ export const NSI_CHEST_BAKE = [
  * Buat geometri LEGENDARY CHEST dari TABEL BAKE (patokan NSI Viewer).
  * 2.25 x 1.75 x 2.25 block = 4.5 x 3.5 x 4.5 studs.
  */
-export function makeChestGeometry(THREE) {
+export function makeChestGeometry(THREE, slug = NSI_CHEST_SLUG) {
+  // 5 varian chest: bentuk SAMA, pembeda HANYA warna RANGKA (bab 147).
+  // Warna kayu/alur/baut/kunci TIDAK diubah — hanya baris yang berwarna
+  // rangka patokan (2.35, 0.06, 2.30) yang diganti ke warna varian.
+  const varian = CHEST_VARIANTS[slug] || CHEST_VARIANTS[NSI_CHEST_SLUG];
+  const FR = CHEST_FRAME_BAKE_COLOR;
+  const pakaiWarna = varian.frame;
+  const gantiRangka = (r, g, b) =>
+    Math.abs(r - FR[0]) < 1e-6 && Math.abs(g - FR[1]) < 1e-6 && Math.abs(b - FR[2]) < 1e-6;
+
   const asli = getChestParts();
   const pos = [], uv = [], col = [];
   const q = new THREE.Quaternion();
@@ -2202,7 +2236,8 @@ export function makeChestGeometry(THREE) {
         v.set(GP.getX(k), GP.getY(k), GP.getZ(k)).applyMatrix4(m);
         pos.push(v.x, v.y, v.z);
         uv.push(GU ? GU.getX(k) : 0.02, GU ? GU.getY(k) : 0.02);
-        col.push(cr, cg, cb, 1.0);
+        if (gantiRangka(cr, cg, cb)) col.push(pakaiWarna[0], pakaiWarna[1], pakaiWarna[2], 1.0);
+        else col.push(cr, cg, cb, 1.0);
       }
     }
   }
@@ -2229,7 +2264,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WINDOW_SLUG) return makeWindowGeometry(THREE);
   if (slug === NSI_DOOR_SLUG) return makeDoorGeometry(THREE);
   if (slug === NSI_HATCH_SLUG) return makeHatchGeometry(THREE);
-  if (slug === NSI_CHEST_SLUG) return makeChestGeometry(THREE);
+  if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
 }
