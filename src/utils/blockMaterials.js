@@ -94,16 +94,21 @@ export const BLOCK_LIBRARY = [
   // HATCH: palka kayu INTERAKTIF (buka dgn MENGANGKAT) — 4x1x4 studs
   { slug: 'hatch',             name: 'Hatch',       label: 'Hatch',       roughness: 0.85, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
   // LEGENDARY CHEST: peti harta (DEKORASI, tidak interaktif). 4.5x3.5x4.5 studs.
-  { slug: 'legendary_chest',   name: 'Legendary Chest', label: 'Legendary Chest', roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'legendary_chest',   name: 'Legendary Chest', label: 'Legendary Chest', roughness: 0.72, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
   // ── 5 CHEST (bab 147, permintaan user 2026-10-11) ──
   // BENTUK 100% SAMA dengan Legendary Chest — pembeda HANYA WARNA RANGKA.
   // Urutan user: ungu → cyan → merah → kuning → hijau.
   // Tekstur: SHARE legendary_chest.png (lihat CHEST_BASE_TEX) supaya 100% identik
   // dan tidak ada file duplikat.
-  { slug: 'epic_chest',        name: 'Epic Chest',     label: 'Epic Chest',     roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
-  { slug: 'rare_chest',        name: 'Rare Chest',     label: 'Rare Chest',     roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
-  { slug: 'uncommon_chest',    name: 'Uncommon Chest', label: 'Uncommon Chest', roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
-  { slug: 'common_chest',      name: 'Common chest',   label: 'Common chest',   roughness: 0.72, metalness: 0.0, transparent: true, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'epic_chest',        name: 'Epic Chest',     label: 'Epic Chest',     roughness: 0.72, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'rare_chest',        name: 'Rare Chest',     label: 'Rare Chest',     roughness: 0.72, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'uncommon_chest',    name: 'Uncommon Chest', label: 'Uncommon Chest', roughness: 0.72, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'common_chest',      name: 'Common chest',   label: 'Common chest',   roughness: 0.72, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ── NSI LEVEL 2 #9: SMALL TREASURE (bab 149, permintaan user 2026-10-11) ──
+  // INTERAKTIF (klik → tutup terangkat) seperti Door/Hatch. 4 x 2.5 x 3 studs.
+  // Semua warna dari VERTEX COLOR (rangka emas, badan hitam, pita tulang,
+  // bintang ungu, isi emas + 3 permata) — tekstur hanya pengisi halus.
+  { slug: 'small_treasure',    name: 'Small Treasure', label: 'Small Treasure', roughness: 0.68, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -119,6 +124,7 @@ const CHEST_BASE_TEX = {
   rare_chest: 'legendary_chest',
   uncommon_chest: 'legendary_chest',
   common_chest: 'legendary_chest',
+  small_treasure: 'legendary_chest',   // bab 149: share (nol duplikat)
 };
 
 const ROD_BASE_TEX = {
@@ -235,6 +241,7 @@ export const BLOCK_PLACEHOLDER = {
   // NSI Level 2: Seat & Step — placeholder warna kayu.
   seat: 0xc8a24a, step: 0xc8a24a, mast: 0xc8a24a, helm: 0xc4622a,
   window: 0xc8a24a,   // bingkai kayu (kaca = alpha per-vertex, bukan tint)
+  small_treasure: 0x8a6a12,   // bab 149: emas gelap (warna asli = vertex color)
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
   hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
   legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
@@ -385,8 +392,24 @@ export function makeBlockMaterial(THREE, slug) {
   // "kayu terlihat transparan". FIX: depthWrite WAJIB true untuk Window.
   // (Kaca tetap tembus karena alpha per-vertex + blending tetap aktif.)
   // DOOR: alasan sama persis (kayu wajib solid, kaca tetap tembus).
-  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch'
-      || def.slug === 'legendary_chest' || CHEST_BASE_TEX[def.slug]) mat.depthWrite = true;
+  // ⚠️ CHEST & SMALL TREASURE DIKELUARKAN dari daftar ini (bab 149, 2026-10-11).
+  // AKAR BUG "bolong-bolong" (keluhan user): chest TIDAK punya alpha sama sekali
+  // (alpha per-vertex semuanya 1.0, terverifikasi). Dengan transparent:true +
+  // depthWrite:true, urutan render antar-wajah TIDAK terjamin → z-fighting →
+  // dinding tampak berlubang/bercelah. FIX: chest = OPAQUE (transparent:false).
+  // Window/Door/Hatch TETAP perlu depthWrite:true karena mereka PUNYA alpha
+  // nyata (kaca alpha 0.42) dan butuh kayu solid.
+  if (def.slug === 'window' || def.slug === 'door' || def.slug === 'hatch') mat.depthWrite = true;
+  // ── SMALL TREASURE: WAJIB DoubleSide (bab 157, 2026-10-11) ──
+  // AKAR "bug tekstur hilang masih ada buanyak" (keluhan user):
+  // geometri Small Treasure dirakit dari BANYAK part (drum cangkang, ring,
+  // pita, pipi, gundukan) — sebagian wajahnya menghadap KE DALAM.
+  // Jalur app memakai FrontSide (side:0) → wajah menghadap dalam TIDAK
+  // dirender → terlihat BOLONG/"tekstur hilang". UJI LANGSUNG DI APP:
+  // FrontSide = rongga bolong; DoubleSide = TERTUTUP rapat (terbukti).
+  // Halaman uji/sandbox yang sudah disetujui user memakai DoubleSide —
+  // jadi ini MENYAMAKAN app dengan sandbox (aturan: wajib sama).
+  if (def.slug === 'small_treasure') { mat.side = THREE.DoubleSide; }
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca

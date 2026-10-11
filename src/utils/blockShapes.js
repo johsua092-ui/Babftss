@@ -213,6 +213,24 @@ export const CHEST_FRAME_BAKE_COLOR = [2.35, 0.06, 2.30];
  *   BUG TERUKUR (2026-10-04): posY di-hardcode 0.5 → Truss (tinggi 2 block)
  *   tenggelam separuh ke bawah lantai.
  */
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #9: SMALL TREASURE (bab 149) ──
+// PERMINTAAN USER (2026-10-11, verbatim): *"identitasnya adalah "Small Treasure"
+// dimana dia bisa di klik ada animasi buka petinya sama kaya door itu ada
+// animasi buka... panjang 4 studs (arah kanan kiri), lebar 3 studs, tinggi 2.5
+// studs"*.
+// Ukuran: 4 x 2.5 x 3 studs  →  2 x 1.25 x 1.5 block.
+// Bentuk: rangka emas ½-lingkaran + badan drum hitam + pita krem bentuk tulang
+// + bintang ungu (X) di depan. INTERAKTIF: klik → tutup terangkat (engsel
+// belakang, sumbu X) ≈103°, seperti Door/Hatch.
+// ⚠️ Dimensi TERUKUR 4.00 x 2.50 x 3.14 studs (kontrak: WAJIB diukur, bukan dikira).
+export const NSI_ST_SLUG = 'small_treasure';
+export const NSI_ST_NAME = 'Small Treasure';
+export const NSI_ST_SIZE = [2, 1.25, 1.5];        // 4 x 2.5 x 3 studs
+export const ST_HINGE_Y = 0.09;                   // engsel (lokal, relatif pusat)
+export const ST_HINGE_Z = -0.60;                  // tepi BELAKANG
+export const ST_OPEN_ANGLE = -2.06;               // ≈118° (bab 155: original 110-130°)
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -228,6 +246,8 @@ export const NSI_SIZES = {
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
+// Small Treasure: 4 x 2.5 x 3 studs (bab 149).
+NSI_SIZES[NSI_ST_SLUG] = NSI_ST_SIZE.slice();
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -237,7 +257,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -2253,6 +2273,404 @@ export function makeChestGeometry(THREE, slug = NSI_CHEST_SLUG) {
 /**
  * Geometri NSI berdasarkan slug. Return null kalau bukan NSI.
  */
+// ══════════════════════════════════════════════════════════════════════════
+// ── SMALL TREASURE (bab 149) — GEOMETRI ──
+// Dua bagian TERPISAH supaya bisa dianimasikan:
+//   BODY (statis) : kotak dalam + alas emas + isi (gundukan emas + 3 permata)
+//   LID  (bergerak): drum hitam + 2 lengkungan emas + pita krem + bintang ungu
+// Engsel di tepi BELAKANG (z−), tutup TERANGKAT ke belakang saat diklik.
+//
+// ⚠️ PELAJARAN (bab 149, terukur): face yang di-push SATU PER SATU membuat
+//    `_fixWindingByVolume` GAGAL (butuh volume untuk hitung arah normal) →
+//    winding salah → part TAK TERLIHAT/bolong. Karena itu setiap bagian
+//    digabung jadi SATU part sebelum difix.
+// ⚠️ PELAJARAN (bab 149, terukur): `RI` (radius dalam) WAJIB < `RO` (radius
+//    luar). Kalau terbalik, profil ring jadi "kawat tipis" & tak terlihat.
+// ══════════════════════════════════════════════════════════════════════════
+const _ST_YBOT = -0.625;          // dasar (2.5 studs → setengah 0.625)
+const _ST_YSEAM = 0.055;          // garis sambung badan↔tutup
+const _ST_RO = 0.75;              // radius luar lengkungan (Z) = 3 studs
+// ⚠️ FIX bab 155 (analisis user #2.1: "ring terlalu tipis"): _ST_RI 0.57→0.30
+//    supaya lengkung emas LEBAR/TEBAL seperti C di original, bukan kawat tipis.
+//    (RO 0.75 tetap → tebal ring = 0.45, dulu cuma 0.18.)
+const _ST_RI = 0.46;   // bab 156: lebih tebal lagi (lengkung C tebal)             // ⚠️ WAJIB sedikit < _ST_RD (0.50) agar ring
+                                  //    MENEMPEL di luar drum (tak ada celah / tembus)
+const _ST_RD = 0.50;              // radius drum (Z) → bukaan oval terlihat
+const _ST_RDY = 0.545;            // tinggi kubah drum
+const _ST_XR0 = 0.76, _ST_XR1 = 1.00;   // tebal lengkungan (X)
+const _ST_XD = 0.93;              // ujung drum (menembus ring → satu siluet)
+const _ST_SEG = 14;   // ⚠️ FIX bab 149: 8 terlalu kasar (busur bersegmen) → 14
+
+function _stBox(x0, x1, y0, y1, z0, z1) {
+  const p = (x, y, z) => [x, y, z];
+  return [
+    [p(x0, y0, z1), p(x1, y0, z1), p(x1, y1, z1), p(x0, y1, z1)],
+    [p(x0, y0, z0), p(x0, y1, z0), p(x1, y1, z0), p(x1, y0, z0)],
+    [p(x0, y0, z0), p(x1, y0, z0), p(x1, y0, z1), p(x0, y0, z1)],
+    [p(x0, y1, z0), p(x0, y1, z1), p(x1, y1, z1), p(x1, y1, z0)],
+    [p(x0, y0, z0), p(x0, y0, z1), p(x0, y1, z1), p(x0, y1, z0)],
+    [p(x1, y0, z0), p(x1, y1, z0), p(x1, y1, z1), p(x1, y0, z1)],
+  ];
+}
+/** Profil ½-elips (z −r..+r lewat puncak) mulai dari yBase. */
+function _stProfil(ry, rz, yBase, seg) {
+  const P = [];
+  for (let i = 0; i <= seg; i++) {
+    const t = Math.PI * i / seg;
+    P.push([yBase + ry * Math.sin(t), -rz * Math.cos(t)]);
+  }
+  return P;
+}
+/** Ring lengkungan — SATU part (semua face digabung) agar winding bisa difix. */
+function _stRing(yBase, ryO, rzO, ryI, rzI, x0, x1, seg, tag) {
+  const o = _stProfil(ryO, rzO, yBase, seg);
+  const i = _stProfil(ryI, rzI, yBase, seg);
+  const f = [];
+  for (let k = 0; k < seg; k++) {
+    f.push([[x0, o[k][0], o[k][1]], [x1, o[k][0], o[k][1]], [x1, o[k + 1][0], o[k + 1][1]], [x0, o[k + 1][0], o[k + 1][1]]]);
+    f.push([[x0, i[k][0], i[k][1]], [x0, i[k + 1][0], i[k + 1][1]], [x1, i[k + 1][0], i[k + 1][1]], [x1, i[k][0], i[k][1]]]);
+    f.push([[x0, o[k][0], o[k][1]], [x0, i[k][0], i[k][1]], [x0, i[k + 1][0], i[k + 1][1]], [x0, o[k + 1][0], o[k + 1][1]]]);
+    f.push([[x1, o[k][0], o[k][1]], [x1, o[k + 1][0], o[k + 1][1]], [x1, i[k + 1][0], i[k + 1][1]], [x1, i[k][0], i[k][1]]]);
+  }
+  return { faces: f, tag: tag || 'gold' };
+}
+/** Bintang: 4 ujung DIAGONAL (X) + lekuk + pusat piramida (4 nada ungu). */
+function _stStarX(a, n, z0, z1, nada) {
+  const O = [[a, a], [0, n], [-a, a], [-n, 0], [-a, -a], [0, -n], [a, -a], [n, 0]];
+  const f = [];
+  for (let i = 0; i < O.length; i++) {
+    const p0 = O[i], p1 = O[(i + 1) % O.length];
+    f.push({ faces: [[[p0[0], p0[1], z0], [p1[0], p1[1], z0], [0, 0, z1]]], tag: nada[i % nada.length] });
+    f.push({ faces: [[[0, 0, z0], [p0[0], p0[1], z0], [p1[0], p1[1], z0]]], tag: nada[(i + 2) % nada.length] });
+  }
+  return f;
+}
+/** PIPI PENUTUP (cheek) — prism ½-elips SOLID, mengisi penuh bukaan lengkungan.
+ *  ⚠️ FIX bab 151: tanpa ini, dari SAMPING terlihat rongga (bolong) karena
+ *     drum (rz 0.50) lebih kecil dari bukaan lengkungan (rz 0.57) → celah cincin.
+ *  Bentuk: ½-elips (ry, rz) dgn alas di yBase, dipadatkan sepanjang x0..x1. */
+function _stCheek(yBase, ry, rz, x0, x1, seg, tag) {
+  const o = _stProfil(ry, rz, yBase, seg);
+  const f = [];
+  for (let k = 0; k < seg; k++) {
+    const [ya, za] = o[k], [yb, zb] = o[k + 1];
+    f.push([[x0, ya, za], [x1, ya, za], [x1, yb, zb], [x0, yb, zb]]);       // rim lengkung
+    f.push([[x1, yBase, 0], [x1, ya, za], [x1, yb, zb]]);                   // tutup muka (+x)
+    f.push([[x0, yBase, 0], [x0, yb, zb], [x0, ya, za]]);                   // tutup belakang (-x)
+  }
+  return { faces: f, tag: tag || 'black' };
+}
+/** Palet warna Small Treasure (LINEAR — sudah dikalibrasi ke gambar user). */
+export const ST_WARNA = {
+  gold:  [1.0558, 0.5825, 0.0035, 1.0],
+  black: [0.0288, 0.0288, 0.0329, 1.0],
+  bone:  [1.50, 1.60, 1.20, 1.0],
+  ungu1: [1.70, 0.78, 2.35, 1.0],
+  ungu2: [1.18, 0.46, 1.80, 1.0],
+  ungu3: [0.66, 0.22, 1.10, 1.0],
+  ungu4: [2.25, 1.45, 2.70, 1.0],
+  pile:  [1.6699, 0.6664, 0.0242, 1.0],
+  cyan:  [0.05, 2.45, 3.30, 1.0],
+  red:   [2.45, 0.10, 0.10, 1.0],
+  green: [0.06, 2.20, 0.10, 1.0],
+};
+const _ST_XW = 0.76;   // ujung kotak dalam
+
+/** BADAN (statis): alas emas + dinding dalam + kaki trapesium + papan depan + isi. */
+export function getSmallTreasureBodyParts() {
+  const p = [];
+  // ⚠️ FIX bab 164b (koreksi user: "pendekin lempengan yang mengelilingi,
+  //    sedikit lebih tinggi jadi kayak gak kelihatan gundukannya").
+  //    Lempengan pengeliling DIPENDEKKAN 0.20 → 0.10 supaya gundukan emas
+  //    terlihat jelas dari depan, tapi tetap mengelilingi (4 sisi).
+  const YT = 0.10, ZW = 0.44;
+  // ⚠️ FIX bab 151: ALAS emas JANGAN menonjol keluar melewati dinding/kaki.
+  //    Sebelumnya ±0.80 / z ±0.66 (dinding cuma 0.76 / kaki z 0.62)
+  //    → dari BAWAH terlihat 'lis emas menonjol' & bertumpuk dgn batang hitam.
+  //    Sekarang pas di dalam kaki (x ±0.755, z ±0.605) → rata (flush).
+  p.push({ faces: _stBox(-0.755, 0.755, _ST_YBOT, _ST_YBOT + 0.06, -0.545, 0.545), tag: 'gold' });
+  // ⚠️ FIX bab 151: rok mulai _ST_YBOT+0.066 (bukan +0.06) → beri celah 0.006 dari
+  //    alas supaya TIDAK tumpang-tindih dgn pelat alas (keluhan: "2 garis hitam").
+  // ⚠️ FIX bab 164 (keluhan user: "gundukan dikelilingin 3 lempengan hitam,
+  //    harusnya 4, kurang satu di DEPAN"). TERUKUR dulu: rok depan hanya
+  //    y -0.559..-0.465 (0.094) padahal 3 dinding lain y -0.565..0.200 (0.765)
+  //    → gundukan TERBUKA di sisi depan. Sekarang dinding depan dinaikkan
+  //    sampai bibir (YT) → 4 lempengan hitam MENGELILINGI gundukan penuh.
+  p.push({ faces: _stBox(-_ST_XW, _ST_XW, _ST_YBOT + 0.066, YT, ZW, ZW + 0.07), tag: 'black' });
+  p.push({ faces: _stBox(-_ST_XW, _ST_XW, _ST_YBOT + 0.066, YT, -ZW - 0.07, -ZW), tag: 'black' });
+  p.push({ faces: _stBox(_ST_XW - 0.07, _ST_XW, _ST_YBOT + 0.06, YT, -ZW, ZW), tag: 'black' });
+  p.push({ faces: _stBox(-_ST_XW, -_ST_XW + 0.07, _ST_YBOT + 0.06, YT, -ZW, ZW), tag: 'black' });
+  // KAKI trapesium emas (menyempit ke alas)
+  for (const sx of [-1, 1]) {
+    const x0 = sx < 0 ? -_ST_XR1 : _ST_XR0, x1 = sx < 0 ? -_ST_XR0 : _ST_XR1;
+    const b0 = [x0 + 0.02, _ST_YBOT, -0.34], b1 = [x1 - 0.02, _ST_YBOT, -0.34], b2 = [x1 - 0.02, _ST_YBOT, 0.34], b3 = [x0 + 0.02, _ST_YBOT, 0.34];
+    // ⚠️ FIX bab 155c (terukur): z atas 0.62 → 0.545. Dinding hitam z max 0.51,
+    //    jadi tonjolan kini hanya 0.035 (dulu 0.11 → vision: "trim emas mencuat").
+    // ⚠️ FIX bab 161b (keluhan user "ketimpang arah kiri dan kanan"): dulu z belakang
+    //    HARDCODE -0.512 tapi z depan ZW+0.075=0.515 → TIMPANG 0.003 di sumbu Z
+    //    (dari samping tampak miring tidak seimbang). Sekarang simetris ±ZW75.
+    const ZW75 = ZW + 0.075;
+    const t0 = [x0, -0.30, -ZW75], t1 = [x1, -0.30, -ZW75], t2 = [x1, -0.30, ZW75], t3 = [x0, -0.30, ZW75];
+    // ⚠️ FIX bab 150: 6 face KAKI WAJIB digabung jadi SATU part.
+    //    Kalau per-face, _fixWindingByVolume TIDAK bisa bekerja (butuh
+    //    volume) → wajah menghadap ke DALAM → BOLONG (side=FrontSide).
+    p.push({ faces: [
+      [b0, b1, b2, b3], [t0, t1, t2, t3], [b3, b2, t2, t3],
+      [b0, b1, t1, t0], [b0, b3, t3, t0], [b1, b2, t2, t1],
+    ], tag: 'gold' });
+  }
+  // PAPAN DEPAN emas (terlihat saat terbuka)
+  // ⚠️ FIX bab 155 (analisis user #6.3: "papan emas depan terlalu tebal") →
+  //    papan TUNGGAL tipis. FIX #6.1: tambah BLOK EMAS bertepi miring di
+  //    sudut depan kiri & kanan (pengunci dinding depan).
+    // ⚠️ FIX bab 155c: papan depan z 0.12 → 0.545 (menempel di kaki, tidak mencuat).
+  p.push({ faces: _stBox(-0.72, 0.72, _ST_YBOT + 0.16, _ST_YBOT + 0.30, ZW, ZW + 0.075), tag: 'gold' });
+  for (const sx of [-1, 1]) {
+    const xa = sx < 0 ? -0.755 : 0.685, xb = sx < 0 ? -0.685 : 0.755;
+    p.push({ faces: [
+      [[xa, _ST_YBOT + 0.10, ZW], [xb, _ST_YBOT + 0.16, ZW], [xb, _ST_YBOT + 0.36, ZW + 0.07], [xa, _ST_YBOT + 0.30, ZW + 0.07]],
+      [[xa, _ST_YBOT + 0.10, ZW + 0.075], [xa, _ST_YBOT + 0.30, ZW + 0.075], [xb, _ST_YBOT + 0.36, ZW + 0.075], [xb, _ST_YBOT + 0.16, ZW + 0.075]],
+      [[xa, _ST_YBOT + 0.10, ZW + 0.07], [xa, _ST_YBOT + 0.30, ZW + 0.07], [xa, _ST_YBOT + 0.30, ZW + 0.075], [xa, _ST_YBOT + 0.10, ZW + 0.075]],
+      [[xb, _ST_YBOT + 0.16, ZW], [xb, _ST_YBOT + 0.16, ZW + 0.075], [xb, _ST_YBOT + 0.36, ZW + 0.075], [xb, _ST_YBOT + 0.36, ZW + 0.07]],
+      [[xa, _ST_YBOT + 0.10, ZW], [xb, _ST_YBOT + 0.16, ZW], [xb, _ST_YBOT + 0.16, ZW + 0.075], [xa, _ST_YBOT + 0.10, ZW + 0.075]],
+      [[xa, _ST_YBOT + 0.30, ZW + 0.07], [xa, _ST_YBOT + 0.30, ZW + 0.075], [xb, _ST_YBOT + 0.36, ZW + 0.075], [xb, _ST_YBOT + 0.36, ZW + 0.07]],
+    ], tag: 'gold' });
+  }
+  // ISI: gundukan emas 3 tingkat + 3 permata
+  // ⚠️ FIX bab 154 (keluhan user "versi terbuka KURANG"): isi DULU tenggelam
+  //    (puncak y=-0.205 vs bibir y=+0.200 → selisih -0.405). Di gambar user
+  //    isi MELUAP MENONJOL keluar bibir. Sekarang dinaikkan _ST_YISI=+0.10.
+  // ⚠️ FIX bab 155 (analisis user #7.1/#7.2: "gundukan piramida bertangga,
+  //    hanya di tengah, lantai kiri-kanan kosong") → sekarang DUA GUNDUKAN
+  //    MEMBULAT yang MENGISI SELURUH LANTAI (x ±0.72, z ±0.42), masing-masing
+  //    4 tingkat menyempit (≈ kubah), bukan piramida bertangga tajam.
+  // ⚠️ FIX bab 155d (terukur): permata DULU TERBENAM di dalam gundukan
+  //    (gy 0.16 vs puncak dome 0.28) → hanya merah yang terlihat.
+  //    Sekarang: alas tebal + 2 dome TERPISAH + permata DUDUK di puncak.
+  // ── FIX bab 163 (permintaan user, verbatim: "gundukan itu skala aja ke bawah
+  //    jadi nutup ruang kosong jadi tidak ada ruang kosong di peti itu ...
+  //    bukan diturunkan tapi DIPANJANG ke bawah jadi di bawah tidak ada
+  //    ruang kosong") ──
+  //    TERUKUR dulu: lantai dalam peti y=-0.565, gundukan mulai y=-0.080
+  //    → ADA RUANG KOSONG 0.485 di bawah gundukan. Sekarang gundukan
+  //    DIPANJANG ke bawah sampai menyentuh lantai (-0.565) sehingga
+  //    ruang dalam peti TERISI PENUH (tidak terlihat bolong dari samping).
+  const YFLOOR = _ST_YBOT + 0.06;        // = -0.565 (dasar dalam peti)
+  const YI = _ST_YBOT + 0.545;           // = -0.08 (puncak alas isi)
+  // alas isi: lempeng tebal menutupi SELURUH lantai & DIPANJANG ke bawah
+  // ⚠️ FIX bab 165 (keluhan user: "masih kurang kebawain dikit 4 lempengannya"):
+  //    TERUKUR: gundukan z ±0.42, dinding depan/belakang mulai z ±0.440
+  //    → CELAH 0.020 di DEPAN & BELAKANG (kurang membungkus).
+  //    Sekarang gundukan z ±0.455 → MELEWATI lempengan (overlap 0.015)
+  //    sehingga 4 lempengan benar-benar MEMBUNGKUS penuh.
+  p.push({ faces: _stBox(-0.72, 0.72, YFLOOR, YI + 0.16, -0.455, 0.455), tag: 'pile' });
+  // DUA gundukan TERPISAH (celah di tengah) → jelas 2 puncak, bukan 1 loaf
+  // ⚠️ FIX bab 155e: puncak KIRI 0.24 & KANAN 0.20 terlalu mirip → terlihat 1 loaf.
+  //    Sekarang celah tengah LEBIH lebar + tinggi berbeda jelas (0.28 vs 0.16).
+  p.push(_stCheek(YI + 0.16, 0.28, 0.455, -0.72, -0.10, 12, 'pile'));  // KIRI (tinggi)
+  p.push(_stCheek(YI + 0.16, 0.16, 0.44,  0.12,  0.72, 12, 'pile'));  // KANAN (rendah)
+  // PERMATA duduk SETENGAH TERBENAM di puncak (analisis #8.1: cyan kiri,
+  //   hijau kanan, merah tengah-depan) — kecil (0.19) & tidak menembus drum
+  //   (puncak tertinggi 0.41 < kulit drum 0.60 di z≈0).
+  const G = 0.19;
+  p.push({ faces: _stBox(-0.48, -0.48 + G, 0.22, 0.22 + G, -0.10, -0.10 + G), tag: 'cyan' });
+  p.push({ faces: _stBox(0.29, 0.29 + G, 0.18, 0.18 + G, -0.10, -0.10 + G), tag: 'green' });
+  p.push({ faces: _stBox(-0.095, -0.095 + G, 0.08, 0.08 + G, 0.12, 0.12 + G), tag: 'red' });
+  return p;
+}
+
+/** TUTUP (bergerak): drum hitam + rok + 2 lengkungan emas + pita krem + bintang. */
+export function getSmallTreasureLidParts() {
+  const p = [];
+  // DRUM hitam ½-silinder yang MENUTUP PENUH
+  // ⚠️ FIX bab 150: SEMUA face DRUM digabung jadi SATU part (volume tertutup)
+  //    supaya _fixWindingByVolume bisa membetulkan arah normal. Kalau tiap
+  //    strip jadi part sendiri → winding salah → drum BOLONG.
+  // ⚠️ bab 156 (analisis user #1): dulu DRUM PADAT (setengah cakram penuh) →
+  //    saat dibuka tampak gumpalan hitam padat & "papan datar". Sekarang
+  //    BAND (cincin separuh) = permukaan LUAR + DALAM + tutup ujung →
+  //    BERONGA & cekung di dalam, persis original (dikonfirmasi 2 gambar).
+  // ⚠️ FIX bab 161 (keluhan user "dari pinggir tekstur DOUBLE ketimpang kiri-kanan"):
+  //    Dulu BAND, PIPI, dan RING semuanya bermuka di bidang x=±1.000 yang SAMA
+  //    → 3 lapis berdempet = Z-FIGHTING = tampak tekstur double. Sekarang dibuat
+  //    BERTINGKAT: RING emas = paling LUAR (±1.000, penentu lebar 4 studs),
+  //    BAND di dalamnya (±0.98), PIPI paling dalam (±0.97). Tidak ada yang sekbidang.
+  p.push(_stRing(_ST_YSEAM, _ST_RDY, _ST_RD, _ST_YSEAM + 0.045, _ST_RD - 0.12, -0.98, 0.98, _ST_SEG, 'black')); // ⚠️ FIX bab 157b: y1 HARUS > y0 (dulu y0=0.505 > y1=0.475 = CINCIN TERBALIK → sisi tutup tampak "terowongan bolong" (dilaporkan vision 2026-10-11))
+  // ⚠️ FIX bab 157c: PIPI PENUTUP UJUNG (end-cap) — vision 2× lapor "sisi tutup
+  //    BOLONG seperti terowongan" (2026-10-11). Cangkang band hanya punya muka
+  //    luar+dalam; ujung x=±XR1 masih TERBUKA. Tambah 2 pelat datar penutup ujung
+  //    (setengah-lingkaran) supaya sisi peti PADAT & tidak tembus ke rongga.
+  //    Pakai _stCheek (prism ½-elips SOLID) yang sudah terbukti mengisi penuh
+  //    bukaan lengkungan. Dua pipi: dalam (x 0.72..1.00) & luar tipis.
+  p.push(_stCheek(_ST_YSEAM, _ST_RD - 0.02, _ST_RD - 0.05, -0.97, 0.97, _ST_SEG, 'black'));  // bab 161: ±0.97 (di dalam band)
+  // RING emas (ikut tutup)
+  p.push(_stRing(-0.30, 0.925, _ST_RO, 0.74, _ST_RI, -_ST_XR1, -0.72, _ST_SEG));
+  p.push(_stRing(-0.30, 0.925, _ST_RO, 0.74, _ST_RI, 0.72, _ST_XR1, _ST_SEG));
+  // ⚠️ bab 156: PIPI dihapus — cangkang band kini membentang penuh x ±1.00
+  //    sehingga bukaan lengkungan emas terisi oleh muka ujung cangkang.
+  // ⚠️ FIX bab 155b: ROK BELAKANG JUGA DIHAPUS. Saat tutup terangkat, rok yang
+  //    turun ke bawah (y −0.625..0.075) ikut terangkat & tampak sebagai "papan
+  //    hitam menjorok janggal" (dikonfirmasi vision 2×). Tutup = drum+ring+pita+
+  //    bintang SAJA. Drum (mulai y=_ST_YSEAM) sudah cukup menutup dari atas.
+  // PITA krem menerus + ujung melebar (bentuk tulang)
+  // ⚠️ FIX (bab 149): batang & ujung TIDAK BOLEH menembus keluar melewati
+  //    rangka emas (ring luar x = ±1.00). Ujung dibatasi ±0.955.
+  // ⚠️ FIX bab 155 (analisis user #3): pita DILEBARKAN (y ±0.055→±0.085) dan
+  //    bentuk TULANG (tengah sempit, ujung melebar MIRING — bukan blok).
+  //    Blok emas kecil di ujung pita DIHAPUS (tidak ada di original).
+  for (const sz of [1, -1]) {
+    const z0 = sz > 0 ? 0.505 : -0.575, z1 = sz > 0 ? 0.575 : -0.505;
+    // batang tengah (sempit)
+    p.push({ faces: _stBox(-0.60, 0.60, _ST_YSEAM - 0.055, _ST_YSEAM + 0.075, z0, z1), tag: 'bone' });
+    // ujung melebar (trapesium miring)
+    for (const sx of [-1, 1]) {
+      const xa = sx < 0 ? -0.93 : 0.60, xb = sx < 0 ? -0.60 : 0.93;
+      p.push({ faces: [
+        [[xa, _ST_YSEAM - 0.085, z0], [xb, _ST_YSEAM - 0.055, z0], [xb, _ST_YSEAM + 0.075, z0], [xa, _ST_YSEAM + 0.105, z0]],
+        [[xa, _ST_YSEAM - 0.085, z1], [xa, _ST_YSEAM + 0.105, z1], [xb, _ST_YSEAM + 0.075, z1], [xb, _ST_YSEAM - 0.055, z1]],
+        [[xa, _ST_YSEAM - 0.085, z0], [xa, _ST_YSEAM + 0.105, z0], [xa, _ST_YSEAM + 0.105, z1], [xa, _ST_YSEAM - 0.085, z1]],
+        [[xb, _ST_YSEAM - 0.055, z0], [xb, _ST_YSEAM - 0.055, z1], [xb, _ST_YSEAM + 0.075, z1], [xb, _ST_YSEAM + 0.075, z0]],
+        [[xa, _ST_YSEAM - 0.085, z0], [xb, _ST_YSEAM - 0.055, z0], [xb, _ST_YSEAM - 0.055, z1], [xa, _ST_YSEAM - 0.085, z1]],
+        [[xa, _ST_YSEAM + 0.105, z0], [xa, _ST_YSEAM + 0.105, z1], [xb, _ST_YSEAM + 0.075, z1], [xb, _ST_YSEAM + 0.075, z0]],
+      ], tag: 'bone' });
+    }
+  }
+  // BINTANG ungu (X + pusat piramida) di muka DEPAN
+  // ⚠️ FIX (bab 149): bintang MENEMPEL di muka pita (z 0.655..0.735), tidak mengambang.
+  // ⚠️ FIX bab 155 (analisis user #4.1: "bintang terlalu kecil"): a 0.34→0.46,
+  //    n 0.10→0.135; z 0.655..0.735 → 0.655..0.79 (pusat piramida lebih menonjol).
+  _stStarX(0.50, 0.15, 0.575, 0.68, ['ungu1', 'ungu2', 'ungu3', 'ungu4']).forEach((q) => p.push(q));
+  return p;
+}
+
+/** Volume bertanda (signed) sebuah geometri — untuk cek arah winding.
+ *  ⚠️ bab 151 (terukur): part TUTUP ber-volume NEGATIF → wajah menghadap ke
+ *     DALAM → dgn material FrontSide (jalur app) TAK TERLIHAT = "bolong dari
+ *     samping". _fixWindingByVolume TIDAK cukup utk drum/ring/pipi. */
+function _stSignedVolume(g) {
+  const P = g.getAttribute('position');
+  let V = 0;
+  for (let i = 0; i < P.count; i += 3) {
+    const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i);
+    const bx = P.getX(i + 1), by = P.getY(i + 1), bz = P.getZ(i + 1);
+    const cx = P.getX(i + 2), cy = P.getY(i + 2), cz = P.getZ(i + 2);
+    V += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+  }
+  return V;
+}
+/** Balik arah winding (tukar 2 titik terakhir tiap segitiga) — untuk part
+ *  yg sudah dikonfirmasi punya volume negatif. */
+function _stFlipWinding(g) {
+  const P = g.getAttribute('position');
+  for (let i = 0; i < P.count; i += 3) {
+    const x = P.getX(i + 1), y = P.getY(i + 1), z = P.getZ(i + 1);
+    P.setXYZ(i + 1, P.getX(i + 2), P.getY(i + 2), P.getZ(i + 2));
+    P.setXYZ(i + 2, x, y, z);
+  }
+  P.needsUpdate = true;
+  g.computeVertexNormals();
+}
+/** Paksa SEMUA segitiga menghadap KELUAR dari centroid part.
+ *  ⚠️ FIX bab 157 — jangan pakai _fixWindingByVolume utk part terbuka
+ *  (drum/ring/pipi/pita/gundukan): metode volume-thd-titik-asal salah arah
+ *  kalau part tidak melingkupi (0,0,0). Metode centroid selalu benar.
+ *  Return: {tri, dibalik} utk verifikasi terukur. */
+function _stFaceOutward(g) {
+  const P = g.getAttribute('position');
+  const n = P.count;
+  let cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < n; i++) { cx += P.getX(i); cy += P.getY(i); cz += P.getZ(i); }
+  cx /= n; cy /= n; cz /= n;
+  let dibalik = 0;
+  for (let i = 0; i < n; i += 3) {
+    const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i);
+    const bx = P.getX(i + 1), by = P.getY(i + 1), bz = P.getZ(i + 1);
+    const dx = P.getX(i + 2), dy = P.getY(i + 2), dz = P.getZ(i + 2);
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = dx - ax, vy = dy - ay, vz = dz - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const mx = (ax + bx + dx) / 3 - cx, my = (ay + by + dy) / 3 - cy, mz = (az + bz + dz) / 3 - cz;
+    if (nx * mx + ny * my + nz * mz < 0) {
+      // tukar titik 1 & 2 → balik arah
+      P.setXYZ(i + 1, dx, dy, dz);
+      P.setXYZ(i + 2, bx, by, bz);
+      dibalik++;
+    }
+  }
+  P.needsUpdate = true;
+  g.computeVertexNormals();
+  return { tri: n / 3, dibalik };
+}
+
+/** Rakit daftar part → BufferGeometry (posisi + uv + warna vertex). */
+function _stBuild(THREE, parts) {
+  const pos = [], uv = [], col = [];
+  parts.forEach((pt) => {
+    const g = _buildFaces(THREE, pt.faces, { autoFix: false });
+    // ══ FIX bab 157 (2026-10-11, keluhan user "bug tekstur hilang masih ada
+    //    buanyak"): AKAR BOLONG = WINDING.
+    //    _fixWindingByVolume mengukur arah normal thd TITIK ASAL (0,0,0).
+    //    Untuk part yang TIDAK melingkupi titik asal (drum tutup, ring,
+    //    pita, pipi, gundukan) metode itu SALAH → hasilnya terbalik →
+    //    dengan FrontSide (jalur app) wajah menghadap DALAM = TIDAK TERLIHAT
+    //    = "tekstur hilang / bolong".
+    //    TERUKUR di app: BADAN 27% segitiga menghadap dalam, TUTUP 54%!
+    //    FIX: pakai arah normal thd CENTROID part sendiri (selalu benar
+    //    untuk bentuk cembung maupun terbuka), JANGAN pakai _fixWindingByVolume.
+    _stFaceOutward(g);
+    const P = g.getAttribute('position'), U = g.getAttribute('uv');
+    const c = ST_WARNA[pt.tag] || ST_WARNA.black;
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      uv.push(U.getX(i), U.getY(i));
+      col.push(c[0], c[1], c[2], c[3]);
+    }
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  out.computeVertexNormals();
+  return out;
+}
+
+/** Geometri BADAN Small Treasure (statis). */
+/**
+ * ⚠️ ALIAS untuk NSI WORKBENCH (bab 160, 2026-10-11).
+ * AKAR: workbench mencari getter dengan konversi otomatis
+ *   'get' + ITEM[0].toUpperCase() + ITEM.slice(1) + 'Parts'
+ *   → untuk 'small_treasure' jadi `getSmall_treasureParts` (SALAH, ada underscore).
+ * Karena itu daftar part kosong → workbench hanya menampilkan preview 3D.
+ * SOLUSI: sediakan alias ini DI SINI (blockShapes.js) supaya file workbench
+ * TIDAK PERLU disentuh sama sekali (workbench = teritori user).
+ */
+export function getSmall_treasureParts() {
+  return [...getSmallTreasureBodyParts(), ...getSmallTreasureLidParts()];
+}
+
+export function makeSmallTreasureBodyGeometry(THREE) {
+  return _stBuild(THREE, getSmallTreasureBodyParts());
+}
+/** Geometri TUTUP Small Treasure (bergerak saat dibuka). */
+export function makeSmallTreasureLidGeometry(THREE) {
+  return _stBuild(THREE, getSmallTreasureLidParts());
+}
+/** Geometri utama (yang dipakai jalur NSI generik = BADAN). */
+export function makeSmallTreasureGeometry(THREE) {
+  return makeSmallTreasureBodyGeometry(THREE);
+}
+/**
+ * Geometri PENUH = BADAN + TUTUP (satu geometri gabungan).
+ * ⚠️ Dipakai HANYA untuk PREVIEW/GHOST + IKON — bukan untuk block yang
+ *    ditaruh (block asli butuh tutup sebagai ANAK agar bisa beranimasi).
+ *    AKAR BUG (2026-10-11, laporan user "ghost cuma kelihatan bawahnya"):
+ *    ghost memakai makeNsiGeometry() yang mengembalikan BADAN saja →
+ *    tutup tidak muncul di preview.
+ */
+export function makeSmallTreasureFullGeometry(THREE) {
+  return _stBuild(THREE, [...getSmallTreasureBodyParts(), ...getSmallTreasureLidParts()]);
+}
+
 export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WEDGE_SLUG) return makeWedgeGeometry(THREE);
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
@@ -2264,6 +2682,12 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WINDOW_SLUG) return makeWindowGeometry(THREE);
   if (slug === NSI_DOOR_SLUG) return makeDoorGeometry(THREE);
   if (slug === NSI_HATCH_SLUG) return makeHatchGeometry(THREE);
+  // ⚠️ FIX bab 160 (2026-10-11, laporan user "loh itu tutupnya mana woi"):
+  // Workbench & preview memakai makeNsiGeometry() → WAJIB geometri PENUH
+  // (badan + tutup). Dulu = BADAN saja → tutup tidak pernah muncul.
+  // ⚠️ Block yang DITARUH di app TIDAK memakai jalur ini (lihat place path)
+  //    karena di sana tutup ditambahkan sebagai ANAK mesh (animasi buka).
+  if (slug === NSI_ST_SLUG) return makeSmallTreasureFullGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
