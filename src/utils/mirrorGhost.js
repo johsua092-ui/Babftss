@@ -191,6 +191,44 @@ export function bakeMirrorIntoGeometry(mesh, axis) {
         }
       } catch (e) { /* jangan gagalkan jalur mirror */ }
     });
+
+    // ── FIX bab 176 (2026-10-11): TUTUP TREASURE "KEBALIK" saat dibuka lalu
+    //    di-mirror/clone. AKAR TERUKUR (uji176d): konjugasi quaternion anak di
+    //    atas mengubah Rx(θ) → Rx(−θ), TAPI `userData.st.angle` (yang ditulis
+    //    ulang oleh loop animasi tiap frame) masih bernilai +θ → tutup berputar
+    //    ke arah TERBALIK (terukur beda 123.9°). Treasure TERTUTUP (θ=0) aman —
+    //    itulah sebabnya bug hanya muncul saat treasure sudah DIBUKA.
+    //    SOLUSI: selaraskan st.angle/st.target ke sudut EFEKTIF tutup (turunan
+    //    dari quaternion hasil bake). Otomatis benar utk semua sumbu & tanda.
+    //    Ditempatkan DI SINI supaya SEMUA jalur (klik/auto/switch/multi) ikut.
+    try {
+      const _ud = mesh.userData;
+      if (_ud && _ud.st) {
+        let _lid = null;
+        for (let _k = 0; _k < mesh.children.length; _k++) {
+          const _c = mesh.children[_k];
+          if (_c && _c.userData && _c.userData.isStLid) { _lid = _c; break; }
+        }
+        if (_lid) {
+          const _e = new THREE.Euler().setFromQuaternion(_lid.quaternion, 'XYZ');
+          _ud.st.angle = _e.x;
+          _ud.st.target = _e.x;
+          _ud.st.applied = undefined;   // paksa loop menulis ulang
+          _lid.rotation.x = _e.x;       // konsisten dgn geometri hasil bake
+          // ── FIX bab 177 (2026-10-11, laporan user): "buka lagi → tutup TEMBUS
+          //    ke dalam badan". AKAR TERUKUR (uji177b): sudut BUKA peti hasil
+          //    mirror BERLAWANAN TANDA (+2.06). Handler klik memakai `st.openAngle`;
+          //    di sini kita cerminkan openAngle dgn KONJUGASI YANG SAMA (eksak,
+          //    benar utk sumbu apa pun & tanda apa pun) supaya klik-buka berikutnya
+          //    memakai sudut yang benar.
+          if (typeof _ud.st.openAngle !== 'number') _ud.st.openAngle = _ud.st.angle || 0;
+          const _qOpen = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(1, 0, 0), _ud.st.openAngle);
+          mirrorQuaternionAxis(_qOpen, _qOpen, axis);
+          _ud.st.openAngle = new THREE.Euler().setFromQuaternion(_qOpen, 'XYZ').x;
+        }
+      }
+    } catch (e) { /* jangan gagalkan jalur mirror */ }
   } catch (e) { /* jangan gagalkan jalur mirror */ }
   return mesh;
 }

@@ -14978,8 +14978,19 @@ Now you can apply Displacement for detailed effect.`);
           // ── NSI SMALL TREASURE: klik → TUTUP TERANGKAT (engsel belakang) ──
           if (_d && _d.userData && (_d.userData.isSmallTreasure || _d.userData.isMediumTreasure)) {
             const _sd = _d.userData.st || (_d.userData.st = { angle: 0, target: 0 });
-            const _openNow = Math.abs(_sd.target) > 1e-6;
-            _sd.target = _openNow ? 0 : MT_OPEN_ANGLE;   // sudut sama utk kedua peti
+            // ── FIX bab 177 (2026-10-11, laporan user): "buka lagi → tutup TEMBUS
+            //    ke dalam badan". AKAR TERUKUR (uji177b): peti hasil MIRROR punya
+            //    tutup yang sudah dicerminkan → sudut bukanya BERLAWANAN TANDA
+            //    (+2.06, bukan −2.06). `bakeMirrorIntoGeometry` sudah menyelaraskan
+            //    `st.angle`, tapi handler klik DULU menimpanya dgn konstanta
+            //    MT_OPEN_ANGLE → tutup jatuh menembus badan (1440/1440 vertex
+            //    menyimpang, maks 1.312).
+            //    SOLUSI: simpan TANDA sudut buka per-peti (`st.openAngle`), di-set
+            //    sekali saat tutup dibuat/di-bake; handler klik memakainya. Peti
+            //    biasa (tak dicermin) tetap −2.06 → perilaku lama UTUH.
+            if (typeof _sd.openAngle !== 'number') _sd.openAngle = MT_OPEN_ANGLE;
+            const _openNow = Math.abs(_sd.target) > 1e-6;   // ← FIX bab 177b: baris ini SEMPAT HILANG
+            _sd.target = _openNow ? 0 : _sd.openAngle;
             return;   // klik pada peti hanya untuk buka/tutup
           }
           if (_d && _d.userData && _d.userData.isDoor) {
@@ -15118,7 +15129,7 @@ Now you can apply Displacement for detailed effect.`);
               block.add(lid);
               if (blockDef.slug === 'medium_treasure') block.userData.isMediumTreasure = true;
               else block.userData.isSmallTreasure = true;
-              block.userData.st = { angle: 0, target: 0 };
+              block.userData.st = { angle: 0, target: 0, openAngle: MT_OPEN_ANGLE };
             } catch (e) {}
           }
           block.position.set(posX, posY, posZ);
@@ -16667,6 +16678,8 @@ Now you can apply Displacement for detailed effect.`);
           if (_med) dstUD.isMediumTreasure = true; else dstUD.isSmallTreasure = true;
           const s = srcUD.st || { angle: 0, target: 0 };
           dstUD.st = { angle: s.angle || 0, target: s.target || 0, applied: s.applied };
+          // FIX bab 177: bawa TANDA sudut buka (peti hasil mirror = +2.06).
+          dstUD.st.openAngle = (typeof s.openAngle === 'number') ? s.openAngle : MT_OPEN_ANGLE;
         }
       };
       // ── FIX bab 164: helper deferred untuk jalur ghost otomatis
@@ -16739,6 +16752,9 @@ Now you can apply Displacement for detailed effect.`);
           // NSI HATCH: sama — sudut bukaan ikut tersimpan
           hatchAngle: (b.userData && b.userData.hatch) ? b.userData.hatch.angle : null,
           stAngle: (b.userData && b.userData.st) ? b.userData.st.angle : null,
+          // FIX bab 177: simpan TANDA sudut buka (peti hasil mirror = +2.06)
+          stOpenAngle: (b.userData && b.userData.st && typeof b.userData.st.openAngle === 'number')
+            ? b.userData.st.openAngle : null,
           // bab 169: tandai jenis peti supaya restore tahu geometri tutup mana
           isMediumTreasure: !!(b.userData && b.userData.isMediumTreasure),
         };
@@ -16854,7 +16870,9 @@ Now you can apply Displacement for detailed effect.`);
           const _med = (s.blockSlug === 'medium_treasure' || s.isMediumTreasure === true);
           if (_med) block.userData.isMediumTreasure = true; else block.userData.isSmallTreasure = true;
           const _stA = (typeof s.stAngle === 'number') ? s.stAngle : 0;
-          block.userData.st = { angle: _stA, target: _stA };
+          // FIX bab 177: pulihkan TANDA sudut buka (peti hasil mirror = +2.06)
+          const _stOA = (typeof s.stOpenAngle === 'number') ? s.stOpenAngle : MT_OPEN_ANGLE;
+          block.userData.st = { angle: _stA, target: _stA, openAngle: _stOA };
           try {
             let _hasLid = false;
             for (let _k = 0; _k < block.children.length; _k++) {
