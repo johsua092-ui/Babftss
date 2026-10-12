@@ -248,10 +248,25 @@ export const ST_OPEN_ANGLE = -2.06;               // ≈118° (bab 155: original
 export const NSI_MT_SLUG = 'medium_treasure';
 export const NSI_MT_NAME = 'Medium Treasure';
 export const NSI_MT_SIZE = [2, 2, 1.5];           // 4 x 4 x 3 studs
+// ── NSI LEVEL 2 #11: BIG TREASURE (peti BERSAYAP) — bab 178 ──
+//    Rangka 100% IDENTIK Small Treasure. Pembeda HANYA: 2 SAYAP PUTIH
+//    (menempel di TUTUP → ikut terangkat) + emblem X MERAH di pita depan
+//    (menggantikan bintang ungu).
+//    Dimensi: panjang 10.5 studs (= 5.25 block, termasuk bentang sayap)
+//             lebar 3 studs (= 1.5 block) · tinggi 3.7 studs (= 1.85 block)
+export const NSI_BT_SLUG = 'big_treasure';
+export const NSI_BT_NAME = 'Big Treasure';
+export const NSI_BT_SIZE = [5.25, 1.85, 1.5];     // 10.5 x 3.7 x 3 studs
 export const MT_YOFF = -0.375;                    // geser badan+tutup → bbox terpusat
 export const MT_HINGE_Y = ST_HINGE_Y + MT_YOFF;   // engsel (lokal Medium)
 export const MT_HINGE_Z = ST_HINGE_Z;             // tepi BELAKANG
 export const MT_OPEN_ANGLE = ST_OPEN_ANGLE;       // ≈118°
+// ⚠️ bab 178 (Big Treasure): geser supaya bbox (bawah peti .. puncak sayap)
+//    TERPUSAT di origin. Tinggi total 3.7 studs: peti 2.5 + sayap naik 1.2.
+export const BT_YOFF = -0.3001;   // bab 178f: puncak sayap dinaikkan 0.052 -> geser pusat
+export const BT_HINGE_Y = ST_HINGE_Y + BT_YOFF;   // engsel (lokal Big)
+export const BT_HINGE_Z = ST_HINGE_Z;
+export const BT_OPEN_ANGLE = ST_OPEN_ANGLE;       // ≈118°
 
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
@@ -272,6 +287,7 @@ NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
 NSI_SIZES[NSI_ST_SLUG] = NSI_ST_SIZE.slice();
 // Medium Treasure: 4 x 4 x 3 studs (bab 169).
 NSI_SIZES[NSI_MT_SLUG] = NSI_MT_SIZE.slice();
+NSI_SIZES[NSI_BT_SLUG] = NSI_BT_SIZE.slice();
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -281,7 +297,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -2399,6 +2415,14 @@ export const ST_WARNA = {
   cyan:  [0.05, 2.45, 3.30, 1.0],
   red:   [2.45, 0.10, 0.10, 1.0],
   green: [0.06, 2.20, 0.10, 1.0],
+  // ⚠️ bab 178 (Big Treasure): SAYAP PUTIH (terukur sRGB 255,255,255 → linear 1.0)
+  //    + X MERAH (terukur sRGB 171,3,3 → linear 0.407).
+  wing:  [1.62, 1.62, 1.62, 1.0],
+  // Claude p10: kecerahan per-lapisan supaya tepi helai terbaca
+  wingFront: [1.62, 1.62, 1.62, 1.0],   // paling terang
+  wingMid:   [1.44, 1.44, 1.44, 1.0],
+  wingBack:  [1.28, 1.28, 1.28, 1.0],   // ~8% lebih gelap
+  xred:  [2.60, 0.070, 0.085, 1.0],   // bab 178c: merah lebih TERANG (Claude: masih maroon)
 };
 const _ST_XW = 0.76;   // ujung kotak dalam
 
@@ -2898,6 +2922,274 @@ export function makeMediumTreasureFullGeometry(THREE) {
  * SOLUSI: sediakan alias ini DI SINI (blockShapes.js) supaya file workbench
  * TIDAK PERLU disentuh sama sekali (workbench = teritori user).
  */
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #11: BIG TREASURE (peti BERSAYAP) — bab 178 ──
+// Rangka 100% IDENTIK Small Treasure. Pembeda HANYA:
+//   (a) 2 SAYAP PUTIH menempel di TUTUP (ikut terangkat saat dibuka),
+//   (b) emblem X MERAH di muka pita depan (menggantikan bintang ungu).
+// ⚠️ KONFIRMASI USER (2026-10-12): "sayapnya ikut nempel di tutup petinya,
+//    jadi ketika dibuka ya ikut terangkat ikut gerak dia si sayapnya itu".
+// ⚠️ Semua part digabung per-bentuk supaya _btOutward (volume bertanda) bisa
+//    membetulkan winding — JANGAN pakai metode centroid (pelajaran bab 170d).
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Paksa winding part BENAR lewat VOLUME BERTANDA (sama dgn _mtOutward). */
+function _btOutward(faces) {
+  let V = 0;
+  for (const f of faces) {
+    for (let i = 1; i < f.length - 1; i++) {
+      const a = f[0], b = f[i], c = f[i + 1];
+      V += (a[0] * (b[1] * c[2] - b[2] * c[1])
+          - a[1] * (b[0] * c[2] - b[2] * c[0])
+          + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+    }
+  }
+  if (V >= 0) return faces;
+  return faces.map((f) => f.slice().reverse());
+}
+
+/** Geser part sejauh dy (sama seperti _mtShiftY, dipisah agar jelas). */
+function _btShiftY(parts, dy) {
+  return parts.map((pt) => ({
+    tag: pt.tag,
+    faces: pt.faces.map((f) => f.map((v) => [v[0], v[1] + dy, v[2]])),
+  }));
+}
+
+/** Triangulasi FAN dari CENTROID — dijamin watertight untuk poligon star-shaped
+ *  (setiap titik "terlihat" dari centroid). Ear-clipping GAGAL untuk outline
+ *  bergerigi (menghasilkan 49 tepi terbuka = BOLONG), jadi pakai fan ini. */
+function _btTriFan(poly) {
+  let cx = 0, cy = 0;
+  for (const p of poly) { cx += p[0]; cy += p[1]; }
+  cx /= poly.length; cy /= poly.length;
+  const C = [cx, cy];
+  const tri = [];
+  for (let i = 0; i < poly.length; i++) {
+    tri.push([C, poly[i], poly[(i + 1) % poly.length]]);
+  }
+  return tri;
+}
+
+/**
+ * BULU 3D MELENGKUNG — tabung memipih sepanjang kurva Bezier kuadratik.
+ * Menyempit ke ujung (wBase→wTip) & menipis (thick) → kesan bulu sayap asli.
+ */
+function _btFeather3D(p0, p1, ctrl, wBase, wTip, thick, zc, nSeg, tipFrac) {
+  const TF = (typeof tipFrac === 'number') ? tipFrac : 0.28;
+  const ts = 1 - TF;
+  const wMid = wBase + (wTip - wBase) * 0.55;
+  const rings = [];
+  for (let s = 0; s <= nSeg; s++) {
+    const t = s / nSeg;
+    const x = (1-t)*(1-t)*p0[0] + 2*(1-t)*t*ctrl[0] + t*t*p1[0];
+    const y = (1-t)*(1-t)*p0[1] + 2*(1-t)*t*ctrl[1] + t*t*p1[1];
+    let w;
+    if (t <= ts) w = wBase + (wMid - wBase) * (t / ts);
+    else { const u = (t - ts) / TF; w = wMid * (1 - u) + 0.030 * u; }
+    const th = thick * (1 - 0.72*t);
+    const dx = 2*(1-t)*(ctrl[0]-p0[0]) + 2*t*(p1[0]-ctrl[0]);
+    const dy = 2*(1-t)*(ctrl[1]-p0[1]) + 2*t*(p1[1]-ctrl[1]);
+    const L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L, ny = dx / L;
+    rings.push([
+      [x + nx*w, y + ny*w, zc + th],
+      [x - nx*w, y - ny*w, zc + th],
+      [x - nx*w, y - ny*w, zc - th],
+      [x + nx*w, y + ny*w, zc - th],
+    ]);
+  }
+  const f = [];
+  for (let s = 0; s < nSeg; s++) {
+    for (let k = 0; k < 4; k++) {
+      f.push([rings[s][k], rings[s][(k+1)%4], rings[s+1][(k+1)%4], rings[s+1][k]]);
+    }
+  }
+  f.push([rings[0][0], rings[0][3], rings[0][2], rings[0][1]]);
+  const tip = rings[nSeg];
+  const ddx = p1[0]-p0[0], ddy = p1[1]-p0[1], dl = Math.hypot(ddx,ddy) || 1;
+  const tcx = (tip[0][0]+tip[1][0]+tip[2][0]+tip[3][0])/4;
+  const tcy = (tip[0][1]+tip[1][1]+tip[2][1]+tip[3][1])/4;
+  const tcz = (tip[0][2]+tip[1][2]+tip[2][2]+tip[3][2])/4;
+  const EXT = 0.045;
+  const TX = [tcx + (ddx/dl)*EXT, tcy + (ddy/dl)*EXT, tcz];
+  for (let k = 0; k < 4; k++) f.push([tip[k], tip[(k+1)%4], TX]);
+  return f;
+}
+
+/** Prisma dari poligon 2D (extrude z: zc−T .. zc+T) — untuk massa sayap. */
+function _btPrism(poly, zc, T, seg) {
+  const tri = _btTriFan(poly);
+  const f = [];
+  // penampang membulat: tepi DEPAN (depan peti, z+) lebih tebal daripada tepi belakang
+  const Tf = (seg === undefined) ? T : T * 1.00;
+  const Tb = (seg === undefined) ? T : T * 0.55;
+  for (const [a, b, c] of tri) {
+    f.push([[a[0],a[1],zc+Tf],[b[0],b[1],zc+Tf],[c[0],c[1],zc+Tf]]);
+    f.push([[a[0],a[1],zc-Tb],[c[0],c[1],zc-Tb],[b[0],b[1],zc-Tb]]);
+  }
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i+1)%poly.length];
+    if (Math.hypot(a[0]-b[0], a[1]-b[1]) < 1e-9) continue;
+    f.push([[a[0],a[1],zc+Tf],[b[0],b[1],zc+Tf],[b[0],b[1],zc-Tb],[a[0],a[1],zc-Tb]]);
+  }
+  return f;
+}
+
+/** Massa sayap (bagian atas padat) — dari leading edge ke pangkal bulu. */
+function _btWingMass() {
+  // bab 178h (saran Claude, TERVERIFIKASI): profil massa 0.50 pangkal -> 0.40 tengah
+  //   -> 0.28 di 80% -> 0 ujung (bukan monoton habis sebelum ujung).
+  //   Massa berhenti sedikit SEBELUM X1 supaya BULU TERLUAR membentuk ujung sayap.
+  const X0 = 1.00, XM = 2.540;                  // massa berhenti di 2.540 (bulu sampai 2.625)
+  const top = (t) => 0.653 + 0.544 * Math.pow(t, 1.35);
+  const dep = (t) => t <= 0.5 ? (0.50 - 0.20 * (t / 0.5))
+                  : t <= 0.8 ? (0.40 - 0.12 * ((t - 0.5) / 0.3))
+                  : (0.02 + 0.26 * (1 - (t - 0.8) / 0.2));
+  const poly = [];
+  const N = 14;
+  for (let k = 0; k <= N; k++) { const t = k/N; poly.push([X0 + (XM-X0)*t, top(t)]); }
+  for (let k = N; k >= 0; k--) { const t = k/N; poly.push([X0 + (XM-X0)*t, top(t) - dep(t)]); }
+  return poly;
+}
+
+/** Part SAYAP (satu sisi): MASSA berprofil + 12 BULU PANJANG bertumpuk.
+ *  bab 178h: massa 3 potong dgn KETEBALAN z menurun (0.25 -> 0.06);
+ *  bulu panjang 0.25-0.45, bulu TERLUAR melewati ujung massa (membentuk tip). */
+function _btWingFaces(sign) {
+  const X0 = 1.00, XM = 2.540, X1 = 2.577;
+  const top = (t) => 0.653 + 0.544 * Math.pow(t, 1.35);
+  const dep = (t) => t <= 0.5 ? (0.50 - 0.20 * (t / 0.5))
+                  : t <= 0.8 ? (0.40 - 0.12 * ((t - 0.5) / 0.3))
+                  : (0.02 + 0.26 * (1 - (t - 0.8) / 0.2));
+  const faces = [];
+  const layers = [[], [], []];   // Claude p10: 3 lapisan (kecerahan beda)
+  // ── massa 3 potong: KETEBALAN z menurun 0.125 -> 0.030 (Claude: 0.25 -> 0.06 penuh)
+  for (let k = 0; k < 3; k++) {
+    const t0 = k/3, t1 = (k+1)/3, M = 5, sub = [];
+    for (let q = 0; q <= M; q++) { const t = t0+(t1-t0)*q/M; sub.push([X0+(XM-X0)*t, top(t)]); }
+    for (let q = M; q >= 0; q--) { const t = t0+(t1-t0)*q/M; sub.push([X0+(XM-X0)*t, top(t)-dep(t)]); }
+    const T = 0.200 - 0.025*k;            // bab 178i: 0.200/0.175/0.150 (Claude: pangkal ~0.40 total)
+    for (const f of _btPrism(sub, 0, T, k)) faces.push(f);   // k -> penampang membulat
+  }
+  // ── 12 bulu utama: panjang 0.25-0.45, keluar dari BAWAH tepi massa,
+  //    tumpang tindih ~50% (lebar besar), bulu TERLUAR melewati ujung massa
+  // ── BARISAN PRIMER TERATUR (Claude putaran 8): 9 helai lanset, jarak teratur,
+  //    SEMUA SEJAJAR (lean sama ~20°), panjang naik-turun HALUS (bukan gigi acak)
+  // Claude p9: helai WAJIB saling MENIMPA ~40% + offset kedalaman BERGANTIAN
+  const NB = 9;
+  const LEAN = 0.34;                                     // sejajar semua (~19°)
+  for (let i = 0; i < NB; i++) {
+    const frac = i / (NB - 1);
+    const t0 = 0.05 + 0.90 * frac;
+    const x0 = X0 + (XM - X0) * Math.min(1, t0);
+    const y0 = top(t0) - dep(t0) + 0.02;
+    const len = 0.35 + 0.07 * Math.sin(Math.PI * (0.25 + 1.35 * frac));
+    let x1 = x0 + 0.22;
+    // Claude p9: 2-3 helai TERLUAR memanjang MELEWATI ujung massa (ujung sayap)
+    if (frac >= 0.66) x1 = X1 - 0.004;
+    if (x1 - x0 < 0.05) x1 = x0 + 0.05;
+    const y1 = y0 - len * LEAN;
+    const cx = (x0+x1)/2, cy = y0 - len*0.55*LEAN;
+    // Claude p9: offset kedalaman BERGANTIAN 0.05-0.06 (bukan 3 lapis beraturan)
+    const zc = -0.115 + (i % 2 ? 0.058 : -0.048) + 0.012 * (i % 3);
+    const wBase = 0.180, wTip = 0.096;   // Claude p10: pola lapisan berulang tiap 3                    // Claude p9: 0.135 -> 0.18 (tumpang 40%)
+    const th = 0.120 - 0.030*frac;
+    const LAY = (i % 3 === 1) ? 2 : (i % 3 === 2 ? 1 : 0);   // Claude p10: pola berulang
+    for (const f of _btFeather3D([x0,y0],[x1,y1],[cx,cy], wBase, wTip, th, zc, 6, 0.30)) layers[LAY].push(f);
+  }
+  // ── 5 bulu penutup menimpa pangkal bulu utama (lapisan KEDUA nyata)
+  for (let i = 0; i < 5; i++) {
+    const t0 = 0.04 + 0.30 * (i/4);
+    const x0 = X0 + (XM-X0)*t0, y0 = top(t0) - dep(t0)*0.22;
+    const len = 0.18 + 0.07*i;
+    const zc = -0.150 + 0.070*(i%2);   // Claude p9: offset LEBIH DALAM -> lapisan terpisah
+    for (const f of _btFeather3D([x0,y0],[x0+0.075, y0-len],[x0+0.028,y0-len*0.55], 0.105, 0.046, 0.085, zc, 4, 0.30)) faces.push(f);
+  }
+  // ── Claude p9: tepi ATAS deretan 4-5 bulu penutup kecil MELENGKUNG
+  for (let i = 0; i < 6; i++) {
+    const frac = 0.08 + 0.66 * (i/5);
+    const x0 = X0 + (XM - X0) * frac;
+    const y0 = top(frac) - 0.004;
+    const len = (0.045 + 0.011*i) * 0.62;         // Claude p10: ~setengah tinggi
+    const zc = -0.058 + 0.048*(i%2);
+    // membulat: lebar besar, chevron pendek (0.42) -> tepi atas mulus, bukan gigi
+    for (const f of _btFeather3D([x0,y0],[x0+0.052, y0-len*0.5],[x0+0.022, y0-len*0.78], 0.062, 0.052, 0.048, zc, 4, 0.45)) faces.push(f);
+  }
+  if (sign < 0) {
+    const F = (f) => f.map((v) => [-v[0], v[1], v[2]]);
+    return { faces: faces.map(F), layers: layers.map((L) => L.map(F)) };
+  }
+  return { faces, layers };
+}
+
+function _btWingParts() {
+  const out = [];
+  const TAGS = ['wingFront', 'wingMid', 'wingBack'];
+  for (const sgn of [1, -1]) {
+    const r = _btWingFaces(sgn);
+    out.push({ faces: _btOutward(r.faces), tag: 'wingMid' });
+    for (let L = 0; L < 3; L++) {
+      if (r.layers[L].length) out.push({ faces: _btOutward(r.layers[L]), tag: TAGS[L] });
+    }
+  }
+  return out;
+}
+
+/** Part X MERAH — 2 batang bersilang 45° di muka pita depan tutup.
+ *  Terukur: lebar ≈0.86 block (44% lebar peti), tebal z nyata (menonjol). */
+function _btXParts() {
+  const p = [];
+  const yG = _ST_YSEAM - 0.105;     // Claude p9: turunkan lagi (masih mengintip di atas drum)
+  const z0 = 0.500, z1 = 0.615;     // menonjol dari muka pita (pita z 0.505..0.575)
+  const L = 0.517, W = 0.105;       // bab 178f: lebar total 1.414*(L+W)=0.88 block = 44% lebar peti
+                                    // (terukur: dulu 1.464 block = 73% — Claude benar)
+                                    // W/L = 0.203 -> lengan lebih gemuk (Claude: ~30% panjang)
+  for (const a of [Math.PI / 4, -Math.PI / 4]) {
+    const c = Math.cos(a), sn = Math.sin(a);
+    const rot = (x, y) => [x * c - y * sn, x * sn + y * c];
+    const cor = [[-L, -W], [L, -W], [L, W], [-L, W]].map((q) => rot(q[0], q[1]));
+    const P4 = (i, z) => [cor[i][0], yG + cor[i][1], z];
+    const F = [];
+    F.push([P4(0, z1), P4(1, z1), P4(2, z1), P4(3, z1)]);   // muka depan
+    F.push([P4(0, z0), P4(3, z0), P4(2, z0), P4(1, z0)]);   // muka belakang
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      F.push([P4(i, z0), P4(i, z1), P4(j, z1), P4(j, z0)]);
+    }
+    p.push({ faces: _btOutward(F), tag: 'xred' });
+  }
+  return p;
+}
+
+/** BADAN Big Treasure (rangka Small Treasure, digeser BT_YOFF). */
+export function getBigTreasureBodyParts() {
+  return _btShiftY(getSmallTreasureBodyParts(), BT_YOFF);
+}
+
+/** TUTUP Big Treasure: drum+ring+pita (IDENTIK Small) TANPA bintang,
+ *  lalu + SAYAP (ikut terangkat) + X MERAH. */
+export function getBigTreasureLidParts() {
+  const small = getSmallTreasureLidParts();
+  const tanpaBintang = small.slice(0, small.length - 16);
+  return [..._btShiftY(tanpaBintang, BT_YOFF), ..._btShiftY(_btWingParts(), BT_YOFF), ..._btShiftY(_btXParts(), BT_YOFF)];
+}
+
+/** Alias untuk NSI WORKBENCH (nama ber-underscore) — JANGAN sentuh workbench. */
+export function getBig_treasureParts() {
+  return [...getBigTreasureBodyParts(), ...getBigTreasureLidParts()];
+}
+
+export function makeBigTreasureBodyGeometry(THREE) {
+  return _stBuild(THREE, getBigTreasureBodyParts());
+}
+export function makeBigTreasureLidGeometry(THREE) {
+  return _stBuild(THREE, getBigTreasureLidParts());
+}
+export function makeBigTreasureFullGeometry(THREE) {
+  return _stBuild(THREE, [...getBigTreasureBodyParts(), ...getBigTreasureLidParts()]);
+}
+
 export function getSmall_treasureParts() {
   return [...getSmallTreasureBodyParts(), ...getSmallTreasureLidParts()];
 }
@@ -2944,6 +3236,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_ST_SLUG) return makeSmallTreasureFullGeometry(THREE);
   // ⚠️ bab 169: Medium Treasure — WAJIB PENUH (badan+tutup+mahkota).
   if (slug === NSI_MT_SLUG) return makeMediumTreasureFullGeometry(THREE);
+  // ⚠️ bab 178: Big Treasure — WAJIB PENUH (badan+tutup+sayap+X merah).
+  if (slug === NSI_BT_SLUG) return makeBigTreasureFullGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
