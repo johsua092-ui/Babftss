@@ -257,6 +257,13 @@ export const NSI_MT_SIZE = [2, 2, 1.5];           // 4 x 4 x 3 studs
 export const NSI_BT_SLUG = 'big_treasure';
 export const NSI_BT_NAME = 'Big Treasure';
 export const NSI_BT_SIZE = [5.25, 1.85, 1.5];     // 10.5 x 3.7 x 3 studs
+// ══ NSI LEVEL 2 #11: PINE TREE (bab 180) ══
+// Referensi: Roblox "Pine Tree - Build a boat" (asset 6574704298).
+// Ukuran MAKS user: 15 x 15 x 15 studs. Proporsi referensi H:W = 1.464
+//   (terukur dari thumbnail: bbox 166x243 px) → tinggi 7.5 block (15 studs),
+//   lebar 5.125 block (10.25 studs). Masih DI BAWAH batas maks.
+export const NSI_PT_SLUG = 'pine_tree';
+export const NSI_PT_SIZE = [5.45, 7.5, 4.93];     // 10.90 x 15.00 x 9.85 studs (FINAL bab 180s)
 export const MT_YOFF = -0.375;                    // geser badan+tutup → bbox terpusat
 export const MT_HINGE_Y = ST_HINGE_Y + MT_YOFF;   // engsel (lokal Medium)
 export const MT_HINGE_Z = ST_HINGE_Z;             // tepi BELAKANG
@@ -288,6 +295,7 @@ NSI_SIZES[NSI_ST_SLUG] = NSI_ST_SIZE.slice();
 // Medium Treasure: 4 x 4 x 3 studs (bab 169).
 NSI_SIZES[NSI_MT_SLUG] = NSI_MT_SIZE.slice();
 NSI_SIZES[NSI_BT_SLUG] = NSI_BT_SIZE.slice();
+NSI_SIZES[NSI_PT_SLUG] = NSI_PT_SIZE.slice();
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -297,7 +305,7 @@ export function getNsiSize(slug) {
 }
 
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -2421,7 +2429,22 @@ export const ST_WARNA = {
   // Claude p10: kecerahan per-lapisan supaya tepi helai terbaca
   wingFront: [1.62, 1.62, 1.62, 1.0],   // paling terang
   wingMid:   [1.44, 1.44, 1.44, 1.0],
-  wingBack:  [1.28, 1.28, 1.28, 1.0],   // ~8% lebih gelap
+  wingBack:  [1.28, 1.28, 1.28, 1.0],
+  // bab 180 (Pine Tree): hijau pinus gelap + batang cokelat tua kemerahan.
+  // (kalibrasi: referensi sRGB hijau ~(29,42,31) & cokelat ~(43,33,28) —
+  //  itu warna SUDAH TERBAYANG; base color dipilih lebih terang, diukur ulang)
+  // ⚠️ bab 180g — AKAR "pohon hitam" (TERUKUR): warna vertex DIKALIKAN tekstur.
+  //    Tekstur grass_block linear mean = (0.0064, 0.0738, 0.0151) SUDAH hijau gelap.
+  //    Kalau vertex color juga hijau (0.030,0.150,0.048) -> hasil 0.0002 = HITAM.
+  //    FIX: vertex color = PUTIH (1,1,1) supaya WARNA MURNI dari tekstur grass.
+  //    (bandingkan: legendary_chest linear 0.512 -> chest pakai vertex color kuat)
+  //    Terukur sesudah fix putih: render (3.4,26.7,9.0) vs referensi (32,59,35)
+  //    -> masih ~2.2x gelap; KALIBRASI kompensasi (texture linear x2.2 + R sedikit lebih).
+  //    Terukur objektif (PERCENTILE, bukan mean — mean terpengaruh bayangan):
+  //    p75 ref (33,65,36) vs render (11,39,20) -> butuh linear x(4.54,2.61,2.52).
+  //    R dibatasi 3.5 (materi >4 sering clamp). Hue R memang kurang di tekstur grass.
+  pineFoliage: [3.50, 2.61, 2.52, 1.0],
+  pineTrunk:   [1.0, 1.0, 1.0, 1.0],         // batang: cokelat dari ATLAS (bab 180i)
   xred:  [2.60, 0.070, 0.085, 1.0],   // bab 178c: merah lebih TERANG (Claude: masih maroon)
 };
 const _ST_XW = 0.76;   // ujung kotak dalam
@@ -2670,10 +2693,58 @@ function _stBuild(THREE, parts) {
     _stFaceOutward(g);
     const P = g.getAttribute('position'), U = g.getAttribute('uv');
     const c = ST_WARNA[pt.tag] || ST_WARNA.black;
-    for (let i = 0; i < P.count; i++) {
-      pos.push(P.getX(i), P.getY(i), P.getZ(i));
-      uv.push(U.getX(i), U.getY(i));
-      col.push(c[0], c[1], c[2], c[3]);
+    // bab 180i: pt.uv = wilayah UV di ATLAS (mis. batang cokelat di Pine Tree).
+    // Guard: kalau tidak ada -> perilaku LAMA (0..1) persis, jadi varian lain aman.
+    const uvr = pt.uv || [0, 0, 1, 1];
+    const u0 = uvr[0], v0 = uvr[1], du = uvr[2], dv = uvr[3];
+    // ══ bab 180k (2026-10-12): UV dari _buildFaces = POSISI+0.5 (bukan 0..1!)
+    //    → tekstur berulang tiap 1 block. Untuk item bertekstur ATLAS (Pine Tree)
+    //    itu membuat pita COKELAT atlas ikut muncul di setiap ubin = "belang oranye".
+    //    pt.uvTile=true → pakai PECAHAN UV supaya hanya wilayah atlas yg dipilih
+    //    yang tampil (daun hijau saja). Guard: default false = perilaku LAMA persis.
+    const tile = !!pt.uvTile;
+    const fr = (v) => { const f = v - Math.floor(v); return f; };
+    // ══ bab 180t: pt.uvBox = BOX MAPPING per-segitiga (saran Claude putaran 11):
+    //    planar UV meregang di bidang miring -> "serat berarah". Box mapping
+    //    memilih sumbu proyeksi dari komponen NORMAL TERBESAR tiap segitiga
+    //    -> texel density seragam, bintik isotropik. Guard: default false = LAMA.
+    const box = !!pt.uvBox;
+    const SCL = 1 / 0.98;   // A(opsional): 0.98 block (Claude: 0.95-1.0) -> bintik lebih terbaca
+    for (let i = 0; i < P.count; i += 3) {
+      // posisi
+      const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i);
+      const bx = P.getX(i + 1), by = P.getY(i + 1), bz = P.getZ(i + 1);
+      const cx = P.getX(i + 2), cy = P.getY(i + 2), cz = P.getZ(i + 2);
+      pos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+      if (box) {
+        // normal segitiga -> pilih sumbu proyeksi
+        const e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+        const e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+        const nx = Math.abs(e1y * e2z - e1z * e2y);
+        const ny = Math.abs(e1z * e2x - e1x * e2z);
+        const nz = Math.abs(e1x * e2y - e1y * e2x);
+        // B: SATU SUMBU PROYEKSI per part (bukan per segitiga) -> pola tidak
+        //    putus/meregang di sambungan segitiga (saran Claude putaran 13)
+        const tri = [[ax, ay, az], [bx, by, bz], [cx, cy, cz]];
+        const axis = (nx >= ny && nx >= nz) ? 'x' : (ny >= nz ? 'y' : 'z');
+        tri.forEach((v) => {
+          let pu, pv;
+          if (axis === 'x') { pu = v[2]; pv = v[1]; }
+          else if (axis === 'y') { pu = v[0]; pv = v[2]; }
+          else { pu = v[0]; pv = v[1]; }
+          // B: [0.06,0.94] -> jangan menyentuh pita batang (sliver krem hilang)
+          const fu = 0.08 + fr(pu * SCL) * 0.84;
+          const fv = 0.08 + fr(pv * SCL) * 0.84;
+          uv.push(u0 + fu * du, v0 + fv * dv);
+        });
+      } else {
+        for (let k = 0; k < 3; k++) {
+          const ux = tile ? fr(U.getX(i + k)) : U.getX(i + k);
+          const vy = tile ? fr(U.getY(i + k)) : U.getY(i + k);
+          uv.push(u0 + ux * du, v0 + vy * dv);
+        }
+      }
+      for (let k = 0; k < 3; k++) col.push(c[0], c[1], c[2], c[3]);
     }
   });
   const out = new THREE.BufferGeometry();
@@ -3217,6 +3288,177 @@ export function makeSmallTreasureFullGeometry(THREE) {
   return _stBuild(THREE, [...getSmallTreasureBodyParts(), ...getSmallTreasureLidParts()]);
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #11: PINE TREE (pohon pinus) — bab 180 ──
+// Referensi: Roblox "Pine Tree - Build a boat" (asset 6574704298).
+// Bentuk: 5 TINGKAT (tier) kerucut 8 SISI bertumpuk + batang pendek di bawah.
+// Tiap tier = kerucut (puncak di ATAS, rim lebar di bawah) dgn rim BERGERIGI
+// (vertex ganjil menjuntai turun) supaya tepi dahan terbaca seperti referensi.
+// Semua part digabung per-BENTUK supaya _stFaceOutward membetulkan winding.
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2: PINE TREE — GEOMETRI (bab 180)
+// ── Target: pohon pinus Roblox klasik, maks 15 x 15 x 15 studs.
+// ── Referensi: folder image\folder kerja (Screenshot 2026-10-12 1456xx).
+// ══ bab 180m (2026-10-12) — ROMBAK TOTAL sesuai arahan CLAUDE (4,5/10):
+//    Claude (verbatim inti): "Lobus berupa pelat tegak, bukan bilah miring…
+//      siluet menjadi tangga (ziggurat)… Ada pita vertikal gelap di tengah…
+//      Belum ada massa padat di antara lobus… Ubah lobus dari pelat tegak
+//      menjadi bilah miring dan putar tiap tingkat (30°)… sisi atas miring
+//      turun sekitar 25° dan sisi bawah miring naik ke batang… Isi inti dengan
+//      kerucut padat di bawah semua tingkat… radius ujung dari bawah ke atas
+//      kira-kira 1,0 / 0,8 / 0,62 / 0,45 / puncak."
+//    FIX: (1) tiap tingkat = BILAH MIRING (blade) dgn sisi atas turun ~25° &
+//         sisi bawah naik ke batang — bukan pelat tegak;
+//         (2) 6 lobus/tingkat, lekuk V = 50% radius, TEBAL pangkal 25% panjang;
+//         (3) tiap tingkat DIPUTAR 30° dari bawahnya (hilangkan pita gelap tengah);
+//         (4) INTI = kerucut padat penuh (isi celah antar-lobus, tidak menembus);
+//         (5) ujung tiap tingkat menggantung 15% melewati pangkal tingkat bawah;
+//         (6) radius ujung 1,00/0,80/0,62/0,45 lalu puncak.
+// ══════════════════════════════════════════════════════════════════════════
+// PINE TREE (NSI Level 2) — bab 180n: 4 TINGKAT BAJI + PUNCAK PIRAMIDA PADAT
+// Mengikuti arahan terukur Claude (putaran 2):
+//   1. Struktur 4 tingkat + 1 puncak piramida 4 sisi UTUH (bukan 6-8 lapis tipis)
+//      radius 1.0 / 0.85 / 0.68 / 0.50 × RMAX · puncak r=0.25×RMAX tinggi ~15%
+//   2. Lobus = BAJI (wedge) ujung TITIK (lebar 3%), pangkal lebar 90% radius,
+//      atas miring turun ~27°, bawah hampir datar, pangkal tebal -> ujung tajam
+//   3. SEMUA 6 lobus SAMA PANJANG (variasi 0) — hilangkan zigzag
+//   4. Ujung lobus TIDAK melewati radius tingkat (hilangkan "tongkat mencuat")
+//   5. Inti dikecilkan ke 53% radius tingkat + tepi bawah dinaikkan (bintang terlihat dari bawah)
+//   6. Batang PENDEK & GEMUK (terlihat 0.5 studs saja)
+// ══════════════════════════════════════════════════════════════════════════
+// PINE TREE (NSI Level 2) — bab 180o: LOBUS MENJUNTAI MENUTUPI INTI
+// Arahan terukur Claude putaran 3 (nilai 5.5 -> target 7-7.5):
+//  A. INTI JANGAN TERLIHAT: ujung lobus tingkat n turun melewati pangkal tingkat
+//     n+1 (drop 1.05 block = 35 derajat) · jarak antar tingkat 1.15 (15% total)
+//     · puncak pangkal masuk ke dalam tingkat teratas (leher polos hilang)
+//  B. BAJI 3 TITIK LEBAR: pangkal 0.80x rB -> tengah 0.45x -> ujung TITIK (0.02)
+//     · pangkal menjangkau lewat pusat supaya tidak ada celah ke inti
+//     · inti 0.5x rB (skirt) menutup V-notch
+//  C. UV planar (uvTile) + tekstur kontras std 10-12 & mean lebih terang
+// ══════════════════════════════════════════════════════════════════════════
+// PINE TREE (NSI Level 2) — bab 180p: arahan Claude putaran 4 (6.5 -> target 8-8.5)
+//  A. ROK & TAKIK: inti tingkat bawah jadi KERUCUT TERBALIK (atas 0.50rB, bawah 0.30rB,
+//     tepi bawah dinaikkan tepat di bidang bawah lobus, terekspos <= 0.15 stud)
+//     · pangkal lobus DIPERLEBAR ke 1.05x rB (tumpang tindih tetangga -> takik V hilang)
+//     · skirt inti dinaikkan ke 0.65x rB
+//  B. PUNCAK: tinggi dipangkas ke 17% total (dari 27%) · radius dasar 0.30x RMAX
+//     · ditambah TINGKAT KE-5 kecil (0.32x RMAX, 4 lobus pendek) menyatu dengan puncak
+//  C. SILUET: panjang lobus 0.90x rB (lebih gemuk) · tukik 40 derajat di bawah,
+//     30 derajat di atas · ujung lobus jatuh di GARIS KERUCUT LUAR (siluet menerus)
+//  D. TEKSTUR: UV planar semua lobus + ambient dinaikkan (bintik terbaca di sisi gelap)
+// ══════════════════════════════════════════════════════════════════════════
+// PINE TREE (NSI Level 2) — bab 180q: SATU MESH BINTANG PER TINGKAT
+// Arahan STRATEGIS Claude putaran 7 (nilai mandek 6-6.5 karena "lobus + pengisi +
+// inti" saling menembus). Ganti pendekatan:
+//   · tiap tingkat = SATU mesh bintang (8 titik: 4 panjang + 4 pendek 0.7x),
+//     diekstrusi jadi "bukit" — apex di tengah atas, ujung bintang di bawah luar
+//     -> TIDAK ADA interpenetrasi antar-part (akar retakan/tabung/titik cokelat)
+//   · tumpuk dengan TUMPANG TINDIH ~55% supaya bintang atas menutupi pangkal bawah
+//   · PUNCAK = bintang terkecil (0.30 x RMAX), tinggi ~17% total
+//   · batang pendek, top sejajar bidang bawah tingkat 1
+//   · UV planar (uvTile) satu skala
+// ══════════════════════════════════════════════════════════════════════════
+// PINE TREE (NSI Level 2) — bab 180r: BINTANG BERGERIGI (lidah + takik dalam)
+// Arahan Claude putaran 8 (teknis bersih tapi karakter bintang hilang):
+//   · 6 LIDAH panjang (r = rB) + 6 TAKIK dalam (r = 0.50 x rB, bukan 0.70)
+//   · ujung lidah TURUN 0.15-0.20 x tinggi tingkat di bawah bidang takik -> menukik
+//   · apex (pusat) NAIK 0.35-0.40 x tinggi tingkat -> permukaan atas miring ~30°
+//   · putar tiap tingkat 30° (setengah jarak antar-lidah)
+//   · tiap tingkat = SATU mesh (fan apex + fan alas) -> tanpa interpenetrasi
+//   · anggaran ~150-300 segitiga
+// ══════════════════════════════════════════════════════════════════════════
+// PINE TREE (NSI Level 2) — bab 180s: BINTANG BERGERIGI, apex sebagai acuan
+// Arahan Claude putaran 8: 6 lidah (r=rB) + 6 takik (r=0.50rB) · ujung lidah
+// TURUN 0.19 x tinggi tingkat · apex NAIK 0.40 x tinggi tingkat · putar 30°.
+// Struktur: SATU mesh per tingkat (fan apex + fan alas) -> tanpa interpenetrasi.
+// Tinggi diacu dari APEX (supaya tinggi total TEPAT 15 studs).
+// ══════════════════════════════════════════════════════════════════════════
+const PT_H = 7.5;                        // tinggi total (block) = 15 studs
+const PT_RMAX = 3.22;                    // radius lidah tingkat bawah (lebar 11 studs)
+const PT_TONGUE = 6;                     // 6 lidah per tingkat
+const PT_NOTCH = 0.60;                   // A: 0.60 (0.50 membuat lidah seperti bilah)
+const PT_DROOP = 0.14;                   // A: 0.14 (0.19 terlalu panjang/menukik)
+const PT_APEX = 0.45;                    // B: 0.45 -> permukaan atas lebih lebar (atap)
+const PT_TIER_RB = [0.94, 0.85, 0.68, 0.50];    // C: t1 -6% (bahu tidak menonjol)
+// A: panjang lidah & droop PER-TINGKAT (Claude putaran 10)
+const PT_TIER_LEN  = [0.90, 0.90, 0.95, 0.95];  // t1&2 -10%, t3&4 -5%
+const PT_TIER_DROOP= [0.10, 0.11, 0.12, 0.12];  // ujung makin landai ke bawah
+const PT_TIER_APEX = [2.30, 3.60, 4.90, 6.20];  // jarak 1.30; puncak visible 1.30 (17%)
+const PT_TIER_H = 2.60;                  // tinggi tingkat
+const PT_PEAK_APEX = 7.50;               // apex puncak = TINGGI TOTAL
+const PT_PEAK_H = 2.60;                  // C: tongue puncak 5.97 < apex t4 6.20 -> MENYATU
+const PT_PEAK_R = 0.32;                  // C: 0.32 (dari 0.30) -> pangkal lebih gemuk
+const PT_TILT = Math.PI / PT_TONGUE;     // 30 derajat
+
+/** SATU tingkat: bintang bergerigi (6 lidah + 6 takik), fan apex + fan alas. */
+function _ptStarTier(rB, yApex, H, rot, lenK, droopK) {
+  const N = PT_TONGUE;
+  const yNotch = yApex - PT_APEX * H;      // bidang takik
+  const yTongue = yNotch - droopK * H;     // A: droop per-tingkat
+  const P = [];
+  for (let i = 0; i < N; i++) {
+    const aT = rot + (i / N) * Math.PI * 2;
+    const aN = aT + Math.PI / N;
+    P.push([Math.cos(aN) * PT_NOTCH * rB, yNotch, Math.sin(aN) * PT_NOTCH * rB]); // takik
+    P.push([Math.cos(aT) * rB * lenK, yTongue, Math.sin(aT) * rB * lenK]);        // A: panjang per-tingkat
+  }
+  const A = [0, yApex, 0];
+  const B = [0, yTongue + 0.06 * H, 0];   // B: alas naik ke pusat -> massa tengah tertutup
+  const fs = [];
+  const M = P.length;
+  for (let k = 0; k < M; k++) {
+    const p0 = P[k], p1 = P[(k + 1) % M];
+    fs.push([A, p0, p1]);        // atap (fan dari apex) — miring ~30 derajat
+    fs.push([B, p1, p0]);        // alas (fan dari pusat bawah) -> bintang dari bawah
+  }
+  return fs;
+}
+
+/** Batang: silinder 8 sisi + tutup (top sejajar lidah tingkat 1). */
+function _ptTrunkFaces() {
+  const R = 0.42;
+  const TOP = PT_TIER_APEX[0] - PT_APEX * PT_TIER_H - PT_DROOP * PT_TIER_H;
+  const fs = _cylSide(R, 0, TOP, 8);
+  for (let i = 0; i < 8; i++) {
+    const a0 = (i / 8) * Math.PI * 2, a1 = ((i + 1) / 8) * Math.PI * 2;
+    const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+    fs.push([[0, TOP, 0], [c0 * R, TOP, s0 * R], [c1 * R, TOP, s1 * R]]);
+    fs.push([[0, 0, 0], [c1 * R, 0, s1 * R], [c0 * R, 0, s0 * R]]);
+  }
+  return fs;
+}
+
+/** Part-part Pine Tree, bbox TERPUSAT di origin (J100). */
+export function getPineTreeParts() {
+  const groups = [];
+  for (let i = 0; i < PT_TIER_RB.length; i++) {
+    groups.push(_ptStarTier(PT_TIER_RB[i] * PT_RMAX, PT_TIER_APEX[i], PT_TIER_H, i * PT_TILT, PT_TIER_LEN[i], PT_TIER_DROOP[i]));
+  }
+  groups.push(_ptStarTier(PT_PEAK_R * PT_RMAX, PT_PEAK_APEX, PT_PEAK_H, PT_TILT * 0.5, 1.0, 0.14));
+  const trunk = _ptTrunkFaces();
+
+  const _all = [];
+  groups.forEach((g) => g.forEach((f) => f.forEach((v) => _all.push(v))));
+  trunk.forEach((f) => f.forEach((v) => _all.push(v)));
+  let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
+  _all.forEach((v) => {
+    if (v[0] < mnx) mnx = v[0]; if (v[0] > mxx) mxx = v[0];
+    if (v[1] < mny) mny = v[1]; if (v[1] > mxy) mxy = v[1];
+    if (v[2] < mnz) mnz = v[2]; if (v[2] > mxz) mxz = v[2];
+  });
+  const ox = -(mnx + mxx) / 2, oy = -(mny + mxy) / 2, oz = -(mnz + mxz) / 2;
+  const sh = (faces) => faces.map((f) => f.map((v) => [v[0] + ox, v[1] + oy, v[2] + oz]));
+
+  const out = groups.map((g) => ({ tag: 'pineFoliage', faces: sh(g), uv: [0, 0.28, 1, 0.72], uvTile: true, uvBox: true }));
+  out.push({ tag: 'pineTrunk', faces: sh(trunk), uv: [0, 0, 1, 0.28], uvTile: true, uvBox: true });
+  return out;
+}
+
+export function makePineTreeGeometry(THREE) {
+  return _stBuild(THREE, getPineTreeParts());
+}
+
 export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WEDGE_SLUG) return makeWedgeGeometry(THREE);
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
@@ -3238,6 +3480,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_MT_SLUG) return makeMediumTreasureFullGeometry(THREE);
   // ⚠️ bab 178: Big Treasure — WAJIB PENUH (badan+tutup+sayap+X merah).
   if (slug === NSI_BT_SLUG) return makeBigTreasureFullGeometry(THREE);
+  // bab 180: Pine Tree
+  if (slug === NSI_PT_SLUG) return makePineTreeGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;

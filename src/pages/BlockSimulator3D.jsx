@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings, Zap, Sliders, User, X, Crosshair, Sun, Moon } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -23,6 +23,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { toast } from 'sonner';
 import ColorWheelPicker from '../components/ColorWheelPicker';
 import GizmoBlockInfoPanel from '../components/GizmoBlockInfoPanel';
@@ -64,7 +65,11 @@ import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 // ── BUILD AREA 'BABFT' (2026-09-23): map Build a Boat for Treasure (replika dari
 //    data terukur `Build a boat (1).rbxl`, read-only). Modul self-contained +
 //    idempoten + punya dispose(). Gagal -> return null, init scene TIDAK terganggu.
-import { buildBabftMap } from '../utils/babftMapBuilder.js';
+import { loadBabftMapGlb, babftSpawnFor, babftCameraFor, babftPlotBounds,
+         SPAWN_DEFAULT_TEAM, BABFT_TEAMS, BABFT_PLOT_CENTERS_STUDS, BABFT_MAP_SCALE, BABFT_STUDIO_TEAM_PLOTS } from '../utils/babftMapGlb.js';
+import { loadBabftMapMerged } from '../utils/babftMapObj.js';
+import { createHumanoidAvatar, updateAvatarPhysics } from '../utils/avatarController.js';
+import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
 // ── PHYSICS v2 (2026-09-20): MESIN RAPIER (rapier3d) menggantikan mesin AABB.
 // API SAMA PERSIS (initRapierPhysics/ensureBody/wakeBody/sleepBody/stepWorld)
 // sehingga integrasi app nyaris tidak berubah — hanya sumber import yang beda.
@@ -1417,6 +1422,26 @@ export default function BlockSimulator3D({ setPage }) {
   // Refs store half-extents for boundary checks (updated by switchBuildArea).
   // X symmetric (|x| ≤ halfX). Z asymmetric for even dimensions (Babft: -59 to +58 = 118 cells).
   const [activeBuildArea, setActiveBuildArea] = useState('default');
+  const [babftTeam, setBabftTeam] = useState(SPAWN_DEFAULT_TEAM);   // bab 181d: tim aktif (default White Team)
+  // Settings Modal States (Tombol Gear Abu-Abu)
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showBuildAreaBounds, setShowBuildAreaBounds] = useState(false);
+  const [showTeamCenterAxes, setShowTeamCenterAxes] = useState(false);
+  const showTeamCenterAxesRef = useRef(false);
+  useEffect(() => { showTeamCenterAxesRef.current = showTeamCenterAxes; }, [showTeamCenterAxes]);
+  const [showTeamGridArea, setShowTeamGridArea] = useState(false);
+  const showTeamGridAreaRef = useRef(false);
+  useEffect(() => { showTeamGridAreaRef.current = showTeamGridArea; }, [showTeamGridArea]);
+  const [babftTimeOfDay, setBabftTimeOfDay] = useState('day'); // 'day' | 'night' (default siang per permintaan user)
+  const babftTimeOfDayRef = useRef('day');
+  useEffect(() => { babftTimeOfDayRef.current = babftTimeOfDay; }, [babftTimeOfDay]);
+  const [isFreeBuild, setIsFreeBuild] = useState(false); // Default 100% OFF (centang tidak ada saat baru masuk)
+  const [cameraSpeedMult, setCameraSpeedMult] = useState(3.0); // Default 3.0x (permintaan user)
+  const [showTeamPicker, setShowTeamPicker] = useState(false);
+  const [isAvatarMode, setIsAvatarMode] = useState(false);
+  const [babftDevMode, setBabftDevMode] = useState(false);          // bab 182: DEV MODE MAP
+  const [babftDevSel, setBabftDevSel] = useState(null);             // info objek terpilih
+  const [babftDevTool, setBabftDevTool] = useState('translate');
   const gridSizeXRef = useRef(250);     // half-extent X (Default 250, Babft 74)
   const gridSizeZPosRef = useRef(250);  // positive Z extent (Default 250, Babft 58)
   const gridSizeZNegRef = useRef(250);  // negative Z extent (Default 250, Babft 59)
@@ -8324,7 +8349,7 @@ Now you can apply Displacement for detailed effect.`);
     }
   };
 
-  // Reset Camera handler — teleport kamera ke posisi awal (18, 14, 18) + target (0,0,0)
+  // Reset Camera handler — teleport kamera ke posisi awal + avatar ke tim aktif
   const handleResetCamera = () => {
     const s = threeRef.current;
     if (!s || !s.camera || !s.controls) {
@@ -8332,19 +8357,53 @@ Now you can apply Displacement for detailed effect.`);
       setShowResetCameraConfirm(false);
       return;
     }
-    // Smooth animation ke posisi awal
     const cam = s.camera;
     const ctrl = s.controls;
+
+    // ── JIKA AVATAR MODE AKTIF: TELEPORT AVATAR & POV KE PANGKALAN TIM AKTIF (permintaan user) ──
+    if (s.avatarMode && s.avatar) {
+      const activeTeam = s.babftTeam || SPAWN_DEFAULT_TEAM;
+      const isBabft = !!s.babftMap;
+      const sp = (isBabft && typeof babftSpawnFor === 'function')
+        ? babftSpawnFor(s.babftMap, activeTeam, THREE)
+        : new THREE.Vector3(0, 0, 0);
+      const groundY = isBabft ? 207.0 : 0.0;
+
+      s.avatar.position.set(sp.x, groundY, sp.z);
+      s.avatar.userData.prevPos.set(sp.x, groundY, sp.z);
+      s.avatar.userData.hasInitializedPos = true;
+      s.avatar.userData.isGrounded = true;
+      s.avatar.userData.vy = 0;
+      s.avatar.userData.zoomDist = 18.0;
+      s.avatar.visible = true;
+      s.avatar.rotation.y = 0;
+
+      cam.position.set(sp.x, groundY + 4.0, sp.z - 18.0);
+      ctrl.target.set(sp.x, groundY + 2.8, sp.z);
+      ctrl.update();
+
+      const teamName = BABFT_TEAMS.find(t => t.key === activeTeam)?.name || activeTeam;
+      toast.success(`Avatar & Kamera di-teleport ke pangkalan ${isBabft ? teamName : 'Default'}!`);
+      setShowResetCameraConfirm(false);
+      return;
+    }
+
+    // ── CAMERA MODE (BEBAS) ──
     const startPos = cam.position.clone();
     const startTarget = ctrl.target.clone();
-    const endPos = new THREE.Vector3(18, 14, 18);
-    const endTarget = new THREE.Vector3(0, 0, 0);
+    let endPos, endTarget;
+    if (s.babftMap && s.babftTeam) {
+      const c = babftCameraFor(s.babftMap, s.babftTeam, THREE);
+      endPos = c.pos; endTarget = c.target;
+    } else {
+      endPos = new THREE.Vector3(18, 14, 18);
+      endTarget = new THREE.Vector3(0, 0, 0);
+    }
     const duration = 600; // ms
     const startTime = performance.now();
     const animateReset = (now) => {
       const elapsed = now - startTime;
       const t = Math.min(elapsed / duration, 1);
-      // Ease out cubic
       const ease = 1 - Math.pow(1 - t, 3);
       cam.position.lerpVectors(startPos, endPos, ease);
       ctrl.target.lerpVectors(startTarget, endTarget, ease);
@@ -12832,7 +12891,7 @@ Now you can apply Displacement for detailed effect.`);
     camera.lookAt(0, 0, 0);
 
     // Renderer — WebGL with antialias + shadowMap
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -12938,7 +12997,37 @@ Now you can apply Displacement for detailed effect.`);
     // Phase 42, 2026-09-02: switchBuildArea — ganti dimensi grid + ground saat user
     // pilih area berbeda di Build Area gallery. Dispose old grid+ground, create new.
     // Boundary checks (4 sites) pakai gridSizeXRef/ZPosRef/ZNegRef via isOutsideBuildArea.
-    function isOutsideBuildArea(x, z) {
+    function isOutsideBuildArea(x, z, y) {
+      // ── FREE BUILD OVERPOWER MODE (perintah user): Bebas bangun di mana pun! ──
+      if (threeRef.current && threeRef.current.isFreeBuild) {
+        return false;
+      }
+      // ── Build DIBATASI ke petak tim aktif (default: White Team) ──
+      // User hanya dapat meletakkan & mengedit di timnya sendiri.
+      const st = threeRef.current;
+      if (st && st.babftDev && st.babftDev.enabled) {
+        const g = st.babftDev.getGridBounds()[st.babftTeam || 'white'];
+        if (g) {
+          const outXZ = x < g.x - g.halfX || x > g.x + g.halfX ||
+                        z < g.z - g.halfZ || z > g.z + g.halfZ;
+          if (y !== undefined && g.halfY !== undefined) {
+            return outXZ || y < g.y - g.halfY || y > g.y + g.halfY;
+          }
+          return outXZ;
+        }
+      }
+      if (st && st.babftMap) {
+        const activeTeam = st.babftTeam || 'white';
+        const p = babftPlotBounds(st.babftMap, activeTeam, THREE);
+        if (p) {
+          const outXZ = x < p.x - p.halfX || x > p.x + p.halfX ||
+                        z < p.z - p.halfZ || z > p.z + p.halfZ;
+          if (y !== undefined && p.halfY !== undefined) {
+            return outXZ || y < p.y - p.halfY || y > p.y + p.halfY;
+          }
+          return outXZ;
+        }
+      }
       return Math.abs(x) > gridSizeXRef.current ||
              z > gridSizeZPosRef.current ||
              z < -gridSizeZNegRef.current;
@@ -12959,77 +13048,699 @@ Now you can apply Displacement for detailed effect.`);
         gridSizeZNegRef.current = 250;
       }
 
-      // Dispose old grid
+      // ══ bab 181c (2026-10-12, perintah user: "grid lama hapus ya? ganti yang
+      //    barusan yang sistem baru benar benar pure baru") ══
+      // Grid + ground LAMA dibuang TOTAL. Tidak ada lagi GridHelper bawaan
+      // untuk area Babft — map GLB yang jadi acuan visual.
       const oldGrid = threeRef.current.grid;
       if (oldGrid) {
         scene.remove(oldGrid);
         oldGrid.geometry.dispose();
         oldGrid.material.dispose();
+        threeRef.current.grid = null;
       }
-      // Dispose old ground
       const oldGround = threeRef.current.ground;
       if (oldGround) {
         scene.remove(oldGround);
         oldGround.geometry.dispose();
         oldGround.material.dispose();
+        threeRef.current.ground = null;
       }
-
-      // Create new grid + ground with correct dimensions
-      const sizeX = gridSizeXRef.current * 2;  // 149 for Babft, 500 for Default
-      const sizeZ = gridSizeZPosRef.current + gridSizeZNegRef.current;  // 117 for Babft, 500 for Default
-      // GridHelper creates square grid (size×size divisions). Use sizeX for both.
-      // For non-square area, grid lines extend slightly beyond ground — acceptable visual.
-      const newGrid = new THREE.GridHelper(sizeX, sizeX, 0x64748b, 0x334155);
-      newGrid.material.opacity = 0.5;
-      newGrid.material.transparent = true;
-      scene.add(newGrid);
-      threeRef.current.grid = newGrid;
-
-      const newGroundGeo = new THREE.PlaneGeometry(sizeX, sizeZ);
-      const newGroundMat = new THREE.MeshStandardMaterial({
-        color: 0x0e1420,
-        transparent: true,
-        opacity: 0.5,
-        receiveShadow: true,
-        metalness: 0,
-        roughness: 1,
-      });
-      const newGround = new THREE.Mesh(newGroundGeo, newGroundMat);
-      newGround.rotation.x = -Math.PI / 2;
-      newGround.position.y = -0.01;
-      newGround.receiveShadow = true;
-      newGround.userData.isGround = true;
-      scene.add(newGround);
-      threeRef.current.ground = newGround;
+      setActiveBuildArea(area);
+      if (area !== 'babft') {
+        // ── PAKSA MATIKAN FITUR BABFT & ATMOSFER SAAT PINDAH KE MAP DEFAULT (perintah user) ──
+        setShowBuildAreaBounds(false);
+        setShowTeamCenterAxes(false);
+        setShowTeamGridArea(false);
+        setIsFreeBuild(false);
+        setBabftTimeOfDay('day');
+        if (container) {
+          container.style.backgroundImage = 'none';
+          container.style.backgroundColor = '#1b2536';
+        }
+        scene.background = new THREE.Color('#1b2536');
+        renderer.setClearColor(0x1b2536, 1);
+        ambientLight.color.setHex(0xffffff);
+        ambientLight.intensity = 0.45;
+        dirLight.color.setHex(0xffffff);
+        dirLight.intensity = 1.2;
+        dirLight.position.set(20, 35, 15);
+        if (threeRef.current) {
+          threeRef.current.isFreeBuild = false;
+          if (threeRef.current.babftDev && threeRef.current.babftDev.gridGroup) {
+            threeRef.current.babftDev.gridGroup.visible = false;
+          }
+          if (threeRef.current.teamCenterAxesGroup) {
+            threeRef.current.teamCenterAxesGroup.visible = false;
+          }
+          if (threeRef.current.teamGridGroup) {
+            threeRef.current.teamGridGroup.visible = false;
+          }
+        }
+        renderer.shadowMap.enabled = true;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        if (dirLight) dirLight.castShadow = true;
+        // Default: grid 500×500 seperti semula (TIDAK berubah).
+        const sizeX = gridSizeXRef.current * 2;
+        const sizeZ = gridSizeZPosRef.current + gridSizeZNegRef.current;
+        const newGrid = new THREE.GridHelper(sizeX, sizeX, 0x64748b, 0x334155);
+        newGrid.material.opacity = 0.5;
+        newGrid.material.transparent = true;
+        scene.add(newGrid);
+        threeRef.current.grid = newGrid;
+        const newGroundGeo = new THREE.PlaneGeometry(sizeX, sizeZ);
+        const newGroundMat = new THREE.MeshStandardMaterial({
+          color: 0x0e1420, transparent: true, opacity: 0.5,
+          receiveShadow: true, metalness: 0, roughness: 1,
+        });
+        const newGround = new THREE.Mesh(newGroundGeo, newGroundMat);
+        newGround.rotation.x = -Math.PI / 2;
+        newGround.position.y = -0.01;
+        newGround.receiveShadow = true;
+        newGround.userData.isGround = true;
+        scene.add(newGround);
+        threeRef.current.ground = newGround;
+      }
+      // area === 'babft' → TIDAK ada grid/ground lama; map GLB + grid petak
+      // (dibuat di dalam loadBabftMapGlb) yang menggantikan.
 
       // ── BUILD AREA 'BABFT' — pasang / lepas MAP (2026-09-23) ──
       // Replika map Build a Boat for Treasure dari data terukur (read-only).
       // Idempoten: selalu lepas map lama dulu, baru pasang yang baru.
       const mapLama = threeRef.current.babftMap;
       if (mapLama) {
-        try { mapLama.userData.dispose && mapLama.userData.dispose(); } catch (_) {}
+        try {
+          scene.remove(mapLama);
+          mapLama.traverse((o) => {
+            if (!o.isMesh) return;
+            if (o.geometry) o.geometry.dispose();
+            const ms = Array.isArray(o.material) ? o.material : [o.material];
+            ms.forEach((m) => m && m.dispose && m.dispose());
+          });
+        } catch (_) {}
         threeRef.current.babftMap = null;
+        threeRef.current.babftMapInfo = null;
+        if (threeRef.current.babftBuildProxy) {
+          scene.remove(threeRef.current.babftBuildProxy);
+          try {
+            threeRef.current.babftBuildProxy.geometry.dispose();
+            threeRef.current.babftBuildProxy.material.dispose();
+          } catch (_) {}
+          threeRef.current.babftBuildProxy = null;
+        }
       }
       if (area === 'babft') {
-        const peta = buildBabftMap(THREE);
-        if (peta) {
-          scene.add(peta);
-          threeRef.current.babftMap = peta;
-          // Atur kamera supaya seluruh map terlihat (bukti visual + UX).
-          camera.position.set(0, 260, 235);
-          controls.target.set(0, 0, 0);
+        // Map Babft 1 Bagian Utuh (0 Lag / 60 FPS) dari babft_obj.bin lengkap dengan Bases7 & Anti Z-Fighting
+        const token = (threeRef.current._mapToken = (threeRef.current._mapToken || 0) + 1);
+        toast.info('Memuat map Build A boat (1 Bagian Utuh / 0 Lag)...');
+        loadBabftMapMerged('/maps/babft_obj.bin')
+          .then((res) => {
+            if (threeRef.current._mapToken !== token) {
+              res.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+              return;
+            }
+            scene.add(res.group);
+            threeRef.current.babftMap = res.group;
+            threeRef.current.babftMapInfo = { size: [res.stats.sizeBlock.x, res.stats.sizeBlock.y, res.stats.sizeBlock.z] };
+
+            // ── PROXY RAYCAST LAHAN TIM (100% akurat & instant, 0.001ms) ──
+            if (!threeRef.current.babftBuildProxy) {
+              const proxyGeo = new THREE.PlaneGeometry(800, 900);
+              const proxyMat = new THREE.MeshBasicMaterial({
+                transparent: true,
+                opacity: 0.001,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+              });
+              const buildProxy = new THREE.Mesh(proxyGeo, proxyMat);
+              buildProxy.rotation.x = -Math.PI / 2;
+              buildProxy.position.set(0, 207.0, -2130);
+              buildProxy.userData.isBabftLawn = true;
+              scene.add(buildProxy);
+              threeRef.current.babftBuildProxy = buildProxy;
+            }
+
+            // Matikan shadowMap & set pixelRatio 1.0 saat di Babft (0 lag brutal / 60 FPS stabil mentok)
+            renderer.shadowMap.enabled = false;
+            renderer.setPixelRatio(1.0);
+            if (dirLight) dirLight.castShadow = false;
+
+            camera.far = 25000;
+            camera.updateProjectionMatrix();
+
+            // ── SPAWN di TIM PUTIH (100% pasti tim putih) ──
+            try {
+              const sp = babftSpawnFor(res.group, SPAWN_DEFAULT_TEAM, THREE);
+              threeRef.current.babftTeam = SPAWN_DEFAULT_TEAM;
+              threeRef.current.babftSpawn = sp;
+              threeRef.current.babftPlot = babftPlotBounds(res.group, SPAWN_DEFAULT_TEAM, THREE);
+              if (threeRef.current.updateTeamVisualHelpers) threeRef.current.updateTeamVisualHelpers(SPAWN_DEFAULT_TEAM);
+              setBabftTeam(SPAWN_DEFAULT_TEAM);
+
+              // ── JIKA AVATAR MODE AKTIF / ADA AVATAR → TELEPORT KE TIM PUTIH Y=207.0 (permintaan user) ──
+              if (threeRef.current.avatar) {
+                threeRef.current.avatar.position.set(sp.x, 207.0, sp.z);
+                threeRef.current.avatar.userData.prevPos.set(sp.x, 207.0, sp.z);
+                threeRef.current.avatar.userData.hasInitializedPos = true;
+                threeRef.current.avatar.userData.isGrounded = true;
+                threeRef.current.avatar.userData.vy = 0;
+                threeRef.current.avatar.userData.zoomDist = 18.0;
+                threeRef.current.avatar.visible = true;
+                threeRef.current.avatar.rotation.y = 0;
+                if (threeRef.current.avatar.userData.torso) {
+                  threeRef.current.avatar.userData.torso.material.color.setHex(0xffffff); // White team torso
+                }
+              }
+
+              if (threeRef.current.avatarMode && threeRef.current.avatar) {
+                camera.position.set(sp.x, 207.0 + 3.0, sp.z - 12.0);
+                controls.target.set(sp.x, 207.0 + 2.025, sp.z);
+                controls.update();
+              } else {
+                const c = babftCameraFor(res.group, SPAWN_DEFAULT_TEAM, THREE);
+                camera.position.copy(c.pos);
+                controls.target.copy(c.target);
+                controls.update();
+              }
+            } catch (e) { console.warn('spawn gagal:', e); }
+
+            // Area build tim dimulai dalam state OFF (tersembunyi bawaan)
+            if (threeRef.current.babftDev) {
+              threeRef.current.babftDev.setEnabled(false);
+            }
+
+            // Terapkan suasana langit Babft (default siang per permintaan user)
+            if (threeRef.current.setBabftTimeOfDay) {
+              threeRef.current.setBabftTimeOfDay(babftTimeOfDayRef.current || 'day');
+            }
+            toast.success('Map Build A boat dimuat (0 Lag / 60 FPS) — Tim Putih');
+          })
+          .catch((err) => {
+            console.error('[loadBabftMapMerged] gagal:', err);
+            toast.error('Map Build A boat gagal dimuat');
+          });
+      } else {
+        // Balik ke Default → kembalikan kamera & avatar ke tampilan awal.
+        if (threeRef.current.avatar) {
+          threeRef.current.avatar.position.set(0, 0, 0);
+          threeRef.current.avatar.userData.prevPos.set(0, 0, 0);
+          threeRef.current.avatar.userData.hasInitializedPos = true;
+          threeRef.current.avatar.userData.isGrounded = true;
+          threeRef.current.avatar.userData.vy = 0;
+          threeRef.current.avatar.userData.zoomDist = 18.0;
+          threeRef.current.avatar.visible = true;
+          threeRef.current.avatar.rotation.y = 0;
+        }
+        if (threeRef.current.avatarMode && threeRef.current.avatar) {
+          camera.position.set(0, 4.0, -18.0);
+          controls.target.set(0, 2.8, 0);
           controls.update();
         } else {
-          toast.error('Map Babft gagal dimuat (fitur lain tetap aman)');
+          camera.position.set(18, 14, 18);
+          controls.target.set(0, 0, 0);
+          controls.update();
         }
-      } else {
-        // Balik ke Default → kembalikan kamera ke tampilan awal.
-        camera.position.set(18, 14, 18);
-        controls.target.set(0, 0, 0);
-        controls.update();
       }
     }
     threeRef.current.switchBuildArea = switchBuildArea;
+
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // ── SUASANA LANGIT SIANG & MALAM BABFT (ALAMI, SEIMBANG & TIDAK DIBATASI) ──
+    // ═════════════════════════════════════════════════════════════════════════
+    let babftDaySkyTex = null;
+    function getBabftDaySkyTexture() {
+      if (babftDaySkyTex) return babftDaySkyTex;
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = 2048; cv.height = 1024;
+        const ctx = cv.getContext('2d');
+
+        // Gradasi langit biru cerah bersih yang lega dan indah
+        const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+        grad.addColorStop(0, '#0284c7'); // Biru laut langit atas
+        grad.addColorStop(0.35, '#38bdf8'); // Biru cerah bersih
+        grad.addColorStop(0.48, '#7dd3fc'); // Biru muda cerah
+        grad.addColorStop(0.53, '#bae6fd'); // Cakrawala lembut
+        grad.addColorStop(0.65, '#94a3b8'); // Bawah cakrawala
+        grad.addColorStop(1, '#475569'); // Nadir
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 2048, 1024);
+
+        // MATAHARI PERSIS KESEPAKATAN ACC USER: Lingkaran Bulat Putih Terang Bersih!
+        const sunX = 1536;
+        const sunY = 455;
+
+        // Pendaran putih lembut di tepi (tanpa aneh-aneh)
+        const sgrad = ctx.createRadialGradient(sunX, sunY, 30, sunX, sunY, 70);
+        sgrad.addColorStop(0, 'rgba(255, 255, 255, 0.80)');
+        sgrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.35)');
+        sgrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = sgrad;
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, 70, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Inti bulat putih terang bersih murni
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, 32, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // ── AWAN KUMULUS ALAMI DUNIA NYATA (PROPORSI WARAS & BERSIH) ──
+        // Dasar mendatar (flat base) dengan kubah bergelombang alami & tepi berbulu lembut.
+        // Warna putih bersih dengan sedikit bayangan biru lembut di dasar, TIDAK kotor abu-abu!
+        function drawNaturalCumulus(cx, cy, scale) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.scale(scale, scale);
+
+          const lobes = [
+            // Dasar bawah mendatar agak lebar
+            { x: -55, y: 12, rx: 32, ry: 16 },
+            { x: -20, y: 14, rx: 36, ry: 18 },
+            { x: 20, y: 14, rx: 34, ry: 18 },
+            { x: 55, y: 12, rx: 30, ry: 15 },
+            // Menara tengah bergelombang alami
+            { x: -35, y: -2, rx: 28, ry: 24 },
+            { x: -8, y: -14, rx: 34, ry: 30 },
+            { x: 22, y: -8, rx: 30, ry: 26 },
+            { x: 45, y: 2, rx: 25, ry: 20 },
+            // Puncak kubah atas
+            { x: -2, y: -22, rx: 24, ry: 22 }
+          ];
+
+          // Pass 1: Bayangan biru muda atmosferik lembut di bagian dasar
+          lobes.forEach(l => {
+            const g = ctx.createRadialGradient(l.x, l.y + 6, 0, l.x, l.y + 6, Math.max(l.rx, l.ry) * 1.15);
+            g.addColorStop(0, 'rgba(186, 230, 253, 0.45)');
+            g.addColorStop(0.7, 'rgba(203, 213, 225, 0.25)');
+            g.addColorStop(1, 'rgba(203, 213, 225, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(l.x, l.y + 6, l.rx * 1.15, l.ry * 1.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+          });
+
+          // Pass 2: Badan awan putih bersih bercahaya disinari matahari
+          lobes.forEach(l => {
+            const g = ctx.createRadialGradient(l.x - 3, l.y - 4, 0, l.x, l.y, Math.max(l.rx, l.ry));
+            g.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+            g.addColorStop(0.7, 'rgba(255, 255, 255, 0.90)');
+            g.addColorStop(0.92, 'rgba(255, 255, 255, 0.40)');
+            g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(l.x, l.y, l.rx, l.ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+          });
+
+          // Pass 3: Tepian berserat halus lembut (wispy feathered edges)
+          for (let i = -50; i <= 50; i += 18) {
+            const g = ctx.createRadialGradient(i, 8, 0, i, 8, 18);
+            g.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+            g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(i, 8, 18, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+
+        // ── SEBARKAN HANYA BEBERAPA AWAN CANTIK TERPISAH (LANGIT BIRU TETAP LEGA & LUAS) ──
+        drawNaturalCumulus(1350, 478, 1.35);
+        drawNaturalCumulus(1720, 476, 1.40);
+        drawNaturalCumulus(300, 480, 1.50);
+        drawNaturalCumulus(800, 482, 1.45);
+        drawNaturalCumulus(1050, 478, 1.30);
+
+        babftDaySkyTex = new THREE.CanvasTexture(cv);
+        babftDaySkyTex.mapping = THREE.EquirectangularReflectionMapping;
+        babftDaySkyTex.colorSpace = THREE.SRGBColorSpace;
+        babftDaySkyTex.needsUpdate = true;
+      } catch (_) {}
+      return babftDaySkyTex;
+    }
+
+    let babftNightSkyTex = null;
+    let _nasaMoonImg = null;
+    if (typeof Image !== 'undefined') {
+      const img = new Image();
+      img.src = '/blocks/tex/real_moon.jpg';
+      img.onload = () => {
+        _nasaMoonImg = img;
+        try {
+          if (babftTimeOfDayRef.current === 'night' && threeRef.current && threeRef.current.babftMap && scene) {
+            babftNightSkyTex = null;
+            const newTex = getBabftNightSkyTexture();
+            if (newTex) {
+              scene.background = newTex;
+              scene.background.needsUpdate = true;
+            }
+          }
+        } catch (_) {}
+      };
+    }
+
+    function getBabftNightSkyTexture() {
+      if (babftNightSkyTex) return babftNightSkyTex;
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = 2048; cv.height = 1024;
+        const ctx = cv.getContext('2d');
+
+        // Gradasi malam kosmik pekat
+        const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+        grad.addColorStop(0, '#04081e');
+        grad.addColorStop(0.35, '#0b163b');
+        grad.addColorStop(0.5, '#122359');
+        grad.addColorStop(0.55, '#1b3275');
+        grad.addColorStop(0.7, '#0f172a');
+        grad.addColorStop(1, '#020617');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 2048, 1024);
+
+        // Awan nebula kosmik ungu-kebiruan halus
+        for (let neb = 0; neb < 8; neb++) {
+          const nx = 200 + neb * 220;
+          const ny = 450 + (Math.sin(neb * 1.5) * 35);
+          const nrg = ctx.createRadialGradient(nx, ny, 25, nx, ny, 200);
+          nrg.addColorStop(0, neb % 2 === 0 ? 'rgba(168, 85, 247, 0.45)' : 'rgba(56, 189, 248, 0.42)');
+          nrg.addColorStop(0.55, neb % 2 === 0 ? 'rgba(129, 140, 248, 0.22)' : 'rgba(14, 165, 233, 0.18)');
+          nrg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = nrg;
+          ctx.beginPath();
+          ctx.arc(nx, ny, 200, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Ribuan bintang berkilau 360 derajat di langit malam
+        for (let s = 0; s < 3000; s++) {
+          const sx = Math.random() * 2048;
+          const sy = Math.random() * 520;
+          const r = Math.random();
+          const rad = r > 0.94 ? 3.5 : (r > 0.75 ? 2.4 : 1.5);
+          const col = r > 0.85 ? '#e0f2fe' : (r > 0.65 ? '#fef08a' : '#ffffff');
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (r > 0.95) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(sx - 7, sy); ctx.lineTo(sx + 7, sy);
+            ctx.moveTo(sx, sy - 7); ctx.lineTo(sx, sy + 7);
+            ctx.stroke();
+          }
+        }
+
+        // ── BULAN PURNAMA ASLI DENGAN FOTO TEKSTUR RESMI NASA (GALILEO PIA00405) ──
+        const moonX = 1536;
+        const moonY = 455;
+        const moonR = 36;
+
+        // 1. Pendaran Aura Cahaya Bulan Perak Kebiruan Sejuk (Ethereal Moonlight Halo)
+        const mgrad = ctx.createRadialGradient(moonX, moonY, moonR * 0.7, moonX, moonY, moonR * 2.3);
+        mgrad.addColorStop(0, 'rgba(241, 245, 249, 0.70)');
+        mgrad.addColorStop(0.35, 'rgba(219, 234, 254, 0.38)');
+        mgrad.addColorStop(0.7, 'rgba(147, 197, 253, 0.12)');
+        mgrad.addColorStop(1, 'rgba(147, 197, 253, 0)');
+        ctx.fillStyle = mgrad;
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonR * 2.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Kliping Piringan Bulan agar bentuk foto bulan bulat sempurna
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Piringan Dasar Bulan: Perak Mutiara Cerah Alami
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+
+        // Gambar Foto Asli Bulan NASA Beresolusi Tinggi (1986x1986) — Diputihkan & Dicerahkan (permintaan user)
+        if (_nasaMoonImg && _nasaMoonImg.complete && _nasaMoonImg.width) {
+          ctx.save();
+          ctx.filter = 'brightness(1.42) contrast(1.10)';
+          ctx.drawImage(_nasaMoonImg, 0, 0, _nasaMoonImg.width, _nasaMoonImg.height, moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+
+          // Lapisan kilau putih mutiara tipis agar tekstur tetap tajam namun tampak cerah berkilau
+          const pearlOverlay = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, moonR);
+          pearlOverlay.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+          pearlOverlay.addColorStop(0.75, 'rgba(248, 250, 252, 0.15)');
+          pearlOverlay.addColorStop(1, 'rgba(226, 232, 240, 0)');
+          ctx.fillStyle = pearlOverlay;
+          ctx.fillRect(moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+          ctx.restore();
+        } else {
+          // Fallback anggun: gradasi perak lembut dengan tekstur laut bulan samar
+          const baseMoonGrad = ctx.createRadialGradient(moonX - moonR * 0.25, moonY - moonR * 0.25, 2, moonX, moonY, moonR);
+          baseMoonGrad.addColorStop(0, '#ffffff');
+          baseMoonGrad.addColorStop(0.5, '#f8fafc');
+          baseMoonGrad.addColorStop(0.85, '#f1f5f9');
+          baseMoonGrad.addColorStop(1, '#e2e8f0');
+          ctx.fillStyle = baseMoonGrad;
+          ctx.fillRect(moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+        }
+
+        // 3. Kilauan Tepi Halus (Limb Glow)
+        const limbGrad = ctx.createRadialGradient(moonX - moonR * 0.35, moonY - moonR * 0.35, moonR * 0.5, moonX, moonY, moonR);
+        limbGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        limbGrad.addColorStop(0.85, 'rgba(255, 255, 255, 0.15)');
+        limbGrad.addColorStop(1, 'rgba(255, 255, 255, 0.55)');
+        ctx.fillStyle = limbGrad;
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        babftNightSkyTex = new THREE.CanvasTexture(cv);
+        babftNightSkyTex.mapping = THREE.EquirectangularReflectionMapping;
+        babftNightSkyTex.colorSpace = THREE.SRGBColorSpace;
+        babftNightSkyTex.needsUpdate = true;
+      } catch (_) {}
+      return babftNightSkyTex;
+    }
+
+    // Fungsi Pengatur Suasana Langit Siang & Malam Babft
+    function applyBabftTimeOfDay(mode) {
+      const isDay = mode === 'day';
+      babftTimeOfDayRef.current = mode;
+
+      if (container) {
+        container.style.backgroundImage = 'none';
+        container.style.backgroundColor = '#1b2536';
+      }
+
+      if (!threeRef.current.babftMap) {
+        scene.background = new THREE.Color('#1b2536');
+        renderer.setClearColor(0x1b2536, 1);
+        return;
+      }
+
+      if (isDay) {
+        // ── SIANG: Matahari bulat putih terang bersih + awan alami berjarak + bayangan balok nyata! ──
+        const dayTex = getBabftDaySkyTexture();
+        scene.background = dayTex || new THREE.Color('#38bdf8');
+        ambientLight.color.setHex(0xffffff);
+        ambientLight.intensity = 0.88;
+
+        dirLight.color.setHex(0xfffbeb); // Cahaya matahari hangat
+        dirLight.intensity = 1.6;
+        dirLight.position.set(100, 310, -2250);
+        dirLight.target.position.set(0, 207.0, -2372.3);
+        dirLight.target.updateMatrixWorld();
+
+        // Aktifkan bayangan nyata untuk balok buatan user
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -120;
+        dirLight.shadow.camera.right = 120;
+        dirLight.shadow.camera.top = 120;
+        dirLight.shadow.camera.bottom = -120;
+        dirLight.shadow.camera.near = 10;
+        dirLight.shadow.camera.far = 600;
+        dirLight.shadow.bias = -0.0003;
+
+        if (threeRef.current.babftMap) {
+          threeRef.current.babftMap.traverse(o => {
+            if (o.isMesh) {
+              o.receiveShadow = true;
+              if (o.material) o.material.needsUpdate = true;
+            }
+          });
+        }
+      } else {
+        // ── MALAM: Bulan purnama mutiara lembut di langit dunia + ribuan bintang & nebula ──
+        const nightTex = getBabftNightSkyTexture();
+        scene.background = nightTex || new THREE.Color('#070b19');
+        ambientLight.color.setHex(0x1e293b);
+        ambientLight.intensity = 0.42;
+
+        dirLight.color.setHex(0x93c5fd); // Cahaya bulan keperakan
+        dirLight.intensity = 0.55;
+        dirLight.position.set(-650, 1150, -1500);
+
+        renderer.shadowMap.enabled = false;
+        dirLight.castShadow = false;
+        if (threeRef.current.babftMap) {
+          threeRef.current.babftMap.traverse(o => {
+            if (o.isMesh) {
+              o.receiveShadow = false;
+              if (o.material) o.material.needsUpdate = true;
+            }
+          });
+        }
+      }
+    }
+    threeRef.current.applyBabftTimeOfDay = applyBabftTimeOfDay;
+    threeRef.current.setBabftTimeOfDay = applyBabftTimeOfDay;
+
+    // ── 3 SUMBU TITIK TENGAH TIM (RGB AXES SOLID 3D) & TEAM GRID AREA (permintaan user) ──
+    const teamCenterAxesGroup = new THREE.Group();
+    teamCenterAxesGroup.name = 'BabftTeamCenterAxes';
+    teamCenterAxesGroup.visible = false;
+    scene.add(teamCenterAxesGroup);
+    threeRef.current.teamCenterAxesGroup = teamCenterAxesGroup;
+
+    // Sumbu X: Silinder Merah (50% Transparan) membentang horizontal
+    const axisXMat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.5, depthWrite: false });
+    const axisXMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 36, 12), axisXMat);
+    axisXMesh.rotation.z = -Math.PI / 2;
+    teamCenterAxesGroup.add(axisXMesh);
+    const coneX1 = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.5, 12), axisXMat);
+    coneX1.rotation.z = -Math.PI / 2;
+    coneX1.position.x = 19.25;
+    teamCenterAxesGroup.add(coneX1);
+    const coneX2 = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.5, 12), axisXMat);
+    coneX2.rotation.z = Math.PI / 2;
+    coneX2.position.x = -19.25;
+    teamCenterAxesGroup.add(coneX2);
+
+    // Sumbu Y: Silinder Hijau (50% Transparan) menjulang ke atas langit
+    const axisYMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.5, depthWrite: false });
+    const axisYMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 28, 12), axisYMat);
+    axisYMesh.position.y = 14;
+    teamCenterAxesGroup.add(axisYMesh);
+    const coneY = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.5, 12), axisYMat);
+    coneY.position.y = 29.25;
+    teamCenterAxesGroup.add(coneY);
+
+    // Sumbu Z: Silinder Biru (50% Transparan) membentang depan-belakang (terlihat jelas dari sudut kamera)
+    const axisZMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.5, depthWrite: false });
+    const axisZMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 36, 12), axisZMat);
+    axisZMesh.rotation.x = Math.PI / 2;
+    teamCenterAxesGroup.add(axisZMesh);
+    const coneZ1 = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.5, 12), axisZMat);
+    coneZ1.rotation.x = Math.PI / 2;
+    coneZ1.position.z = 19.25;
+    teamCenterAxesGroup.add(coneZ1);
+    const coneZ2 = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.5, 12), axisZMat);
+    coneZ2.rotation.x = -Math.PI / 2;
+    coneZ2.position.z = -19.25;
+    teamCenterAxesGroup.add(coneZ2);
+
+    // Titik pusat origin (0,0,0) (50% Transparan, ukuran compact 0.4 agar balok duduk pas di atasnya dan terlihat jelas)
+    const centerDotGeo = new THREE.SphereGeometry(0.4, 12, 12);
+    const centerDotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
+    const centerDot = new THREE.Mesh(centerDotGeo, centerDotMat);
+    centerDot.position.y = 0.2;
+    teamCenterAxesGroup.add(centerDot);
+
+    // Team Grid Area (Lantai Kisi-kisi Kotak di atas dermaga tim aktif)
+    const teamGridGroup = new THREE.Group();
+    teamGridGroup.name = 'BabftTeamGridArea';
+    teamGridGroup.visible = false;
+    scene.add(teamGridGroup);
+    threeRef.current.teamGridGroup = teamGridGroup;
+
+    function updateTeamVisualHelpers(teamKey) {
+      if (!threeRef.current.babftMap) return;
+      const p = babftPlotBounds(threeRef.current.babftMap, teamKey, THREE);
+      if (!p) return;
+
+      // 1. Reposisi 3 Sumbu RGB ke titik tengah pangkalan tim saat ini
+      teamCenterAxesGroup.position.set(p.x, 207.0, p.z);
+
+      // 2. Bangun ulang grid lantai kotak-kotak sesuai dimensi tim saat ini
+      while (teamGridGroup.children.length > 0) {
+        const c = teamGridGroup.children.pop();
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+      }
+
+      const gridPoints = [];
+      const hw = p.halfX, hl = p.halfZ;
+      // Garis grid per 1 unit (= 2 studs)
+      for (let x = -hw; x <= hw; x += 1) {
+        gridPoints.push(new THREE.Vector3(x, 0.1, -hl), new THREE.Vector3(x, 0.1, hl));
+      }
+      for (let z = -hl; z <= hl; z += 1) {
+        gridPoints.push(new THREE.Vector3(-hw, 0.1, z), new THREE.Vector3(hw, 0.1, z));
+      }
+
+      const tGridGeo = new THREE.BufferGeometry().setFromPoints(gridPoints);
+      const tGridMat = new THREE.LineBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.75, linewidth: 2,
+        depthWrite: false
+      });
+      const tGridLine = new THREE.LineSegments(tGridGeo, tGridMat);
+      teamGridGroup.add(tGridLine);
+
+      // Border luar tebal
+      const borderPoints = [
+        new THREE.Vector3(-hw, 0.01, -hl), new THREE.Vector3(hw, 0.01, -hl),
+        new THREE.Vector3(hw, 0.01, -hl), new THREE.Vector3(hw, 0.01, hl),
+        new THREE.Vector3(hw, 0.01, hl), new THREE.Vector3(-hw, 0.01, hl),
+        new THREE.Vector3(-hw, 0.01, hl), new THREE.Vector3(-hw, 0.01, -hl)
+      ];
+      const tBorderGeo = new THREE.BufferGeometry().setFromPoints(borderPoints);
+      const tBorderMat = new THREE.LineBasicMaterial({ color: 0x06b6d4, linewidth: 2, transparent: true, opacity: 0.85 });
+      teamGridGroup.add(new THREE.LineSegments(tBorderGeo, tBorderMat));
+
+      teamGridGroup.position.set(p.x, 207.25, p.z);
+    }
+    threeRef.current.updateTeamVisualHelpers = updateTeamVisualHelpers;
+
+
+    // ══ bab 182: DEV MODE KHUSUS MAP (BUKAN dev mode NSI) ══
+    //    Perintah user: terrain bisa di-delete/geser/duplikat sesuka hati +
+    //    7 grid kotak melayang di atas langit tiap team (bisa digeser & di-scale).
+    try {
+      const dev = createBabftMapDevMode({
+        THREE, scene, camera, renderer,
+        getMapGroup: () => threeRef.current.babftMap,
+        teams: BABFT_TEAMS,
+        plotCenters: BABFT_STUDIO_TEAM_PLOTS,
+        mapScale: BABFT_MAP_SCALE,
+        onSelect: (o) => {
+          if (!o) { setBabftDevSel(null); return; }
+          const isGrid = !!(o.userData && o.userData.isBabftDevGrid);
+          setBabftDevSel({
+            name: o.name || (o.type + (isGrid ? ' (grid tim ' + o.userData.team + ')' : '')),
+            type: o.type, isGrid,
+            pos: o.position.toArray().map((v) => +v.toFixed(2)),
+            scale: o.scale.toArray().map((v) => +v.toFixed(2)),
+          });
+        },
+        onMode: (m) => setBabftDevTool(m),
+      });
+      threeRef.current.babftDev = dev;
+    } catch (e) {
+      console.warn('dev mode map gagal dibuat:', e);
+    }
 
     // OrbitControls — basic orbit + zoom (Phase 2 will add WASD fly camera)
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -13037,7 +13748,9 @@ Now you can apply Displacement for detailed effect.`);
     controls.dampingFactor = 0.08;
     controls.minDistance = 0.5; // Allow extreme close-up zoom
     controls.maxDistance = 900; // Task ID 35, 2026-09-02: 150→900 — grid kini 500x500 (diagonal ~707), 150 tidak cukup untuk melihat grid penuh. Sebelumnya 150 utk grid 100x100.
-    controls.maxPolarAngle = Math.PI / 2 - 0.02; // prevent going below ground
+    // Bebas mendongak ke atas melihat seluruh langit (permintaan user, tidak dibatasi!)
+    controls.maxPolarAngle = Math.PI - 0.08; // bebas mendongak hingga 175° ke langit lepas!
+    controls.minPolarAngle = 0.05;          // bebas menunduk melihat tanah dari atas
     controls.target.set(0, 0, 0);
     // Mouse buttons: LEFT dinamis berdasarkan tool.
     // Move/Rotate/Scale: LEFT=null (OrbitControls GA boleh capture left drag, supaya TransformControls gizmo bisa di-drag).
@@ -13252,7 +13965,20 @@ Now you can apply Displacement for detailed effect.`);
         // scale!"): snapshot tanda scale saat drag MULAI — clamp drag-aware
         // mengunci tanda hasil ke tanda awal, crossing nol hanya mentok
         // ±0.05 (pipih) tanpa membalik block. Berlaku SEMUA tool drag.
+        if (transformControls.getMode() === 'translate' && transformControls.object) {
+          const _trObj = transformControls.object;
+          if (_trObj) {
+            _trObj.userData.__lastValidTranslatePos = _trObj.position.clone();
+          }
+        }
         if (transformControls.getMode() === 'scale' && transformControls.object) {
+          const _scObj = transformControls.object;
+          if (_scObj) {
+            _scObj.userData.__lastValidScaleState = {
+              scale: _scObj.scale.clone(),
+              pos: _scObj.position.clone()
+            };
+          }
           // ── NSI GUARD (2026-10-04, permintaan user): NSI TIDAK bisa di-scale ──
           // JEBAKAN: gizmo bisa sudah ter-attach dari tool lain sebelum user
           // pindah ke scale → tanpa guard ini, drag tetap men-scale NSI.
@@ -13825,6 +14551,25 @@ Now you can apply Displacement for detailed effect.`);
         } else {
           // studs = 0 → bebas (tidak di-snap)
         }
+
+        // ── CLAMP MOVE & CLONE AGAR TIDAK TEMBUS KELUAR BATAS AREA BUILD (perintah user) ──
+        if (threeRef.current && threeRef.current.babftMap && !threeRef.current.isFreeBuild) {
+          const activeTeam = threeRef.current.babftTeam || 'white';
+          const p = babftPlotBounds(threeRef.current.babftMap, activeTeam, THREE);
+          if (p) {
+            const minX = p.x - p.halfX, maxX = p.x + p.halfX;
+            const minZ = p.z - p.halfZ, maxZ = p.z + p.halfZ;
+            obj.updateMatrixWorld(true);
+            const bBox = new THREE.Box3().setFromObject(obj);
+            const exceeds = bBox.min.x < minX || bBox.max.x > maxX || bBox.min.z < minZ || bBox.max.z > maxZ;
+            if (!exceeds) {
+              obj.userData.__lastValidTranslatePos = obj.position.clone();
+            } else if (obj.userData.__lastValidTranslatePos) {
+              obj.position.copy(obj.userData.__lastValidTranslatePos);
+              obj.updateMatrixWorld(true);
+            }
+          }
+        }
       }
       // ── FIX AJ-b (bab 76): snap rotasi DIPASANG di useEffect[tool,rotateStep]
       // (BUKAN di sini) — karena objectChange fire SETELAH sudut dihitung,
@@ -13903,8 +14648,33 @@ Now you can apply Displacement for detailed effect.`);
         // PER-BLOCK di atas. Grup sendiri TIDAK di-scale → jangan clamp grup.
         if (!(sd && sd.isMulti)) {
           clampBlockScale(obj.scale, obj.userData.__scaleDragStart || null);
-          // FIX SCALE BUG 2: tiling UV ikuti scale BARU — tekstur LOOP saat
-          // memanjang, CROP saat mengecil; TIDAK melar (absolut semua block).
+
+          // ── CLAMP SCALE AGAR TIDAK TEMBUS KELUAR AREA TIM (perintah user) ──
+          // Kunci posisi & tahan scale di batas (TIDAK MENTAL / TIDAK HILANG LENYAP)
+          // KECUALI jika Mode Free Build sedang aktif (bebas scale tanpa batasan)!
+          if (threeRef.current && threeRef.current.babftMap && !threeRef.current.isFreeBuild) {
+            const activeTeam = threeRef.current.babftTeam || 'white';
+            const p = babftPlotBounds(threeRef.current.babftMap, activeTeam, THREE);
+            if (p) {
+              const minX = p.x - p.halfX, maxX = p.x + p.halfX;
+              const minZ = p.z - p.halfZ, maxZ = p.z + p.halfZ;
+              obj.updateMatrixWorld(true);
+              const bBox = new THREE.Box3().setFromObject(obj);
+              const exceeds = bBox.min.x < minX || bBox.max.x > maxX || bBox.min.z < minZ || bBox.max.z > maxZ;
+              if (!exceeds) {
+                obj.userData.__lastValidScaleState = {
+                  scale: obj.scale.clone(),
+                  pos: obj.position.clone()
+                };
+              } else if (obj.userData.__lastValidScaleState) {
+                // Tahan di batas: pulihkan transform valid terakhir tanpa kalkulasi melesat
+                obj.scale.copy(obj.userData.__lastValidScaleState.scale);
+                obj.position.copy(obj.userData.__lastValidScaleState.pos);
+                obj.updateMatrixWorld(true);
+              }
+            }
+          }
+
           syncBlockTextureTiling(obj);
         }
       }
@@ -13914,7 +14684,7 @@ Now you can apply Displacement for detailed effect.`);
     // ── Phase 2: Fly Camera (WASD + Q/E + Shift sprint) ──
     // Track keyboard state — record which keys are currently held down.
     // Movement applied in animation loop (smooth, frame-rate independent).
-    const keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false };
+    const keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false, space: false, i: false, o: false };
     const onKeyDown = (e) => {
       // Skip kalau user sedang fokus di input field (chat, search, dll)
       const tag = e.target.tagName;
@@ -13927,6 +14697,18 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'q') keys.q = true;
       else if (k === 'e') keys.e = true;
       else if (e.key === 'Shift') { keys.shift = true; if (!shiftHeldRef.current) { shiftHeldRef.current = true; setShiftHeld(true); } }
+      else if (e.code === 'Space' || e.key === ' ') {
+        if (!e.repeat) keys.space = true;
+        if (threeRef.current && threeRef.current.avatarMode) e.preventDefault();
+      }
+      else if (k === 'i') {
+        keys.i = true;
+        if (threeRef.current && threeRef.current.avatarMode) e.preventDefault();
+      }
+      else if (k === 'o') {
+        keys.o = true;
+        if (threeRef.current && threeRef.current.avatarMode) e.preventDefault();
+      }
       // ── FITUR (2026-10-04, permintaan user): 3 KEYBIND ROTATE GHOST ──
       // PC saja (>=768px). Tiap tekan menambah 1 langkah rotasi (× Rotation, default
       // 90°) pada GHOST block tool place — 3 SUMBU supaya lengkap & nyaman:
@@ -14035,6 +14817,14 @@ Now you can apply Displacement for detailed effect.`);
     window.addEventListener('blur', onBlur);
     document.addEventListener('visibilitychange', onVisibility);
 
+    const onWheelForAvatar = (e) => {
+      if (threeRef.current && threeRef.current.avatarMode) {
+        e.preventDefault();
+        threeRef.current.avatarWheelDelta = (threeRef.current.avatarWheelDelta || 0) + (e.deltaY > 0 ? 1 : -1);
+      }
+    };
+    renderer.domElement.addEventListener('wheel', onWheelForAvatar, { passive: false });
+
     // Fly camera constants — FIX BUG 3 (2026-10-01): dulu per-FRAME (0.3/0.8)
     // → kaku & bergantung FPS. Sekarang per-DETIK (unit/detik) + velocity
     // di-haluskan (lerp) → gerak MULUS seperti spectator Minecraft.
@@ -14048,6 +14838,32 @@ Now you can apply Displacement for detailed effect.`);
     // Animation loop — render every frame + apply fly camera movement
     const animate = () => {
       threeRef.current.animationId = requestAnimationFrame(animate);
+      // ── bab 182b: pulihkan warna ghost setelah 1 detik "di luar area".
+      //    (merah → putih; kalau user spam klik, jadi merah-putih bergantian) ──
+      try {
+        const _until = threeRef.current._ghostRedUntil || 0;
+        if (_until && performance.now() > _until) {
+          threeRef.current._ghostRedUntil = 0;
+          if (ghostBlock && ghostCurrentSlug) {
+            const _def = getBlockDef(ghostCurrentSlug);
+            if (_def) {
+              // bangun ulang material normal (idempoten, aman)
+              if (ghostBlock.material === threeRef.current.__ghostRedM) {
+                ghostBlock.material = makeBlockMaterial(THREE, _def.slug);
+                if (ghostBlock.geometry && ghostBlock.geometry.attributes && ghostBlock.geometry.attributes.color) {
+                  ghostBlock.material.vertexColors = true;
+                }
+                ghostBlock.material.transparent = true;
+                ghostBlock.material.depthWrite = false;
+                ghostBlock.material.opacity = _def.transparent ? Math.min(0.75, _def.opacity + 0.15) : 0.55;
+              }
+            }
+          }
+          if (ghostEdges && ghostEdges.material && ghostEdges.material.color) {
+            ghostEdges.material.color.setHex(0xffffff);
+          }
+        }
+      } catch (_) {}
 
       // ── Fly camera movement (FIX BUG 3: mulus + delta-time) ──
       // WASD gerak horizontal relatif arah hadap kamera; Q/E vertikal.
@@ -14061,38 +14877,67 @@ Now you can apply Displacement for detailed effect.`);
 
       // FIX (2026-10-01): saat SHIFT ditahan utk multi-select (tool ber-gizmo di
       // PC), JANGAN percepat fly-camera — supaya shift murni utk seleksi.
-      const _shiftForFly = keys.shift && !(typeof window !== 'undefined' && window.innerWidth >= 768
-        && shiftHeldRef.current && GIZMO_TOOLS.includes(toolRef.current));
-      const speed = _shiftForFly ? FLY_SPRINT : FLY_SPEED;
-      const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      const right = new THREE.Vector3();
-      right.crossVectors(forward, camera.up).normalize();
-
-      const move = new THREE.Vector3();
-      if (keys.w) move.add(forward);
-      if (keys.s) move.sub(forward);
-      if (keys.d) move.add(right);
-      if (keys.a) move.sub(right);
-      if (keys.e) move.y += 1;  // E = up (world Y+)
-      if (keys.q) move.y -= 1;  // Q = down (world Y-)
-
-      if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
-      // Haluskan velocity (accel/decel lembut = rasa spectator).
-      flyVel.lerp(move, 1 - Math.pow(0.0016, _dt));
-
-      if (flyVel.lengthSq() > 0.0001) {
-        const step = flyVel.clone().multiplyScalar(_dt);
-        camera.position.add(step);
-        controls.target.add(step);
-        if (camera.position.y < CAM_MIN_Y) camera.position.y = CAM_MIN_Y;
+      // ── AVATAR MODE CONTROLLER vs CAMERA MODE ──
+      if (threeRef.current && threeRef.current.avatarMode) {
+        // Jaminan Anti-Hilang: jika avatar belum ada atau tertinggal di scene lama (re-mount/HMR),
+        // otomatis buat & pasang langsung ke scene aktif saat ini!
+        if (!threeRef.current.avatar || threeRef.current.avatar.parent !== scene) {
+          if (threeRef.current.avatar && threeRef.current.avatar.parent) {
+            try { threeRef.current.avatar.removeFromParent(); } catch (_) {}
+          }
+          const teamObj = BABFT_TEAMS.find(t => t.key === (threeRef.current.babftTeam || 'white')) || BABFT_TEAMS[0];
+          const av = createHumanoidAvatar(THREE, teamObj.color);
+          const activeTeam = threeRef.current.babftTeam || 'white';
+          const sp = (threeRef.current.babftMap && typeof babftSpawnFor === 'function')
+            ? babftSpawnFor(threeRef.current.babftMap, activeTeam, THREE)
+            : new THREE.Vector3(0, 0, 0);
+          const gY = threeRef.current.babftMap ? 207.0 : 0.0;
+          av.position.set(sp.x, gY, sp.z);
+          scene.add(av);
+          threeRef.current.avatar = av;
+        }
+        if (threeRef.current.avatar && !scene.children.includes(threeRef.current.avatar)) {
+          scene.add(threeRef.current.avatar);
+        }
+        const groundY = threeRef.current.babftMap ? 207.0 : 0.0;
+        const wheel = threeRef.current.avatarWheelDelta || 0;
+        threeRef.current.avatarWheelDelta = 0;
+        updateAvatarPhysics(threeRef.current.avatar, keys, _dt, groundY, camera, controls, wheel, threeRef.current.babftMap, threeRef.current.blocks, renderer);
       } else {
-        flyVel.set(0, 0, 0);
-      }
+        const _shiftForFly = keys.shift && !(typeof window !== 'undefined' && window.innerWidth >= 768
+          && shiftHeldRef.current && GIZMO_TOOLS.includes(toolRef.current));
+        const mult = (threeRef.current && threeRef.current.cameraSpeedMultiplier !== undefined) ? threeRef.current.cameraSpeedMultiplier : 3.0;
+        const speed = (_shiftForFly ? FLY_SPRINT : FLY_SPEED) * mult;
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        forward.y = 0;
+        forward.normalize();
+        const right = new THREE.Vector3();
+        right.crossVectors(forward, camera.up).normalize();
 
-      controls.update();
+        const move = new THREE.Vector3();
+        if (keys.w) move.add(forward);
+        if (keys.s) move.sub(forward);
+        if (keys.d) move.add(right);
+        if (keys.a) move.sub(right);
+        if (keys.e) move.y += 1;  // E = up (world Y+)
+        if (keys.q) move.y -= 1;  // Q = down (world Y-)
+
+        if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+        // Haluskan velocity (accel/decel lembut = rasa spectator).
+        flyVel.lerp(move, 1 - Math.pow(0.0016, _dt));
+
+        if (flyVel.lengthSq() > 0.0001) {
+          const step = flyVel.clone().multiplyScalar(_dt);
+          camera.position.add(step);
+          controls.target.add(step);
+          if (camera.position.y < CAM_MIN_Y) camera.position.y = CAM_MIN_Y;
+        } else {
+          flyVel.set(0, 0, 0);
+        }
+
+        controls.update();
+      }
       // Phase 49 v9: tidak ada logika gizmo per-frame. Pelengkapan 6 panah
       // dilakukan sekali saat setup (lihat makeSixArrows di atas).
       // Phase 48: Update particle systems tiap frame
@@ -14652,11 +15497,38 @@ Now you can apply Displacement for detailed effect.`);
       // 1 block). Item NSI yang LEBIH TINGGI (Truss = 2 block) jadi tenggelam
       // separuh ke bawah lantai. → pakai setengah TINGGI sebenarnya dari NSI.
       const _hHalf = getNsiSize(selectedBlockTypeRef.current)[1] / 2;
+      const isBabft = !!(threeRef.current && threeRef.current.babftMap);
+      const isMapHit = isBabft && (hit.object === threeRef.current.babftBuildProxy || (hit.object.userData && hit.object.userData.isBabftLawn) || (!hit.object.userData || !hit.object.userData.isBlock));
+
       if (hit.object === ground) {
-        // Hit ground → snap X/Z, Y = setengah tinggi (duduk tepat di lantai)
         posX = snapV(hit.point.x);
         posZ = snapV(hit.point.z);
         posY = _hHalf;
+      } else if (isMapHit) {
+        // Penempatan di lahan rumput, tembok penyekat, & tanah kotak bertingkat Babft
+        const n = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 1, 0);
+        n.transformDirection(hit.object.matrixWorld);
+        const _nsiSz = getNsiSize(selectedBlockTypeRef.current);
+        const _axIdx = (Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z))
+          ? 0 : (Math.abs(n.y) >= Math.abs(n.z) ? 1 : 2);
+        const _halfNew = _nsiSz[_axIdx] / 2;
+
+        if (n.y > 0.6) {
+          // Permukaan horizontal atas (lantai rumput dasar ATAU balok tanah/tembok undak bertingkat)
+          posX = snapV(hit.point.x);
+          posY = Math.round(hit.point.y) + _hHalf; // duduk tepat di atas balok tanah/lantai yang diklik!
+          posZ = snapV(hit.point.z);
+        } else if (n.y < -0.6) {
+          // Permukaan horizontal bawah (kolong)
+          posX = snapV(hit.point.x);
+          posY = Math.round(hit.point.y) - _hHalf;
+          posZ = snapV(hit.point.z);
+        } else {
+          // Permukaan vertikal (tembok penyekat samping, tebing pembatas)
+          posX = snapV(hit.point.x + n.x * _halfNew);
+          posY = snapV(hit.point.y);
+          posZ = snapV(hit.point.z + n.z * _halfNew);
+        }
       } else {
         // Hit block face → offset by face normal → snap
         const n = hit.face.normal.clone();
@@ -14732,6 +15604,7 @@ Now you can apply Displacement for detailed effect.`);
       }
       return { posX, posY, posZ };
     };
+    threeRef.current.calcPlacePos = calcPlacePos;
 
     // Ghost block — semi-transparent preview yang ikut mouse saat tool=place.
     // Phase 63 (2026-09-11): preview menampilkan BLOCK TERPILIH dari Block
@@ -14747,6 +15620,18 @@ Now you can apply Displacement for detailed effect.`);
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })
     );
     let ghostCurrentSlug = null;
+    // ── bab 182b: material GHOST MERAH (penanda "di luar area build").
+    //    Dipakai ulang (bukan dibuat tiap frame) supaya tidak bocor memori.
+    const _ghostRedMat = () => {
+      if (!threeRef.current.__ghostRedM) {
+        threeRef.current.__ghostRedM = new THREE.MeshStandardMaterial({
+          color: 0xff2f2f, emissive: 0x991111, emissiveIntensity: 0.55,
+          transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide,
+        });
+      }
+      return threeRef.current.__ghostRedM;
+    };
+    threeRef.current._ghostRedMat = _ghostRedMat;
     // ── NSI FACING (2026-10-04, permintaan user): PANAH HIJAU arah hadap ──
     // Dibuat SEBELUM syncGhostMaterial() (anti-TDZ). Dibuat sebagai ANAK dari
     // ghostBlock → otomatis ikut posisi & rotasi ghost, DAN otomatis ikut
@@ -15092,13 +15977,41 @@ Now you can apply Displacement for detailed effect.`);
           if (threeRef.current.recordHistory) threeRef.current.recordHistory();
         }
       } else if (currentTool === 'place') {
-        const targets = [ground, ...threeRef.current.blocks];
-        const hits = raycaster.intersectObjects(targets, false);
+        const isBabft = !!(threeRef.current && threeRef.current.babftMap);
+        let bp = threeRef.current.babftBuildProxy;
+        // PENTING: User blocks di paling depan targets agar penempatan bertumpuk/menempel pada balok lain 100% akurat!
+        const targets = isBabft
+          ? [...threeRef.current.blocks, ...(threeRef.current.babftMap ? [threeRef.current.babftMap] : (bp ? [bp] : []))]
+          : [...threeRef.current.blocks, ...(ground ? [ground] : [])];
+        const hits = raycaster.intersectObjects(targets, true);
         if (hits.length > 0) {
-          const { posX, posY, posZ } = calcPlacePos(hits[0]);
-          // Build area = VISUAL saja (permintaan user 2026-10-01: grid TIDAK
-          // boleh menghalangi). Hanya sisa guard Y (jangan di bawah lantai).
-          if (posY < 0) return;
+          let { posX, posY, posZ } = calcPlacePos(hits[0]);
+          // ── MAGNET SNAP KE TITIK TENGAH TIM AKTIF (HANYA AKTIF SAAT "Tampilkan Titik Tengah Tim" NYALA!) ──
+          const axesActive = !!(threeRef.current && threeRef.current.teamCenterAxesGroup && threeRef.current.teamCenterAxesGroup.visible);
+          if (isBabft && threeRef.current && threeRef.current.babftMap && axesActive) {
+            const activeTeam = threeRef.current.babftTeam || 'white';
+            const p = babftPlotBounds(threeRef.current.babftMap, activeTeam, THREE);
+            if (p) {
+              const distToCenter = Math.hypot(posX - p.x, posZ - p.z);
+              if (distToCenter < 6.5) {
+                posX = p.x;
+                posZ = p.z;
+                posY = 207.5;
+              }
+            }
+          }
+          const minY = isBabft ? 200 : 0;
+          if (posY < minY) return;
+          // ── bab 182b (perintah user): TOLAK penempatan di LUAR grid area.
+          //    Ghost sudah memperingatkan (merah). Di sini benar-benar
+          //    tidak menambahkan block: state = "di luar area = false".
+          try {
+            if (threeRef.current.isOutsideBuildArea
+                && threeRef.current.isOutsideBuildArea(posX, posZ, posY)) {
+              toast.error('Di luar area build tim! Nyalakan "Free Build" di Pengaturan untuk bebas bangun di mana saja.');
+              return;   // DI LUAR AREA → BATAL
+            }
+          } catch (_) {}
           // ── NSI (Non-Scalable Item) — 2026-10-04, permintaan user ──
           // Block NSI (mis. Wedge) memakai GEOMETRI KHUSUS (bukan kubus) dan
           // TIDAK bisa di-scale. Geometri tetap 1x1x1 (bounding box 1 block).
@@ -16162,6 +17075,11 @@ Now you can apply Displacement for detailed effect.`);
 
     const selectBlock = (block, additive) => {
       if (!block) return;
+      // Guard tim: tidak dapat memilih/mengedit blok milik area tim lain!
+      if (threeRef.current.isOutsideBuildArea && threeRef.current.isOutsideBuildArea(block.position.x, block.position.z, block.position.y)) {
+        toast.warning('Blok ini milik area tim lain! Pindah tim terlebih dahulu untuk mengedit.');
+        return;
+      }
       if (_isScaleGhost(block)) {
         // Tool scale + NSI → blok ini "hantu": tidak bisa dipilih sama sekali.
         // Bersihkan kalau sempat terpilih (anti-state-tertinggal), lalu beri
@@ -16184,6 +17102,11 @@ Now you can apply Displacement for detailed effect.`);
 
     const toggleSelectBlock = (block) => {
       if (!block) return;
+      // Guard tim: tidak dapat memilih/mengedit blok milik area tim lain!
+      if (threeRef.current.isOutsideBuildArea && threeRef.current.isOutsideBuildArea(block.position.x, block.position.z, block.position.y)) {
+        toast.warning('Blok ini milik area tim lain! Pindah tim terlebih dahulu untuk mengedit.');
+        return;
+      }
       if (_isScaleGhost(block)) {
         if (threeRef.current.selectedBlocks.has(block)) {
           threeRef.current.selectedBlocks.delete(block);
@@ -17078,7 +18001,19 @@ Now you can apply Displacement for detailed effect.`);
       if (threeRef.current.recordHistory) threeRef.current.recordHistory();
     };
 
+    let _lastMouseMoveTime = 0;
     const onCanvasMouseMove = (e) => {
+      // 1. Lewati raycast jika user sedang memutar/menggeser kamera (klik mouse ditahan atau controls aktif)
+      if (e.buttons !== 0 || (controls && controls.state !== -1)) return;
+      // 2. Lewati raycast jika pointer lock aktif di First Person (kursor terkunci di tengah)
+      if (typeof document !== 'undefined' && document.pointerLockElement === renderer.domElement) return;
+      // 3. Lewati raycast jika user sedang menggeser kamera dengan WASD fly-camera (prioritas 60 FPS untuk pergerakan kamera!)
+      if (keys.w || keys.a || keys.s || keys.d || keys.q || keys.e) return;
+
+      const now = performance.now();
+      if (now - _lastMouseMoveTime < 25) return; // 40 FPS throttling untuk raycast mousemove
+      _lastMouseMoveTime = now;
+
       const rect = renderer.domElement.getBoundingClientRect();
       const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -17087,21 +18022,60 @@ Now you can apply Displacement for detailed effect.`);
       const currentTool = toolRef.current;
       const color = colorRef.current;
 
-      // Ghost preview hanya untuk tool place
+      // Ghost preview hanya untuk tool place (tampil di Camera Mode MAUPUN Avatar Mode!)
       if (currentTool === 'place') {
         highlightBlock(null);
-        const targets = [ground, ...threeRef.current.blocks];
+        const isBabft = !!(threeRef.current && threeRef.current.babftMap);
+        let bp = threeRef.current.babftBuildProxy;
+        // PENTING: User blocks di paling depan targets agar ghost block SELALU mengikuti & menempel pada balok yang disorot kursor!
+        const targets = isBabft
+          ? [...threeRef.current.blocks, ...(threeRef.current.babftMap ? [threeRef.current.babftMap] : (bp ? [bp] : []))]
+          : [...threeRef.current.blocks, ...(ground ? [ground] : [])];
         const hits = raycaster.intersectObjects(targets, true);
         if (hits.length > 0) {
-          const { posX, posY, posZ } = calcPlacePos(hits[0]);
-          // Build area = VISUAL saja (grid TIDAK menghalangi). Sisa guard Y.
-          if (posY < 0) {
+          let { posX, posY, posZ } = calcPlacePos(hits[0]);
+          // ── MAGNET SNAP KE TITIK TENGAH TIM AKTIF (HANYA AKTIF SAAT "Tampilkan Titik Tengah Tim" NYALA!) ──
+          const axesActive = !!(threeRef.current && threeRef.current.teamCenterAxesGroup && threeRef.current.teamCenterAxesGroup.visible);
+          if (isBabft && threeRef.current && threeRef.current.babftMap && axesActive) {
+            const activeTeam = threeRef.current.babftTeam || 'white';
+            const p = babftPlotBounds(threeRef.current.babftMap, activeTeam, THREE);
+            if (p) {
+              const distToCenter = Math.hypot(posX - p.x, posZ - p.z);
+              if (distToCenter < 6.5) {
+                posX = p.x;
+                posZ = p.z;
+                posY = 207.5;
+              }
+            }
+          }
+          const minY = isBabft ? 200 : 0;
+          if (posY < minY) {
             ghostBlock.visible = false;
             ghostEdges.visible = false;
             return;
           }
           ghostBlock.position.set(posX, posY, posZ);
           syncGhostMaterial(); // Phase 63: texture block terpilih (idempoten)
+          // ── bab 182b: GHOST di LUAR area build → MERAH transparan 1 detik.
+          //    (perintah user: "ghost block preview putih transparan akan jadi
+          //     merah transparan dalam 1 detik kemudian balik putih lagi;
+          //     kalau user spam ya spam merah putih merah putih")
+          try {
+            const _outside = threeRef.current.isOutsideBuildArea
+              ? threeRef.current.isOutsideBuildArea(posX, posZ, posY) : false;
+            if (_outside) {
+              // ── LANGSUNG MERAH SAAT GESER KE LUAR AREA BUILD (permintaan user) ──
+              ghostBlock.material = _ghostRedMat();
+              ghostEdges.material.color.setHex(0xff3b3b);
+            } else {
+              // ── LANGSUNG PUTIH / NORMAL SAAT GESER BALIK KE DALAM AREA BUILD ──
+              if (ghostBlock.material === threeRef.current.__ghostRedM) {
+                ghostCurrentSlug = null;
+                syncGhostMaterial();
+              }
+              ghostEdges.material.color.setHex(0xffffff);
+            }
+          } catch (_) {}
           // ── FITUR (2026-10-04, permintaan user): ROTASI GHOST + MATCH ROTATION ──
           // (a) Rotasi dasar dari keybind 'R' (steps × placeRotationDeg).
           // (b) MATCH ROTATION: kalau ON & menempel di SISI block target yang
@@ -17250,6 +18224,39 @@ Now you can apply Displacement for detailed effect.`);
     // listener mousemove yang sudah ada).
     const onCanvasMouseLeave = () => setHoveredMaterial(null);
     renderer.domElement.addEventListener('mouseleave', onCanvasMouseLeave);
+
+    // ── ROBLOX FIRST PERSON POINTER LOCK & MOUSE LOOK (permintaan user) ──
+    const onPointerLockMouseMove = (e) => {
+      if (typeof document !== 'undefined' && document.pointerLockElement === renderer.domElement) {
+        const av = threeRef.current && threeRef.current.avatar;
+        if (av && av.userData) {
+          const u = av.userData;
+          const sens = 0.0024;
+          const fwd = new THREE.Vector3();
+          camera.getWorldDirection(fwd);
+          if (u.fpYaw === undefined) {
+            u.fpYaw = Math.atan2(fwd.x, fwd.z);
+            u.fpPitch = 0;
+          }
+          u.fpYaw -= e.movementX * sens;
+          u.fpPitch -= e.movementY * sens;
+          const maxPitch = (86 * Math.PI) / 180;
+          u.fpPitch = Math.max(-maxPitch, Math.min(maxPitch, u.fpPitch));
+        }
+      }
+    };
+    document.addEventListener('mousemove', onPointerLockMouseMove);
+
+    const onCanvasFirstPersonLock = () => {
+      if (threeRef.current && threeRef.current.avatarMode && threeRef.current.avatar) {
+        if (threeRef.current.avatar.userData.zoomDist <= 1.2) {
+          if (typeof document !== 'undefined' && document.pointerLockElement !== renderer.domElement) {
+            try { renderer.domElement.requestPointerLock(); } catch (_) {}
+          }
+        }
+      }
+    };
+    renderer.domElement.addEventListener('click', onCanvasFirstPersonLock);
 
     // ── Phase 12: glTF Import/Export ──
     // Phase 25: Setup DRACOLoader dengan local decoder path (public/draco/gltf/)
@@ -18014,17 +19021,32 @@ Now you can apply Displacement for detailed effect.`);
         threeRef.current.chunkManager = null;
       }
       // Build Area Babft: bebaskan map (geometry + material) supaya tidak bocor
+      // bab 181: map Babft sekarang THREE.Group dari GLB -> dispose per-mesh.
       if (threeRef.current.babftMap) {
-        try { threeRef.current.babftMap.userData.dispose && threeRef.current.babftMap.userData.dispose(); } catch (_) {}
+        try {
+          threeRef.current.babftMap.traverse((o) => {
+            if (!o.isMesh) return;
+            if (o.geometry) o.geometry.dispose();
+            const ms = Array.isArray(o.material) ? o.material : [o.material];
+            ms.forEach((m) => m && m.dispose && m.dispose());
+          });
+        } catch (_) {}
+        scene.remove(threeRef.current.babftMap);
         threeRef.current.babftMap = null;
       }
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisibility);
+      renderer.domElement.removeEventListener('wheel', onWheelForAvatar);
       window.removeEventListener('keydown', onUndoKeyDown);
       renderer.domElement.removeEventListener('mousemove', onCanvasMouseMove);
       renderer.domElement.removeEventListener('mouseleave', onCanvasMouseLeave);
+      document.removeEventListener('mousemove', onPointerLockMouseMove);
+      renderer.domElement.removeEventListener('click', onCanvasFirstPersonLock);
+      if (typeof document !== 'undefined' && document.pointerLockElement === renderer.domElement) {
+        try { document.exitPointerLock(); } catch (_) {}
+      }
       window.removeEventListener('mousedown', onWindowMouseDown);
       window.removeEventListener('mouseup', onWindowMouseUp);
       // Phase 53: lepas listener marquee + bersihkan elemen kotak kalau masih ada
@@ -18216,6 +19238,55 @@ Now you can apply Displacement for detailed effect.`);
   // dalam 1 detik → batas -25 aman (tidak terlalu cepat, tidak terlalu lambat).
   const VOID_Y = -25;
 
+  const switchAvatarMode = (enable) => {
+    setIsAvatarMode(enable);
+    const st = threeRef.current;
+    if (!st || !st.scene) return;
+    st.avatarMode = enable;
+
+    if (enable) {
+      if (!st.avatar || st.avatar.parent !== st.scene) {
+        if (st.avatar && st.avatar.parent) {
+          try { st.avatar.removeFromParent(); } catch (_) {}
+        }
+        const teamObj = BABFT_TEAMS.find(t => t.key === (st.babftTeam || 'white')) || BABFT_TEAMS[0];
+        const av = createHumanoidAvatar(THREE, teamObj.color);
+        st.scene.add(av);
+        st.avatar = av;
+      }
+      if (st.avatar && !st.scene.children.includes(st.avatar)) {
+        st.scene.add(st.avatar);
+      }
+      const activeTeam = st.babftTeam || 'white';
+      const sp = (st.babftMap && typeof babftSpawnFor === 'function')
+        ? babftSpawnFor(st.babftMap, activeTeam, THREE)
+        : new THREE.Vector3(0, 0, 0);
+      const groundY = st.babftMap ? 207.0 : 0.0;
+      st.avatar.position.set(sp.x, groundY, sp.z);
+      st.avatar.visible = true;
+      st.avatar.userData.isGrounded = true;
+      st.avatar.userData.vy = 0;
+      st.avatar.userData.prevPos = st.avatar.position.clone();
+      st.avatar.userData.hasInitializedPos = true;
+      st.avatar.userData.zoomDist = 18.0;
+
+      if (st.camera && st.controls) {
+        st.camera.position.set(sp.x, groundY + 4.0, sp.z - 18.0);
+        st.controls.target.set(sp.x, groundY + 2.8, sp.z);
+        st.controls.update();
+      }
+      toast.success('Avatar Mode Aktif! Gerak: W/A/S/D · Lompat: Spasi');
+    } else {
+      if (typeof document !== 'undefined' && document.pointerLockElement && st.renderer && document.pointerLockElement === st.renderer.domElement) {
+        try { document.exitPointerLock(); } catch (_) {}
+      }
+      if (st.avatar) {
+        st.avatar.visible = false;
+      }
+      toast.info('Camera Mode: Kamera bebas aktif');
+    }
+  };
+
   const panelBg = '#0e1420';
   const panelBorder = '#1e293b';
   const textSecondary = '#94a3b8';
@@ -18348,7 +19419,7 @@ Now you can apply Displacement for detailed effect.`);
             </button>
             {/* Reset Camera Button — permanent, always visible */}
             <button
-              onClick={() => setShowResetCameraConfirm(true)}
+              onClick={handleResetCamera}
               title="Reset kamera ke posisi awal"
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -18406,6 +19477,40 @@ Now you can apply Displacement for detailed effect.`);
             >
               <Trash2 size={14} />
               Clear All
+            </button>
+            {/* Tombol Pengaturan Simulator — Sleek Cyber-Violet Linear Design */}
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              title="Pengaturan Simulator"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 8,
+                border: '1px solid #a855f7',
+                backgroundColor: 'rgba(168, 85, 247, 0.12)',
+                color: '#c084fc',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                fontFamily: 'Inter, sans-serif',
+                marginLeft: 8,
+                boxShadow: '0 0 10px rgba(168, 85, 247, 0.2)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.25)';
+                e.currentTarget.style.borderColor = '#c084fc';
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 0 18px rgba(168, 85, 247, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.12)';
+                e.currentTarget.style.borderColor = '#a855f7';
+                e.currentTarget.style.color = '#c084fc';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 0 10px rgba(168, 85, 247, 0.2)';
+              }}
+            >
+              <Settings size={14} style={{ transition: 'transform 0.4s ease' }} />
+              <span>Pengaturan</span>
             </button>
           </div>
         </div>
@@ -27253,17 +28358,22 @@ Now you can apply Displacement for detailed effect.`);
                 <div style={{
                   width: '100%',
                   aspectRatio: '16 / 9',
-                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.4) 100%)',
+                  backgroundColor: '#0a0f1d',
                   display: 'flex',
                   alignItems: 'center', justifyContent: 'center',
                   position: 'relative',
+                  overflow: 'hidden',
                 }}>
-                  <div style={{
-                    width: 48, height: 48,
-                    color: 'rgba(52, 211, 153, 0.6)',
-                  }}>
-                    <BuildAreaIcon size={48} />
-                  </div>
+                  <img
+                    src="/maps/preview_default.png"
+                    alt="Default 500×500 Grid Preview"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
                   {/* Badge "Active" — tampilkan kalau area ini yang aktif */}
                   {activeBuildArea === 'default' && (
                     <div style={{
@@ -27272,6 +28382,7 @@ Now you can apply Displacement for detailed effect.`);
                       backgroundColor: 'rgba(16, 185, 129, 0.9)',
                       color: '#fff', fontSize: 9, fontWeight: 700,
                       fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
                     }}>
                       ACTIVE
                     </div>
@@ -27305,7 +28416,7 @@ Now you can apply Displacement for detailed effect.`);
                   if (threeRef.current.switchBuildArea) {
                     threeRef.current.switchBuildArea('babft');
                     setActiveBuildArea('babft');
-                    toast.success('Build Area: Babft (149×118)');
+                    toast.success('Build Area: Babft — map Build A boat');
                   }
                   setShowBuildAreaSoon(false);
                 }}
@@ -27318,9 +28429,9 @@ Now you can apply Displacement for detailed effect.`);
                   transition: 'all 0.2s ease',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#f59e0b';
+                  e.currentTarget.style.borderColor = '#10b981';
                   e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(245, 158, 11, 0.3)';
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(16, 185, 129, 0.3)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
@@ -27331,24 +28442,30 @@ Now you can apply Displacement for detailed effect.`);
                 <div style={{
                   width: '100%',
                   aspectRatio: '16 / 9',
-                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.4) 100%)',
+                  backgroundColor: '#0a0f1d',
                   display: 'flex',
                   alignItems: 'center', justifyContent: 'center',
                   position: 'relative',
+                  overflow: 'hidden',
                 }}>
-                  <div style={{
-                    width: 48, height: 48,
-                    color: 'rgba(251, 191, 36, 0.6)',
-                  }}>
-                    <BuildAreaIcon size={48} />
-                  </div>
+                  <img
+                    src="/maps/preview_babft.png"
+                    alt="Babft Map Preview"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
                   {activeBuildArea === 'babft' && (
                     <div style={{
                       position: 'absolute', top: 8, right: 8,
                       padding: '2px 8px', borderRadius: 4,
-                      backgroundColor: 'rgba(245, 158, 11, 0.9)',
+                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
                       color: '#fff', fontSize: 9, fontWeight: 700,
                       fontFamily: 'Orbitron, sans-serif', letterSpacing: 0.5,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
                     }}>
                       ACTIVE
                     </div>
@@ -27366,7 +28483,7 @@ Now you can apply Displacement for detailed effect.`);
                   <div style={{
                     fontSize: 11, color: '#64748b', marginTop: 2,
                   }}>
-                    Map custom — 149×118 grid
+                    Map resmi — Build A boat (1 block = 2 studs)
                   </div>
                 </div>
               </div>
@@ -27405,6 +28522,80 @@ Now you can apply Displacement for detailed effect.`);
               </div>
             </div>
 
+            {/* ── bab 181d: PEMILIH TIM (khusus area Babft). Perintah user:
+                "ada 7 team: white, red, blue, magenta, black, green, yellow"
+                + "kalau ganti tim maka hanya bisa build di area tim itu". ── */}
+            {activeBuildArea === 'babft' && (
+              <div style={{
+                marginTop: 16, padding: 12, borderRadius: 12,
+                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                border: '1px solid rgba(148, 163, 184, 0.25)',
+              }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, color: '#94a3b8',
+                  letterSpacing: 1, marginBottom: 8,
+                  fontFamily: 'Orbitron, sans-serif',
+                }}>PILIH TIM — BUILD HANYA DI PETAK TIM INI</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {BABFT_TEAMS.map((t) => {
+                    const on = babftTeam === t.key;
+                    const hex = '#' + t.color.toString(16).padStart(6, '0');
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => {
+                          setBabftTeam(t.key);
+                          const st = threeRef.current;
+                          if (st && st.babftMap) {
+                            st.babftTeam = t.key;
+                            st.babftPlot = babftPlotBounds(st.babftMap, t.key, THREE);
+                            if (st.updateTeamVisualHelpers) st.updateTeamVisualHelpers(t.key);
+                            if (st.avatarMode && st.avatar) {
+                              const sp = babftSpawnFor(st.babftMap, t.key, THREE);
+                              st.avatar.position.set(sp.x, 207.0, sp.z);
+                              st.avatar.userData.prevPos.set(sp.x, 207.0, sp.z);
+                              st.avatar.userData.hasInitializedPos = true;
+                              st.avatar.userData.isGrounded = true;
+                              st.avatar.userData.vy = 0;
+                              st.avatar.userData.zoomDist = 18.0;
+                              st.avatar.visible = true;
+                              st.avatar.rotation.y = 0;
+                              if (st.avatar.userData.torso) st.avatar.userData.torso.material.color.setHex(t.color);
+                              st.camera.position.set(sp.x, 207.0 + 4.0, sp.z - 18.0);
+                              st.controls.target.set(sp.x, 207.0 + 2.8, sp.z);
+                              st.controls.update();
+                            } else {
+                              const c = babftCameraFor(st.babftMap, t.key, THREE);
+                              st.camera.position.copy(c.pos);
+                              st.controls.target.copy(c.target);
+                              st.controls.update();
+                            }
+                          }
+                          toast.success('Tim: ' + t.name);
+                        }}
+                        title={t.name}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+                          border: `2px solid ${on ? hex : 'rgba(148,163,184,0.3)'}`,
+                          backgroundColor: on ? hex + '33' : 'rgba(30,41,59,0.6)',
+                          color: '#e2e8f0', fontSize: 11, fontWeight: 600,
+                          fontFamily: 'Inter, sans-serif',
+                        }}
+                      >
+                        <span style={{
+                          width: 12, height: 12, borderRadius: 3,
+                          backgroundColor: hex, display: 'inline-block',
+                          border: t.key === 'black' ? '1px solid #666' : 'none',
+                        }} />
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div style={{
               display: 'flex', justifyContent: 'flex-end', gap: 12,
             }}>
@@ -27434,6 +28625,539 @@ Now you can apply Displacement for detailed effect.`);
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── Jendela / Modal Pengaturan Simulator (Tombol Gear Abu-Abu) ── */}
+      {showSettingsModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShowSettingsModal(false); }}>
+          <div style={{
+            width: '100%', maxWidth: 480, borderRadius: 16,
+            background: 'linear-gradient(180deg, #0e172a 0%, #0a0f1d 100%)',
+            border: '1px solid rgba(168, 85, 247, 0.3)',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(168, 85, 247, 0.15)',
+            overflow: 'hidden', fontFamily: 'Inter, sans-serif', color: '#e2e8f0',
+          }}>
+            {/* Header Modal — Linear Cyberpunk Dark Theme */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '16px 20px', borderBottom: '1px solid rgba(168, 85, 247, 0.2)',
+              background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.1) 0%, rgba(15, 23, 42, 0.95) 100%)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  padding: 7, borderRadius: 8, backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                  border: '1px solid rgba(168, 85, 247, 0.4)',
+                  color: '#c084fc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 12px rgba(168, 85, 247, 0.35)',
+                }}>
+                  <Sliders size={16} />
+                </div>
+                <div>
+                  <div style={{
+                    fontFamily: 'Orbitron, sans-serif', fontWeight: 800, fontSize: 13,
+                    letterSpacing: 1.2, color: '#f8fafc',
+                  }}>
+                    PENGATURAN SIMULATOR
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', letterSpacing: 0.5, marginTop: 1 }}>
+                    SISTEM & KONTROL
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, borderRadius: 8,
+                  background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.2)',
+                  color: '#cbd5e1', cursor: 'pointer', transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                  e.currentTarget.style.color = '#ef4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
+                  e.currentTarget.style.color = '#cbd5e1';
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* List Pengaturan */}
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18, maxHeight: '75vh', overflowY: 'auto' }}>
+              
+              {/* ── FITUR KHUSUS MAP BABFT (Hanya tampil saat di map Babft, disembunyikan di Map Default) ── */}
+              {((activeBuildArea === 'babft') || !!(threeRef.current && threeRef.current.babftMap)) && (
+                <>
+              {/* Item 0: Suasana Langit Siang & Malam (Fitur Baru Permintaan User — di atas Tampilkan Area Build) */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(148, 163, 184, 0.15)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {babftTimeOfDay === 'day' ? <Sun size={14} color="#f59e0b" /> : <Moon size={14} color="#38bdf8" />}
+                    <span>Suasana Langit: Siang & Malam</span>
+                  </div>
+                  <div style={{
+                    padding: '2px 8px', borderRadius: 6,
+                    backgroundColor: babftTimeOfDay === 'day' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                    border: `1px solid ${babftTimeOfDay === 'day' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(56, 189, 248, 0.35)'}`,
+                    color: babftTimeOfDay === 'day' ? '#fbbf24' : '#38bdf8',
+                    fontFamily: 'Orbitron, sans-serif', fontSize: 10, fontWeight: 700,
+                  }}>
+                    {babftTimeOfDay === 'day' ? 'SIANG' : 'MALAM'}
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
+                  {babftTimeOfDay === 'day'
+                    ? 'Langit biru cerah berawan, matahari terik & bayangan balok super tajam.'
+                    : 'Langit malam bertabur ribuan bintang bercahaya & bulan purnama lembut.'}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      setBabftTimeOfDay('day');
+                      if (threeRef.current && threeRef.current.setBabftTimeOfDay) {
+                        threeRef.current.setBabftTimeOfDay('day');
+                      }
+                      toast.success('Suasana diubah ke: Siang (Cerah Berawan & Bayangan Tajam)');
+                    }}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                      border: `2px solid ${babftTimeOfDay === 'day' ? '#f59e0b' : 'rgba(148,163,184,0.3)'}`,
+                      backgroundColor: babftTimeOfDay === 'day' ? 'rgba(245,158,11,0.25)' : 'rgba(30,41,59,0.5)',
+                      color: babftTimeOfDay === 'day' ? '#fbbf24' : '#94a3b8',
+                      fontWeight: 700, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Sun size={14} />
+                    Siang (Cerah & Bayangan)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBabftTimeOfDay('night');
+                      if (threeRef.current && threeRef.current.setBabftTimeOfDay) {
+                        threeRef.current.setBabftTimeOfDay('night');
+                      }
+                      toast.info('Suasana diubah ke: Malam (Bulan & Bintang)');
+                    }}
+                    style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                      border: `2px solid ${babftTimeOfDay === 'night' ? '#38bdf8' : 'rgba(148,163,184,0.3)'}`,
+                      backgroundColor: babftTimeOfDay === 'night' ? 'rgba(56,189,248,0.25)' : 'rgba(30,41,59,0.5)',
+                      color: babftTimeOfDay === 'night' ? '#38bdf8' : '#94a3b8',
+                      fontWeight: 700, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Moon size={14} />
+                    Malam (Bulan & Bintang)
+                  </button>
+                </div>
+              </div>
+
+              {/* Item 1: Tampilkan Area Build */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(148, 163, 184, 0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc', marginBottom: 2 }}>
+                    Tampilkan Area Build
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                    Nyalakan / matikan garis kotak pembatas area build tim.
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 8, flexShrink: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={showBuildAreaBounds}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setShowBuildAreaBounds(v);
+                      const st = threeRef.current;
+                      if (st && st.babftDev && st.babftDev.gridGroup) {
+                        st.babftDev.gridGroup.visible = v && !(st.isFreeBuild);
+                      }
+                      toast.info(`Area build: ${v ? 'Ditampilkan' : 'Disembunyikan'}`);
+                    }}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10b981' }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: showBuildAreaBounds ? '#34d399' : '#64748b' }}>
+                    {showBuildAreaBounds ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Item 2: Tampilkan Titik Tengah Tim (Fitur Baru Permintaan User) */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: showTeamCenterAxes ? 'rgba(56, 189, 248, 0.12)' : 'rgba(30, 41, 59, 0.5)',
+                border: `1px solid ${showTeamCenterAxes ? 'rgba(56, 189, 248, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                transition: 'all 0.2s ease',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    <Crosshair size={14} color="#38bdf8" />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: showTeamCenterAxes ? '#38bdf8' : '#f8fafc' }}>
+                      Tampilkan Titik Tengah Tim
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                    Perlihatkan 3 sumbu garis RGB di titik tengah tim aktif + magnet snap kursor block ke titik tengah.
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 8, flexShrink: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={showTeamCenterAxes}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setShowTeamCenterAxes(v);
+                      const st = threeRef.current;
+                      if (st && st.teamCenterAxesGroup) {
+                        st.teamCenterAxesGroup.visible = v;
+                        if (v && st.updateTeamVisualHelpers) {
+                          st.updateTeamVisualHelpers(st.babftTeam || 'white');
+                        }
+                      }
+                      toast.info(`Titik tengah tim: ${v ? 'Ditampilkan' : 'Disembunyikan'}`);
+                    }}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#38bdf8' }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: showTeamCenterAxes ? '#38bdf8' : '#64748b' }}>
+                    {showTeamCenterAxes ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Item 3: Tampilkan Grid Area (Fitur Baru Permintaan User) */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: showTeamGridArea ? 'rgba(6, 182, 212, 0.12)' : 'rgba(30, 41, 59, 0.5)',
+                border: `1px solid ${showTeamGridArea ? 'rgba(6, 182, 212, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                transition: 'all 0.2s ease',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    <Grid3x3 size={14} color="#06b6d4" />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: showTeamGridArea ? '#22d3ee' : '#f8fafc' }}>
+                      Tampilkan Grid Area
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                    Tampilkan lantai kisi-kisi kotak di pangkalan tim yang sedang aktif saat ini.
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 8, flexShrink: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={showTeamGridArea}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setShowTeamGridArea(v);
+                      const st = threeRef.current;
+                      if (st && st.teamGridGroup) {
+                        st.teamGridGroup.visible = v;
+                        if (v && st.updateTeamVisualHelpers) {
+                          st.updateTeamVisualHelpers(st.babftTeam || 'white');
+                        }
+                      }
+                      toast.info(`Grid area tim: ${v ? 'Ditampilkan' : 'Disembunyikan'}`);
+                    }}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#06b6d4' }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: showTeamGridArea ? '#22d3ee' : '#64748b' }}>
+                    {showTeamGridArea ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Item: Free Build Mode (Overpower Feature — Permintaan User) */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: isFreeBuild ? 'rgba(245, 158, 11, 0.12)' : 'rgba(30, 41, 59, 0.5)',
+                border: `1px solid ${isFreeBuild ? 'rgba(245, 158, 11, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                transition: 'all 0.2s ease',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    <Zap size={14} color="#f59e0b" fill="#f59e0b" style={{ filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))' }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: isFreeBuild ? '#fbbf24' : '#f8fafc' }}>
+                      Free Build
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                    Mode bebas: letakkan & bangun block di mana saja (seluruh map & terrain) tanpa batasan area tim!
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: 8, flexShrink: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={isFreeBuild}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setIsFreeBuild(v);
+                      if (threeRef.current) threeRef.current.isFreeBuild = v;
+                      // Ketika Free Build ON: sembunyikan batas area build sementara!
+                      // Ketika Free Build OFF: kembalikan garis batas sesuai state showBuildAreaBounds!
+                      if (threeRef.current && threeRef.current.babftDev && threeRef.current.babftDev.gridGroup) {
+                        threeRef.current.babftDev.gridGroup.visible = !v && showBuildAreaBounds;
+                      }
+                      toast.success(`Free Build: ${v ? 'AKTIF (Bebas bangun di mana pun!)' : 'NONAKTIF'}`);
+                    }}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#f59e0b' }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: isFreeBuild ? '#fbbf24' : '#64748b' }}>
+                    {isFreeBuild ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+
+
+              {/* Item 3: Tombol Pilih Tim */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(148, 163, 184, 0.15)',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc', marginBottom: 4 }}>
+                  Pilih Tim Aktif
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
+                  Ganti tim yang sedang Anda kendalikan untuk membangun di dermaga tim tersebut.
+                </div>
+                {(() => {
+                  const currentTeam = BABFT_TEAMS.find(t => t.key === babftTeam) || BABFT_TEAMS[0];
+                  const hex = '#' + currentTeam.color.toString(16).padStart(6, '0');
+                  return (
+                    <div>
+                      <button
+                        onClick={() => setShowTeamPicker(v => !v)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                          border: `1px solid ${hex}`, backgroundColor: hex + '22',
+                          color: '#f8fafc', fontSize: 12, fontWeight: 700,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: hex, border: currentTeam.key === 'black' ? '1px solid #666' : 'none' }} />
+                          <span>Tim Aktif: {currentTeam.name}</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                          {showTeamPicker ? '▲ Tutup Pilihan' : '▼ Ganti Tim'}
+                        </span>
+                      </button>
+
+                      {showTeamPicker && (
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                          gap: 6, marginTop: 10, padding: 8, borderRadius: 8,
+                          backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(148, 163, 184, 0.2)',
+                        }}>
+                          {BABFT_TEAMS.map((t) => {
+                            const on = babftTeam === t.key;
+                            const thex = '#' + t.color.toString(16).padStart(6, '0');
+                            return (
+                              <button
+                                key={t.key}
+                                onClick={() => {
+                                  setBabftTeam(t.key);
+                                  const st = threeRef.current;
+                                  if (st && st.babftMap) {
+                                    st.babftTeam = t.key;
+                                    st.babftPlot = babftPlotBounds(st.babftMap, t.key, THREE);
+                            if (st.updateTeamVisualHelpers) st.updateTeamVisualHelpers(t.key);
+                                    if (st.avatarMode && st.avatar) {
+                                      const sp = babftSpawnFor(st.babftMap, t.key, THREE);
+                                      st.avatar.position.set(sp.x, 207.0, sp.z);
+                                      st.avatar.userData.prevPos.set(sp.x, 207.0, sp.z);
+                                      st.avatar.userData.hasInitializedPos = true;
+                                      st.avatar.userData.isGrounded = true;
+                                      st.avatar.userData.vy = 0;
+                                      st.avatar.userData.zoomDist = 18.0;
+                                      st.avatar.visible = true;
+                                      st.avatar.rotation.y = 0;
+                                      if (st.avatar.userData.torso) st.avatar.userData.torso.material.color.setHex(t.color);
+                                      st.camera.position.set(sp.x, 207.0 + 4.0, sp.z - 18.0);
+                                      st.controls.target.set(sp.x, 207.0 + 2.8, sp.z);
+                                      st.controls.update();
+                                    } else {
+                                      const c = babftCameraFor(st.babftMap, t.key, THREE);
+                                      st.camera.position.copy(c.pos);
+                                      st.controls.target.copy(c.target);
+                                      st.controls.update();
+                                    }
+                                  }
+                                  setShowTeamPicker(false);
+                                  toast.success(`Tim diubah ke: ${t.name}`);
+                                }}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 6,
+                                  padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
+                                  border: `1px solid ${on ? thex : 'rgba(148,163,184,0.25)'}`,
+                                  backgroundColor: on ? thex + '33' : 'rgba(30,41,59,0.5)',
+                                  color: '#e2e8f0', fontSize: 11, fontWeight: on ? 700 : 500,
+                                }}
+                              >
+                                <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: thex, border: t.key === 'black' ? '1px solid #666' : 'none' }} />
+                                {t.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+                </>
+              )}
+
+              {/* Item 2: Atur Kecepatan Kamera */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(148, 163, 184, 0.15)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>
+                    Kecepatan Kamera
+                  </div>
+                  <div style={{
+                    padding: '2px 8px', borderRadius: 6,
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.35)',
+                    color: '#38bdf8', fontFamily: 'Orbitron, sans-serif', fontSize: 11, fontWeight: 700,
+                  }}>
+                    {cameraSpeedMult.toFixed(1)}×
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
+                  Atur seberapa cepat kamera bergerak saat digeser (WASD / Pan).
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 10, color: '#64748b' }}>0.5×</span>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="5.0"
+                    step="0.1"
+                    value={cameraSpeedMult}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      setCameraSpeedMult(v);
+                      if (threeRef.current) threeRef.current.cameraSpeedMultiplier = v;
+                    }}
+                    style={{ flex: 1, cursor: 'pointer', accentColor: '#38bdf8' }}
+                  />
+                  <span style={{ fontSize: 10, color: '#64748b' }}>5.0×</span>
+                  <button
+                    onClick={() => {
+                      setCameraSpeedMult(3.0);
+                      if (threeRef.current) threeRef.current.cameraSpeedMultiplier = 3.0;
+                    }}
+                    style={{
+                      padding: '4px 8px', borderRadius: 6, border: '1px solid #475569',
+                      backgroundColor: 'rgba(30,41,59,0.8)', color: '#94a3b8', fontSize: 10,
+                      cursor: 'pointer',
+                    }}
+                  >Reset</button>
+                </div>
+              </div>
+
+              {/* Item 4: Mode Kontrol (Avatar Mode vs Camera Mode) */}
+              <div style={{
+                padding: '12px 14px', borderRadius: 10,
+                backgroundColor: 'rgba(30, 41, 59, 0.5)', border: '1px solid rgba(148, 163, 184, 0.15)',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc', marginBottom: 4 }}>
+                  Mode Kontrol: Avatar vs Kamera
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
+                  Pilih kontrol sudut pandang: karakter avatar 3D yang bisa berjalan & melompat atau kamera bebas.
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => switchAvatarMode(false)}
+                    style={{
+                      flex: 1, padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
+                      border: `2px solid ${!isAvatarMode ? '#38bdf8' : 'rgba(148,163,184,0.3)'}`,
+                      backgroundColor: !isAvatarMode ? 'rgba(56,189,248,0.25)' : 'rgba(30,41,59,0.5)',
+                      color: !isAvatarMode ? '#38bdf8' : '#94a3b8',
+                      fontWeight: 700, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <Camera size={14} />
+                    Camera Mode (Bebas)
+                  </button>
+                  <button
+                    onClick={() => switchAvatarMode(true)}
+                    style={{
+                      flex: 1, padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
+                      border: `2px solid ${isAvatarMode ? '#22c55e' : 'rgba(148,163,184,0.3)'}`,
+                      backgroundColor: isAvatarMode ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.5)',
+                      color: isAvatarMode ? '#4ade80' : '#94a3b8',
+                      fontWeight: 700, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <User size={14} />
+                    Avatar Mode (Jalan & Lompat)
+                  </button>
+                </div>
+                {isAvatarMode && (
+                  <div style={{ fontSize: 11, color: '#4ade80', marginTop: 8, lineHeight: 1.4 }}>
+                    ✓ <b>Avatar Mode Aktif:</b> Tubuh karakter muncul di pangkalan tim! Gunakan <b>W, A, S, D</b> untuk berjalan dan <b>Spasi</b> untuk melompat.
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Footer Modal */}
+            <div style={{
+              padding: '12px 20px', borderTop: '1px solid rgba(148, 163, 184, 0.15)',
+              backgroundColor: 'rgba(15, 23, 42, 0.95)', display: 'flex', justifyContent: 'flex-end',
+            }}>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{
+                  padding: '8px 22px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
+                  border: '1px solid rgba(168, 85, 247, 0.5)',
+                  color: '#ffffff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(168, 85, 247, 0.4)',
+                  transition: 'all 0.2s ease',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(168, 85, 247, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(168, 85, 247, 0.4)';
+                }}
+              >Selesai</button>
             </div>
           </div>
         </div>

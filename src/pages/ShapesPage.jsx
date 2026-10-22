@@ -115,6 +115,34 @@ export default function ShapesPage({ setPage, user, onGuestClick }) {
                             </div>
                         }
                     />
+                    {/* MAP DEV STUDIO (bab 183) — HALAMAN TERPISAH untuk mengedit map.
+                        Perintah user: "saya kan maunya pisah sendiri, punya dunia sendiri
+                        terpisah dari ini fungsinya buat saya bebas edit apapun yang ada disini". */}
+                    <MenuButton3D
+                        label="Map Dev Studio"
+                        subtitle="edit map Babft"
+                        top="hsl(275,80%,66%)" bottom="hsl(275,75%,46%)" lip="hsl(275,75%,32%)"
+                        onClick={() => (user || LOCALDEV_GUEST_BYPASS) ? setPage('map-dev-studio') : (onGuestClick && onGuestClick())}
+                        locked={!user && !LOCALDEV_GUEST_BYPASS}
+                        icon={
+                            <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <svg viewBox="-5 -8 35 32" fill="none" width="96" height="96" style={{ transform: 'translateY(-3px)' }}>
+                                    {/* peta + gizmo (ikon edit terrain) */}
+                                    <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#menuIconGrad)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5"/>
+                                    <path d="M3 7 L12 12 L12 22 L3 17 Z" fill="rgba(255,255,255,0.45)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5"/>
+                                    <path d="M21 7 L12 12 L12 22 L21 17 Z" fill="rgba(255,255,255,0.7)" stroke="rgba(0,0,0,0.25)" strokeWidth="0.5"/>
+                                    <line x1="12" y1="7" x2="12" y2="-1" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M9 -1 L15 -1 L12 -5 Z" fill="#22c55e"/>
+                                    <line x1="16.5" y1="14.5" x2="23" y2="18" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M22 21 L24 15 L27 20 Z" fill="#ef4444"/>
+                                    <line x1="7.5" y1="14.5" x2="1" y2="18" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round"/>
+                                    <path d="M0 15 L2 21 L-3 20 Z" fill="#3b82f6"/>
+                                    <rect x="13" y="0" width="15" height="8" rx="1.5" fill="rgba(0,0,0,0.7)"/>
+                                    <text x="20.5" y="6" textAnchor="middle" fill="#c084fc" fontSize="5" fontWeight="700" fontFamily="Inter,sans-serif">DEV</text>
+                                </svg>
+                            </div>
+                        }
+                    />
                     {/* 3D Block Simulator TEST — ChunkManager engine test page.
                         Open access (no auth lock) for easy performance testing.
                         Placed TEPAT di bawah tombol utama per request user.
