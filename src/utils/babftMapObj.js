@@ -25,12 +25,17 @@ if (T && T.BufferGeometry && T.Mesh) {
   T.Mesh.prototype.raycast = acceleratedRaycast;
 }
 
+import { fetchMapResumable } from './babftMapCache.js';
+
 export const BABFT_OBJ_STUDS_PER_BLOCK = 2.0;
 
 export async function loadBabftMapObj(url = '/maps/babft_obj.bin', onProgress) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('Gagal memuat ' + url + ' (HTTP ' + res.status + ')');
-  const buf = await res.arrayBuffer();
+  // ── UNDUHAN BISA DILANJUTKAN (permintaan user 2026-10-22) ──
+  // File ±33 MB. Kalau user keluar / tutup tab di tengah unduhan, progres
+  // TIDAK hilang: potongan disimpan di IndexedDB dan unduhan dilanjutkan
+  // pakai HTTP Range saat user masuk lagi. Berlaku untuk SEMUA user
+  // (guest maupun login) karena murni di sisi browser, tanpa auth.
+  const buf = await fetchMapResumable(url, onProgress);
   const dv = new DataView(buf);
   const magic = String.fromCharCode(...new Uint8Array(buf, 0, 8));
   if (magic !== 'BABFTOBJ') throw new Error('Bukan format BABFTOBJ');
@@ -235,9 +240,16 @@ export function disposeBabftMapObj(group) {
 
 
 export async function loadBabftMapMerged(url = '/maps/babft_obj.bin', onProgress) {
-  if (onProgress) onProgress({ done: 0, total: 32708, stage: 'Memuat part asli...' });
+  if (onProgress) onProgress({ done: 0, total: 32708, stage: 'Menyiapkan...' });
   const base = await loadBabftMapObj(url, (p) => {
-    if (onProgress) onProgress({ done: p.done, total: p.total, stage: 'Memuat part asli...' });
+    if (onProgress) {
+      onProgress({
+        done: p.done,
+        total: p.total,
+        stage: p.stage || 'Mengunduh map',
+        bytes: !!p.bytes,
+      });
+    }
   });
   const objs = base.objects;
 
@@ -246,6 +258,15 @@ export async function loadBabftMapMerged(url = '/maps/babft_obj.bin', onProgress
   // Bake warna asli tiap part ke attribute 'color' vertex geometry
   const allGeos = [];
   for (let i = 0; i < objs.length; i++) {
+    // Progress per-part (permintaan user): tahap gabung butuh waktu &
+    // sebelumnya bar DIAM total di 0% → terlihat seperti hang.
+    if (onProgress && (i % 500 === 0)) {
+      onProgress({
+        done: i,
+        total: objs.length,
+        stage: 'Menggabungkan part jadi 1 mesh (1 draw call, 60 FPS mentok)...',
+      });
+    }
     const mesh = objs[i];
     const c = mesh.material.color;
     const g = mesh.geometry.clone();

@@ -72,6 +72,8 @@ import { loadBabftMapGlb, babftSpawnFor, babftCameraFor, babftPlotBounds,
 import { loadBabftMapMerged } from '../utils/babftMapObj.js';
 import { createHumanoidAvatar, updateAvatarPhysics } from '../utils/avatarController.js';
 import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
+import MapLoadingOverlay from '../components/MapLoadingOverlay.jsx';
+import { getStoredProgress, fetchMapResumable } from '../utils/babftMapCache.js';
 // ── PHYSICS v2 (2026-09-20): MESIN RAPIER (rapier3d) menggantikan mesin AABB.
 // API SAMA PERSIS (initRapierPhysics/ensureBody/wakeBody/sleepBody/stepWorld)
 // sehingga integrasi app nyaris tidak berubah — hanya sumber import yang beda.
@@ -1423,6 +1425,9 @@ export default function BlockSimulator3D({ setPage }) {
   // 'default' = 500×500 grid | 'babft' = 149×118 grid (Babft map).
   // Refs store half-extents for boundary checks (updated by switchBuildArea).
   // X symmetric (|x| ≤ halfX). Z asymmetric for even dimensions (Babft: -59 to +58 = 118 cells).
+  // Build Area awal tetap 'default' (perilaku asli tidak diubah).
+  // Unduhan 33 MB hanya berjalan saat user memilih area Babft, atau saat
+  // terdeteksi ada unduhan terputus sebelumnya (lihat useEffect auto-resume).
   const [activeBuildArea, setActiveBuildArea] = useState('default');
   const [babftTeam, setBabftTeam] = useState(SPAWN_DEFAULT_TEAM);   // bab 181d: tim aktif (default White Team)
   // Settings Modal States (Tombol Gear Abu-Abu)
@@ -1446,6 +1451,66 @@ export default function BlockSimulator3D({ setPage }) {
   // Panel melayang (bisa digeser + minimize) berisi bagian Build & Player.
   // Nilai Player disimpan di threeRef.current.adminPlayer supaya TETAP
   // terbawa walau avatar dibuat ulang (switch tim / HMR).
+  // ── STATE LOADING MAP (permintaan user 2026-10-22) ──
+  // Map Babft ±33 MB; dulu layar blank tanpa indikator. Sekarang overlay
+  // spinner + progress bar nyata (byte terunduh) + tahap parsing.
+  const [mapLoading, setMapLoading] = useState(null);
+
+  // ── LANJUTKAN UNDUHAN YANG TERPUTUS SAAT USER MASUK LAGI (permintaan user) ──
+  // Skenario yang diminta: user keluar di tengah unduhan (mis. 12 MB / 33 MB),
+  // lalu masuk lagi ke 3D Block Simulator → sistem DETEKSI progres tersimpan,
+  // menampilkan persentasenya, lalu MELANJUTKAN unduhan (bukan dari nol).
+  // Setelah selesai, overlay menutup sendiri dan map siap dipakai instan.
+  // Berlaku untuk SEMUA user (guest maupun login): murni sisi browser, tanpa auth.
+  useEffect(() => {
+    let batal = false;
+    (async () => {
+      try {
+        const st = await getStoredProgress('/maps/babft_obj.bin');
+        if (batal || !st) return;
+
+        // Sudah lengkap → tidak perlu apa-apa; nanti map dimuat instan dari cache.
+        if (st.complete && st.received > 0) return;
+        if (!st.received || st.received <= 0) return;
+
+        // Ada unduhan terputus → tampilkan progres tersimpan lalu lanjutkan.
+        setMapLoading({
+          visible: true,
+          progress: st.total ? Math.min(0.69, (st.received / st.total) * 0.7) : 0,
+          stage: 'Unduhan sebelumnya terdeteksi — melanjutkan dari ' + (st.received / 1048576).toFixed(1) + ' MB',
+          loadedBytes: st.received,
+          totalBytes: st.total || 0,
+          error: null,
+        });
+
+        // Lanjutkan unduhan TANPA parsing (hemat: parsing dilakukan saat map dipakai).
+        await fetchMapResumable('/maps/babft_obj.bin', (prog) => {
+          if (batal || !prog || !prog.bytes) return;
+          const frac = prog.total > 0 ? Math.max(0, Math.min(1, prog.done / prog.total)) : 0;
+          setMapLoading({
+            visible: true,
+            progress: Math.min(0.7, frac * 0.7),
+            stage: prog.stage || 'Melanjutkan unduhan...',
+            loadedBytes: prog.done,
+            totalBytes: prog.total || 0,
+            error: null,
+          });
+        });
+
+        if (batal) return;
+        setMapLoading({ visible: false, progress: 1, stage: 'Unduhan selesai', loadedBytes: 0, totalBytes: 0, error: null });
+        toast.success('Unduhan map dilanjutkan & selesai — siap dipakai');
+      } catch (e) {
+        // Gagal melanjutkan (offline dll) → jangan blokir UI, beri tahu saja.
+        if (!batal) {
+          setMapLoading(null);
+          toast.error('Gagal melanjutkan unduhan map — akan dicoba saat area Babft dipilih');
+        }
+      }
+    })();
+    return () => { batal = true; };
+  }, []);
+  // { visible, progress, stage, loadedBytes, totalBytes, error }
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminPanelMinimized, setAdminPanelMinimized] = useState(false);
   const [adminFly, setAdminFly] = useState(false);
@@ -13167,8 +13232,35 @@ Now you can apply Displacement for detailed effect.`);
       if (area === 'babft') {
         // Map Babft 1 Bagian Utuh (0 Lag / 60 FPS) dari babft_obj.bin lengkap dengan Bases7 & Anti Z-Fighting
         const token = (threeRef.current._mapToken = (threeRef.current._mapToken || 0) + 1);
-        toast.info('Memuat map Build A boat (1 Bagian Utuh / 0 Lag)...');
-        loadBabftMapMerged('/maps/babft_obj.bin')
+        // Overlay loading: tampil SEJAK unduhan mulai (bukan cuma toast kecil
+        // yang mudah terlewat). Progress dihitung dari byte nyata.
+        setMapLoading({ visible: true, progress: 0, stage: 'Menyiapkan unduhan...', loadedBytes: 0, totalBytes: 0, error: null });
+        loadBabftMapMerged('/maps/babft_obj.bin', (prog) => {
+          // Dua jenis progress dari loader:
+          //  - bytes:true  → unduhan (done/total dalam BYTE)
+          //  - bytes:false → parsing/gabung part (done/total dalam JUMLAH PART)
+          // Keduanya dipetakan ke 0..1 supaya bar tetap bergerak maju.
+          let frac = 0;
+          if (prog && prog.total > 0) frac = Math.max(0, Math.min(1, prog.done / prog.total));
+          setMapLoading((prev) => {
+            const p = prev || {};
+            // Unduhan = 0-70%, parsing/gabung = 70-100% (bobot kasar, cukup
+            // untuk memberi kesan maju yang jujur tanpa berpura-pura selesai).
+            const mapped = prog && prog.bytes ? frac * 0.7 : 0.7 + frac * 0.3;
+            // Saat tahap parsing (bytes:false) unduhan SUDAH selesai, jadi
+            // loadedBytes disamakan dengan total agar label "Kurang X MB"
+            // tidak menyesatkan (permintaan user: info sisa harus jujur).
+            const unduhSelesai = !(prog && prog.bytes);
+            return {
+              visible: true,
+              progress: Math.max(p.progress || 0, mapped),
+              stage: (prog && prog.stage) || 'Memuat map...',
+              loadedBytes: unduhSelesai ? (p.totalBytes || 0) : (prog.done || 0),
+              totalBytes: unduhSelesai ? (p.totalBytes || 0) : (prog.total || 0),
+              error: null,
+            };
+          });
+        })
           .then((res) => {
             if (threeRef.current._mapToken !== token) {
               res.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
@@ -13248,10 +13340,19 @@ Now you can apply Displacement for detailed effect.`);
             if (threeRef.current.setBabftTimeOfDay) {
               threeRef.current.setBabftTimeOfDay(babftTimeOfDayRef.current || 'day');
             }
+            // Map siap → tutup overlay loading
+            setMapLoading({ visible: false, progress: 1, stage: 'Selesai', loadedBytes: 0, totalBytes: 0, error: null });
             toast.success('Map Build A boat dimuat (0 Lag / 60 FPS) — Tim Putih');
           })
           .catch((err) => {
             console.error('[loadBabftMapMerged] gagal:', err);
+            // Tampilkan error di overlay (bukan cuma toast yang cepat hilang)
+            setMapLoading({
+              visible: true, progress: 0,
+              stage: 'Gagal memuat map',
+              loadedBytes: 0, totalBytes: 0,
+              error: 'Gagal memuat map: ' + (err && err.message ? err.message : 'tidak diketahui'),
+            });
             toast.error('Map Build A boat gagal dimuat');
           });
       } else {
@@ -19555,6 +19656,20 @@ Now you can apply Displacement for detailed effect.`);
       overflow: 'hidden',
       fontFamily: 'Inter, sans-serif',
     }}>
+      {/* Overlay loading map — untuk SEMUA user (guest & login), tanpa gate auth */}
+      <MapLoadingOverlay
+        visible={!!(mapLoading && mapLoading.visible)}
+        progress={mapLoading ? mapLoading.progress : 0}
+        stage={mapLoading ? mapLoading.stage : ''}
+        loadedBytes={mapLoading ? mapLoading.loadedBytes : 0}
+        totalBytes={mapLoading ? mapLoading.totalBytes : 0}
+        error={mapLoading ? mapLoading.error : null}
+        onRetry={() => {
+          // Paksa muat ulang area babft (cache dipertahankan, jadi lanjut)
+          setMapLoading(null);
+          try { if (typeof applyBuildArea === 'function') applyBuildArea('babft'); } catch (_) {}
+        }}
+      />
       {/* Header */}
       <div style={{
         display: 'flex',
