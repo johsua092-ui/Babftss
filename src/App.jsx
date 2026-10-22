@@ -279,7 +279,17 @@ export default function App() {
                 </defs>
             </svg>
             <style>{`@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }`}</style>
-            <Toaster position="top-center" richColors theme="dark" toastOptions={{ style: { fontFamily: 'Inter,sans-serif', fontSize: 13 } }} />
+            {/* Posisi toast: di halaman simulator tetap di ATAS, hanya digeser turun
+                sedikit (offset 78px) supaya tidak menutupi tombol header — Build Area,
+                Reset Camera, Clear All, Pengaturan. BUKAN dipindah ke dasar layar.
+                Halaman lain tetap top-center dengan offset bawaan. */}
+            <Toaster
+                position="top-center"
+                richColors
+                theme="dark"
+                offset={page === "block-simulator-3d" ? 78 : 16}
+                toastOptions={{ style: { fontFamily: 'Inter,sans-serif', fontSize: 13 } }}
+            />
         {(page === "welcome" || page === "menu") && userBar}
         {guestAnnouncement && (
             <div style={{

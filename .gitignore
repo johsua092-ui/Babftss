@@ -191,3 +191,11 @@ KONTRAK_PERMANEN.md
 nsi_viewer.html
 nsi_workbench.html
 src/nsi_workbench.jsx
+
+# ── Map Dev Studio (bab 183, permintaan user 2026-10-12): HALAMAN-nya saja
+#    yang JANGAN di-commit / JANGAN masuk Vercel (editor map lokal).
+#    CATATAN (2026-10-22): babftMapGlb.js & babftMapDevMode.js DIKELUARKAN dari
+#    ignore — keduanya diimpor STATIS oleh BlockSimulator3D.jsx, jadi kalau
+#    tidak ikut ter-commit, build Vercel gagal ("Could not resolve").
+src/pages/MapDevStudio.jsx
+public/maps/
