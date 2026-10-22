@@ -191,11 +191,3 @@ KONTRAK_PERMANEN.md
 nsi_viewer.html
 nsi_workbench.html
 src/nsi_workbench.jsx
-
-# ── Map Dev Studio (bab 183, permintaan user 2026-10-12): HALAMAN + ISINYA
-#    DULU di-ignore. DIBUKA 2026-10-22 atas perintah user:
-#    "mapnya dan segala macam yang ai sebelumnya kerja keras bisa di push ke github"
-#    Alasan teknis: App.jsx (file TRACKED) meng-import ./pages/MapDevStudio,
-#    jadi clone bersih GAGAL build kalau file ini tidak ikut. Sudah diuji (bab 190.6).
-#    Total aset map 59,2 MB (terbesar 32 MB) — di bawah batas GitHub 100 MB/file.
-#    TETAP di-ignore: artefak uji di root (st_*.html, verif*.html, icon*.html, dump_*.json).

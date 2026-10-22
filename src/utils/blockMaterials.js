@@ -114,11 +114,6 @@ export const BLOCK_LIBRARY = [
   // pucat + PERMATA cyan menggantikan bintang ungu. 4 x 4 x 3 studs.
   { slug: 'medium_treasure',   name: 'Medium Treasure', label: 'Medium Treasure', roughness: 0.68, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
   { slug: 'big_treasure',      name: 'Big Treasure', label: 'Big Treasure', roughness: 0.68, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
-  // ── NSI LEVEL 2 #11: PINE TREE (bab 180, permintaan user 2026-10-12) ──
-  // Referensi: Roblox "Pine Tree - Build a boat" (asset 6574704298).
-  // 5 tingkat BINTANG BERGERIGI (6 lidah + 6 takik) + batang; maks 15x15x15 studs
-  // (dipakai 10.90 x 15.00 x 9.85 = rasio H:W 1.377 vs referensi 1.368).
-  { slug: 'pine_tree',         name: 'Pine Tree', label: 'Pine Tree', roughness: 0.92, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -137,9 +132,6 @@ const CHEST_BASE_TEX = {
   small_treasure: 'legendary_chest',   // bab 149: share (nol duplikat)
   medium_treasure: 'legendary_chest',  // bab 169: share (rangka sama)
   big_treasure: 'legendary_chest',     // bab 178: share (rangka sama)
-  pine_tree: 'pine_tree',              // bab 180g: tekstur KHUSUS (grass di-desaturasi) —
-                                       // terukur: pine_tree.png mean RGB(32.1,64.2,39.9)
-                                       // vs referensi RGB(32.1,58.6,34.6) — cocok
 };
 
 const ROD_BASE_TEX = {
@@ -259,7 +251,6 @@ export const BLOCK_PLACEHOLDER = {
   small_treasure: 0x8a6a12,   // bab 149: emas gelap (warna asli = vertex color)
   medium_treasure: 0x8a6a12,  // bab 169: sama (warna asli = vertex color)
   big_treasure: 0x8a6a12,     // bab 178: sama
-  pine_tree: 0x2b4a2b,        // bab 180: hijau pinus (warna asli = vertex color)
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
   hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
   legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
@@ -432,8 +423,6 @@ export function makeBlockMaterial(THREE, slug) {
   if (def.slug === 'medium_treasure') { mat.side = THREE.DoubleSide; }
   // bab 178: Big Treasure juga dirakit dari banyak part → DoubleSide.
   if (def.slug === 'big_treasure') { mat.side = THREE.DoubleSide; }
-  // bab 180: Pine Tree juga dirakit dari banyak part (per-tier) → DoubleSide.
-  if (def.slug === 'pine_tree') { mat.side = THREE.DoubleSide; }
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca

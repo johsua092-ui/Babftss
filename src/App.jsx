@@ -24,7 +24,6 @@ const KNOWN_PAGES = new Set([
     'shapes',
     'shapes-calculator',
     'block-simulator-3d',
-    'map-dev-studio',
     'block-sim-test',
     'menu',
     'logic-gates',
@@ -63,7 +62,6 @@ const LOGIC_AI_PAGES = new Set([
 ]);
 const ShapesCalculator = lazy(() => import('./pages/ShapesCalculator'));
 const BlockSimulator3D = lazy(() => import('./pages/BlockSimulator3D'));
-const MapDevStudio = lazy(() => import('./pages/MapDevStudio'));
 const BlockSimulatorTest = lazy(() => import('./components/BlockSimulatorTest'));
 const BasicLogicGates = lazy(() => import('./pages/BasicLogicGates'));
 const LogicGatesCircuit = lazy(() => import('./pages/LogicGatesCircuit'));
@@ -330,9 +328,6 @@ export default function App() {
             </motion.div>}
             {page === "shapes-calculator" && <motion.div key="shapes-calculator" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
                 <Suspense fallback={pageFallback}><ShapesCalculator setPage={setPage} /></Suspense>
-            </motion.div>}
-            {page === "map-dev-studio" && <motion.div key="map-dev-studio" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh" }}>
-                <Suspense fallback={pageFallback}><MapDevStudio setPage={setPage} /></Suspense>
             </motion.div>}
             {page === "block-simulator-3d" && <motion.div key="block-simulator-3d" variants={variants} initial="hidden" animate="visible" exit="exit" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
                 {/* Route guard defense-in-depth: jika somehow (mis. via devtools state
