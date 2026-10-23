@@ -86,7 +86,7 @@ export default function TesseractCore({
     if (!svg) return undefined;
 
     // Skala: kubus luar mengisi ~72% kotak, menyisakan ruang untuk glow.
-    const R = size * 0.235;
+    const R = size * 0.205;
     const CX = size / 2;
     const CY = size / 2;
     const W_DIST = 2.55;
@@ -105,15 +105,15 @@ export default function TesseractCore({
       }
 
       const t = (now - t0) / 1000;
-      // Kecepatan putar. Riwayat permintaan user:
-      //   0.42/0.30 -> "slowmo"
-      //   0.80/0.57 -> "cepetin dikit lagi"
-      //   1.15/0.82 -> "cepetin dikit lagi" (masih kurang)
-      //   1.70/1.22 (sekarang) = ~4x versi awal. Batas aman: di atas ~2.2
-      //   bentuk mulai terasa bergetar/liar, bukan berputar.
-      const a = t * 1.70;                  // rotasi bidang XW
-      const b = t * 1.22;                  // rotasi bidang YZ
-      const c = -0.38 + Math.sin(t * 0.80) * 0.22; // roll (tilt dasar + goyangan)
+      // Kecepatan putar TESSERACT (rotasi 4D internal).
+      // Permintaan terakhir user: geserannya yang dipercepat, putaran
+      // tesseract-nya justru DIPERLAMBAT sedikit dari 1.70/1.22.
+      // Riwayat: 0.42/0.30 -> "slowmo" | 0.80/0.57 -> "cepetin dikit"
+      //          1.15/0.82 -> "cepetin lagi" | 1.70/1.22 -> terlalu cepat
+      //          1.30/0.94 (sekarang) = lebih tenang, geseran yang jadi cepat
+      const a = t * 1.30;                  // rotasi bidang XW
+      const b = t * 0.94;                  // rotasi bidang YZ
+      const c = -0.38 + Math.sin(t * 0.70) * 0.22; // roll (tilt dasar + goyangan)
 
       // ── Gerakan ayun tambahan (permintaan user: "rotasi gerak kanan kiri
       //    dan atas bawah supaya makin bervariasi dan unik") ──
@@ -122,7 +122,7 @@ export default function TesseractCore({
       // inilah yang membuat gerakannya terasa hidup, bukan sekadar berputar
       // satu arah. Nilai ±0.58 dan ±0.38 rad (~33° dan ~22°) dipilih supaya
       // bentuk tetap terbaca dan tidak menabrak tepi viewBox.
-      const yaw = Math.sin(t * 0.55) * 0.58;              // ayun KANAN-KIRI
+      const yaw = Math.sin(t * 0.55) * 0.44;              // ayun KANAN-KIRI
       // Pitch digeser ke -0.40 dengan amplitudo 0.30 (saran Claude): rentang
       // -0.70..-0.10 rad menjaga sisi ATAS kubus selalu terlihat, sehingga
       // bentuk tidak pernah tampak gepeng saat mengayun ke bawah.
@@ -133,6 +133,21 @@ export default function TesseractCore({
       const cc = Math.cos(c), sc = Math.sin(c);
       const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
       const cpit = Math.cos(pitch), spit = Math.sin(pitch);
+
+      // ── GERAK GESER (translasi) ──
+      // Ini yang membuat benda BENAR-BENAR pindah posisi (kanan-kiri dan
+      // atas-bawah). yaw/pitch di atas hanya memutar pada porosnya, jadi
+      // tanpa translasi bentuk tetap di tengah dan terbaca "satu arah".
+      //
+      // Permintaan terakhir user: GESERAN dipercepat, putaran tesseract
+      // diperlambat. Frekuensi geser dinaikkan 0.62/0.47 -> 1.55/1.20
+      // (~2.5x lebih cepat) supaya jelas terlihat bolak-balik.
+      // Amplitudo diturunkan ke 0.22/0.17 R karena pada kecepatan tinggi
+      // + ukuran 168px, amplitudo lama membuat bentuk keluar viewBox.
+      const geserX = Math.sin(t * 1.55) * R * 0.18;
+      const geserY = Math.sin(t * 1.20 + 1.6) * R * 0.14;
+      const CXg = CX + geserX;
+      const CYg = CY + geserY;
 
       const proj = new Array(16);
       let zMin = Infinity;
@@ -171,7 +186,7 @@ export default function TesseractCore({
         const pz = z * k;
 
         const s = Z_DIST / (Z_DIST - pz);
-        proj[i] = [CX + px * s * R, CY + py * s * R, pz];
+        proj[i] = [CXg + px * s * R, CYg + py * s * R, pz];
         if (pz < zMin) zMin = pz;
         if (pz > zMax) zMax = pz;
       }
