@@ -222,9 +222,14 @@ export default function MapLoadingOverlay({
         gap: 30,
         /* backdrop-filter DIHAPUS: blur(6px) pada lapisan selebar layar
            menghasilkan pita buram horizontal samar di belakang ikon & judul
-           (artefak yang dilaporkan user sebagai "pantulan"). Latar sudah
-           0.92 opaque, jadi blur tidak diperlukan. */
-        backgroundColor: 'rgba(5, 8, 15, 0.96)',
+           (artefak yang dilaporkan user sebagai "pantulan").
+           
+           OPACITY 0.96 -> 1 (PEKAT PENUH). Laporan user: "dibelakang layar
+           ada teks transparan". Penyebabnya alpha 0.96 menyisakan 4% tembus
+           pandang, sehingga teks/UI di belakang overlay (panel kontrol,
+           tombol, judul halaman) samar-samar terlihat. Layar loading harus
+           bersih total — tidak ada yang boleh bocor. */
+        backgroundColor: 'rgb(5, 8, 15)',
         opacity: visible ? 1 : 0,
         transition: 'opacity 0.22s ease',
         pointerEvents: visible ? 'auto' : 'none',
