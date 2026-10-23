@@ -49,11 +49,13 @@ const CSS = `
   position: relative;
   perspective: 700px;
   perspective-origin: 50% 42%;
-  /* Diperbesar mengikuti TesseractCore (112 -> 168). Kalau wrap dibiarkan
-     110px, SVG yang absolute-centered tetap tampil penuh, tapi jarak vertikal
-     ke judul jadi tidak seimbang karena tinggi wrap tidak ikut naik. */
-  width: 168px;
-  height: 168px;
+  /* Diperbesar mengikuti TesseractCore (112 -> 168 -> 196).
+     Permintaan user: "ukuran kubusnya gedein dikit".
+     Wrap HARUS ikut naik supaya jarak vertikal ke judul tetap seimbang;
+     kalau wrap dibiarkan, SVG absolute-centered tetap tampil tapi layout
+     jadi bertumpuk. */
+  width: 196px;
+  height: 196px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -242,7 +244,7 @@ export default function MapLoadingOverlay({
         {/* Ukuran 168px (dulu 112px) atas permintaan user: "gedein size nya".
               Skala internal TesseractCore ikut proporsional, jadi tidak ada
               yang rusak — hanya lebih besar. */}
-        <TesseractCore size={168} active={visible && !error} opacity={0.95} />
+        <TesseractCore size={196} active={visible && !error} opacity={0.95} />
       </div>
 
       <div style={{ textAlign: 'center', maxWidth: 420, padding: '0 24px' }}>
