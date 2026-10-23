@@ -74,6 +74,27 @@ import { createHumanoidAvatar, updateAvatarPhysics } from '../utils/avatarContro
 import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
 import MapLoadingOverlay from '../components/MapLoadingOverlay.jsx';
 import { getStoredProgress, fetchMapResumable } from '../utils/babftMapCache.js';
+
+// ── THUMBNAIL BUILD AREA (permintaan user 2026-10-22) ──
+// Masalah lama: preview memakai PNG 145 KB & 623 KB, dimuat malas saat modal
+// dibuka -> kadang belum siap / gagal tampil. Sekarang:
+//   1. versi WebP 640px: 9 KB & 20 KB (turun ~97%), tetap tajam karena
+//      ditampilkan hanya selebar ~300-400 px (2x untuk layar HiDPI).
+//   2. di-preload saat modul di-import, jadi sudah ada di cache browser
+//      begitu simulator dibuka -> muncul instan tanpa kedip.
+const PREVIEW_DEFAULT = '/maps/preview_default.webp';
+const PREVIEW_BABFT = '/maps/preview_babft.webp';
+if (typeof window !== 'undefined') {
+  [PREVIEW_DEFAULT, PREVIEW_BABFT].forEach((src) => {
+    try {
+      const im = new Image();
+      im.decoding = 'async';
+      im.src = src;
+      // simpan referensi agar tidak di-GC sebelum selesai
+      (window.__babftPreviewCache = window.__babftPreviewCache || []).push(im);
+    } catch (_) {}
+  });
+}
 // ── PHYSICS v2 (2026-09-20): MESIN RAPIER (rapier3d) menggantikan mesin AABB.
 // API SAMA PERSIS (initRapierPhysics/ensureBody/wakeBody/sleepBody/stepWorld)
 // sehingga integrasi app nyaris tidak berubah — hanya sumber import yang beda.
@@ -28734,8 +28755,19 @@ Now you can apply Displacement for detailed effect.`);
                   overflow: 'hidden',
                 }}>
                   <img
-                    src="/maps/preview_default.png"
-                    alt="Default 500×500 Grid Preview"
+                    src={PREVIEW_DEFAULT}
+                    alt="Default 500x500 Grid Preview"
+                    width={640}
+                    height={335}
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      // Cadangan: kalau WebP tidak didukung / gagal, pakai PNG asli
+                      if (!e.currentTarget.dataset.fallback) {
+                        e.currentTarget.dataset.fallback = '1';
+                        e.currentTarget.src = '/maps/preview_default.png';
+                      }
+                    }}
                     style={{
                       width: '100%',
                       height: '100%',
@@ -28818,8 +28850,18 @@ Now you can apply Displacement for detailed effect.`);
                   overflow: 'hidden',
                 }}>
                   <img
-                    src="/maps/preview_babft.png"
+                    src={PREVIEW_BABFT}
                     alt="Babft Map Preview"
+                    width={640}
+                    height={324}
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      if (!e.currentTarget.dataset.fallback) {
+                        e.currentTarget.dataset.fallback = '1';
+                        e.currentTarget.src = '/maps/preview_babft.png';
+                      }
+                    }}
                     style={{
                       width: '100%',
                       height: '100%',
