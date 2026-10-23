@@ -39,9 +39,9 @@ const CSS = `
   top: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  /* z-index 1 = DI BELAKANG sisi depan kubus (sisi depan ada di z-index 2).
-     Karena sisi kubus sekarang tembus pandang, tesseract terlihat SAMAR
-     menembus kaca -> terbaca "di dalam kubus", bukan ditempel di atasnya. */
+  /* Kubus CSS 6 sisi sudah DIHAPUS — tesseract kini satu tubuh dan menggambar
+     kubusnya sendiri. z-index dipertahankan hanya sebagai pengaman urutan
+     tumpukan terhadap elemen lain di .spinner-wrap. */
   z-index: 1;
 }
 
@@ -49,8 +49,12 @@ const CSS = `
   position: relative;
   perspective: 700px;
   perspective-origin: 50% 42%;
-  width: 110px;
-  height: 110px;
+  /* Diperbesar mengikuti TesseractCore (112 -> 168). Kalau wrap dibiarkan
+     110px, SVG yang absolute-centered tetap tampil penuh, tapi jarak vertikal
+     ke judul jadi tidak seimbang karena tinggi wrap tidak ikut naik. */
+  width: 168px;
+  height: 168px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -235,7 +239,10 @@ export default function MapLoadingOverlay({
             di dalamnya) sehingga terlihat "kubus punya kubus sendiri".
             Sekarang kubus CSS dihapus; TesseractCore menggambar kubus luar,
             kubus dalam, DAN 8 rusuk penghubung sebagai satu kesatuan. */}
-        <TesseractCore size={112} active={visible && !error} opacity={0.95} />
+        {/* Ukuran 168px (dulu 112px) atas permintaan user: "gedein size nya".
+              Skala internal TesseractCore ikut proporsional, jadi tidak ada
+              yang rusak — hanya lebih besar. */}
+        <TesseractCore size={168} active={visible && !error} opacity={0.95} />
       </div>
 
       <div style={{ textAlign: 'center', maxWidth: 420, padding: '0 24px' }}>

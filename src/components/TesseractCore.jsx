@@ -105,15 +105,34 @@ export default function TesseractCore({
       }
 
       const t = (now - t0) / 1000;
-      // Kecepatan putar (permintaan user: sebelumnya terlalu lambat/"slowmo").
-      // Dinaikkan ~1.9x dari 0.42/0.30. Masih tenang, tapi jelas bergerak.
-      const a = t * 0.80;                  // rotasi bidang XW
-      const b = t * 0.57;                  // rotasi bidang YZ
-      const c = -0.38 + Math.sin(t * 0.45) * 0.22; // tilt tetap -22deg + goyangan
+      // Kecepatan putar. Riwayat permintaan user:
+      //   0.42/0.30 -> "slowmo"
+      //   0.80/0.57 -> "cepetin dikit lagi"
+      //   1.15/0.82 -> "cepetin dikit lagi" (masih kurang)
+      //   1.70/1.22 (sekarang) = ~4x versi awal. Batas aman: di atas ~2.2
+      //   bentuk mulai terasa bergetar/liar, bukan berputar.
+      const a = t * 1.70;                  // rotasi bidang XW
+      const b = t * 1.22;                  // rotasi bidang YZ
+      const c = -0.38 + Math.sin(t * 0.80) * 0.22; // roll (tilt dasar + goyangan)
+
+      // ── Gerakan ayun tambahan (permintaan user: "rotasi gerak kanan kiri
+      //    dan atas bawah supaya makin bervariasi dan unik") ──
+      // Dua sumbu berbeda dengan frekuensi BERBEDA dan fase BERBEDA, sehingga
+      // kombinasinya tidak pernah mengulang pola yang sama secara cepat —
+      // inilah yang membuat gerakannya terasa hidup, bukan sekadar berputar
+      // satu arah. Nilai ±0.58 dan ±0.38 rad (~33° dan ~22°) dipilih supaya
+      // bentuk tetap terbaca dan tidak menabrak tepi viewBox.
+      const yaw = Math.sin(t * 0.55) * 0.58;              // ayun KANAN-KIRI
+      // Pitch digeser ke -0.40 dengan amplitudo 0.30 (saran Claude): rentang
+      // -0.70..-0.10 rad menjaga sisi ATAS kubus selalu terlihat, sehingga
+      // bentuk tidak pernah tampak gepeng saat mengayun ke bawah.
+      const pitch = -0.40 + Math.sin(t * 0.42 + 1.1) * 0.30; // ayun ATAS-BAWAH
 
       const ca = Math.cos(a), sa = Math.sin(a);
       const cb = Math.cos(b), sb = Math.sin(b);
       const cc = Math.cos(c), sc = Math.sin(c);
+      const cyaw = Math.cos(yaw), syaw = Math.sin(yaw);
+      const cpit = Math.cos(pitch), spit = Math.sin(pitch);
 
       const proj = new Array(16);
       let zMin = Infinity;
@@ -133,6 +152,16 @@ export default function TesseractCore({
         const fx = x * cc - y * sc;
         const fy = x * sc + y * cc;
         x = fx; y = fy;
+
+        // Ayun ATAS-BAWAH (pitch): putar pada sumbu X.
+        const py1 = y * cpit - z * spit;
+        const pz1 = y * spit + z * cpit;
+        y = py1; z = pz1;
+
+        // Ayun KANAN-KIRI (yaw): putar pada sumbu Y.
+        const px1 = x * cyaw + z * syaw;
+        const pz2 = -x * syaw + z * cyaw;
+        x = px1; z = pz2;
 
         // W lebih besar -> kubus dalam (w=-1) tidak terlalu kecil,
         // supaya detailnya masih terbaca di ukuran ikon (saran Claude).
