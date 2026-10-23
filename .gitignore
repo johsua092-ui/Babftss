@@ -199,3 +199,8 @@ src/nsi_workbench.jsx
 #    tidak ikut ter-commit, build Vercel gagal ("Could not resolve").
 src/pages/MapDevStudio.jsx
 public/maps/
+
+# --- file debug lokal (sesi spinner/loading) — JANGAN di-push ---
+preview-loading.html
+src/preview-loading.jsx
+tess_ref.png
