@@ -249,7 +249,11 @@ export default function MapLoadingOverlay({
         {/* Ukuran 168px (dulu 112px) atas permintaan user: "gedein size nya".
               Skala internal TesseractCore ikut proporsional, jadi tidak ada
               yang rusak — hanya lebih besar. */}
-        <TesseractCore size={196} active={visible && !error} opacity={0.95} />
+        {/* `active` HANYA soal terlihat/tidak — sesuai aturan user:
+            tidak terlihat = animasi dimatikan; terlihat = animasi mutlak.
+            Dulu ada `&& !error` → begitu muncul pesan error, tesseract mati
+            padahal masih di layar loading. Sekarang tidak lagi. */}
+        <TesseractCore size={196} active={visible} opacity={0.95} />
       </div>
 
       <div style={{ textAlign: 'center', maxWidth: 420, padding: '0 24px' }}>

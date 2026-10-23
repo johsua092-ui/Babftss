@@ -85,6 +85,14 @@ export default function TesseractCore({
     const svg = svgRef.current;
     if (!svg) return undefined;
 
+    // ── ATURAN USER (2026-10-23), DIPATUHI PERSIS ──
+    //   • TIDAK terlihat  → animasi DIMATIKAN (berhenti, hemat resource).
+    //   • TERLIHAT (loading muncul) → animasi MUTLAK: berhak penuh bergerak,
+    //     TIDAK BOLEH berhenti dalam kondisi apa pun.
+    // Jadi satu-satunya sebab animasi boleh berhenti adalah "tidak terlihat".
+    // Tidak ada sebab lain: bukan progress, bukan error, bukan
+    // prefers-reduced-motion, bukan perubahan state lain.
+    if (!active) return undefined;
     // Skala: kubus luar mengisi ~72% kotak, menyisakan ruang untuk glow.
     const R = size * 0.205;
     const CX = size / 2;
@@ -250,12 +258,14 @@ export default function TesseractCore({
     return () => cancelAnimationFrame(raf);
   }, [size, active]);
 
-  const reduceMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Tidak terlihat → komponen tidak dirender sama sekali (animasi mati).
+  // Ini SATU-SATUNYA kondisi animasi boleh berhenti, sesuai aturan user.
+  if (!active) return null;
 
-  if (!active || reduceMotion) return null;
+  // prefers-reduced-motion TIDAK dipakai lagi. Dulu ada
+  // `if (!active || reduceMotion) return null` → di mesin yang menyetel
+  // "kurangi gerakan", tesseract HILANG padahal sedang loading. Permintaan
+  // user: selama terlihat, animasi mutlak berhak bergerak.
 
   return (
     <svg

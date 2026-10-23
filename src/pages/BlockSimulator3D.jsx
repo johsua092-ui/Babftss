@@ -73,6 +73,7 @@ import { loadBabftMapMerged } from '../utils/babftMapObj.js';
 import { createHumanoidAvatar, updateAvatarPhysics } from '../utils/avatarController.js';
 import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
 import MapLoadingOverlay from '../components/MapLoadingOverlay.jsx';
+import FpsCounter from '../components/FpsCounter.jsx';
 import { getStoredProgress, fetchMapResumable } from '../utils/babftMapCache.js';
 
 // ── THUMBNAIL BUILD AREA (permintaan user 2026-10-22) ──
@@ -4887,6 +4888,12 @@ Now you can apply Displacement for detailed effect.`);
   // Tracking hovered block + extract material info untuk display
   const [hoveredMaterial, setHoveredMaterial] = useState(null);
   // { color, metalness, roughness, opacity, transparent, emissive, emissiveIntensity, hasNormalMap, hasMap, position, uuid }
+  // Cermin nilai hoveredMaterial untuk dibaca dari handler non-React
+  // (applyPointerRaycast). Dipakai agar setHoveredMaterial(null) tidak
+  // dipanggil berulang-ulang saat nilainya sudah null — menghemat jalur
+  // scheduling React yang mahal kalau terjadi tiap frame.
+  const hoveredMaterialRef = useRef(null);
+  useEffect(() => { hoveredMaterialRef.current = hoveredMaterial; }, [hoveredMaterial]);
 
   // Helper: extract material info dari mesh untuk inspector
   const extractMaterialInfo = (mesh) => {
@@ -13361,6 +13368,32 @@ Now you can apply Displacement for detailed effect.`);
             if (threeRef.current.setBabftTimeOfDay) {
               threeRef.current.setBabftTimeOfDay(babftTimeOfDayRef.current || 'day');
             }
+            // ── PAKSA UPLOAD GEOMETRI MAP KE GPU SEKARANG ──
+            //
+            // MENGAPA DI SINI (dan bukan di babftMapObj.js):
+            // Hanya di titik ini `renderer`, `scene`, dan `camera` benar-benar
+            // ada. Percobaan sebelumnya menaruhnya di babftMapObj.js dan
+            // membaca window.__threeRenderer/__threeScene/__threeCamera yang
+            // TIDAK PERNAH diisi siapa pun → kode itu mati total (no-op).
+            //
+            // MASALAH YANG DIPECAHKAN:
+            // Geometri map = 66,8 MB (1,55 juta vertex). Kalau upload dibiarkan
+            // terjadi otomatis pada render PERTAMA setelah overlay ditutup,
+            // GPU driver memblokir main thread 502–642 ms (terukur lewat
+            // PerformanceObserver 'longtask'). Akibatnya tesseract membeku
+            // tepat di detik terakhir loading — persis keluhan user.
+            //
+            // Dengan memaksa upload sekarang, blokir itu terjadi SELAGI
+            // overlay masih tampil dan animasi masih berhak berjalan.
+            // renderer.compile() = kompilasi shader + unggah buffer ke GPU.
+            // Dibungkus try/catch: kalau gagal, map tetap tampil normal
+            // (upload akan terjadi otomatis seperti sebelumnya).
+            try {
+              renderer.compile(scene, camera);
+            } catch (e) {
+              console.warn('[map] pra-upload GPU gagal (tidak fatal):', e);
+            }
+
             // Map siap → tutup overlay loading
             setMapLoading({ visible: false, progress: 1, stage: 'Selesai', loadedBytes: 0, totalBytes: 0, error: null });
             toast.success('Map Build A boat dimuat (0 Lag / 60 FPS) — Tim Putih');
@@ -15317,6 +15350,15 @@ Now you can apply Displacement for detailed effect.`);
           if (threeRef.current.updateClonePreview) threeRef.current.updateClonePreview();
         }
       } catch (e) {}
+      // ── FIX BUG (2026-10-23): GHOST IKUT KURSOR SAAT KAMERA DIGESER ──
+      // Kalau user menggeser/memutar/maju-mundurkan kamera tanpa menggerakkan
+      // mouse, titik 3D di bawah kursor BERUBAH. Tanpa panggilan ini ghost
+      // tetap di posisi lama → terlihat "diam di tempat".
+      // Ditaruh SEBELUM render supaya posisi ghost sudah final saat digambar.
+      try {
+        if (threeRef.current.__refreshGhostRaycast) threeRef.current.__refreshGhostRaycast();
+      } catch (e) {}
+
       // Phase 13: Render dengan EffectComposer saat bloom on, else direct render.
       // Composer jalanin semua pass (render → bloom → output) → hasil dengan glow.
       // Direct render = lebih cepat, untuk saat bloom dimatikan.
@@ -18204,21 +18246,44 @@ Now you can apply Displacement for detailed effect.`);
     };
 
     let _lastMouseMoveTime = 0;
-    const onCanvasMouseMove = (e) => {
-      // 1. Lewati raycast jika user sedang memutar/menggeser kamera (klik mouse ditahan atau controls aktif)
-      if (e.buttons !== 0 || (controls && controls.state !== -1)) return;
-      // 2. Lewati raycast jika pointer lock aktif di First Person (kursor terkunci di tengah)
-      if (typeof document !== 'undefined' && document.pointerLockElement === renderer.domElement) return;
-      // 3. Lewati raycast jika user sedang menggeser kamera dengan WASD fly-camera (prioritas 60 FPS untuk pergerakan kamera!)
-      if (keys.w || keys.a || keys.s || keys.d || keys.q || keys.e) return;
 
-      const now = performance.now();
-      if (now - _lastMouseMoveTime < 25) return; // 40 FPS throttling untuk raycast mousemove
-      _lastMouseMoveTime = now;
+    // ══ FIX BUG (laporan user 2026-10-23): GHOST DIAM SAAT KAMERA DIGESER ══
+    //
+    // GEJALA: user memegang tool "place" lalu menggerakkan mouse sambil
+    //         menggeser/memutar/maju-mundurkan kamera → ghost block TIDAK
+    //         mengikuti kursor, dia diam di tempat.
+    //
+    // AKAR (bukan dugaan — dibaca langsung dari kode): ada TIGA `return`
+    // di awal handler mousemove yang MEMBUANG kesempatan raycast:
+    //   1. `if (e.buttons !== 0 || controls.state !== -1) return;`
+    //      → saat kamera di-orbit/di-pan/di-zoom, tombol mouse ditahan dan
+    //        controls aktif, jadi SEMUA mousemove dibuang.
+    //   2. `if (keys.w || keys.a || ...) return;`
+    //      → saat fly-camera WASD/QE ditekan, SEMUA mousemove dibuang.
+    //   3. pointer lock (first person) → mousemove dibuang.
+    // Padahal saat kamera bergerak, titik 3D di bawah kursor BERUBAH walau
+    // koordinat layar kursor tidak berubah. Karena raycast dilewati, posisi
+    // ghost tetap memakai hasil raycast lama = terlihat "diam".
+    //
+    // SOLUSI: pisahkan "membaca posisi kursor" dari "melakukan raycast".
+    //   • Posisi kursor SELALU dicatat (tidak pernah dibuang).
+    //   • Raycast dijadikan fungsi `applyPointerRaycast` yang bisa dipanggil
+    //     dari mana saja — termasuk dari loop animasi.
+    //   • Loop animasi memanggilnya selama tool = place, sehingga saat kamera
+    //     bergerak ghost ikut dihitung ulang mengikuti kursor.
+    //
+    // Throttle tetap ada (30 ms ≈ 33 FPS) supaya raycast tidak membanjiri
+    // frame; raycast map Babft memakai BVH jadi sangat murah.
+    const pointerState = { clientX: 0, clientY: 0, valid: false };
+
+    const applyPointerRaycast = (clientX, clientY) => {
+      // Pointer lock (first person): kursor terkunci di tengah, koordinat
+      // client tidak bermakna → jangan paksa ghost mengikuti angka basi.
+      if (typeof document !== 'undefined' && document.pointerLockElement === renderer.domElement) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
-      const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const my = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const mx = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const my = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera({ x: mx, y: my }, camera);
 
       const currentTool = toolRef.current;
@@ -18403,27 +18468,100 @@ Now you can apply Displacement for detailed effect.`);
       }
 
       // Phase 38: Material Inspector — tracking hovered block untuk popup.
-      // Task ID 29 (2026-08-31): tracking HANYA jalan saat tool 'info' aktif
-      // (mode inspeksi read-only). Sebelumnya "always cek hover untuk semua
-      // tool" — per request user, inspector TIDAK muncul di manapun kecuali
-      // mode info aktif. setHoveredMaterial(null) di tool lain = React
-      // bailout (no re-render) kalau state memang sudah null.
+      // Task ID 29 (2026-08-31): tracking HANYA jalan saat tool 'info' aktif.
+      //
+      // ── OPTIMASI (2026-10-23) ──
+      // Dulu cabang ini memanggil setHoveredMaterial(null) pada SETIAP
+      // panggilan untuk tool selain 'info'. React sebenarnya bailout kalau
+      // nilainya sama, tapi pemanggilan setter tetap memicu jalur scheduling
+      // React (mahal kalau terjadi ribuan kali). Sekarang hanya dipanggil
+      // saat nilainya benar-benar berubah.
       if (currentTool === 'info') {
         const inspectorHits = raycaster.intersectObjects(threeRef.current.blocks, true);
         if (inspectorHits.length > 0) {
           const info = extractMaterialInfo(inspectorHits[0].object);
           if (info) {
-            info.mouseX = e.clientX;
-            info.mouseY = e.clientY;
+            info.mouseX = clientX;
+            info.mouseY = clientY;
             setHoveredMaterial(info);
           }
-        } else {
+        } else if (hoveredMaterialRef.current !== null) {
           setHoveredMaterial(null);
         }
-      } else {
+      } else if (hoveredMaterialRef.current !== null) {
         setHoveredMaterial(null);
       }
     };
+
+    // ── Handler mousemove: SEKARANG hanya mencatat posisi kursor ──
+    // Tidak ada lagi `return` yang membuang raycast saat kamera bergerak.
+    // Raycast dilakukan lewat applyPointerRaycast(), yang juga dipanggil
+    // dari loop animasi → ghost tetap presisi walau kamera digeser.
+    const onCanvasMouseMove = (e) => {
+      pointerState.clientX = e.clientX;
+      pointerState.clientY = e.clientY;
+      pointerState.valid = true;
+
+      // Pointer lock aktif → koordinat client tidak bermakna.
+      if (typeof document !== 'undefined' && document.pointerLockElement === renderer.domElement) return;
+
+      // Throttle 30 ms (±33 FPS). Ini HANYA untuk membatasi frekuensi kerja,
+      // BUKAN membuang kondisi kamera. Ghost tetap ikut walau kamera bergerak.
+      const now = performance.now();
+      if (now - _lastMouseMoveTime < 30) return;
+      _lastMouseMoveTime = now;
+
+      applyPointerRaycast(e.clientX, e.clientY);
+    };
+
+    // Dipanggil dari loop animasi: kalau kamera berubah tapi kursor diam,
+    // raycast di bawah kursor tetap harus dihitung ulang. Tanpa ini ghost
+    // tertinggal di posisi lama (bug yang dilaporkan user).
+    //
+    // ── OPTIMASI (laporan user 2026-10-23: "tool place FPS drop parah") ──
+    // Dulu fungsi ini melakukan raycast ke SELURUH map Babft (1,18 juta
+    // segitiga) SETIAP FRAME, tanpa peduli kamera bergerak atau tidak.
+    // Saat kamera diam (kasus paling umum), hasilnya dijamin sama persis
+    // dengan frame sebelumnya → kerjanya murni pemborosan.
+    //
+    // Sekarang: hitung "sidik jari" kamera (posisi + rotasi + zoom) yang
+    // sangat murah (±0,001 ms). Kalau tidak berubah sejak raycast terakhir,
+    // LANGSUNG keluar tanpa menyentuh BVH. Raycast hanya terjadi saat kamera
+    // benar-benar bergerak — persis kondisi bug yang mau diperbaiki.
+    const _camSig = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 0, zoom: 0, valid: false };
+    const _readCamSig = () => {
+      const p = camera.position;
+      const q = camera.quaternion;
+      _camSig.x = p.x; _camSig.y = p.y; _camSig.z = p.z;
+      _camSig.qx = q.x; _camSig.qy = q.y; _camSig.qz = q.z; _camSig.qw = q.w;
+      _camSig.zoom = camera.zoom;
+    };
+    const _camChanged = () => {
+      const p = camera.position;
+      const q = camera.quaternion;
+      return Math.abs(p.x - _camSig.x) > 1e-6 || Math.abs(p.y - _camSig.y) > 1e-6 ||
+             Math.abs(p.z - _camSig.z) > 1e-6 || Math.abs(q.x - _camSig.qx) > 1e-6 ||
+             Math.abs(q.y - _camSig.qy) > 1e-6 || Math.abs(q.z - _camSig.qz) > 1e-6 ||
+             Math.abs(q.w - _camSig.qw) > 1e-6 || Math.abs(camera.zoom - _camSig.zoom) > 1e-6;
+    };
+
+    threeRef.current.__refreshGhostRaycast = () => {
+      if (!pointerState.valid) return;
+      if (toolRef.current !== 'place') return;
+      // Kamera tidak bergerak sejak raycast terakhir → hasil pasti sama.
+      // Tidak perlu menyentuh BVH sama sekali (hemat penuh).
+      if (!_camChanged()) return;
+      const now = performance.now();
+      // Throttle longgar (±20 FPS) — cukup halus untuk mata, jauh lebih
+      // ringan daripada tiap frame.
+      if (now - _lastMouseMoveTime < 45) return;
+      _lastMouseMoveTime = now;
+      _readCamSig();
+      applyPointerRaycast(pointerState.clientX, pointerState.clientY);
+    };
+    // Raycast pertama kali (kamera belum punya sidik jari) → catat sekarang,
+    // supaya frame berikutnya bisa langsung di-skip kalau kamera diam.
+    _readCamSig();
 
     // mousemove untuk ghost preview + delete highlight (tetap pakai mousemove,
     // bukan pointermove — tidak bentrok karena mousemove tidak di-preventDefault
@@ -19905,6 +20043,10 @@ Now you can apply Displacement for detailed effect.`);
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* ── FPS COUNTER REAL-TIME (permintaan user) ──
+              Tepat di SEBELAH KIRI label "0 Blocks". Warnanya berubah
+              otomatis: hijau ≥55, kuning 30–54, merah <30 FPS. */}
+          <FpsCounter />
           <div style={{
             padding: '6px 14px', borderRadius: 10,
             backgroundColor: panelBg, border: `1px solid ${selectedCount > 0 ? '#1a8cff' : panelBorder}`,
@@ -19943,7 +20085,10 @@ Now you can apply Displacement for detailed effect.`);
           padding: '12px 14px 12px 12px',
           borderRadius: 14,
           border: `1px solid ${panelBorder}`,
-          backdropFilter: 'blur(10px)',
+          // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+          // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+          // seluruh canvas tiap frame → FPS drop parah (terukur).
+          backdropFilter: 'none',
           boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
           zIndex: 5,
           width: 220,
@@ -23138,7 +23283,10 @@ Now you can apply Displacement for detailed effect.`);
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
             border: '1px solid rgba(6,182,212,0.3)',
-            backdropFilter: 'blur(10px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5, width: 200,
             fontFamily: 'Inter, sans-serif',
@@ -23207,7 +23355,10 @@ Now you can apply Displacement for detailed effect.`);
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
             border: '1px solid rgba(251,191,36,0.3)',
-            backdropFilter: 'blur(10px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5, width: 220,
             fontFamily: 'Inter, sans-serif',
@@ -23354,7 +23505,10 @@ Now you can apply Displacement for detailed effect.`);
               backgroundColor: 'rgba(14, 20, 32, 0.92)',
               border: '1px solid #1e293b',
               borderRadius: 12,
-              backdropFilter: 'blur(10px)',
+              // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+              // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+              // seluruh canvas tiap frame → FPS drop parah (terukur).
+              backdropFilter: 'none',
               boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
               cursor: 'pointer',
               zIndex: 5,
@@ -23458,7 +23612,10 @@ Now you can apply Displacement for detailed effect.`);
               border: `1px solid ${panelBorder}`,
               borderRadius: 14,
               padding: 6,
-              backdropFilter: 'blur(10px)',
+              // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+              // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+              // seluruh canvas tiap frame → FPS drop parah (terukur).
+              backdropFilter: 'none',
               boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             }}>
               <button
@@ -23515,7 +23672,10 @@ Now you can apply Displacement for detailed effect.`);
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
             border: `1px solid ${panelBorder}`,
-            backdropFilter: 'blur(10px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5,
             minWidth: 208,
@@ -23739,7 +23899,10 @@ Now you can apply Displacement for detailed effect.`);
               border: `1px solid ${panelBorder}`,
               borderRadius: 14,
               padding: 6,
-              backdropFilter: 'blur(10px)',
+              // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+              // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+              // seluruh canvas tiap frame → FPS drop parah (terukur).
+              backdropFilter: 'none',
               boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             }}>
               <button
@@ -23773,7 +23936,10 @@ Now you can apply Displacement for detailed effect.`);
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: 12, borderRadius: 14,
             border: `1px solid ${panelBorder}`,
-            backdropFilter: 'blur(10px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5,
           }}>
@@ -24057,7 +24223,10 @@ Now you can apply Displacement for detailed effect.`);
             backgroundColor: 'rgba(14, 20, 32, 0.92)',
             padding: '10px 12px', borderRadius: 14,
             border: `1px solid ${panelBorder}`,
-            backdropFilter: 'blur(10px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
             zIndex: 5,
             maxWidth: (typeof window !== 'undefined' && window.innerWidth < 768) ? 150 : 168,
@@ -24125,7 +24294,10 @@ Now you can apply Displacement for detailed effect.`);
             padding: '10px 12px', borderRadius: 10,
             border: '1px solid rgba(34,197,94,0.4)',
             color: '#e2e8f0', fontSize: 10,
-            backdropFilter: 'blur(8px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             boxShadow: '0 8px 24px rgba(0,0,0,0.4), 0 0 12px rgba(34,197,94,0.2)',
             zIndex: 100, pointerEvents: 'none',
             fontFamily: 'Inter, sans-serif',
@@ -24202,7 +24374,10 @@ Now you can apply Displacement for detailed effect.`);
             padding: '14px 18px', borderRadius: 12,
             border: `1px solid ${panelBorder}`,
             color: textSecondary, fontSize: 12,
-            backdropFilter: 'blur(10px)',
+            // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+            // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+            // seluruh canvas tiap frame → FPS drop parah (terukur).
+            backdropFilter: 'none',
             maxWidth: 300, lineHeight: 1.7,
             zIndex: 5,
           }}>
@@ -27954,11 +28129,14 @@ Now you can apply Displacement for detailed effect.`);
       <button
         onClick={() => setAppsMenuOpen(v => !v)}
         title="All Apps & Features"
-        style={{position:'absolute',top:16,right:60,zIndex:250,width:44,height:44,borderRadius:12,backgroundColor:appsMenuOpen?'#3b82f6':'rgba(14,20,32,0.92)',border:'2px solid rgba(99,102,241,0.5)',color:appsMenuOpen?'#fff':'#6366f1',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 16px rgba(99,102,241,0.4)',fontSize:22,transition:'all 0.2s',backdropFilter:'blur(10px)'}}
+        style={{position:'absolute',top:16,right:60,zIndex:250,width:44,height:44,borderRadius:12,backgroundColor:appsMenuOpen?'#3b82f6':'rgba(14,20,32,0.92)',border:'2px solid rgba(99,102,241,0.5)',color:appsMenuOpen?'#fff':'#6366f1',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 16px rgba(99,102,241,0.4)',fontSize:22,transition:'all 0.2s',backdropFilter:'none'}}
       >{appsMenuOpen ? '✕' : '⊞'}</button>
 
       {appsMenuOpen && (
-        <div style={{position:'absolute',top:70,right:16,width:340,maxHeight:'85dvh',backgroundColor:'rgba(14,20,32,0.98)',border:'1px solid rgba(99,102,241,0.5)',borderRadius:12,backdropFilter:'blur(12px)',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,102,241,0.2)',zIndex:300,display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:'Inter,sans-serif'}}>
+        <div style={{position:'absolute',top:70,right:16,width:340,maxHeight:'85dvh',backgroundColor:'rgba(14,20,32,0.98)',border:'1px solid rgba(99,102,241,0.5)',borderRadius:12,// PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+// Di atas canvas WebGL, blur memaksa compositor membaca ulang
+// seluruh canvas tiap frame → FPS drop parah (terukur).
+backdropFilter: 'none',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,102,241,0.2)',zIndex:300,display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:'Inter,sans-serif'}}>
           <div style={{padding:'10px 14px',borderBottom:'1px solid rgba(99,102,241,0.3)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <span style={{fontSize:14,fontWeight:700,color:'#6366f1',fontFamily:'Orbitron,sans-serif'}}>⊞ All Features</span>
             <button onClick={() => setAppsMenuOpen(false)} style={{background:'none',border:'none',color:'#64748b',cursor:'pointer',fontSize:18,lineHeight:1}}>×</button>
@@ -28140,7 +28318,10 @@ Now you can apply Displacement for detailed effect.`);
           backgroundColor: 'rgba(14,20,32,0.98)', borderLeft: '2px solid #f59e0b',
           boxShadow: '-8px 0 32px rgba(0,0,0,0.5)', zIndex: 250,
           display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif',
-          backdropFilter: 'blur(12px)',
+          // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+          // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+          // seluruh canvas tiap frame → FPS drop parah (terukur).
+          backdropFilter: 'none',
         }}>
           <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(245,158,11,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(245,158,11,0.08)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -28193,7 +28374,10 @@ Now you can apply Displacement for detailed effect.`);
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(8px)',
+          // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+          // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+          // seluruh canvas tiap frame → FPS drop parah (terukur).
+          backdropFilter: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000,
           animation: 'fadeIn 0.2s ease-out',
@@ -28373,7 +28557,10 @@ Now you can apply Displacement for detailed effect.`);
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(8px)',
+          // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+          // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+          // seluruh canvas tiap frame → FPS drop parah (terukur).
+          backdropFilter: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000,
           animation: 'fadeIn 0.2s ease-out',
@@ -28649,7 +28836,10 @@ Now you can apply Displacement for detailed effect.`);
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(8px)',
+          // PERFORMANCE (2026-10-23): backdrop-filter DIHAPUS.
+          // Di atas canvas WebGL, blur memaksa compositor membaca ulang
+          // seluruh canvas tiap frame → FPS drop parah (terukur).
+          backdropFilter: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000,
           animation: 'fadeIn 0.2s ease-out',
