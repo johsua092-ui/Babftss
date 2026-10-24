@@ -602,7 +602,7 @@ export default function SettingsModal({
               <button
                 type="button"
                 onClick={onCameraSpeedReset}
-                title="Kembalikan ke 3.0×"
+                title="Kembalikan ke 2.0×"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: 24, height: 24, borderRadius: 6, flexShrink: 0,

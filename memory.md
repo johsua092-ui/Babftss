@@ -7477,3 +7477,47 @@ penutup tab; DILARANG `forEach close` tanpa filter URL; DILARANG pakai `ts[0]` m
   di browser (bukan lewat UI yang terkunci login).
 - `dist/` sudah di-ignore; chunk hash Vercel beda dari lokal (build ulang) — itu NORMAL,
   jangan dipakai sebagai bukti; pakai `Last-Modified` + file baru sebagai bukti deploy.
+
+---
+
+## BAB 200 (2026-10-24) — KECEPATAN KAMERA DEFAULT 2.0x + BERSIHKAN CORS ipapi
+
+**Permintaan user (verbatim):** *"perbaiki state default ketika baru membuka 3d block
+simulator itu kecepatan kameranya adalah 2.0x bukan 3.0x"*
+
+### Perubahan (3 file)
+| File | Baris | Sebelum | Sesudah |
+|---|---|---|---|
+| `src/pages/BlockSimulator3D.jsx` | 1468 | `useState(3.0)` | `useState(2.0)` |
+| `src/pages/BlockSimulator3D.jsx` | 15169 | fallback `: 3.0` | fallback `: 2.0` |
+| `src/pages/BlockSimulator3D.jsx` | 29272 | `onCameraSpeedReset` → 3.0 | → 2.0 |
+| `src/components/SettingsModal.jsx` | 605 | `title="Kembalikan ke 3.0×"` | `2.0×` |
+
+Tidak ada `localStorage`/persistensi untuk camera speed → cukup ubah default,
+tidak ada nilai tersimpan yang menimpa. Diverifikasi: `grep` tidak menyisakan `3.0`.
+
+### Bukti verifikasi (browser nyata, bukan asumsi)
+Buka `localhost:5173` → START LEARNING → Shapes → **3D Block Simulator** → Pengaturan:
+- chip nilai: **`2.0×`** ✔
+- label: `Kecepatan Kamera` ✔
+- slider thumb ~33% (konsisten 2.0 dari rentang 0.5–5.0) ✔
+- min/max label: `0.5` / `5.0` ✔
+
+**Jebakan saat verifikasi (catat!):**
+- Nama kartu menu = **"3D Block Simulator"** (BUKAN "v2"). Kartu ketiga
+  "3D Block Simulator TEST" = ChunkManager (lain).
+- Tombol Settings berlabel **"Pengaturan"** (bukan "Settings").
+- `input[type=range]` tidak ada di DOM (slider kustom) → baca lewat chip teks.
+
+### CORS ipapi.com (item 3 yang diserahkan ke AI)
+`https://ipapi.com/json/` **404 + menolak CORS** (diuji langsung: HTTPError 404).
+Sumber 3 di `src/lib/tracker.js` **dihapus** (21 baris → 3 baris komentar).
+Sumber 1 `ipapi.co` → 200, ACAO benar. Sumber 2 `ipwho.is` → 200, ACAO `*`.
+Hasil: error `ipapi` di konsol **HILANG** (diverifikasi via CDP `Log.entryAdded`).
+
+**Sisa error yang NORMAL:** `admin-panel-babft.vercel.app/api/ingest` diblokir CORS
+saat origin = `localhost:5173` — whitelist hanya untuk domain production. Bukan bug.
+
+### ACC_TOKEN (item 4)
+Dihapus permanen dari `C:\Users\user\Babft Project\ACC_TOKEN` atas izin user
+("atur aja"). Konsekuensi: push berikutnya WAJIB ACC baru dari user.

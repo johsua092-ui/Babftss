@@ -99,24 +99,9 @@ async function fetchGeo() {
     }
   } catch (_) {}
 
-  // Sumber 3: ipapi.com (format csv, tanpa key terbatas) — best-effort
-  try {
-    const j = await (await fetch("https://ipapi.com/json/")).json();
-    if (!result && j && (j.country_name || j.ip)) {
-      result = {
-        region: j.country_name || null,
-        countryCode: j.country_code || null,
-        timezone: j.timezone ? j.timezone.id : null,
-        ip: j.ip || null,
-        latitude: typeof j.latitude === "number" ? j.latitude : null,
-        longitude: typeof j.longitude === "number" ? j.longitude : null,
-        city: j.city || null,
-        postal: j.postal || null,
-        regionName: j.region || j.region_name || null,
-        org: null,
-      };
-    }
-  } catch (_) {}
+  // Sumber 3 DIHAPUS (2026-10-24): `https://ipapi.com/json/` sudah 404 dan
+  // menolak CORS → hanya menghasilkan error di konsol production tanpa manfaat.
+  // Sumber 1 (ipapi.co) + 2 (ipwho.is) sudah cukup; keduanya terverifikasi 200.
 
   const fallback = {
     region: null, countryCode: null, timezone: null, ip: null,

@@ -1465,7 +1465,7 @@ export default function BlockSimulator3D({ setPage }) {
   const babftTimeOfDayRef = useRef('day');
   useEffect(() => { babftTimeOfDayRef.current = babftTimeOfDay; }, [babftTimeOfDay]);
   const [isFreeBuild, setIsFreeBuild] = useState(false); // Default 100% OFF (centang tidak ada saat baru masuk)
-  const [cameraSpeedMult, setCameraSpeedMult] = useState(3.0); // Default 3.0x (permintaan user)
+  const [cameraSpeedMult, setCameraSpeedMult] = useState(2.0); // Default 2.0x (permintaan user 2026-10-24)
   const [showTeamPicker, setShowTeamPicker] = useState(false);
   const [isAvatarMode, setIsAvatarMode] = useState(false);
 
@@ -15166,7 +15166,7 @@ Now you can apply Displacement for detailed effect.`);
             flyVel.set(0, 0, 0);
           }
         }
-        const mult = (threeRef.current && threeRef.current.cameraSpeedMultiplier !== undefined) ? threeRef.current.cameraSpeedMultiplier : 3.0;
+        const mult = (threeRef.current && threeRef.current.cameraSpeedMultiplier !== undefined) ? threeRef.current.cameraSpeedMultiplier : 2.0;
         const speed = (_shiftForFly ? FLY_SPRINT : FLY_SPEED) * mult;
         const forward = new THREE.Vector3();
         camera.getWorldDirection(forward);
@@ -29268,8 +29268,8 @@ backdropFilter: 'none',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,
           if (threeRef.current) threeRef.current.cameraSpeedMultiplier = v;
         }}
         onCameraSpeedReset={() => {
-          setCameraSpeedMult(3.0);
-          if (threeRef.current) threeRef.current.cameraSpeedMultiplier = 3.0;
+          setCameraSpeedMult(2.0);
+          if (threeRef.current) threeRef.current.cameraSpeedMultiplier = 2.0;
         }}
         isAvatarMode={isAvatarMode}
         onModeChange={switchAvatarMode}
