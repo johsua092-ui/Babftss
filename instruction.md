@@ -235,8 +235,32 @@ Menggabung gain+saturasi dalam satu loop → luminance chest/pine_tree macet di 
 1. Sebelum buka `http://localhost:5173/` di tab baru → **TUTUP DULU tab `localhost:5173` yang lama**.
 2. Tab bantu/verifikasi **WAJIB ditutup sendiri** setelah selesai.
 3. Sebelum melapor selesai → cek `http://127.0.0.1:9333/json/list` dan pastikan **hanya 1 tab simulator** yang tersisa.
-4. **Tab Roblox / tab harian user TIDAK BOLEH disentuh** — jangan tutup, jangan navigasi.
+4. **Tab Roblox / tab harian user TIDAK BOLEH disentuh** — jangan tutup, jangan navigasi, jangan reload.
 5. DILARANG `taskkill` berdasarkan nama image (mis. semua `chrome.exe`) — bisa membunuh browser harian user.
+
+### ⛔ PENGECUALIAN MUTLAK: TAB ROBLOX (perintah user 2026-10-24)
+> *"kalau khusus yang roblox jangan ya, pengecualian 1 itu doang ya"*
+
+**Insiden nyata yang melahirkan aturan ini:** AI menjalankan pembersihan tab dengan
+pola "tutup SEMUA tab page" tanpa memfilter URL → **tab Roblox user ikut tertutup**.
+Chrome automation juga mati karena tab terakhirnya habis.
+
+**Penjaga WAJIB di setiap skrip yang menutup tab:**
+```js
+const isProtected = (u) => /roblox\.com|roblox\.app|rbxcdn\.com/i.test(String(u || ''));
+const closeTab = (id, url) => {
+  if (isProtected(url)) { console.log('DILINDUNGI:', url); return; }  // TIDAK PERNAH
+  // ... tutup
+};
+```
+**DILARANG MUTLAK:**
+- `list().forEach(t => close(t.id))` tanpa filter URL.
+- Menutup tab "terakhir" tanpa cek apakah itu tab Roblox.
+- `Page.navigate` / `Page.reload` pada tab Roblox.
+
+**Cara benar memilih tab kerja:** filter berdasarkan URL proyek
+(`/localhost:5173|babftss\.vercel\.app/`), JANGAN `ts[0]` mentah — urutan tab
+tidak dijamin dan bisa saja `ts[0]` = tab Roblox user.
 
 ### Verifikasi
 ```js

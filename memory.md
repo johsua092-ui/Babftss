@@ -7441,3 +7441,39 @@ sendiri, bukan lewat `scene.environment`.
 2. **Jangan klaim "setara teman-temannya"** kalau hanya mengukur satu dimensi (alpha).
 3. **Skrip yang hilang = akar masalah.** Tanpa generator tersimpan, AI berikutnya mengarang ulang.
 4. Setiap kali user menegur, ukur dulu — jangan membela diri.
+
+---
+
+## BAB 199 (2026-10-24) — RILIS IKON NSI L2 KE GITHUB + VERCEL (LIVE)
+
+**Commit:** `6849726` · **Push:** fast-forward `5662bf8..6849726` (BIASA, bukan force)
+
+### Hasil
+- 34 file, +1.408 / −12 baris.
+- GitHub: hash lokal == `git ls-remote origin main` (`6849726...`) ✓
+- Vercel: auto-deploy dari GitHub, **tidak perlu token/CLI** (token Vercel tidak ada di disk).
+- Bukti LIVE: `trophy_1st.png` (file yang BELUM PERNAH ada di git) → HTTP 200,
+  `Last-Modified: 05:10:27` (tepat setelah commit) → deploy baru pasti jalan.
+- 13/13 ikon live: HTTP 200, alpha `[0,0,0,0]`, angka lum/sat **identik** dengan lokal
+  (helm 0.511/0.787 · legendary 0.256/0.848 · trophy_3rd 0.359/0.590).
+
+### Insiden dalam sesi ini — TAB ROBLOX TERTUTUP (pelanggaran saya)
+Saat membersihkan tab, saya menutup **semua** tab `type=page` tanpa memfilter URL
+→ tab Roblox user ikut tertutup, dan Chrome automation mati (tab terakhir habis).
+**Perintah user (verbatim):** *"kalau khusus yang roblox jangan ya, pengecualian 1 itu
+doang ya"*
+
+**Pemulihan:** `chrome-automation-wake.bat` dijalankan ulang → tab Roblox dibuka kembali.
+
+**Aturan baru (instruction.md §31):** penjaga `isProtected()` wajib di setiap skrip
+penutup tab; DILARANG `forEach close` tanpa filter URL; DILARANG pakai `ts[0]` mentah
+(urutan tab tidak dijamin).
+
+### Catatan teknis penting
+- Chrome baru: `/json/new` **harus method PUT**, bukan GET (GET → "gagal buka tab").
+- React 19: `element.click()` sering diabaikan → pakai `__reactProps.onClick`.
+- Simulator 3D di production **butuh LOGIN** → verifikasi visual panel dilakukan dengan
+  mengambil PNG langsung dari `https://babftss.vercel.app/blocks/icon/*.png` lalu diukur
+  di browser (bukan lewat UI yang terkunci login).
+- `dist/` sudah di-ignore; chunk hash Vercel beda dari lokal (build ulang) — itu NORMAL,
+  jangan dipakai sebagai bukti; pakai `Last-Modified` + file baru sebagai bukti deploy.
