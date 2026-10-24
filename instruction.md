@@ -97,6 +97,8 @@ Aturan berikut lahir dari masalah nyata yang pernah terjadi di proyek ini — WA
 8. **DILARANG KERAS: kabel/wire di diagram sirkuit saling menimpa (overlap) di jalur yang sama arah.** Setiap kabel WAJIB punya jalur sendiri yang bisa dibedakan secara visual — tidak boleh ada 2+ kabel yang berbagi segmen horizontal/vertikal yang identik (overlap total), karena ini membuat kabel tidak terlihat & membingungkan pemula. Cross/perpendicular silangan antar kabel itu boleh (normal di diagram rangkaian), tapi overlap di jalur yang sama arah DILARANG. **Solusi kalau ruang kurang:** besarkan rangkaian ke arah VERTIKAL (ke bawah). Arah samping (horizontal) ada batasnya karena lebar layar, tapi arah bawah itu UNLIMITED — SVG viewBox bisa diperbesar sesuka hati. Contoh referensi: Card 11 (4:1 Mux) — kabel D0-D3 awalnya overlap dengan kabel S-branch di jalur horizontal yang sama, diperbaiki dengan meroute kabel D di lane X terpisah (x=160) yang berada di KIRI semua bus seleksi (x=185+), sehingga setiap kabel punya jalur horizontal sendiri-sendiri tanpa menimpa kabel lain.
 9. **Sistem Glow Navigasi Card (Aurora Green) — ATURAN MUTLAK ABSOLUT.** Setiap fitur navigasi card ("click me" / scroll ke card tujuan) di SELURUH proyek WAJIB menggunakan spesifikasi glow yang tercatat di `design.md` Bagian 4. Tidak boleh ada glow navigasi card dengan warna, kecepatan, transisi, atau style yang berbeda. Lihat `design.md` Bagian 4 untuk spesifikasi CSS lengkap yang harus di-copy-paste persis.
 10. **Sistem Navigasi "Click Me": Clear Filter Sebelum Navigasi — ATURAN MUTLAK ABSOLUT.** Setiap kali user mengklik "click me" atau mekanisme navigasi card serupa, sistem WAJIB: (1) clear SEMUA filter aktif (search, card number, difficulty, dll) di halaman tersebut, (2) tunggu render selesai, (3) scroll ke card tujuan, (4) terapkan glow aurora green. Navigasi TANPA clear filter DILARANG — card tujuan mungkin tidak muncul karena difilter. Implementasi WAJIB mengikuti pola `registerClearFilters` yang tercatat di `design.md` Bagian 5. Berlaku ke SELURUH fitur navigasi card di seluruh proyek, bukan cuma halaman Logic Gates Circuit.
+11. **Render ikon item (`public/blocks/icon/`) — ATURAN MUTLAK.** Latar WAJIB transparan, dan warna WAJIB diukur/dicocokkan ke ikon existing (luminance + saturasi), BUKAN dikarang. Pernah ditolak user 2× (latar putih, lalu "putih pudar"). Spesifikasi lengkap + angka acuan + checklist: **§30**.
+12. **Tab browser saat verifikasi — ATURAN MUTLAK.** Buka `localhost:5173` di tab baru → TUTUP DULU tab lama. Tab bantu wajib ditutup sendiri. Tab harian user (Roblox) tidak boleh disentuh. Pernah menumpuk 6 tab. SOP lengkap: **§31**.
 
 ---
 
@@ -140,3 +142,104 @@ Lihat **`design.md` §29.9** untuk checklist lengkap (12 item, termasuk verifika
 - Mengubah pesan toast (harus persis: "matikan clock dahulu sebelum beralih mode clock" dan "warning! pencegahan rate limit mohon tunggu 5 detik").
 - Mengubah interval auto (600ms) atau rate-limit (5 detik) tanpa persetujuan user eksplisit.
 - Menduplikasi logic clock mode di card manapun — semua harus lewat `useClockMode` hook.
+
+---
+
+## 30. ATURAN MUTLAK: RENDER IKON ITEM (`public/blocks/icon/`) — JEBAKAN WARISAN
+
+**Lahir dari insiden nyata (2026-09).** 13 ikon NSI Level 2 (helm, 5 chest, 3 treasure, pine_tree, 3 trophy) dibuat ulang dengan geometri baru. Dua kali ditolak user:
+1. **Latar PUTIH opaque** → user: "backgroundnya putih saya tidak bisa terima, lihat temen-temen yang lainnya itu backgroundnya apa?" — semua ikon lain transparan.
+2. **"Putih pudar"** → warna jauh lebih terang & pucat dari ikon lain, walau sudah transparan.
+
+Keduanya terjadi karena AI **mengarang setelan render sendiri tanpa mengukur ikon yang sudah ada**. Aturan di bawah WAJIB dipatuhi untuk SETIAP ikon baru yang dibuat/diganti.
+
+### 30.1 WAJIB: UKUR DULU, JANGAN ASAL TEBAK
+Sebelum membuat ikon apapun, WAJIB ukur ikon yang SUDAH ADA di `public/blocks/icon/` sebagai acuan:
+- **Alpha sudut** (piksel `[0,0]`) — bukti latar transparan.
+- **Luminance rata-rata** (`0.2126R + 0.7152G + 0.0722B`, hanya piksel alpha ≥200).
+- **Saturasi rata-rata** (HSV `(max-min)/max`, hanya piksel alpha ≥200).
+
+Angka acuan yang terukur dari ikon lama (jangan dilupakan):
+| Ikon | Lum | Sat |
+|---|---|---|
+| wood_block | 0.590 | 0.820 |
+| helm | 0.512 | 0.787 |
+| pine_tree | 0.220 | 0.498 |
+| trophy_1st | 0.541 | 0.456 |
+| trophy_3rd | 0.357 | 0.587 |
+
+### 30.2 LATAR WAJIB TRANSPARAN
+- `renderer.setClearColor(0x000000, 0)` + `alpha:true`. Piksel sudut WAJIB `[0,0,0,0]`.
+- **DILARANG** latar putih/opaque, `scene.background = new THREE.Color(0xffffff)`, atau fill putih di canvas 2D.
+- Verifikasi: baca `getImageData(0,0,1,1)` → harus `alpha === 0`.
+
+### 30.3 SETELAN RENDER YANG BENAR (terkalibrasi — jangan diubah tanpa mengukur ulang)
+```js
+renderer.toneMapping = THREE.NoToneMapping;   // ACES MENUCI warna → pudar
+scene.environment = null;                     // RoomEnvironment MENUCI saturasi
+// lampu (K = 2.7):
+AmbientLight(0xffffff, K*0.55)
+DirectionalLight(0xffffff, K).position.set(5,10,7.5)
+HemisphereLight(0x4a6fa5, 0x1a1a2e, K*0.25)
+```
+**Bukti terukur kenapa begini (jangan diulang):**
+| Setelan | Lum | Sat |
+|---|---|---|
+| ACES + RoomEnvironment + lampu 3× app (v3 SALAH) | 0.705 | 0.344 |
+| ACES + env, lampu app | 0.794 | 0.496 |
+| NoToneMapping + env | 0.792 | 0.668 |
+| NoToneMapping, tanpa env, K=2.7 | **0.600** | **0.764** |
+
+Kesimpulan: **`scene.environment` (RoomEnvironment) adalah biang keladi utama pemudaran** — mematikannya menaikkan saturasi 0.668 → 0.858. `ACESFilmicToneMapping` menyumbang pemudaran berikutnya. `mat.envMapIntensity` TIDAK berpengaruh karena `blockMaterials.js` memasang `mat.envMap` sendiri, bukan lewat `scene.environment`.
+
+### 30.4 SATU SETELAN GLOBAL TIDAK CUKUP — COCOKKAN PER ITEM
+Tiap material bereaksi beda (gold metalness 0.7, kayu, dedaunan). Dengan setelan global yang sama, terukur:
+| Ikon | dL | dS | Status |
+|---|---|---|---|
+| helm | +0.017 | −0.048 | ✓ |
+| trophy_3rd | +0.022 | +0.013 | ✓ |
+| pine_tree | +0.187 | −0.150 | ✗ |
+| trophy_1st | +0.284 | +0.024 | ✗ |
+
+Karena itu **WAJIB** grade per item: samakan luminance (gain multiplikatif) dan saturasi (skala HSV, hue dipertahankan) terhadap ikon lama item yang sama di `_ikon_backup/`. Toleransi akhir: `|dL| ≤ 0.006`, `|dS| ≤ 0.008`.
+
+### 30.5 URUTAN GRADE (penting — kalau dibalik tidak konvergen)
+1. Samakan **luminance** dulu (18 iterasi, damping 0.75).
+2. Baru samakan **saturasi** (18 iterasi).
+3. Terakhir koreksi **luminance sisa** (karena langkah 2 mengubah luminance).
+Menggabung gain+saturasi dalam satu loop → luminance chest/pine_tree macet di bawah target (terbukti: target 0.384 hasil 0.223).
+
+### 30.6 CHECKLIST VERIFIKASI WAJIB SEBELUM LAPOR SELESAI
+1. Alpha sudut semua ikon = `[0,0,0,0]`.
+2. Lum & sat tiap ikon dalam toleransi §30.4.
+3. **Render lembar kontak di atas papan catur magenta/hijau** (BUKAN putih) — bukti tidak ada kotak/fringe putih.
+4. **Banding berdampingan LAMA vs BARU** — pastikan tidak ada yang lebih pucat.
+5. Cek di panel inventory simulator yang sebenarnya (bukan cuma file PNG).
+6. Build sukses + ikon tersalin ke `dist/blocks/icon/`.
+7. Backup ikon lama tersimpan di `_ikon_backup/` sebelum ditimpa.
+
+### 30.7 DILARANG
+- Membuat ikon tanpa mengukur ikon existing lebih dulu.
+- Latar putih/opaque pada ikon item.
+- Mengklaim "sudah sama dengan yang lain" hanya berdasarkan alpha, tanpa mengukur luminance & saturasi.
+- Menganggap "transparan" = "sudah benar" — warna bisa masih salah.
+- Menyatakan selesai tanpa checklist §30.6.
+
+---
+
+## 31. ATURAN MUTLAK: TAB BROWSER SAAT VERIFIKASI
+
+**Lahir dari insiden nyata.** Saat verifikasi berulang, AI membuka `http://localhost:5173/` di tab baru SETIAP kali dan tidak menutup yang lama → menumpuk 6 tab, membebani mesin user.
+
+### SOP yang BENAR
+1. Sebelum buka `http://localhost:5173/` di tab baru → **TUTUP DULU tab `localhost:5173` yang lama**.
+2. Tab bantu/verifikasi **WAJIB ditutup sendiri** setelah selesai.
+3. Sebelum melapor selesai → cek `http://127.0.0.1:9333/json/list` dan pastikan **hanya 1 tab simulator** yang tersisa.
+4. **Tab Roblox / tab harian user TIDAK BOLEH disentuh** — jangan tutup, jangan navigasi.
+5. DILARANG `taskkill` berdasarkan nama image (mis. semua `chrome.exe`) — bisa membunuh browser harian user.
+
+### Verifikasi
+```js
+// sebelum lapor: harus 2 (1 simulator + 1 tab user)
+http.get('http://127.0.0.1:9333/json/list', ...)
+```

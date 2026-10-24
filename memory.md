@@ -7390,3 +7390,54 @@ penuh: grow/shrink instan terverifikasi presisi pixel + toast boundary
 Commit + push NORMAL (lihat worklog Task ID 34). Icon meteran saku
 terverifikasi DOM-exact + ASCII + VLM-konteks. Zero regression (Size,
 gizmo, urutan, toast, marker grep semua PASS).
+
+---
+
+## BAB 198 (2026-10-24) — IKON NSI L2: LATAR PUTIH & "PUTIH PUDAR" (DITOLAK USER 2x) — SELESAI
+
+### Masalah (verbatim user)
+1. *"backgroundnya putih saya tidak bisa terima, lihat temen temen yang lainnya itu
+   bacgroudnnya apa? tolong lainkali perhatikan aturan yang berlaku"*
+2. *"iconnya tadi sempat saya lihat kok iconnya putih kayak warna pudar gitu sih?
+   padahal temen temennya pakai warna asli block"*
+3. *"kamu katanya tadi sesuai sama temennya kok jadi gini?"*
+
+### Akar (TERUKUR, bukan tebakan)
+| Tahap | Kesalahan | Bukti angka |
+|---|---|---|
+| v1 | metalness tanpa envMap | render HITAM + terpotong |
+| v2 | latar PUTIH opaque | sudut `[255,255,255,255]`, ikon lain `[0,0,0,0]` |
+| v3 | ACES + RoomEnvironment + lampu 3x app | lum 0.705 vs 0.556; sat 0.344 vs 0.497 |
+
+**Biang keladi utama pemudaran = `scene.environment` (RoomEnvironment).**
+Mematikannya: sat 0.668 → 0.858. ACES menyumbang pemudaran berikutnya.
+`mat.envMapIntensity` TIDAK berpengaruh — `blockMaterials.js` memasang `mat.envMap`
+sendiri, bukan lewat `scene.environment`.
+
+### Fix
+- `renderer.toneMapping = NoToneMapping`, `scene.environment = null`,
+  lampu K=2.7 (Ambient K*0.55, Directional K, Hemisphere K*0.25).
+- `setClearColor(0x000000, 0)` → latar transparan.
+- **Grade per item**: luminance → saturasi (HSV, hue tetap) → koreksi luminance sisa.
+  Satu setelan global TIDAK cukup (pine_tree dL=+0.187, trophy_1st dL=+0.284).
+- Urutan grade WAJIB dipisah; digabung 1 loop → luminance macet (chest 0.223 vs target 0.384).
+
+### Hasil terukur (13/13 LULUS)
+`|dL| ≤ 0.006`, `|dS| ≤ 0.008`, sudut semua `[0,0,0,0]`.
+
+### Artefak permanen (JANGAN dihapus)
+- `scripts/icons/gen-icon-nsi2.cjs` — generator + grading
+- `scripts/icons/verify-icons.cjs` — verifikator (lembar kontak papan catur + alpha + dL/dS)
+- `scripts/icons/reference/*.png` — 13 ikon LAMA sebagai acuan warna
+- `scripts/icons/README.md` — cara pakai
+
+### Aturan baru (WAJIB, tertulis di `instruction.md`)
+- **§30** — render ikon: ukur dulu, latar transparan, setelan terkalibrasi, grade per item, checklist 7 poin.
+- **§31** — tab browser: buka `localhost:5173` baru → TUTUP tab lama; tab bantu tutup sendiri;
+  tab Roblox user tidak disentuh. (Insiden: 6 tab menumpuk, user tegur.)
+
+### Pelajaran mutlak
+1. **"Transparan" ≠ "sudah benar"** — warna bisa masih salah. Ukur luminance & saturasi.
+2. **Jangan klaim "setara teman-temannya"** kalau hanya mengukur satu dimensi (alpha).
+3. **Skrip yang hilang = akar masalah.** Tanpa generator tersimpan, AI berikutnya mengarang ulang.
+4. Setiap kali user menegur, ukur dulu — jangan membela diri.

@@ -119,6 +119,18 @@ export const BLOCK_LIBRARY = [
   // 5 tingkat BINTANG BERGERIGI (6 lidah + 6 takik) + batang; maks 15x15x15 studs
   // (dipakai 10.90 x 15.00 x 9.85 = rasio H:W 1.377 vs referensi 1.368).
   { slug: 'pine_tree',         name: 'Pine Tree', label: 'Pine Tree', roughness: 0.92, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ── NSI LEVEL 2 #12: TROPHY 1st / 2nd / 3rd (bab 197, permintaan user 2026-10-24) ──
+  // BENTUK 100% IDENTIK ketiganya; pembeda HANYA WARNA (emas / perak / perunggu)
+  // + warna alas + angka pada plat nama. Ukuran SERAGAM 3 x 4 x 2 studs.
+  // ⚠️ bab 200 (laporan user "warnanya aneh di localhost"): metalness DULU
+  //    0.85/0.88/0.82 — itu MELANGGAR aturan proyek di atas ("metalness
+  //    dibatasi <= 0.35 karena tanpa envmap metalness tinggi MEMATIKAN
+  //    diffuse → warna jadi gelap/aneh"). Trophy = vertex color murni, jadi
+  //    metalness WAJIB rendah. Kilau logam tetap dapat dari roughness rendah
+  //    + emissive tipis (lihat makeBlockMaterial).
+  { slug: 'trophy_1st',        name: 'Trophy 1st', label: 'Trophy 1st', roughness: 0.26, metalness: 0.30, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'trophy_2nd',        name: 'Trophy 2nd', label: 'Trophy 2nd', roughness: 0.22, metalness: 0.32, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  { slug: 'trophy_3rd',        name: 'Trophy 3rd', label: 'Trophy 3rd', roughness: 0.30, metalness: 0.28, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -140,6 +152,25 @@ const CHEST_BASE_TEX = {
   pine_tree: 'pine_tree',              // bab 180g: tekstur KHUSUS (grass di-desaturasi) —
                                        // terukur: pine_tree.png mean RGB(32.1,64.2,39.9)
                                        // vs referensi RGB(32.1,58.6,34.6) — cocok
+  // bab 197: TROPHY — tekstur SERAGAM netral abu (marble_block mean 201.7,199.8,200.1,
+  // sat 0.01 = praktis tak berwarna) supaya WARNA MURNI dari vertex color
+  // (emas/perak/perunggu) tanpa tercemar hue tekstur.
+  // ══════════════════════════════════════════════════════════════════════
+  // bab 202 (PERMINTAAN USER): 1st & 2nd WAJIB pakai tekstur GOLD, bukan
+  // marble. User: "khusus trophy 1st dan 2nd pakai material gold yang dicat
+  // jatah warna masing-masing piala".
+  // ⚠️ TAPI tekstur gold_block ASLI itu KUNING LEMON (terukur mean
+  //    RGB 245.8, 252, 143). Kalau dipakai mentah lalu dikali warna biru,
+  //    hasilnya HIJAU KEKUNINGAN — bukan biru. Jadi yang dipakai adalah
+  //    varian NEUTRAL-nya (gold_block__neutral.png, terukur grayscale
+  //    mean 251.1 / range 238..255): STRUKTUR & kilau gold tetap ada,
+  //    hue dibuang, lalu dicat warna jatah masing-masing piala.
+  // ⚠️ 3rd TIDAK DISENTUH (user: "yang 3rd jangan diubah, itu udah
+  //    sempurna") → tetap marble_block.
+  // ══════════════════════════════════════════════════════════════════════
+  trophy_1st: 'gold_block',
+  trophy_2nd: 'gold_block',
+  trophy_3rd: 'marble_block',
 };
 
 const ROD_BASE_TEX = {
@@ -156,7 +187,24 @@ export function getBlockDef(slug) {
   return BLOCK_LIBRARY.find(b => b.slug === slug) || BLOCK_LIBRARY[0];
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// bab 202b — TEKSTUR TROPHY 1st/2nd: GOLD **NETRAL** (bukan gold kuning mentah)
+// ⚠️ TERUKUR (bukan dugaan):
+//    gold_block.png          → meanSat 0.433 (kuning kuat), std 2.9
+//    gold_block__neutral.png → meanSat 0.000 (netral),      std 2.32
+//    Kalau gold kuning dipakai mentah × vertex color biru (trDiamond
+//    0.15,0.56,1.00) → hasilnya HIJAU (terbukti di layar: 2nd jadi mint).
+//    Jadi yang dipakai varian NEUTRAL: struktur/kilau gold tetap, hue
+//    dibuang, warna datang dari cat vertex color masing-masing piala.
+// ⚠️ trophy_3rd TIDAK ada di sini → tetap marble_block (user: jangan diubah).
+// ══════════════════════════════════════════════════════════════════════════
+const TROPHY_TEX_PATH = {
+  trophy_1st: '/blocks/tint/gold_block__neutral.png',
+  trophy_2nd: '/blocks/tint/gold_block__neutral.png',
+};
+
 export function getBlockTexPath(slug) {
+  if (TROPHY_TEX_PATH[slug]) return TROPHY_TEX_PATH[slug];
   const src = ROD_BASE_TEX[slug] || CHEST_BASE_TEX[slug] || slug;
   return `/blocks/tex/${src}.png`;
 }
@@ -260,6 +308,8 @@ export const BLOCK_PLACEHOLDER = {
   medium_treasure: 0x8a6a12,  // bab 169: sama (warna asli = vertex color)
   big_treasure: 0x8a6a12,     // bab 178: sama
   pine_tree: 0x2b4a2b,        // bab 180: hijau pinus (warna asli = vertex color)
+  // bab 197: TROPHY — placeholder logam (warna asli = vertex color).
+  trophy_1st: 0xffd24a, trophy_2nd: 0x6fd3ff, trophy_3rd: 0xc8703a,
   door: 0xc4622a,     // pintu kayu — cokelat jingga hangat (referensi)
   hatch: 0xc4622a,    // palka kayu — sama keluarga kayu Door
   legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
@@ -434,6 +484,11 @@ export function makeBlockMaterial(THREE, slug) {
   if (def.slug === 'big_treasure') { mat.side = THREE.DoubleSide; }
   // bab 180: Pine Tree juga dirakit dari banyak part (per-tier) → DoubleSide.
   if (def.slug === 'pine_tree') { mat.side = THREE.DoubleSide; }
+  // bab 197: Trophy dirakit dari banyak part (cangkir berongga, gagang, alas)
+  // → DoubleSide, supaya sisi dalam cangkir PASTI terlihat dari sudut mana pun.
+  if (def.slug === 'trophy_1st' || def.slug === 'trophy_2nd' || def.slug === 'trophy_3rd') {
+    mat.side = THREE.DoubleSide;
+  }
   // ── DOOR — kaca buram halus (kritik Claude #13: "kaca belum bertekstur") ──
   // Referensi kaca: std luminance 12–15% (BUKAN rata). Geometri Door sudah
   // memberi UV posisi pada komponen kaca; di sini kita haluskan kilau kaca
@@ -444,9 +499,23 @@ export function makeBlockMaterial(THREE, slug) {
   }
   if (def.slug === 'gold_block') {
     // Phase 70 (user 2026-09-13): gold HARUS kuning BERKILAU (logam nyata),
-    // bukan block kusam. envMap RoomEnvironment = refleksi nyata →
-    // metalness 0.85 menghasilkan kilau logam TANPA gelap (kontrak
-    // Phase 63: tanpa envMap metal tinggi = gelap 3x — envMap menyelesaikan).
+    // bukan block kusam. envMap RoomEnvironment = refleksi nyata → metalness
+    // 0.85 menghasilkan kilau logam TANPA gelap (kontrak Phase 63: tanpa
+    // envMap metal tinggi = gelap 3x — envMap menyelesaikan).
+    applyGoldSparkle(mat);
+    const env = getGoldEnvMap(THREE);
+    if (env) { mat.envMap = env; mat.needsUpdate = true; }
+  }
+  // ══ bab 202 — KILAU PIALA (permintaan user: "ada kilauan piala mengkilap
+  //    khas seperti piala yang ada di dunia nyata").
+  //    Trophy 1st & 2nd sekarang bertekstur gold → WAJIB dapat perlakuan
+  //    kilau yang SAMA dengan gold_block (envMap kontras + metalness 0.7 +
+  //    roughness 0.18). Tanpa ini tekstur gold hanya jadi "plastik doff".
+  //    ⚠️ 3rd SENGAJA TIDAK IKUT (user: "3rd jangan diubah") → tetap
+  //    memakai roughness/metalness dari BLOCK_LIBRARY apa adanya.
+  //    ⚠️ side DoubleSide TETAP (di-set di bawah) supaya rongga cangkir
+  //    tidak bolong — jangan dihapus.
+  if (def.slug === 'trophy_1st' || def.slug === 'trophy_2nd') {
     applyGoldSparkle(mat);
     const env = getGoldEnvMap(THREE);
     if (env) { mat.envMap = env; mat.needsUpdate = true; }

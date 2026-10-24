@@ -13951,7 +13951,12 @@ Now you can apply Displacement for detailed effect.`);
     // OrbitControls — basic orbit + zoom (Phase 2 will add WASD fly camera)
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    // ══ bab 200 — "NGELEG"/MELUNCUR SETELAH MOUSE DILEPAS ══
+    // dampingFactor 0.08 = sisa gerak 92% tiap frame → butuh ~1 DETIK penuh
+    // (60 frame) untuk berhenti. Itu yang terasa seperti kamera "maju sendiri
+    // lalu berhenti". 0.22 → sisa 78%/frame, berhenti dalam ~0.25 detik:
+    // masih halus, tapi tidak terasa meluncur.
+    controls.dampingFactor = 0.22;
     controls.minDistance = 0.5; // Allow extreme close-up zoom
     controls.maxDistance = 900; // Task ID 35, 2026-09-02: 150→900 — grid kini 500x500 (diagonal ~707), 150 tidak cukup untuk melihat grid penuh. Sebelumnya 150 utk grid 100x100.
     // Bebas mendongak ke atas melihat seluruh langit (permintaan user, tidak dibatasi!)
@@ -15006,9 +15011,20 @@ Now you can apply Displacement for detailed effect.`);
       }
     };
     const onKeyUp = (e) => {
-      // Skip kalau user sedang fokus di input field (chat, search, dll)
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+      // ══ bab 200 — BUG "KAMERA MAJU SENDIRI SETELAH LEPAS MOUSE" ══
+      // ⚠️ AKAR MASALAH (laporan user: "saya gerakin kamera 1 arah lalu lepas
+      //    tangan, dia tiba-tiba maju sendiri lalu berhenti, kadang gerak-
+      //    gerak sendiri").
+      //    DULU baris ini: `if (tag === 'INPUT' ...) return;` — yaitu keyup
+      //    DILEWATI kalau fokus sedang di input. Itu BENAR untuk keydown
+      //    (supaya mengetik "w" di kolom chat tidak menggerakkan kamera),
+      //    tapi FATAL untuk keyup: kalau user menekan W, lalu klik ke kolom
+      //    chat/search sebelum melepas W, keyup-nya dibuang → keys.w
+      //    TERTINGGAL `true` SELAMANYA → kamera jalan sendiri terus-menerus.
+      //    (resetKeys() saat blur TIDAK menolong: klik ke input tidak
+      //    memicu window blur.)
+      //    FIX: keyup SELALU diproses. Keyup hanya MEMATIKAN flag, jadi
+      //    tidak mungkin mengganggu pengetikan — tidak ada alasan skip.
       const k = e.key.toLowerCase();
       if (k === 'w') keys.w = false;
       else if (k === 'a') keys.a = false;
@@ -15016,6 +15032,9 @@ Now you can apply Displacement for detailed effect.`);
       else if (k === 'd') keys.d = false;
       else if (k === 'q') keys.q = false;
       else if (k === 'e') keys.e = false;
+      else if (k === 'i') keys.i = false;
+      else if (k === 'o') keys.o = false;
+      else if (e.code === 'Space' || e.key === ' ') keys.space = false;
       else if (e.key === 'Shift') { keys.shift = false; if (shiftHeldRef.current) { shiftHeldRef.current = false; setShiftHeld(false); } }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -15133,6 +15152,20 @@ Now you can apply Displacement for detailed effect.`);
       } else {
         const _shiftForFly = keys.shift && !(typeof window !== 'undefined' && window.innerWidth >= 768
           && shiftHeldRef.current && GIZMO_TOOLS.includes(toolRef.current));
+        // ══ bab 201 — PENJAGA FOKUS (usul user: "hanya gerak kalau keybind
+        //    benar-benar terdeteksi"). Sebelum menghitung gerak, pastikan
+        //    jendela ini MEMANG sedang fokus. Kalau tidak, matikan paksa
+        //    semua tombol gerak — jadi mustahil kamera meluncur saat user
+        //    sedang di aplikasi lain / setelah alt-tab.
+        //    ⚠️ Ini TIDAK memakai watchdog berbasis auto-repeat, jadi TIDAK
+        //    ada risiko "menahan W lalu berhenti sendiri" di mesin yang
+        //    auto-repeat-nya dimatikan. Nol regresi.
+        if (typeof document !== 'undefined' && document.hasFocus && !document.hasFocus()) {
+          if (keys.w || keys.a || keys.s || keys.d || keys.q || keys.e) {
+            keys.w = keys.a = keys.s = keys.d = keys.q = keys.e = false;
+            flyVel.set(0, 0, 0);
+          }
+        }
         const mult = (threeRef.current && threeRef.current.cameraSpeedMultiplier !== undefined) ? threeRef.current.cameraSpeedMultiplier : 3.0;
         const speed = (_shiftForFly ? FLY_SPRINT : FLY_SPEED) * mult;
         const forward = new THREE.Vector3();
@@ -15152,7 +15185,10 @@ Now you can apply Displacement for detailed effect.`);
 
         if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
         // Haluskan velocity (accel/decel lembut = rasa spectator).
-        flyVel.lerp(move, 1 - Math.pow(0.0016, _dt));
+        // bab 200: dulu 0.0016 → setelah tombol dilepas kamera masih
+        // MELUNCUR cukup jauh (terasa "maju sendiri"). 0.00002 = berhenti
+        // jauh lebih cepat tanpa terasa kaku saat mulai bergerak.
+        flyVel.lerp(move, 1 - Math.pow(0.00002, _dt));
 
         if (flyVel.lengthSq() > 0.0001) {
           const step = flyVel.clone().multiplyScalar(_dt);
@@ -15906,7 +15942,32 @@ Now you can apply Displacement for detailed effect.`);
       // (0.5x1.5x0.5) outline kotak besar menyesatkan.
       try {
         if (ghostEdges.geometry && ghostEdges.geometry.dispose) ghostEdges.geometry.dispose();
-        ghostEdges.geometry = new THREE.EdgesGeometry(ghostBlock.geometry);
+        // ══ bab 200 — "NGELEG SAAT MASUK 3D BLOCK SIMULATOR" ══
+        // ⚠️ AKAR (terukur): EdgesGeometry dihitung dari SELURUH 1472
+        //    segitiga trophy. Hasil ukur: 9.52 ms untuk trophy vs 0.56 ms
+        //    untuk block biasa (17x lebih berat) — dan ini dijalankan
+        //    SINKRON di main thread SETIAP KALI block diganti. Untuk block
+        //    low-poly biasa tidak terasa; untuk trophy terasa sebagai
+        //    "ngeleg dikit".
+        //    FIX: NSI berdetail tinggi (trophy/tree/treasure) tidak butuh
+        //    outline penuh — outline-nya justru jadi sarang garis di
+        //    permukaan melengkung. Pakai kotak pembatas (8 segitiga,
+        //    ±0.5 ms) sebagai gantinya: tetap memberi indikator batas
+        //    penempatan, tapi murah.
+        const _heavy = (slug === 'trophy_1st' || slug === 'trophy_2nd' || slug === 'trophy_3rd');
+        if (_heavy) {
+          // ⚠️ Kotak pembatas WAJIB seukuran bbox NYATA trophy (3 x 4 x 2
+          //    studs = 1.5 x 2 x 1 block), BUKAN 1x1x1 — kalau salah ukuran,
+          //    outline-nya tenggelam di dalam model dan menyesatkan.
+          const _bb = new THREE.Box3().setFromObject(ghostBlock);
+          const _sz = _bb.getSize(new THREE.Vector3());
+          ghostEdges.geometry = new THREE.EdgesGeometry(
+            new THREE.BoxGeometry(Math.max(_sz.x, 0.01), Math.max(_sz.y, 0.01), Math.max(_sz.z, 0.01)));
+          ghostEdges.position.copy(_bb.getCenter(new THREE.Vector3()));
+        } else {
+          ghostEdges.geometry = new THREE.EdgesGeometry(ghostBlock.geometry);
+          ghostEdges.position.set(0, 0, 0);
+        }
       } catch (e) {}
       if (ghostBlock.material && ghostBlock.material.dispose) ghostBlock.material.dispose();
       const def = getBlockDef(slug);

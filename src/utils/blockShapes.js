@@ -273,6 +273,10 @@ export const NSI_PT_SLUG = 'pine_tree';
 // Terukur dari mesh pinetree.obj yang sudah diskalakan uniform:
 //   13.5079 x 15.0000 x 13.0018 studs -> tidak ada yang lewat 15. 
 export const NSI_PT_SIZE = [6.7539, 7.5, 6.5009];  // 13.51 x 15.00 x 13.00 studs
+// ══ NSI LEVEL 2 #12: TROPHY 1st/2nd/3rd (bab 197, rombak bab 198) ══
+// Ukuran WAJIB user: panjang 3 studs (X) · lebar 2 studs (Z) · tinggi 4 (Y).
+export const NSI_TR_SLUGS = ['trophy_1st', 'trophy_2nd', 'trophy_3rd'];
+export const NSI_TR_SIZE = [1.5, 2.0, 1.0];       // 3 x 4 x 2 studs
 export const MT_YOFF = -0.375;                    // geser badan+tutup → bbox terpusat
 export const MT_HINGE_Y = ST_HINGE_Y + MT_YOFF;   // engsel (lokal Medium)
 export const MT_HINGE_Z = ST_HINGE_Z;             // tepi BELAKANG
@@ -305,6 +309,7 @@ NSI_SIZES[NSI_ST_SLUG] = NSI_ST_SIZE.slice();
 NSI_SIZES[NSI_MT_SLUG] = NSI_MT_SIZE.slice();
 NSI_SIZES[NSI_BT_SLUG] = NSI_BT_SIZE.slice();
 NSI_SIZES[NSI_PT_SLUG] = NSI_PT_SIZE.slice();
+NSI_TR_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_TR_SIZE.slice(); });
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -312,9 +317,8 @@ NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
-
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -2455,6 +2459,32 @@ export const ST_WARNA = {
   pineFoliage: [3.50, 2.61, 2.52, 1.0],
   pineTrunk:   [1.0, 1.0, 1.0, 1.0],         // batang: cokelat dari ATLAS (bab 180i)
   xred:  [2.60, 0.070, 0.085, 1.0],   // bab 178c: merah lebih TERANG (Claude: masih maroon)
+  // ══ bab 200 (TROPHY 1st/2nd/3rd) — WARNA DIPERBAIKI TOTAL ══
+  // ⚠️ BUG YANG DILAPORKAN USER: "di localhost warnanya jadi aneh dan jauh
+  //    dari referensi".
+  //    AKAR MASALAH (terukur): nilai vertex color di sini > 1.0
+  //    (trGold 1.06 · trSilver 1.48/1.58/1.72 · trNumGold 2.30 · trNumCyan
+  //    2.70). Vertex color adalah PENGALI, bukan emisi — nilai >1 membuat
+  //    hasil ter-clip per kanal sehingga HUE BERGESER (emas jadi kekuning-
+  //    hijauan, perak jadi putih pucat, biru jadi pucat). Itu sebabnya warna
+  //    "aneh". Sekarang SEMUA nilai di dalam 0..1 (warna MURNI).
+  //    Catatan: tekstur marble_block (abu netral mean 0.79) tetap mengalikan
+  //    → sengaja dinaikkan sedikit tapi TIDAK melewati 1.0.
+  //
+  // ATURAN USER (2026-10-24): 1st = EMAS MURNI · 2nd = BIRU DIAMOND ·
+  //                           3rd = TEMBAGA/COPPER MURNI
+  // Angka = linear (bukan sRGB), sudah dikonversi dari hex acuan:
+  //   emas #FFD24A · diamond #6FD3FF · copper #C8703A
+  trGold:      [1.00, 0.6600, 0.0700, 1.0],   // emas murni (R jenuh, wajar)
+  trDiamond:   [0.1500, 0.5600, 1.00, 1.0],   // biru diamond (B jenuh)
+  trCopper:    [0.7600, 0.2600, 0.0700, 1.0], // tembaga murni
+  trBaseCream: [0.8600, 0.8400, 0.7900, 1.0], // marmer krem (1st)
+  trBaseDark:  [0.1000, 0.1200, 0.1500, 1.0], // batu arang (2nd)
+  trBaseTerra: [0.3800, 0.1900, 0.1000, 1.0], // terakota (3rd)
+  trPlaque:    [0.2200, 0.1800, 0.1200, 1.0], // plat nama (dasar)
+  trNumGold:   [1.00, 0.8200, 0.1800, 1.0],   // angka "1st" emas
+  trNumCyan:   [0.5500, 0.9000, 1.00, 1.0],   // angka "2nd" cyan diamond
+  trNumOrange: [1.00, 0.5600, 0.1400, 1.0],   // angka "3rd" tembaga
 };
 const _ST_XW = 0.76;   // ujung kotak dalam
 
@@ -2753,7 +2783,19 @@ function _stBuild(THREE, parts) {
           uv.push(u0 + ux * du, v0 + vy * dv);
         }
       }
-      for (let k = 0; k < 3; k++) col.push(c[0], c[1], c[2], c[3]);
+      for (let k = 0; k < 3; k++) {
+        // bab 198: pt.colorFn (opsional) → warna PER-VERTEX (gradasi logam).
+        // Guard: kalau tidak ada → perilaku LAMA persis (satu warna per part).
+        if (pt.colorFn) {
+          const vx = k === 0 ? ax : (k === 1 ? bx : cx);
+          const vy = k === 0 ? ay : (k === 1 ? by : cy);
+          const vz = k === 0 ? az : (k === 1 ? bz : cz);
+          const cc = pt.colorFn(vx, vy, vz);
+          col.push(cc[0], cc[1], cc[2], cc[3] === undefined ? 1.0 : cc[3]);
+        } else {
+          col.push(c[0], c[1], c[2], c[3]);
+        }
+      }
     }
   });
   const out = new THREE.BufferGeometry();
@@ -3364,6 +3406,622 @@ export function makePineTreeGeometry(THREE) {
   return _stBuild(THREE, getPineTreeParts());
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #12: TROPHY 1st/2nd/3rd — GEOMETRI (bab 197, ROMBAK bab 198) ──
+// Bbox WAJIB tepat [1.5, 2.0, 1.0] block = 3 x 4 x 2 studs, TERPUSAT di origin
+// (Y dari −1.0 ke +1.0) supaya posY = setengah tinggi bekerja benar.
+//
+// ⚠️ ROMBAK TOTAL bab 198 (koreksi user: "designnya sangat jelek dan tidak bisa
+//    di acc"). Versi bab 197 dibuang, diganti resep berangka dari Claude:
+//    • Cangkir dulu berbentuk V meruncing lurus → sekarang U/ogee berperut
+//    • Gagang dulu pita tipis 0.045 & ujung melayang → sekarang tabung
+//      ber-taper 0.27→0.15 studs dengan volute (kail masuk lagi ke cangkir)
+//    • Alas dulu 37% tinggi → sekarang 28% (0→1.12 studs) dengan 4 tier loft
+//    • Proporsi batang dinaikkan (rasio 0.14 → 0.22 dari lebar cangkir)
+//
+// SATUAN: semua angka desain di bawah ditulis dalam STUD (seperti resep Claude,
+// Y 0..4). Konversi ke BLOCK dilakukan sekali lewat trX/trY/trZ.
+//
+// ⚠️ Part BERONGGA (cangkir) dibangun dengan winding BENAR sendiri dan
+//    ditandai noFix:true → TIDAK dibetulkan _stFaceOutward, karena centroid
+//    benda berongga jatuh di RUANG KOSONG (normal sisi-dalam jadi terbalik).
+// ══════════════════════════════════════════════════════════════════════════
+const TR_Y0 = -1.0;          // dasar alas (bawah bbox)
+const TR_Y1 = 1.0;           // puncak bibir cangkir (atas bbox)
+const TR_HX = 0.75;          // setengah panjang  → 1.50 block = 3 studs
+const TR_HZ = 0.50;          // setengah lebar    → 1.00 block = 2 studs
+const TR_S = 0.5;            // 1 stud = 0.5 block
+// ⚠️ bab 199f (Claude putaran 2): cangkir 12 -> 16 segmen (+190 segitiga).
+//    Ditutup dengan menurunkan penampang gagang 8 -> 6 (-192 segitiga).
+const TR_SEG = 14;
+
+/** stud → block (X/Z): pusat di origin. */
+const trX = (s) => s * TR_S;
+/** stud → block (Y): stud 0 = TR_Y0, stud 4 = TR_Y1. */
+const trY = (s) => TR_Y0 + s * TR_S;
+/** [r,y] stud → [r,y] block. */
+const trProf = (list) => list.map(([r, y]) => [trX(r), trY(y)]);
+
+/** Ring titik pada bidang XZ untuk jari-jari r di ketinggian y.
+ *  ⚠️ `+ 0` di akhir: Math.cos(π/2) menghasilkan −0 (negatif nol) yang
+ *  NILAI-nya sama dengan +0 tapi STRING-nya beda ("-0" vs "0"), sehingga
+ *  uji tepi-terbuka salah melaporkan celah di sambungan. */
+function _trRing(r, y, seg) {
+  const out = [];
+  for (let k = 0; k < seg; k++) {
+    const a = (k / seg) * Math.PI * 2;
+    out.push([Math.cos(a) * r + 0, y, Math.sin(a) * r + 0]);
+  }
+  return out;
+}
+
+/**
+ * Putar PROFIL (daftar [r, y], bawah→atas) menjadi permukaan.
+ * inward=false → normal KELUAR (dinding luar) · inward=true → normal KE DALAM
+ * (dinding dalam cangkir, menghadap rongga).
+ * ⚠️ Urutan quad [i,k]→[i+1,k]→[i+1,k+1]→[i,k+1] menghasilkan normal KELUAR
+ *    untuk profil yang naik (diverifikasi lewat volume bertanda).
+ */
+function _trRevolve(profil, seg, inward) {
+  const rings = profil.map(([r, y]) => _trRing(r, y, seg));
+  const f = [];
+  for (let i = 0; i < rings.length - 1; i++) {
+    const A = rings[i], B = rings[i + 1];
+    for (let k = 0; k < seg; k++) {
+      const j = (k + 1) % seg;
+      const q = [A[k], B[k], B[j], A[j]];
+      f.push(inward ? q.slice().reverse() : q);
+    }
+  }
+  return f;
+}
+
+/**
+ * Tutup FAN dari titik sumbu ke ring jari-jari r pada ketinggian y.
+ * ⚠️ Ring dihitung dengan _trRing yang SAMA seperti _trRevolve → vertex
+ *    identik → sambungan rapat (tanpa celah akibat sin(2π) ≠ 0).
+ * up=true → normal +Y (dasar rongga) · up=false → normal −Y (dasar alas).
+ */
+function _trCapFan(r, y, seg, up) {
+  const R = _trRing(r, y, seg), f = [];
+  const C = [0, y + 0, 0];
+  for (let k = 0; k < seg; k++) {
+    const j = (k + 1) % seg;
+    f.push(up ? [C, R[k], R[j]] : [C, R[j], R[k]]);
+  }
+  return f;
+}
+
+/** Cincin datar (bibir cangkir) — normal +Y. */
+function _trRim(rOut, rIn, y, seg) {
+  const O = _trRing(rOut, y, seg), I = _trRing(rIn, y, seg), f = [];
+  for (let k = 0; k < seg; k++) {
+    const j = (k + 1) % seg;
+    f.push([O[k], I[k], I[j], O[j]]);   // urutan ini → normal +Y
+  }
+  return f;
+}
+
+/**
+ * Tabung BER-TAPER sepanjang jalur 2D (bidang XY, z=0), penampang elips.
+ * Dipakai untuk gagang: lebar (in-plane) & kedalaman (Z) menyusut ujung ke ujung.
+ * @param {Array<[number,number]>} pts  titik jalur [x,y] (block)
+ * @param {number} w0,w1  setengah lebar in-plane di ujung awal/akhir (block)
+ * @param {number} d0,d1  setengah kedalaman Z di ujung awal/akhir (block)
+ * @param {number} seg    segmen penampang
+ */
+function _trTaperTube(pts, w0, w1, d0, d1, seg) {
+  const n = pts.length;
+  // tangen per titik (selisih tengah) → normal in-plane
+  const rings = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    let tx = b[0] - a[0], ty = b[1] - a[1];
+    const L = Math.hypot(tx, ty) || 1;
+    tx /= L; ty /= L;
+    const nx = -ty, ny = tx;               // normal in-plane
+    const t = n === 1 ? 0 : i / (n - 1);
+    const w = w0 + (w1 - w0) * t;
+    const d = d0 + (d1 - d0) * t;
+    const ring = [];
+    for (let k = 0; k < seg; k++) {
+      const ang = (k / seg) * Math.PI * 2;
+      const ca = Math.cos(ang) * w, sa = Math.sin(ang) * d;
+      ring.push([pts[i][0] + nx * ca + 0, pts[i][1] + ny * ca + 0, sa + 0]);
+    }
+    rings.push(ring);
+  }
+  const f = [];
+  for (let i = 0; i < rings.length - 1; i++) {
+    const A = rings[i], B = rings[i + 1];
+    for (let k = 0; k < seg; k++) {
+      const j = (k + 1) % seg;
+      f.push([A[k], B[k], B[j], A[j]]);
+    }
+  }
+  // tutup KEDUA ujung (fan) supaya watertight walau ujungnya terbenam di dinding
+  const capA = rings[0], capB = rings[rings.length - 1];
+  const cA = [pts[0][0], pts[0][1], 0], cB = [pts[n - 1][0], pts[n - 1][1], 0];
+  for (let k = 0; k < seg; k++) {
+    const j = (k + 1) % seg;
+    f.push([cA, capA[j], capA[k]]);
+    f.push([cB, capB[k], capB[j]]);
+  }
+  return f;
+}
+
+/** Bola/elipsoid (untuk kenop di ujung bawah gagang). */
+function _trBlob(cx, cy, cz, rx, ry, rz, seg, lat) {
+  const f = [];
+  const rows = [];
+  for (let i = 0; i <= lat; i++) {
+    const phi = (i / lat) * Math.PI;          // 0..π (kutub atas → bawah)
+    const sy = Math.cos(phi), sr = Math.sin(phi);
+    const row = [];
+    for (let k = 0; k < seg; k++) {
+      const a = (k / seg) * Math.PI * 2;
+      row.push([cx + Math.cos(a) * sr * rx + 0, cy + sy * ry + 0, cz + Math.sin(a) * sr * rz + 0]);
+    }
+    rows.push(row);
+  }
+  for (let i = 0; i < lat; i++) {
+    const A = rows[i], B = rows[i + 1];
+    for (let k = 0; k < seg; k++) {
+      const j = (k + 1) % seg;
+      f.push([A[k], B[k], B[j], A[j]]);
+    }
+  }
+  return f;
+}
+
+/**
+ * LOFT persegi: sambung ring [hx, hz, y] berurutan (block), + tutup bawah & atas.
+ * Dipakai alas bertingkat: plinth → badan (ledge masuk) → bibir → chamfer.
+ */
+function _trLoftRect(rings) {
+  const R = rings.map(([hx, hz, y]) => [
+    [-hx, y, -hz], [hx, y, -hz], [hx, y, hz], [-hx, y, hz],
+  ]);
+  const f = [];
+  for (let i = 0; i < R.length - 1; i++) {
+    const A = R[i], B = R[i + 1];
+    for (let k = 0; k < 4; k++) {
+      const j = (k + 1) % 4;
+      f.push([A[k], B[k], B[j], A[j]]);
+    }
+  }
+  const first = R[0], last = R[R.length - 1];
+  f.push([first[0], first[3], first[2], first[1]]);   // tutup bawah (normal −Y)
+  f.push([last[0], last[1], last[2], last[3]]);       // tutup atas  (normal +Y)
+  return f;
+}
+
+function _trSeg(x0, x1, y0, y1, z, t) {
+  return _stBox(x0, x1, y0, y1, z, z + t);
+}
+
+/**
+ * Angka 1 / 2 / 3 dari SEGMEN BATANG (tanpa file tekstur).
+ * Digit dibangun di muka depan alas, menghadap +Z.
+ */
+function _trDigitFaces(n, cx, cy, z, t) {
+  const W = 0.11, H = 0.18, TH = 0.026;
+  const L = cx - W / 2, R = cx + W / 2;
+  const T = cy + H / 2, B = cy - H / 2, M = cy;
+  const hz = TH / 2;
+  // segmen horizontal (atas / tengah / bawah)
+  const hTop = () => _trSeg(L, R, T - hz, T + hz, z, t);
+  const hMid = () => _trSeg(L, R, M - hz, M + hz, z, t);
+  const hBot = () => _trSeg(L, R, B - hz, B + hz, z, t);
+  // segmen vertikal (kiri/kanan, atas/bawah)
+  const vUL = () => _trSeg(L - hz, L + hz, M, T, z, t);
+  const vLL = () => _trSeg(L - hz, L + hz, B, M, z, t);
+  const vUR = () => _trSeg(R - hz, R + hz, M, T, z, t);
+  const vLR = () => _trSeg(R - hz, R + hz, B, M, z, t);
+  let f = [];
+  if (n === 1) {
+    // ⚠️ FIX bab 197d (terukur dari render 3x):
+    //    v1 batang kanan + kaki bawah        → terbaca "J"
+    //    v2 kait terpisah di kiri atas       → terbaca titik melayang
+    //    v3 palang atas penuh + batang kanan → terbaca "7"
+    //    v4 (INI) = BATANG TENGAH + kait kiri-atas + kaki simetris.
+    //    Palang atas TIDAK penuh (hanya separuh kiri) supaya tidak jadi "7",
+    //    dan kaki bawah SIMETRIS (bukan hanya ke kiri) supaya tidak jadi "J".
+    const midV = () => _trSeg(cx - hz, cx + hz, B, T, z, t);
+    const flag = () => _trSeg(L, cx, T - 2 * hz, T, z, t);
+    const foot = () => _trSeg(L, R, B, B + 2 * hz, z, t);
+    f = [...flag(), ...midV(), ...foot()];
+  } else if (n === 2) {
+    f = [...hTop(), ...vUR(), ...hMid(), ...vLL(), ...hBot()];
+  } else {
+    f = [...hTop(), ...vUR(), ...hMid(), ...vLR(), ...hBot()];
+  }
+  return f;
+}
+
+/**
+ * Tulisan peringkat "1st" / "2nd" / "3rd" dari SEGMEN BATANG (tanpa tekstur).
+ * ⚠️ bab 199b (Claude putaran 2): "angka terlalu tipis; pakai tinggi 0.22 dan
+ *    tebal goresan 0.045, dan tulis 1st/2nd/3rd seperti referensi, bukan
+ *    angka saja."
+ *    Digit besar (H 0.22) + 2 huruf kecil (H 0.13) di sebelah kanannya.
+ *    Semua digambar menghadap +Z di atas plakat.
+ */
+function _trRankText(n, cx, cy, z, t) {
+  // ⚠️ bab 199g (bug terukur: 216 NaN): versi pertama mencampur SATUAN —
+  //    cy/z/t sudah BLOCK tapi lebar/tinggi glyph masih STUDS, lalu trY()
+  //    dipakai lagi di dalam → koordinat jauh di luar rentang & NaN.
+  //    Sekarang SEMUA perhitungan di dalam fungsi ini BLOCK.
+  // ⚠️ bab 199i (Claude putaran 3, prioritas 1): "huruf st/nd/rd tidak terbaca;
+  //    huruf kecil terlalu rapat untuk goresan 0.045. Pakai grid 3x5 per huruf,
+  //    angka tinggi 0.24 goresan 0.04, sufiks tinggi 0.14 lebar 0.09 goresan
+  //    0.03, jarak antarhuruf 0.04, jarak angka→sufiks 0.05, baseline sama."
+  const S = (v) => trX(v);              // studs -> block
+  const DH = S(0.24), DW = S(0.13);     // digit
+  const LHH = S(0.14), LHW = S(0.09);   // sufiks
+  const GAPD = S(0.05);                 // angka → sufiks
+  const GAPL = S(0.04);                 // antar huruf
+  const totalW = DW + GAPD + LHW + GAPL + LHW;
+  const x0 = cx - totalW / 2;
+  const tD = S(0.04), tL = S(0.03);     // tebal goresan
+
+  const seg = (a, b, c, d, th) => _trSeg(a, b, c, d, z, th);
+
+  // ── DIGIT: batang, bukan grid (bentuk angka sudah benar sejak bab 197d) ──
+  const dl = x0, dr = x0 + DW;
+  const dcy = cy + S(0.012);
+  const dT = dcy + DH / 2, dB = dcy - DH / 2, dM = dcy;
+  const dig = [];
+  const bar = S(0.045), thin = S(0.0225);
+  if (n === 1) {
+    // batang tengah + kait kiri atas + kaki simetris (pola bab 197d)
+    dig.push(...seg((dl + dr) / 2 - thin, (dl + dr) / 2 + thin, dB, dT, tD));
+    dig.push(...seg(dl, (dl + dr) / 2, dT - bar, dT, tD));
+    dig.push(...seg(dl, dr, dB, dB + bar, tD));
+  } else if (n === 2) {
+    dig.push(...seg(dl, dr, dT - bar, dT, tD));
+    dig.push(...seg(dr - bar, dr, dM, dT, tD));
+    dig.push(...seg(dl, dr, dM - thin, dM + thin, tD));
+    dig.push(...seg(dl, dl + bar, dB, dM, tD));
+    dig.push(...seg(dl, dr, dB, dB + bar, tD));
+  } else {
+    dig.push(...seg(dl, dr, dT - bar, dT, tD));
+    dig.push(...seg(dr - bar, dr, dM, dT, tD));
+    dig.push(...seg(dl + S(0.01), dr, dM - thin, dM + thin, tD));
+    dig.push(...seg(dr - bar, dr, dB, dM, tD));
+    dig.push(...seg(dl, dr, dB, dB + bar, tD));
+  }
+
+  // ── SUFIKS: grid 3x5 per huruf (jauh lebih terbaca di ukuran kecil) ──
+  // Pola 3 kolom x 5 baris. "#" = blok terisi. Baseline SAMA dengan angka.
+  const GLYPH = {
+    s: ['.##', '#..', '.#.', '..#', '##.'],
+    t: ['.#.', '.#.', '###', '.#.', '.##'],
+    // ⚠️ bab 199k (Claude putaran 4): "n" & "r" masih salah. Pola lama "n"
+    //    punya baris penuh di tengah (#.#/###/#.#) sehingga run-length vertikal
+    //    menutup lubang di bawah lengkung → terbaca blok "Nd".
+    //    "n" baru: baris atas HANYA sel tengah, baris 2-5 dua kaki → lubang
+    //    di antara kaki tetap kosong. "r" baru: batang kiri penuh + lengan
+    //    hanya di baris 2 (kolom tengah+kanan). "d" sudah benar, tidak diubah.
+    n: ['.#.', '#.#', '#.#', '#.#', '#.#'],
+    d: ['..#', '..#', '.##', '#.#', '.##'],
+    r: ['#..', '###', '#..', '#..', '#..'],
+  };
+  const suf = n === 1 ? ['s', 't'] : (n === 2 ? ['n', 'd'] : ['r', 'd']);
+  const lB = dB;                          // baseline sama
+  const lT = lB + LHH;
+  const cellW = LHW / 3, cellH = LHH / 5;
+  // ⚠️ bab 199j (terukur): 1 kotak per sel = 3x5x6 = 90 quad per huruf →
+  //    total melampaui 1500 segitiga. FIX: gabungkan sel yang bersebelahan
+  //    HORIZONTAL menjadi satu kotak (run-length). Pola 3x5 tetap sama,
+  //    jumlah kotak turun ±45% sehingga kembali di bawah anggaran.
+  const letter = (ch, left) => {
+    const g = GLYPH[ch] || [];
+    const out = [];
+    // run-length 2 ARAH: gabung horizontal lalu vertikal (kolom yang sama
+    // dan baris berurutan terisi penuh) supaya kotak makin sedikit.
+    const used = Array.from({ length: 5 }, () => [false, false, false]);
+    for (let r = 0; r < 5; r++) {
+      let c = 0;
+      while (c < 3) {
+        if (g[r][c] !== '#' || used[r][c]) { c++; continue; }
+        let e = c;
+        while (e + 1 < 3 && g[r][e + 1] === '#') e++;
+        // coba lanjut ke bawah kalau seluruh rentang kolom juga terisi
+        let rb = r;
+        while (rb + 1 < 5) {
+          let all = true;
+          for (let k = c; k <= e; k++) if (g[rb + 1][k] !== '#') { all = false; break; }
+          if (!all) break;
+          rb++;
+        }
+        for (let rr = r; rr <= rb; rr++) for (let k = c; k <= e; k++) used[rr][k] = true;
+        const a = left + c * cellW, b = left + (e + 1) * cellW;
+        const y0 = lT - (rb + 1) * cellH, y1 = lT - r * cellH;
+        out.push(...seg(a, b, y0, y1, tL));
+        c = e + 1;
+      }
+    }
+    return out;
+  };
+  const lx = x0 + DW + GAPD;
+  return [...dig, ...letter(suf[0], lx), ...letter(suf[1], lx + LHW + GAPL)];
+}
+
+/** Gradasi logam: gelap di bawah, terang di atas (kesan cahaya dari atas).
+ *  Dipakai lewat pt.colorFn di _stBuild (bab 198). */
+function _trMetalGrad(tag) {
+  const c = ST_WARNA[tag] || ST_WARNA.black;
+  return (x, y) => {
+    const t = (y - TR_Y0) / (TR_Y1 - TR_Y0);      // 0 bawah .. 1 atas
+    const f = 0.84 + 0.30 * t;                     // 0.84 → 1.14
+    return [c[0] * f, c[1] * f, c[2] * f, c[3]];
+  };
+}
+
+/** Part Trophy — bentuk IDENTIK untuk ketiga varian; warna via tag. */
+export function getTrophyParts(slug) {
+  const is2 = slug === 'trophy_2nd';
+  const is3 = slug === 'trophy_3rd';
+  const tagMetal = is2 ? 'trDiamond' : (is3 ? 'trCopper' : 'trGold');
+  const tagBase = is2 ? 'trBaseDark' : (is3 ? 'trBaseTerra' : 'trBaseCream');
+  const tagNum = is2 ? 'trNumCyan' : (is3 ? 'trNumOrange' : 'trNumGold');
+  const parts = [];
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 1. ALAS — loft persegi 4 tier (resep Claude)
+  //    tier 1 plinth · tier 2 badan (ledge masuk 0.20) · tier 3 bibir
+  //    menjorok 0.06 · tier 4 chamfer atas. hz terluar 1.00 studs → bbox Z
+  //    TEPAT 2 studs.
+  // ══════════════════════════════════════════════════════════════════════
+  // ⚠️ bab 199 (Claude putaran 2, terukur dari foto referensi):
+  //    "alas sekitar 0.9x lebar bibir dan 61% lebar total" → lebar alas
+  //    1.20 → 0.90 studs (x0.78). TAPI hz TIDAK boleh ikut dikali 0.78:
+  //    bbox Z user WAJIB 2 studs, dan itu ditentukan hz tier-1. Jadi hz
+  //    tier-1 tetap 1.00 studs; yang menyusut hanya hx + tier dalam.
+  //    Tinggi 28% (1.12 studs) TIDAK berubah — sudah benar.
+  const BASE_RINGS = [
+    [0.90, 1.00, 0.00], [0.90, 1.00, 0.22],   // tier 1: plinth
+    [0.76, 0.86, 0.22], [0.76, 0.86, 0.85],   // tier 2: badan
+    [0.82, 0.90, 0.85], [0.82, 0.90, 1.00],   // tier 3: bibir menjorok
+    [0.64, 0.72, 1.12],                       // tier 4: chamfer atas
+  ].map(([hx, hz, y]) => [trX(hx), trX(hz), trY(y)]);
+  parts.push({ tag: tagBase, faces: _trLoftRect(BASE_RINGS) });
+
+  // ── PLAT NAMA + ANGKA ──
+  // Plakat menonjol 0.05 studs dari dinding badan (z 0.86 → 0.91).
+  const PZ0 = trX(0.86), PZ1 = trX(0.91);
+  const PY0 = trY(0.34), PY1 = trY(0.72);
+  parts.push({ tag: 'trPlaque', faces: _stBox(trX(-0.34), trX(0.34), PY0, PY1, PZ0, PZ1) });
+  // ⚠️ bab 199b: Claude — "angka terlalu tipis, pakai tinggi 0.22 tebal 0.045,
+  //    tulis 1st/2nd/3rd". Angka diperbesar + huruf kecil di belakangnya.
+  parts.push({
+    tag: tagNum,
+    faces: _trRankText(is2 ? 2 : (is3 ? 3 : 1), 0, (PY0 + PY1) / 2, PZ1, trX(0.045)),
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 2. CANGKIR + BATANG + KAKI — SATU profil menerus (revolve)
+  // ⚠️ bab 199c (Claude putaran 2): "bawah cangkir masih V, harus U bulat".
+  //    Pakai tabel r/R kuarter-elips sqrt(1-(1-t/0.7)^2) yang dia beri:
+  //      t    0    .05   .1    .2    .3    .4    .5    .6    .7   1.0
+  //      r/R  rbt  .37   .52   .68   .82   .90   .96   .99  1.00 1.02
+  //    ⚠️ KOREKSI WAJIB: tabel itu puncaknya 1.02·R. Kalau R dipakai apa
+  //       adanya, jari-jari bibir jadi 0.52 block > 0.50 block → bbox Z
+  //       membengkak jadi 2.08 studs dan MELANGGAR ukuran user (2 studs).
+  //       Jadi seluruh tabel diskalakan 1.00/1.02 supaya bibir TEPAT
+  //       1.00 studs = 0.50 block. Rasio bibir/tinggi jadi 2.00/1.88 =
+  //       1.064 (target Claude 1.09) — meleset 2.4%, masih dalam
+  //       toleransi ukurnya sendiri (±10%).
+  //    Anggaran tinggi (block, total 2.00): alas 0.56 · batang+kaki 0.50
+  //    · cangkir 0.94. Alas 0.56/2.00 = 28% ✓ (sudah benar sejak bab 198).
+  // ══════════════════════════════════════════════════════════════════════
+  // Radius luar cangkir per t (studs) — tabel Claude × (1.00/1.02)
+  const CUPR = [
+    [0.00, 0.2000], [0.05, 0.3696], [0.10, 0.5196], [0.20, 0.6804],
+    [0.30, 0.8196], [0.40, 0.9000], [0.50, 0.9600], [0.60, 0.9902],
+    [0.70, 1.0000], [1.00, 1.0000],
+  ];
+  const CUP_Y0 = 2.12, CUP_H = 1.88;   // studs: dasar mangkuk → bibir 4.00
+  const cupY = (t) => CUP_Y0 + t * CUP_H;
+
+  const prof = [];
+  prof.push([0.004, 1.12]);                        // pusat dasar kaki
+  prof.push([0.50, 1.12], [0.50, 1.24]);           // piringan kaki (r 0.50, tebal 0.12)
+  prof.push([0.40, 1.30], [0.30, 1.36]);           // dua cincin pembulat
+  prof.push([0.20, 1.44], [0.20, 1.94]);           // batang (r 0.20 = 0.10 block)
+  prof.push([0.28, 1.98], [0.28, 2.06]);           // cincin kerah (r 0.28)
+  prof.push([0.20, 2.12]);                         // leher masuk mangkuk
+  for (const [t, r] of CUPR) {                     // dinding LUAR (U, bukan V)
+    if (t === 0) continue;                         // t=0 sudah diwakili leher
+    prof.push([r, cupY(t)]);
+  }
+  prof.push([0.85, 4.00]);                         // bibir (tebal 0.15)
+  for (let i = CUPR.length - 1; i >= 0; i--) {     // dinding DALAM (cermin −0.15)
+    const [t, r] = CUPR[i];
+    prof.push([Math.max(0.004, r - 0.15), cupY(t)]);
+  }
+  prof.push([0.004, 2.14]);                        // pusat dasar rongga
+  const CUP_PROFILE = trProf(prof);
+
+  parts.push({
+    tag: tagMetal, noFix: true, colorFn: _trMetalGrad(tagMetal),
+    faces: [
+      ..._trRevolve(CUP_PROFILE, TR_SEG, false),
+      // ⚠️ bab 198b/198d (terukur): profil mulai & berakhir di r=0.004 (BUKAN 0)
+      //    → 24 tepi terbuka. Ditutup FAN dari titik sumbu ke ring yang SAMA
+      //    (trX(0.004), bukan 0.004 mentah) supaya vertex identik & rapat.
+      ..._trCapFan(trX(0.004), CUP_PROFILE[0][1], TR_SEG, false),                 // dasar kaki (−Y)
+      ..._trCapFan(trX(0.004), CUP_PROFILE[CUP_PROFILE.length - 1][1], TR_SEG, true), // dasar rongga (+Y)
+    ],
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 3. GAGANG — Catmull-Rom di bidang XY, penampang ber-taper, dicerminkan
+  //    A→D lengkung keluar · E→H hook masuk lagi ke cangkir (volute).
+  //    Lebar 0.27→0.15 studs, kedalaman Z 0.26→0.16 studs.
+  //    ⚠️ Ujung A & H DITANAM di dinding cangkir (bukan melayang seperti
+  //       versi bab 197 yang ujungnya menggantung 0.215 studs di udara).
+  // ══════════════════════════════════════════════════════════════════════
+  // ⚠️ bab 199d (Claude putaran 2, terukur dari sheet):
+  //    "titik tempel atas terlalu rendah (±0.15 di bawah bibir); di referensi
+  //     gagang keluar TEPAT di tinggi bibir lalu melebar horizontal dulu
+  //     (bahu) sebelum turun."
+  //    → titik A dinaikkan ke y = bibir − 0.04 = 3.96, dan ditambah titik B
+  //      di x +0.12 dengan y hampir sama (bahu horizontal).
+  //    Titik terluar harus x ≈ ±1.35 studs (sisi luar 1.35 + 0.15 = 1.50).
+  // ══════════════════════════════════════════════════════════════════════
+  // ⚠️ bab 200 — GAGANG DIDESAIN ULANG TOTAL (laporan user: "lengkungannya
+  //    kamu salah total"). Diagnosis terukur dari render saya sendiri:
+  //      · ujung bawah gagang MENGGANTUNG TERBUKA di udara (open hook),
+  //        tidak menyatu ke dinding cangkir → terbaca seperti kawat bengkok.
+  //      · tidak ada BAHU horizontal di atas → langsung melengkung turun
+  //        ("limp, droopy") bukan bentuk kuping/ear yang tegas.
+  //      · tebal seragam & tipis seperti gantungan baju.
+  //    Referensi (6 foto, diukur via zoom): gagang keluar dari dinding
+  //    TEPAT di bawah bibir, naik sedikit (puncak DI BAWAH garis bibir),
+  //    bahu keluar horizontal, siku tajam di jam 2-3, turun menyusur,
+  //    lalu MENYATU KEMBALI ke dinding cangkir di jam 7-8 (loop TERTUTUP),
+  //    dan ada TETESAN/teardrop menggantung KE BAWAH dari sambungan bawah.
+  //    Semua koordinat di bawah dalam STUDS (x = jarak dari sumbu cangkir).
+  // ══════════════════════════════════════════════════════════════════════
+  // Puncak gagang 3.85 + setengah tebal 0.14 = 3.99 < 4.00 → bbox Y AMAN.
+  // Titik terakhir (0.60, 2.42) berada TEPAT di/dalam dinding cangkir
+  // (radius cangkir di y=2.42 ≈ 0.64) → loop benar-benar MENYATU, bukan
+  // menggantung. Titik terluar 1.36 + tebal 0.14 = 1.50 → bbox X = 3.00.
+  // ══════════════════════════════════════════════════════════════════════
+  // bab 201 — FIX "GAGANG TEMBUS KE DALAM CANGKIR" (laporan user, terukur)
+  // ⚠️ AKAR (diukur, bukan ditebak): titik tanam ATAS dulu di r=0.62 studs,
+  //    padahal di y=3.72 dinding cangkir membentang r 0.850 (dalam) ..
+  //    1.000 (luar). Jadi ujung atas gagang MENGGANTUNG DI DALAM RONGGA,
+  //    bukan menempel di dinding — dan tabungnya (setengah-lebar 0.085)
+  //    menembus dinding ke arah dalam sejauh 0.2769 studs pada y=3.88.
+  //    Itu yang terlihat sebagai "gagang tembus dikit ke dalam cangkir".
+  //    FIX: titik tanam atas DIPINDAH ke DALAM MATERIAL DINDING (r 0.98,
+  //    yaitu di antara 0.850 dan 1.000). Dengan begitu tepi-dalam tabung
+  //    = 0.98 − 0.085 = 0.895 > 0.850 → TIDAK menyentuh rongga sama sekali,
+  //    sementara sisi luarnya tetap menyembul 0.065 studs sebagai las.
+  //    Titik 2..9 TIDAK DIUBAH → siluet yang sudah disetujui user aman.
+  // ══════════════════════════════════════════════════════════════════════
+  const CTRL = [
+    [0.98, 3.66],   // 0: TANAM di MATERIAL DINDING (bukan di rongga)
+    [1.12, 3.76],   // 1: naik + keluar (puncak, di bawah bibir)
+    [1.16, 3.75],   // 2: bahu mulai horizontal
+    [1.34, 3.58],   // 3: SIKU tajam (jam 2-3)
+    [1.38, 3.30],   // 4: turun menyusur (terluar)
+    [1.32, 2.98],   // 5:
+    [1.18, 2.72],   // 6: menyusur masuk (jam 7-8)
+    [0.96, 2.52],   // 7:
+    [0.74, 2.44],   // 8: mendekati dinding
+    [0.58, 2.42],   // 9: MASUK ke dinding cangkir → loop TERTUTUP
+  ];
+  // Catmull-Rom (centripetal) → sampel halus
+  const catmull = (P, samples) => {
+    const out = [];
+    const g = (i) => P[Math.max(0, Math.min(P.length - 1, i))];
+    for (let s = 0; s < samples; s++) {
+      const u = (s / (samples - 1)) * (P.length - 1);
+      const i = Math.min(P.length - 2, Math.floor(u));
+      const t = u - i;
+      const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+      const t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * ((2 * b) + (-a + c) * t
+        + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+    return out;
+  };
+  const HANDLE_SAMPLES = 9;
+  const hp = catmull(CTRL, HANDLE_SAMPLES);
+  // bab 200: gagang dipertebal (dulu 0.27/0.15 = seperti kawat).
+  const W0 = trX(0.34 / 2), W1 = trX(0.20 / 2);
+  const D0 = trX(0.30 / 2), D1 = trX(0.20 / 2);
+  const gradH = _trMetalGrad(tagMetal);
+
+  // ⚠️ bab 198c (terukur): cara LAMA menghitung skala X memakai tebakan
+  //    `max(path)+halfW` → hasil bbox X cuma 2.9549 studs (kurang 0.045).
+  //    Sebab: setengah-lebar NYATA di titik terlebar bukan 0.135 studs
+  //    (taper sudah menyusut ke ≈0.109 di situ), jadi tebakan itu kelewat
+  //    besar → faktor skala kelewat kecil. FIX: bangun tabungnya dulu, UKUR
+  //    max|X| sebenarnya, lalu skala & ulangi sampai konvergen (3 putaran).
+  const buildHandle = (sgn, kx) => {
+    const path = hp.map(([x, y]) => [sgn * trX(x * kx), trY(y)]);
+    return { path, faces: _trTaperTube(path, W0, W1, D0, D1, 6) };
+  };
+  const maxAbsX = (faces) => {
+    let m = 0;
+    for (const f of faces) for (const v of f) m = Math.max(m, Math.abs(v[0]));
+    return m;
+  };
+  const TARGET = trX(1.50);              // setengah panjang 3 studs
+  let kx = 1.0;
+  for (let it = 0; it < 3; it++) {
+    const { faces } = buildHandle(1, kx);
+    const m = maxAbsX(faces);
+    kx *= TARGET / m;
+  }
+  const { path: HP, faces: handleFaces } = buildHandle(1, kx);
+
+  for (const sgn of [1, -1]) {
+    const path = HP.map(([x, y]) => [sgn * x, y]);
+    parts.push({
+      tag: tagMetal, noFix: true, colorFn: gradH,
+      faces: sgn === 1 ? handleFaces : _trTaperTube(path, W0, W1, D0, D1, 6),
+    });
+    // ══ bab 200 — TETESAN (teardrop) DI SAMBUNGAN BAWAH ══
+    // ⚠️ Dulu: bola kecil di UJUNG path. Salah dua kali:
+    //    (1) path-nya menggantung terbuka, jadi bola itu terbaca sebagai
+    //        "kait" di udara, bukan ornamen;
+    //    (2) di referensi tetesan justru MENGGANTUNG KE BAWAH dari
+    //        sambungan bawah (jam 6), bukan menempel di ujung gagang.
+    //    Sekarang path SUDAH menyatu ke dinding (loop tertutup), dan
+    //    tetesan digantung di bawah titik sambungan (x ≈ 0.66, y turun).
+    //    Bentuk: tetesan memanjang ke bawah (ry > rx), ujung bawah lancip.
+    const J = [0.66, 2.40];                    // titik sambungan bawah (studs)
+    const dropH = 0.24;                        // panjang tetesan (studs)
+    const dropR = 0.105;                       // radius tetesan (studs)
+    // 3 ruas mengecil ke bawah = siluet tetesan, bukan bola.
+    const segs = [
+      [1.00, 0.00, 1.00],    // [skalaR, yOffset, skalaH]
+      [0.62, -0.105, 0.80],
+    ];
+    for (const [sr, yo, sh] of segs) {
+      parts.push({
+        tag: tagMetal, noFix: true, colorFn: gradH,
+        faces: _trBlob(sgn * trX(J[0]), trY(J[1] + yo), 0,
+          trX(dropR * sr), trX(dropH * 0.5 * sh), trX(dropR * sr * 0.78), 8, 3),
+      });
+    }
+  }
+
+  return parts;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// bab 200 — CACHE GEOMETRI TROPHY (perbaikan "NGELEG")
+// ⚠️ AKAR (terukur): makeTrophyGeometry memakan 13.31 ms dan dipanggil ULANG
+//    setiap kali block ditaruh / ghost diganti / preview dibuka. Untuk block
+//    biasa (kubus 8 segitiga) itu tak terasa; untuk trophy 1472 segitiga
+//    dengan ~10 part + weld + colorFn per-vertex, 13 ms SINKRON di main
+//    thread = frame drop yang terasa sebagai "ngeleg".
+//    FIX: simpan GEOMETRI MASTER per-slug, lalu kembalikan CLONE darinya.
+//    ⚠️ WAJIB clone (bukan kembalikan master): simulator memanggil
+//    geometry.dispose() di banyak jalur (hapus block, delete all, undo).
+//    Kalau master ikut di-dispose, cache jadi rusak dan trophy berikutnya
+//    TIDAK TERLIHAT. Clone() jauh lebih murah daripada membangun ulang
+//    (±0.15 ms vs 13.31 ms) dan tiap pemakai bebas memiliki/dispose-nya.
+const _TR_GEO_MASTER = new Map();
+/** Geometri Trophy (dipakai preview/ghost/ikon/place).
+ *  Mengembalikan CLONE yang dimiliki pemanggil — aman di-dispose. */
+export function makeTrophyGeometry(THREE, slug) {
+  let master = _TR_GEO_MASTER.get(slug);
+  if (!master) {
+    master = _stBuild(THREE, getTrophyParts(slug));
+    _TR_GEO_MASTER.set(slug, master);
+  }
+  return master.clone();
+}
+
 export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_WEDGE_SLUG) return makeWedgeGeometry(THREE);
   if (slug === NSI_RAMP_SLUG) return makeRampGeometry(THREE);
@@ -3387,6 +4045,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_BT_SLUG) return makeBigTreasureFullGeometry(THREE);
   // bab 180: Pine Tree
   if (slug === NSI_PT_SLUG) return makePineTreeGeometry(THREE);
+  // bab 197/198: Trophy 1st/2nd/3rd (bentuk sama, warna beda)
+  if (NSI_TR_SLUGS.indexOf(slug) >= 0) return makeTrophyGeometry(THREE, slug);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
