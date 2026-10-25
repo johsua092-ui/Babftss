@@ -288,6 +288,15 @@ export const BT_HINGE_Y = ST_HINGE_Y + BT_YOFF;   // engsel (lokal Big)
 export const BT_HINGE_Z = ST_HINGE_Z;
 export const BT_OPEN_ANGLE = ST_OPEN_ANGLE;       // ≈118°
 
+// ══ NSI LEVEL 2 #13: TORCH (bab 205) ══
+// Syarat MUTLAK user: gagang 0.8 x 0.8 studs · penampang 1.5 x 1.5 studs ·
+// tinggi 6 studs TERMASUK bara · menghasilkan CAHAYA · bara BERANIMASI.
+// 1.5 studs = 0.75 block · 6 studs = 3 block. TERVERIFIKASI lewat
+// _cek_torch_geo.cjs: bbox 0.7500 x 3.0000 x 0.7500 block, simetris origin.
+export const NSI_TC_SLUG = 'torch';
+export const NSI_TC_NAME = 'Torch';
+export const NSI_TC_SIZE = [0.75, 3.0, 0.75];
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -310,6 +319,8 @@ NSI_SIZES[NSI_MT_SLUG] = NSI_MT_SIZE.slice();
 NSI_SIZES[NSI_BT_SLUG] = NSI_BT_SIZE.slice();
 NSI_SIZES[NSI_PT_SLUG] = NSI_PT_SIZE.slice();
 NSI_TR_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_TR_SIZE.slice(); });
+// bab 205: Torch — 1.5 x 6 x 1.5 studs (0.75 x 3.0 x 0.75 block)
+NSI_SIZES[NSI_TC_SLUG] = NSI_TC_SIZE.slice();
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -2459,6 +2470,26 @@ export const ST_WARNA = {
   pineFoliage: [3.50, 2.61, 2.52, 1.0],
   pineTrunk:   [1.0, 1.0, 1.0, 1.0],         // batang: cokelat dari ATLAS (bab 180i)
   xred:  [2.60, 0.070, 0.085, 1.0],   // bab 178c: merah lebih TERANG (Claude: masih maroon)
+  // ══ bab 205 (TORCH) — nilai TERUKUR dari 5 screenshot referensi ══
+  // ⚠️ Claude putaran 1: vertex color = PENGALI. Nilai >1 tanpa tone mapping
+  //    memicu clamp per-kanal → HUE BERGESER. Di repo ini toneMapping =
+  //    ACESFilmic (baris ~13007) sehingga nilai >1 ditangani halus, TAPI
+  //    tetap dijaga ≤1.6 supaya tidak pecah. Referensi sRGB terukur:
+  //      bara (232,150,140) · cup (71,66,57) · grip (141,115,74)
+  //      gagang (87,69,43) · pommel (83,77,67)
+  // ⚠️ FIX 2026-10-24 (terukur): nilai lama 1.35/1.30/1.20 & 1.55/1.18/0.68
+  //    MELANGGAR aturan repo di atas (vertex color harus 0..1). Akibat
+  //    terukur di ikon: gagang tampil #7a705f (abu-cokelat pudar) dan cup
+  //    #929084 (abu terang) — bukan kayu gelap + logam gelap. Nilai di bawah
+  //    = konversi sRGB TERUKUR dari referensi ke linear (semua ≤ 1.0):
+  //      kayu #57452b · logam #474239 · pommel #534d43
+  //      grip #8d734a · kuningan #967846 · bara #e8968c
+  tcMetalDark: [0.0630, 0.0545, 0.0409, 1.0], // logam gelap cangkir & pommel
+  tcMetalIn:   [0.0200, 0.0170, 0.0140, 1.0], // dinding DALAM cangkir (jelaga)
+  tcMetalBand: [0.3050, 0.1878, 0.0612, 1.0], // cincin pengikat = kuningan
+  tcWood:      [0.0953, 0.0595, 0.0242, 1.0], // gagang kayu cokelat tua
+  tcGrip:      [0.2664, 0.1714, 0.0685, 1.0], // grip krem/cokelat muda
+  tcEmberBed:  [0.8070, 0.3050, 0.2623, 1.0], // alas bara (merah menyala)
   // ══ bab 200 (TROPHY 1st/2nd/3rd) — WARNA DIPERBAIKI TOTAL ══
   // ⚠️ BUG YANG DILAPORKAN USER: "di localhost warnanya jadi aneh dan jauh
   //    dari referensi".
@@ -4047,6 +4078,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_PT_SLUG) return makePineTreeGeometry(THREE);
   // bab 197/198: Trophy 1st/2nd/3rd (bentuk sama, warna beda)
   if (NSI_TR_SLUGS.indexOf(slug) >= 0) return makeTrophyGeometry(THREE, slug);
+  // bab 205: Torch (badan saja — api & cahaya dipasang di BlockSimulator3D)
+  if (slug === NSI_TC_SLUG) return makeTorchGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -4115,3 +4148,267 @@ export function makeFacingArrowGeometry(THREE, topY) {
   // (lihat catatan jebakan di _buildFaces).
   return _buildFaces(THREE, faces, { autoFix: false });
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #13: TORCH (obor) — bab 205 ──
+// Permintaan user (verbatim, 2026-10-24):
+//   *"kita akan memasuki NSI yang menghasilkan cahaya disekitarnya ... identitasnya
+//    adalah 'Torch' ... panjang dan lebar gagangnya tu 0.8 studs sama, serta
+//    panjang dan lebar penampangnya itu 1.5 studs sama, kemudian tinggi 6 studs
+//    (beserta bara apinya), bara apinya adalah animasi yang terus bergerak jadi
+//    gak diem kaku gitu doang"*
+//
+// SYARAT MUTLAK:
+//   gagang    : 0.80 x 0.80 studs (panjang = lebar)
+//   penampang : 1.50 x 1.50 studs (cup di bibir)
+//   tinggi    : 6.00 studs TOTAL, TERMASUK bara api
+//   + CAHAYA di sekitarnya (PointLight, dipasang di BlockSimulator3D)
+//   + bara api BERANIMASI terus (shader uTime, bukan mesh diam)
+//
+// PROPORSI: hasil ukur piksel 5 screenshot referensi (PIL+numpy, objek 178x755 px)
+//   bara 283 px (37.5%) · cup 190 px (25.2%) · gagang 282 px (37.3%) → 6.00 studs
+//
+// ── REVISI SETELAH REVIEW CLAUDE (putaran 1) — 6 KOREKSI WAJIB DIPAKAI ──
+//  1. bbox dulu BOCOR: bibir r=0.75 + prongs di TEPI → lebar > 1.5.
+//     FIX: bibir r=0.69, prongs di r=0.62..0.75 → muka luar TEPAT 0.75.
+//  2. bagian gagang dulu LEBIH LEBAR dari 0.80 (grip 0.88, cincin/pommel 0.90)
+//     → MELANGGAR syarat user. FIX: poros 0.70, grip 0.80, cincin 0.70,
+//     pommel 0.80. Semua ≤ 0.80, dan grip TEPAT 0.80 = angka user.
+//  3. prongs dulu 0.23 (kependekan, foto ≈0.55) → FIX 0.60 (3.15..3.75).
+//  4. profil cup dulu corong (0.33→0.75) → FIX mangkuk membulat, dinding atas
+//     hampir tegak: (0.26,2.15)→(0.40,2.30)→(0.56,2.55)→(0.65,2.85)→(0.69,3.20).
+//  5. bara dulu terlalu kurus di dasar (r=0.30) → FIX r=0.42 di bibir.
+//  6. segmen revolve WAJIB kelipatan 4 dengan titik di sudut 0° — kalau tidak,
+//     lebar sumbu X/Z hanya 0.924 × target → bbox TIDAK tepat 1.5/0.8.
+//     Dipakai TC_SEG = 16 (sudut 0° ada di daftar).
+//
+// ⚠️ JEBAKAN WARISAN YANG DITEMUKAN (jangan diulang):
+//   `_stBuild` TIDAK PERNAH membaca flag `noFix` — komentar di blok Trophy
+//   (baris ~3426) mengklaim `noFix:true` melewati `_stFaceOutward`, padahal
+//   `_stBuild` SELALU memanggilnya. `_stFaceOutward` membalik segitiga
+//   berdasarkan CENTROID PART, jadi untuk part BERONGGA (dinding dalam cup)
+//   keputusannya bisa salah. SOLUSI: dinding dalam cup dibangun sebagai
+//   KERUCUT TERBUKA (bukan silinder berongga) sehingga centroid-nya jatuh di
+//   TENGAH BAHAN → arah normal benar. Material Torch juga memakai
+//   DoubleSide (lihat blockMaterials) sebagai jaring pengaman terakhir.
+//
+// SATUAN: angka desain di bawah dalam STUD (mudah dicocokkan ke syarat user).
+// Konversi ke BLOCK lewat toX/toY (1 stud = 0.5 block).
+// ══════════════════════════════════════════════════════════════════════════
+
+const TC_STUD = 0.5;              // 1 stud = 0.5 block
+const TC_HALF_Y = 1.5;            // setengah tinggi bbox (block) → −1.5 .. +1.5
+// ⚠️ WAJIB kelipatan 4 (Claude #6). 16 punya titik di sudut 0° → bbox tepat.
+const TC_SEG = 16;
+const toX = (stud) => stud * TC_STUD;               // X/Z: pusat origin
+const toY = (stud) => -TC_HALF_Y + stud * TC_STUD;  // Y: stud 0 = dasar bbox
+
+// ── Pembagian tinggi (STUD, dari dasar) — tabel Claude, jumlah TEPAT 6.00 ──
+const TC_Y_POMMEL0 = 0.00, TC_Y_POMMEL1 = 0.38;   // pommel  0.38
+const TC_Y_RING0   = 0.38, TC_Y_RING1   = 0.46;   // cincin  0.08
+const TC_Y_BANDL0  = 0.46, TC_Y_BANDL1  = 0.78;   // pita bawah 0.32
+const TC_Y_GRIP0   = 0.78, TC_Y_GRIP1   = 1.68;   // grip    0.90
+const TC_Y_BANDU0  = 1.68, TC_Y_BANDU1  = 2.00;   // pita atas  0.32
+const TC_Y_NECK0   = 2.00, TC_Y_NECK1   = 2.15;   // leher   0.15
+const TC_Y_CUP0    = 2.15, TC_Y_CUP1    = 3.20;   // dinding cup 1.05
+const TC_Y_PRONG0  = 3.15, TC_Y_PRONG1  = 3.75;   // prongs  0.60
+const TC_Y_FLAME0  = 3.10, TC_Y_FLAME1  = 6.00;   // bara    2.90 (0.90 terbenam)
+
+// ── Diameter (STUD) — syarat user + koreksi Claude ──
+const TC_D_HANDLE  = 0.80;   // WAJIB user: gagang 0.80 x 0.80
+// ⚠️ KOREKSI thd saran Claude: Claude menyarankan poros 0.70 + grip 0.80.
+//    Tapi syarat user berbunyi "panjang dan lebar GAGANGNYA 0.8 studs sama" —
+//    kalau poros 0.70, maka GAGANG bukan 0.80 dan syarat user DILANGGAR.
+//    FIX: SELURUH gagang (poros + grip + ferrule) = 0.80 tepat. Grip dibedakan
+//    lewat WARNA + ferrule logam, bukan lewat diameter. Bonus: tidak ada
+//    permukaan bertumpuk (z-fighting) karena tiap potongan bertemu TEPAT di
+//    batas Y yang sama (bukan saling menimpa).
+const TC_D_CUP     = 1.50;   // WAJIB user: penampang 1.50 x 1.50
+const TC_D_POMMEL  = 0.80;   // ≤ 0.80 supaya syarat gagang tidak dilanggar
+const TC_D_GRIP    = 0.80;   // TEPAT 0.80 = angka user
+const TC_D_RING    = 0.70;
+const TC_R_CUP_RIM = 0.69;   // bibir 0.69 (bukan 0.75) → ruang untuk prongs
+const TC_WALL      = 0.07;   // tebal dinding cup
+
+/** Ring titik XZ (stud → block). */
+function _tcRing(rStud, yStud, seg = TC_SEG) {
+  return _trRing(toX(rStud), toY(yStud), seg);
+}
+
+/** Putar profil [[rStud,yStud],...] jadi permukaan (stud → block). */
+function _tcRevolve(profil, seg = TC_SEG, inward = false) {
+  return _trRevolve(profil.map(([r, y]) => [toX(r), toY(y)]), seg, inward);
+}
+
+/**
+ * Part Torch: GEOMETRI SAJA (tanpa api/cahaya).
+ * Api = mesh terpisah beranimasi, cahaya = PointLight (keduanya di BlockSimulator3D).
+ */
+export function getTorchParts() {
+  const parts = [];
+
+  // ══ 1. POMMEL + CINCIN (ujung bawah) — logam, ≤ 0.80 ══
+  parts.push({
+    tag: 'tcMetalDark',
+    faces: _tcRevolve([
+      [0.00, TC_Y_POMMEL0],
+      [TC_D_POMMEL / 2, TC_Y_POMMEL0],            // 0.40 → diameter 0.80
+      [TC_D_POMMEL / 2, TC_Y_POMMEL1],
+      [TC_D_RING / 2, TC_Y_POMMEL1],              // menyempit ke cincin 0.70
+      [TC_D_RING / 2, TC_Y_RING1],
+      [0.00, TC_Y_RING1],
+    ]),
+  });
+
+  // ══ 2..4. GAGANG — SELURUHNYA 0.80 studs (syarat user) ══
+  // Dibagi 5 potongan yang BERTEMU TEPAT di batas Y (tidak saling menimpa →
+  // tidak ada z-fighting), semuanya radius 0.40 studs:
+  //   0.46..0.78 poros cokelat · 0.78..0.86 ferrule logam
+  //   0.86..1.60 GRIP krem · 1.60..1.68 ferrule logam · 1.68..2.00 poros cokelat
+  const rH = TC_D_HANDLE / 2;   // 0.40 studs → diameter 0.80 TEPAT
+  const Y_F1 = TC_Y_BANDL1;          // 0.78
+  const Y_F2 = Y_F1 + 0.08;          // 0.86
+  const Y_F3 = TC_Y_GRIP1 - 0.08;    // 1.60
+  const Y_F4 = TC_Y_GRIP1;           // 1.68
+  parts.push({   // poros bawah + poros atas (warna kayu gelap)
+    tag: 'tcWood',
+    faces: [
+      ..._tcRevolve([[rH, TC_Y_RING1 - 0.01], [rH, Y_F1]]),
+      ..._tcRevolve([[rH, Y_F4], [rH, TC_Y_BANDU1]]),
+    ],
+  });
+  parts.push({   // GRIP (krem/cokelat muda, terukur 141,115,74)
+    tag: 'tcGrip',
+    faces: _tcRevolve([[rH, Y_F2], [rH, Y_F3]]),
+  });
+  parts.push({   // 2 ferrule logam pengikat grip (juga 0.80, tidak lebih)
+    tag: 'tcMetalBand',
+    faces: [
+      ..._tcRevolve([[rH, Y_F1], [rH, Y_F2]]),
+      ..._tcRevolve([[rH, Y_F3], [rH, Y_F4]]),
+    ],
+  });
+
+  // ══ 5. LEHER (transisi ke cup) ══
+  parts.push({
+    tag: 'tcMetalDark',
+    faces: _tcRevolve([
+      [rH, TC_Y_NECK0 - 0.01],
+      [0.26, TC_Y_NECK1],
+    ]),
+  });
+
+  // ══ 6. DINDING CUP (mangkuk membulat) — profil Claude #4 ══
+  // (0.26,2.15)→(0.40,2.30)→(0.56,2.55)→(0.65,2.85)→(0.69,3.20)
+  const CUP_OUT = [
+    [0.26, TC_Y_CUP0],
+    [0.40, TC_Y_CUP0 + 0.15],
+    [0.56, TC_Y_CUP0 + 0.40],
+    [0.65, TC_Y_CUP0 + 0.70],
+    [TC_R_CUP_RIM, TC_Y_CUP1],
+  ];
+  parts.push({ tag: 'tcMetalDark', faces: _tcRevolve(CUP_OUT) });
+
+  // ══ 7. DINDING DALAM CUP — KERUCUT TERBUKA (bukan silinder berongga!) ══
+  // ⚠️ Sengaja TIDAK memakai inward:true. Dengan kerucut terbuka, centroid
+  //    part jatuh di TENGAH BAHAN → `_stFaceOutward` menghasilkan arah benar.
+  const CUP_IN = [
+    [TC_R_CUP_RIM - TC_WALL, TC_Y_CUP1],
+    [0.65 - TC_WALL, TC_Y_CUP0 + 0.70],
+    [0.56 - TC_WALL, TC_Y_CUP0 + 0.40],
+    [0.40 - TC_WALL, TC_Y_CUP0 + 0.15],
+    [0.26 - TC_WALL + 0.02, TC_Y_CUP0 + 0.02],
+  ];
+  parts.push({ tag: 'tcMetalIn', faces: _tcRevolve(CUP_IN) });
+  // Dasar rongga cup (bantalan bara) — FAN menghadap +Y.
+  parts.push({
+    tag: 'tcEmberBed',
+    faces: _trCapFan(toX(0.21), toY(TC_Y_CUP0 + 0.02), TC_SEG, true),
+  });
+
+  // ══ 8. CINCIN PENUTUP BIBIR (annulus) — WAJIB (Claude #4) ══
+  // Tanpa ini ada CELAH TEMBUS di ujung dinding luar ↔ dalam.
+  parts.push({
+    tag: 'tcMetalDark',
+    faces: _trRim(toX(TC_R_CUP_RIM), toX(TC_R_CUP_RIM - TC_WALL), toY(TC_Y_CUP1), TC_SEG),
+  });
+
+  // ══ 9. PRONGS (gerigi bibir) — tinggi 0.60, muka luar TEPAT r=0.75 ══
+  // Claude #1+#3: prongs menempati r=0.62..0.75, jadi lebar total = 1.50 tepat.
+  const N_PRONG = 10;
+  const PRONG_R_IN = 0.62, PRONG_R_OUT = 0.75;   // muka luar = 0.75 → bbox 1.5
+  // ⚠️ TERUKUR: lebar 0.14 membuat sudut prong keluar bbox (0.7500 vs 0.7349
+  //    = asimetris). Dengan 0.12, prong 2*0.75*cos(4.57°) = 1.4952 studs
+  //    (< 1.5) → bbox X/Z ditentukan CINCIN di 0.7500 tepat, simetris.
+  const PRONG_W = 0.12;                          // lebar tangensial
+  const facesProng = [];
+  for (let i = 0; i < N_PRONG; i++) {
+    const a = (i / N_PRONG) * Math.PI * 2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const pts = [
+      [PRONG_R_IN, -PRONG_W / 2], [PRONG_R_OUT, -PRONG_W / 2],
+      [PRONG_R_OUT, PRONG_W / 2], [PRONG_R_IN, PRONG_W / 2],
+    ].map(([rr, tt]) => [toX(rr * ca - tt * sa), toX(rr * sa + tt * ca)]);
+    const y0 = toY(TC_Y_PRONG0), y1 = toY(TC_Y_PRONG1);
+    const quad = (a1, a2) => [
+      [pts[a1][0], y0, pts[a1][1]], [pts[a2][0], y0, pts[a2][1]],
+      [pts[a2][0], y1, pts[a2][1]], [pts[a1][0], y1, pts[a1][1]],
+    ];
+    facesProng.push(quad(0, 1), quad(1, 2), quad(2, 3), quad(3, 0));
+    // tutup atas & bawah
+    facesProng.push([
+      [pts[0][0], y1, pts[0][1]], [pts[1][0], y1, pts[1][1]],
+      [pts[2][0], y1, pts[2][1]], [pts[3][0], y1, pts[3][1]],
+    ]);
+    facesProng.push([
+      [pts[3][0], y0, pts[3][1]], [pts[2][0], y0, pts[2][1]],
+      [pts[1][0], y0, pts[1][1]], [pts[0][0], y0, pts[0][1]],
+    ]);
+  }
+  parts.push({ tag: 'tcMetalDark', faces: facesProng });
+
+  // ══ 10. CINCIN PENGIKAT prongs (horizontal) — tinggi 0.08 (Claude #3) ══
+  const BAND_Y = TC_Y_PRONG0 + 0.20;
+  parts.push({
+    tag: 'tcMetalBand',
+    faces: _tcRevolve([
+      // ⚠️ TERUKUR: dulu +0.004 → 0.7540 block = 1.508 studs (LEWAT 1.5).
+      //    Sekarang TEPAT di PRONG_R_OUT supaya bbox = 0.7500 persis.
+      [PRONG_R_OUT, BAND_Y - 0.04],
+      [PRONG_R_OUT, BAND_Y + 0.04],
+    ]),
+  });
+
+  return parts;
+}
+
+/** Geometri Torch TANPA api. Bbox WAJIB [0.75, 3.0, 0.75] block. */
+export function makeTorchGeometry(THREE) {
+  return _stBuild(THREE, getTorchParts());
+}
+
+// ── PARAMETER API & CAHAYA (dipakai BlockSimulator3D) — satuan BLOCK ──
+export const TC_FLAME_BASE_Y = toY(TC_Y_FLAME0);   // dasar mesh bara (lokal)
+export const TC_FLAME_H = (TC_Y_FLAME1 - TC_Y_FLAME0) * TC_STUD;  // 1.45 block
+export const TC_FLAME_R = toX(0.42);               // radius dasar bara
+export const TC_LIGHT_Y = toY(4.30);               // pusat bara (Claude: y≈4.3)
+export const TC_LIGHT_COLOR = 0xff7a1a;
+// ══ PENCahayaan (revisi 2026-10-24 — keluhan user: "seharusnya menerangi
+//    sekitar layaknya obor di dunia nyata") ══
+// ⚠️ NILAI INI SATU-SATUNYA SUMBER. BlockSimulator3D mengirim nilai ini
+//    EKSPLISIT ke makeTorchLightPool, jadi default di torchFlame.js TIDAK
+//    PERNAH terpakai. (Bug 2026-10-24: sempat diubah 12→22 di pool, hasilnya
+//    nol perubahan di layar.)
+// ══ NILAI DIPILIH DARI PENGUKURAN, BUKAN TEBAKAN (2026-10-24) ══
+// Sapuan intensitas di browser, panel abu-abu diukur pada 4 jarak
+// (piksel persentil-95 tiap panel, delta R terhadap kondisi lampu MATI):
+//   I=26 : 1.5b +40 · 3b +22 · 4.5b +10 · 6b +5      → terlalu redup
+//   I=60 : 1.5b +101 · 3b +56 · 4.5b +26 · 6b +12    → DIPILIH (gradasi bagus)
+//   I=150: 1.5b +104 · 3b +83 · 4.5b +48 · 6b +24    → jarak dekat JENUH 255
+//                                                     (terbakar, detail hilang)
+// Jadi 60 = titik seimbang: dekat terang, jauh masih terasa, tanpa clipping.
+// Fisika decay=2 (E=I/d²) dipertahankan. DESIGN TIDAK DISENTUH: geometri,
+// warna vertex, dan ikon sama sekali tidak berubah — hanya angka lampu.
+export const TC_LIGHT_INTENSITY = 60;
+export const TC_LIGHT_DISTANCE = 20;
+export const TC_LIGHT_DECAY = 2;

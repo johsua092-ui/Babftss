@@ -49,7 +49,9 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE, NSI_TC_SLUG, TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
+// bab 205: bara api BERANIMASI + pool cahaya untuk NSI Torch
+import { SHARED_TIME, makeTorchLightPool, attachFlame, detachFlame, reattachUniform } from '../utils/torchFlame.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -2697,6 +2699,20 @@ Now you can apply Displacement for detailed effect.`);
           });
           const block = new THREE.Mesh(geo, mat);
           block.position.set(msg.x, msg.y, msg.z);
+          // ══ bab 205: TORCH — pasang BARA API beranimasi ══
+          // Api = ANAK mesh (pola sama seperti tutup treasure) supaya SEMUA
+          // tool (move/rotate/scale/clone/mirror/undo) bekerja tanpa perubahan.
+          // Cahaya TIDAK ditempel di sini (lihat pool lampu di ticker).
+          if (blockDef.slug === NSI_TC_SLUG) {
+            try {
+              attachFlame(THREE, block, {
+                baseY: TC_FLAME_BASE_Y,
+                height: TC_FLAME_H,
+                baseR: TC_FLAME_R,
+              });
+              block.userData.isTorch = true;
+            } catch (e) { console.warn('torch flame gagal:', e); }
+          }
           block.castShadow = true;
           block.receiveShadow = true;
           block.userData.isBlock = true;
@@ -15402,6 +15418,52 @@ Now you can apply Displacement for detailed effect.`);
       // bukan bloom — bloom diuji 7 ronde utk block besar = overexposed
       // (menutupi block sendiri). Render loop kembali sederhana: composer
       // hanya saat user menyalakan Bloom (perilaku Phase 13 asli).
+      // ══ bab 205: TICKER TORCH — bara beranimasi + cahaya sekitar ══
+      // Dijalankan SEBELUM render supaya posisi/animasi final saat digambar
+      // (pola sama seperti kompensasi clone di atas).
+      try {
+        // 1) uTime GLOBAL: satu penulisan untuk SEMUA torch (bukan per-torch).
+        SHARED_TIME.value = performance.now() / 1000;
+        // 2) Kumpulkan torch yang ada + PULIHKAN api yang hilang.
+        //    ⚠️ JEBAKAN TERKONFIRMASI: clone/mirror HANYA menyalin geometry +
+        //       material (baris ~827) dan TIDAK menyalin anak mesh → api hasil
+        //       clone HILANG. Juga `material.clone()` MEMBEKU `uTime`.
+        //       Ticker ini memasang ulang api + menyambung ulang uniform.
+        // ⚠️ Claude putaran 2: threeRef.current bisa null saat unmount/HMR.
+        const _tl = threeRef.current && threeRef.current.torchLights;
+        if (_tl) {
+          const _torches = [];
+          // ⚠️ JANGAN pakai `blocks`/`blocksNow` di sini: `blocks` tidak ada di
+          // scope animate (ReferenceError → ticker mati total, terbukti di
+          // browser 2026-10-24). Sumber yang selalu benar: threeRef.current.blocks.
+          const _allBlocks = (threeRef.current && threeRef.current.blocks) || [];
+          for (let i = 0; i < _allBlocks.length; i++) {
+            const b = _allBlocks[i];
+            if (!b || !b.userData || b.userData.blockSlug !== NSI_TC_SLUG) continue;
+            if (!b.parent) continue;
+            if (!b.userData.torchFlame) {
+              try {
+                attachFlame(THREE, b, {
+                  baseY: TC_FLAME_BASE_Y, height: TC_FLAME_H, baseR: TC_FLAME_R,
+                });
+              } catch (e) {}
+            } else if (b.userData.torchFlame.material
+                       && b.userData.torchFlame.material.uniforms
+                       && b.userData.torchFlame.material.uniforms.uTime !== SHARED_TIME) {
+              reattachUniform(b.userData.torchFlame.material);
+            }
+            _torches.push(b);
+          }
+          _tl.update(performance.now(), camera, _torches, TC_LIGHT_Y);
+        }
+      } catch (e) {
+        // ⚠️ JANGAN telan error diam-diam (pelajaran bab 205): kalau ticker
+        // rusak, api/lampu mati tanpa jejak. Catat sekali supaya kelihatan.
+        if (!window.__torchErr) {
+          window.__torchErr = String(e && e.stack || e);
+          console.warn('[torch] ticker error:', e);
+        }
+      }
       if (bloomOnRef.current) {
         composer.render();
       } else {
@@ -15560,9 +15622,28 @@ Now you can apply Displacement for detailed effect.`);
       ground, grid,
       symmetryPlane: null, // akan di-assign setelah plane dibuat
     };
+    // ══ bab 205: POOL CAHAYA TORCH — dibuat SEKALI, jumlah TETAP ══
+    // ⚠️ Claude putaran 1 (WAJIB): menambah/mengurangi PointLight mengubah
+    //    kunci shader → SEMUA material di-recompile → hitch tiap place/undo.
+    //    Jadi 4 lampu dibuat sekarang dan TIDAK PERNAH ditambah/dikurangi.
+    //    Tiap 200 ms pool ditugaskan ke 4 torch terdekat dari kamera.
+    try {
+      threeRef.current.torchLights = makeTorchLightPool(THREE, scene, {
+        count: 4,
+        color: TC_LIGHT_COLOR,
+        intensity: TC_LIGHT_INTENSITY,
+        distance: TC_LIGHT_DISTANCE,
+        decay: TC_LIGHT_DECAY,
+      });
+    } catch (e) { console.warn('torch light pool gagal:', e); }
     // ── DEBUG DEV-ONLY (2026-10-09): ekspos threeRef agar bisa DIUKUR lewat
     //    browser automation. Tidak ada efek di produksi (import.meta.env.DEV).
     if (import.meta.env && import.meta.env.DEV) window.__threeRef = threeRef;
+    // bab 205: ekspos THREE (DEV-ONLY) supaya verifikasi otomatis bisa
+    // membangun geometri Torch tanpa menebak. Tidak ada efek di produksi.
+    if (import.meta.env && import.meta.env.DEV) window.__THREE = THREE;
+    // bab 205: penghitung ticker (DEV-ONLY) — untuk membuktikan loop benar-benar
+    // memanggil ticker torch, bukan sekadar 'kelihatan jalan'.
 
     // Phase 36: Create ChunkManager — shared geometry + material for all chunks.
     // Geometry = unit box (same as block default). Per-instance scale handles size variety.

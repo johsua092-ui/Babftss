@@ -131,6 +131,11 @@ export const BLOCK_LIBRARY = [
   { slug: 'trophy_1st',        name: 'Trophy 1st', label: 'Trophy 1st', roughness: 0.26, metalness: 0.30, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
   { slug: 'trophy_2nd',        name: 'Trophy 2nd', label: 'Trophy 2nd', roughness: 0.22, metalness: 0.32, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
   { slug: 'trophy_3rd',        name: 'Trophy 3rd', label: 'Trophy 3rd', roughness: 0.30, metalness: 0.28, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ══ bab 205: TORCH — NSI L2 yang MENGHASILKAN CAHAYA ══
+  // roughness 0.82 = logam kasar/kayu terbakar (bukan mengkilap).
+  // metalness 0.0 supaya PointLight dari bara tetap terbaca di permukaan
+  // (metalness tinggi membuat diffuse nol → lampu tidak terlihat).
+  { slug: 'torch',             name: 'Torch',      label: 'Torch',      roughness: 0.82, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
@@ -315,6 +320,7 @@ export const BLOCK_PLACEHOLDER = {
   legendary_chest: 0xb0752f,   // peti kayu cokelat (logam magenta = vertex color)
   // 5 chest: placeholder SAMA (kayu) — pembeda warna rangka = vertex color.
   epic_chest: 0xb0752f, rare_chest: 0xb0752f,
+  torch: 0x6b5540,        // bab 205: cokelat-logam (warna asli = vertex color)
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 
@@ -422,6 +428,21 @@ export function makeBlockMaterial(THREE, slug) {
   // aura block besar; sprite = terukur sempurna. (Catatan jebakan yang
   // diwariskan: threshold bloom pakai LUMINANCE (r255 = 0.21 saja);
   // MeshBasic tidak punya emissive — set = exception render mati.)
+  // ══ bab 205: TORCH — DoubleSide WAJIB ══
+  // `_stBuild` selalu memanggil `_stFaceOutward` (flag noFix TIDAK dibaca —
+  // lihat catatan di blockShapes). Untuk geometri berongga (cangkir) itu bisa
+  // membalik sisi-dalam. DoubleSide = jaring pengaman supaya TIDAK ADA wajah
+  // yang hilang dari sudut pandang mana pun.
+  if (slug === 'torch') {
+    const matT = new THREE.MeshStandardMaterial({
+      map: tex,
+      color: tex.userData.isReady ? 0xffffff : (BLOCK_PLACEHOLDER[slug] || 0xffffff),
+      roughness: def.roughness,
+      metalness: def.metalness,
+      side: THREE.DoubleSide,
+    });
+    return matT;
+  }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({
       color: 0x000000,          // hitam: hanya emissive yang menyala → flat
