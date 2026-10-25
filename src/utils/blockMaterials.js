@@ -136,7 +136,71 @@ export const BLOCK_LIBRARY = [
   // metalness 0.0 supaya PointLight dari bara tetap terbaca di permukaan
   // (metalness tinggi membuat diffuse nol → lampu tidak terlihat).
   { slug: 'torch',             name: 'Torch',      label: 'Torch',      roughness: 0.82, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ══ bab 206: LAMP — NSI L2 yang MENGHASILKAN CAHAYA ══
+  // roughness 0.55 = logam dipoles sedang (bukan kaca, bukan kayu terbakar).
+  // metalness 0.0 supaya PointLight dari inti tetap terbaca di permukaan
+  // (metalness tinggi → diffuse nol → lampu tidak terlihat).
+  { slug: 'lamp',              name: 'Lamp',       label: 'Lamp',       roughness: 0.55, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
+
+// ══════════════════════════════════════════════════════════════════════════
+// bab 206: LAMP — 3 MATERIAL (logam / kaca / inti) untuk satu geometry
+// ══════════════════════════════════════════════════════════════════════════
+// URUTAN INDEKS WAJIB SAMA dengan addGroup() di makeLampGeometry():
+//   0 = lampMetal (opaque) · 1 = lampGlass (transparan) · 2 = lampCore (unlit)
+//
+// ⚠️ PELAJARAN YANG DIPATUHI:
+//  - Vertex color = PENGALI. Semua nilai ST_WARNA lamp* ≤ 1.0 (bab 200).
+//  - Kaca: depthWrite:false WAJIB (bug 2026-10-01: transparansi berubah
+//    tergantung sudut pandang kalau depth buffer ditulis).
+//  - Inti: MeshBasicMaterial (bukan Standard) → tidak butuh cahaya, selalu
+//    terang. Ini yang membuat "lampu menyala" terbaca walau scene gelap.
+//  - DoubleSide untuk logam (pola Torch: _stBuild selalu _stFaceOutward).
+//  - Kaca juga DoubleSide: tanpa itu, sisi belakang kaca hilang saat kamera
+//    masuk ke dalam volume kaca.
+export function makeLampMaterials(THREE, tex, def) {
+  const baseColor = tex && tex.userData.isReady
+    ? 0xffffff
+    : (BLOCK_PLACEHOLDER.lamp || 0xffffff);
+
+  // [0] LOGAM — opaque
+  const matMetal = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: baseColor,
+    roughness: def.roughness,
+    metalness: def.metalness,
+    side: THREE.DoubleSide,
+    vertexColors: true,
+  });
+  matMetal.userData.isLampMetal = true;
+
+  // [1] KACA — transparan, TANPA depthWrite
+  const matGlass = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.12,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.34,        // cukup bening untuk melihat inti, cukup pekat
+                          // untuk membaca "ada kaca" (terukur dari referensi)
+    depthWrite: false,    // WAJIB (bug 2026-10-01)
+    // renderOrder di mesh, bukan material. Lihat makeLampMesh() di simulator.
+  });
+  matGlass.userData.isLampGlass = true;
+
+  // [2] INTI — UNLIT (MeshBasic): selalu menyala, tidak tergantung lampu scene
+  const matCore = new THREE.MeshBasicMaterial({
+    color: 0xffffff,      // warna asli dari vertex color (lampCore kuning)
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    toneMapped: false,    // jangan dibasuh ACES → kuning tetap pekat
+    fog: false,
+  });
+  matCore.userData.isLampCore = true;
+
+  return [matMetal, matGlass, matCore];
+}
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
 
@@ -321,6 +385,7 @@ export const BLOCK_PLACEHOLDER = {
   // 5 chest: placeholder SAMA (kayu) — pembeda warna rangka = vertex color.
   epic_chest: 0xb0752f, rare_chest: 0xb0752f,
   torch: 0x6b5540,        // bab 205: cokelat-logam (warna asli = vertex color)
+  lamp: 0x1a2028,         // bab 206: navy gelap (warna asli = vertex color)
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 
@@ -442,6 +507,17 @@ export function makeBlockMaterial(THREE, slug) {
       side: THREE.DoubleSide,
     });
     return matT;
+  }
+  // ══ bab 206: LAMP — material ARRAY (3 group) ══
+  // Lamp = satu-satunya NSI yang butuh 3 perilaku material sekaligus:
+  //   [0] logam  → OPAQUE, DoubleSide (pola Torch)
+  //   [1] kaca   → TRANSPARAN, depthWrite:false (pelajaran bug 2026-10-01)
+  //   [2] inti   → MeshBasicMaterial = UNLIT, selalu menyala (sumber cahaya)
+  // Geometri sudah di-addGroup() dengan urutan yang sama (makeLampGeometry).
+  // ⚠️ JANGAN gabung jadi 1 material: transparent:true membuat logam tembus
+  //    pandang, transparent:false membuat kaca menutupi inti → lampu mati.
+  if (slug === 'lamp') {
+    return makeLampMaterials(THREE, tex, def);
   }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({

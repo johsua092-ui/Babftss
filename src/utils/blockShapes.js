@@ -297,6 +297,14 @@ export const NSI_TC_SLUG = 'torch';
 export const NSI_TC_NAME = 'Torch';
 export const NSI_TC_SIZE = [0.75, 3.0, 0.75];
 
+// ══ NSI LEVEL 2 #14: LAMP (bab 206) ══
+// Syarat MUTLAK user: panjang 2 studs · lebar 2 studs · tinggi 3.5 studs
+// + memancarkan CAHAYA seperti Torch.
+// 2 studs = 1.0 block · 3.5 studs = 1.75 block.
+export const NSI_LP_SLUG = 'lamp';
+export const NSI_LP_NAME = 'Lamp';
+export const NSI_LP_SIZE = [1.0, 1.75, 1.0];
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -321,6 +329,8 @@ NSI_SIZES[NSI_PT_SLUG] = NSI_PT_SIZE.slice();
 NSI_TR_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_TR_SIZE.slice(); });
 // bab 205: Torch — 1.5 x 6 x 1.5 studs (0.75 x 3.0 x 0.75 block)
 NSI_SIZES[NSI_TC_SLUG] = NSI_TC_SIZE.slice();
+// bab 206: Lamp — 2 x 3.5 x 2 studs (1.0 x 1.75 x 1.0 block)
+NSI_SIZES[NSI_LP_SLUG] = NSI_LP_SIZE.slice();
 // Rod: semua varian ukurannya sama (1 x 3 x 1 studs).
 NSI_ROD_SLUGS.forEach((s) => { NSI_SIZES[s] = NSI_ROD_SIZE.slice(); });
 
@@ -2490,6 +2500,17 @@ export const ST_WARNA = {
   tcWood:      [0.0953, 0.0595, 0.0242, 1.0], // gagang kayu cokelat tua
   tcGrip:      [0.2664, 0.1714, 0.0685, 1.0], // grip krem/cokelat muda
   tcEmberBed:  [0.8070, 0.3050, 0.2623, 1.0], // alas bara (merah menyala)
+  // ══ bab 206 (LAMP) — warna TERUKUR dari 7 screenshot referensi ══
+  // ⚠️ ATURAN: nilai HARUS ≤ 1.0 (vertex color = PENGALI, >1 = hue bergeser).
+  // Konversi sRGB terukur → linear:
+  //   logam atap/alas (14..42, 24..54, 34..65)  → navy sangat gelap
+  //   logam kena cahaya (138..163,140..159,129) → abu kehijauan
+  //   kaca (78..93, 81..91, 54..55)             → hijau zaitun gelap
+  //   inti (255,255,70)                          → kuning menyala (unlit)
+  lampMetal:     [0.0092, 0.0148, 0.0243, 1.0], // rangka atap & alas (navy gelap)
+  lampMetalLit:  [0.2462, 0.2582, 0.2201, 1.0], // logam kena cahaya (bidang atas)
+  lampGlass:     [0.0742, 0.0880, 0.0356, 1.0], // kaca hijau zaitun
+  lampCore:      [1.0000, 1.0000, 0.0648, 1.0], // inti kuning (MeshBasic, unlit)
   // ══ bab 200 (TROPHY 1st/2nd/3rd) — WARNA DIPERBAIKI TOTAL ══
   // ⚠️ BUG YANG DILAPORKAN USER: "di localhost warnanya jadi aneh dan jauh
   //    dari referensi".
@@ -4080,6 +4101,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (NSI_TR_SLUGS.indexOf(slug) >= 0) return makeTrophyGeometry(THREE, slug);
   // bab 205: Torch (badan saja — api & cahaya dipasang di BlockSimulator3D)
   if (slug === NSI_TC_SLUG) return makeTorchGeometry(THREE);
+  // bab 206: Lamp (badan saja — cahaya dipasang di BlockSimulator3D)
+  if (slug === NSI_LP_SLUG) return makeLampGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -4148,6 +4171,345 @@ export function makeFacingArrowGeometry(THREE, topY) {
   // (lihat catatan jebakan di _buildFaces).
   return _buildFaces(THREE, faces, { autoFix: false });
 }
+
+// ── NSI LEVEL 2 #14: LAMP (lentera) — bab 206 ──
+// Permintaan user (verbatim, 2026-10-24):
+//   *"anggota NSI level 2 terbaru sudah saya kirim ... nama identitasnya adalah
+//    'Lamp' dan info tambahan : Lamp : panjang 2 studs, lebar 2 studs, tinggi
+//    3.5 studs"* + *"dia juga bisa memancarkan cahaya sama seperti sebelumnya"*
+//
+// SYARAT MUTLAK:
+//   panjang 2.00 studs · lebar 2.00 studs · tinggi 3.50 studs (TOTAL)
+//   + CAHAYA (PointLight, dipasang di BlockSimulator3D seperti Torch)
+//
+// ══ ANGKA DARI PENGUKURAN PIKSEl, BUKAN TEBAKAN ══
+// Sumber: 7 screenshot referensi (folder image/folder kerja). Objek diisolasi
+// lewat segmentasi warna, diukur baris-per-baris, lalu dikonversi:
+//   skala 0.01149 stud/px (lebar maks 174 px = 2.00 studs, frame F1 face-on)
+//   koreksi perspektif kamera 10-20° di atas: w/(1-0.035*(y-0.98))
+//
+// ══ 3 KOREKSI BESAR DARI REVIEW CLAUDE (putaran 1-3, semua TERVERIFIKASI) ══
+//  1. Frame diagonal (H/W 1.163) TIDAK BOLEH dipakai untuk lebar — yaw 45°
+//     melebarkan ×1.41. Yang benar frame face-on F1 (H/W 1.644) & F6 (1.565).
+//  2. "Tiang sudut" yang saya kira ada ternyata TARING. Bukti terukur: tebal
+//     logam per sisi menurun monoton 0.586 → 0.063 stud dari y=0.63 ke y=1.79.
+//     Tiang berpenampang konstan akan DATAR. Ini segitiga.
+//  3. Kaca TIDAK menyempit (prisma konstan 1.78). Penurunan −7% yang terukur
+//     itu perspektif (bawah lebih jauh dari kamera), bukan geometri.
+//
+// ══ JEBAKAN GEOMETRI (dari Claude, WAJIB DIPATUHI) ══
+//  A. `_stBuild` SELALU memanggil `_stFaceOutward` yang membalik segitiga
+//     berdasarkan CENTROID PART. Untuk part GABUNGAN yang tidak cembung
+//     (puncak+pelat+hip), centroid jatuh di luar bahan → flip ACAK.
+//     SOLUSI: puncak, pelat+hip (2 segmen, cembung menurun), alas = PART
+//     TERPISAH. Tiap taring = part sendiri (tetrahedron cembung).
+//  B. TIDAK BOLEH ada tutup internal (puncak-bawah, pelat-atas, hip-atas):
+//     menghasilkan wajah berlawanan yang saling berhimpit → z-fighting.
+//  C. Tutup bawah atap (y=1.00) & tutup atas alas (y=3.00) WAJIB ADA karena
+//     terlihat dari balik kaca. Kaca TIDAK boleh punya tutup atas/bawah
+//     (akan z-fight dengan kedua tutup itu).
+//  D. Kaca: y 0.98..3.02 (masuk 0.02 ke atap & alas) → tidak ada celah rambut.
+//     Taring: mulai 0.01 di dalam atap/alas → zona koplanar tak terlihat.
+//  E. Inti cahaya: SATU KOTAK 0.72 persegi (bukan 2 bilah silang). Bentuk
+//     "V/M" di frame diagonal = inti kotak yang tertutup taring depan.
+//
+// ══ SATUAN: angka di bawah dalam STUD (mudah dicocokkan ke syarat user) ══
+// Konversi ke BLOCK lewat toX/toY (1 stud = 0.5 block).
+// ══════════════════════════════════════════════════════════════════════════
+
+const LP_STUD = 0.5;               // 1 stud = 0.5 block
+const LP_HALF_Y = 0.875;           // setengah tinggi bbox (block) → −0.875..+0.875
+const toLX = (stud) => stud * LP_STUD;                 // X/Z: pusat origin
+// ⚠️ BUG YANG DITEMUKAN SAAT VERIFIKASI OFFLINE: versi pertama memakai
+//    toLY = -HALF + stud*0.5 → stud 0 (PUNCAK) jatuh di DASAR bbox = bentuk
+//    TERBALIK VERTIKAL. Sekarang stud 0 = ATAS bbox (+HALF), stud 3.5 = BAWAH.
+const toLY = (stud) => LP_HALF_Y - stud * LP_STUD;      // Y: stud 0 = ATAS bbox
+
+// ── Pembagian tinggi (STUD, dari ATAS) — tabel final Claude, jumlah TEPAT 3.50 ──
+const LP_Y_TOP0    = 0.00, LP_Y_TOP1    = 0.15;   // puncak (piramida terpancung)
+const LP_Y_PLATE0  = 0.15, LP_Y_PLATE1  = 0.30;   // pelat puncak
+const LP_Y_HIP_A0  = 0.30, LP_Y_HIP_A1  = 0.65;   // hip segmen 1 (landai)
+const LP_Y_HIP_B0  = 0.65, LP_Y_HIP_B1  = 1.00;   // hip segmen 2 (landai)
+const LP_Y_GLASS0  = 1.00, LP_Y_GLASS1  = 3.00;   // kaca prisma
+const LP_Y_BASE0   = 3.00, LP_Y_BASE1   = 3.20;   // alas dinding
+const LP_Y_CHAM0   = 3.20, LP_Y_CHAM1   = 3.50;   // alas chamfer
+// Taring (TUMPANG-TINDIH dengan pita kaca, tidak menambah total)
+const LP_Y_FANGT0  = 1.00, LP_Y_FANGT1  = 1.96;   // taring atas: 1.00 → ujung 1.96
+const LP_Y_FANGB0  = 3.00, LP_Y_FANGB1  = 2.42;   // taring bawah: 3.00 → ujung 2.42
+const LP_Y_CORE0   = 0.95, LP_Y_CORE1   = 3.05;   // inti cahaya (masuk 0.05 ke atap & alas)
+
+// ── Lebar (STUD) — hasil ukur + koreksi Claude ──
+const LP_W_TOP0    = 0.31;   // puncak atas
+const LP_W_TOP1    = 0.60;   // puncak bawah  (lompatan +19px terukur di y=0.135)
+const LP_W_PLATE1  = 1.17;   // pelat bawah
+const LP_W_HIP_A1  = 1.69;   // hip segmen 1 bawah
+const LP_W_MAX     = 2.00;   // hip segmen 2 bawah = LEBAR MAKS (tepi atap)
+const LP_W_GLASS   = 1.78;   // kaca prisma konstan (terukur 1.72-1.74 raw)
+const LP_W_BASE    = 1.94;   // alas dinding
+const LP_W_BASE_B  = 0.98;   // alas bawah (chamfer) — 1.09 di y=3.43, extrapolasi 0.98
+const LP_W_CORE    = 0.72;   // inti cahaya (kotak)
+// ⚠️ BUG TERVERIFIKASI (ikon 2026-10-24): kaki 0.30/0.31 membuat taring jadi
+//    SILVER TIPIS di sudut bbox → terbaca sebagai "pecahan segitiga melayang"
+//    (diukur: 6 klaster terpisah 120-280 px di tepi kiri/kanan ikon).
+//    Angka benar = hasil ukur ketebalan logam per sisi pada referensi:
+//    0.586 studs di puncak kaca, menyempit ke 0.063 di ujung taring.
+//    Kaki selebar ini membuat taring MENYATU dengan pita atap/alas.
+// ⚠️ GEOMETRI ASLI (referensi) = TARING BESAR yang membentuk SUDUT LENTERA.
+//    Versi pertama memakai kaki 0.30 (silver tipis) → terukur 6-7 "pecahan
+//    melayang" di ikon. Kaki 0.58 belum cukup: rangka tetap terputus karena
+//    kaca (1.78) lebih lebar dari taring, sehingga atap & alas terpisah.
+//    Untuk membuat 4 sudut MENYATU, kaki harus ≥ (LP_W_MAX - LP_W_GLASS)/2
+//    + margin, supaya taring menutupi tepi kaca dan menyambung ke part lain.
+const LP_FANG_KAKI_T = 0.72; // kaki taring atas per sisi
+const LP_FANG_KAKI_B = 0.72; // kaki taring bawah per sisi
+// ⚠️ AKAR MASALAH "PECAHAN MELAYANG" (terukur 3 iterasi, ikon 2026-10-24):
+//    Pangkal taring diletakkan di TEPI TERLUAR atap (stud 0.99, h=1.00) —
+//    padahal atap hanya mencapai lebar 2.00 studs TEPAT di stud 1.00.
+//    Akibatnya pangkal taring hanya MENYENTUH SATU TITIK di rusuk atap →
+//    tidak ada volume yang bertumpuk → taring terlihat mengambang.
+//    FIX: pangkal DIPINDAH KE DALAM atap/alas (stud 0.93 / 3.07) dengan
+//    setengah-lebar SESUAI PROFIL di ketinggian itu (0.95 studs), sehingga
+//    sebagian pangkal benar-benar berada DI DALAM bahan = tersambung solid.
+const LP_FANG_BASE_H   = 0.95;  // setengah-lebar pangkal taring (stud)
+const LP_FANG_TOP_Y    = 0.93;  // pangkal taring atas (stud, di DALAM atap)
+const LP_FANG_BOT_Y    = 3.07;  // pangkal taring bawah (stud, di DALAM alas)
+// Ujung taring ditarik KE DALAM supaya menimpa siluet kaca (setengah-lebar
+// 0.89 studs) → tidak ada latar putih di celah taring–kaca.
+// 0.95 - 0.15 = 0.80 studs = di dalam kaca.
+const LP_FANG_TIP_IN = 0.15;
+
+/** Bidang datar horizontal (quad) pada ketinggian y, setengah lebar h. */
+function _lpSlab(h, y) {
+  const a = [-h, y, -h], b = [h, y, -h], c = [h, y, h], d = [-h, y, h];
+  return [[a, b, c, d]];
+}
+
+/** Frustum persegi tertutup: dari (h0, y0) ke (h1, y1). Sisi + tutup atas/bawah. */
+function _lpFrustum(h0, y0, h1, y1, capTop, capBot) {
+  const f = [];
+  const A = [[-h0, y0, -h0], [h0, y0, -h0], [h0, y0, h0], [-h0, y0, h0]];  // y0 = ATAS
+  const B = [[-h1, y1, -h1], [h1, y1, -h1], [h1, y1, h1], [-h1, y1, h1]];  // y1 = BAWAH
+  // ⚠️ URUTAN VERTEX DIPILIH SUPAYA NORMAL SUDAH KELUAR SEJAK AWAL.
+  //    Versi pertama memakai [A[k],A[j],B[j],B[k]] → SEMUA 10/10 segitiga
+  //    menghadap DALAM (terverifikasi offline). Urutan [B[k],A[k],A[j],B[j]]
+  //    menghasilkan normal keluar untuk keempat sisi (diuji lewat cross-product).
+  for (let k = 0; k < 4; k++) {
+    const j = (k + 1) % 4;
+    f.push([B[k], A[k], A[j], B[j]]);
+  }
+  // tutup atas (+Y): urutan A0→A3→A2→A1 · tutup bawah (−Y): A0→A1→A2→A3
+  if (capTop) f.push([A[0], A[3], A[2], A[1]]);
+  if (capBot) f.push([B[0], B[1], B[2], B[3]]);
+  return f;
+}
+
+/**
+ * Taring = TETRAHEDRON di satu sudut denah.
+ * Titik: A = sudut (sx*h, y0, sz*h) · B,C = sepanjang 2 dinding · T = ujung.
+ * Bidang luar A-B-T dan A-C-T rata dengan dinding (sesuai Claude Q6).
+ * @param {number} sx,sz  tanda sudut (-1 / +1)
+ * @param {number} h      setengah lebar dinding tempat taring menempel
+ * @param {number} y0     y pangkal (menempel dinding)
+ * @param {number} yTip   y ujung lancip
+ * @param {number} kaki   panjang kaki sepanjang dinding (stud→block)
+ */
+function _lpFang(sx, sz, h, y0, yTip, kaki, kakiTip) {
+  const A = [sx * h, y0, sz * h];
+  const B = [sx * (h - kaki), y0, sz * h];
+  const C = [sx * h, y0, sz * (h - kaki)];
+  // ⚠️ BUG TERVERIFIKASI (ikon 2026-10-24): versi pertama menaruh ujung T tepat
+  //    di sudut bbox (h). Kaca hanya selebar 0.89, jadi T (1.00) menonjol KELUAR
+  //    siluet kaca → latar putih terlihat di celah antara taring & kaca →
+  //    taring terbaca sebagai "pecahan melayang" (terukur 4 klaster sisa).
+  //    Di referensi taring MELENGKUNG KE DALAM: ujung lebih dekat poros
+  //    daripada pangkal. kakiTip menarik T masuk sehingga ujungnya MENIMPA
+  //    siluet kaca → rangka tersambung secara visual.
+  const kt = (kakiTip === undefined ? 0 : kakiTip);
+  const T = [sx * (h - kt), yTip, sz * (h - kt)];
+  // ⚠️ BUG TERVERIFIKASI OFFLINE (2 iterasi): winding TIDAK bisa dipatok dengan
+  //    satu aturan tanda. ADA DUA sumber pencerminan yang membalik handedness:
+  //      (1) sudut denah  → tanda sx*sz
+  //      (2) arah taring  → yTip di ATAS atau DI BAWAH y0 (taring atas vs bawah)
+  //    Kombinasi keduanya = 4 kasus, dan aturan "sx*sz>0" hanya menutup separuh
+  //    (terukur: tetap 4 dari 8 taring menghadap DALAM).
+  //    SOLUSI PASTI: orientasikan tiap segitiga terhadap CENTROID TETRAHEDRON.
+  //    Untuk tetrahedron, centroid 4 titik SELALU di dalam volume → uji
+  //    "normal menjauhi centroid" berlaku untuk keempat sudut & kedua arah.
+  // ⚠️ BUG TERVERIFIKASI (render ikon 2026-10-24): versi pertama hanya membuat
+  //    3 sisi ([A,B,T], [A,T,C], [A,C,B]) dan MENGHILANGKAN sisi miring B-C-T.
+  //    Akibatnya taring = CANGKANG TERBUKA: dari kamera ikon terlihat sebagai
+  //    6-7 "pecahan segitiga hitam melayang" di sekitar lentera (diukur: 7
+  //    klaster terpisah, 120-280 px masing-masing). Tetrahedron WAJIB 4 sisi.
+  const tri = [[A, B, T], [A, T, C], [A, C, B], [B, C, T]];
+  const cx = (A[0] + B[0] + C[0] + T[0]) / 4;
+  const cy = (A[1] + B[1] + C[1] + T[1]) / 4;
+  const cz = (A[2] + B[2] + C[2] + T[2]) / 4;
+  return tri.map(([p, q, r]) => {
+    const u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+    const v = [r[0] - p[0], r[1] - p[1], r[2] - p[2]];
+    const nx = u[1] * v[2] - u[2] * v[1];
+    const ny = u[2] * v[0] - u[0] * v[2];
+    const nz = u[0] * v[1] - u[1] * v[0];
+    const mx = (p[0] + q[0] + r[0]) / 3 - cx;
+    const my = (p[1] + q[1] + r[1]) / 3 - cy;
+    const mz = (p[2] + q[2] + r[2]) / 3 - cz;
+    return (nx * mx + ny * my + nz * mz < 0) ? [p, r, q] : [p, q, r];
+  });
+}
+
+
+/**
+ * Part Lamp: GEOMETRI SAJA (tanpa cahaya).
+ * Cahaya = PointLight (dipasang di BlockSimulator3D, pola sama seperti Torch).
+ */
+export function getLampParts() {
+  const parts = [];
+
+  // ══ 1. PUNCAK — piramida terpancung (PART SENDIRI, cembung) ══
+  // Jebakan A: JANGAN gabung dengan pelat/hip → centroid di luar bahan.
+  parts.push({
+    tag: 'lampMetal',
+    faces: _lpFrustum(toLX(LP_W_TOP0 / 2), toLY(LP_Y_TOP0),
+                      toLX(LP_W_TOP1 / 2), toLY(LP_Y_TOP1),
+                      true, false),   // tutup atas ADA, tutup bawah TIDAK (jebakan B)
+  });
+
+  // ══ 2. PELAT + HIP (2 segmen) — SATU PART CEMBUNG MENURUN ══
+  // Kemiringan 2.0 → 0.7 → 0.44 (menurun monoton) = cembung → flip aman.
+  // Tanpa tutup internal antar segmen (jebakan B), hanya tutup BAWAH di y=1.00
+  // yang WAJIB ada karena terlihat dari balik kaca (jebakan C).
+  parts.push({
+    tag: 'lampMetal',
+    faces: [
+      ..._lpFrustum(toLX(LP_W_TOP1 / 2), toLY(LP_Y_PLATE0),
+                    toLX(LP_W_PLATE1 / 2), toLY(LP_Y_PLATE1), false, false),
+      ..._lpFrustum(toLX(LP_W_PLATE1 / 2), toLY(LP_Y_HIP_A0),
+                    toLX(LP_W_HIP_A1 / 2), toLY(LP_Y_HIP_A1), false, false),
+      ..._lpFrustum(toLX(LP_W_HIP_A1 / 2), toLY(LP_Y_HIP_B0),
+                    toLX(LP_W_MAX / 2), toLY(LP_Y_HIP_B1), false, true),
+    ],
+  });
+
+  // ══ 3. KACA — prisma persegi, TANPA tutup atas/bawah (jebakan C) ══
+  // y 0.98..3.02 → masuk 0.02 ke atap & alas supaya tidak ada celah rambut (D).
+  parts.push({
+    tag: 'lampGlass',
+    faces: _lpFrustum(toLX(LP_W_GLASS / 2), toLY(LP_Y_GLASS0 - 0.02),
+                      toLX(LP_W_GLASS / 2), toLY(LP_Y_GLASS1 + 0.02), false, false),
+  });
+
+  // ══ 4. ALAS — dinding + chamfer (SATU PART, cembung) ══
+  parts.push({
+    tag: 'lampMetal',
+    faces: [
+      // tutup ATAS alas di y=3.00 WAJIB (terlihat dari balik kaca, jebakan C)
+      // ⚠️ capBot = false: chamfer di bawahnya menyambung RAPAT (lebar sama
+      //    1.94 di y=3.20) → tutup di sini = tutup INTERNAL (z-fight, jebakan B).
+      ..._lpFrustum(toLX(LP_W_BASE / 2), toLY(LP_Y_BASE0),
+                    toLX(LP_W_BASE / 2), toLY(LP_Y_BASE1), false, false),
+      ..._lpFrustum(toLX(LP_W_BASE / 2), toLY(LP_Y_CHAM0),
+                    toLX(LP_W_BASE_B / 2), toLY(LP_Y_CHAM1), false, true),
+    ],
+  });
+
+  // ══ 5. TARING — 8 tetrahedron (4 sudut atap + 4 sudut alas) ══
+  // Claude Q6: BUKAN tiang, BUKAN pelat. Tiap taring PART SENDIRI (cembung).
+  // Mulai 0.01 di DALAM atap/alas → zona koplanar tak terlihat (D).
+  const hAtap = LP_W_MAX / 2;
+  const hAlas = LP_W_BASE / 2;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      // taring atas: pangkal di atap, ujung menjuntai ke bawah
+      parts.push({
+        tag: 'lampMetal',
+        faces: _lpFang(sx, sz, toLX(LP_FANG_BASE_H),
+                       toLY(LP_FANG_TOP_Y), toLY(LP_Y_FANGT1),
+                       toLX(LP_FANG_KAKI_T), toLX(LP_FANG_TIP_IN)),
+      });
+      // taring bawah: pangkal di alas, ujung menjuntai ke atas
+      parts.push({
+        tag: 'lampMetal',
+        faces: _lpFang(sx, sz, toLX(LP_FANG_BASE_H),
+                       toLY(LP_FANG_BOT_Y), toLY(LP_Y_FANGB1),
+                       toLX(LP_FANG_KAKI_B), toLX(LP_FANG_TIP_IN)),
+      });
+    }
+  }
+
+  // ══ 6. INTI CAHAYA — satu kotak 0.72 (jebakan E) ══
+  parts.push({
+    tag: 'lampCore',
+    faces: _lpFrustum(toLX(LP_W_CORE / 2), toLY(LP_Y_CORE0),
+                      toLX(LP_W_CORE / 2), toLY(LP_Y_CORE1), true, true),
+  });
+
+  return parts;
+}
+
+/**
+ * Geometri Lamp DENGAN 3 GROUP MATERIAL (0=logam, 1=kaca, 2=inti).
+ * ⚠️ KENAPA HARUS GROUP, BUKAN SATU MATERIAL:
+ *    Lamp butuh 3 perilaku material yang TIDAK bisa disatukan —
+ *    logam OPAQUE, kaca TRANSPARAN, inti UNLIT (MeshBasic).
+ *    Kalau dipaksa satu material:
+ *      - transparent:true  → logam ikut tembus pandang (salah)
+ *      - transparent:false → kaca opaque MENUTUPI inti (cahaya tak terlihat)
+ *    Solusi: satu geometry + addGroup() → Mesh menerima ARRAY material.
+ *    Urutan group HARUS sama dengan urutan material di makeLampMaterials().
+ *
+ * Bbox WAJIB [1.0, 1.75, 1.0] block (2 x 3.5 x 2 studs).
+ */
+export function makeLampGeometry(THREE) {
+  const parts = getLampParts();
+  const URUT = ['lampMetal', 'lampGlass', 'lampCore'];
+  const geos = URUT.map((tag) => _stBuild(THREE, parts.filter((p) => p.tag === tag)));
+
+  const pos = [], uv = [], col = [];
+  const out = new THREE.BufferGeometry();
+  let offset = 0;
+  geos.forEach((g) => {
+    const P = g.getAttribute('position'), U = g.getAttribute('uv'), C = g.getAttribute('color');
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0);
+      col.push(C ? C.getX(i) : 1, C ? C.getY(i) : 1, C ? C.getZ(i) : 1);
+    }
+    out.addGroup(offset, P.count, geos.indexOf(g));
+    offset += P.count;
+  });
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  out.computeVertexNormals();
+  return out;
+}
+
+// ── PARAMETER CAHAYA (dipakai BlockSimulator3D) — satuan BLOCK ──
+// Claude putaran 1: Lamp tanpa flicker (lentera, bukan api terbuka).
+// Rasio I/D² = 40/16² = 0.156 ≈ Torch 60/20² = 0.150 → falloff seragam.
+export const LP_LIGHT_Y = toLY(2.00);      // pusat inti (2.00 dari atas) → −0.125 block
+export const LP_LIGHT_COLOR = 0xffe9a0;    // kuning hangat pucat
+// ══ KALIBRASI TERUKUR (bukan tebakan) ══
+// Metode: render kotak putih di scene hitam, ukur luminance piksel tengah pada
+// jarak 5/6/8/10/12/14, bandingkan dengan Torch (I=60, D=20) di setup identik.
+//
+// Sapuan I pada D=18 (rata-rata |rasio-1|):
+//   I=20 → 0.067 (rasio 0.85-1.07)   I=26 → 0.105
+//   I=22 → 0.073 (rasio 0.88-1.13) ← DIPAKAI
+//   I=24 → 0.075                     I=28 → 0.136
+//
+// Kenapa I=22 dan bukan 40 (nilai awal saya):
+//   Warna Lamp #ffe9a0 jauh lebih PUCAT dari torch #ff7a1a. Pada luminance
+//   setara, kanal BIRU Lamp terukur 5.3x lebih terang (rasio B 5.318 di d6)
+//   sementara MERAH 0.84x lebih redup. Artinya I=40 membuat Lamp terang
+//   berlebihan secara persepsi walau "terasa" seimbang di luminance.
+//   I=22 menyamakan luminance tanpa saturasi putih (saturasi terukur: 0).
+export const LP_LIGHT_INTENSITY = 22;
+// D=18 (bukan 16): pada D=16 kurva Lamp TERPOTONG mendadak —
+// terukur d16=8.1 vs torch 24.5 (rasio 0.33), lalu d20=0 vs torch 2.2.
+// D=18 memberi ekor yang lebih halus (d16 rasio 0.79, d18 0.26).
+export const LP_LIGHT_DISTANCE = 18;
+export const LP_LIGHT_DECAY = 2;
 
 // ══════════════════════════════════════════════════════════════════════════
 // ── NSI LEVEL 2 #13: TORCH (obor) — bab 205 ──

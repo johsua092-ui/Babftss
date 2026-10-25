@@ -49,9 +49,13 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE, NSI_TC_SLUG, TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE, NSI_TC_SLUG,
+  LP_LIGHT_Y, LP_LIGHT_COLOR, LP_LIGHT_INTENSITY, LP_LIGHT_DISTANCE, LP_LIGHT_DECAY,
+  NSI_LP_SLUG,
+  TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
 // bab 205: bara api BERANIMASI + pool cahaya untuk NSI Torch
 import { SHARED_TIME, makeTorchLightPool, attachFlame, detachFlame, reattachUniform } from '../utils/torchFlame.js';
+import { makeLampLightPool } from '../utils/lampLight.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -15464,6 +15468,32 @@ Now you can apply Displacement for detailed effect.`);
           console.warn('[torch] ticker error:', e);
         }
       }
+      // ══ bab 206: TICKER LAMP — cahaya lentera (TANPA api, TANPA flicker) ══
+      // Struktur SAMA dengan ticker torch di atas, tapi:
+      //  - Tidak ada shader/uTime (Lamp tidak punya api beranimasi).
+      //  - Tidak ada attach ulang mesh anak (Lamp tidak punya anak mesh).
+      //  - Cahaya STABIL (breathe ±2%), bukan kedip.
+      // ⚠️ Sumber blok WAJIB threeRef.current.blocks (pelajaran bab 205:
+      //    `blocks` tidak ada di scope animate → ReferenceError).
+      try {
+        const _ll = threeRef.current && threeRef.current.lampLights;
+        if (_ll) {
+          const _lamps = [];
+          const _allBlocks2 = (threeRef.current && threeRef.current.blocks) || [];
+          for (let i = 0; i < _allBlocks2.length; i++) {
+            const b = _allBlocks2[i];
+            if (!b || !b.userData || b.userData.blockSlug !== NSI_LP_SLUG) continue;
+            if (!b.parent) continue;
+            _lamps.push(b);
+          }
+          _ll.update(performance.now(), camera, _lamps, LP_LIGHT_Y);
+        }
+      } catch (e) {
+        if (!window.__lampErr) {
+          window.__lampErr = String(e && e.stack || e);
+          console.warn('[lamp] ticker error:', e);
+        }
+      }
       if (bloomOnRef.current) {
         composer.render();
       } else {
@@ -15636,6 +15666,20 @@ Now you can apply Displacement for detailed effect.`);
         decay: TC_LIGHT_DECAY,
       });
     } catch (e) { console.warn('torch light pool gagal:', e); }
+    // ══ bab 206: POOL CAHAYA LAMP — dibuat SEKALI, jumlah TETAP ══
+    // Alasan identik dengan torch: menambah/mengurangi PointLight mengubah
+    // kunci shader → SEMUA material di-recompile → hitch tiap place/undo.
+    // Pool TERPISAH dari torch supaya warna/intensitas/jangkauan bisa
+    // dikalibrasi independen (torch oranye-api vs lamp kuning-lentera).
+    try {
+      threeRef.current.lampLights = makeLampLightPool(THREE, scene, {
+        count: 4,
+        color: LP_LIGHT_COLOR,
+        intensity: LP_LIGHT_INTENSITY,
+        distance: LP_LIGHT_DISTANCE,
+        decay: LP_LIGHT_DECAY,
+      });
+    } catch (e) { console.warn('lamp light pool gagal:', e); }
     // ── DEBUG DEV-ONLY (2026-10-09): ekspos threeRef agar bisa DIUKUR lewat
     //    browser automation. Tidak ada efek di produksi (import.meta.env.DEV).
     if (import.meta.env && import.meta.env.DEV) window.__threeRef = threeRef;
@@ -16425,8 +16469,19 @@ Now you can apply Displacement for detailed effect.`);
           // ── NSI SEAT (2026-10-04): geometri Seat punya atribut `color`
           // (vertex color) → material WAJIB vertexColors:true supaya dudukan
           // gelap & sisi lain tekstur. Tetap SATU material (bukan array).
-          if (geo.attributes && geo.attributes.color) mat.vertexColors = true;
-          mat.userData.blockType = blockDef.slug; // identitas jenis utk undo/snapshot
+          // ⚠️ bab 206: makeBlockMaterial('lamp') mengembalikan ARRAY 3 material
+          //    (logam/kaca/inti). Array TIDAK punya .vertexColors/.userData →
+          //    dua baris di bawah akan melempar TypeError dan place GAGAL.
+          //    Guard `Array.isArray` wajib; untuk array, flag di-set per-material.
+          if (Array.isArray(mat)) {
+            for (const _m of mat) {
+              if (geo.attributes && geo.attributes.color) _m.vertexColors = true;
+              _m.userData.blockType = blockDef.slug;
+            }
+          } else {
+            if (geo.attributes && geo.attributes.color) mat.vertexColors = true;
+            mat.userData.blockType = blockDef.slug; // identitas jenis utk undo/snapshot
+          }
           const block = new THREE.Mesh(geo, mat);
           // ── NSI SMALL TREASURE (bab 149): BADAN + TUTUP (anak mesh) ──
           // Tutup dijadikan ANAK supaya SEMUA tool yang ada (move/rotate/
