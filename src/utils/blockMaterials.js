@@ -141,6 +141,11 @@ export const BLOCK_LIBRARY = [
   // metalness 0.0 supaya PointLight dari inti tetap terbaca di permukaan
   // (metalness tinggi → diffuse nol → lampu tidak terlihat).
   { slug: 'lamp',              name: 'Lamp',       label: 'Lamp',       roughness: 0.55, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ══ bab 208: CANDLE — NSI L2 yang MENGHASILKAN CAHAYA ══
+  // roughness 0.62 = lilin + kuningan (kusam, bukan kaca). metalness 0.0
+  // WAJIB supaya PointLight api tetap terbaca di permukaan (metalness tinggi
+  // membuat komponen diffuse nol → cahaya tidak terlihat sama sekali).
+  { slug: 'candle',            name: 'Candle',     label: 'Candle',     roughness: 0.62, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -201,6 +206,67 @@ export function makeLampMaterials(THREE, tex, def) {
 
   return [matMetal, matGlass, matCore];
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// bab 208: CANDLE — 2 MATERIAL (badan lit / api unlit) untuk satu geometry
+// ══════════════════════════════════════════════════════════════════════════
+// URUTAN INDEKS WAJIB SAMA dengan addGroup() di makeCandleGeometry():
+//   0 = candleLit (opaque, lit)  ·  1 = candleApi (unlit, selalu menyala)
+//
+// ⚠️ PELAJARAN YANG DIPATUHI:
+//  - Vertex color = PENGALI. Semua nilai ST_WARNA candle* ≤ 1.0.
+//  - Api WAJIB MeshBasicMaterial (bukan Standard): api harus terbaca terang
+//    walau scene gelap / blok di tempat teduh. toneMapped:false supaya kuning
+//    tidak dibasuh ACES jadi putih pucat.
+//  - DoubleSide untuk keduanya (pola Torch/Lamp: _stBuild selalu
+//    _stFaceOutward, dan api dianimasikan dengan skala Y).
+export function makeCandleMaterials(THREE, tex, def) {
+  const baseColor = tex && tex.userData.isReady
+    ? 0xffffff
+    : (BLOCK_PLACEHOLDER.candle || 0xffffff);
+
+  // ⚠️ 3 MATERIAL (fix 2026-10-25) — cawan/lilin/sumbu TIDAK boleh satu
+  //    material. Terbukti lewat render uji: dengan metalness 0 seragam,
+  //    kuningan terbaca sebagai TANAH LIAT/kardus (vision: "dull mustard").
+  //    Logam butuh metalness tinggi + roughness rendah; lilin justru
+  //    sebaliknya (matte, non-logam). Urutan = URUT di makeCandleGeometry.
+
+  // [0] LOGAM (cawan + bibir + handle) — metallic, mengkilap
+  const matMetal = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: baseColor,
+    roughness: 0.34,       // cukup rendah → ada highlight logam
+    metalness: 0.85,       // hampir logam penuh
+    side: THREE.DoubleSide,
+    vertexColors: true,
+  });
+  matMetal.userData.isCandleMetal = true;
+
+  // [1] LILIN + SUMBU — matte, non-logam
+  const matLit = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: baseColor,
+    roughness: 0.86,       // wax matte
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    vertexColors: true,
+  });
+  matLit.userData.isCandleLit = true;
+
+  // [2] API — UNLIT (MeshBasic): selalu menyala
+  const matApi = new THREE.MeshBasicMaterial({
+    color: 0xffffff,        // warna asli dari vertex color (kuning api)
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    fog: false,
+  });
+  matApi.userData.isCandleApi = true;
+
+  return [matMetal, matLit, matApi];
+}
+
 
 export const DEFAULT_BLOCK_SLUG = 'wood_block';
 
@@ -518,6 +584,11 @@ export function makeBlockMaterial(THREE, slug) {
   //    pandang, transparent:false membuat kaca menutupi inti → lampu mati.
   if (slug === 'lamp') {
     return makeLampMaterials(THREE, tex, def);
+  }
+  // bab 208: Candle — 2 material (badan lit + api unlit). JANGAN digabung:
+  // api unlit akan ikut kena lighting dan tampak mati.
+  if (slug === 'candle') {
+    return makeCandleMaterials(THREE, tex, def);
   }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({

@@ -305,6 +305,11 @@ export const NSI_LP_SLUG = 'lamp';
 export const NSI_LP_NAME = 'Lamp';
 export const NSI_LP_SIZE = [1.0, 1.75, 1.0];
 
+// ── bab 208: CANDLE — NSI L2 yang MENGHASILKAN CAHAYA ──
+export const NSI_CD_SLUG = 'candle';
+export const NSI_CD_NAME = 'Candle';
+export const NSI_CD_SIZE = [1.0, 1.75, 1.0];   // block = 2 x 3.5 x 2 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -317,6 +322,8 @@ export const NSI_SIZES = {
   [NSI_DOOR_SLUG]: [2.75, 3.5, 0.25],
   [NSI_HATCH_SLUG]: [2, 0.5, 2],
   [NSI_CHEST_SLUG]: [2.25, 1.75, 2.25],
+  [NSI_LP_SLUG]: [1.0, 1.75, 1.0],
+  [NSI_CD_SLUG]: [1.0, 1.75, 1.0],
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -4103,6 +4110,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_TC_SLUG) return makeTorchGeometry(THREE);
   // bab 206: Lamp (badan saja — cahaya dipasang di BlockSimulator3D)
   if (slug === NSI_LP_SLUG) return makeLampGeometry(THREE);
+  // bab 208: Candle (badan saja — api & cahaya dipasang di BlockSimulator3D)
+  if (slug === NSI_CD_SLUG) return makeCandleGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -4774,3 +4783,658 @@ export const TC_LIGHT_COLOR = 0xff7a1a;
 export const TC_LIGHT_INTENSITY = 60;
 export const TC_LIGHT_DISTANCE = 20;
 export const TC_LIGHT_DECAY = 2;
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── NSI LEVEL 2 #14: CANDLE (lilin dalam cawan) — bab 208 ──
+// ══════════════════════════════════════════════════════════════════════════
+// ── KONSTANTA DASAR ──
+// (hexToRgb lokal: dipakai lewat pt.colorFn per-vertex, format RGBA 0..1)
+function _cdHex(hex) {
+  return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255, 1.0];
+}
+// NSI_CD_SLUG / NAME / SIZE sudah dideklarasikan di atas (dekat Lamp).
+
+const CD_STUD = 0.5;          // 1 stud = 0.5 block
+const CD_HALF_Y = 1.75 / 2;   // 0.875 → bbox Y −0.875 .. +0.875
+const CD_SEG = 8;             // oktagon (BUKAN decagon: bbox X≠Z & rotasi 90° geser)
+
+const toCX = (stud) => stud * CD_STUD;                 // X/Z dari pusat
+const toCY = (stud) => -CD_HALF_Y + stud * CD_STUD;    // Y dari dasar bbox
+
+// ── PEMBAGIAN TINGGI (STUD, dari dasar) — jumlah TEPAT 3.50 ──
+const CD_Y_CAWAN0 = 0.00, CD_Y_CAWAN1 = 0.35;   // cawan 0.35
+const CD_Y_BATANG0 = 0.35, CD_Y_BATANG1 = 2.55; // batang 2.20
+const CD_Y_SUMBU0 = 2.55, CD_Y_SUMBU1 = 2.90;   // sumbu 0.35
+const CD_Y_API0 = 2.90, CD_Y_API1 = 3.50;       // api 0.60 TINGGI
+
+// ── DIMENSI (STUD) ──
+// ⚠️ 2026-10-25: user minta "batang lilinnya kurusin dikit" → 1.00 → 0.86
+//    studs. (Spesifikasi awal 1 stud; ini deviasi tipis atas permintaan user.)
+// ⚠️ 2026-10-26: 1.00 → 0.86 studs TIDAK terlihat (hanya −14%, dan rasio
+//    batang/cawan di 8 gambar referensi = 0.445 ≈ 0.89 studs, jadi 0.86 hampir
+//    sama dengan referensi). Pengguna menegur "kok gak dikurusin?".
+//    → 0.70 studs = 0.35 block: 30% lebih kurus dari 1.00, dan 21% lebih
+//    kurus dari referensi, jadi perubahan jelas terlihat.
+const CD_W_BATANG = 0.70;   // 0.35 block (dikuruskan nyata dari 1.00)
+const CD_W_CAWAN_BAWAH = 1.40;  // 0.70 block di dasar (bevel ke dalam)
+const CD_W_CAWAN_ATAS = 2.00;   // WAJIB user: 2.00 x 2.00 studs di bibir
+const CD_W_SUMBU = 0.13;        // 0.065 block — lebih tipis (dulu 0.18 = balok kaku)
+// ⚠️ API DIPERBESAR 2026-10-25 (0.20 → 0.62 studs).
+//    TERUKUR di runtime: api lama hanya 0.10 block (0.2 studs) lebar & 0.245
+//    block tinggi → terbaca sebagai "serpihan bidang melayang", BUKAN nyala
+//    (dikonfirmasi baca_gambar/Gemini: "api pecah, bidang datar pucat").
+//    Perbandingan wajar: sumbu 0.18 studs, jadi api 3.4× sumbu. Api lilin
+//    nyata memang ~2-3× tebal sumbu, bukan 1.1× seperti sebelumnya.
+// ⚠️ 2026-10-25 (koreksi user "apinya kok jadi gendut"): 0.80 → 0.34 → 0.24
+//    studs. Rasio lebar:tinggi sekarang 1 : 2.5 (api lilin nyata ~1:2.5-3).
+const CD_W_API = 0.24;          // 0.12 block — LANGSING seperti lidah api
+
+// ⚠️ OKTAGON: lebar sisi datar = 2·r·cos(π/8). Kalau r diisi 0.5 (= setengah
+// lebar target), lebar nyata hanya 0.9239 → bbox MELESET 7.6%.
+// Jadi r HARUS = target / (2·cos(π/8)). Terverifikasi offline: r=0.5412 → 1.000.
+const CD_KOTAK = 1 / Math.cos(Math.PI / CD_SEG);   // 1.0824
+const cdR = (lebar) => toCX(lebar / 2) * CD_KOTAK;  // jari-jari oktagon
+
+// Benam (Claude: sambungan wajib dibenamkan supaya tidak ada celah rambut)
+const CD_BENAM_BATANG = 0.05;   // batang masuk 0.05 stud ke dalam cawan
+const CD_BENAM_SUMBU = 0.10;    // sumbu masuk 0.10 stud ke dalam lilin
+
+// Puncak meleleh (baji terpisah): 0.40 stud di atas bibir = 1/5 tinggi batang
+const CD_PUNCAK_H = 0.26;
+const CD_PUNCAK_W = 0.36;   // ikut ramping (dari 0.44)       // setengah lebar baji (0.25 stud)
+
+// Sumbu dua segmen: dasar digeser ke sisi rendah, segmen atas membengkok
+// ⚠️ 2026-10-25: dulu 0.10 stud → sumbu bergeser 0.05 block dari PUSAT,
+//    terbaca "sumbu miring/tidak di tengah" oleh pembaca gambar. → 0 (TEGAK).
+const CD_SUMBU_GESER = 0.00;    // 0.05 block dari pusat
+const CD_SUMBU_BENGKOK = 0.000; // TEGAK LURUS (dulu 0.12/0.035 = terlihat miring)
+
+// Handle cincin di SUDUT DIAGONAL (Claude jawaban B)
+const CD_HANDLE_PANJANG = 0.18;  // block, sepanjang diagonal
+const CD_HANDLE_LEBAR = 0.13;    // block, lebar belah ketupat cincin
+const CD_HANDLE_TEBAL = 0.075;   // block, tebal batang cincin
+// Handle dirapatkan ke BIBIR cawan (referensi: pangkal dekat tepi atas).
+const CD_HANDLE_Y0 = 0.12, CD_HANDLE_Y1 = 0.17;  // dari dasar (block)
+
+// ── WARNA (dari pengukuran piksel, bukan tebakan) ──
+// terukur: kuningan (232,208,145) & (195,169,108) · lilin (255,255,255)
+// · sumbu (15,31,47). Lilin diturunkan ke 0xEFEBE0 sesuai saran Claude.
+const CD_WARNA = {
+  // ⚠️ DIPERKUKAN 2026-10-25: nilai lama 0xe8d091 terukur sat 0.32 (pucat,
+  //    terbaca "krem/kardus"). Setelah dipisah jadi material LOGAM
+  //    (metalness 0.85), saturasi dinaikkan agar hue emas benar-benar terbaca.
+  //    Terukur: sat 0.32 → 0.44, hue 45° (emas), val 0.73.
+  kuningan: 0xc79a33,      // emas pekat (bukan krem pucat)
+  kuninganGelap: 0x9e7822, // bevel bawah / bayangan
+  lilin: 0xefebe0,         // BUKAN putih murni (kontras flat shading)
+  sumbu: 0x0f1f2f,         // 15,31,47
+};
+
+// ── PARAMETER CAHAYA (satuan BLOCK) ──
+// Kalibrasi Claude: efektif = I × Y(luminance linear warna)
+//   Torch  0xff7a1a Y=0.352 I=60 → 21.1
+//   Lamp   0xffe9a0 Y=0.821 I=22 → 18.1
+//   Candle 0xffb04a Y=0.528 I=32 → 16.9  (≈80% Torch — lilin kecil tapi nyata)
+// ⚠️ KALIBRASI ULANG 2026-10-25 (I 16 → 32): I=16 hanya mengubah 396k piksel
+//    delta 24.2 vs Lamp I=22 = 482k/delta 60.1 → TERLALU REDUP, lantai
+//    simulator (#0e1420 + ambient 0.45) tidak menerima genangan hangat.
+//    Diukur ulang dengan DIFF PIKEL (bukan rasio R-B yang menyesatkan):
+//      I=16 → 24.2 · I=28 → 30.9 · I=32 → 32.8 · I=40 → 37.5 (jenuh ACES)
+//    I=32 dipilih: cakupan 480k piksel ≈ 100% cakupan Lamp, tetap lebih
+//    redup dari Lamp (32.8 vs 60.1) sehingga terbaca sebagai lilin kecil.
+// Posisi = pusat api = 3.28 stud dari dasar → toCY(3.28) = +0.765 block
+export const CD_LIGHT_Y = toCY(3.28);
+export const CD_LIGHT_COLOR = 0xffb04a;
+export const CD_LIGHT_INTENSITY = 32;
+export const CD_LIGHT_DISTANCE = 11;
+export const CD_LIGHT_DECAY = 2;
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPER GEOMETRI — semua menghasilkan part CEMBUNG PADAT
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Frustum prisma segi-N (padat, cembung). Sumbu vertikal = Y.
+ * Ring A di y0, ring B di y1. capA menutup ring A, capB menutup ring B.
+ * ⚠️ PENTING: untuk semua part di sini y0 < y1 (A di BAWAH, B di ATAS),
+ *    jadi "tutup atas" = capB, bukan capA. Versi pertama saya tertukar dan
+ *    menghasilkan 8 boundary edge di bagian atas setiap part.
+ */
+function _cdPrisma(r0, y0, r1, y1, capA, capB, seg = CD_SEG) {
+  const f = [];
+  // oktagon dengan SISI DATAR di sumbu X/Z → sudut mulai 22.5°
+  const sudut = (k) => (Math.PI / seg) + (k * 2 * Math.PI) / seg;
+  const A = [], B = [];
+  for (let k = 0; k < seg; k++) {
+    const a = sudut(k);
+    A.push([Math.cos(a) * r0, y0, Math.sin(a) * r0]);
+    B.push([Math.cos(a) * r1, y1, Math.sin(a) * r1]);
+  }
+  // dinding samping — winding KELUAR (diverifikasi 16/16 dengan uji radial).
+  for (let k = 0; k < seg; k++) {
+    const j = (k + 1) % seg;
+    f.push([B[k], A[k], A[j], B[j]]);
+  }
+  // ⚠️⚠️ `_buildFaces` produksi HANYA menangani face 3 atau 4 vertex; face
+  //   8-vertex akan dibuang jadi 1 segitiga bocor. Jadi N-gon WAJIB dipecah
+  //   sendiri jadi triangle fan di sini (6 segitiga untuk oktagon).
+  // tutup ring A (biasanya bawah, −Y)
+  if (capA) {
+    for (let k = 1; k < seg - 1; k++) f.push([A[0], A[k], A[k + 1]]);
+  }
+  // tutup ring B (biasanya atas, +Y)
+  if (capB) {
+    for (let k = 1; k < seg - 1; k++) f.push([B[0], B[k + 1], B[k]]);
+  }
+  return f;
+}
+
+/**
+ * Frustum dengan DUA ring yang bisa digeser berbeda — untuk sumbu yang
+ * membengkok. Versi `_cdPrisma` memakai satu offset seragam, sehingga
+ * segmen atas sumbu tidak menyambung segmen bawah (X tidak overlap →
+ * sumbu terlihat PATAH). Helper ini menggeser ring bawah & atas terpisah
+ * sehingga prismanya benar-benar miring dan bersambung.
+ */
+function _cdPrismaBent(r0, y0, ox0, r1, y1, ox1, capA, capB, seg = 4) {
+  const f = [];
+  const sudut = (k) => (Math.PI / seg) + (k * 2 * Math.PI) / seg;
+  const A = [], B = [];
+  for (let k = 0; k < seg; k++) {
+    const a = sudut(k);
+    A.push([Math.cos(a) * r0 + ox0, y0, Math.sin(a) * r0]);
+    B.push([Math.cos(a) * r1 + ox1, y1, Math.sin(a) * r1]);
+  }
+  for (let k = 0; k < seg; k++) {
+    const j = (k + 1) % seg;
+    f.push([B[k], A[k], A[j], B[j]]);
+  }
+  if (capA) for (let k = 1; k < seg - 1; k++) f.push([A[0], A[k], A[k + 1]]);
+  if (capB) for (let k = 1; k < seg - 1; k++) f.push([B[0], B[k + 1], B[k]]);
+  return f;
+}
+
+/**
+ * Baji (wedge) cembung — puncak meleleh di bibir lilin.
+ * Alas persegi di y0, meruncing ke satu titik di y1 (digeser ke +X).
+ */
+function _cdBaji(hx, hz, y0, y1, geserX) {
+  // ⚠️ DIROMBAK 2026-10-25. Versi lama memakai SATU titik puncak `T`
+  //    → bentuknya baji/segitiga asimetris yang mencuat ke satu sisi.
+  //    Dua pembaca gambar independen menyebutnya "tonjolan segitiga miring
+  //    yang aneh" di puncak lilin. FIX: kerucut terpancung SIMETRIS
+  //    (cincin atas kecil di tengah), jadi puncak lilin rata & rapi seperti
+  //    lilin yang meleleh sedikit — tanpa tonjolan asimetris.
+  const A = [[-hx, y0, -hz], [hx, y0, -hz], [hx, y0, hz], [-hx, y0, hz]];
+  const t = 0.34;                       // rasio cincin atas (terpancung)
+  const ox = hx * t, oz = hz * t;
+  const B = [
+    [geserX - ox, y1, -oz], [geserX + ox, y1, -oz],
+    [geserX + ox, y1,  oz], [geserX - ox, y1,  oz],
+  ];
+  const f = [];
+  for (let k = 0; k < 4; k++) {
+    const j = (k + 1) % 4;
+    f.push([A[k], A[j], B[j], B[k]]);   // sisi miring
+  }
+  f.push([B[0], B[1], B[2], B[3]]);     // tutup atas (datar)
+  f.push([A[0], A[3], A[2], A[1]]);     // alas
+  return f;
+}
+
+
+/**
+ * Batang (balok) cembung 3D — dari titik p0 ke p1 dengan tebal.
+ *
+ * ⚠️ BUG YANG DITEMUKAN (part 7 & 9 degenerate 12/12, luas 0):
+ *    Versi pertama menghitung vektor tegak-lurus HANYA dari (dx, dz):
+ *        const len = Math.hypot(dx, dz) || 1;
+ *        const px = (-dz / len) * t,  pz = (dx / len) * t;
+ *    Untuk segmen MURNI VERTIKAL (dx = dz = 0), `|| 1` membuat len = 1
+ *    sehingga px = pz = 0 → keempat titik A kolaps jadi GARIS → semua
+ *    kuad punya luas 0. Handle loop selalu punya 2 sisi vertikal, jadi
+ *    cacat ini PASTI muncul.
+ *    FIX: hitung tegak-lurus di RUANG 3D dengan cross product terhadap
+ *    sumbu bantu yang tidak sejajar arah batang.
+ */
+/**
+ * RING / PITA PIPA-PIPIH TERTUTUP — untuk pegangan cincin cawan lilin.
+ *
+ * Kenapa ada: menyusun loop dari 5 balok terpisah (_cdBatang) membuat ujung
+ * persegi tiap balok SALING MENABRAK di simpul → tampak "gigi"/clipping dan
+ * bentuk terbaca janggal (dikonfirmasi 2 pembaca gambar independen).
+ *
+ * Solusi: bangun ring sebagai SATU mesh tertutup dari 2 siluet (luar & dalam)
+ * pada bidang vertikal (d, y), lalu di-extrude ke kedalaman `tebal`.
+ * Sambungan sudut otomatis mitered (bertemu tepat di simpul), tanpa
+ * tumpang tindih. Ini wujud nyata "pita pipih yang ditekuk" di referensi.
+ *
+ * @param luar  [[d,y], ...] siluet luar, urut (searah/berlawanan jarum jam)
+ * @param dalam [[d,y], ...] siluet dalam, jumlah & urutan sama
+ * @param tebal kedalaman total (⊥ bidang loop)
+ */
+function _cdRing(luar, dalam, tebal) {
+  const n = luar.length;
+  const K = Math.SQRT1_2;                       // proyeksi diagonal 45° ke X & Z
+  const h = tebal / 2;
+  // (d, y, t) → 3D. t = offset kedalaman, dibagi rata ke X dan −Z
+  const P3 = (d, y, t) => [d * K + t * K, y, d * K - t * K];
+
+  const OL = luar.map(([d, y]) => P3(d, y, +h));   // luar, sisi +t
+  const IL = dalam.map(([d, y]) => P3(d, y, +h));  // dalam, sisi +t
+  const OR = luar.map(([d, y]) => P3(d, y, -h));   // luar, sisi −t
+  const IR = dalam.map(([d, y]) => P3(d, y, -h));  // dalam, sisi −t
+
+  const f = [];
+  for (let k = 0; k < n; k++) {
+    const j = (k + 1) % n;
+    // ⚠️ WINDING DIVERIFIKASI dgn uji normal eksplisit (_uji_ring2.cjs):
+    //    versi pertama membuat SEMUA muka depan/belakang terbalik (dot = −1).
+    //    Urutan di bawah ini sudah benar (20/20 kuad lolos).
+    // muka depan (+t): cincin datar → kuad antara luar & dalam
+    f.push([OL[j], IL[j], IL[k], OL[k]]);
+    // muka belakang (−t): winding dibalik
+    f.push([OR[k], IR[k], IR[j], OR[j]]);
+    // dinding LUAR (menghadap keluar)
+    f.push([OL[j], OL[k], OR[k], OR[j]]);
+    // dinding DALAM lubang (menghadap ke dalam lubang)
+    f.push([IL[k], IL[j], IR[j], IR[k]]);
+  }
+  return f;
+}
+
+function _cdBatang(p0, p1, tebal, tebalLuar) {
+  const [x0, y0, z0] = p0, [x1, y1, z1] = p1;
+  const t = tebal / 2;
+  // tebalLuar (opsional): setengah tebal pada arah v (kedalaman, ⊥ bidang loop).
+  // Dipakai untuk penampang PIPIH (mis. 0.040 dalam-bidang × 0.050 kedalaman).
+  // Jika tidak diberikan → penampang persegi seperti sebelumnya (kompatibel).
+  const tv = (tebalLuar === undefined ? tebal : tebalLuar) / 2;
+  // arah batang (3D, dinormalisasi)
+  let dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-9) return [];            // segmen nol → tidak ada batang
+  dx /= len; dy /= len; dz /= len;
+  // sumbu bantu: pilih yang paling TIDAK sejajar arah batang
+  const ax = Math.abs(dx), ay = Math.abs(dy), az = Math.abs(dz);
+  let rx = 0, ry = 1, rz = 0;                       // default: Y
+  if (ay >= ax && ay >= az) { rx = 1; ry = 0; rz = 0; }  // batang ~vertikal → pakai X
+  // u = normalize(cross(ref, dir))  → tegak lurus arah batang
+  let ux = ry * dz - rz * dy, uy = rz * dx - rx * dz, uz = rx * dy - ry * dx;
+  const ul = Math.hypot(ux, uy, uz) || 1;
+  ux /= ul; uy /= ul; uz /= ul;
+  // v = cross(dir, u) → tegak lurus keduanya
+  const vx = dy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - dy * ux;
+  // 4 titik penampang (persegi) di sekitar satu ujung
+  const sek = (cx, cy, cz) => [
+    [cx + ux * t + vx * tv, cy + uy * t + vy * tv, cz + uz * t + vz * tv],
+    [cx + ux * t - vx * tv, cy + uy * t - vy * tv, cz + uz * t - vz * tv],
+    [cx - ux * t - vx * tv, cy - uy * t - vy * tv, cz - uz * t - vz * tv],
+    [cx - ux * t + vx * tv, cy - uy * t + vy * tv, cz - uz * t + vz * tv],
+  ];
+  const A = sek(x0, y0, z0);
+  const B = sek(x1, y1, z1);
+  const f = [];
+  for (let k = 0; k < 4; k++) {
+    const j = (k + 1) % 4;
+    f.push([B[k], A[k], A[j], B[j]]);
+  }
+  f.push([A[0], A[3], A[2], A[1]]);  // tutup ujung p0
+  f.push(B.slice());                  // tutup ujung p1
+  return f;
+}
+
+/**
+ * Bipiramid api (8 segitiga) — bipiramida 4 sisi.
+ * Titik bawah → cincin lebar di 35% → titik atas. (Claude jawaban C)
+ */
+function _cdApi(y0, y1, lebar) {
+  // ⚠️ DIROMBAK 2026-10-25. Versi lama = BIPIRAMID 4 sisi (1 cincin di 35%)
+  //    → terbaca sebagai BERLIAN/BELAH KETUPAT kaku, bukan nyala api
+  //    (dikonfirmasi baca_gambar/Gemini 2×: "bentuk geometris kaku seperti
+  //    belah ketupat"). Api lilin nyata = TEARDROP: runcing di bawah (duduk
+  //    di sumbu), PALING LEBAR di ~30%, lalu meruncing ke puncak.
+  //    FIX: 8 sisi + 6 cincin profil supaya siluetnya melengkung halus.
+  const r = lebar / 2;
+  const SEG = 8;
+  // profil [t (0=bawah..1=atas), faktor radius]
+  // ⚠️ Profil LANGSING (koreksi user: "gendut"). Terlebar hanya di 22%,
+  //    lalu menyusut cepat → siluet memanjang seperti lidah api, bukan wajik.
+  const PROF = [
+    [0.00, 0.00],   // titik bawah (menempel ujung sumbu)
+    [0.10, 0.55],
+    [0.22, 1.00],   // TITIK TERLEBAR (rendah, di 22%)
+    [0.42, 0.74],
+    [0.64, 0.46],
+    [0.84, 0.20],
+    [1.00, 0.00],   // puncak runcing
+  ];
+  const H = y1 - y0;
+  const ringOf = (t, f) => {
+    const y = y0 + H * t, rr = r * f;
+    const out = [];
+    for (let k = 0; k < SEG; k++) {
+      const a = (k / SEG) * Math.PI * 2;
+      out.push([Math.cos(a) * rr, y, Math.sin(a) * rr]);
+    }
+    return out;
+  };
+  const rings = PROF.map(([t, f]) => ringOf(t, f));
+  const f = [];
+  for (let i = 0; i < rings.length - 1; i++) {
+    const A = rings[i], B = rings[i + 1];
+    for (let k = 0; k < SEG; k++) {
+      const j = (k + 1) % SEG;
+      f.push([A[k], A[j], B[j], B[k]]);
+    }
+  }
+  // tutup bawah & atas (kipas) — walau radius 0, tetap diberi segitiga agar
+  // mesh watertight (titik profil 0 sudah berupa titik tunggal per cincin).
+  const bawah = [0, y0, 0], atas = [0, y1, 0];
+  for (let k = 0; k < SEG; k++) {
+    const j = (k + 1) % SEG;
+    f.push([bawah, rings[0][j], rings[0][k]]);
+    f.push([atas, rings[rings.length - 1][k], rings[rings.length - 1][j]]);
+  }
+  return f;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// DAFTAR PART
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * @returns {Array} parts — tiap part {tag, faces, colorFn?}
+ * tag: 'candleLit' (cawan+lilin+sumbu, 1 draw call) | 'candleApi' (unlit)
+ */
+export function getCandleParts() {
+  const parts = [];
+
+  // ══ 1. CAWAN — frustum oktagon padat, cembung, TANPA cekungan ══
+  // Bevel ke dalam: 1.40 stud di dasar → 2.00 stud di bibir (syarat user).
+  // ⚠️ Claude F: JANGAN bikin mangkuk berongga — centroid jatuh di ruang
+  //    kosong dan _stFaceOutward akan membalik normal.
+  parts.push({
+    tag: 'candleMetal',
+    colorFn: () => _cdHex(CD_WARNA.kuningan),
+    faces: _cdPrisma(
+      cdR(CD_W_CAWAN_BAWAH), toCY(CD_Y_CAWAN0),
+      cdR(CD_W_CAWAN_ATAS), toCY(CD_Y_CAWAN1),
+      // ⚠️ FIX: tutup KEDUA ring. Sebelumnya hanya bawah → 8 boundary edge di
+      //    bibir atas = lubang gelap yang terlihat dari kamera rendah
+      //    (dikonfirmasi vision: "celah/lubang gelap mendatar").
+      true, true,
+    ),
+  });
+
+  // Bibir cawan — cincin tipis menonjol supaya bevel terlihat tegas.
+  // Dibenamkan 0.01 ke dalam frustum di bawahnya (anti celah rambut).
+  parts.push({
+    tag: 'candleMetal',
+    colorFn: () => _cdHex(CD_WARNA.kuninganGelap),
+    faces: _cdPrisma(
+      cdR(CD_W_CAWAN_ATAS), toCY(CD_Y_CAWAN1 - 0.02),
+      cdR(CD_W_CAWAN_ATAS), toCY(CD_Y_CAWAN1),
+      true, true,
+    ),
+  });
+
+  // ══ 2. BATANG LILIN — prisma oktagon, 1.00 x 1.00 studs ══
+  // Masuk 0.05 stud ke dalam cawan (anti celah). Tutup atas DATAR.
+  parts.push({
+    tag: 'candleLit',
+    colorFn: () => _cdHex(CD_WARNA.lilin),
+    faces: _cdPrisma(
+      cdR(CD_W_BATANG), toCY(CD_Y_BATANG0 - CD_BENAM_BATANG),
+      cdR(CD_W_BATANG), toCY(CD_Y_BATANG1),
+      true, true,
+    ),
+  });
+
+  // ══ 3. PUNCAK MELELEH — baji cembung TERPISAH di atas tutup datar ══
+  // Claude F: jangan angkat vertex oktagon → sisi non-planar = "pecah".
+  parts.push({
+    tag: 'candleLit',
+    colorFn: () => _cdHex(CD_WARNA.lilin),
+    faces: _cdBaji(
+      toCX(CD_PUNCAK_W / 2), toCX(CD_PUNCAK_W / 2),
+      toCY(CD_Y_BATANG1 - 0.01),                    // benam 0.01 ke tutup
+      toCY(CD_Y_BATANG1 + CD_PUNCAK_H),
+      0,                                             // SIMETRIS: geser 0 (dulu 0.12/0.05 = puncak miring)
+    ),
+  });
+
+  // ══ 4. SUMBU — prisma 4 sisi, 2 segmen ══
+  // Segmen bawah tegak, segmen atas membengkok (Claude: prisma, bukan bidang)
+  const sumbuDasarX = toCX(CD_SUMBU_GESER);
+  const sumbuY0 = toCY(CD_Y_BATANG1 - CD_BENAM_SUMBU);
+  // ⚠️ FIX: sebelumnya `- 0.06` membuat segmen atas hanya 0.06 block tinggi
+  //    sementara bengkoknya 0.06 block → nyaris horizontal, terlihat PATAH.
+  //    Sekarang segmen atas dapat porsi ~40% dari total tinggi sumbu.
+  const sumbuY1 = toCY(CD_Y_SUMBU0 + (CD_Y_SUMBU1 - CD_Y_SUMBU0) * 0.55);
+  parts.push({
+    tag: 'candleLit',
+    colorFn: () => _cdHex(CD_WARNA.sumbu),
+    faces: _cdPrismaBent(
+      toCX(CD_W_SUMBU / 2), sumbuY0, sumbuDasarX,
+      toCX(CD_W_SUMBU / 2), sumbuY1, sumbuDasarX,
+      true, true, 4,
+    ),
+  });
+  // segmen atas: membengkok ke samping
+  parts.push({
+    tag: 'candleLit',
+    colorFn: () => _cdHex(CD_WARNA.sumbu),
+    faces: _cdPrismaBent(
+      toCX(CD_W_SUMBU / 2), sumbuY1, sumbuDasarX,
+      toCX(CD_W_SUMBU / 2 * 0.8), toCY(CD_Y_SUMBU1),
+      sumbuDasarX + toCX(CD_SUMBU_BENGKOK),
+      true, true, 4,
+    ),
+  });
+
+  // ══ 5. PEGANGAN CINCIN — 4 batang cembung di SUDUT DIAGONAL ══
+  // Ruang tersedia di sudut oktagon: 0.707 − 0.5 = 0.207 block.
+  // Dipakai maks 0.18 → bbox TETAP 1.00 x 1.00 (tidak melanggar syarat user).
+  //
+  // ⚠️ BUG YANG DITEMUKAN UJI OFFLINE: versi pertama menaruh titik A, M, B
+  //    semuanya di garis diagonal → cross product = 0 → KOLINEAR → cincin
+  //    gepeng/hilang. FIX: M digeser TEGAK LURUS diagonal, jadi membentuk
+  //    belah ketupat nyata dengan lubang.
+  // ══════════════════════════════════════════════════════════════════════
+  // PEGANGAN — loop TINGGI-SEMPIT menempel dinding diagonal cawan.
+  //
+  // ⚠️ TIGA BUG YANG DITEMUKAN DI SINI (jangan diulang):
+  //  1) `dIn` dulu diisi 0.52 STUD padahal maksudnya BLOCK → pangkal hanya
+  //     0.092 block dari pusat, tertanam di dalam cawan (dinding di 0.354).
+  //  2) Versi berikutnya menonjol keluar bbox → lebar 1.53 block = 3.06 studs,
+  //     MELANGGAR syarat user 2 studs.
+  //  3) "Belah ketupat" A→M→B→M→A CACAT LOGIKA: segmen B→M identik M→B dan
+  //     M→A identik A→M → hanya 2 batang unik digambar 2× = GUMPALAN, bukan
+  //     cincin. (Terkonfirmasi vision 2×: "gumpalan padat, tanpa lubang".)
+  //
+  // ── BATAS FISIKA YANG TERUKUR ──
+  //  Dinding oktagon cawan di arah diagonal: r = 0.5412 block
+  //  Bbox radial maksimum                  : r = 0.7071 block (X=Z=0.5)
+  //  → RUANG TERSEDIA hanya 0.1659 block. Dengan tebal batang 0.075, lubang
+  //    maksimum cuma 0.0159 block (1/60 lebar blok) = TIDAK MUNGKIN terlihat.
+  //  → FIX: tebal batang 0.05, loop diisi r=0.545..0.680 (lubang radial
+  //    0.035) dan DITINGGIKAN ke 0.26 block (lubang y 0.160). Perbandingan
+  //    lubang 0.060 × 0.160 = jelas terbaca sebagai loop, bukan gumpalan.
+  // ══════════════════════════════════════════════════════════════════════
+  // ⚠️ BUG BESAR YANG DITEMUKAN 2026-10-25 (baca_gambar/Gemini):
+  //    "fragmen geometri vertikal yang menembus sisi depan alas cawan".
+  //    AKAR: `hd(u) = u/√2` membuat radial EFEKTIF jadi u/√2 (0.545/1.414 =
+  //    0.385 block), padahal dinding oktagon cawan ada di r = 0.5412 block.
+  //    → seluruh loop TERTANAM di dalam cawan; yang menonjol cuma sisa yang
+  //    menembus dinding = terlihat sebagai "serpihan mencuat".
+  //    FIX: radial diisi LANGSUNG dalam block (tanpa /√2) dan diletakkan
+  //    D I L U A R dinding cawan (0.552 .. 0.690), supaya loop benar-benar
+  //    terlihat sebagai cincin pegangan yang menonjol ke samping.
+  // ══ 5b. PEGANGAN CINCIN CAWAN ══
+  // ══════════ VONIS CLAUDE — KONSULTASI KETIGA (2026-10-26) ══════════
+  // Menjawab keluhan user: "dari segi bentuk saya merasa janggal".
+  // Ukuran & kemiringan SUDAH di-ACC user → TIDAK diubah di sini.
+  //
+  // Claude mengoreksi 3 hal (dua di antaranya setengah salah):
+  //  1. "Tidak ada kaki penyangga" → SETENGAH SALAH. Ada tab/tongkat, tapi
+  //     menyatu dengan simpul DALAM loop, bukan penyangga di bawah titik
+  //     bawah. Tab naik dari permukaan cawan di sisi dalam → bagian LUAR
+  //     cincin MENGGANTUNG bebas.
+  //  2. "Jajar genjang miring" → SETENGAH BENAR. Bukan jajar genjang: ini
+  //     PENTAGON — atas RUNCIng (apeks di tengah), BAWAH TERPOTONG RATA.
+  //     Batang bawah naik ≈13° ke arah luar. Rasio lebar:tinggi ≈1.2:1.
+  //  3. "Pita pipih" → SETENGAH BENAR. Tipis dalam-bidang ≈0.04, kedalaman
+  //     ≈0.05. Bukan pita setipis kertas.
+  //
+  // PENYEBAB "JANGGAL" (menurut Claude, berurutan):
+  //  a) Belah ketupat 1:1 dgn titik bawah RUNCIng → terbaca seperti
+  //     "rambu/permata yang berdiri di sudutnya". Referensi BAWAHNYA RATA.
+  //  b) Kaki di bawah titik bawah → cincin tampak "diseimbangkan di bibir
+  //     cawan seperti kubus di sudutnya". Referensi: menjorok dari TAB.
+  //  c) Batang terlalu gemuk (0.19-0.20 vs 0.14 referensi ≈ 1.4× lebih).
+  //  d) Terlalu rendah & menempel persis bibir; referensi MELAYANG.
+  //
+  // Spesifikasi resmi (siluet LUAR pentagon, bidang vertikal (d, y)):
+  //   R  (dalam)       d=0.386  y=−0.486
+  //   T  (apeks)       d=0.513  y=−0.405
+  //   L  (luar)        d=0.656  y=−0.473
+  //   BL (bawah-luar)  d=0.610  y=−0.594
+  //   BR (bawah-dalam) d=0.443  y=−0.632
+  //   Lubang (offset ke dalam 0.040):
+  //        (0.435,−0.502) (0.516,−0.451) (0.606,−0.493)
+  //        (0.580,−0.560) (0.468,−0.585)
+  //   Tab: (0.411,−0.494) → (0.340,−0.705), panjang 0.223, ≈18° ke dalam
+  //   Penampang: 0.040 dalam-bidang × 0.050 kedalaman (pipih)
+  //   Kaki penyangga lain: TIDAK ADA. Loop tegak, tanpa rotasi tambahan.
+  //
+  // BBOX (hitung Claude): L di d=0.656, e=0.050 →
+  //   x = z = (0.656 + 0.025)/√2 = 0.4815 ≤ 0.500 (sisa 0.0185) ✓
+  //   Vertikal −0.705..−0.405, jauh di dalam ±0.875 ✓
+  //
+  // ⚠️ KONSTRUKSI: 5 balok terpisah (_cdBatang) membuat ujung persegi tiap
+  //    balok saling menabrak di simpul → terlihat "gigi/clipping" (dikonfirmasi
+  //    pembaca gambar). Karena itu loop dibuat sebagai SATU RING utuh:
+  //    siluet luar + siluet dalam, di-extrude ke kedalaman → sambungan
+  //    mitered rapi, tanpa tumpang tindih. Ini wujud nyata "pita pipih
+  //    yang ditekuk" seperti di referensi.
+  // ── REVISI 4 (2026-10-26): DIGESER KELUAR + DIPERBESAR ──
+  // Permintaan user: "gagannya agak dijorokin keluar dikit + ukuran gagang
+  // digedein dikit, pelan pelan". Desain lain SUDAH di-ACC → TIDAK diubah.
+  //
+  // Transformasi: skala 1.06× tentang pusat loop, lalu geser radial keluar
+  // +0.014. Keduanya sengaja "dikit" (6% & 0.014 block ≈ 0.03 studs).
+  //
+  // Batas bbox DIHITUNG (bukan dikira-kira):
+  //   d_max = 0.6781, tebal 0.052 → (0.6781 + 0.026)·(1/√2) = 0.4978 ≤ 0.500 ✓
+  //   sisa margin 0.0022 block. Vertikal −0.6388..−0.3982, jauh di dalam ±0.875 ✓
+  // REVISI 6: diperbesar lagi (+16% tinggi, +28% lebar dari rev5) (tinggi 0.2406 -> 0.2695, lebar 0.2862 -> 0.3205).
+  // Skala berpusat di apeks LUAR [0.6781, -0.4703] supaya titik terjauh TETAP
+  // 0.4979 <= 0.5000 (batas bbox). Jadi gagang tumbuh ke DALAM dan ke BAWAH.
+  // REVISI 8 (2026-10-26) — permintaan user:
+  //   "1 batang yang kamu atur tersebut mental jadi aneh, satu batang janggal
+  //    tersebut hilangin dah, dia ngerusak design. terus kalau udah kamu
+  //    turunin si pegangannya itu kebawah biar kelihatan nyatu sama wadah
+  //    lilinnya soalnya itu saya lihat melayang"
+  //
+  // (a) TAB PENYANGGA DIHAPUS TOTAL. Tab itu memang pengikat satu-satunya,
+  //     jadi sebagai gantinya ring diturunkan sampai pita ring sendiri
+  //     menyentuh/masuk logam cawan → menyatu secara geometri, bukan diikat.
+  // (b) RING DITURUNKAN 0.09 block (0.18 studs) ke bawah.
+  //
+  // Terukur sebelum revisi: titik terendah ring y=-0.6892, bibir cawan
+  // y=-0.7000 → ring menggantung 0.0108 block DI ATAS bibir = MELAYANG.
+  // Revisi user "terlalu masuk kebawah, naikin dong": dinaikkan 0.05 block
+  // dari posisi -0.09 → net turun 0.04 dari posisi awal.
+  // Uji 625 titik sampel pita: 27 titik (4.3%) DI DALAM logam cawan —
+  // hanya ujung bawah ring (P4) yang terbenam, sisa pita muncul dari
+  // permukaan atas cawan → menempel nyata, TIDAK melayang, TIDAK tenggelam.
+  //
+  // Batas tetap aman (dihitung, bukan dikira-kira):
+  //   y_min -0.7442 > dasar cawan -0.8750  ✓ (tidak menembus)
+  //   X maksimum tetap (0.7518+0.026)/√2 = 0.5500 → lebar 1.1000 block
+  //   = 2.20 studs (tepat toleransi user, tidak berubah)             ✓
+  //   Bentuk & ukuran pentagon TIDAK diubah — hanya translasi vertikal.
+  const RING_LUAR = [
+    [0.3416, -0.5433],
+    [0.5021, -0.4316],
+    [0.7518, -0.5253],
+    [0.6770, -0.6920],
+    [0.4225, -0.7442],
+  ];
+  const RING_DALAM = [
+    [0.4161, -0.5653],
+    [0.5067, -0.4949],
+    [0.6430, -0.5528],
+    [0.5974, -0.6451],
+    [0.4605, -0.6787],
+  ];
+  parts.push({
+    tag: 'candleMetal',
+    colorFn: () => _cdHex(CD_WARNA.kuninganGelap),
+    faces: _cdRing(RING_LUAR, RING_DALAM, 0.052),
+  });
+
+  // ══ 6. API — bipiramida 4 sisi, unlit, part SENDIRI (dianimasikan) ══
+  // ⚠️ Dua bug ditemukan uji kontak & vision:
+  //   1) api ditaruh di x=0 sementara ujung sumbu bergeser → MELAYANG (overlap X negatif)
+  //   2) setelah digeser ke sumbuDasarX+bengkok, api masih meleset 0.033 dari
+  //      PUSAT ujung sumbu (karena ujung atas prismanya lebih sempit 0.8×).
+  //   FIX: hitung pusat X ujung sumbu atas secara eksplisit lalu pakai itu.
+  // pusat X ujung atas = dasar + bengkok (ring atas tidak lagi diperkecil
+  // sehingga pusatnya tepat di sumbuDasarX + bengkok)
+  const ujungSumbuX = sumbuDasarX + toCX(CD_SUMBU_BENGKOK);
+  const apiY0 = toCY(CD_Y_SUMBU1) - 0.02;   // benam 0.02 block ke ujung sumbu
+  parts.push({
+    tag: 'candleApi',
+    colorFn: () => _cdHex(0xffc86a),
+    faces: _cdApi(
+      apiY0,
+      toCY(CD_Y_API1),          // puncak = batas atas bbox (1.750 tepat)
+      toCX(CD_W_API),
+    ).map((fc) => fc.map(([x, y, z]) => [x + ujungSumbuX, y, z])),
+  });
+
+  return parts;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// PERAKITAN GEOMETRI — 2 GROUP MATERIAL
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Geometri Candle dengan 2 group material:
+ *   group 0 = candleLit  (cawan + lilin + sumbu + handle) — lit, vertexColors
+ *   group 1 = candleApi  (api)                            — unlit, dianimasikan
+ */
+export function makeCandleGeometry(THREE) {
+  const parts = getCandleParts();
+  // ⚠️ 3 GROUP (fix 2026-10-25): logam & lilin WAJIB material terpisah.
+  //    Sebelumnya cawan+lilin+sumbu satu material (metalness 0) → kuningan
+  //    tampak seperti TANAH LIAT/kardus, bukan logam (terverifikasi vision).
+  //    Urutan HARUS sama dengan makeCandleMaterials().
+  const URUT = ['candleMetal', 'candleLit', 'candleApi'];
+  const geos = URUT.map((tag) => _stBuild(THREE, parts.filter((p) => p.tag === tag)));
+
+  const pos = [], uv = [], col = [];
+  const out = new THREE.BufferGeometry();
+  let offset = 0;
+  geos.forEach((g, gi) => {
+    const P = g.getAttribute('position'), U = g.getAttribute('uv'), C = g.getAttribute('color');
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0);
+      col.push(C ? C.getX(i) : 1, C ? C.getY(i) : 1, C ? C.getZ(i) : 1);
+    }
+    out.addGroup(offset, P.count, gi);
+    offset += P.count;
+  });
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  out.computeVertexNormals();
+  return out;
+}

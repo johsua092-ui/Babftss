@@ -53,9 +53,13 @@ import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFac
   LP_LIGHT_Y, LP_LIGHT_COLOR, LP_LIGHT_INTENSITY, LP_LIGHT_DISTANCE, LP_LIGHT_DECAY,
   NSI_LP_SLUG,
   TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
+// bab 208: Candle (api kecil + cahaya ber-flicker)
+import { NSI_CD_SLUG, CD_LIGHT_Y, CD_LIGHT_COLOR, CD_LIGHT_INTENSITY, CD_LIGHT_DISTANCE, CD_LIGHT_DECAY } from '../utils/blockShapes.js';
 // bab 205: bara api BERANIMASI + pool cahaya untuk NSI Torch
 import { SHARED_TIME, makeTorchLightPool, attachFlame, detachFlame, reattachUniform } from '../utils/torchFlame.js';
 import { makeLampLightPool } from '../utils/lampLight.js';
+// bab 208: pool cahaya ber-flicker untuk NSI Candle
+import { makeCandleLightPool } from '../utils/candleLight.js';
 // Phase 88 (2026-10-01): tekstur block BERWARNA (paint). Dulu paint menghapus
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
@@ -15494,6 +15498,30 @@ Now you can apply Displacement for detailed effect.`);
           console.warn('[lamp] ticker error:', e);
         }
       }
+      // ══ bab 208: TICKER CANDLE — api kecil + cahaya ber-flicker ══
+      // Struktur SAMA dengan ticker lamp, tapi cahayanya BERKEDIP halus
+      // (amplitudo ±6%, dua frekuensi tak berharmoni). Candle tidak punya
+      // mesh api terpisah di scene: api adalah group material di dalam
+      // geometri blok itu sendiri, jadi tidak ada attach/detach mesh anak.
+      try {
+        const _cl = threeRef.current && threeRef.current.candleLights;
+        if (_cl) {
+          const _candles = [];
+          const _allBlocks3 = (threeRef.current && threeRef.current.blocks) || [];
+          for (let i = 0; i < _allBlocks3.length; i++) {
+            const b = _allBlocks3[i];
+            if (!b || !b.userData || b.userData.blockSlug !== NSI_CD_SLUG) continue;
+            if (!b.parent) continue;
+            _candles.push(b);
+          }
+          _cl.update(performance.now(), camera, _candles, CD_LIGHT_Y);
+        }
+      } catch (e) {
+        if (!window.__candleErr) {
+          window.__candleErr = String(e && e.stack || e);
+          console.warn('[candle] ticker error:', e);
+        }
+      }
       if (bloomOnRef.current) {
         composer.render();
       } else {
@@ -15680,6 +15708,18 @@ Now you can apply Displacement for detailed effect.`);
         decay: LP_LIGHT_DECAY,
       });
     } catch (e) { console.warn('lamp light pool gagal:', e); }
+    // ── bab 208: POOL CAHAYA CANDLE — TERPISAH dari torch & lamp ──
+    // Warna/intensitas/jangkauan dikalibrasi sendiri: api lilin lebih kecil
+    // dan lebih oranye dari lentera Lamp.
+    try {
+      threeRef.current.candleLights = makeCandleLightPool(THREE, scene, {
+        count: 4,
+        color: CD_LIGHT_COLOR,
+        intensity: CD_LIGHT_INTENSITY,
+        distance: CD_LIGHT_DISTANCE,
+        decay: CD_LIGHT_DECAY,
+      });
+    } catch (e) { console.warn('candle light pool gagal:', e); }
     // ── DEBUG DEV-ONLY (2026-10-09): ekspos threeRef agar bisa DIUKUR lewat
     //    browser automation. Tidak ada efek di produksi (import.meta.env.DEV).
     if (import.meta.env && import.meta.env.DEV) window.__threeRef = threeRef;
