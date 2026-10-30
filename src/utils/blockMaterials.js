@@ -146,6 +146,15 @@ export const BLOCK_LIBRARY = [
   // WAJIB supaya PointLight api tetap terbaca di permukaan (metalness tinggi
   // membuat komponen diffuse nol → cahaya tidak terlihat sama sekali).
   { slug: 'candle',            name: 'Candle',     label: 'Candle',     roughness: 0.62, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ══ bab 209: I-BEAM — NSI L2 balok baja profil I dua arah ══
+  // TEKSTUR = metal_block.png DINETRALKAN → i_beam.png abu-abu logam murni
+  // (terukur mean RGB 98,98,98, delta R-G/B-G = 0). Riwayat: user minta tekstur
+  // metal (2026-10-29), lalu koreksi warna: *"itu warna default I-beam abu abu
+  // ya bukan warna kaya gini"* — tint hangat metal_block dibuang, pola
+  // gold_block__neutral (bab 202b): struktur/kilau tetap, hue dihapus.
+  // roughness/metalness = SALINAN PERSIS metal_block (0.24/0.35 — review Claude:
+  // jangan beda dari material metal yang sudah terbukti tampil benar di app).
+  { slug: 'i_beam',            name: 'I-Beam',     label: 'I-Beam',     roughness: 0.24, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -452,6 +461,7 @@ export const BLOCK_PLACEHOLDER = {
   epic_chest: 0xb0752f, rare_chest: 0xb0752f,
   torch: 0x6b5540,        // bab 205: cokelat-logam (warna asli = vertex color)
   lamp: 0x1a2028,         // bab 206: navy gelap (warna asli = vertex color)
+  i_beam: 0x626262,       // bab 209: abu-abu logam (= mean tekstur metal netral)
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 

@@ -310,6 +310,22 @@ export const NSI_CD_SLUG = 'candle';
 export const NSI_CD_NAME = 'Candle';
 export const NSI_CD_SIZE = [1.0, 1.75, 1.0];   // block = 2 x 3.5 x 2 studs
 
+// ── bab 209: I-BEAM — NSI L2 balok baja profil "I" KLASIK (satu arah) ──
+// Referensi: 5 foto user (folder image/folder kerja, 2026-10-27), ukuran dari
+// user: maksimal 2×2×2 studs. HASIL PENGUKURAN pixel profil frontal IMG 071920:
+//   flensa atas 0.011–0.230 H, web 0.230–0.805 H, flensa bawah 0.805–0.989 H,
+//   lebar web 0.553 × lebar total → flensa 0.4 studs, web 1.1 × 1.2 studs.
+// ⚠️ KOREKSI USER (sesi konfirmasi 2026-10-29, MENGALIHKAN bacaan vision):
+//   *"hanya sisi kanan dan kiri [yang menjorok ke dalam], sisi depan dan
+//   belakang mentokin full keluar jadi tidak ada gap ke dalam... jarak gap
+//   nya udah betul 100%"* → web menjorok HANYA di sumbu X (±0.275 block),
+//   sumbu Z FULL 2 studs (I-beam klasik satu arah, bukan spool 4 sisi).
+//   Pelajaran: 3 bacaan vision menyepakati "spool dua arah" dan SEMUANYA
+//   SALAH — user adalah arbiter final bentuk.
+export const NSI_IB_SLUG = 'i_beam';
+export const NSI_IB_NAME = 'I-Beam';
+export const NSI_IB_SIZE = [1, 1, 1];   // block = 2 x 2 x 2 studs (maks user)
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -324,6 +340,7 @@ export const NSI_SIZES = {
   [NSI_CHEST_SLUG]: [2.25, 1.75, 2.25],
   [NSI_LP_SLUG]: [1.0, 1.75, 1.0],
   [NSI_CD_SLUG]: [1.0, 1.75, 1.0],
+  [NSI_IB_SLUG]: [1, 1, 1],   // bab 209: I-Beam 2 x 2 x 2 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -346,7 +363,7 @@ export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -871,6 +888,34 @@ export function getStepFaces() {
 export function makeStepGeometry(THREE) {
   // autoFix:false — muka sudah ber-winding KELUAR yang benar dari `_box`.
   return _buildFaces(THREE, getStepFaces(), { autoFix: false });
+}
+
+/**
+ * Daftar MUKA I-BEAM (bab 209, sumber tunggal: geometry + ikon).
+ *
+ * Bentuk (PENGUKURAN 5 foto + KOREKSI USER sesi konfirmasi 2026-10-29):
+ *   • 2 flensa penuh (atas & bawah) 2×2×0.4 studs
+ *   • web 1.1 × 1.2 × 2.0 studs — menjorok HANYA di sumbu X (kanan-kiri);
+ *     sisi depan-belakang (Z) RATA penuh dengan flensa (tanpa gap)
+ *   • profil "I" klasik satu arah
+ * Ukuran: 1 × 1 × 1 block = 2 × 2 × 2 studs (maks user, bab 123).
+ */
+export function getIbeamFaces() {
+  const EX = 0.5, EZ = 0.5, EY = 0.5;   // envelope 1 block (2 studs)
+  const FH = 0.2;                       // tebal flensa 0.4 studs = 0.2 block
+  const WX = 0.275;                     // web 1.1 studs = 0.55 block (gap kanan-kiri)
+  const faces = [];
+  faces.push(..._box(-EX, EX, -EY, -EY + FH, -EZ, EZ));       // flensa bawah
+  faces.push(..._box(-WX, WX, -EY + FH, EY - FH, -EZ, EZ));   // web (X inset, Z penuh)
+  faces.push(..._box(-EX, EX, EY - FH, EY, -EZ, EZ));         // flensa atas
+  return faces;
+}
+
+/** Buat geometri I-BEAM (1×1×1 block, pusat origin). */
+export function makeIbeamGeometry(THREE) {
+  // autoFix:false — muka sudah ber-winding KELUAR yang benar dari `_box`
+  // (idiom Seat/Step; semua muka spool menghadap menjauh dari pusat).
+  return _buildFaces(THREE, getIbeamFaces(), { autoFix: false });
 }
 
 // ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) ──
@@ -4112,6 +4157,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_LP_SLUG) return makeLampGeometry(THREE);
   // bab 208: Candle (badan saja — api & cahaya dipasang di BlockSimulator3D)
   if (slug === NSI_CD_SLUG) return makeCandleGeometry(THREE);
+  // bab 209: I-Beam
+  if (slug === NSI_IB_SLUG) return makeIbeamGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
