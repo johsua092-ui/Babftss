@@ -1718,14 +1718,33 @@ export default function BlockSimulator3D({ setPage }) {
         const _sorted = _body.slice().sort((a, b) => b.c.y - a.c.y);
         const _head = _sorted[0];                        // part tertinggi = kepala
         const _rest = _sorted.slice(1);
-        const _isArm = (p) => Math.abs(p.c.x) > 0.12 * _W && p.c.y > 0.30 * _H;
-        // kaki: rendah DAN dekat sumbu tengah — lengan baju/jaket panjang yang
-        // menjuntai rendah ada di SAMPING (|x| besar) → TIDAK boleh masuk kaki
-        // (terukur: penyebab "tangan ikut kaki" + "bahu putus dgn lengan")
-        const _isLeg = (p) => p.c.y <= 0.52 * _H && Math.abs(p.c.x) <= 0.35 * _W;
-        const _arms = _rest.filter(_isArm), _legs = _rest.filter(_isLeg);
-        const _torso = _rest.filter((p) => !_isArm(p) && !_isLeg(p));
-        if (_arms.length >= 2 && _legs.length >= 2 && _torso.length >= 1) {
+        // ══ KLASIFIKASI 2-PASS (terukur: R15 torso-nya TERPOTONG jadi "kaki"
+        //    karena torso bawah R15 cenernya rendah → torso=0 → statis) ══
+        // PASS 1: torso inti = part di TENGAH sempurna (|x| kecil), band y tengah
+        const _torso = _rest.filter((p) =>
+          Math.abs(p.c.x) <= 0.05 * _W && p.c.y > 0.30 * _H && p.c.y <= 0.78 * _H);
+        let _arms = [], _legs = [];
+        let _rigOk = _torso.length >= 1;
+        const _torsoBox = new THREE.Box3();
+        if (_rigOk) {
+          _torso.forEach((p) => _torsoBox.union(p.box));
+          // PASS 2: lengan = DI LUAR rentang-x torso (margin 0.05 lebar),
+          //         tinggi cukup — berlaku utk R6 (menempel tepi) & R15 (samping)
+          // lengan: tumpang-tindih dgn kotak torso <= 50% lebar lengan sendiri
+          // (R6/R15 sah; panel jaket lebar gugur; Nengmym: lengan tumpang 15%)
+          const _isArm = (p) => {
+            if (p.c.y <= 0.30 * _H) return false;
+            const _ov = Math.min(p.box.max.x, _torsoBox.max.x) - Math.max(p.box.min.x, _torsoBox.min.x);
+            return _ov <= 0.5 * (p.box.max.x - p.box.min.x);
+          };
+          // PASS 3: kaki = SISANYA yang rendah (bukan torso inti, bukan lengan),
+          //         bukan jarum tepat di sumbu (juntai jaket tengah → statis)
+          const _isLeg = (p) => !_isArm(p) && p.c.y <= 0.60 * _H && Math.abs(p.c.x) > 0.02 * _W;
+          _arms = _rest.filter(_isArm);
+          _legs = _rest.filter(_isLeg);
+          _rigOk = _arms.length >= 2 && _legs.length >= 2;
+        }
+        if (_rigOk) {
           // ══ SAFETY GATE (KOREKSI USER: "tubuh kepotong-potong" di R15/
           //    layered clothing, "aura kayak tangan tambahan berayun") ══
           // Rig per-mesh hanya AMAN utk struktur R6 klasik. Aturan:
@@ -1738,8 +1757,7 @@ export default function BlockSimulator3D({ setPage }) {
           //   (4) tiap limb = rantai tersambung dari sendi; ada mesh sekolom
           //       yang TERPUTUS → seluruh limb batal (anti "kepotong");
           //   (5) ALL-OR-NOTHING: salah satu dari 4 limb gagal → SEMUA statis.
-          const _torsoBox = new THREE.Box3();
-          _torso.forEach((p) => _torsoBox.union(p.box));
+          // (torsoBox sudah dihitung di klasifikasi 2-pass di atas)
           const _zMax = 0.4 * _W;
           // KALIBRASI AMBANG (revisi: gate lama terlalu ketat → avatar berkostum
           // jadi patung geser). Prinsip: limb tipis yang menempel di TEPI torso
@@ -1791,8 +1809,8 @@ export default function BlockSimulator3D({ setPage }) {
           };
           const _cArmL = _buildLimb(_arms, true, -1, 0.55, 0.95);
           const _cArmR = _buildLimb(_arms, true, 1, 0.55, 0.95);
-          const _cLegL = _buildLimb(_legs, false, -1, 0.32, 0.62);
-          const _cLegR = _buildLimb(_legs, false, 1, 0.32, 0.62);
+          const _cLegL = _buildLimb(_legs, false, -1, 0.25, 0.65);
+          const _cLegR = _buildLimb(_legs, false, 1, 0.25, 0.65);
           if (_cArmL && _cArmR && _cLegL && _cLegR) {
             const _mkPivot = (list) => {
               const b = new THREE.Box3();
