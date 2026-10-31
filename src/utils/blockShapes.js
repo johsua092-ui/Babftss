@@ -349,6 +349,21 @@ export const NSI_TH_SLUG = 'throne';
 export const NSI_TH_NAME = 'Throne';
 export const NSI_TH_SIZE = [2, 4, 2];   // block = 4 x 8 x 4 studs
 
+// ── bab 214: FLAG — NSI L2 bendera gantung (banner) ──
+// Referensi: foto user (folder kerja, 2026-10-31) + data user TERKONFIRMASI
+// (klarifikasi human-error 2026-10-31): tinggi total MAKSIMAL 21.5 studs
+// (bukan 2.5 — typo yang sudah dikoreksi user sendiri), kain lebar kiri-kanan
+// 6 studs, KETEBALAN kain 1 stud, rantai/tiang gantung 0.5×0.5 studs dari
+// bawah tengah kain. Banner PORTRAIT (lebih tinggi daripada lebar) sesuai
+// foto: kain ±13.5 studs, ekor bergerigi 3 + rantai ±7 studs di bawahnya.
+// 2 material (pola Lamp): [0] kain = flag_fabric.png (dari fabric block),
+// [1] keras = flag_pole.png (dari brick block) — klem + rantai.
+export const NSI_FL_SLUG = 'flag';
+export const NSI_FL_NAME = 'Flag';
+// Lebar 3.45 block = 6.9 studs: kain 6.0 + klem DI LUAR kain 0.9 (ukur pixel
+// Claude atas foto referensi — kain TEPAT 6 studs, klem braket di luarnya).
+export const NSI_FL_SIZE = [3.45, 10.75, 0.5];   // block = 6.9 x 21.5 x 1 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -366,6 +381,7 @@ export const NSI_SIZES = {
   [NSI_IB_SLUG]: [1, 1, 1],   // bab 209: I-Beam 2 x 2 x 2 studs
   [NSI_CH_SLUG]: [1, 2, 1],   // bab 210: Chair 2 x 4 x 2 studs
   [NSI_TH_SLUG]: [2, 4, 2],   // bab 211: Throne 4 x 8 x 4 studs
+  [NSI_FL_SLUG]: NSI_FL_SIZE.slice(),   // bab 214: Flag 6 x 21.5 x 1 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -388,7 +404,7 @@ export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1180,6 +1196,148 @@ export function makeThroneGeometry(THREE) {
   }
   geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   return geo;
+}
+
+// ── bab 214: FLAG — bendera gantung (banner portrait) ──
+// Envelope 3.45 × 10.75 × 0.5 block (6.9 × 21.5 × 1 studs), pusat di origin:
+//   x -1.725..1.725, y -5.375..5.375, z -0.25..0.25.
+// SEMUA ANGKA HASIL UKUR PIXEL foto referensi 072751 oleh Claude (2026-10-31,
+// skala total 21.5 studs, akurasi ±0.3) — bukan tebakan:
+//   • KAIN 3 BARIS: tepi kiri berundak masuk (badan atas x ±3.0, tengah
+//     -2.8..+3.0, bawah -2.6..+2.9 studs); tinggi badan 9.3 studs (12.2→21.5)
+//   • TEP ATAS (KOREKSI USER): RATA di puncak 21.5 studs, dipecah 3 bagian
+//     oleh 2 GAP (0.6 studs) — lurus bergap, bukan undakan
+//   • GARIS: 5 garis gelap tipis 0.15 studs, dari puncak: 2.3/3.9/4.8/5.5/8.1
+//   • EKOR (KOREKSI USER): 3 ekor, PANJANG SAMA (berakhir 10.0 studs dari
+//     lantai), BERUNDAK MERUNCING kotak-kotak (atas 0.7 → bawah 0.4 block),
+//     ekor TENGAH tepat di x=0 LURUS dengan rantai/tiang di bawahnya
+//   • KLEM DI LUAR kain: braket 2 bagian — blok luar x ±(3.0..3.45) + pelat
+//     terang x ±(2.55..3.0), tinggi 1.0 stud, pusat y 20.6/16.7/13.2 studs
+//   • RANTAI: 20 kubus 0.5³ studs, y 10.0→0, TEPAT DI TENGAH (LEVELING USER)
+//     — rasio rantai/kain = 0.88 terukur foto
+// Tag material: KAIN=0 (flag_fabric), KERAS=1 (flag_pole) — addGroup pola Lamp.
+// Tint VERTEX COLOR ≤1.0 (preseden Throne): garis 0.6, rantai selang-seling.
+// ⚠️ WARNA DASAR KAIN (135,11,11) SUDAH DI-ACC USER — DILARANG diubah.
+const FL_KAIN = 0, FL_KERAS = 1;
+
+export function getFlagBoxes() {
+  // MIRROR X (verifikasi Claude ronde 2, skor 76→~85): kamera/ghost melihat
+  // muka kain dari -Z → kanan layar = -X. Semua fitur asimetris foto (undakan
+  // tepi atas turun ke kanan, tepi kiri berundak masuk, rantai +0.33 ke kanan,
+  // ekor kanan terpendek) wajib di-mirror supaya MUKA DEPAN persis foto.
+  const B = (x0, x1, y0, y1, z0, z1, tag, tint) => ({
+    x0: -x1, x1: -x0, y0, y1, z0, z1, tag, tint: tint == null ? 1 : tint,
+    vol: (x1 - x0) * (y1 - y0) * (z1 - z0),
+  });
+  const boxes = [];
+  // ── KAIN 3 BARIS (tepi kiri berundak masuk, muka kanan lurus ±3.0 studs) ──
+  // RESTORE (KOREKSI USER: "design sebelumnya lebih bagus, saya minta ratakan
+  // tapi ada detail seperti digambar") — tepi atas 3 segmen dengan 2 GAP
+  // (undakan turun ke kanan) DIPULIHKAN persis versi yang disukai user.
+  // baris atas: y 18.3..21.25 studs → 3.775..5.125 block
+  boxes.push(B(-1.5, 1.5, 3.775, 5.125, -0.25, 0.25, FL_KAIN));
+  // baris tengah: y 15.2..18.3 → 2.225..3.775, kiri mundur ke -2.8 studs
+  boxes.push(B(-1.4, 1.5, 2.225, 3.775, -0.25, 0.25, FL_KAIN));
+  // baris bawah: y 12.2..15.2 → 0.725..2.225, kiri -2.6 / kanan +2.9 studs
+  boxes.push(B(-1.3, 1.45, 0.725, 2.225, -0.25, 0.25, FL_KAIN));
+  // ── TEP ATAS (KOREKSI USER): RATA semua di puncak 21.5 studs, dipecah
+  //    3 bagian oleh 2 GAP selebar 0.3 block (0.6 studs) — lurus, bergap ──
+  boxes.push(B(-1.5, -0.65, 5.125, 5.375, -0.25, 0.25, FL_KAIN));
+  boxes.push(B(-0.35, 0.35, 5.125, 5.375, -0.25, 0.25, FL_KAIN));
+  boxes.push(B(0.65, 1.5, 5.125, 5.375, -0.25, 0.25, FL_KAIN));
+  // ── EKOR (KOREKSI USER): 3 ekor PANJANGNYA SAMA (semua berakhir y -0.375
+  //    block = 10.0 studs dari lantai, kedalaman 2.2 studs terukur Claude),
+  //    bentuk BERUNDAK MERUNCING kotak-kotak persis referensi (lebar atas
+  //    0.7 block → bawah 0.4 block). Ekornya TENGAH TEPAT di x=0 — LURUS
+  //    dengan rantai/tiang yang menggantung di bawahnya ──
+  // TENGAH (lurus dgn rantai): atas x ±0.35, bawah x ±0.2
+  boxes.push(B(-0.35, 0.35, 0.175, 0.725, -0.25, 0.25, FL_KAIN));
+  boxes.push(B(-0.2, 0.2, -0.375, 0.175, -0.25, 0.25, FL_KAIN));
+  // KIRI: atas -1.3..-0.6, bawah -1.15..-0.75
+  boxes.push(B(-1.3, -0.6, 0.175, 0.725, -0.25, 0.25, FL_KAIN));
+  boxes.push(B(-1.15, -0.75, -0.375, 0.175, -0.25, 0.25, FL_KAIN));
+  // KANAN: atas 0.6..1.3, bawah 0.75..1.15
+  boxes.push(B(0.6, 1.3, 0.175, 0.725, -0.25, 0.25, FL_KAIN));
+  boxes.push(B(0.75, 1.15, -0.375, 0.175, -0.25, 0.25, FL_KAIN));
+  // ── GARIS: 5 garis gelap 0.075 block (0.15 studs), tint 0.6, menonjol
+  //    depan (z -0.29..-0.25) — posisi terukur Claude dari puncak kain ──
+  // (y studs 19.2/17.6/16.7/16.0/13.4 → block 4.225/3.425/2.975/2.625/1.325)
+  [[-1.5, 1.5, 4.225], [-1.4, 1.5, 3.425], [-1.4, 1.5, 2.975],
+   [-1.4, 1.5, 2.625], [-1.3, 1.45, 1.325]].forEach(([x0, x1, ym]) => {
+    boxes.push(B(x0, x1, ym - 0.0375, ym + 0.0375, -0.29, -0.25, FL_KAIN, 0.6));
+  });
+  // ── KLEM: 3 tingkat × 2 sisi, braket 2 bagian (DI LUAR kain + pelat) ──
+  // pusat y 20.6/16.7/13.2 studs → block 4.925/2.975/1.225; tinggi A 0.5 block
+  // (1.0 stud), pelat B 0.35 block; B menonjol z ±0.29 (anti koplanar kain)
+  [4.925, 2.975, 1.225].forEach((ym) => {
+    // blok luar (KIRI / KANAN) — x ±(3.0..3.45) studs = ±(1.5..1.725) block
+    boxes.push(B(-1.725, -1.5, ym - 0.25, ym + 0.25, -0.25, 0.25, FL_KERAS, 0.5));
+    boxes.push(B(1.5, 1.725, ym - 0.25, ym + 0.25, -0.25, 0.25, FL_KERAS, 0.5));
+    // pelat terang menempel tepi kain — x ±(2.55..3.0) = ±(1.275..1.5) block
+    boxes.push(B(-1.5, -1.275, ym - 0.175, ym + 0.175, -0.29, 0.29, FL_KERAS));
+    boxes.push(B(1.275, 1.5, ym - 0.175, ym + 0.175, -0.29, 0.29, FL_KERAS));
+  });
+  // ── RANTAI: 20 kubus 0.25 block (0.5³ studs), y -0.375 → -5.375 (10 studs),
+  //    LEVELING USER: kembali TEPAT di tengah (offset +0.33 dihapus —
+  //    membuat bawah terlihat miring), tint selang-seling (mata rantai) ──
+  let cy = -0.375;
+  for (let i = 0; i < 20; i++) {
+    boxes.push(B(-0.125, 0.125, cy - 0.25, cy, -0.125, 0.125, FL_KERAS, i % 2 ? 0.55 : 1));
+    cy -= 0.25;
+  }
+  return boxes;
+}
+
+/** Muka kuad per kotak (untuk tes penutupan per kotak). */
+export function getFlagFaces() {
+  const faces = [];
+  getFlagBoxes().forEach((b) => {
+    faces.push(..._box(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1));
+  });
+  return faces;
+}
+
+/**
+ * Buat geometri FLAG (3.45×10.75×0.5 block, pusat envelope di origin).
+ * 2 material group (pola Lamp): [0] kain (FL_KAIN), [1] keras (FL_KERAS).
+ * Vertex color = pengali tint per kotak (≤1.0, preseden Throne) — garis
+ * gelap 0.6, mata rantai selang-seling. Warna dasar dari texture.
+ */
+export function makeFlagGeometry(THREE) {
+  const parts = getFlagBoxes();
+  const cloth = [], hard = [];
+  parts.forEach((b) => {
+    const fs = _box(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1);
+    if (b.tag === FL_KERAS) hard.push(...fs); else cloth.push(...fs);
+  });
+  const gCloth = _buildFaces(THREE, cloth, { autoFix: false });
+  const gHard = _buildFaces(THREE, hard, { autoFix: false });
+  const pos = [], uv = [], col = [];
+  const out = new THREE.BufferGeometry();
+  let offset = 0;
+  [gCloth, gHard].forEach((g, gi) => {
+    const P = g.getAttribute('position'), U = g.getAttribute('uv');
+    // cari tint per vertex: kotak ke-i memenuhi 36 vertex (6 muka × 6 vert)
+    const list = gi === 0 ? cloth : hard;
+    void list;
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0);
+    }
+    // tint per kotak: susun ulang dari parts berdasar urutan kotak per group
+    const seq = [];
+    parts.forEach((b) => { if ((b.tag === FL_KERAS) === (gi === 1)) seq.push(b.tint); });
+    for (let bi = 0; bi < seq.length; bi++) {
+      for (let k = 0; k < 36; k++) col.push(seq[bi], seq[bi], seq[bi]);
+    }
+    out.addGroup(offset, P.count, gi);
+    offset += P.count;
+  });
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  out.computeVertexNormals();
+  return out;
 }
 // ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) ──
 // KONFIRMASI USER (2026-10-04): tinggi 36 studs (=18 block), geladak bundar
@@ -4426,6 +4584,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_CH_SLUG) return makeChairGeometry(THREE);
   // bab 211: Throne
   if (slug === NSI_TH_SLUG) return makeThroneGeometry(THREE);
+  // bab 214: Flag (material group 2 — kain/keras, lihat makeFlagMaterials)
+  if (slug === NSI_FL_SLUG) return makeFlagGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -4442,6 +4602,8 @@ export function makeNsiGeometry(THREE, slug) {
 // ══════════════════════════════════════════════════════════════════════════
 // bab 210: Chair juga punya arah hadap (kursi — panah hijau di ghost, pola Seat).
 // bab 211: Throne juga (singgasana menghadap −Z, sandaran +Z).
+// bab 214: Flag TIDAK ikut facing (KOREKSI USER: panah arah HANYA untuk NSI
+//          tempat duduk — banner diganti arahnya cukup lewat rotasi R/T).
 export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG, NSI_CH_SLUG, NSI_TH_SLUG];
 
 // bab 210 (KOREKSI USER: *"panah hijau ngambang tinggi tidak nempel di area

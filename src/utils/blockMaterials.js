@@ -166,6 +166,11 @@ export const BLOCK_LIBRARY = [
   // & MARUN datang dari VERTEX COLOR per kotak (preseden Trophy: warna
   // penuh sah). roughness 0.5 = emas sadung halus.
   { slug: 'throne',            name: 'Throne',     label: 'Throne',     roughness: 0.5, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
+  // ══ bab 214: FLAG — NSI L2 bendera gantung (banner portrait) ══
+  // Warna lewat 2 TEXTURE khusus (flag_fabric dari fabric block + flag_pole
+  // dari brick block, sudah di-tint terkalibrasi) — BUKAN vertex color
+  // (pola Lamp: material group, lihat makeFlagMaterials di bawah).
+  { slug: 'flag',              name: 'Flag',       label: 'Flag',       roughness: 0.8, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -285,6 +290,37 @@ export function makeCandleMaterials(THREE, tex, def) {
   matApi.userData.isCandleApi = true;
 
   return [matMetal, matLit, matApi];
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// bab 214: FLAG — 2 MATERIAL (kain / keras) untuk satu geometry
+// ══════════════════════════════════════════════════════════════════════════
+// URUTAN INDEKS WAJIB SAMA dengan addGroup() di makeFlagGeometry():
+//   0 = kain  → flag_fabric.png (fabric block di-tint marun terkalibrasi)
+//   1 = keras → flag_pole.png   (brick block di-tint abu metal terkalibrasi)
+// Texture diload lewat getBlockTexture (cache + sinyal onReady anti-hitam,
+// pola semua block) — slug texture disimpan sebagai slug palsu di cache.
+// DoubleSide pola Torch/Lamp (jaring pengaman anti wajah hilang).
+export function makeFlagMaterials(THREE) {
+  const mk = (texSlug, placeholder, rough) => {
+    const tex = getBlockTexture(THREE, texSlug);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      color: tex.userData.isReady ? 0xffffff : placeholder,
+      roughness: rough,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
+      vertexColors: true,   // bab 214: tint pengali per kotak (garis 0.6, rantai selang) — ≤1.0
+    });
+    if (!tex.userData.isReady) {
+      tex.userData.onReady.push(() => { try { mat.color.set(0xffffff); } catch (e) {} });
+    }
+    return mat;
+  };
+  return [
+    mk('flag_fabric', 0xb8384e, 0.85),   // [0] kain — placeholder marun
+    mk('flag_pole', 0x9aa0a6, 0.6),      // [1] keras — placeholder abu metal
+  ];
 }
 
 
@@ -474,6 +510,7 @@ export const BLOCK_PLACEHOLDER = {
   lamp: 0x1a2028,         // bab 206: navy gelap (warna asli = vertex color)
   i_beam: 0x626262,       // bab 209: abu-abu logam (= mean tekstur metal netral)
   chair: 0xd8d8d8,        // bab 210: badan putih (tekstur marble netral terang)
+  flag: 0xb8384e,         // bab 214: marun kain (placeholder material group [0])
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 
@@ -568,6 +605,12 @@ export function getBlockTexture(THREE, slug) {
  * putih saat texture termuat (tint permanen terbukti merusak warna).
  */
 export function makeBlockMaterial(THREE, slug) {
+  // ══ bab 214: FLAG — material ARRAY 2 group (kain/keras) ══
+  // WAJIB sebelum load tex generik: slug 'flag' TIDAK punya tex tunggal —
+  // keduanya (fabric+pole) diload di dalam makeFlagMaterials.
+  if (slug === 'flag') {
+    return makeFlagMaterials(THREE);
+  }
   const def = getBlockDef(slug);
   const tex = getBlockTexture(THREE, slug);
   // GLOW block (neon) — v4 FINAL (hybrid, 2026-09-11, keputusan berbasis
