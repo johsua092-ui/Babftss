@@ -263,7 +263,7 @@ export function updateAvatarPhysics(
       u.isGrounded = true;
       u.vy = 0;
       u.walkTimer = 0;
-      // bab 215: model kustom — bob/condong jalan di-reset saat duduk
+      // bab 215: model kustom — pastikan pose netral saat duduk
       if (u.customModel) {
         u.customModel.position.y = u.customModelBaseY || 0;
         u.customModel.rotation.x = 0;
@@ -326,12 +326,16 @@ export function updateAvatarPhysics(
     if (u.rightLeg) u.rightLeg.rotation.x = -swing;
     if (u.leftArm) u.leftArm.rotation.x = -swing * 0.8;
     if (u.rightArm) u.rightArm.rotation.x = swing * 0.8;
-    // ══ bab 215 (REVISI USER: "goyang kanan-kiri gondal-gandul kayak ih serem")
-    //    Goyangan rotation.z kiri-kanan DIHAPUS (badan utuh miring-miring =
-    //    serem). Ganti: bob vertikal halus + condong depan tipis saat jalan ══
+    // ══ bab 215 (REVISI USER ke-2: "masih gondal-gandul ke kiri sebagai 1
+    //    kesatuan utuh, ih serem") — SEMUA animasi prosedural level badan
+    //    DIHAPUS (bob |sin| + condong rotation.x). Model kustom = 1 part
+    //    utuh tanpa kaki terpisah → gerak osilasi apa pun di seluruh badan
+    //    terbaca "gondal-gandul". Kini KAKU TEGAK saat jalan (persis Roblox
+    //    tanpa animasi). Animasi jalan sesungguhnya butuh model ber-rig
+    //    (GLTF + AnimationClip) dari backend — catatan untuk AI penerus. ══
     if (u.customModel) {
-      u.customModel.position.y = (u.customModelBaseY || 0) + Math.abs(Math.sin(u.walkTimer)) * 0.06;
-      u.customModel.rotation.x = 0.05;
+      u.customModel.position.y = u.customModelBaseY || 0;
+      u.customModel.rotation.x = 0;
     }
   } else {
     // Idle Pose (kaki & tangan kembali tegak lurus sempurna saat diam)
@@ -341,11 +345,7 @@ export function updateAvatarPhysics(
     if (u.rightLeg) u.rightLeg.rotation.x = THREE.MathUtils.lerp(u.rightLeg.rotation.x, 0, idleLerp);
     if (u.leftArm) u.leftArm.rotation.x = THREE.MathUtils.lerp(u.leftArm.rotation.x, 0, idleLerp);
     if (u.rightArm) u.rightArm.rotation.x = THREE.MathUtils.lerp(u.rightArm.rotation.x, 0, idleLerp);
-    // bab 215: model kustom kembali MULUS ke pose berdiri saat idle
-    if (u.customModel) {
-      u.customModel.position.y = THREE.MathUtils.lerp(u.customModel.position.y, u.customModelBaseY || 0, idleLerp);
-      u.customModel.rotation.x = THREE.MathUtils.lerp(u.customModel.rotation.x, 0, idleLerp);
-    }
+    // bab 215: model kustom — tanpa animasi badan (lihat catatan di blok jalan)
   }
 
   // 1. DETEKSI TINGGI PIJAKAN TANAH / UNDAKAN / BALOK USER (Dynamic Surface Detection)
