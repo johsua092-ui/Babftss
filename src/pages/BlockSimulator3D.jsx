@@ -1704,7 +1704,7 @@ export default function BlockSimulator3D({ setPage }) {
     g.userData = {
       head: null, torso: null, leftArm: null, rightArm: null, leftLeg: null, rightLeg: null,
       vy: 0, isGrounded: true, walkTimer: 0,
-      walkSpeed: (_old && _old.userData.walkSpeed) || 20, baseWalkSpeed: 20, baseJumpPower: 15,
+      walkSpeed: (_old && _old.userData.walkSpeed) || 10, baseWalkSpeed: 10, baseJumpPower: 15,
       flyEnabled: false, flySpeed: 36, flySpeedMultiplier: 1.6, flyBlend: 0,
       infiniteJump: (_old && _old.userData.infiniteJump) || false,
       jumpPower: (_old && _old.userData.jumpPower) || 15, gravity: -42,
@@ -1724,7 +1724,7 @@ export default function BlockSimulator3D({ setPage }) {
   };
   const [adminPanelMinimized, setAdminPanelMinimized] = useState(false);
   const [adminFly, setAdminFly] = useState(false);
-  const [adminWalkSpeed, setAdminWalkSpeed] = useState(20);
+  const [adminWalkSpeed, setAdminWalkSpeed] = useState(10);
   const [adminJumpPower, setAdminJumpPower] = useState(15);
   const [adminInfiniteJump, setAdminInfiniteJump] = useState(false);
   // Fly Speed (permintaan user 2026-10-22): kecepatan terbang bisa diatur sendiri.
@@ -20169,7 +20169,7 @@ Now you can apply Displacement for detailed effect.`);
   const adminPlayerRef = () => {
     const st = threeRef.current;
     if (!st) return null;
-    if (!st.adminPlayer) st.adminPlayer = { fly: false, flySpeed: 36, walkSpeed: 20, jumpPower: 15, infiniteJump: false };
+    if (!st.adminPlayer) st.adminPlayer = { fly: false, flySpeed: 36, walkSpeed: 10, jumpPower: 15, infiniteJump: false };
     return st.adminPlayer;
   };
 
@@ -20274,14 +20274,14 @@ Now you can apply Displacement for detailed effect.`);
   const handleAdminResetPlayer = () => {
     setAdminFly(false);
     setAdminFlySpeed(36);
-    setAdminWalkSpeed(20);
+    setAdminWalkSpeed(10);
     setAdminJumpPower(15);
     setAdminInfiniteJump(false);
     const st = threeRef.current;
-    if (st) st.adminPlayer = { fly: false, flySpeed: 36, walkSpeed: 20, jumpPower: 15, infiniteJump: false };
+    if (st) st.adminPlayer = { fly: false, flySpeed: 36, walkSpeed: 10, jumpPower: 15, infiniteJump: false };
     const u = st && st.avatar && st.avatar.userData;
     if (u) {
-      u.walkSpeed = 20;
+      u.walkSpeed = 10;
       u.jumpPower = 15;
       u.infiniteJump = false;
       u.flyEnabled = false;

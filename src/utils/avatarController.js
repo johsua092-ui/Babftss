@@ -160,8 +160,8 @@ export function createHumanoidAvatar(THREE, teamColor = 0xffffff, skinPreset = n
     vy: 0,
     isGrounded: true,
     walkTimer: 0,
-    walkSpeed: 20,
-    baseWalkSpeed: 20,      // walkSpeed bawaan (untuk Reset Admin Panel)
+    walkSpeed: 10,   // bab 215 (permintaan user): default 10 (was 20)
+    baseWalkSpeed: 10,      // walkSpeed bawaan (untuk Reset Admin Panel) — ikut default 10
     baseJumpPower: 15.0,    // jumpPower bawaan (untuk Reset Admin Panel)
     flyEnabled: false,      // ADMIN PANEL: terbang bebas (superman)
   flySpeed: 36,           // ADMIN PANEL: kecepatan terbang (unit/detik)
