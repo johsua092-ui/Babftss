@@ -263,10 +263,10 @@ export function updateAvatarPhysics(
       u.isGrounded = true;
       u.vy = 0;
       u.walkTimer = 0;
-      // bab 215: model kustom — bob jalan di-reset saat duduk (tidak membeku)
+      // bab 215: model kustom — bob/condong jalan di-reset saat duduk
       if (u.customModel) {
         u.customModel.position.y = u.customModelBaseY || 0;
-        u.customModel.rotation.z = 0;
+        u.customModel.rotation.x = 0;
       }
     }
   }
@@ -326,12 +326,12 @@ export function updateAvatarPhysics(
     if (u.rightLeg) u.rightLeg.rotation.x = -swing;
     if (u.leftArm) u.leftArm.rotation.x = -swing * 0.8;
     if (u.rightArm) u.rightArm.rotation.x = swing * 0.8;
-    // ══ bab 215: model KUSTOM (Roblox OBJ/GLTF) tidak punya limbs → animasi
-    //    jalan PROSEDURAL: bob vertikal + goyang badan kecil. Permintaan user:
-    //    "disini gak ada animasi jalan, tambain lah" ══
+    // ══ bab 215 (REVISI USER: "goyang kanan-kiri gondal-gandul kayak ih serem")
+    //    Goyangan rotation.z kiri-kanan DIHAPUS (badan utuh miring-miring =
+    //    serem). Ganti: bob vertikal halus + condong depan tipis saat jalan ══
     if (u.customModel) {
-      u.customModel.position.y = (u.customModelBaseY || 0) + Math.abs(Math.sin(u.walkTimer)) * 0.09;
-      u.customModel.rotation.z = Math.sin(u.walkTimer) * 0.05;
+      u.customModel.position.y = (u.customModelBaseY || 0) + Math.abs(Math.sin(u.walkTimer)) * 0.06;
+      u.customModel.rotation.x = 0.05;
     }
   } else {
     // Idle Pose (kaki & tangan kembali tegak lurus sempurna saat diam)
@@ -344,7 +344,7 @@ export function updateAvatarPhysics(
     // bab 215: model kustom kembali MULUS ke pose berdiri saat idle
     if (u.customModel) {
       u.customModel.position.y = THREE.MathUtils.lerp(u.customModel.position.y, u.customModelBaseY || 0, idleLerp);
-      u.customModel.rotation.z = THREE.MathUtils.lerp(u.customModel.rotation.z, 0, idleLerp);
+      u.customModel.rotation.x = THREE.MathUtils.lerp(u.customModel.rotation.x, 0, idleLerp);
     }
   }
 

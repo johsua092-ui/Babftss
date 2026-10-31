@@ -1603,9 +1603,43 @@ export default function BlockSimulator3D({ setPage }) {
           const { MTLLoader } = await import('three/examples/jsm/loaders/MTLLoader.js');
           const _mtlResp = await fetch(mtlUrl);
           if (_mtlResp.ok) {
-            const _mtlText = await _mtlResp.text();
-            const _mtlDir = mtlUrl.slice(0, mtlUrl.lastIndexOf('/') + 1);
-            const _mtl = new MTLLoader().parse(_mtlText, _mtlDir);
+            let _mtlText = await _mtlResp.text();
+            // ══ bab 215 (AKAR TERUKUR): host rbxcdn TIDAK saling menggantikan
+            //    untuk skema 30DAY- — terukur: atlas 30DAY-6949... hanya 200 di
+            //    t1, map aksesori 30DAY-628e... hanya 200 di t7, MTL di t2.
+            //    MTL Roblox hanya berisi NAMA FILE map → resolve dari direktori
+            //    MTL = 403 = SEMUA tekstur gagal = SILUET HITAM. FIX: ekstrak
+            //    tiap nama file map, PROBE host t1..t7 sampai 200, tulis URL
+            //    absolut ke teks MTL (resolveURL MTLLoader loloskan URL absolut).
+            const _mapRe = /^(map_(?:ka|kd|ks|d|ke)|bump)\s+(\S+)\s*$/gmi;
+            const _names = new Set();
+            let _mm;
+            while ((_mm = _mapRe.exec(_mtlText))) {
+              if (!/^https?:/i.test(_mm[2])) _names.add(_mm[2]);
+            }
+            const _cache = (window.__rbxHostCache = window.__rbxHostCache || new Map());
+            for (const _name of _names) {
+              let _full = _cache.get(_name) || null;
+              if (_full === undefined || _full === null) {
+                if (!_cache.has(_name)) {
+                  _full = null;
+                  for (const _h of ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't0']) {
+                    try {
+                      const _u = 'https://' + _h + '.rbxcdn.com/' + _name;
+                      const _r = await fetch(_u);
+                      if (_r.ok) { _full = _u; break; }
+                    } catch (e) { /* host lain */ }
+                  }
+                  _cache.set(_name, _full);
+                } else {
+                  _full = _cache.get(_name);
+                }
+              }
+              if (_full) {
+                _mtlText = _mtlText.replace(new RegExp(_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), _full);
+              }
+            }
+            const _mtl = new MTLLoader().parse(_mtlText);
             _mtl.preload();
             _objLoader.setMaterials(_mtl);
             _mtlOk = true;
@@ -1613,6 +1647,29 @@ export default function BlockSimulator3D({ setPage }) {
         } catch (e) { /* fallback di bawah */ }
       }
       object3D = await _objLoader.loadAsync(_url);
+      if (_mtlOk) {
+        // ══ bab 215 (lanjutan): netralkan 2 perilaku MTLLoader yang MERUSAK
+        //    avatar Roblox (terukur: seluruh model jadi siluet gelap/tembus
+        //    pandang):
+        //    (1) map_d → alphaMap + transparent:true. map_d Roblox = file
+        //        tekstur WARNA yang sama → dipakai alphaMap, piksel gelap
+        //        outfit jadi alpha≈0 → model tembus pandang. Roblox OBJ
+        //        tidak butuh alpha → matikan.
+        //    (2) Tint Kd per material menggeser warna tekstur (Player10Mtl
+        //        Kd biru (0.43,0.6,0.79) → badan kebiruan). Tekstur atlas
+        //        Roblox sudah final → Kd ditetralak putih.
+        object3D.traverse((o) => {
+          if (!o.isMesh || !o.material) return;
+          const _mats = Array.isArray(o.material) ? o.material : [o.material];
+          _mats.forEach((m) => {
+            if (m.alphaMap) { m.alphaMap = null; }
+            m.transparent = false;
+            m.opacity = 1;
+            if (m.color) m.color.set(0xffffff);
+            m.needsUpdate = true;
+          });
+        });
+      }
       if (textureUrl && !_mtlOk) {
         const _tUrl = textureUrl.startsWith('http') ? textureUrl : (AVATAR_API_BASE + textureUrl);
         const tex = await new THREE.TextureLoader().loadAsync(_tUrl);
