@@ -1571,8 +1571,8 @@ export default function BlockSimulator3D({ setPage }) {
     toast.success('Skin "' + preset.name + '" diterapkan');
   };
 
-  // (b) Ganti avatar dengan model 3D dari backend (obj/gltf + tekstur)
-  const applyRobloxAvatarModel = async (modelUrl, textureUrl, username) => {
+  // (b) Ganti avatar dengan model 3D dari backend (obj/gltf + tekstur + mtl)
+  const applyRobloxAvatarModel = async (modelUrl, textureUrl, username, mtlUrl) => {
     const st = threeRef.current;
     if (!st || !st.scene) return false;
     const _av = st.avatar;
@@ -1589,14 +1589,42 @@ export default function BlockSimulator3D({ setPage }) {
       object3D = gltf.scene;
     } else {
       const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
-      object3D = await new OBJLoader().loadAsync(_url);
-      if (textureUrl) {
+      const _objLoader = new OBJLoader();
+      // ══ bab 215 (KOREKSI USER: "aksesoris topi terkontaminasi coklat") ══
+      // AKAR: MTL Roblox berisi material PER BAGIAN dgn map tekstur Masing-
+      // masing (terukur: Handle1Mtl → map 30DAY-628e... BEDA dari atlas
+      // badan 30DAY-6949...). Dulu SEMUA mesh dipaksa satu atlas → aksesori
+      // sampling UV salah = coklat. FIX: load MTL + setMaterials; map relatif
+      // di-resolve ke direktori mtlUrl (CDN yang sama). Kalau MTL gagal,
+      // fallback ke perilaku lama (satu tekstur atlas).
+      let _mtlOk = false;
+      if (mtlUrl) {
+        try {
+          const { MTLLoader } = await import('three/examples/jsm/loaders/MTLLoader.js');
+          const _mtlResp = await fetch(mtlUrl);
+          if (_mtlResp.ok) {
+            const _mtlText = await _mtlResp.text();
+            const _mtlDir = mtlUrl.slice(0, mtlUrl.lastIndexOf('/') + 1);
+            const _mtl = new MTLLoader().parse(_mtlText, _mtlDir);
+            _mtl.preload();
+            _objLoader.setMaterials(_mtl);
+            _mtlOk = true;
+          }
+        } catch (e) { /* fallback di bawah */ }
+      }
+      object3D = await _objLoader.loadAsync(_url);
+      if (textureUrl && !_mtlOk) {
         const _tUrl = textureUrl.startsWith('http') ? textureUrl : (AVATAR_API_BASE + textureUrl);
         const tex = await new THREE.TextureLoader().loadAsync(_tUrl);
         tex.colorSpace = THREE.SRGBColorSpace;
         object3D.traverse((o) => { if (o.isMesh) o.material = new THREE.MeshLambertMaterial({ map: tex }); });
       }
     }
+    // ══ bab 215 (KOREKSI USER: "maju kok hadapnya kayak jalan MUNDUR") ══
+    // Front humanoid bawaan = +Z (muka di z +0.425); controller autoRotate
+    // pakai atan2(dx,dz) utk front +Z. Export OBJ Roblox menghadap −Z →
+    // diputar 180° supaya front model SAMA dengan konvensi humanoid.
+    object3D.rotation.y = Math.PI;
     // normalisasi: tinggi = tinggi humanoid, kaki di 0 lokal, pusat x/z
     const _box = new THREE.Box3().setFromObject(object3D);
     const _size = _box.getSize(new THREE.Vector3());
@@ -1626,6 +1654,8 @@ export default function BlockSimulator3D({ setPage }) {
       zoomDist: (_old && _old.userData.zoomDist) || 12.0, minZoom: 0.2, maxZoom: 65.0, zoomSpeed: 28,
       prevPos: new THREE.Vector3(), hasInitializedPos: false, wasFirstPerson: false,
       isCustomModel: true, robloxUsername: username,
+      // bab 215: ref model kustom utk animasi jalan prosedural (tanpa limbs)
+      customModel: object3D, customModelBaseY: object3D.position.y,
       sitBtn: _old ? _old.userData.sitBtn : null,
     };
     if (_old) {

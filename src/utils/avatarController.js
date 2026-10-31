@@ -263,6 +263,11 @@ export function updateAvatarPhysics(
       u.isGrounded = true;
       u.vy = 0;
       u.walkTimer = 0;
+      // bab 215: model kustom — bob jalan di-reset saat duduk (tidak membeku)
+      if (u.customModel) {
+        u.customModel.position.y = u.customModelBaseY || 0;
+        u.customModel.rotation.z = 0;
+      }
     }
   }
 
@@ -321,6 +326,13 @@ export function updateAvatarPhysics(
     if (u.rightLeg) u.rightLeg.rotation.x = -swing;
     if (u.leftArm) u.leftArm.rotation.x = -swing * 0.8;
     if (u.rightArm) u.rightArm.rotation.x = swing * 0.8;
+    // ══ bab 215: model KUSTOM (Roblox OBJ/GLTF) tidak punya limbs → animasi
+    //    jalan PROSEDURAL: bob vertikal + goyang badan kecil. Permintaan user:
+    //    "disini gak ada animasi jalan, tambain lah" ══
+    if (u.customModel) {
+      u.customModel.position.y = (u.customModelBaseY || 0) + Math.abs(Math.sin(u.walkTimer)) * 0.09;
+      u.customModel.rotation.z = Math.sin(u.walkTimer) * 0.05;
+    }
   } else {
     // Idle Pose (kaki & tangan kembali tegak lurus sempurna saat diam)
     u.walkTimer = 0;
@@ -329,6 +341,11 @@ export function updateAvatarPhysics(
     if (u.rightLeg) u.rightLeg.rotation.x = THREE.MathUtils.lerp(u.rightLeg.rotation.x, 0, idleLerp);
     if (u.leftArm) u.leftArm.rotation.x = THREE.MathUtils.lerp(u.leftArm.rotation.x, 0, idleLerp);
     if (u.rightArm) u.rightArm.rotation.x = THREE.MathUtils.lerp(u.rightArm.rotation.x, 0, idleLerp);
+    // bab 215: model kustom kembali MULUS ke pose berdiri saat idle
+    if (u.customModel) {
+      u.customModel.position.y = THREE.MathUtils.lerp(u.customModel.position.y, u.customModelBaseY || 0, idleLerp);
+      u.customModel.rotation.z = THREE.MathUtils.lerp(u.customModel.rotation.z, 0, idleLerp);
+    }
   }
 
   // 1. DETEKSI TINGGI PIJAKAN TANAH / UNDAKAN / BALOK USER (Dynamic Surface Detection)

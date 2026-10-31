@@ -25,12 +25,16 @@ import { AVATAR_SKINS } from '../utils/avatarController.js';
 // domain tertentu.
 export const AVATAR_API_BASE = '';
 
-// Konversi respons API yang fleksibel → { modelUrl, textureUrl }
+// Konversi respons API yang fleksibel → { modelUrl, textureUrl, mtlUrl }
 function parseAvatarResponse(json) {
   const modelUrl = json && (json.modelUrl || json.objUrl || json.url || (json.data && json.data.modelUrl));
   const textureUrl = json && (json.textureUrl || (json.data && json.data.textureUrl)) || null;
+  // bab 215: mtlUrl WAJIB diteruskan — MTL Roblox berisi material PER BAGIAN
+  // (aksesori/topi punya map tekstur SENDIRI, beda dari atlas badan). Tanpa
+  // MTL semua mesh dipaksa atlas badan → aksesori "terkontaminasi coklat".
+  const mtlUrl = json && (json.mtlUrl || (json.data && json.data.mtlUrl)) || null;
   if (!modelUrl) return null;
-  return { modelUrl, textureUrl };
+  return { modelUrl, textureUrl, mtlUrl };
 }
 
 export default function ChangeAvatarModal({ open, onClose, skin, onApplySkin, onApplyRobloxModel }) {
@@ -67,7 +71,7 @@ export default function ChangeAvatarModal({ open, onClose, skin, onApplySkin, on
       const parsed = parseAvatarResponse(json);
       if (!parsed) throw new Error('Respons API tidak berisi modelUrl');
       setStatus({ type: 'ok', text: 'Model diterima: ' + parsed.modelUrl + ' — memuat ke scene...' });
-      const done = await onApplyRobloxModel(parsed.modelUrl, parsed.textureUrl, cleanUsername);
+      const done = await onApplyRobloxModel(parsed.modelUrl, parsed.textureUrl, cleanUsername, parsed.mtlUrl);
       if (done) {
         setStatus({ type: 'ok', text: 'Avatar Roblox "' + cleanUsername + '" berhasil dipakai!' });
       } else {
