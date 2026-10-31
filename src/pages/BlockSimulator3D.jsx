@@ -80,7 +80,7 @@ import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 import { loadBabftMapGlb, babftSpawnFor, babftCameraFor, babftPlotBounds,
          SPAWN_DEFAULT_TEAM, BABFT_TEAMS, BABFT_PLOT_CENTERS_STUDS, BABFT_MAP_SCALE, BABFT_STUDIO_TEAM_PLOTS } from '../utils/babftMapGlb.js';
 import { loadBabftMapMerged } from '../utils/babftMapObj.js';
-import { createHumanoidAvatar, updateAvatarPhysics, toggleSit } from '../utils/avatarController.js';
+import { createHumanoidAvatar, updateAvatarPhysics, toggleSit, AVATAR_SCALE } from '../utils/avatarController.js';
 import { AVATAR_SKINS } from '../utils/avatarController.js';
 import ChangeAvatarModal, { AVATAR_API_BASE } from '../components/ChangeAvatarModal.jsx';
 import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
