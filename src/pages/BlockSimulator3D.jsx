@@ -1718,8 +1718,11 @@ export default function BlockSimulator3D({ setPage }) {
         const _sorted = _body.slice().sort((a, b) => b.c.y - a.c.y);
         const _head = _sorted[0];                        // part tertinggi = kepala
         const _rest = _sorted.slice(1);
-        const _isArm = (p) => Math.abs(p.c.x) > 0.16 * _W && p.c.y > 0.38 * _H;
-        const _isLeg = (p) => p.c.y <= 0.52 * _H;
+        const _isArm = (p) => Math.abs(p.c.x) > 0.12 * _W && p.c.y > 0.30 * _H;
+        // kaki: rendah DAN dekat sumbu tengah — lengan baju/jaket panjang yang
+        // menjuntai rendah ada di SAMPING (|x| besar) → TIDAK boleh masuk kaki
+        // (terukur: penyebab "tangan ikut kaki" + "bahu putus dgn lengan")
+        const _isLeg = (p) => p.c.y <= 0.52 * _H && Math.abs(p.c.x) <= 0.35 * _W;
         const _arms = _rest.filter(_isArm), _legs = _rest.filter(_isLeg);
         const _torso = _rest.filter((p) => !_isArm(p) && !_isLeg(p));
         if (_arms.length >= 2 && _legs.length >= 2 && _torso.length >= 1) {
