@@ -31,7 +31,8 @@ Tabel yang teramati dari nama file migrasi/kode (`[LENGKAPI skema kolom lengkap 
 | `api/save-progress.js`, `get-progress.js`, `reset-progress.js` | Progress belajar user | `[LENGKAPI]` |
 | `api/leaderboard.js` | Papan peringkat | `[LENGKAPI]` |
 | `api/profile.js` | Profil user | `[LENGKAPI]` |
-| `api/quiz/history.js`, `api/quiz/submit.js` | Fitur Quiz | `[LENGKAPI]` |
+| `api/quiz.js` | Fitur Quiz (history & submit via action/method) | Firebase Token |
+| `api/get-avatar.js` | Roblox 3D avatar proxy (username -> OBJ & Texture CDN URL) | Tidak (Guest/Member) |
 
 ## 5. Helper/Lib (`lib/`)
 

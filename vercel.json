@@ -7,6 +7,10 @@
       "maxDuration": 10
     }
   },
+  "rewrites": [
+    { "source": "/api/quiz/history", "destination": "/api/quiz?action=history" },
+    { "source": "/api/quiz/submit", "destination": "/api/quiz?action=submit" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

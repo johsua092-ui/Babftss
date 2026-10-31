@@ -23,6 +23,8 @@ import resetProgressHandler from '../api/reset-progress.js';
 import profileHandler     from '../api/profile.js';
 import circuitsHandler     from '../api/circuits.js';
 import canvasHandler       from '../api/canvas.js';
+import quizHandler         from '../api/quiz.js';
+import getAvatarHandler    from '../api/get-avatar.js';
 
 // ── App setup ────────────────────────────────────────────────
 const app = express();
@@ -73,6 +75,14 @@ app.all('/api/circuits',      (req, res) => circuitsHandler(req, res));
 
 // Canvas (save slots, strokes, dataset)
 app.all('/api/canvas',        (req, res) => canvasHandler(req, res));
+
+// Quiz (history & submit)
+app.all('/api/quiz',          (req, res) => quizHandler(req, res));
+app.all('/api/quiz/history',  (req, res) => { req.query = { ...req.query, action: 'history' }; return quizHandler(req, res); });
+app.all('/api/quiz/submit',   (req, res) => { req.query = { ...req.query, action: 'submit' }; return quizHandler(req, res); });
+
+// Avatar (Roblox 3D avatar proxy)
+app.all('/api/get-avatar',    (req, res) => getAvatarHandler(req, res));
 
 // ── 404 ──────────────────────────────────────────────────────
 app.use((_req, res) => {
