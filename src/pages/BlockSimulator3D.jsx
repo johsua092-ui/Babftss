@@ -1708,7 +1708,7 @@ export default function BlockSimulator3D({ setPage }) {
       object3D.children.forEach((ch) => {
         if (!ch.isMesh) return;
         const b = new THREE.Box3().setFromObject(ch);
-        _parts.push({ mesh: ch, box: b, c: b.getCenter(new THREE.Vector3()), handle: /^handle/i.test(ch.name || '') });
+        _parts.push({ mesh: ch, box: b, c: b.getCenter(new THREE.Vector3()), size: b.getSize(new THREE.Vector3()), handle: /^handle/i.test(ch.name || '') });
       });
       const _post = new THREE.Box3().setFromObject(object3D); // bbox POST-scale (pusat part = koordinat post-scale)
       const _H = _post.max.y - _post.min.y, _W = _post.max.x - _post.min.x;
@@ -1828,6 +1828,7 @@ export default function BlockSimulator3D({ setPage }) {
               return pv;
             };
             _riggedLimbs = {};
+            console.log('[bab215] rig avatar OK: 4 limb terpasang');
             _riggedLimbs.leftArm = _mkPivot(_cArmL);
             _riggedLimbs.rightArm = _mkPivot(_cArmR);
             _riggedLimbs.leftLeg = _mkPivot(_cLegL);
@@ -1845,10 +1846,16 @@ export default function BlockSimulator3D({ setPage }) {
             });
           } else {
             _riggedLimbs = null;   // all-or-nothing: struktur tak rapi → statis
+            console.warn('[bab215] rig avatar GATE tolak → statis');
           }
         }
       }
-    } catch (e) { /* fallback: tetap statis */ }
+    } catch (e) {
+      // bab 215: JANGAN senyap — kegagalan rig = patung geser total (terukur:
+      // TypeError p.size.z undefined tertelan catch → SEMUA avatar statis
+      // berhari-hari tanpa ketahuan). Log wajib utk diagnosa console.
+      console.warn('[bab215] rig avatar GAGAL → statis:', e && e.message);
+    }
     // grup physics-compatible (limbs null → controller null-safe)
     const g = new THREE.Group();
     g.add(object3D);
