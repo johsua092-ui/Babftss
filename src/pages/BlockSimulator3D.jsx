@@ -1741,9 +1741,29 @@ export default function BlockSimulator3D({ setPage }) {
           const _torsoBox = new THREE.Box3();
           _torso.forEach((p) => _torsoBox.union(p.box));
           const _zMax = 0.4 * _W;
-          const _armOk = (p) => p.size.z <= _zMax &&
-            (p.box.min.x >= _torsoBox.max.x - 0.02 * _W || p.box.max.x <= _torsoBox.min.x + 0.02 * _W);
-          const _legOk = (p) => p.size.z <= _zMax && p.box.max.y <= _torsoBox.min.y + 0.05 * _H;
+          // KALIBRASI AMBANG (revisi: gate lama terlalu ketat → avatar berkostum
+          // jadi patung geser). Prinsip: limb tipis yang menempel di TEPI torso
+          // = lengan/kaki sah; mesh LEBAR yang menumpuk torso = pakaian torso
+          // (statis); mesh melingkar = aura (statis).
+          //   lengan: tumpang-tindih-x dgn torso ≤ 50% lebar lengan sendiri
+          //     (R6 ≈ 0 — menempel di tepi; R15 upper-arm ≈ 50%; panel jaket
+          //     lebar ≈ 100% → gugur → statis);
+          //   kaki: jauh dari sumbu tengah (bukan jarum) + tumpang-tindih-y
+          //     dgn torso ≤ 50% tinggi kaki sendiri (R6 ≈ 0; R15 ≈ 50%;
+          //     juntai jaket tengah = gugur).
+          const _armOk = (p) => {
+            if (p.size.z > _zMax) return false;
+            const _ov = Math.min(p.box.max.x, _torsoBox.max.x) - Math.max(p.box.min.x, _torsoBox.min.x);
+            const _wOwn = p.box.max.x - p.box.min.x;
+            return _ov <= 0.5 * _wOwn;
+          };
+          const _legOk = (p) => {
+            if (p.size.z > _zMax) return false;
+            if (Math.abs(p.c.x) <= 0.045 * _W) return false;   // jarum tengah = bukan kaki
+            const _ov = Math.min(p.box.max.y, _torsoBox.max.y) - Math.max(p.box.min.y, _torsoBox.min.y);
+            const _hOwn = p.box.max.y - p.box.min.y;
+            return _ov <= 0.5 * _hOwn;
+          };
           const _buildLimb = (cands, isArm, side, topMin, topMax) => {
             const own = cands.filter((p) => (side < 0 ? p.c.x < 0 : p.c.x >= 0))
               .filter(isArm ? _armOk : _legOk);
