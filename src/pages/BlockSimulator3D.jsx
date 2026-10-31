@@ -1836,7 +1836,17 @@ export default function BlockSimulator3D({ setPage }) {
             // Handle (aksesori) → ikut part terdekat: kalau part itu limb,
             // aksesori ikut ter-ayun (pedang di tangan, topi di kepala = statis)
             const _all = [..._arms, ..._legs, ..._torso, _head];
-            _handles.forEach((p) => {
+_handles.forEach((p) => {
+  // ══ bab 215: SEMBUNYIKAN MESH AURA (KEPUTUSAN USER) ══
+  // Aura = aksesori yang MELINGKARI seluruh tubuh: menutupi ≥85% lebar
+  // avatar + membungkus depan-belakang ≥60% kedalaman + di sumbu. Ia tak
+  // bisa mengikuti kaki-tangan yang berayun terpisah (1 mesh utuh tanpa
+  // skinning) → disembunyikan. HANYA aura seperti ini — topi/rambut/
+  // halo/pedang tetap tampil.
+  if (Math.abs(p.c.x) <= 0.10 * _W && p.size.x >= 0.85 * _W && p.size.z >= 0.6 * _D && p.c.y <= 0.55 * _H) {
+    p.mesh.visible = false;
+    return;
+  }
               let best = null, bd = Infinity;
               _all.forEach((q) => {
                 const d = p.c.distanceTo(q.c);
@@ -1898,7 +1908,17 @@ export default function BlockSimulator3D({ setPage }) {
               _riggedLimbs.rightLeg = _mkPivot2(_fpLegR);
               // handle/aksesori → limb terdekat secara fisik (jarak ke kotak)
               const _limbMeshes = [..._fpArmL, ..._fpArmR, ..._fpLegL, ..._fpLegR];
-              _handles.forEach((p) => {
+_handles.forEach((p) => {
+  // ══ bab 215: SEMBUNYIKAN MESH AURA (KEPUTUSAN USER) ══
+  // Aura = aksesori yang MELINGKARI seluruh tubuh: menutupi ≥85% lebar
+  // avatar + membungkus depan-belakang ≥60% kedalaman + di sumbu. Ia tak
+  // bisa mengikuti kaki-tangan yang berayun terpisah (1 mesh utuh tanpa
+  // skinning) → disembunyikan. HANYA aura seperti ini — topi/rambut/
+  // halo/pedang tetap tampil.
+  if (Math.abs(p.c.x) <= 0.10 * _W && p.size.x >= 0.85 * _W && p.size.z >= 0.6 * _D && p.c.y <= 0.55 * _H) {
+    p.mesh.visible = false;
+    return;
+  }
                 let best = null, bd = Infinity;
                 _limbMeshes.forEach((q) => {
                   const _cx = Math.max(q.box.min.x, Math.min(p.c.x, q.box.max.x));
