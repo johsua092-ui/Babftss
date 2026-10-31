@@ -1848,6 +1848,74 @@ export default function BlockSimulator3D({ setPage }) {
             _riggedLimbs = null;   // all-or-nothing: struktur tak rapi → statis
             console.warn('[bab215] rig avatar GATE tolak → statis');
           }
+        } else if (_torso.length === 0) {
+          // ══ FALLBACK MIRROR PAIRING (avatar TANPA torso inti — mis. IndoHustle:
+          //    R15 ramping, semua part menumpuk dekat sumbu → 2-pass gugur) ══
+          // Avatar Roblox simetris kiri-kanan: mesh limb berpasangan cermin
+          // (x berlawanan, tinggi & ukuran mirip). Pasangan puncak > 0.5H =
+          // lengan, selain itu kaki. Tanpa pasangan = FX/aura → statis.
+          try {
+            const _fpArmL = [], _fpArmR = [], _fpLegL = [], _fpLegR = [];
+            const _order = _rest.slice().sort((a, b) => Math.abs(b.c.x) - Math.abs(a.c.x));
+            const _taken2 = new Set();
+            for (const p of _order) {
+              if (_taken2.has(p)) continue;
+              if (Math.abs(p.c.x) <= 0.02 * _W) { _taken2.add(p); continue; }
+              let best = null, bs = Infinity;
+              for (const q of _order) {
+                if (q === p || _taken2.has(q)) continue;
+                if (p.c.x * q.c.x > 0) continue;
+                if (Math.abs(p.c.x + q.c.x) > 0.12 * _W) continue;
+                if (Math.abs(p.c.y - q.c.y) > 0.15 * _H) continue;
+                if (Math.abs(p.size.x - q.size.x) > 0.15 * _W) continue;
+                const sc = Math.abs(p.c.x + q.c.x) + Math.abs(p.c.y - q.c.y);
+                if (sc < bs) { bs = sc; best = q; }
+              }
+              _taken2.add(p);
+              if (!best) continue;   // tanpa kembaran = FX/aura → statis
+              _taken2.add(best);
+              const L = p.c.x < 0 ? p : best, R = p.c.x < 0 ? best : p;
+              const topMax = Math.max(p.box.max.y, best.box.max.y);
+              if (topMax > 0.50 * _H) { _fpArmL.push(L); _fpArmR.push(R); }
+              else { _fpLegL.push(L); _fpLegR.push(R); }
+            }
+            if (_fpArmL.length && _fpArmR.length && _fpLegL.length && _fpLegR.length) {
+              const _mkPivot2 = (list) => {
+                const b = new THREE.Box3();
+                list.forEach((p) => b.union(p.box));
+                const cc = b.getCenter(new THREE.Vector3());
+                const pv = new THREE.Group();
+                pv.position.copy(object3D.worldToLocal(new THREE.Vector3(cc.x, b.max.y - 0.03 * (b.max.y - b.min.y), cc.z)));
+                pv.rotation.y = Math.PI;
+                object3D.add(pv);
+                list.forEach((p) => { pv.attach(p.mesh); p.pivot = pv; });
+                return pv;
+              };
+              _riggedLimbs = {};
+              _riggedLimbs.leftArm = _mkPivot2(_fpArmL);
+              _riggedLimbs.rightArm = _mkPivot2(_fpArmR);
+              _riggedLimbs.leftLeg = _mkPivot2(_fpLegL);
+              _riggedLimbs.rightLeg = _mkPivot2(_fpLegR);
+              // handle/aksesori → limb terdekat secara fisik (jarak ke kotak)
+              const _limbMeshes = [..._fpArmL, ..._fpArmR, ..._fpLegL, ..._fpLegR];
+              _handles.forEach((p) => {
+                let best = null, bd = Infinity;
+                _limbMeshes.forEach((q) => {
+                  const _cx = Math.max(q.box.min.x, Math.min(p.c.x, q.box.max.x));
+                  const _cy = Math.max(q.box.min.y, Math.min(p.c.y, q.box.max.y));
+                  const _cz = Math.max(q.box.min.z, Math.min(p.c.z, q.box.max.z));
+                  const d = Math.hypot(p.c.x - _cx, p.c.y - _cy, p.c.z - _cz);
+                  if (d < bd) { bd = d; best = q; }
+                });
+                if (best && best.pivot && bd <= 0.06 * _W) best.pivot.attach(p.mesh);
+              });
+              console.log('[bab215] rig avatar OK (fallback pairing)');
+            } else {
+              console.warn('[bab215] rig fallback GATE → statis');
+            }
+          } catch (e) {
+            console.warn('[bab215] rig fallback GAGAL → statis:', e && e.message);
+          }
         }
       }
     } catch (e) {
