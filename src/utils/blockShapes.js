@@ -326,6 +326,18 @@ export const NSI_IB_SLUG = 'i_beam';
 export const NSI_IB_NAME = 'I-Beam';
 export const NSI_IB_SIZE = [1, 1, 1];   // block = 2 x 2 x 2 studs (maks user)
 
+// ── bab 210: CHAIR — NSI L2 kursi pedestal cangkang ──
+// Referensi: 8 foto user (folder kerja, 2026-10-27) + info user: P×L maks
+// 2 studs, tinggi 4 studs (= [1,2,1] block). HASIL PENGUKURAN (foto
+// ortogonal 072038/072030, skala 60,5 px/stud): alas 2×2 studs (129-130 px),
+// dudukan ≈1,9 studs di ketinggian 2,0 studs, kolom ≈0,6 studs, sandaran
+// ≈1,8 studs di atas dudukan, lebar ≈1,0 studs (≈½ dudukan), tepi belakang
+// nyaris VERTIKAL (drift 5 px ≈ 2° — "miring" di foto = LIPATAN cangkang di
+// tengah, bukan lean; pixel > bacaan vision 10-15°).
+export const NSI_CH_SLUG = 'chair';
+export const NSI_CH_NAME = 'Chair';
+export const NSI_CH_SIZE = [1, 2, 1];   // block = 2 x 4 x 2 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -341,6 +353,7 @@ export const NSI_SIZES = {
   [NSI_LP_SLUG]: [1.0, 1.75, 1.0],
   [NSI_CD_SLUG]: [1.0, 1.75, 1.0],
   [NSI_IB_SLUG]: [1, 1, 1],   // bab 209: I-Beam 2 x 2 x 2 studs
+  [NSI_CH_SLUG]: [1, 2, 1],   // bab 210: Chair 2 x 4 x 2 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -363,7 +376,7 @@ export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -916,6 +929,149 @@ export function makeIbeamGeometry(THREE) {
   // autoFix:false — muka sudah ber-winding KELUAR yang benar dari `_box`
   // (idiom Seat/Step; semua muka spool menghadap menjauh dari pusat).
   return _buildFaces(THREE, getIbeamFaces(), { autoFix: false });
+}
+
+/**
+ * Daftar MUKA CHAIR (bab 210, sumber tunggal: geometry + ikon).
+ *
+ * Kursi pedestal CANGKANG MENERUS (koreksi user: dilarang slab terpisah /
+ * lengkungan zigzag — cangkang = satu lapisan dibengkokkan halus dari depan
+ * dudukan menekuk naik ke puncak sandaran):
+ *   1. ALAS persegi pipih   2×2×0.35 studs
+ *   2. KOLOM tunggal tengah 0.6×0.725×0.6 studs (puncak menyentuh dasar cangkang)
+ *   3. CANGKANG sweep 7 segmen (8 titik profil, tebal konstan 0.1 block):
+ *      datar dari depan dudukan (z+0.45) → menekuk naik di belakang →
+ *      puncak sandaran y=+1.0 (total 4 studs); lebar menyempit halus
+ *      0.9 → 0.5 studs. TEKSTUR = plastic (perintah user 2026-10-31).
+ * Envelope 1×2×1 block = 2×4×2 studs. Depan = +Z (sandaran di −Z).
+ */
+export function getChairFaces() {
+  const faces = [];
+  // 1) alas
+  faces.push(..._box(-0.5, 0.5, -1.0, -0.825, -0.5, 0.5));
+  // 2) kolom tengah (puncak = dasar cangkang y −0.10)
+  faces.push(..._box(-0.15, 0.15, -0.825, -0.10, -0.15, 0.15));
+
+  // 3) cangkang sweep — profil PERMUKAAN ATAS (y,z) per titik sweep:
+  //    ⚠️ Depan = −Z (KONVENSI SISTEM FACING: panah hijau menunjuk −Z, sandaran
+  //    di +Z — KOREKSI USER 2026-10-31: *"arahnya kebalik woi!"*).
+  //    ⚠️ z sandaran dibatasi ≤ +0.39: offset tebal 0.1 block ke belakang (+z)
+  //    harus tetap di dalam amplop 2 studs (terukur: z=+0.49 → punggung
+  //    +0.5898 = 2.36 studs = MELAMPAUI batas panjang-lebar 2 studs user)
+  const PROF = [
+    [ 0.00,  0.450, -0.45],  // s0 tepi depan dudukan (depan = −Z)
+    [ 0.00,  0.450, -0.10],  // s1 datar
+    [ 0.00,  0.450,  0.20],  // s2 datar (belakang dudukan)
+    [ 0.05,  0.420,  0.36],  // s3 mulai menekuk naik
+    [ 0.22,  0.380,  0.385], // s4
+    [ 0.48,  0.330,  0.385], // s5
+    [ 0.78,  0.285,  0.39],  // s6
+    [ 1.00,  0.250,  0.39],  // s7 puncak sandaran (+Z)
+  ];
+  const T = 0.1;   // tebal cangkang 0.1 block = 0.2 studs
+  // normal keluar-sisi-duduk N = (tz, −ty) dari tangent (ty, tz); bottom = top − T×N
+  // (profil flip: depan −Z → dudukan datar T=(0,+1) → N=(1,0) = ATAS ✓;
+  //  sandaran T=(1,+0.06) → N=(0.06,−1) = menghadap depan −Z ✓)
+  const top = PROF.map(([y, hw, z]) => ({ y, z, hw }));
+  const bot = top.map((p, i) => {
+    const a = top[Math.max(0, i - 1)], b = top[Math.min(top.length - 1, i + 1)];
+    let ty = b.y - a.y, tz = b.z - a.z;
+    const L = Math.hypot(ty, tz) || 1; ty /= L; tz /= L;
+    return { y: p.y - T * tz, z: p.z + T * ty, hw: p.hw };
+  });
+  // normal keluar-sisi-duduk per titik: N = (tz, −ty) dari tangent (ty, tz)
+  // (verifikasi: dudukan datar T=(0,+1) → N=(1,0) = ke ATAS ✓)
+  const nor = top.map((p, i) => {
+    const a = top[Math.max(0, i - 1)], b = top[Math.min(top.length - 1, i + 1)];
+    let ty = b.y - a.y, tz = b.z - a.z;
+    const L = Math.hypot(ty, tz) || 1;
+    return { y: tz / L, z: -ty / L };
+  });
+  // Orientasi per-muka terhadap arah keluar EKSPLISIT (deterministik — BUKAN
+  // autofix centroid-global yang terlarang bab 128): kalau normal quad
+  // berlawanan dengan `out`, urutan vertex dibalik.
+  const q = (a, b, c, d, out) => {
+    const u = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
+    const v = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
+    const n = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+    if (n[0]*out[0] + n[1]*out[1] + n[2]*out[2] >= 0) faces.push([a, b, c, d]);
+    else faces.push([a, d, c, b]);
+  };
+  for (let i = 0; i < top.length - 1; i++) {
+    const a = top[i], b = top[i + 1], a2 = bot[i], b2 = bot[i + 1];
+    const N = { y: (nor[i].y + nor[i+1].y) / 2, z: (nor[i].z + nor[i+1].z) / 2 };
+    // permukaan atas/duduk — keluar ke arah N
+    q([ b.hw, b.y, b.z], [ a.hw, a.y, a.z], [-a.hw, a.y, a.z], [-b.hw, b.y, b.z], [0, N.y, N.z]);
+    // permukaan bawah — keluar ke arah −N
+    q([ a2.hw, a2.y, a2.z], [ b2.hw, b2.y, b2.z], [-b2.hw, b2.y, b2.z], [-a2.hw, a2.y, a2.z], [0, -N.y, -N.z]);
+    // dinding samping kiri (−x) & kanan (+x)
+    q([-a.hw, a.y, a.z], [-b.hw, b.y, b.z], [-b2.hw, b2.y, b2.z], [-a2.hw, a2.y, a2.z], [-1, 0, 0]);
+    q([ a.hw, a.y, a.z], [ a2.hw, a2.y, a2.z], [ b2.hw, b2.y, b2.z], [ b.hw, b.y, b.z], [1, 0, 0]);
+  }
+  {
+    // tutup TEPI DEPAN (s0, keluar −T0 = menghadap depan −Z) dan TEPI ATAS
+    // (s7, keluar +T7 = ke atas)
+    const f = top[0], f2 = bot[0], t = top[top.length - 1], t2 = bot[top.length - 1];
+    const Nf = { y: nor[0].y, z: nor[0].z };
+    const T0 = { y: -Nf.z, z: Nf.y };             // tangent = putar N +90°
+    const Nt = { y: nor[7].y, z: nor[7].z };
+    const T7 = { y: -Nt.z, z: Nt.y };
+    q([ f.hw, f.y, f.z], [-f.hw, f.y, f.z], [-f2.hw, f2.y, f2.z], [ f2.hw, f2.y, f2.z], [0, -T0.y, -T0.z]);
+    q([-t.hw, t.y, t.z], [ t.hw, t.y, t.z], [ t2.hw, t2.y, t2.z], [-t2.hw, t2.y, t2.z], [0, T7.y, T7.z]);
+  }
+
+  // 4) BANTALAN hitam (pad) — KOREKSI USER 2026-10-31 (wajib FULL sesuai
+  //    foto, bukti tepi siluet: 072216/072030 kanan 4-16 = hitam): sweep
+  //    PENUH s0→s7, lebar PENUH (sink 0.005 anti-z-fight dinding sisi),
+  //    tebal 0.07, diangkat 0.07 sepanjang normal; HANYA puncak mundur
+  //    0.02 block → rim putih 0.04 studs di tepi atas (bukti 072038).
+  const lift = 0.07, sinkX = 0.005, TP = 0.07, turunPuncak = 0.02;
+  const cTop = [], cBot = [];
+  for (let i = 0; i <= 7; i++) {
+    const p = top[i], n = nor[i];
+    const pull = (i === 7) ? turunPuncak : 0;
+    cTop.push({ y: p.y + (lift - pull) * n.y, z: p.z + (lift - pull) * n.z, hw: p.hw - sinkX });
+    cBot.push({ y: p.y, z: p.z, hw: p.hw - sinkX });
+  }
+  for (let i = 0; i < cTop.length - 1; i++) {
+    const a = cTop[i], b = cTop[i + 1], a2 = cBot[i], b2 = cBot[i + 1];
+    const N = { y: (nor[i].y + nor[i+1].y) / 2, z: (nor[i].z + nor[i+1].z) / 2 };
+    q([ b.hw, b.y, b.z], [ a.hw, a.y, a.z], [-a.hw, a.y, a.z], [-b.hw, b.y, b.z], [0, N.y, N.z]);
+    q([ a2.hw, a2.y, a2.z], [ b2.hw, b2.y, b2.z], [-b2.hw, b2.y, b2.z], [-a2.hw, a2.y, a2.z], [0, -N.y, -N.z]);
+    q([-a.hw, a.y, a.z], [-b.hw, b.y, b.z], [-b2.hw, b2.y, b2.z], [-a2.hw, a2.y, a2.z], [-1, 0, 0]);
+    q([ a.hw, a.y, a.z], [ a2.hw, a2.y, a2.z], [ b2.hw, b2.y, b2.z], [ b.hw, b.y, b.z], [1, 0, 0]);
+  }
+  {
+    const f = cTop[0], f2 = cBot[0], t = cTop[cTop.length - 1], t2 = cBot[cBot.length - 1];
+    const Nf = { y: nor[0].y, z: nor[0].z };
+    const T0 = { y: -Nf.z, z: Nf.y };
+    const Nt = { y: nor[7].y, z: nor[7].z };
+    const T7 = { y: -Nt.z, z: Nt.y };
+    q([ f.hw, f.y, f.z], [-f.hw, f.y, f.z], [-f2.hw, f2.y, f2.z], [ f2.hw, f2.y, f2.z], [0, -T0.y, -T0.z]);
+    q([-t.hw, t.y, t.z], [ t.hw, t.y, t.z], [ t2.hw, t2.y, t2.z], [-t2.hw, t2.y, t2.z], [0, T7.y, T7.z]);
+  }
+  return faces;
+}
+
+/**
+ * Buat geometri CHAIR (1×2×1 block, pusat envelope di origin).
+ * Vertex color 2 toni (pola Seat): BANTALAN hitam 0.10 (22 muka terakhir —
+ * lapisan duduk+sandaran bertebral, KOREKSI USER 2026-10-31); cangkang putih
+ * 1.0 (rim depan/sisi/puncak terlihat di sekeliling bantalan, persis foto).
+ */
+export function makeChairGeometry(THREE) {
+  const faces = getChairFaces();
+  const geo = _buildFaces(THREE, faces, { autoFix: false });
+  const pos = geo.getAttribute('position');
+  const nQuad = pos.count / 6;
+  const col = [];
+  for (let qd = 0; qd < nQuad; qd++) {
+    const gelap = qd >= 42;   // bantalan = 22 muka terakhir (setelah base 6 + kolom 6 + cangkang 30)
+    const c = gelap ? 0.10 : 1.0;
+    for (let k = 0; k < 6; k++) col.push(c, c, c);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
 }
 
 // ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) ──
@@ -4159,6 +4315,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_CD_SLUG) return makeCandleGeometry(THREE);
   // bab 209: I-Beam
   if (slug === NSI_IB_SLUG) return makeIbeamGeometry(THREE);
+  // bab 210: Chair
+  if (slug === NSI_CH_SLUG) return makeChairGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -4173,7 +4331,21 @@ export function makeNsiGeometry(THREE, slug) {
 // panah hijau itu akan hilang jika block ditaruh, hanya tersedia di ghostblock
 // saja"*.
 // ══════════════════════════════════════════════════════════════════════════
-export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG];
+// bab 210: Chair juga punya arah hadap (kursi — panah hijau di ghost, pola Seat).
+export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG, NSI_CH_SLUG];
+
+// bab 210 (KOREKSI USER: *"panah hijau ngambang tinggi tidak nempel di area
+// dudukan"*): tinggi PERMUKAAN tempat panah menempel, per item (block, dari
+// pusat ghost). Seat = puncaknya (0.25); Chair = permukaan dudukan (0 — di
+// tengah envelope karena tingginya 2 block). Panah digeser di app:
+// position.y = getFacingArrowTopY(slug) − 0.25 (tinggi geometri panah = acuan Seat).
+const NSI_FACING_ARROW_TOP = {
+  [NSI_SEAT_SLUG]: 0.25,
+  [NSI_CH_SLUG]: 0,
+};
+export function getFacingArrowTopY(slug) {
+  return NSI_FACING_ARROW_TOP[slug] ?? 0.25;
+}
 export function hasFacing(slug) {
   return NSI_FACING_SLUGS.indexOf(slug) >= 0;
 }

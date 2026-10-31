@@ -49,7 +49,7 @@ import {
 import { disposeCrystalResources } from '../utils/ballCenterDesign.js';
 import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlockIconPath, BLOCK_PLACEHOLDER, preloadBlockTextures, makeBlockMaterial, attachBlockGlow, detachBlockGlow, setGoldEnvRenderer } from '../utils/blockMaterials.js';
 // NSI (Non-Scalable Item) — 2026-10-04: geometri khusus (Wedge) + deteksi NSI.
-import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE, NSI_TC_SLUG,
+import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, getFacingArrowTopY, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE, NSI_TC_SLUG,
   LP_LIGHT_Y, LP_LIGHT_COLOR, LP_LIGHT_INTENSITY, LP_LIGHT_DISTANCE, LP_LIGHT_DECAY,
   NSI_LP_SLUG,
   TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
@@ -1138,9 +1138,13 @@ export default function BlockSimulator3D({ setPage }) {
     // ── FITUR (2026-10-04, permintaan user): reset rotasi ghost saat PINDAH TOOL.
     // Kalau tool akhir bukan 'place', ghost tidak dipakai → langkah rotasi (3 sumbu)
     // direset supaya tidak nyangkut ke sesi place berikutnya.
+    // ── bab 210 (KOREKSI USER: *"unequip lalu equip, ghost kembali hadap balik"*):
+    // reset TIDAK boleh buta ke 0 — WAJIB ke DEFAULT PER ITEM (Chair = 2 step
+    // × 90° = 180°; item lain = 0), kalau tidak, equip ulangChair = arah lama.
     if (finalTool !== 'place') {
+      const _defRotY = (selectedBlockTypeRef.current === 'chair') ? 2 : 0;
       if (placeRotStepsXRef.current !== 0) { placeRotStepsXRef.current = 0; setPlaceRotStepsX(0); }
-      if (placeRotStepsYRef.current !== 0) { placeRotStepsYRef.current = 0; setPlaceRotStepsY(0); }
+      if (placeRotStepsYRef.current !== _defRotY) { placeRotStepsYRef.current = _defRotY; setPlaceRotStepsY(_defRotY); }
       if (placeRotStepsZRef.current !== 0) { placeRotStepsZRef.current = 0; setPlaceRotStepsZ(0); }
     }
     return t === nextTool ? null : nextTool;
@@ -14960,13 +14964,14 @@ Now you can apply Displacement for detailed effect.`);
       // ── FITUR (2026-10-04, permintaan user): 3 KEYBIND ROTATE GHOST ──
       // PC saja (>=768px). Tiap tekan menambah 1 langkah rotasi (× Rotation, default
       // 90°) pada GHOST block tool place — 3 SUMBU supaya lengkap & nyaman:
-      //   R = sumbu X (kanan→kiri) · T = sumbu Y (atas→bawah) · Y = sumbu Z (belakang→depan)
+      //   R = sumbu Y (atas→bawah) · T = sumbu X (kanan→kiri) · Y = sumbu Z (belakang→depan)
+      //   (bab 210: R↔T DITUKAR — PERMINTAAN USER 2026-10-31)
       // Ghost = penunjuk sudah berapa kali di-rotate. HANYA aktif saat tool = 'place'.
       if (typeof window !== 'undefined' && window.innerWidth >= 768
           && toolRef.current === 'place'
           && (k === 'r' || k === 't' || k === 'y')) {
         e.preventDefault();
-        const _axis = (k === 'r') ? 'x' : (k === 't' ? 'y' : 'z');
+        const _axis = (k === 'r') ? 'y' : (k === 't' ? 'x' : 'z');
         const _setS = (_axis === 'x') ? setPlaceRotStepsX : (_axis === 'y' ? setPlaceRotStepsY : setPlaceRotStepsZ);
         const _refS = (_axis === 'x') ? placeRotStepsXRef : (_axis === 'y' ? placeRotStepsYRef : placeRotStepsZRef);
         const next = (_refS.current || 0) + 1;
@@ -16101,6 +16106,13 @@ Now you can apply Displacement for detailed effect.`);
               : makeNsiGeometry(THREE, slug);
         if (ghostBlock.geometry && ghostBlock.geometry.dispose) ghostBlock.geometry.dispose();
         ghostBlock.geometry = _gNsi || new THREE.BoxGeometry(1, 1, 1);
+        // ── bab 210 (PERMINTAAN USER 2026-10-31): default rotasi PER ITEM saat
+        // jenis block berganti — Chair = 2 step × 90° (180°, menghadap kamera),
+        // semua item lain = 0. Berlaku di SEMUA jalur pergantian slug (panel,
+        // unequip→equip, taruh block lain → pilih Chair lagi).
+        placeRotStepsXRef.current = 0;
+        placeRotStepsYRef.current = (slug === 'chair') ? 2 : 0;
+        placeRotStepsZRef.current = 0;
       } catch (e) {}
       // ── FIX (2026-10-04, NSI Rod): OUTLINE ghost WAJIB ikut geometri baru.
       // BUG: `ghostEdges` dibuat dari geometri LAMA (kotak 1x1x1) → pada Rod
@@ -18623,13 +18635,16 @@ Now you can apply Displacement for detailed effect.`);
             _fa.visible = _wantFace;
             // ── FIX (2026-10-04, laporan user: "panah ijonya kenapa ngambang?"):
             // panah WAJIB menempel di permukaan dudukan. Geometri panah dibuat
-            // dengan asumsi tinggi = NSI_FACING_DEFAULT_SLUG (Seat, 0.5 block),
-            // jadi kalau item ber-arah lain tingginya beda → geser panah
-            // setinggi selisihnya supaya SELALU menempel.
+            // dengan asumsi tinggi = NSI_FACING_DEFAULT_SLUG (Seat, 0.5 block).
+            // ── bab 210 (KOREKSI USER: *"masih ngambang tinggi? tidak tepat
+            // berada di area dudukan"*): formula lama (_hTop−_hRef) mengasumsikan
+            // permukaan duduk = PUNCAK item → benar utk Seat, SALAH utk Chair
+            // (dudukan di tengah, sandaran sampai puncak) → terukur panah
+            // terbang ke +0.75 (puncak sandaran). Yang benar: peta permukaan
+            // duduk per item (getFacingArrowTopY).
             if (_wantFace) {
-              const _hTop = getNsiSize(selectedBlockTypeRef.current)[1] / 2;
               const _hRef = getNsiSize(NSI_FACING_DEFAULT_SLUG)[1] / 2;
-              _fa.position.y = _hTop - _hRef;
+              _fa.position.y = getFacingArrowTopY(selectedBlockTypeRef.current) - _hRef;
             }
           }
         } else {

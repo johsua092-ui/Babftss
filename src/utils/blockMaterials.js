@@ -155,6 +155,12 @@ export const BLOCK_LIBRARY = [
   // roughness/metalness = SALINAN PERSIS metal_block (0.24/0.35 — review Claude:
   // jangan beda dari material metal yang sudah terbukti tampil benar di app).
   { slug: 'i_beam',            name: 'I-Beam',     label: 'I-Beam',     roughness: 0.24, metalness: 0.35, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // ══ bab 210: CHAIR — NSI L2 kursi pedestal cangkang ══
+  // TEKSTUR = plastic_block.png DINETRALKAN → chair.png (PERINTAH USER
+  // 2026-10-31: *"teksturnya wajib plastic bukan tekstur dari marble block"*).
+  // Badan putih; permukaan duduk+sandaran-depan = HITAM via vertex color
+  // (pola Seat, 0.10). roughness 0.55 = plastik halus; metalness 0.
+  { slug: 'chair',             name: 'Chair',      label: 'Chair',      roughness: 0.55, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -462,6 +468,7 @@ export const BLOCK_PLACEHOLDER = {
   torch: 0x6b5540,        // bab 205: cokelat-logam (warna asli = vertex color)
   lamp: 0x1a2028,         // bab 206: navy gelap (warna asli = vertex color)
   i_beam: 0x626262,       // bab 209: abu-abu logam (= mean tekstur metal netral)
+  chair: 0xd8d8d8,        // bab 210: badan putih (tekstur marble netral terang)
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 
