@@ -1,6 +1,11 @@
 import * as THREE from 'three';
+import { getFacingArrowTopY, getNsiSize } from './blockShapes.js';
 
-// Reusable math objects for zero GC allocation in 60fps physics loop
+// bab 212 (KOREKSI USER: "avatarnya kegedean skalanya, kecilin dikit"):
+// faktor skala global avatar — dipakai konstanta tinggi (mata/pinggul/duduk)
+// supaya kamera & posisi duduk konsisten dengan ukuran visual.
+export const AVATAR_SCALE = 0.85;
+// faktor skala global avatar — diterapkan di createHumanoidAvatar dan
 const _downRay = new THREE.Raycaster();
 _downRay.firstHitOnly = true;
 
@@ -74,6 +79,9 @@ export function createHumanoidAvatar(THREE, teamColor = 0xffffff) {
   // Urutan rotasi YXZ: yaw (Y) dulu, baru pitch lokal (X) → kemiringan
   // tubuh saat terbang mengikuti arah HADAP avatar, bukan sumbu dunia.
   group.rotation.order = 'YXZ';
+  // bab 212: avatar diperkecil 15% (KOREKSI USER "kegedean") — origin tetap
+  // di kaki, jadi pijakan/collision dunia tetap akurat tanpa ubah fisika.
+  group.scale.setScalar(AVATAR_SCALE);
 
   // 1. Head (Roblox classic yellow head with face orientation indicator)
   const headMat = new THREE.MeshLambertMaterial({ color: 0xffd234 });
@@ -167,13 +175,96 @@ export function updateAvatarPhysics(
 
   // Track position delta for smooth camera follow (Roblox PlayerModule follow system)
   // Anti-Teleport Bug: if avatar was teleported (spawn or team switch > 10 units), reset prevPos so camera does not shoot into void!
-  if (!u.hasInitializedPos || u.prevPos.distanceTo(avatar.position) > 10.0) {
-    u.prevPos.copy(avatar.position);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── bab 212: SITTING — avatar MENEMPEL ke kursi (PARENTING) ──
+  // (PERMINTAAN USER: duduk = bokong nempel bantal 100%, ikut jatuh/naik/
+  //  terbalik BERSAMA kursi — bukan teleport statis yang meninggalkan gap).
+  // Cara: avatar dijadikan ANAK block kursi selama duduk → hierarki Three.js
+  // menjamin nol lag & ikut rotasi (kursi terbalik = avatar ikut terbalik).
+  // Keluar HANYA dengan LOMPAT (spasi) — gerak W/A/S/D ditahan.
+  // ══════════════════════════════════════════════════════════════════════════
+  let sittingNow = false;
+  if (u.sitting) {
+    const s = u.sitting;
+    // Penjaga: kursi dihapus (Clear All/undo/delete) → kembali ke oldParent
+    if (!s.block || !s.block.parent) {
+      s.oldParent.add(avatar);
+      avatar.position.copy(s.oldWorld);
+      avatar.rotation.set(0, s.yaw, 0);
+      u.sitting = null;
+      u.isGrounded = false;
+      u.vy = 0;
+    } else if (keys.space) {
+      // LOMPAT = satu-satunya cara keluar (PERMINTAAN USER, ditegaskan 2x).
+      // Titik lompat: pusat AABB block SAAT INI + fwd x jarak per-sumbu
+      // (min keluar AABB + 0.9) → anti-nyangkut semua tipe kursi & rotasi.
+      _boxTmp.setFromObject(s.block);
+      const _cx = (_boxTmp.min.x + _boxTmp.max.x) / 2;
+      const _cz = (_boxTmp.min.z + _boxTmp.max.z) / 2;
+      const _hx = (_boxTmp.max.x - _boxTmp.min.x) / 2;
+      const _hz = (_boxTmp.max.z - _boxTmp.min.z) / 2;
+      const _fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(s.block.quaternion);
+      _fwd.y = 0;
+      if (_fwd.lengthSq() < 1e-6) _fwd.set(0, 0, -1);
+      _fwd.normalize();
+      let _d = 1.2;
+      if (Math.abs(_fwd.x) > 0.1) _d = Math.max(_d, (_hx + 0.9) / Math.abs(_fwd.x));
+      if (Math.abs(_fwd.z) > 0.1) _d = Math.max(_d, (_hz + 0.9) / Math.abs(_fwd.z));
+      s.block.updateMatrixWorld();
+      const _w = s.block.localToWorld(new THREE.Vector3(s.lx, s.ly, s.lz));
+      const _aw = avatar.getWorldPosition(new THREE.Vector3());
+      s.oldParent.add(avatar);
+      avatar.position.set(_cx + _fwd.x * _d, _aw.y, _cz + _fwd.z * _d);
+      avatar.rotation.set(0, Math.atan2(_fwd.x, _fwd.z), 0);
+      u.sitting = null;
+      u.isGrounded = false;
+      u.vy = u.jumpPower;   // lompat keluar dari kursi
+      keys.space = false;
+    } else {
+      sittingNow = true;
+      // Transisi masuk duduk: lerp LOKAL mulus ke titik duduk (smoothstep)
+      if (s.blend < 1) {
+        s.blend = Math.min(1, s.blend + Math.min(1, 4.5 * dt));
+        const e = s.blend * s.blend * (3 - 2 * s.blend);
+        avatar.position.set(
+          s.startLX + (s.sitLX - s.startLX) * e,
+          s.startLY + (s.sitLY - s.startLY) * e,
+          s.startLZ + (s.sitLZ - s.startLZ) * e
+        );
+        avatar.rotation.y = s.startLocalYaw + (Math.PI - s.startLocalYaw) * e;
+      } else {
+        avatar.position.set(s.sitLX, s.sitLY, s.sitLZ);
+        avatar.rotation.y = Math.PI;   // menghadap depan kursi (depan = -Z lokal)
+      }
+      avatar.rotation.x = 0;
+      // Pose R6 duduk: kaki ke depan (rotasi X -90°), tangan rileks
+      const sitLerp = Math.min(1.0, 10.0 * dt);
+      if (u.leftLeg) u.leftLeg.rotation.x = THREE.MathUtils.lerp(u.leftLeg.rotation.x, -Math.PI / 2, sitLerp);
+      if (u.rightLeg) u.rightLeg.rotation.x = THREE.MathUtils.lerp(u.rightLeg.rotation.x, -Math.PI / 2, sitLerp);
+      if (u.leftArm) u.leftArm.rotation.x = THREE.MathUtils.lerp(u.leftArm.rotation.x, -0.25, sitLerp);
+      if (u.rightArm) u.rightArm.rotation.x = THREE.MathUtils.lerp(u.rightArm.rotation.x, -0.25, sitLerp);
+      u.isGrounded = true;
+      u.vy = 0;
+      u.walkTimer = 0;
+    }
+  }
+
+  // Posisi DUNIA avatar (sambil duduk = anak kursi → dari hierarchy, nol lag)
+  let _avPos = avatar.position;
+  if (u.sitting && u.sitting.block && u.sitting.block.parent) {
+    u.sitting.block.updateMatrixWorld();
+    avatar.updateMatrixWorld();
+    _avPos = avatar.getWorldPosition(new THREE.Vector3());
+  }
+
+    if (!u.hasInitializedPos || u.prevPos.distanceTo(_avPos) > 10.0) {
+    u.prevPos.copy(_avPos);
     u.hasInitializedPos = true;
     u.zoomDist = (typeof u.zoomDist === 'number' && u.zoomDist >= 1.2) ? u.zoomDist : 18.0;
-    const initFocus = avatar.position.clone().add(new THREE.Vector3(0, 3.0, 0));
+    const initFocus = _avPos.clone().add(new THREE.Vector3(0, 3.0 * AVATAR_SCALE, 0));
     controls.target.copy(initFocus);
-    camera.position.set(avatar.position.x, avatar.position.y + 4.0, avatar.position.z - u.zoomDist);
+    camera.position.set(_avPos.x, _avPos.y + 4.0, _avPos.z - u.zoomDist);
     controls.update();
   }
 
@@ -194,7 +285,9 @@ export function updateAvatarPhysics(
   if (keys.a) moveDir.sub(right);
 
   const isMoving = moveDir.lengthSq() > 0.0001;
-  if (isMoving && !u.flyEnabled) {
+  if (sittingNow) {
+    // Duduk: pose dijaga oleh handler di atas — jangan diganggu walk/idle lerp
+  } else if (isMoving && !u.flyEnabled) {
     moveDir.normalize();
 
     // Roblox Humanoid AutoRotate (avatar berputar luwes menghadap arah gerak)
@@ -289,7 +382,7 @@ export function updateAvatarPhysics(
   }
 
   // 2. PROSES HORIZONTAL MOVEMENT + WALL / CLIFF / BLOCK COLLISION
-  if (isMoving) {
+  if (isMoving && !sittingNow) {
     const totalStep = u.walkSpeed * dt;
     let stepX = moveDir.x * totalStep;
     let stepZ = moveDir.z * totalStep;
@@ -374,7 +467,7 @@ export function updateAvatarPhysics(
   //    (maju/mundur/naik/turun) tanpa gravitasi & tanpa tabrakan, dengan
   //    animasi tubuh dimiringkan mengikuti arah terbang supaya tidak kaku.
   // ══════════════════════════════════════════════════════════════════════════
-  if (u.flyEnabled) {
+  if (u.flyEnabled && !sittingNow) {
     // Arah pandangan kamera penuh (termasuk vertikal) — bebas terbang ke atas/bawah.
     const camDir = new THREE.Vector3();
     camera.getWorldDirection(camDir);
@@ -457,16 +550,16 @@ export function updateAvatarPhysics(
   }
 
   // 3. JUMP & GRAVITASI (Vertical Physics)
-  if (u.flyEnabled) {
+  if (u.flyEnabled && !sittingNow) {
     // Terbang: input lompat diabaikan (Spasi tidak dipakai saat terbang)
     keys.space = false;
-  } else if (keys.space && (u.isGrounded || u.infiniteJump)) {
+  } else if (keys.space && !sittingNow && (u.isGrounded || u.infiniteJump)) {
     u.vy = u.jumpPower;
     u.isGrounded = false;   // infinite jump: boleh lompat lagi walau di udara
     keys.space = false; // Konsumsi input lompat
   }
 
-  if (!u.isGrounded && !u.flyEnabled) {
+  if (!u.sitting && !u.isGrounded && !u.flyEnabled) {
     u.vy += u.gravity * dt;
     avatar.position.y += u.vy * dt;
 
@@ -483,7 +576,7 @@ export function updateAvatarPhysics(
       u.vy = 0;
       u.isGrounded = true;
     }
-  } else {
+  } else if (!u.sitting) {
     // Sedang menapak: cek apakah lantai turun (turun tangga/jatuh) atau naik undakan (step up)
     if (avatar.position.y < maxGroundY) {
       // Step-up naik ke undakan tanah / balok
@@ -517,8 +610,8 @@ export function updateAvatarPhysics(
 
   // ── ROBLOX CAMERA SYSTEM ──
   // Translation delta avatar frame ini
-  const deltaPos = new THREE.Vector3().subVectors(avatar.position, u.prevPos);
-  u.prevPos.copy(avatar.position);
+  const deltaPos = new THREE.Vector3().subVectors(_avPos, u.prevPos);
+  u.prevPos.copy(_avPos);
 
   if (isFirstPerson) {
     // ═════════════════════════════════════════════════════════════════════════
@@ -551,7 +644,7 @@ export function updateAvatarPhysics(
 
     // ⚠️ PENTING: Titik pusat kamera SELALU TERKUNCI PERSIS di kepala/mata avatar (Y = 3.10)
     // Sumbu pusat rotasi berada di tubuh avatar, kamera TIDAK AKAN PERNAH terbang ke atas langit!
-    const eyePos = avatar.position.clone().add(new THREE.Vector3(0, 3.10, 0));
+    const eyePos = _avPos.clone().add(new THREE.Vector3(0, 3.10 * AVATAR_SCALE, 0));
     camera.position.copy(eyePos);
 
     // Bidik arah pandangan tepat 1 unit di depan mata
@@ -583,7 +676,7 @@ export function updateAvatarPhysics(
     controls.minPolarAngle = 0.05;           // bebas menunduk melihat tanah dari atas kepala
 
     // Titik pusat target KOKOH dan AMAN di dada avatar (Y = 2.025) — TIDAK BOLEH KEGESER/LONCAT!
-    const targetPos = avatar.position.clone().add(new THREE.Vector3(0, 2.025, 0));
+    const targetPos = _avPos.clone().add(new THREE.Vector3(0, 2.025 * AVATAR_SCALE, 0));
 
     // Geser kamera bersama pergerakan avatar
     camera.position.add(deltaPos);
@@ -628,4 +721,86 @@ export function updateAvatarPhysics(
     controls.target.copy(targetPos);
     controls.update();
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ── bab 212: TOGGLE DUDUK (keybind F di mode avatar) ──
+// Cari NSI Seat/Chair/Throne terdekat (radius 2.6); kalau sedang duduk →
+// berdiri (maju 1.2 unit ke arah hadap); kalau tidak → duduk di kursi
+// terdekat dengan arah mengikuti panah hijau (quaternion block).
+// Tinggi tempel duduk = getFacingArrowTopY (satu sumber kebenaran dengan
+// panah hijau — bab 210/211).
+// ══════════════════════════════════════════════════════════════════════════
+export function toggleSit(avatar, blocks) {
+  if (!avatar || !avatar.userData) return null;
+  const u = avatar.userData;
+
+  // bab 212: F saat duduk = no-op — duduk HANYA bisa ditinggalkan LOMPAT.
+  // Avatar tanpa parent (orphan) juga ditolak — duduk butuh parent scene.
+  if (u.sitting || !avatar.parent) return null;
+
+  // Cari kursi terdekat (HANYA 3 NSI ber-hadap ini — perintah user)
+  const SEATS = ['seat', 'chair', 'throne'];
+  let best = null;
+  let bestD = 2.6;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (!b || !b.userData || SEATS.indexOf(b.userData.blockSlug) < 0) continue;
+    const d = Math.hypot(b.position.x - avatar.position.x, b.position.z - avatar.position.z);
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  if (!best) return null;
+
+  const slug = best.userData.blockSlug;
+  // ⚠️ PUSAT DUNIA block (bukan .position — block bisa di dalam grup multi-
+  //    select yang bertransformasi; .position = ruang GRUP, bukan dunia!)
+  best.updateMatrixWorld();
+  const _bw = best.getWorldPosition(new THREE.Vector3());
+  const seatTopY = _bw.y + getFacingArrowTopY(slug);
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(best.quaternion);
+  fwd.y = 0;
+  if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
+  fwd.normalize();
+
+  // Titik kontak duduk (dunia) → LOKAL block (avatar jadi ANAK kursi)
+  const _contactW = new THREE.Vector3(
+    _bw.x - fwd.x * 0.12,
+    seatTopY,
+    _bw.z - fwd.z * 0.12
+  );
+  const _loc = best.worldToLocal(_contactW.clone());
+  const hipH = 1.35 * AVATAR_SCALE;
+
+  const _standDist = getNsiSize(slug)[2] / 2 + 0.8;   // setengah-dalam kursi + margin 0.75 + 0.05
+  u.sitting = {
+    block: best,
+    slug,
+    lx: _loc.x, ly: _loc.y, lz: _loc.z,        // titik duduk LOKAL (menempel kursi)
+    sitLX: _loc.x, sitLY: _loc.y - hipH, sitLZ: _loc.z,  // posisi lokal avatar (pinggul di bantal)
+    standDist: _standDist,
+    blend: 0,                                   // 0..1 transisi masuk duduk
+    startLX: 0, startLY: 0, startLZ: 0,         // diisi di bawah (posisi lama dlm ruang lokal)
+    startLocalYaw: 0,
+    oldParent: avatar.parent,                   // utk kembali saat berdiri
+    oldWorld: avatar.getWorldPosition(new THREE.Vector3()),
+    yaw: Math.atan2(fwd.x, fwd.z),              // arah hadap dunia (fallback)
+  };
+
+  // posisi LAMA avatar dalam ruang lokal kursi (untuk lerp transisi)
+  best.updateMatrixWorld();
+  const _startL = best.worldToLocal(avatar.getWorldPosition(new THREE.Vector3()));
+  u.sitting.startLX = _startL.x;
+  u.sitting.startLY = _startL.y;
+  u.sitting.startLZ = _startL.z;
+  const _bf = new THREE.Vector3(0, 0, -1).applyQuaternion(best.quaternion);
+  u.sitting.startLocalYaw = avatar.rotation.y - Math.atan2(_bf.x, _bf.z);
+
+  // Jadikan ANAK kursi → menempel absolut (nol lag, ikut jatuh & rotasi)
+  best.add(avatar);
+  avatar.position.set(u.sitting.sitLX, u.sitting.sitLY, u.sitting.sitLZ);
+  avatar.rotation.set(0, u.sitting.startLocalYaw, 0);
+
+  u.isGrounded = true;
+  u.vy = 0;
+  return slug;
 }

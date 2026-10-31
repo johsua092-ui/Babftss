@@ -338,6 +338,17 @@ export const NSI_CH_SLUG = 'chair';
 export const NSI_CH_NAME = 'Chair';
 export const NSI_CH_SIZE = [1, 2, 1];   // block = 2 x 4 x 2 studs
 
+// ── bab 211: THRONE — NSI L2 singgasana emas voxel ──
+// Referensi: 9 foto user (folder kerja, 2026-10-27) + info user: P×L maks
+// 4 studs, tinggi 8 studs (= [2,4,2] block). Struktur dari semua sudut:
+// panel sandaran besar berpuncak ARCH BERUNDAK + bantal marun gelap inset
+// berbingkai emas, dudukan bantal marun, 2 sandaran tangan berhias tiang
+// depan, 4 kaki ber-detail kaki/braket, rangka kotak 4x4 studs.
+// Emas & marun lewat VERTEX COLOR (preseden Trophy: warna penuh sah).
+export const NSI_TH_SLUG = 'throne';
+export const NSI_TH_NAME = 'Throne';
+export const NSI_TH_SIZE = [2, 4, 2];   // block = 4 x 8 x 4 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -354,6 +365,7 @@ export const NSI_SIZES = {
   [NSI_CD_SLUG]: [1.0, 1.75, 1.0],
   [NSI_IB_SLUG]: [1, 1, 1],   // bab 209: I-Beam 2 x 2 x 2 studs
   [NSI_CH_SLUG]: [1, 2, 1],   // bab 210: Chair 2 x 4 x 2 studs
+  [NSI_TH_SLUG]: [2, 4, 2],   // bab 211: Throne 4 x 8 x 4 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -376,7 +388,7 @@ export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1074,6 +1086,101 @@ export function makeChairGeometry(THREE) {
   return geo;
 }
 
+/**
+ * Daftar KOTAK THRONE (bab 211, sumber tunggal: geometry + ikon + tes).
+ * REDESIGN 2026-10-31 (brainstorm Claude + foto): proporsi anti-gendutan —
+ * dudukan di 2.0 studs (25 persen tinggi), kaki depan MENERUS ke atas menjadi
+ * tiang armrest (garis vertikal lantai puncak), rangka = rel keliling tipis
+ * (0.8 studs) dengan jendela terbuka di bawah dudukan, sandaran BESAR
+ * (3.6 studs lebar, puncak 6.8 studs = 75 persen tinggi di atas dudukan),
+ * bantal marun tebal 0.6 studs, arch lebar-rendah 3 undakan x 0.4 studs.
+ * Semua axis-aligned _box (gaya voxel) — depan = -Z, sandaran di +Z.
+ * Envelope 2x4x2 block = 4x8x4 studs. Emas & marun = VERTEX COLOR.
+ *
+ * Sumber angka: review Claude 2026-10-31 (dengan foto referensi + render),
+ * grid 0.2 studs; y_block = studs/2 - 2.
+ */
+export function getThroneBoxes() {
+  const GOLD = false, CUSH = true;
+  const B = (x0, x1, y0, y1, z0, z1, cushion) => ({
+    x0, x1, y0, y1, z0, z1, cushion: !!cushion,
+    vol: (x1 - x0) * (y1 - y0) * (z1 - z0),
+  });
+  const boxes = [];
+  // 1-2) KAKI DEPAN: poros menerus dari lantai ke tiang armrest (y -2..-0.5)
+  [[-0.9, -0.6], [0.6, 0.9]].forEach(([x0, x1]) => {
+    boxes.push(B(x0, x1, -2.0, -0.5, -0.9, -0.6, GOLD));            // poros 0.3x0.3
+    boxes.push(B(x0 - 0.1, x1 + 0.1, -2.0, -1.9, -1.0, -0.5, GOLD)); // foot 0.5x0.5
+  });
+  // 3-4) DUDUKAN marun: y -1.3..-1.0 (2.0 studs dari lantai), di atas rel
+  boxes.push(B(-0.75, 0.75, -1.3, -1.0, -0.75, 0.75, CUSH));
+  // 5-8) REL KELILING dudukan (0.8 studs tebal, rata sisi luar kaki ±0.9):
+  //      y -1.5..-1.3 — jendela terbuka di bawahnya (1.4-2.6 studs)
+  boxes.push(B(-0.9, 0.9, -1.5, -1.3, -0.9, -0.7, GOLD));   // depan
+  boxes.push(B(-0.9, 0.9, -1.5, -1.3, 0.7, 0.9, GOLD));     // belakang
+  boxes.push(B(-0.9, -0.7, -1.5, -1.3, -0.7, 0.7, GOLD));   // kiri
+  boxes.push(B(0.7, 0.9, -1.5, -1.3, -0.7, 0.7, GOLD));     // kanan
+  // 9-10) ARMREST: rail 1.0 studs di atas dudukan (y -0.7..-0.5), memanjang
+  //       ke depan (z -1.0), lebar 0.3 — menyambung tiang depan ke sandaran
+  [[-0.9, -0.6], [0.6, 0.9]].forEach(([x0, x1]) => {
+    boxes.push(B(x0, x1, -0.7, -0.5, -1.0, 0.6, GOLD));
+  });
+  // 11-12) TEPI SAMPING sandaran: menerus dari LANTAI ke puncak arch
+  //        (x ±0.6..±0.9 = sejajar kaki belakang; garis vertikal menerus)
+  [[-0.9, -0.6], [0.6, 0.9]].forEach(([x0, x1]) => {
+    boxes.push(B(x0, x1, -2.0, 1.4, 0.6, 1.0, GOLD));
+  });
+  // 11b) KAKI BELAKANG: foot yang SAMA dengan kaki depan (KOREKSI USER:
+  //      *"kaki yang belakang kok gitu? harusnya sama dong itu kakinya 4, 4nya itu"*)
+  //      — 4 sudut wajib ber-detail foot identik di lantai.
+  [[-0.9, -0.6], [0.6, 0.9]].forEach(([x0, x1]) => {
+    boxes.push(B(x0 - 0.1, x1 + 0.1, -2.0, -1.9, 0.5, 1.0, GOLD));
+  });
+  // 13) PANEL SANDARAN tengah (antara tepi samping, z agak mundur)
+  boxes.push(B(-0.6, 0.6, -1.0, 1.4, 0.7, 1.0, GOLD));
+  // 14) BANTALAN SANDARAN marun: x ±0.6, y -1.0..+1.0, CEKUNG 0.1 block
+  //     di belakang muka tepi samping (muka marun di z +0.5)
+  boxes.push(B(-0.6, 0.6, -1.0, 1.0, 0.5, 0.7, CUSH));
+  // 15-16) ARCH BERUNDAK 3 tingkat x 0.4 studs (6.8-8.0): lebar 2.9/2.1/1.3
+  boxes.push(B(-0.725, 0.725, 1.4, 1.6, 0.6, 1.0, GOLD));
+  boxes.push(B(-0.525, 0.525, 1.6, 1.8, 0.6, 1.0, GOLD));
+  boxes.push(B(-0.325, 0.325, 1.8, 2.0, 0.6, 1.0, GOLD));
+  // 17-18) INSET marun mengikuti arch (2 undakan, cekung z 0.5..0.6)
+  boxes.push(B(-0.45, 0.45, 1.0, 1.2, 0.5, 0.6, CUSH));
+  boxes.push(B(-0.25, 0.25, 1.2, 1.4, 0.5, 0.6, CUSH));
+  return boxes;
+}
+
+/** Muka kuad per kotak (untuk tes penutupan per kotak). */
+export function getThroneFaces() {
+  const faces = [];
+  getThroneBoxes().forEach((b) => {
+    faces.push(..._box(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1));
+  });
+  return faces;
+}
+
+/**
+ * Buat geometri THRONE (2×4×2 block, pusat envelope di origin).
+ * Vertex color 2 toni (preseden Trophy — warna penuh sah):
+ * EMAS albedo Claude (1.0, 0.63, 0.0) dari sRGB (255,208,0); MARUN (0.30, 0.09, 0.08).
+ */
+export function makeThroneGeometry(THREE) {
+  const parts = getThroneBoxes();
+  const faces = [];
+  parts.forEach((b) => faces.push(..._box(b.x0, b.x1, b.y0, b.y1, b.z0, b.z1)));
+  const geo = _buildFaces(THREE, faces, { autoFix: false });
+  const pos = geo.getAttribute("position");
+  const nQuad = pos.count / 6;
+  const col = [];
+  for (let qd = 0; qd < nQuad; qd++) {
+    const bIdx = Math.floor(qd / 6);
+    const c = parts[bIdx] && parts[bIdx].cushion ? [0.30, 0.09, 0.08] : [1.0, 0.63, 0.0];
+    for (let k = 0; k < 6; k++) col.push(c[0], c[1], c[2]);
+  }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
 // ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) ──
 // KONFIRMASI USER (2026-10-04): tinggi 36 studs (=18 block), geladak bundar
 // diameter 10 studs (=5 block). TANPA facing. Batas 2x2x2 studs = Level 1 saja.
@@ -4317,6 +4424,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_IB_SLUG) return makeIbeamGeometry(THREE);
   // bab 210: Chair
   if (slug === NSI_CH_SLUG) return makeChairGeometry(THREE);
+  // bab 211: Throne
+  if (slug === NSI_TH_SLUG) return makeThroneGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -4332,7 +4441,8 @@ export function makeNsiGeometry(THREE, slug) {
 // saja"*.
 // ══════════════════════════════════════════════════════════════════════════
 // bab 210: Chair juga punya arah hadap (kursi — panah hijau di ghost, pola Seat).
-export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG, NSI_CH_SLUG];
+// bab 211: Throne juga (singgasana menghadap −Z, sandaran +Z).
+export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG, NSI_CH_SLUG, NSI_TH_SLUG];
 
 // bab 210 (KOREKSI USER: *"panah hijau ngambang tinggi tidak nempel di area
 // dudukan"*): tinggi PERMUKAAN tempat panah menempel, per item (block, dari
@@ -4342,6 +4452,7 @@ export const NSI_FACING_SLUGS = [NSI_SEAT_SLUG, NSI_CH_SLUG];
 const NSI_FACING_ARROW_TOP = {
   [NSI_SEAT_SLUG]: 0.25,
   [NSI_CH_SLUG]: 0,
+  [NSI_TH_SLUG]: -1.0,   // bab 211: permukaan bantal duduk Throne (2.0 studs dari lantai)
 };
 export function getFacingArrowTopY(slug) {
   return NSI_FACING_ARROW_TOP[slug] ?? 0.25;

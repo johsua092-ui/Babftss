@@ -80,7 +80,7 @@ import { STUDS_PER_BLOCK } from '../utils/blockStuds.js';
 import { loadBabftMapGlb, babftSpawnFor, babftCameraFor, babftPlotBounds,
          SPAWN_DEFAULT_TEAM, BABFT_TEAMS, BABFT_PLOT_CENTERS_STUDS, BABFT_MAP_SCALE, BABFT_STUDIO_TEAM_PLOTS } from '../utils/babftMapGlb.js';
 import { loadBabftMapMerged } from '../utils/babftMapObj.js';
-import { createHumanoidAvatar, updateAvatarPhysics } from '../utils/avatarController.js';
+import { createHumanoidAvatar, updateAvatarPhysics, toggleSit } from '../utils/avatarController.js';
 import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
 import MapLoadingOverlay from '../components/MapLoadingOverlay.jsx';
 import FpsCounter from '../components/FpsCounter.jsx';
@@ -1142,7 +1142,7 @@ export default function BlockSimulator3D({ setPage }) {
     // reset TIDAK boleh buta ke 0 — WAJIB ke DEFAULT PER ITEM (Chair = 2 step
     // × 90° = 180°; item lain = 0), kalau tidak, equip ulangChair = arah lama.
     if (finalTool !== 'place') {
-      const _defRotY = (selectedBlockTypeRef.current === 'chair') ? 2 : 0;
+      const _defRotY = hasFacing(selectedBlockTypeRef.current) ? 2 : 0;
       if (placeRotStepsXRef.current !== 0) { placeRotStepsXRef.current = 0; setPlaceRotStepsX(0); }
       if (placeRotStepsYRef.current !== _defRotY) { placeRotStepsYRef.current = _defRotY; setPlaceRotStepsY(_defRotY); }
       if (placeRotStepsZRef.current !== 0) { placeRotStepsZRef.current = 0; setPlaceRotStepsZ(0); }
@@ -14961,6 +14961,22 @@ Now you can apply Displacement for detailed effect.`);
         keys.o = true;
         if (threeRef.current && threeRef.current.avatarMode) e.preventDefault();
       }
+      // ── bab 212 (PERMINTAAN USER): F = DUDUK/BERDIRI di NSI Seat/Chair/Throne
+      //    saat mode avatar. Arah duduk mengikuti panah hijau (quaternion block).
+      else if (k === 'f' && threeRef.current && threeRef.current.avatarMode) {
+        e.preventDefault();
+        if (!e.repeat) {
+          const _av3 = threeRef.current.avatar;
+          if (_av3 && _av3.userData.sitting) {
+            // bab 212: duduk HANYA bisa ditinggalkan dengan lompat (spasi)
+            toast.info('Tekan SPASI untuk berdiri dari kursi');
+          } else {
+            const _sitRes = toggleSit(threeRef.current.avatar, threeRef.current.blocks || []);
+            if (_sitRes) toast.success('Avatar duduk di ' + _sitRes.charAt(0).toUpperCase() + _sitRes.slice(1));
+            else toast.warning('Dekati Seat / Chair / Throne lalu tekan F untuk duduk');
+          }
+        }
+      }
       // ── FITUR (2026-10-04, permintaan user): 3 KEYBIND ROTATE GHOST ──
       // PC saja (>=768px). Tiap tekan menambah 1 langkah rotasi (× Rotation, default
       // 90°) pada GHOST block tool place — 3 SUMBU supaya lengkap & nyaman:
@@ -15148,9 +15164,17 @@ Now you can apply Displacement for detailed effect.`);
       if (threeRef.current && threeRef.current.avatarMode) {
         // Jaminan Anti-Hilang: jika avatar belum ada atau tertinggal di scene lama (re-mount/HMR),
         // otomatis buat & pasang langsung ke scene aktif saat ini!
-        if (!threeRef.current.avatar || threeRef.current.avatar.parent !== scene) {
-          if (threeRef.current.avatar && threeRef.current.avatar.parent) {
-            try { threeRef.current.avatar.removeFromParent(); } catch (_) {}
+        // ⚠️ bab 212 (BUG KRITIS): avatar sedang DUDUK = parent-nya KURSI (sah!)
+        //    — dulu guard `parent !== scene` menganggapnya hilang → avatar BARU
+        //    dibuat tiap frame di titik spawn tengah (teleport + tidak pernah
+        //    duduk) + tombol "F · Duduk" ikut dibuat ulang tiap frame (menumpuk).
+        const _avRef = threeRef.current.avatar;
+        const _avParentOk = _avRef && (_avRef.parent === scene
+          || (_avRef.userData.sitting && _avRef.parent && _avRef.parent.userData && _avRef.parent.userData.isBlock));
+        if (!_avParentOk) {
+          if (_avRef && _avRef.parent) {
+            try { _avRef.removeFromParent(); } catch (_) {}
+            try { if (_avRef.userData.sitBtn) _avRef.userData.sitBtn.remove(); } catch (_) {}
           }
           const teamObj = BABFT_TEAMS.find(t => t.key === (threeRef.current.babftTeam || 'white')) || BABFT_TEAMS[0];
           const av = createHumanoidAvatar(THREE, teamObj.color);
@@ -15171,14 +15195,78 @@ Now you can apply Displacement for detailed effect.`);
           scene.add(av);
           threeRef.current.avatar = av;
         }
-        if (threeRef.current.avatar && !scene.children.includes(threeRef.current.avatar)) {
+        // ⚠️ bab 212 (BUG "TITIK TENGAH DUNIA" — AKAR SEJATI): saat duduk,
+        // avatar = ANAK kursi (bukan scene.children) → baris ini dulu
+        // MENCULIK avatar kembali ke scene pada koordinat LOKAL kursi
+        // (≈ ±0.12, -0.97 — nilai kecil dekat nol) yang ditafsirkan sbg
+        // koordinat DUNIA → avatar mendarat di titik tengah dunia tiap frame.
+        // Saat duduk: parenting ke kursi itu SAH → JANGAN scene.add ulang.
+        if (threeRef.current.avatar && !threeRef.current.avatar.userData.sitting
+            && !scene.children.includes(threeRef.current.avatar)) {
           scene.add(threeRef.current.avatar);
         }
         const groundY = threeRef.current.babftMap ? 207.0 : 0.0;
         const wheel = threeRef.current.avatarWheelDelta || 0;
         threeRef.current.avatarWheelDelta = 0;
         updateAvatarPhysics(threeRef.current.avatar, keys, _dt, groundY, camera, controls, wheel, threeRef.current.babftMap, threeRef.current.blocks, renderer);
+        // ── bab 212 (KOREKSI USER: notif toast jelek → TOMBOL MELAYANG):
+        //    tombol "F · Duduk" melayang di atas kursi terdekat (screen-space),
+        //    bisa diklik langsung ATAU tekan F; hilang saat sudah duduk/jauh.
+        try {
+          const _av = threeRef.current.avatar;
+          if (!_av) throw 0;
+          if (!_av.userData.sitBtn) {
+            const _el = document.createElement('div');
+            _el.innerHTML = '<span style="font-family:Orbitron,sans-serif;font-weight:700;font-size:14px;color:#ffd234">F</span>' +
+              '<span style="font-family:Inter,sans-serif;font-size:13px;color:#e8ecf4;margin-left:8px">Duduk</span>';
+            _el.style.cssText = 'position:fixed;display:none;pointer-events:auto;cursor:pointer;z-index:60;' +
+              'padding:9px 16px;border-radius:12px;background:rgba(14,20,32,0.92);border:1px solid #f59e0b;' +
+              'box-shadow:0 0 18px rgba(245,158,11,0.35);backdrop-filter:blur(8px);' +
+              'transform:translate(-50%,-100%);user-select:none;white-space:nowrap';
+            _el.addEventListener('click', () => {
+              try {
+                const _r = toggleSit(threeRef.current.avatar, threeRef.current.blocks || []);
+                if (_r === 'stand') toast.success('Avatar berdiri');
+                else if (_r) toast.success('Avatar duduk di ' + _r.charAt(0).toUpperCase() + _r.slice(1));
+              } catch (_) {}
+            });
+            document.body.appendChild(_el);
+            _av.userData.sitBtn = _el;
+          }
+          const _btn = _av.userData.sitBtn;
+          const _sitting = !!_av.userData.sitting;
+          let _best = null, _bestD = 2.6, _bestSlug = null;
+          const _bl = threeRef.current.blocks || [];
+          for (let _i = 0; _i < _bl.length; _i++) {
+            const b = _bl[_i];
+            if (!b || !b.userData) continue;
+            const _sl = b.userData.blockSlug;
+            if (_sl !== 'seat' && _sl !== 'chair' && _sl !== 'throne') continue;
+            const _d = Math.hypot(b.position.x - _av.position.x, b.position.z - _av.position.z);
+            if (_d < _bestD) { _bestD = _d; _best = b; _bestSlug = _sl; }
+          }
+          if (!_sitting && _best) {
+            // bab 212 (KOREKSI USER: "ketinggian loh ya melayangnya, sewajarnya"):
+            // 1 stud di atas permukaan duduk item — dekat area dudukan, tidak tinggi
+            const _v = new THREE.Vector3(_best.position.x, _best.position.y + getFacingArrowTopY(_bestSlug) + 0.5, _best.position.z);
+            _v.project(camera);
+            if (_v.z < 1) {
+              _btn.style.display = 'block';
+              _btn.style.left = Math.round((_v.x * 0.5 + 0.5) * renderer.domElement.clientWidth) + 'px';
+              _btn.style.top = Math.round((-_v.y * 0.5 + 0.5) * renderer.domElement.clientHeight) + 'px';
+            } else {
+              _btn.style.display = 'none';
+            }
+          } else {
+            _btn.style.display = 'none';
+          }
+        } catch (_) {}
       } else {
+        // bab 212: keluar avatar mode → sembunyikan tombol duduk melayang
+        try {
+          const _av = threeRef.current.avatar;
+          if (_av && _av.userData.sitBtn) _av.userData.sitBtn.style.display = 'none';
+        } catch (_) {}
         const _shiftForFly = keys.shift && !(typeof window !== 'undefined' && window.innerWidth >= 768
           && shiftHeldRef.current && GIZMO_TOOLS.includes(toolRef.current));
         // ══ bab 201 — PENJAGA FOKUS (usul user: "hanya gerak kalau keybind
@@ -16106,12 +16194,13 @@ Now you can apply Displacement for detailed effect.`);
               : makeNsiGeometry(THREE, slug);
         if (ghostBlock.geometry && ghostBlock.geometry.dispose) ghostBlock.geometry.dispose();
         ghostBlock.geometry = _gNsi || new THREE.BoxGeometry(1, 1, 1);
-        // ── bab 210 (PERMINTAAN USER 2026-10-31): default rotasi PER ITEM saat
-        // jenis block berganti — Chair = 2 step × 90° (180°, menghadap kamera),
-        // semua item lain = 0. Berlaku di SEMUA jalur pergantian slug (panel,
-        // unequip→equip, taruh block lain → pilih Chair lagi).
+        // ── bab 210/212 (PERMINTAAN USER 2026-10-31): default rotasi PER ITEM
+        // saat jenis block berganti — item ber-facing (Seat/Chair/Throne) =
+        // 2 step × 90° (menghadap kamera, SAMA ARAH semuanya — KOREKSI USER:
+        // Seat & Throne tadinya kebalikan dari Chair); item lain = 0.
+        // Berlaku di SEMUA jalur pergantian slug.
         placeRotStepsXRef.current = 0;
-        placeRotStepsYRef.current = (slug === 'chair') ? 2 : 0;
+        placeRotStepsYRef.current = hasFacing(slug) ? 2 : 0;
         placeRotStepsZRef.current = 0;
       } catch (e) {}
       // ── FIX (2026-10-04, NSI Rod): OUTLINE ghost WAJIB ikut geometri baru.
@@ -19847,7 +19936,8 @@ Now you can apply Displacement for detailed effect.`);
     st.avatarMode = enable;
 
     if (enable) {
-      if (!st.avatar || st.avatar.parent !== st.scene) {
+      // bab 212: duduk = parent-nya kursi (SAH) — jangan buat ulang di spawn
+      if (!st.avatar || (st.avatar.parent !== st.scene && !(st.avatar.userData.sitting && st.avatar.parent))) {
         if (st.avatar && st.avatar.parent) {
           try { st.avatar.removeFromParent(); } catch (_) {}
         }
@@ -19856,7 +19946,8 @@ Now you can apply Displacement for detailed effect.`);
         st.scene.add(av);
         st.avatar = av;
       }
-      if (st.avatar && !st.scene.children.includes(st.avatar)) {
+      // bab 212: duduk = parent-nya kursi (SAH) — jangan culik kembali ke scene
+      if (st.avatar && !st.avatar.userData.sitting && !st.scene.children.includes(st.avatar)) {
         st.scene.add(st.avatar);
       }
       const activeTeam = st.babftTeam || 'white';

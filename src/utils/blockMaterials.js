@@ -161,6 +161,11 @@ export const BLOCK_LIBRARY = [
   // Badan putih; permukaan duduk+sandaran-depan = HITAM via vertex color
   // (pola Seat, 0.10). roughness 0.55 = plastik halus; metalness 0.
   { slug: 'chair',             name: 'Chair',      label: 'Chair',      roughness: 0.55, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
+  // ══ bab 211: THRONE — NSI L2 singgasana emas voxel ══
+  // Tekstur = plastic_block DINETRALKAN putih (sama pola Chair) — warna EMAS
+  // & MARUN datang dari VERTEX COLOR per kotak (preseden Trophy: warna
+  // penuh sah). roughness 0.5 = emas sadung halus.
+  { slug: 'throne',            name: 'Throne',     label: 'Throne',     roughness: 0.5, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
