@@ -867,22 +867,30 @@ export default function AdminPanel({
               </button>
             )}
 
-            {/* ── bab 213 (PERMINTAAN USER): tombol Change Avatar tepat di atas Teleport To Team ── */}
+            {/* ── bab 213 + KOREKSI USER: tombol Change Avatar di atas Teleport To Team —
+                ikut terkunci di Camera Mode sama seperti teman-temannya (hanya Avatar Mode) ── */}
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                if (playerLocked) return;
                 if (onChangeAvatar) onChangeAvatar();
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              title="Ganti skin avatar / pakai skin dari username Roblox"
+              disabled={playerLocked}
+              aria-disabled={playerLocked}
+              title={playerLocked ? 'Player terkunci — pindah ke Avatar Mode dulu' : 'Ganti skin avatar / pakai skin dari username Roblox'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 9,
                 padding: '8px 9px', borderRadius: 9, textAlign: 'left',
-                cursor: 'pointer',
-                background: 'linear-gradient(90deg, rgba(245,158,11,0.16) 0%, rgba(15,23,42,0.55) 100%)',
-                border: '1px solid rgba(245,158,11,0.45)',
-                color: '#e2e8f0',
+                cursor: playerLocked ? 'not-allowed' : 'pointer',
+                pointerEvents: playerLocked ? 'none' : 'auto',
+                opacity: playerLocked ? 0.6 : 1,
+                background: playerLocked
+                  ? 'rgba(15,23,42,0.42)'
+                  : 'linear-gradient(90deg, rgba(245,158,11,0.16) 0%, rgba(15,23,42,0.55) 100%)',
+                border: `1px solid ${playerLocked ? 'rgba(71,85,105,0.3)' : 'rgba(245,158,11,0.45)'}`,
+                color: playerLocked ? '#475569' : '#e2e8f0',
                 fontFamily: 'Inter, sans-serif',
                 transition: 'background 0.18s ease, border-color 0.18s ease',
               }}
@@ -890,18 +898,20 @@ export default function AdminPanel({
               <span style={{
                 width: 26, height: 26, borderRadius: 7, flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fbbf24',
-                background: 'rgba(245,158,11,0.12)',
-                border: '1px solid rgba(245,158,11,0.44)',
+                color: playerLocked ? '#475569' : '#fbbf24',
+                background: playerLocked ? 'rgba(30,41,59,0.6)' : 'rgba(245,158,11,0.12)',
+                border: `1px solid ${playerLocked ? 'rgba(71,85,105,0.35)' : 'rgba(245,158,11,0.44)'}`,
               }}>
-                <UserRound size={13} />
+                {playerLocked ? <Lock size={13} /> : <UserRound size={13} />}
               </span>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, lineHeight: 1.25, color: '#f1f5f9' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, lineHeight: 1.25, color: playerLocked ? '#64748b' : '#f1f5f9' }}>
                   Change Avatar
                 </span>
-                <span style={{ fontSize: 9.5, color: '#8798b0', lineHeight: 1.35, marginTop: 1 }}>
-                  Ganti skin avatar atau pakai username Roblox.
+                <span style={{ fontSize: 9.5, color: playerLocked ? '#475569' : '#8798b0', lineHeight: 1.35, marginTop: 1 }}>
+                  {playerLocked
+                    ? 'Hanya bisa diakses di Avatar Mode.'
+                    : 'Ganti skin avatar atau pakai username Roblox.'}
                 </span>
               </span>
             </button>

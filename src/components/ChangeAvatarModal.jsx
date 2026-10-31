@@ -17,9 +17,13 @@ import { AVATAR_SKINS } from '../utils/avatarController.js';
         di scene Three.js (frontend-only; backend milik teman user).
    ═══════════════════════════════════════════════════════════════════════════ */
 
-// ⚠️ BASE API BACKEND TEMAN USER — perbarui angka ini saat backend live.
-// Kontrak respons: { modelUrl: string, textureUrl?: string } (.obj atau .gltf)
-export const AVATAR_API_BASE = 'https://avatar-api-teman.vercel.app';
+// BASE API = RELATIVE (KOREKSI BACKEND TEMAN USER, 2026-10-31): backend proxy
+// Roblox 3D avatar kini SATU REPO/HOSTING dengan frontend (api/get-avatar.js).
+// String kosong → request relative '/api/get-avatar' → otomatis kompatibel di
+// SEMUA domain produksi (babft-learning.com/.net/.zone.id/dpdns.org/
+// babftss.vercel.app) maupun localhost, TANPA masalah CORS. DILARANG hardcode
+// domain tertentu.
+export const AVATAR_API_BASE = '';
 
 // Konversi respons API yang fleksibel → { modelUrl, textureUrl }
 function parseAvatarResponse(json) {
