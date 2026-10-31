@@ -1726,39 +1726,88 @@ export default function BlockSimulator3D({ setPage }) {
         const _arms = _rest.filter(_isArm), _legs = _rest.filter(_isLeg);
         const _torso = _rest.filter((p) => !_isArm(p) && !_isLeg(p));
         if (_arms.length >= 2 && _legs.length >= 2 && _torso.length >= 1) {
-          const _mkPivot = (list) => {
-            const b = new THREE.Box3();
-            list.forEach((p) => b.union(p.box));
-            const cc = b.getCenter(new THREE.Vector3());
-            const pv = new THREE.Group();
-            // posisi joint: dari DUNIA → lokal object3D (object3D ber-rotasi π
-            // + skala 0.53 — set world langsung = limb lepas, terukur)
-            pv.position.copy(object3D.worldToLocal(new THREE.Vector3(cc.x, b.max.y - 0.03 * (b.max.y - b.min.y), cc.z)));
-            // rotasi π: samakan semantik sumbu pivot dgn frame grup avatar
-            // (controller: rotation.x = -π/2 saat duduk = kaki ke DEPAN)
-            pv.rotation.y = Math.PI;
-            object3D.add(pv);
-            list.forEach((p) => { pv.attach(p.mesh); p.pivot = pv; });
-            return pv;
+          // ══ SAFETY GATE (KOREKSI USER: "tubuh kepotong-potong" di R15/
+          //    layered clothing, "aura kayak tangan tambahan berayun") ══
+          // Rig per-mesh hanya AMAN utk struktur R6 klasik. Aturan:
+          //   (1) mesh aura/kanan-kiri melingkar (kedalaman z > 0.4 lebar)
+          //       TIDAK boleh jadi limb → tetap statis;
+          //   (2) limb WAJIB bebas dari rentang-x torso (lengan R6 menempel
+          //       di LUAR; R15 upper-arm menembus torso → membatalkan);
+          //   (3) kaki WAJIB di bawah rentang-y torso (R15 upper-leg
+          //       menembus torso → membatalkan);
+          //   (4) tiap limb = rantai tersambung dari sendi; ada mesh sekolom
+          //       yang TERPUTUS → seluruh limb batal (anti "kepotong");
+          //   (5) ALL-OR-NOTHING: salah satu dari 4 limb gagal → SEMUA statis.
+          const _torsoBox = new THREE.Box3();
+          _torso.forEach((p) => _torsoBox.union(p.box));
+          const _zMax = 0.4 * _W;
+          const _armOk = (p) => p.size.z <= _zMax &&
+            (p.box.min.x >= _torsoBox.max.x - 0.02 * _W || p.box.max.x <= _torsoBox.min.x + 0.02 * _W);
+          const _legOk = (p) => p.size.z <= _zMax && p.box.max.y <= _torsoBox.min.y + 0.05 * _H;
+          const _buildLimb = (cands, isArm, side, topMin, topMax) => {
+            const own = cands.filter((p) => (side < 0 ? p.c.x < 0 : p.c.x >= 0))
+              .filter(isArm ? _armOk : _legOk);
+            if (!own.length) return null;
+            const s = own.slice().sort((a, b) => b.box.max.y - a.box.max.y);
+            const top = s[0];
+            if (top.box.max.y < topMin * _H || top.box.max.y > topMax * _H) return null;
+            // rantai tersambung dari sendi ke bawah
+            const chain = [top];
+            const rest = s.slice(1);
+            let cur = top, changed = true;
+            while (changed) {
+              changed = false;
+              for (let i = 0; i < rest.length; i++) {
+                const q = rest[i];
+                const yOk = q.box.max.y >= cur.box.min.y - 0.06 * _H && q.box.min.y <= cur.box.max.y + 0.06 * _H;
+                const xOk = Math.abs(q.c.x - cur.c.x) < 0.3 * _W;
+                if (yOk && xOk) { chain.push(q); rest.splice(i, 1); changed = true; }
+              }
+              cur = chain.reduce((a, b2) => (b2.box.min.y < a.box.min.y ? b2 : a));
+            }
+            // ada mesh sekolom yang TERPUTUS dari rantai → limb batal (anti potong)
+            if (rest.some((q) => Math.abs(q.c.x - chain[0].c.x) < 0.3 * _W)) return null;
+            return chain;
           };
-          const _armL = _arms.filter((p) => p.c.x < 0), _armR = _arms.filter((p) => p.c.x >= 0);
-          const _legL = _legs.filter((p) => p.c.x < 0), _legR = _legs.filter((p) => p.c.x >= 0);
-          _riggedLimbs = {};
-          if (_armL.length) _riggedLimbs.leftArm = _mkPivot(_armL);
-          if (_armR.length) _riggedLimbs.rightArm = _mkPivot(_armR);
-          if (_legL.length) _riggedLimbs.leftLeg = _mkPivot(_legL);
-          if (_legR.length) _riggedLimbs.rightLeg = _mkPivot(_legR);
-          // Handle (aksesori) → ikut part terdekat: kalau part itu limb,
-          // aksesori ikut ter-ayun (pedang di tangan, topi di kepala = statis)
-          const _all = [..._arms, ..._legs, ..._torso, _head];
-          _handles.forEach((p) => {
-            let best = null, bd = Infinity;
-            _all.forEach((q) => {
-              const d = p.c.distanceTo(q.c);
-              if (d < bd) { bd = d; best = q; }
+          const _cArmL = _buildLimb(_arms, true, -1, 0.55, 0.95);
+          const _cArmR = _buildLimb(_arms, true, 1, 0.55, 0.95);
+          const _cLegL = _buildLimb(_legs, false, -1, 0.32, 0.62);
+          const _cLegR = _buildLimb(_legs, false, 1, 0.32, 0.62);
+          if (_cArmL && _cArmR && _cLegL && _cLegR) {
+            const _mkPivot = (list) => {
+              const b = new THREE.Box3();
+              list.forEach((p) => b.union(p.box));
+              const cc = b.getCenter(new THREE.Vector3());
+              const pv = new THREE.Group();
+              // posisi joint: dari DUNIA → lokal object3D (object3D ber-rotasi π
+              // + skala 0.53 — set world langsung = limb lepas, terukur)
+              pv.position.copy(object3D.worldToLocal(new THREE.Vector3(cc.x, b.max.y - 0.03 * (b.max.y - b.min.y), cc.z)));
+              // rotasi π: samakan semantik sumbu pivot dgn frame grup avatar
+              // (controller: rotation.x = -π/2 saat duduk = kaki ke DEPAN)
+              pv.rotation.y = Math.PI;
+              object3D.add(pv);
+              list.forEach((p) => { pv.attach(p.mesh); p.pivot = pv; });
+              return pv;
+            };
+            _riggedLimbs = {};
+            _riggedLimbs.leftArm = _mkPivot(_cArmL);
+            _riggedLimbs.rightArm = _mkPivot(_cArmR);
+            _riggedLimbs.leftLeg = _mkPivot(_cLegL);
+            _riggedLimbs.rightLeg = _mkPivot(_cLegR);
+            // Handle (aksesori) → ikut part terdekat: kalau part itu limb,
+            // aksesori ikut ter-ayun (pedang di tangan, topi di kepala = statis)
+            const _all = [..._arms, ..._legs, ..._torso, _head];
+            _handles.forEach((p) => {
+              let best = null, bd = Infinity;
+              _all.forEach((q) => {
+                const d = p.c.distanceTo(q.c);
+                if (d < bd) { bd = d; best = q; }
+              });
+              if (best && best.pivot) best.pivot.attach(p.mesh);
             });
-            if (best && best.pivot) best.pivot.attach(p.mesh);
-          });
+          } else {
+            _riggedLimbs = null;   // all-or-nothing: struktur tak rapi → statis
+          }
         }
       }
     } catch (e) { /* fallback: tetap statis */ }
