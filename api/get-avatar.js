@@ -28,12 +28,12 @@ function checkRateLimit(key, max = 60, windowMs = 60000) {
   return true;
 }
 
-// Algoritma Shard Roblox CDN (i=31, XOR first 32 chars, modulo 8)
+// Algoritma Shard Roblox CDN (i=31, XOR first 32 chars or 38 for 30DAY-, modulo 8)
 function getCdnUrl(hash) {
   if (!hash || typeof hash !== 'string') return null;
   let i = 31;
-  const len = Math.min(32, hash.length);
-  for (let t = 0; t < len; t++) {
+  const len = hash.startsWith('30DAY-') ? 38 : Math.min(32, hash.length);
+  for (let t = 0; t < len && t < hash.length; t++) {
     i ^= hash.charCodeAt(t);
   }
   const shard = (i % 8 + 8) % 8; // Pastikan non-negatif
