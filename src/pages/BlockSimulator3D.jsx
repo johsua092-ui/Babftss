@@ -1692,6 +1692,73 @@ export default function BlockSimulator3D({ setPage }) {
     object3D.position.x -= _ctr.x;
     object3D.position.z -= _ctr.z;
     object3D.position.y -= _box.min.y;
+    // ══ bab 215 (SOLUSI B teman backend — versi TANPA GLB): RIG ULANG OBJ ══
+    // OBJ Roblox berisi mesh TERPISAH per bagian tubuh (terukur: g Player1..6
+    // + Handle*) pada pose absolute. Kita klasifikasi tiap mesh per bbox →
+    // buat PIVOT bahu/panggul → pasang sebagai u.leftArm/leftLeg/... → R6
+    // Walk Cycle bawaan controller mengayun kaki & tangan TERPISAH — animasi
+    // jalan SEBENARNYA dengan outfit asli, tanpa goyang seluruh badan
+    // (koreksi user: "gondal-gandul kayak setan"), tanpa butuh GLB rigged
+    // (Roblox API tidak menyediakannya — penjelasan backend).
+    // Kalau klasifikasi gagal / part kurang → tetap statis (perilaku aman).
+    let _riggedLimbs = null;
+    try {
+      object3D.updateMatrixWorld(true);
+      const _parts = [];
+      object3D.children.forEach((ch) => {
+        if (!ch.isMesh) return;
+        const b = new THREE.Box3().setFromObject(ch);
+        _parts.push({ mesh: ch, box: b, c: b.getCenter(new THREE.Vector3()), handle: /^handle/i.test(ch.name || '') });
+      });
+      const _post = new THREE.Box3().setFromObject(object3D); // bbox POST-scale (pusat part = koordinat post-scale)
+      const _H = _post.max.y - _post.min.y, _W = _post.max.x - _post.min.x;
+      const _body = _parts.filter((p) => !p.handle);
+      const _handles = _parts.filter((p) => p.handle);
+      if (_body.length >= 4) {
+        const _sorted = _body.slice().sort((a, b) => b.c.y - a.c.y);
+        const _head = _sorted[0];                        // part tertinggi = kepala
+        const _rest = _sorted.slice(1);
+        const _isArm = (p) => Math.abs(p.c.x) > 0.16 * _W && p.c.y > 0.38 * _H;
+        const _isLeg = (p) => p.c.y <= 0.52 * _H;
+        const _arms = _rest.filter(_isArm), _legs = _rest.filter(_isLeg);
+        const _torso = _rest.filter((p) => !_isArm(p) && !_isLeg(p));
+        if (_arms.length >= 2 && _legs.length >= 2 && _torso.length >= 1) {
+          const _mkPivot = (list) => {
+            const b = new THREE.Box3();
+            list.forEach((p) => b.union(p.box));
+            const cc = b.getCenter(new THREE.Vector3());
+            const pv = new THREE.Group();
+            // posisi joint: dari DUNIA → lokal object3D (object3D ber-rotasi π
+            // + skala 0.53 — set world langsung = limb lepas, terukur)
+            pv.position.copy(object3D.worldToLocal(new THREE.Vector3(cc.x, b.max.y - 0.03 * (b.max.y - b.min.y), cc.z)));
+            // rotasi π: samakan semantik sumbu pivot dgn frame grup avatar
+            // (controller: rotation.x = -π/2 saat duduk = kaki ke DEPAN)
+            pv.rotation.y = Math.PI;
+            object3D.add(pv);
+            list.forEach((p) => { pv.attach(p.mesh); p.pivot = pv; });
+            return pv;
+          };
+          const _armL = _arms.filter((p) => p.c.x < 0), _armR = _arms.filter((p) => p.c.x >= 0);
+          const _legL = _legs.filter((p) => p.c.x < 0), _legR = _legs.filter((p) => p.c.x >= 0);
+          _riggedLimbs = {};
+          if (_armL.length) _riggedLimbs.leftArm = _mkPivot(_armL);
+          if (_armR.length) _riggedLimbs.rightArm = _mkPivot(_armR);
+          if (_legL.length) _riggedLimbs.leftLeg = _mkPivot(_legL);
+          if (_legR.length) _riggedLimbs.rightLeg = _mkPivot(_legR);
+          // Handle (aksesori) → ikut part terdekat: kalau part itu limb,
+          // aksesori ikut ter-ayun (pedang di tangan, topi di kepala = statis)
+          const _all = [..._arms, ..._legs, ..._torso, _head];
+          _handles.forEach((p) => {
+            let best = null, bd = Infinity;
+            _all.forEach((q) => {
+              const d = p.c.distanceTo(q.c);
+              if (d < bd) { bd = d; best = q; }
+            });
+            if (best && best.pivot) best.pivot.attach(p.mesh);
+          });
+        }
+      }
+    } catch (e) { /* fallback: tetap statis */ }
     // grup physics-compatible (limbs null → controller null-safe)
     const g = new THREE.Group();
     g.add(object3D);
@@ -1711,7 +1778,13 @@ export default function BlockSimulator3D({ setPage }) {
       zoomDist: (_old && _old.userData.zoomDist) || 12.0, minZoom: 0.2, maxZoom: 65.0, zoomSpeed: 28,
       prevPos: new THREE.Vector3(), hasInitializedPos: false, wasFirstPerson: false,
       isCustomModel: true, robloxUsername: username,
-      // bab 215: ref model kustom utk animasi jalan prosedural (tanpa limbs)
+      // bab 215: rig hasil klasifikasi OBJ — pivot limb utk R6 walk cycle
+      // (null kalau klasifikasi gagal → controller null-safe → statis)
+      leftArm: (_riggedLimbs && _riggedLimbs.leftArm) || null,
+      rightArm: (_riggedLimbs && _riggedLimbs.rightArm) || null,
+      leftLeg: (_riggedLimbs && _riggedLimbs.leftLeg) || null,
+      rightLeg: (_riggedLimbs && _riggedLimbs.rightLeg) || null,
+      // bab 215: ref model kustom utk reset pose (tanpa animasi badan)
       customModel: object3D, customModelBaseY: object3D.position.y,
       sitBtn: _old ? _old.userData.sitBtn : null,
     };
