@@ -81,6 +81,8 @@ import { loadBabftMapGlb, babftSpawnFor, babftCameraFor, babftPlotBounds,
          SPAWN_DEFAULT_TEAM, BABFT_TEAMS, BABFT_PLOT_CENTERS_STUDS, BABFT_MAP_SCALE, BABFT_STUDIO_TEAM_PLOTS } from '../utils/babftMapGlb.js';
 import { loadBabftMapMerged } from '../utils/babftMapObj.js';
 import { createHumanoidAvatar, updateAvatarPhysics, toggleSit } from '../utils/avatarController.js';
+import { AVATAR_SKINS } from '../utils/avatarController.js';
+import ChangeAvatarModal, { AVATAR_API_BASE } from '../components/ChangeAvatarModal.jsx';
 import { createBabftMapDevMode } from '../utils/babftMapDevMode.js';
 import MapLoadingOverlay from '../components/MapLoadingOverlay.jsx';
 import FpsCounter from '../components/FpsCounter.jsx';
@@ -1548,6 +1550,91 @@ export default function BlockSimulator3D({ setPage }) {
   }, []);
   // { visible, progress, stage, loadedBytes, totalBytes, error }
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  // bab 213: modal Change Avatar (skin default + username Roblox)
+  const [showChangeAvatar, setShowChangeAvatar] = useState(false);
+
+  // ══ bab 213: handler Change Avatar ══
+  // (a) Terapkan 1 dari 8 skin default pada avatar humanoid (recolor material)
+  const applyAvatarSkin = (preset) => {
+    const st = threeRef.current;
+    if (!st) return;
+    st.avatarSkin = preset;   // persist: avatar yang dibuat ulang memakai skin ini
+    const _av = st.avatar;
+    if (_av && !_av.userData.isCustomModel && _av.userData.head && _av.userData.head.material) {
+      _av.userData.head.material.color.set(preset.head);
+      if (_av.userData.torso && _av.userData.torso.material) _av.userData.torso.material.color.set(preset.torso);
+      if (_av.userData.leftArm && _av.userData.leftArm.material) _av.userData.leftArm.material.color.set(preset.arms);
+      if (_av.userData.rightArm && _av.userData.rightArm.material) _av.userData.rightArm.material.color.set(preset.arms);
+      if (_av.userData.leftLeg && _av.userData.leftLeg.material) _av.userData.leftLeg.material.color.set(preset.legs);
+      if (_av.userData.rightLeg && _av.userData.rightLeg.material) _av.userData.rightLeg.material.color.set(preset.legs);
+    }
+    toast.success('Skin "' + preset.name + '" diterapkan');
+  };
+
+  // (b) Ganti avatar dengan model 3D dari backend (obj/gltf + tekstur)
+  const applyRobloxAvatarModel = async (modelUrl, textureUrl, username) => {
+    const st = threeRef.current;
+    if (!st || !st.scene) return false;
+    const _av = st.avatar;
+    if (_av && _av.userData.sitting) {
+      toast.warning('Berdiri dulu dari kursi (tekan Spasi) sebelum ganti avatar');
+      return false;
+    }
+    const _url = modelUrl.startsWith('http') ? modelUrl : (AVATAR_API_BASE + modelUrl);
+    const _lower = _url.split('?')[0].toLowerCase();
+    let object3D = null;
+    if (_lower.endsWith('.glb') || _lower.endsWith('.gltf')) {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const gltf = await new GLTFLoader().loadAsync(_url);
+      object3D = gltf.scene;
+    } else {
+      const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
+      object3D = await new OBJLoader().loadAsync(_url);
+      if (textureUrl) {
+        const _tUrl = textureUrl.startsWith('http') ? textureUrl : (AVATAR_API_BASE + textureUrl);
+        const tex = await new THREE.TextureLoader().loadAsync(_tUrl);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        object3D.traverse((o) => { if (o.isMesh) o.material = new THREE.MeshLambertMaterial({ map: tex }); });
+      }
+    }
+    // normalisasi: tinggi = tinggi humanoid, kaki di 0 lokal, pusat x/z
+    const _box = new THREE.Box3().setFromObject(object3D);
+    const _size = _box.getSize(new THREE.Vector3());
+    const _s = _size.y > 1e-6 ? (3.5 * AVATAR_SCALE) / _size.y : 1;
+    object3D.scale.setScalar(_s);
+    _box.setFromObject(object3D);
+    const _ctr = _box.getCenter(new THREE.Vector3());
+    object3D.position.x -= _ctr.x;
+    object3D.position.z -= _ctr.z;
+    object3D.position.y -= _box.min.y;
+    // grup physics-compatible (limbs null → controller null-safe)
+    const g = new THREE.Group();
+    g.add(object3D);
+    const _old = st.avatar;
+    if (_old) {
+      g.position.copy(_old.position);
+      g.rotation.y = _old.rotation.y;
+      g.userData.sitBtn = _old.userData.sitBtn || null;
+    }
+    g.userData = {
+      head: null, torso: null, leftArm: null, rightArm: null, leftLeg: null, rightLeg: null,
+      vy: 0, isGrounded: true, walkTimer: 0,
+      walkSpeed: (_old && _old.userData.walkSpeed) || 20, baseWalkSpeed: 20, baseJumpPower: 15,
+      flyEnabled: false, flySpeed: 36, flySpeedMultiplier: 1.6, flyBlend: 0,
+      infiniteJump: (_old && _old.userData.infiniteJump) || false,
+      jumpPower: (_old && _old.userData.jumpPower) || 15, gravity: -42,
+      zoomDist: (_old && _old.userData.zoomDist) || 12.0, minZoom: 0.2, maxZoom: 65.0, zoomSpeed: 28,
+      prevPos: new THREE.Vector3(), hasInitializedPos: false, wasFirstPerson: false,
+      isCustomModel: true, robloxUsername: username,
+      sitBtn: _old ? _old.userData.sitBtn : null,
+    };
+    if (_old) {
+      st.scene.remove(_old);
+    }
+    st.scene.add(g);
+    st.avatar = g;
+    return true;
+  };
   const [adminPanelMinimized, setAdminPanelMinimized] = useState(false);
   const [adminFly, setAdminFly] = useState(false);
   const [adminWalkSpeed, setAdminWalkSpeed] = useState(20);
@@ -15177,7 +15264,7 @@ Now you can apply Displacement for detailed effect.`);
             try { if (_avRef.userData.sitBtn) _avRef.userData.sitBtn.remove(); } catch (_) {}
           }
           const teamObj = BABFT_TEAMS.find(t => t.key === (threeRef.current.babftTeam || 'white')) || BABFT_TEAMS[0];
-          const av = createHumanoidAvatar(THREE, teamObj.color);
+          const av = createHumanoidAvatar(THREE, teamObj.color, threeRef.current.avatarSkin || null);
           const activeTeam = threeRef.current.babftTeam || 'white';
           const sp = (threeRef.current.babftMap && typeof babftSpawnFor === 'function')
             ? babftSpawnFor(threeRef.current.babftMap, activeTeam, THREE)
@@ -19942,7 +20029,7 @@ Now you can apply Displacement for detailed effect.`);
           try { st.avatar.removeFromParent(); } catch (_) {}
         }
         const teamObj = BABFT_TEAMS.find(t => t.key === (st.babftTeam || 'white')) || BABFT_TEAMS[0];
-        const av = createHumanoidAvatar(THREE, teamObj.color);
+        const av = createHumanoidAvatar(THREE, teamObj.color, st.avatarSkin || null);
         st.scene.add(av);
         st.avatar = av;
       }
@@ -29628,6 +29715,7 @@ backdropFilter: 'none',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,
         infiniteJump={adminInfiniteJump}
         onInfiniteJump={handleAdminInfiniteJump}
         onTeleportToTeam={handleAdminTeleportToTeam}
+        onChangeAvatar={() => setShowChangeAvatar(true)}
         teamName={(BABFT_TEAMS.find((t) => t.key === (babftTeam || 'white')) || {}).name}
         timeOfDay={babftTimeOfDay}
         onTimeOfDay={(v) => {
@@ -29640,6 +29728,16 @@ backdropFilter: 'none',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,
         }}
         onResetPlayer={handleAdminResetPlayer}
       />
+        {/* ── bab 213: MODAL CHANGE AVATAR (skin default + username Roblox) ── */}
+        {showChangeAvatar && (
+          <ChangeAvatarModal
+            open={showChangeAvatar}
+            onClose={() => setShowChangeAvatar(false)}
+            skin={threeRef.current ? threeRef.current.avatarSkin : null}
+            onApplySkin={applyAvatarSkin}
+            onApplyRobloxModel={applyRobloxAvatarModel}
+          />
+        )}
 
       </div>
     </div>

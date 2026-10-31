@@ -1,6 +1,20 @@
 import * as THREE from 'three';
 import { getFacingArrowTopY, getNsiSize } from './blockShapes.js';
 
+// ══ bab 213: 8 SKIN DEFAULT AVATAR (Change Avatar) ══
+// Dipakai Admin Panel > Player > Change Avatar. Format warna hex string
+// agar mudah dipakai UI; createHumanoidAvatar menerima preset ke-3.
+export const AVATAR_SKINS = [
+  { key: 'classic',   name: 'Klasik',        head: '#ffd234', torso: '#1f4788', arms: '#ffd234', legs: '#1f4788' },
+  { key: 'bara',      name: 'Merah Bara',    head: '#ffd234', torso: '#dc2626', arms: '#f87171', legs: '#7f1d1d' },
+  { key: 'es',        name: 'Biru Es',       head: '#ffd234', torso: '#0ea5e9', arms: '#7dd3fc', legs: '#0c4a6e' },
+  { key: 'toksik',    name: 'Hijau Toksik',  head: '#a3e635', torso: '#22c55e', arms: '#bbf7d0', legs: '#14532d' },
+  { key: 'royal',     name: 'Ungu Royal',    head: '#ffd234', torso: '#7c3aed', arms: '#c4b5fd', legs: '#3b0764' },
+  { key: 'emas',      name: 'Emas Murni',    head: '#fde047', torso: '#eab308', arms: '#fde047', legs: '#a16207' },
+  { key: 'ninja',     name: 'Ninja Malam',   head: '#e5e7eb', torso: '#111827', arms: '#374151', legs: '#030712' },
+  { key: 'bubble',    name: 'Permen Karet',  head: '#ffd234', torso: '#ec4899', arms: '#f9a8d4', legs: '#831843' },
+];
+
 // bab 212 (KOREKSI USER: "avatarnya kegedean skalanya, kecilin dikit"):
 // faktor skala global avatar — dipakai konstanta tinggi (mata/pinggul/duduk)
 // supaya kamera & posisi duduk konsisten dengan ukuran visual.
@@ -73,7 +87,9 @@ function getRobloxSimpleFaceTexture(THREE) {
  * - Lengan: Tinggi 1.35 (Y = 1.35 s/d 2.70), pivot di bahu (Y = 2.70)
  * - Kepala: Kubus 0.85 x 0.80 x 0.85 (Y = 2.70 s/d 3.50), posisi center Y = 3.10
  */
-export function createHumanoidAvatar(THREE, teamColor = 0xffffff) {
+export function createHumanoidAvatar(THREE, teamColor = 0xffffff, skinPreset = null) {
+  // bab 213: preset skin (Change Avatar) menimpa warna bawaan bila ada
+  const _c = (presetHex, fallback) => (presetHex ? new THREE.Color(presetHex) : fallback);
   const group = new THREE.Group();
   group.name = 'PlayerAvatar';
   // Urutan rotasi YXZ: yaw (Y) dulu, baru pitch lokal (X) → kemiringan
@@ -84,7 +100,7 @@ export function createHumanoidAvatar(THREE, teamColor = 0xffffff) {
   group.scale.setScalar(AVATAR_SCALE);
 
   // 1. Head (Roblox classic yellow head with face orientation indicator)
-  const headMat = new THREE.MeshLambertMaterial({ color: 0xffd234 });
+  const headMat = new THREE.MeshLambertMaterial({ color: _c(skinPreset && skinPreset.head, 0xffd234) });
   const headGeo = new THREE.BoxGeometry(0.85, 0.80, 0.85);
   const head = new THREE.Mesh(headGeo, headMat);
   head.position.set(0, 3.10, 0); // duduk pas di leher/torso Y = 2.70 s/d 3.50
@@ -107,14 +123,14 @@ export function createHumanoidAvatar(THREE, teamColor = 0xffffff) {
 
   // 2. Torso (matching active team color, lebar 1.375 x tinggi 1.35 x tebal 0.6875)
   // Sits directly on top of legs (Y = 1.35 to 2.70, center at Y = 2.025)
-  const torsoMat = new THREE.MeshLambertMaterial({ color: teamColor });
+  const torsoMat = new THREE.MeshLambertMaterial({ color: _c(skinPreset && skinPreset.torso, teamColor) });
   const torsoGeo = new THREE.BoxGeometry(1.375, 1.35, 0.6875);
   const torso = new THREE.Mesh(torsoGeo, torsoMat);
   torso.position.set(0, 2.025, 0);
   group.add(torso);
 
   // 3. Left Arm (pivot at shoulder Y = 2.70, length 1.35 down to Y = 1.35)
-  const armMat = new THREE.MeshLambertMaterial({ color: 0xffd234 });
+  const armMat = new THREE.MeshLambertMaterial({ color: _c(skinPreset && skinPreset.arms, 0xffd234) });
   const armGeo = new THREE.BoxGeometry(0.6875, 1.35, 0.6875);
   armGeo.translate(0, -0.675, 0); // pivot at shoulder
   const leftArm = new THREE.Mesh(armGeo, armMat);
@@ -127,7 +143,7 @@ export function createHumanoidAvatar(THREE, teamColor = 0xffffff) {
   group.add(rightArm);
 
   // 5. Left Leg (pivot at hip Y = 1.35, length 1.35 down to ground Y = 0.0)
-  const legMat = new THREE.MeshLambertMaterial({ color: 0x1f4788 });
+  const legMat = new THREE.MeshLambertMaterial({ color: _c(skinPreset && skinPreset.legs, 0x1f4788) });
   const legGeo = new THREE.BoxGeometry(0.68, 1.35, 0.68);
   legGeo.translate(0, -0.675, 0); // pivot at hip
   const leftLeg = new THREE.Mesh(legGeo, legMat);
