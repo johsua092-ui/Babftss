@@ -1714,6 +1714,9 @@ export default function BlockSimulator3D({ setPage }) {
       const _H = _post.max.y - _post.min.y, _W = _post.max.x - _post.min.x;
       const _body = _parts.filter((p) => !p.handle);
       const _handles = _parts.filter((p) => p.handle);
+      // lebar/kedalaman TUBUH (tanpa aksesori) — acuan deteksi aura: kalau
+      // memakai envelope penuh, aura itu sendiri menggelembungkan angkanya
+      // (terukur: aura 51% envelope → ambang 85% tak pernah tercapai)
       if (_body.length >= 4) {
         const _sorted = _body.slice().sort((a, b) => b.c.y - a.c.y);
         const _head = _sorted[0];                        // part tertinggi = kepala
@@ -1843,7 +1846,7 @@ _handles.forEach((p) => {
   // bisa mengikuti kaki-tangan yang berayun terpisah (1 mesh utuh tanpa
   // skinning) → disembunyikan. HANYA aura seperti ini — topi/rambut/
   // halo/pedang tetap tampil.
-  if (Math.abs(p.c.x) <= 0.10 * _W && p.size.x >= 0.85 * _W && p.size.z >= 0.6 * _D && p.c.y <= 0.55 * _H) {
+  if (Math.abs(p.c.x) <= 0.10 * _W && p.size.x >= 0.85 * _Wb && p.size.z >= 0.6 * _Db && p.c.y <= 0.55 * _H) {
     p.mesh.visible = false;
     return;
   }
@@ -1915,7 +1918,7 @@ _handles.forEach((p) => {
   // bisa mengikuti kaki-tangan yang berayun terpisah (1 mesh utuh tanpa
   // skinning) → disembunyikan. HANYA aura seperti ini — topi/rambut/
   // halo/pedang tetap tampil.
-  if (Math.abs(p.c.x) <= 0.10 * _W && p.size.x >= 0.85 * _W && p.size.z >= 0.6 * _D && p.c.y <= 0.55 * _H) {
+  if (Math.abs(p.c.x) <= 0.10 * _W && p.size.x >= 0.85 * _Wb && p.size.z >= 0.6 * _Db && p.c.y <= 0.55 * _H) {
     p.mesh.visible = false;
     return;
   }
