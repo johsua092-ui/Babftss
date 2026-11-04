@@ -1716,7 +1716,16 @@ export default function BlockSimulator3D({ setPage }) {
       const _handles = _parts.filter((p) => p.handle);
       // lebar/kedalaman TUBUH (tanpa aksesori) — acuan deteksi aura: kalau
       // memakai envelope penuh, aura itu sendiri menggelembungkan angkanya
-      // (terukur: aura 51% envelope → ambang 85% tak pernah tercapai)
+      // (terukur: aura 51% envelope → ambang 85% tak pernah tercapai).
+      // WAJIB dihitung DI SINI: e825ae9 memakai _Wb/_Db tanpa mendefinisikan
+      // → ReferenceError → catch menelan → aura TAK PERNAH disembunyikan.
+      let _Wb = 0, _Db = 0;
+      if (_body.length) {
+        const _bodyBox = new THREE.Box3();
+        _body.forEach((p) => _bodyBox.union(p.box));
+        _Wb = _bodyBox.max.x - _bodyBox.min.x;
+        _Db = _bodyBox.max.z - _bodyBox.min.z;
+      }
       if (_body.length >= 4) {
         const _sorted = _body.slice().sort((a, b) => b.c.y - a.c.y);
         const _head = _sorted[0];                        // part tertinggi = kepala
