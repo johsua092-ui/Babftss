@@ -1,0 +1,20 @@
+# .dockerignore — jangan kirim ini ke build context
+# PENTING: JANGAN exclude public/ atau image apa pun — aset blok (253 PNG di
+# public/blocks/icon/) wajib ikut build Vite.
+node_modules
+dist
+.git
+.github
+.env
+.env.*
+!.env.example
+infra
+docs
+**/*.bak
+**/*.bak-*
+KONTRAK_PERMANEN*.md
+*.rbxl
+*.rbxlx
+*.lock
+push_log.txt
+chatlogs_*.txt

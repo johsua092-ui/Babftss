@@ -10,7 +10,10 @@ set -e
 REPO="johsua092-ui/Babftss"
 BRANCH="main"
 COMMITS_URL="https://api.github.com/repos/${REPO}/commits/${BRANCH}"
-WORK_DIR="/home/container"
+# WORK_DIR auto-detect: direktori tempat start.sh ini berada (= work dir app).
+# Aman utk Pterodactyl (/home/container) maupun Docker image (/app).
+# Dulu hard-coded "/home/container" → RUSAK di image docker yang pakai /app.
+WORK_DIR="${WORK_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 POLL_INTERVAL=300
 SHA_FILE="/tmp/babftss_sha"
 
@@ -64,12 +67,26 @@ check_backend() {
       r.on('end',()=>{
         try{
           const files=JSON.parse(d).files||[];
-          const re=/^(api\/|lib\/|server\/|package\.json|package-lock\.json|start\.sh)/;
+          const re=/^(api\/|lib\/|server\/|src\/|public\/|index\.html|vite\.config|package\.json|package-lock\.json|start\.sh)/;
           console.log(files.some(f=>re.test(f.filename))?'yes':'no')
         }catch(e){console.log('yes')}
       })
     }).on('error',()=>process.exit(1))
   "
+}
+
+# ── Build frontend (Vite → dist/) ────────────────────────────
+build_frontend() {
+  cd "${WORK_DIR}"
+  # Full install (termasuk devDependencies) supaya Vite tersedia
+  npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -1
+  echo "[build] Vite → dist/ ..."
+  if npm run build > /tmp/fe_build.log 2>&1; then
+    log "✓ Frontend built → ${WORK_DIR}/dist"
+  else
+    log "⚠ Frontend build GAGAL — server tetap jalan (API saja). Log:"
+    tail -8 /tmp/fe_build.log
+  fi
 }
 
 # ── Deploy full ──────────────────────────────────────────────
@@ -97,10 +114,9 @@ deploy() {
   rm -rf /tmp/babftss-new
   log "✓ Source replaced"
 
-  echo "[3/3] Dependencies..."
+  echo "[3/3] Dependencies + frontend build..."
   [ -d /tmp/node_modules_bak ] && mv /tmp/node_modules_bak node_modules 2>/dev/null && log "✓ Cache restored"
-  cd "${WORK_DIR}"
-  npm install --omit=dev --no-audit --no-fund --prefer-offline 2>&1 | tail -1
+  build_frontend
   rm -rf /tmp/node_modules_bak 2>/dev/null || true
   log "✓ Done"
 }
@@ -109,10 +125,13 @@ deploy() {
 # MAIN
 # ══════════════════════════════════════════════════════════════
 
-# First time? Download semua
-if [ ! -d "${WORK_DIR}/api" ]; then
+# First time? Download semua (butuh api/ + src/ + dist/ supaya frontend ikut)
+if [ ! -d "${WORK_DIR}/api" ] || [ ! -d "${WORK_DIR}/src" ]; then
   log "🔧 First run — downloading full repo..."
   deploy
+elif [ ! -f "${WORK_DIR}/dist/index.html" ]; then
+  log "🏗 dist/ belum ada — build frontend dari source repo..."
+  build_frontend
 fi
 
 SHA=$(get_latest_sha)
@@ -133,7 +152,7 @@ poll_loop() {
 
     log "🔍 NEW: ${OSHA:0:7} → ${NSHA:0:7}"
     if [ "$(check_backend "${OSHA}" "${NSHA}")" = "yes" ]; then
-      log "🔄 BACKEND — redeploying..."
+      log "🔄 REDEPLOY (backend/frontend) — redeploying..."
       kill "${SPID}" 2>/dev/null || true
       wait "${SPID}" 2>/dev/null || true
       deploy

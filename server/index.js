@@ -8,6 +8,8 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // Load .env (Pterodactyl passes vars natively, but .env fallback for local dev)
 dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
@@ -84,8 +86,21 @@ app.all('/api/quiz/submit',   (req, res) => { req.query = { ...req.query, action
 // Avatar (Roblox 3D avatar proxy)
 app.all('/api/get-avatar',    (req, res) => getAvatarHandler(req, res));
 
+// ── Frontend statis (build Vite) ─────────────────────────────
+// Sajikan dist/ bila ada (di produksi Docker, image di-build dua tahap →
+// dist/ ikut). Kalau tidak ada (mis. dev API-only), dilewati tanpa error.
+const DIST_DIR = fileURLToPath(new URL('../dist', import.meta.url));
+const HAS_DIST = existsSync(DIST_DIR);
+if (HAS_DIST) {
+  app.use(express.static(DIST_DIR, { index: false, maxAge: '1h' }));
+}
+
 // ── 404 ──────────────────────────────────────────────────────
-app.use((_req, res) => {
+app.use((req, res) => {
+  // SPA fallback: rute non-API → index.html (React Router), sisanya JSON 404.
+  if (HAS_DIST && req.method === 'GET' && !req.path.startsWith('/api/')) {
+    return res.sendFile(fileURLToPath(new URL('../dist/index.html', import.meta.url)));
+  }
   res.status(404).json({ error: 'Not found' });
 });
 
