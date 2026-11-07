@@ -13471,7 +13471,11 @@ Now you can apply Displacement for detailed effect.`);
     camera.lookAt(0, 0, 0);
 
     // Renderer — WebGL with antialias + shadowMap
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // bab 218: stencil:true WAJIB — aura glow NSI "Star" memakai STENCIL MASK
+    // (badan menulis stencilRef 1, aura NotEqual) supaya halo TIDAK menimpa
+    // badan sendiri di sudut miring (kritik Claude bab 219 ronde 3).
+    // (three r163+ default stencil = false → harus eksplisit.)
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -16470,7 +16474,30 @@ Now you can apply Displacement for detailed effect.`);
       // JEBAKAN TERUKUR: posY untuk block di LANTAI di-hardcode 0.5 (asumsi tinggi
       // 1 block). Item NSI yang LEBIH TINGGI (Truss = 2 block) jadi tenggelam
       // separuh ke bawah lantai. → pakai setengah TINGGI sebenarnya dari NSI.
-      const _hHalf = getNsiSize(selectedBlockTypeRef.current)[1] / 2;
+      // ── FIX (2026-11-07, bab 221, laporan user: "Star tenggelam setengah
+      // setelah keybind Y") ──: _hHalf di atas = setengah tinggi LOKAL
+      // (NSI_SIZES[1]/2) — hanya benar utk rotasi 0°. NSI yang di-rotate
+      // keybind R/T/Y berubah BBOX DUNIA (Star tiduran 1.5×0.5×1.5 → setelah
+      // rotasi 90° tinggi dunia = 1.5) tapi posY tetap 0.25 → TENGGELAM 0.5
+      // block. FIX: putar vektor setengah-ukuran LOKAL dengan ROTASI GHOST →
+      // setengah-ukuran DUNIA (AABB). Rotasi 0° = hasil identik rumus lama
+      // (NOL regresi untuk semua NSI & block biasa).
+      const _nsiSz0 = getNsiSize(selectedBlockTypeRef.current);
+      const _hx = _nsiSz0[0] / 2, _hy = _nsiSz0[1] / 2, _hz = _nsiSz0[2] / 2;
+      const _ghMesh = threeRef.current && threeRef.current.ghostBlock;
+      const _ghQ = _ghMesh ? _ghMesh.quaternion : null;
+      let _hHalf = _hy;
+      let _wHalf = { x: _hx, y: _hy, z: _hz };
+      if (_ghQ && (_ghQ.x !== 0 || _ghQ.y !== 0 || _ghQ.z !== 0)) {
+        const _mR = new THREE.Matrix4().makeRotationFromQuaternion(_ghQ);
+        const _eR = _mR.elements;                    // column-major
+        _wHalf = {
+          x: Math.abs(_eR[0]) * _hx + Math.abs(_eR[4]) * _hy + Math.abs(_eR[8])  * _hz,
+          y: Math.abs(_eR[1]) * _hx + Math.abs(_eR[5]) * _hy + Math.abs(_eR[9])  * _hz,
+          z: Math.abs(_eR[2]) * _hx + Math.abs(_eR[6]) * _hy + Math.abs(_eR[10]) * _hz,
+        };
+        _hHalf = _wHalf.y;                           // setengah tinggi DUNIA
+      }
       const isBabft = !!(threeRef.current && threeRef.current.babftMap);
       const isMapHit = isBabft && (hit.object === threeRef.current.babftBuildProxy || (hit.object.userData && hit.object.userData.isBabftLawn) || (!hit.object.userData || !hit.object.userData.isBlock));
 
@@ -16485,7 +16512,9 @@ Now you can apply Displacement for detailed effect.`);
         const _nsiSz = getNsiSize(selectedBlockTypeRef.current);
         const _axIdx = (Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z))
           ? 0 : (Math.abs(n.y) >= Math.abs(n.z) ? 1 : 2);
-        const _halfNew = _nsiSz[_axIdx] / 2;
+        // bab 221: setengah-ukuran DUNIA sepanjang normal (item ber-rotasi
+        // keybind berubah bbox dunia) — rotasi 0° hasil identik rumus lama.
+        const _halfNew = Math.abs(n.x) * _wHalf.x + Math.abs(n.y) * _wHalf.y + Math.abs(n.z) * _wHalf.z;
 
         if (n.y > 0.6) {
           // Permukaan horizontal atas (lantai rumput dasar ATAU balok tanah/tembok undak bertingkat)
@@ -16516,10 +16545,11 @@ Now you can apply Displacement for detailed effect.`);
         const _nsiSz = getNsiSize(selectedBlockTypeRef.current);
         const _axIdx = (Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z))
           ? 0 : (Math.abs(n.y) >= Math.abs(n.z) ? 1 : 2);
-        const _halfNew = _nsiSz[_axIdx] / 2;
-        // NSI yang tebalnya BUKAN 1 block: JANGAN snap pada sumbu normal
-        // (snap akan merusak posisi flush — terukur).
-        const _skipSnapAxis = Math.abs(_nsiSz[_axIdx] - 1) > 1e-6;
+        const _halfNew = Math.abs(n.x) * _wHalf.x + Math.abs(n.y) * _wHalf.y + Math.abs(n.z) * _wHalf.z;
+        // NSI yang tebalnya BUKAN 1 block SEPANJANG NORMAL DUNIA (bab 221 —
+        // item ber-rotasi keybind berubah ukuran sepanjang sumbu): JANGAN snap
+        // pada sumbu normal (snap akan merusak posisi flush — terukur).
+        const _skipSnapAxis = Math.abs(_halfNew * 2 - 1) > 1e-6;
         // ── FIX (2026-10-04, laporan user): MATCH ROTATION → NEMPEL + SNAP LOKAL ──
         // Riwayat: (a) snap GRID dunia → sisi block yang DIROTASI tidak sejajar grid
         // → ghost melenceng/gap (jarak 1.4142). (b) fix pertama = TANPA snap →

@@ -16,6 +16,9 @@
  * getBlockIcon(slug) → URL ikon untuk panel.
  */
 
+// bab 218: SUMBER TUNGGAL outline bintang (badan + cangkang glow)
+import { getStarShape, getStarPoints } from './blockShapes.js';
+
 // Phase 70: RoomEnvironment untuk envMap gold berkilau (prosedural — nol
 // file asset). THREE tetap lewat parameter fungsi (pola modul ini), hanya
 // RoomEnvironment yang diimport langsung. Pakai path examples/jsm (bukan
@@ -171,6 +174,12 @@ export const BLOCK_LIBRARY = [
   // dari brick block, sudah di-tint terkalibrasi) — BUKAN vertex color
   // (pola Lamp: material group, lihat makeFlagMaterials di bawah).
   { slug: 'flag',              name: 'Flag',       label: 'Flag',       roughness: 0.8, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // bab 218: Star — SATU-SATUNYA NSI bertekstur NEON (emissive kuning + glow).
+  // Material TIDAK lewat cabang `if (def.glow)` (hardcode merah 0xff0000) —
+  // punya cabang sendiri `makeStarMaterials` yang diambil SEBELUM cabang glow.
+  // `glow:true` tetap diset agar app memasang AURA SPRITE (sistem glow
+  // terverifikasi bab 92) — memancar keluar tepi bintang.
+  { slug: 'star',              name: 'Star',       label: 'Star',       roughness: 1.0, metalness: 0.0, transparent: false, opacity: 1.0, emissive: 0xffff00, emissiveIntensity: 1.4, glow: true, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -295,12 +304,129 @@ export function makeCandleMaterials(THREE, tex, def) {
 // ══════════════════════════════════════════════════════════════════════════
 // bab 214: FLAG — 2 MATERIAL (kain / keras) untuk satu geometry
 // ══════════════════════════════════════════════════════════════════════════
-// URUTAN INDEKS WAJIB SAMA dengan addGroup() di makeFlagGeometry():
-//   0 = kain  → flag_fabric.png (fabric block di-tint marun terkalibrasi)
-//   1 = keras → flag_pole.png   (brick block di-tint abu metal terkalibrasi)
-// Texture diload lewat getBlockTexture (cache + sinyal onReady anti-hitam,
-// pola semua block) — slug texture disimpan sebagai slug palsu di cache.
-// DoubleSide pola Torch/Lamp (jaring pengaman anti wajah hilang).
+// ── bab 218: STAR — material NEON (array 2 grup, pola Lamp/Flag) ──────────
+// KOREKSI bab 219 ronde 1 (kritik Claude atas render 4 sudut — skor neon
+// 4.5/10): (1) RIM PANAS — ExtrudeGeometry punya 2 grup material (0 = tutup
+// depan+belakang, 1 = dinding samping+bevel) → dinding+bevel pakai emissive
+// PUCAT (0xffffa0) supaya TEPI menjadi sumber cahaya (referensi punya rim
+// putih-kuning di sepanjang outline); bevel 0.02→0.03 (di makeStarGeometry)
+// supaya cincin rim ~2% lebar bintang. (2) emissiveIntensity 1.4→1.0: dgn
+// toneMapped:false kuning sudah jenuh di 1.0 — 1.4 hanya clipping. (3) bercak
+// spekuler dibuang: MeshPhysicalMaterial specularIntensity 0.
+// Konvensi neon app (bab 90): color HITAM, emissive yang menyala → flat.
+// Texture TIDAK dipakai (neon polos; star.png tidak ada → jalur generik 404).
+export function makeStarMaterials(THREE) {
+  const m = new THREE.MeshPhysicalMaterial({
+    color: 0x000000,           // bab 90: color HITAM, emissive yang menyala
+    emissive: 0xffff00,        // kuning murni — BADAN SERAGAM (dinding+samping+
+                               // bevel sama; referensi seragam, tanpa garis
+                               // batas tutup-dinding di dalam siluet)
+    emissiveIntensity: 1.0,    // koreksi Claude bab 219 ronde 1 (1.4 = clipping)
+    roughness: 1, metalness: 0,
+    specularIntensity: 0,      // buang bercak spekuler (referensi rata)
+    fog: false,
+    toneMapped: false,         // kuning murni (ACES merusak saturasi)
+    vertexColors: false,
+    // STENCIL MASK (bab 219 ronde 3): badan MENULIS stencil 1 → aura glow
+    // (NotEqual 1) TIDAK menimpa badan sendiri di sudut miring.
+    stencilWrite: true, stencilRef: 1,
+    stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp,
+  });
+  m.userData.isGlowBlock = true;   // highlight gizmo DILARANG menimpa
+  return m;
+}
+
+/**
+ * makeStarGlowMesh(THREE) — AURA CANGKANG GLOW (bab 219 ronde 3, resep Claude).
+ * 14 lapis outline yang MENGEMBANG digabung jadi SATU mesh (1 draw call):
+ *  - offsetOutline: pucuk cembung → BUSUR membulat (anti pucuk runcing miter
+ *    2.3x), lembah → miter.
+ *  - profil alpha EKSPONENSIAL (D=0.12, tau=0.032, A=0.9) → gradasi halus,
+ *    bukan anak tangga.
+ *  - warna: 0xffffa0 (dalam, pucat) → 0xffd000 (luar, kuning jenuh) — tepi
+ *    putih-kuning memudar halus seperti referensi.
+ *  - atribut color itemSize 4 (RGBA) → vertex ALPHA (pola bab 134).
+ *  - BackSide + additive + depthWrite:false → hanya tampak DI LUAR siluet.
+ *  - STENCIL NotEqual 1 → tidak menimpa badan sendiri.
+ */
+function starOutlineOffset(pts, d, arcSteps = 5) {
+  const n = pts.length, out = [];
+  const nrm = (a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+    return [dy / L, -dx / L];
+  };
+  for (let i = 0; i < n; i++) {
+    const p = pts[(i + n - 1) % n], c = pts[i], q = pts[(i + 1) % n];
+    const n1 = nrm(p, c), n2 = nrm(c, q);
+    const cross = (c[0] - p[0]) * (q[1] - c[1]) - (c[1] - p[1]) * (q[0] - c[0]);
+    if (cross > 0) {                          // pucuk (cembung): busur
+      const a1 = Math.atan2(n1[1], n1[0]);
+      let da = Math.atan2(n2[1], n2[0]) - a1;
+      while (da < 0) da += 2 * Math.PI;
+      while (da > Math.PI) da -= 2 * Math.PI;
+      for (let k = 0; k <= arcSteps; k++) {
+        const a = a1 + (da * k) / arcSteps;
+        out.push([c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d]);
+      }
+    } else {                                  // lembah: miter
+      const s = d / (1 + n1[0] * n2[0] + n1[1] * n2[1]);
+      out.push([c[0] + (n1[0] + n2[0]) * s, c[1] + (n1[1] + n2[1]) * s]);
+    }
+  }
+  return out;
+}
+
+function makeStarGlowMesh(THREE, pts, T = 0.5) {
+  // bab 219 ronde 4 (tweak Claude): N=18, offset RAPAT di dekat tepi
+  // (pow 1.6) supaya sisa banding hilang; warna lebih KEEMASAN
+  // (0xffff80 → 0xffc800) supaya halo tidak krem-putih; A 0.9→0.8, tau 0.03.
+  // bab 219 ronde 5 — KALIBRASI DARI PENGUKURAN PIKSEL NYATA (bukan perkiraan
+  // mata): profil referensi (bg 70,72,88) = kontribusi aditif +100 di 6px,
+  // +35 di 15px, +4 di 30px (bintang 460px), lalu HABIS. B kontribusi = 0
+  // (glow KUNING murni, tanpa biru). Dari situ: A=0.87, tau=0.025, D=0.13,
+  // warna 0xffff20 → 0xffe000.
+  const N = 18, D = 0.11, tau = 0.019, A = 0.44;
+  const P = (d) => A * Math.exp(-d / tau);
+  const pos = [], col = [];
+  const cIn = new THREE.Color(0xffd000), cOut = new THREE.Color(0xffc000);
+  const cTmp = new THREE.Color();
+  for (let i = 1; i <= N; i++) {
+    const d = D * Math.pow(i / N, 1.6);
+    const d0 = D * Math.pow((i - 1) / N, 1.6);
+    const a = P(d0) - P(d);
+    cTmp.copy(cIn).lerp(cOut, Math.pow(i / N, 0.7));
+    const out = starOutlineOffset(pts, d);
+    const shape = new THREE.Shape(out.map(([x, y]) => new THREE.Vector2(x, y)));
+    const g2 = new THREE.ExtrudeGeometry(shape, {
+      depth: T + 2 * d, bevelEnabled: false, curveSegments: 1,
+    });
+    // bab 221: cangkang ikut TIDURAN — rotasi sama dengan badan (rotateX -90°)
+    g2.translate(0, 0, -(T / 2 + d));
+    g2.rotateX(-Math.PI / 2);
+    const pp = g2.attributes.position;
+    for (let k = 0; k < pp.count; k++) {
+      pos.push(pp.getX(k), pp.getY(k), pp.getZ(k));
+      col.push(cTmp.r, cTmp.g, cTmp.b, a);
+    }
+    g2.dispose();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); // RGBA
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, side: THREE.BackSide,
+    blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    fog: false,
+    stencilWrite: true, stencilRef: 1,
+    stencilFunc: THREE.NotEqualStencilFunc,
+    stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp,
+    stencilZPass: THREE.KeepStencilOp,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 1; mesh.raycast = () => {};
+  return mesh;
+}
+
 export function makeFlagMaterials(THREE) {
   const mk = (texSlug, placeholder, rough) => {
     const tex = getBlockTexture(THREE, texSlug);
@@ -511,6 +637,7 @@ export const BLOCK_PLACEHOLDER = {
   i_beam: 0x626262,       // bab 209: abu-abu logam (= mean tekstur metal netral)
   chair: 0xd8d8d8,        // bab 210: badan putih (tekstur marble netral terang)
   flag: 0xb8384e,         // bab 214: marun kain (placeholder material group [0])
+  star: 0xffff00,         // bab 218: kuning neon (placeholder sebelum siap)
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 
@@ -654,6 +781,25 @@ export function makeBlockMaterial(THREE, slug) {
   // api unlit akan ikut kena lighting dan tampak mati.
   if (slug === 'candle') {
     return makeCandleMaterials(THREE, tex, def);
+  }
+  // ══ bab 218: STAR — SATU-SATUNYA NSI bertekstur NEON (kuning) ══
+  // WAJIB cabang sendiri SEBELUM `if (def.glow)`: cabang glow generic meng-
+  // hardcode `emissive: 0xff0000` (MERAH — spesifik Neon block, wajib user
+  // 2026-09-11). Kalau Star lewat jalur itu, bintangnya JADI MERAH.
+  //
+  // KOREKSI bab 219 ronde 1 (kritik Claude atas render 4 sudut):
+  //   - RIM PANAS: ExtrudeGeometry punya 2 grup material (0 = tutup depan+
+  //     belakang, 1 = dinding samping+bevel) → dinding+bevel pakai emissive
+  //     PUCAT (0xffffa0) supaya TEPI menjadi sumber cahaya (referensi punya
+  //     rim putih-kuning di sepanjang outline). Bevel dinaikkan 0.02→0.03
+  //     (di makeStarGeometry) supaya cincin rim ~2% lebar bintang.
+  //   - emissiveIntensity 1.4→1.0: dengan toneMapped:false, kuning sudah
+  //     jenuh di 1.0 — 1.4 hanya clipping tanpa efek (nilai jujur).
+  //   - Bercak spekuler dibuang: MeshPhysicalMaterial specularIntensity 0.
+  // Texture TIDAK diperlukan (neon polos) — `star.png` tidak ada, jadi
+  // jalur generik akan 404.
+  if (slug === 'star') {
+    return makeStarMaterials(THREE);
   }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({
@@ -873,6 +1019,23 @@ function getAuraSpriteMaterial(THREE) {
 export function attachBlockGlow(THREE, block) {
   if (!block || !block.isMesh) return null;
   if (block.userData.__glow) return block.userData.__glow;
+  // ══ bab 218: STAR — AURA CANGKANG GEOMETRIS (inverted hull) ══
+  // KOREKSI bab 219 ronde 2 (Claude, skor miring 5/10): aura sprite (billboard)
+  // menghasilkan "bintang hantu berongga" di sudut miring — sprite selalu
+  // menghadap kamera sementara bintang 3D menyempit (foreshortening) → cincin
+  // tak lagi berimpit dengan siluet. SOLUSI: 5 lapis EXTRUDE outline bintang
+  // yang MENGEMBANG (bevelOffset 0 → outline membesar ke luar + Z menambah di
+  // kedua sisi), dirender BackSide + additive + depthWrite:false → halo
+  // mengikuti siluet 3D dari sudut MANA PUN. Kabut radial DIBUANG (tidak ada
+  // di referensi).
+  if (block.geometry && block.geometry.userData && block.geometry.userData.nsiStar) {
+    // bab 219 ronde 4: CANGKANG GLOW 14 LAPIS tergabung 1 mesh (bukan sprite,
+    // bukan 5 lapis terpisah) + STENCIL MASK.
+    const glowMesh = makeStarGlowMesh(THREE, getStarPoints());
+    block.add(glowMesh);
+    block.userData.__glow = glowMesh;
+    return glowMesh;
+  }
   const sprite = new THREE.Sprite(getAuraSpriteMaterial(THREE));
   // CATATAN (2026-10-01): percobaan depthTest=false MALAH bikin aura menimpa
   // badan block (vision: "dua block bertumpuk"). DIBATALKAN — aura tetap
@@ -894,7 +1057,15 @@ export function attachBlockGlow(THREE, block) {
 export function detachBlockGlow(block) {
   if (!block || !block.userData || !block.userData.__glow) return;
   const g = block.userData.__glow;
-  const items = g.shells ? g.shells : [g];
+  // bab 218: Star memakai ARRAY sprite (cincin siluet + radial samar)
+  const items = Array.isArray(g) ? g : (g.shells ? g.shells : [g]);
   items.forEach(it => { try { if (it.parent) it.parent.remove(it); } catch (e) {} });
   delete block.userData.__glow;
+  delete block.userData.__glowArr;
 }
+
+// ── catatan bab 218: tekstur AURA SILUET BINTANG (starAuraTexture) DIHAPUS —
+//    bab 219 ronde 2 membuktikan sprite billboard menghasilkan "bintang hantu"
+//    berongga di sudut miring. Penggantinya = CANGKANG GLOW GEOMETRIS
+//    (inverted hull) di attachBlockGlow, memakai getStarShape() dari
+//    blockShapes.js sebagai SUMBER TUNGGAL outline (kontrak bab 118).

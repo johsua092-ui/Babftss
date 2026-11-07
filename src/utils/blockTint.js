@@ -229,6 +229,8 @@ export function applyTintToMaterial(THREE, mat, slug, hex) {
  */
 export function applyNeonColor(THREE, mat, hex) {
   if (!mat) return;
+  // bab 218: Star = material ARRAY [tutup, samping+bevel] → rekursif per item
+  if (Array.isArray(mat)) { mat.forEach((m) => applyNeonColor(THREE, m, hex)); return; }
   const col = new THREE.Color(hex);
   // ⚠️ JEBAKAN (2026-10-01, laporan user "neon seperti 2 block dalam 1,
   // makin jelas saat kamera digeser, terutama warna TERANG"): body neon =

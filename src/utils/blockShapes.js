@@ -364,6 +364,27 @@ export const NSI_FL_NAME = 'Flag';
 // Claude atas foto referensi — kain TEPAT 6 studs, klem braket di luarnya).
 export const NSI_FL_SIZE = [3.45, 10.75, 0.5];   // block = 6.9 x 21.5 x 1 studs
 
+// ══ NSI LEVEL 2 #8: STAR — bintang NEON (2026-11-07, bab 218-219 kontrak) ══
+// SATU-SATUNYA NSI yang 100% memakai tekstur NEON (self-illuminated + glow).
+// Keputusan pemilik (verbatim): *"ini NSI yang ini hanya dia yang 100% pasti
+// memakai tekstur neon block dan memancarkan kilauan cahaya seperti itu, dan
+// hanya NSI ini aja"*.
+// Ukuran (user): tebal 1 studs, panjang = lebar 3 studs.
+// KOREKSI ORIENTASI (2026-11-07, ACC desain user): bintang TIDURAN flat di
+// lantai (muka ke ATAS, seperti koin), BUKAN berdiri → bbox
+// [1.5, 0.5, 1.5] block = lebar 3 × TINGGI 1 (tebal) × kedalaman 3 studs.
+// BENTUK (ukur 3 foto referensi + verifikasi Claude bab 219):
+//   - bintang 5 PUCUK, TEGAK (1 pucuk ke atas);
+//   - rasio radius lembah:puncak = 0.50 (pentagram murni 0.382 terlalu kurus —
+//     referensi = bintang "gemuk" gaya ikon);
+//   - inti kuning pekat (RGB 255,255,0) + glow mengikuti siluet.
+// BENTUK = ExtrudeGeometry SATU mesh (Claude bab 219: susunan box = z-fighting,
+//   tepi bergerigi, bbox sulit dikunci). Bevel 0.02 block + bevelOffset -0.02
+//   supaya bbox TIDAK melebihi spek; depth = 0.5 - 2*0.02 = 0.46.
+export const NSI_STAR_SLUG = 'star';
+export const NSI_STAR_NAME = 'Star';
+export const NSI_STAR_SIZE = [1.5, 0.5, 1.5];   // block = 3 lebar x 1 tinggi x 3 dalam studs (TIDURAN)
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -382,6 +403,7 @@ export const NSI_SIZES = {
   [NSI_CH_SLUG]: [1, 2, 1],   // bab 210: Chair 2 x 4 x 2 studs
   [NSI_TH_SLUG]: [2, 4, 2],   // bab 211: Throne 4 x 8 x 4 studs
   [NSI_FL_SLUG]: NSI_FL_SIZE.slice(),   // bab 214: Flag 6 x 21.5 x 1 studs
+  [NSI_STAR_SLUG]: NSI_STAR_SIZE.slice(), // bab 221: Star TIDURAN 3 x 1 x 3 studs (NEON)
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -404,7 +426,7 @@ export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1338,6 +1360,137 @@ export function makeFlagGeometry(THREE) {
   out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   out.computeVertexNormals();
   return out;
+}
+
+/**
+ * makeStarGeometry(THREE) — NSI L2 "Star" (bab 218): bintang 5 pucuk TEGAK,
+ * bbox TEPAT 1.5 x 1.5 x 0.5 block (3 x 3 x 1 studs), satu mesh ExtrudeGeometry.
+ *
+ * Resep bab 219 (Claude, setelah membaca 5 foto referensi):
+ *  - 10 titik: genap = pucuk (r=1), ganjil = lembah (r=0.5); mulai sudut 90°
+ *    agar pucuk pertama MENGHADAP ATAS; langkah 36°.
+ *  - Normalisasi ANISOTROPIK ke bbox 1.5x1.5 (lebar bintang alami 1.902R,
+ *    tinggi 1.809R) → sx=0.7886, sy=0.8292 (≈5%, tak kasat mata).
+ *  - bevel 0.02 + bevelOffset -0.02 → tepi neon halus TANPA menambah bbox;
+ *    depth = 0.5 - 2*0.02 = 0.46 → total ketebalan TEPAT 0.5.
+ *  - Pusat Z dikoreksi DENGAN PENGUKURAN (bukan asumsi -depth/2) supaya bbox
+ *    tepat di tengah origin.
+ *  - WAJIB: atribut uv (kontrak bab 123) + color seragam (pipeline app bisa
+ *    menyalakan vertexColors — tanpa atribut color = HITAM, bab 132 #7).
+ *  - TANPA computeVertexNormals / mergeVertices (ujung tajam jadi gumpalan —
+ *    bab 219-D); ExtrudeGeometry sudah menyediakan normal + winding benar.
+ */
+export function makeStarGeometry(THREE) {
+  const W = 1.5, H = 1.5, T = 0.5, BEV = 0.03;   // bab 219 ronde 1: bevel 0.03
+  const DEPTH = T - 2 * BEV;                       // 0.44 → total Z tetap 0.5
+  const shape = getStarShape(THREE);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: DEPTH, steps: 1, curveSegments: 1,
+    bevelEnabled: true, bevelThickness: BEV, bevelSize: BEV,
+    bevelOffset: -BEV, bevelSegments: 1,
+  });
+  // ── pusatkan Z DENGAN PENGUKURAN (jangan tebak) ──
+  geo.computeBoundingBox();
+  const bz = (geo.boundingBox.min.z + geo.boundingBox.max.z) / 2;
+  geo.translate(0, 0, -bz);
+  // ── UV ternormalisasi 0..1 dari bbox X/Y ──
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const wx = (bb.max.x - bb.min.x) || 1, wy = (bb.max.y - bb.min.y) || 1;
+  const P = geo.getAttribute('position');
+  const uvArr = new Float32Array(P.count * 2);
+  for (let i = 0; i < P.count; i++) {
+    uvArr[i * 2] = (P.getX(i) - bb.min.x) / wx;
+    uvArr[i * 2 + 1] = (P.getY(i) - bb.min.y) / wy;
+  }
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvArr, 2));
+  // ── atribut color seragam (anti-hitam bila vertexColors dinyalakan) ──
+  const col = new Float32Array(P.count * 3);
+  for (let i = 0; i < P.count; i++) { col[i * 3] = 1; col[i * 3 + 1] = 1; col[i * 3 + 2] = 1; }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  // ── bab 219 ronde 2: PISAHKAN BEVEL dari DINDING (klasifikasi normal) ──
+  // Claude: dinding samping = area terbesar di sudut miring → WAJIB kuning
+  // (referensi seragam); pucat HANYA di bevel tipis. Tanpa ini bintang jadi
+  // dua warna (tutup kuning + samping krem) = cacat.
+  regroupStarBevel(THREE, geo);
+  // ── bab 221: BINTANG TIDURAN (ACC desain user) ──
+  // Rotasi -90° sekitar X SETELAH regroup (indeks grup ikut berputar; klasifikasi
+  // normal WAJIB sebelum rotasi — setelah rotasi nz bevel jadi ny → salah).
+  // (x,y,z) → (x, z, -y): muka bintang (XY) jadi horizontal, ketebalan (Z) jadi
+  // tinggi. Muka depan (+Z) kini menghadap ATAS. Pucuk atas kini menunjuk -Z.
+  geo.rotateX(-Math.PI / 2);
+  // re-center DENGAN PENGUKURAN → pusat origin (app: posY = size[1]/2)
+  geo.computeBoundingBox();
+  const bc = geo.boundingBox;
+  geo.translate(
+    -(bc.min.x + bc.max.x) / 2,
+    -(bc.min.y + bc.max.y) / 2,
+    -(bc.min.z + bc.max.z) / 2
+  );
+  // Marker utk attachBlockGlow: bintang pakai AURA CANGKANG GEOMETRIS
+  // (inverted hull — bab 219 ronde 2), bukan sprite billboard.
+  geo.userData = { nsiStar: true };
+  return geo;
+}
+
+/**
+ * getStarPoints() — SUMBER TUNGGAL titik outline bintang (kontrak bab 118),
+ * sudah dinormalisasi ke bbox 1.5 x 1.5 block, pucuk pertama di 90° (ATAS).
+ * Dipakai: getStarShape (badan) + attachBlockGlow (cangkang glow, bab 219).
+ */
+export function getStarPoints() {
+  const W = 1.5, H = 1.5, R_LEMBAH = 0.5;
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = Math.PI / 2 + i * Math.PI / 5;
+    const r = (i % 2 === 0) ? 1 : R_LEMBAH;
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const sx = W / (maxX - minX), sy = H / (maxY - minY);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  return pts.map(([x, y]) => [(x - cx) * sx, (y - cy) * sy]);
+}
+
+/**
+ * getStarShape(THREE) — Shape dari getStarPoints() (SUMBER TUNGGAL bab 118).
+ * Dipakai makeStarGeometry (badan) DAN attachBlockGlow (cangkang glow).
+ */
+export function getStarShape(THREE) {
+  const shape = new THREE.Shape();
+  getStarPoints().forEach(([x, y], i) => {
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  });
+  shape.closePath();
+  return shape;
+}
+
+/**
+ * regroupStarBevel(geo) — pisahkan indeks BEVEL dari TUTUP+DINDING dengan
+ * klasifikasi normal muka (|nz| antara 0.05 dan 0.95 = muka bevel).
+ * Setelahnya: grup 0 = tutup+dinding (kuning), grup 1 = bevel (pucat).
+ * (bab 219 ronde 2 — resep Claude.)
+ */
+function regroupStarBevel(THREE, geo) {
+  const p = geo.attributes.position;
+  const tri = Math.floor(p.count / 3);
+  const capsWalls = [], bevel = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const ab = new THREE.Vector3(), ac = new THREE.Vector3(), nz = new THREE.Vector3();
+  for (let t = 0; t < tri; t++) {
+    const i = t * 3;
+    a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
+    ab.subVectors(b, a); ac.subVectors(c, a);
+    nz.crossVectors(ab, ac).normalize();
+    const z = Math.abs(nz.z);
+    (z > 0.05 && z < 0.95 ? bevel : capsWalls).push(i, i + 1, i + 2);
+  }
+  geo.setIndex([...capsWalls, ...bevel]);
+  geo.clearGroups();
+  geo.addGroup(0, capsWalls.length, 0);             // tutup + dinding: kuning
+  geo.addGroup(capsWalls.length, bevel.length, 1);  // bevel: pucat
 }
 // ── NSI LEVEL 2 #3: MAST (tiang kapal / crow's nest) ──
 // KONFIRMASI USER (2026-10-04): tinggi 36 studs (=18 block), geladak bundar
@@ -4586,6 +4739,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_TH_SLUG) return makeThroneGeometry(THREE);
   // bab 214: Flag (material group 2 — kain/keras, lihat makeFlagMaterials)
   if (slug === NSI_FL_SLUG) return makeFlagGeometry(THREE);
+  // bab 218: Star (bintang NEON — satu mesh ExtrudeGeometry)
+  if (slug === NSI_STAR_SLUG) return makeStarGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;

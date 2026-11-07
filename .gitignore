@@ -204,3 +204,7 @@ public/maps/
 preview-loading.html
 src/preview-loading.jsx
 tess_ref.png
+
+# bab 218: work file render ikon/preview NSI (localhost-only, jangan ke Vercel)
+public/iconstar.html
+public/previewstar.html
