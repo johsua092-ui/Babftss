@@ -221,6 +221,26 @@ export function applyTintToMaterial(THREE, mat, slug, hex) {
 }
 
 /**
+ * ── bab 223 (laporan user): PAINT SIGN = SEMUA PART SATU WARNA ──
+ * Sign memakai vertex color per part (papan #D0AB63, kotak sudut #5D3721) —
+ * jalur tint biasa (tekstur pink × vertex color) membuat kotak sudut tetap
+ * gelap: "kalau dicat pink maka semuanya wajib pink". Fix: matikan vertex
+ * color (semua part kehilangan warna lokal) + material.color = warna user
+ * (tekstur sign_wood putih ≈ warna persis). Teks tetap HITAM — tulisan ada
+ * di canvas plane terpisah yang tidak pernah di-tint.
+ * Dipakai oleh: tool Paint (applyPaint) + restoreState (undo/redo paint).
+ */
+export function applySignPaintColor(THREE, mat, hex) {
+  if (!mat) return;
+  if (Array.isArray(mat)) { mat.forEach((m) => applySignPaintColor(THREE, m, hex)); return; }
+  if (mat.vertexColors) { mat.vertexColors = false; }
+  if (mat.color) mat.color.set(hex);
+  mat.userData = mat.userData || {};
+  mat.userData.paintColor = hex;
+  mat.needsUpdate = true;
+}
+
+/**
  * Terapkan WARNA ke material block NEON (glow): emissive + aura sprite ikut
  * warna user → warna menyeluruh & universal (permintaan user 2026-10-01:
  * "warna auto di sekujur tubuh block neon juga ikut berubah").

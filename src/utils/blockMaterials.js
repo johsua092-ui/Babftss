@@ -180,6 +180,11 @@ export const BLOCK_LIBRARY = [
   // `glow:true` tetap diset agar app memasang AURA SPRITE (sistem glow
   // terverifikasi bab 92) — memancar keluar tepi bintang.
   { slug: 'star',              name: 'Star',       label: 'Star',       roughness: 1.0, metalness: 0.0, transparent: false, opacity: 1.0, emissive: 0xffff00, emissiveIntensity: 1.4, glow: true, nsi: true, nsiLevel: 2 },
+  // bab 222: Sign — papan tanda INTERAKTIF (klik saat dekat → modal teks →
+  // teks/simbol/emote tampil di papan). Material generik + vertex color tint
+  // + tekstur GRAYSCALE smooth_wood_block (pola Door bab 136). Plane teks
+  // dipasang jalur place app (canvas texture, bukan di sini).
+  { slug: 'sign',              name: 'Sign',       label: 'Sign',       roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -315,6 +320,32 @@ export function makeCandleMaterials(THREE, tex, def) {
 // spekuler dibuang: MeshPhysicalMaterial specularIntensity 0.
 // Konvensi neon app (bab 90): color HITAM, emissive yang menyala → flat.
 // Texture TIDAK dipakai (neon polos; star.png tidak ada → jalur generik 404).
+/**
+ * makeSignMaterials(THREE) — NSI "Sign" (bab 222). SATU material: tekstur
+ * GRAYSCALE smooth_wood_block × vertex color tint per part (pola Door bab
+ * 136 — tekstur gelap × vertex color = HITAM). depthWrite true (opaque,
+ * anti tembus — pola Door bab 136 #1).
+ */
+export function makeSignMaterials(THREE) {
+  const tex = getBlockTexture(THREE, 'sign');
+  // bab 222 ronde 3 (kalibrasi pipet): MeshStandardMaterial + cahaya app +
+  // ACES menggelapkan papan 2x (terukur (121,112,89) vs target (201,165,96))
+  // walau tekstur sudah putih — MIRIP pola LAMP: MeshBasicMaterial = UNLIT
+  // (selalu menyala), warna akhir = vertex tint x tekstur EKSAK.
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    vertexColors: true,          // tint per part dari geometri (papan/kubus)
+    toneMapped: false,           // warna referensi eksak (ACES merusak)
+  });
+  // bab 222 ronde 2 (Claude): anti seam persegi — mirror wrap menghilangkan
+  // garis keras di batas tile
+  if (tex) { tex.wrapS = THREE.MirroredRepeatWrapping; tex.wrapT = THREE.MirroredRepeatWrapping; }
+  if (!tex.userData.isReady && tex.userData.onReady) {
+    tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
+  }
+  return mat;
+}
+
 export function makeStarMaterials(THREE) {
   const m = new THREE.MeshPhysicalMaterial({
     color: 0x000000,           // bab 90: color HITAM, emissive yang menyala
@@ -522,6 +553,7 @@ const TROPHY_TEX_PATH = {
 
 export function getBlockTexPath(slug) {
   if (TROPHY_TEX_PATH[slug]) return TROPHY_TEX_PATH[slug];
+  if (slug === 'sign') return '/blocks/tex/sign_wood.png';   // bab 222: grayscale TERNORMALISASI (mean 0.85, kontras 60%) — smooth_wood_block asli = cokelat-merah gelap (R118 G42 B10, lum 0.22) → papan jadi MERAH MARUN
   const src = ROD_BASE_TEX[slug] || CHEST_BASE_TEX[slug] || slug;
   return `/blocks/tex/${src}.png`;
 }
@@ -638,6 +670,7 @@ export const BLOCK_PLACEHOLDER = {
   chair: 0xd8d8d8,        // bab 210: badan putih (tekstur marble netral terang)
   flag: 0xb8384e,         // bab 214: marun kain (placeholder material group [0])
   star: 0xffff00,         // bab 218: kuning neon (placeholder sebelum siap)
+  sign: 0xc9a560,         // bab 222: kayu terang papan
   uncommon_chest: 0xb0752f, common_chest: 0xb0752f,
 };
 

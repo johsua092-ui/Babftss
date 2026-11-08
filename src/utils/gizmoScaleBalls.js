@@ -627,12 +627,24 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
   const proxHover = function (pointer) {
     origHover.call(this, pointer);
     if (this.mode !== 'scale' || this.dragging === true || pointer == null) return;
-    if (this.object === undefined) return;
+    // bab 223 (audit terukur): detach() menyetel object = NULL (bukan undefined)
+    // — guard lama `=== undefined` lolos untuk null → bola lama masih men-set
+    // axis padahal tidak ada object → pointerDown asli crash di
+    // `this.object.updateMatrixWorld()` (three r185 guard-nya `=== undefined`).
+    // bab 223 ronde 2: object bisa ADA tapi PARENT null (block di-pop dari
+    // scene tanpa detach — jalur rebuild/undo) → L492
+    // `this.object.parent.updateMatrixWorld()` crash dengan error yang sama.
+    if (!this.object || !this.object.parent) return;
     const near = findBallNearPointer(pointer);
     if (near) this.axis = near.name;
   };
 
   const proxDown = function (pointer) {
+    // bab 223 (audit terukur): axis STALE + object null (setelah detach) =
+    // resep crash three r185 TransformControls.js L488-491. Reset axis dulu.
+    // bab 223 ronde 2: parent null (block popped tanpa detach) juga crash di
+    // L492 — perlakukan sama.
+    if (!this.object || !this.object.parent) { try { this.axis = null; } catch (e) {} }
     // Prioritas bola persis sebelum raycast _plane (axis harus final saat
     // pointerDown mulai drag — kalau cone fallback terpilih duluan, drag
     // sumbu salah).
@@ -658,6 +670,10 @@ export function restyleScaleGizmoBalls(transformControls, helperRoot = null, opt
   };
 
   const proxDownV13 = function (pointer) {
+    // bab 223 (audit terukur): guard lapis luar — object null (setelah detach)
+    // + axis stale = crash three r185. Reset axis SEBELUM apa pun.
+    // bab 223 ronde 2: parent null (block popped tanpa detach) juga crash.
+    if (!this.object || !this.object.parent) { try { this.axis = null; } catch (e) {} }
     proxDown.call(this, pointer);   // v12: paksa axis dari bola terdekat
     const near = this.__v13GrabbedBall || null;
     grabbedBallByTc.set(transformControls, near);

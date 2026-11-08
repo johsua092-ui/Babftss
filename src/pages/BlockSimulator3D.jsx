@@ -53,6 +53,8 @@ import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFac
   LP_LIGHT_Y, LP_LIGHT_COLOR, LP_LIGHT_INTENSITY, LP_LIGHT_DISTANCE, LP_LIGHT_DECAY,
   NSI_LP_SLUG,
   TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
+import { NSI_SIGN_SLUG, NSI_SIGN_TEXPLANE, SIGN_EDIT_RANGE } from '../utils/blockShapes.js';
+import { makeSignTextPlane, getSignPlaneOf, setSignPlaneOf, cleanSignText, signGraphemeCount, SIGN_MAX_GRAPHEMES, preloadSignFont } from '../utils/signText.js';
 // bab 208: Candle (api kecil + cahaya ber-flicker)
 import { NSI_CD_SLUG, CD_LIGHT_Y, CD_LIGHT_COLOR, CD_LIGHT_INTENSITY, CD_LIGHT_DISTANCE, CD_LIGHT_DECAY } from '../utils/blockShapes.js';
 // bab 205: bara api BERANIMASI + pool cahaya untuk NSI Torch
@@ -64,7 +66,7 @@ import { makeCandleLightPool } from '../utils/candleLight.js';
 // tekstur (map=null) → block jadi warna rata polos. Sekarang paint memakai
 // tekstur NEUTRAL (grayscale, dataset user) yang di-tint warna user → tekstur
 // TETAP UTUH (serat kayu/bata/rumput) + warna bebas dari ColorWheelPicker.
-import { applyTintToMaterial, applyNeonColor, applySmoothColor, isSmoothBlock, getAuraMaterialFor, preloadTintTextures, disposeTintTextures } from '../utils/blockTint.js';
+import { applyTintToMaterial, applyNeonColor, applySmoothColor, applySignPaintColor, isSmoothBlock, getAuraMaterialFor, preloadTintTextures, disposeTintTextures } from '../utils/blockTint.js';
 // SISTEM METADATA INTERNAL (underground) — baca presisi posisi/rotasi/scale +
 // 6 arah sisi (x-/x+/y-/y+/z-/z+) untuk tiap objek. TIDAK ada UI user.
 import { computeBlockMetadata, updateBlockMeta, getBlockMeta, registerBlockMeta, unregisterBlockMeta, refreshAllMeta, getAllMeta, getMetaByUuid, clearRegistry } from '../utils/blockMeta.js';
@@ -294,6 +296,93 @@ function BuildAreaIcon({ size = 20 }) {
 
 const _cloneGqTmp = new THREE.Quaternion();
 const _cloneTmpV = new THREE.Vector3();
+
+
+// ══ bab 222: MODAL EDIT TEKS — NSI "Sign" (papan tanda interaktif) ══
+// Muncul di TENGAH layar saat user yang DEKAT Sign mengkliknya. Input satu
+// baris (bebas kata/simbol/emote). Enter ATAU tombol centang = selesai.
+// Shift+Enter = TIDAK melakukan apa pun (tanpa multiline — keputusan user).
+// ══ bab 222: MODAL EDIT TEKS — NSI "Sign" (papan tanda interaktif) ══
+// Muncul di TENGAH layar saat user yang DEKAT Sign mengkliknya. Input satu
+// baris (bebas kata/simbol/emote). Enter ATAU tombol centang = selesai.
+// Shift+Enter = TIDAK melakukan apa pun (tanpa multiline — keputusan user).
+// ⚠️ JEBAKAN (terukur 2026-11-07): definisi ini PERNAH HILANG dari file
+// (hanya referensi JSX tersisa) → klik Sign = ReferenceError → BLANK PAGE.
+// Setiap komponen modal WAJIB dicek definisi+referensi berpasangan.
+function SignEditModal({ initial, onConfirm, onClose }) {
+  const [val, setVal] = useState(initial || '');
+  const [flash, setFlash] = useState(false);
+  const inputRef = useRef(null);
+  const flashTRef = useRef(0);
+  useEffect(() => {
+    try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {}
+    const t = setTimeout(() => { try { inputRef.current && inputRef.current.focus(); } catch (e) {} }, 60);
+    return () => clearTimeout(t);
+  }, []);
+  const cnt = signGraphemeCount(val);
+  const penuh = cnt >= SIGN_MAX_GRAPHEMES;
+  // bab 222 (feedback user): saat BATAS tercapai → input BERHENTI menerima
+  // + BORDER MERAH KEDIP sekilas (ala GForm) — user tidak akan menghitung batas
+  const triggerFlash = () => {
+    setFlash(true);
+    clearTimeout(flashTRef.current);
+    flashTRef.current = setTimeout(() => setFlash(false), 450);
+  };
+  const onChange = (e) => {
+    const v = e.target.value;
+    if (signGraphemeCount(v) > SIGN_MAX_GRAPHEMES) { triggerFlash(); return; }  // stop + kedip
+    setVal(v);
+  };
+  const confirm = () => { onConfirm(cleanSignText(val)); };
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.62)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onMouseDown={(e) => e.stopPropagation()} onMouseUp={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (e.shiftKey) return;                                  // shift+enter: no-op
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return; // IME emoji
+          confirm();
+        }
+      }}
+    >
+      <div style={{ background: '#1e293b', border: '2px solid #3b82f6', borderRadius: 14, padding: 22, width: 'min(92vw, 540px)', boxShadow: '0 24px 70px rgba(0,0,0,0.65)' }}>
+        <div style={{ color: '#e2e8f0', fontWeight: 800, fontSize: 17, marginBottom: 4 }}>✏️ Tulis teks untuk Sign</div>
+        <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 12 }}>Enter atau tombol ✔ untuk selesai · simbol & emote boleh · tanpa baris baru</div>
+        <input
+          ref={inputRef}
+          type="text"
+          value={val}
+          placeholder="Tulis apa saja…"
+          onChange={onChange}
+          style={{
+            width: '100%', boxSizing: 'border-box', background: '#0f172a',
+            color: '#ffffff', border: `2px solid ${flash ? '#ef4444' : '#475569'}`,
+            borderRadius: 8, padding: '12px 14px', fontSize: 16, outline: 'none',
+            transition: 'border-color 120ms', boxShadow: flash ? '0 0 0 3px rgba(239,68,68,0.35)' : 'none',
+          }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12, minHeight: 16 }}>
+          <span style={{ color: penuh ? '#ef4444' : '#64748b', fontWeight: penuh ? 700 : 400 }}>
+            {penuh ? 'Batas karakter tercapai!' : ' '}
+          </span>
+          <span style={{ color: penuh ? '#ef4444' : '#64748b', fontWeight: 700 }}>{cnt}/{SIGN_MAX_GRAPHEMES}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 12, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ background: '#334155', color: '#e2e8f0', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer' }}>Batal</button>
+          <button type="button" onClick={confirm}
+            style={{ background: '#22c55e', color: '#052e16', border: 'none', borderRadius: 8, padding: '10px 22px', fontWeight: 800, cursor: 'pointer', fontSize: 15 }}>✔ Selesai</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function BlockSimulator3D({ setPage }) {
   const containerRef = useRef(null);
@@ -882,11 +971,20 @@ export default function BlockSimulator3D({ setPage }) {
       //   (inilah bug "ada Chance tutupnya hilang" yang dilaporkan user).
       try { if (threeRef.current.syncDoorUserDataFn) threeRef.current.syncDoorUserDataFn(sourceBlock.userData, ghost.userData); } catch (e) {}
       try { if (threeRef.current.attachStLidFn) threeRef.current.attachStLidFn(THREE, sourceBlock, ghost); } catch (e) {}
+      try { if (threeRef.current.attachSignPlaneFn) threeRef.current.attachSignPlaneFn(THREE, sourceBlock, ghost); } catch (e) {}
               try {
                 const _axG = mirrorAxisFromQuat(sourceBlock.quaternion);
                 ghost.scale[_axG] = -Math.abs(ghost.scale[_axG]);
                 bakeMirrorIntoGeometry(ghost, _axG);
               } catch (e) {}
+            } else if (tool === 'clone') {
+              // ── bab 223 ronde 2 (laporan user "clone sign → teks hilang"): ──
+              // Jalur ghost OTOMATIS ini (sign terpilih → klik tool Clone)
+              // LUPA memanggil attachSignPlane — hanya jalur mirror yang
+              // memanggil. Jalur utama (klik sign saat tool Clone aktif)
+              // sudah benar → dua jalur beda hasil = teks hilang di jalur
+              // otomatis. Sekarang disamakan.
+              try { if (threeRef.current.attachSignPlaneFn) threeRef.current.attachSignPlaneFn(THREE, sourceBlock, ghost); } catch (e) {}
             }
             scene.add(ghost);
             threeRef.current.blocks.push(ghost);
@@ -975,6 +1073,7 @@ export default function BlockSimulator3D({ setPage }) {
                     if (_c.userData && _c.userData.isStLid) sourceBlock.remove(_c);
                   }
                   if (threeRef.current.attachStLidFn) threeRef.current.attachStLidFn(THREE, srcOrigin, sourceBlock);
+                  if (threeRef.current.attachSignPlaneFn) threeRef.current.attachSignPlaneFn(THREE, srcOrigin, sourceBlock);
                   sourceBlock.scale[_axM] = -Math.abs(sourceBlock.scale[_axM]);
                   bakeMirrorIntoGeometry(sourceBlock, _axM);
                 } catch (e) {}
@@ -1265,6 +1364,13 @@ export default function BlockSimulator3D({ setPage }) {
   const placeRotStepsYRef = useRef(0);
   useEffect(() => { placeRotStepsYRef.current = placeRotStepsY; }, [placeRotStepsY]);
   const [placeRotStepsZ, setPlaceRotStepsZ] = useState(0);
+  // ── bab 222: modal EDIT TEKS Sign (papan tanda interaktif) ──
+  const [signEdit, setSignEdit] = useState(null);   // {sign, text} | null
+  // bab 222 (Claude P0-1): handler window memakai REF (state basi di closure)
+  const signEditRef = useRef(null);
+  const signClosedAtRef = useRef(0);
+  useEffect(() => { signEditRef.current = signEdit; }, [signEdit]);
+  useEffect(() => { preloadSignFont(); }, []);      // font siap sebelum menggambar
   const placeRotStepsZRef = useRef(0);
   useEffect(() => { placeRotStepsZRef.current = placeRotStepsZ; }, [placeRotStepsZ]);
   // ── FIX AJ (bab 76): STEP ROTASI (DERAJAT) — khusus tool rotate ──
@@ -6142,11 +6248,15 @@ Now you can apply Displacement for detailed effect.`);
     const s = threeRef.current;
     if (!s.selectedBlocks || s.selectedBlocks.size === 0) return;
     s.selectedBlocks.forEach(b => {
-      if (b.material) {
-        b.material.metalness = metalness;
-        b.material.roughness = roughness;
-        b.material.needsUpdate = true;
-      }
+      // bab 222 (Flag): material bisa ARRAY (kain/keras) — kenakan ke SEMUA
+      const mats = Array.isArray(b.material) ? b.material : [b.material];
+      mats.forEach(m => {
+        if (m) {
+          m.metalness = metalness;
+          m.roughness = roughness;
+          m.needsUpdate = true;
+        }
+      });
     });
   }, [metalness, roughness]);
 
@@ -6155,8 +6265,14 @@ Now you can apply Displacement for detailed effect.`);
     if (selectedCount > 0 && threeRef.current.selectedBlocks.size > 0) {
       const first = threeRef.current.selectedBlocks.values().next().value;
       if (first && first.material) {
-        setMetalness(first.material.metalness);
-        setRoughness(first.material.roughness);
+        // ── FIX (bab 223, laporan user "Flag+move blank"): material bisa
+        // ARRAY (Flag = kain/keras). `first.material.metalness` pada array =
+        // undefined → setMetalness(undefined) → panel Material render
+        // `undefined.toFixed(2)` → CRASH → BLANK PAGE (baris 23313).
+        // FIX: ambil dari material PERTAMA grup array.
+        const m0 = Array.isArray(first.material) ? first.material[0] : first.material;
+        setMetalness(m0.metalness);
+        setRoughness(m0.roughness);
       }
     }
   }, [selectedCount]);
@@ -14990,6 +15106,7 @@ Now you can apply Displacement for detailed effect.`);
                 //    hasil gandaan tampak peti TANPA PENUTUP. Samakan dgn single.
                 try { syncDoorUserData(src.userData, dup.userData); } catch (e) {}
                 try { attachStLid(THREE, src, dup); } catch (e) {}
+                try { attachSignPlane(THREE, src, dup); } catch (e) {}
                 // ── FIX bab 174: BAKE paling akhir (setelah tutup tersalin) ──
                 if (_tool === 'mirror') {
                   try {
@@ -16907,13 +17024,39 @@ Now you can apply Displacement for detailed effect.`);
       //    tebal 0.5 studs, menaruh block di situ memang tidak masuk akal).
       //    Tool lain (delete/paint/property/move/rotate/scale/clone/mirror/
       //    shape/object/decal) TIDAK terpengaruh → perilaku lama utuh.
+      // bab 222 (Claude P0-1): modal Sign terbuka / baru ditutup → jangan
+      // jalankan tool apa pun (anti klik tembus modal → place/delete).
+      if (signEditRef.current) return;
+      if (performance.now() - signClosedAtRef.current < 200) return;
       const _doorToolOk = (currentTool === null || currentTool === 'place');
       if (_doorToolOk) {
         const _doorHits = raycaster.intersectObjects(threeRef.current.blocks, true);
         if (_doorHits.length > 0) {
           // Telusuri ke atas sampai menemukan block pintu (kalau kena anak mesh)
           let _d = _doorHits[0].object;
-          while (_d && !(_d.userData && (_d.userData.isDoor || _d.userData.isHatch || _d.userData.isSmallTreasure || _d.userData.isMediumTreasure || _d.userData.isBigTreasure)) && _d.parent) _d = _d.parent;
+          while (_d && !(_d.userData && (_d.userData.isSign || _d.userData.isDoor || _d.userData.isHatch || _d.userData.isSmallTreasure || _d.userData.isMediumTreasure || _d.userData.isBigTreasure)) && _d.parent) _d = _d.parent;
+          // ── NSI SIGN (bab 222): klik saat DEKAT → MODAL EDIT TEKS ──
+          // Jarak = user → Sign: mode avatar = posisi avatar; mode kamera =
+          // posisi kamera. SIGN_EDIT_RANGE = 5 block (10 studs) — konstanta.
+          if (_d && _d.userData && _d.userData.isSign) {
+            const _userPos = (threeRef.current.avatarMode && threeRef.current.avatar)
+              ? threeRef.current.avatar.position
+              : camera.position;
+            const _sb = new THREE.Box3().setFromObject(_d);
+            const _dist = _sb.distanceToPoint(_userPos);
+            if (_dist <= SIGN_EDIT_RANGE) {
+              try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {}
+              // bab 222 (Claude P1-3): reset tombol yang DITAHAN — anti avatar
+              // jalan sendiri setelah modal ditutup
+              ['w','a','s','d','W','A','S','D',' '].forEach((k) => {
+                try { window.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true })); } catch (e2) {}
+              });
+              setSignEdit({ sign: _d, text: (_d.userData.sign && _d.userData.sign.text) || '' });
+              return;   // klik Sign (tool null/place) = edit teks
+            }
+            toast.info('Terlalu jauh — dekati Sign untuk mengeditnya.');
+            return;
+          }
           // ── NSI SMALL TREASURE: klik → TUTUP TERANGKAT (engsel belakang) ──
           if (_d && _d.userData && (_d.userData.isSmallTreasure || _d.userData.isMediumTreasure || _d.userData.isBigTreasure)) {
             const _sd = _d.userData.st || (_d.userData.st = { angle: 0, target: 0 });
@@ -16962,6 +17105,11 @@ Now you can apply Displacement for detailed effect.`);
           while (_anc && !(_anc.userData && _anc.userData.isBlock) && _anc.parent) _anc = _anc.parent;
           if (_anc && _anc.userData && _anc.userData.isBlock) targetMesh = _anc;
         }
+        // bab 222: dispose plane teks Sign (anti GPU leak — catatan Claude)
+        try {
+          const _signPlane = getSignPlaneOf(targetMesh);
+          if (_signPlane) { _signPlane.dispose(); setSignPlaneOf(targetMesh, null); }
+        } catch (e) {}
 
         // Fallback: bounding box click tolerance untuk SEMUA mesh (universal)
         // Ini handle kasus dimana raycast gagal karena geometry kompleks, nested mesh, atau transform issues
@@ -17173,6 +17321,20 @@ Now you can apply Displacement for detailed effect.`);
             block.userData.isHatch = true;
             block.userData.hatch = { angle: 0, target: 0 };
           }
+          // ── NSI SIGN (bab 222): papan tanda INTERAKTIF — teks user ──
+          // Plane teks = ANAK block (canvas texture; klik ditangani handler
+          // Sign — plane sendiri raycast OFF). Edit via klik saat dekat.
+          if (blockDef.slug === 'sign') {
+            block.userData.isSign = true;
+            block.userData.sign = { text: '' };   // data polos (serializable)
+            try {
+              const _sp = makeSignTextPlane(THREE);
+              _sp.plane.position.set(0, 0, NSI_SIGN_TEXPLANE.z);
+              _sp.plane.userData.noTiling = true;  // jangan disentuh tiling kubus
+              block.add(_sp.plane);
+              setSignPlaneOf(block, _sp);          // bab 222: plane di WeakMap
+            } catch (e) { console.warn('[sign] plane teks gagal:', e && e.message); }
+          }
           // SCALE BUG 2 FIX: tiling awal (basis UV dicatat; scale 1,1,1 =
           // uv 0..1 — pemanggilan ini menyiapkan basis supaya drag scale
           // pertama langsung benar). Absolut semua block kubus.
@@ -17296,7 +17458,12 @@ Now you can apply Displacement for detailed effect.`);
               }
               // ── Tekstur BERWARNA (Phase 88) + block mulus/glass (Phase 89) ──
               if (slug) {
-                if (isSmoothBlock(slug)) {
+                if (slug === 'sign') {
+                  // ── bab 223 (laporan user): PAINT SIGN = SEMUA PART ──
+                  // Papan + 4 kotak sudut + tiang WAJIB satu warna; tulisan
+                  // tetap hitam (plane canvas terpisah, tak pernah di-tint).
+                  applySignPaintColor(THREE, m, color);
+                } else if (isSmoothBlock(slug)) {
                   // Block MULUS (glass/metal/gold/plastic/ice): warna RATA +
                   // PBR disesuaikan (glass transparan merata, gold kilau lembut,
                   // metal tetap kusam) → bersih, tanpa artefak tekstur.
@@ -17408,6 +17575,7 @@ Now you can apply Displacement for detailed effect.`);
           syncDoorUserData(source.userData, ghost.userData);
           // NSI SMALL TREASURE: bawa TUTUP (anak mesh) ke ghost clone.
           attachStLid(THREE, source, ghost);
+          attachSignPlane(THREE, source, ghost);
           // ── FIX bab 162: ARAH HADAP ikut (mirror = KEBALIK). ──
           //    facing diturunkan dari QUATERNION FINAL (bukan disalin), supaya
           //    mirror otomatis berbalik arah & clone tetap sama.
@@ -17523,6 +17691,7 @@ Now you can apply Displacement for detailed effect.`);
           syncDoorUserData(source.userData, mirrorMesh.userData);
           // NSI SMALL TREASURE: bawa TUTUP (anak mesh) ke mesh mirror.
           attachStLid(THREE, source, mirrorMesh);
+          attachSignPlane(THREE, source, mirrorMesh);
           // ── FIX bab 167c (TERUKUR): BAKE paling AKHIR — setelah SEMUA anak
           //    (tutup/aura) terpasang. Kalau bake di awal, anak belum ada →
           //    tutup TIDAK tercermin → "small chest gak mau balik arah". ──
@@ -18662,6 +18831,10 @@ Now you can apply Displacement for detailed effect.`);
 
       const syncDoorUserData = (srcUD, dstUD) => {
         if (!srcUD || !dstUD) return;
+        if (srcUD.isSign || srcUD.blockSlug === 'sign') {
+          dstUD.isSign = true;
+          dstUD.sign = { text: (srcUD.sign && srcUD.sign.text) || '' };
+        }
         if (srcUD.isDoor || srcUD.blockSlug === 'door') {
           dstUD.isDoor = true;
           const s = srcUD.door || { angle: 0, target: 0 };
@@ -18689,6 +18862,69 @@ Now you can apply Displacement for detailed effect.`);
         }
       };
       // ── FIX bab 164: helper deferred untuk jalur ghost otomatis
+      // ── bab 222: pasang PLANE TEKS pada Sign hasil clone/mirror/ghost ──
+      const attachSignPlane = (THREE, srcMesh, dstMesh) => {
+        try {
+          // bab 223 (POIN 2 — bug Star gizmo hilang): fungsi ini BERJALAN untuk
+          // SEMUA clone/mirror — hanya Sign yang boleh dapat plane teks.
+          var _slugS = (srcMesh && srcMesh.userData && srcMesh.userData.blockSlug) || '';
+          var _slugD = (dstMesh && dstMesh.userData && dstMesh.userData.blockSlug) || '';
+          if (_slugS !== 'sign' && _slugD !== 'sign') return;   // bukan Sign → skip
+          // bab 223 (bug #3/#4): BUANG plane teks lama hasil clone()/mirror-bake
+          // (teks hilang / KEBALIK) SEBELUM memasang plane baru yang benar.
+          const _stale = [];
+          dstMesh.children.forEach((ch) => { if (ch.userData && ch.userData.isSignTextPlane) _stale.push(ch); });
+          _stale.forEach((ch) => { ch.parent.remove(ch); try { ch.geometry.dispose(); ch.material.map && ch.material.map.dispose(); ch.material.dispose(); } catch (e2) {} });
+          const txt = (srcMesh && srcMesh.userData && srcMesh.userData.sign && srcMesh.userData.sign.text) || '';
+          const _sp = makeSignTextPlane(THREE);
+          _sp.plane.position.set(0, 0, NSI_SIGN_TEXPLANE.z);
+          dstMesh.add(_sp.plane);
+          dstMesh.userData.isSign = true;
+          dstMesh.userData.sign = { text: txt };
+          dstMesh.userData.signPlane = _sp;
+          if (txt) _sp.setSignText(txt);
+        } catch (e) {}
+      };
+      threeRef.current.attachSignPlaneFn = attachSignPlane;
+
+      // ══ bab 223: TEST HOOK AUDIT (localhost-only, ter-gitignore tidak perlu —
+      // tanpa data sensitif). Memungkinkan harness audit membuat NSI + membaca
+      // state secara programatik (SOP bab 223: audit per tool berbasis data).
+      threeRef.current.__audit = {
+        THREE: THREE,
+        makeNsiGeometry: makeNsiGeometry,
+        makeBlockMaterial: makeBlockMaterial,
+        getNsiSize: getNsiSize,
+        isNsi: isNsi,
+        addBlock: function(slug, x, y, z) {
+          var g = this.makeNsiGeometry(THREE, slug);
+          var m = this.makeBlockMaterial(THREE, slug);
+          var b = new THREE.Mesh(g, m);
+          b.position.set(x, y, z);
+          b.castShadow = true; b.receiveShadow = true;
+          b.userData.isBlock = true;
+          b.userData.blockSlug = slug;
+          b.userData.anchored = true;
+          if (slug === 'sign') {
+            b.userData.isSign = true;
+            b.userData.sign = { text: '' };
+            try {
+              var _sp = makeSignTextPlane(THREE);
+              _sp.plane.position.set(0, 0, NSI_SIGN_TEXPLANE.z);
+              _sp.plane.userData.noTiling = true;
+              b.add(_sp.plane);
+              setSignPlaneOf(b, _sp);
+            } catch (e) { console.warn('[sign] plane:', e && e.message); }
+          }
+          scene.add(b);
+          threeRef.current.blocks.push(b);
+          try { registerBlockMeta(THREE, b); } catch (e2) {}
+          return b;
+        },
+        blocks: function() { return threeRef.current.blocks; },
+        scene: function() { return scene; },
+        camera: function() { return camera; },
+      };
       threeRef.current.syncDoorUserDataFn = syncDoorUserData;
 
     const snapshotState = () => {
@@ -18764,6 +19000,12 @@ Now you can apply Displacement for detailed effect.`);
           // bab 169: tandai jenis peti supaya restore tahu geometri tutup mana
           isMediumTreasure: !!(b.userData && b.userData.isMediumTreasure),
           isBigTreasure: !!(b.userData && b.userData.isBigTreasure),
+          // ── bab 223 (laporan user): TEKS SIGN IKUT SNAPSHOT ──
+          // Dulu: field ini TIDAK ADA → restoreState (undo/redo dan semua
+          // jalur rebuild) membaca `s.signText` yang selalu undefined → tulisan
+          // Sign hilang setelah clone + undo/redo. restoreState sudah siap
+          // membacanya; kini ditulis.
+          signText: (b.userData && b.userData.sign) ? b.userData.sign.text : null,
         };
       });
     };
@@ -18779,6 +19021,8 @@ Now you can apply Displacement for detailed effect.`);
       threeRef.current.blocks.forEach(b => {
         // removeFromParent aman untuk block biasa (parent=scene) maupun mesh import (parent=gltf.scene group)
         b.removeFromParent();
+        // bab 223: dispose plane teks Sign (anti GPU leak — catatan Claude)
+        try { const _sp2 = getSignPlaneOf(b); if (_sp2) _sp2.dispose(); } catch (e) {}
         // FIX Task ID 24: mesh imported TIDAK di-dispose — snapshot memegang
         // referensi hidupnya (untuk restore ulang di redo/undo berikutnya).
         // Dispose akan merusak resource GPU yang masih dipakai.
@@ -18831,6 +19075,7 @@ Now you can apply Displacement for detailed effect.`);
             try {
               const isGlowMat = !!(mat.userData && mat.userData.isGlowBlock);
               if (isGlowMat) applyNeonColor(THREE, mat, s.paintColor);
+              else if (s.blockSlug === 'sign') applySignPaintColor(THREE, mat, s.paintColor);
               else if (isSmoothBlock(s.blockSlug)) applySmoothColor(THREE, mat, s.blockSlug, s.paintColor);
               else applyTintToMaterial(THREE, mat, s.blockSlug, s.paintColor);
             } catch (e) {}
@@ -18907,6 +19152,19 @@ Now you can apply Displacement for detailed effect.`);
           } catch (e) {}
         }
         if (s.isGlow) attachBlockGlow(THREE, block);
+        // bab 223: Sign — plane teks dipasang ulang + teks dari snapshot
+        if (s.blockSlug === 'sign' || (block.userData && block.userData.isSign)) {
+          block.userData.isSign = true;
+          block.userData.sign = { text: (s.signText != null) ? s.signText : '' };
+          try {
+            const _sp = makeSignTextPlane(THREE);
+            _sp.plane.position.set(0, 0, NSI_SIGN_TEXPLANE.z);
+            _sp.plane.userData.noTiling = true;
+            block.add(_sp.plane);
+            setSignPlaneOf(block, _sp);
+            if (block.userData.sign.text) _sp.setSignText(block.userData.sign.text);
+          } catch (e) { console.warn('[sign] restore plane gagal:', e && e.message); }
+        }
         // SCALE BUG 2 FIX: block hasil restore sering punya scale tersimpan
         // (mis. pipih 0.5,2,3) — tiling WAJIB dihitung ulang supaya
         // tekstur tidak melar setelah undo/redo. Absolut semua block.
@@ -23087,7 +23345,7 @@ Now you can apply Displacement for detailed effect.`);
                       fontSize: 11, color: textSecondary, marginBottom: 4,
                     }}>
                       <span>Metalness</span>
-                      <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{metalness.toFixed(2)}</span>
+                      <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(metalness ?? 0).toFixed(2)}</span>
                     </div>
                     <input
                       type="range" min="0" max="1" step="0.01" value={metalness}
@@ -23102,7 +23360,7 @@ Now you can apply Displacement for detailed effect.`);
                       fontSize: 11, color: textSecondary, marginBottom: 4,
                     }}>
                       <span>Roughness</span>
-                      <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{roughness.toFixed(2)}</span>
+                      <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(roughness ?? 0).toFixed(2)}</span>
                     </div>
                     <input
                       type="range" min="0" max="1" step="0.01" value={roughness}
@@ -29351,6 +29609,22 @@ backdropFilter: 'none',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,
             if ('moveStuds' in patch) { setPlaceMoveStuds(patch.moveStuds); setPlaceSnapStuds(patch.moveStuds); }
             if ('rotationDeg' in patch) setPlaceRotationDeg(patch.rotationDeg);
           }}
+        />
+      )}
+      {signEdit && (
+        <SignEditModal
+          initial={signEdit.text}
+          onConfirm={(txt) => {
+            const se = signEdit;
+            if (se && se.sign) {
+              se.sign.userData.sign = { text: txt };
+              const _sp = getSignPlaneOf(se.sign);
+              if (_sp) _sp.setSignText(txt); else console.warn('[sign] plane teks tidak ada');
+            }
+            signClosedAtRef.current = performance.now();
+            setSignEdit(null);
+          }}
+          onClose={() => { signClosedAtRef.current = performance.now(); setSignEdit(null); }}
         />
       )}
       {showTransparencyModal && (

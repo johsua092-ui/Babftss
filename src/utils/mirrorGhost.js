@@ -182,6 +182,26 @@ export function bakeMirrorIntoGeometry(mesh, axis) {
     //       simpangan 1.1 (tutup "hilang"/meleset).
     mesh.children.forEach((ch) => {
       if (!ch || !ch.position) return;
+      // ── bab 223 ronde 2 (laporan user): PLANE TEKS SIGN = "SIGN BERBALIK
+      // ARAH, TULISAN TETAP TERBACA" ──
+      // Sumbu cermin Sign = arah hadap (biasanya z lokal) → teks WAJIB pindah
+      // ke sisi seberang (posisi axis di-negasi) dan menghadap arah barunya
+      // (rot.y += PI untuk axis z) supaya tulisan tetap terbaca NORMAL dari
+      // arah hadap barunya — bukan dibalik seperti cermin.
+      // (Flip geometri/kutungan pada plane tetap DILARANG — itu yang membuat
+      //  tulisan seperti terbaca di kaca.)
+      if (ch.userData && ch.userData.isSignTextPlane) {
+        try {
+          if (axis === 'z') {
+            ch.position.setComponent(2, -ch.position.getComponent(2));
+            ch.rotation.y += Math.PI;
+          } else {
+            // axis bukan sumbu hadap teks: biarkan plane (tulisan tetap depan)
+            ch.position.setComponent(ai, -ch.position.getComponent(ai));
+          }
+        } catch (e) { /* jangan gagalkan jalur mirror */ }
+        return;
+      }
       try {
         ch.position.setComponent(ai, -ch.position.getComponent(ai));
         mirrorQuaternionAxis(ch.quaternion, ch.quaternion, axis);

@@ -208,3 +208,7 @@ tess_ref.png
 # bab 218: work file render ikon/preview NSI (localhost-only, jangan ke Vercel)
 public/iconstar.html
 public/previewstar.html
+
+# bab 222: work file render ikon/preview NSI Sign (localhost-only)
+public/iconsign.html
+public/previewsign.html

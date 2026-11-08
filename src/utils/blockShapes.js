@@ -385,6 +385,26 @@ export const NSI_STAR_SLUG = 'star';
 export const NSI_STAR_NAME = 'Star';
 export const NSI_STAR_SIZE = [1.5, 0.5, 1.5];   // block = 3 lebar x 1 tinggi x 3 dalam studs (TIDURAN)
 
+// ══ NSI LEVEL 2 #9: SIGN — papan tanda INTERAKTIF (bab 222, 2026-11-07) ══
+// Identitas (user): "Sign". Ukuran: panjang kiri-kanan 5 studs × TINGGI 4
+// studs × lebar (kedalaman) 1 studs → [2.5, 2, 0.5] block.
+// FITUR KHUSUS (keputusan user): user DI DEKAT Sign yang mengklik-nya →
+// modal input teks di tengah layar (bebas kata/simbol/emote) → Enter atau
+// tombol centang = selesai → teks TAMPIL di papan. TIDAK ADA shift+enter.
+// BENTUK (Claude bab 222, dari 8 foto): papan persegi 4.4×3.4×0.6 studs
+// (kayu terang #C9A560, serat horizontal) + 4 KUBUS SUDUT 1×1×1 studs
+// (kayu gelap #5A3520) yang menonjol — muka papan menjorok 0.3 studs dari
+// muka kubus (efek dibingkai). TANPA tiang (plakat mandiri). TANPA facing
+// (teks hanya sisi depan, plane terpisah — pasang di jalur place app).
+export const NSI_SIGN_SLUG = 'sign';
+export const NSI_SIGN_NAME = 'Sign';
+export const NSI_SIGN_SIZE = [2.5, 2, 0.5];     // block = 5 x 4 x 1 studs
+// Posisi/ukuran part (block) — dipakai geometri + plane teks (bab 222)
+export const NSI_SIGN_BOARD = { x0:-1.1, x1:1.1, y0:-0.85, y1:0.85, z0:-0.175, z1:0.175 };   // bab 222 ronde 3: tebal 0.7 studs & TENGAH di Z → kotak pojok menonjol SIMETRIS 0.075 depan-belakang (feedback user)
+export const NSI_SIGN_CUBE  = { half: 0.25, cx: 1.0, cy: 0.75, z0:-0.25, z1:0.25 };
+export const NSI_SIGN_TEXPLANE = { w: 2.0, h: 1.5, z: 0.185 };   // di depan muka papan (+0.175)
+export const SIGN_EDIT_RANGE = 5;               // block (10 studs) jarak klik
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -404,6 +424,7 @@ export const NSI_SIZES = {
   [NSI_TH_SLUG]: [2, 4, 2],   // bab 211: Throne 4 x 8 x 4 studs
   [NSI_FL_SLUG]: NSI_FL_SIZE.slice(),   // bab 214: Flag 6 x 21.5 x 1 studs
   [NSI_STAR_SLUG]: NSI_STAR_SIZE.slice(), // bab 221: Star TIDURAN 3 x 1 x 3 studs (NEON)
+  [NSI_SIGN_SLUG]: NSI_SIGN_SIZE.slice(), // bab 222: Sign 5 x 4 x 1 studs (INTERAKTIF)
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -426,7 +447,11 @@ export function getNsiSize(slug) {
   return NSI_SIZES[slug] || [1, 1, 1];
 }
 // Daftar NSI yang sudah terdaftar.
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG];
+// bab 223 (audit terukur): TORCH/LAMP/CANDLE punya nsiLevel 2 di BLOCK_LIBRARY
+// sejak bab 205/206/208 tapi TIDAK PERNAH didaftarkan di sini → isNsi() false →
+// guard "NSI tidak bisa di-scale" MELESETKAN mereka (gizmo scale terpasang,
+// tanpa toast) — ditemukan audit_nsi.py (scale_ditolak FAIL torch/lamp/candle).
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1359,6 +1384,69 @@ export function makeFlagGeometry(THREE) {
   out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   out.computeVertexNormals();
+  return out;
+}
+
+/**
+ * makeSignGeometry(THREE) — NSI L2 "Sign" (bab 222): papan + 4 kubus sudut,
+ * vertex color tint per part (kayu terang papan, kayu gelap kubus). Material
+ * generik + tekstur GRAYSCALE smooth_wood_block (pola Door bab 136 — tekstur
+ * gelap × vertex color = HITAM). Plane teks BUKAN di sini (dipasang jalur
+ * place app — punya canvas texture sendiri).
+ */
+export function makeSignGeometry(THREE) {
+  // bab 222 ronde 2 — KALIBRASI PIPET (saran Claude: setel sampai hasil AKHIR
+  // di layar ≈ referensi, bukan nilai di kode). Render awal papan (121,112,89),
+  // target layar (201,165,96) → tint dinaikkan (R,G clamp 1.0, B emas 0.41).
+  // Kubus: referensi cokelat terang → sedikit digelapkan dr render awal.
+  // bab 222 ronde 3 — kalibrasi pipet 2 iterasi (pipeline linier): nilai ini
+  // menghasilkan WARNA LAYAR ≈ referensi (papan ~(201,165,96), kubus cokelat)
+  // bab 222 ronde 3 (Claude): tint via THREE.Color(hex STRING) — otomatis
+  // konversi sRGB→linear (menulis r/255 mentah = pucat/terang, terukur).
+  const cLight = new THREE.Color('#D0AB63');   // papan kayu terang
+  const cDark = new THREE.Color('#5D3721');    // kubus kayu gelap
+  const board = [..._box(NSI_SIGN_BOARD.x0, NSI_SIGN_BOARD.x1, NSI_SIGN_BOARD.y0, NSI_SIGN_BOARD.y1, NSI_SIGN_BOARD.z0, NSI_SIGN_BOARD.z1)];
+  const cubes = [];
+  [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([sx, sy]) => {
+    const cx = sx * NSI_SIGN_CUBE.cx, cy = sy * NSI_SIGN_CUBE.cy, h = NSI_SIGN_CUBE.half;
+    cubes.push(..._box(cx - h, cx + h, cy - h, cy + h, NSI_SIGN_CUBE.z0, NSI_SIGN_CUBE.z1));
+  });
+  const gB = _buildFaces(THREE, board, { autoFix: false });
+  const gC = _buildFaces(THREE, cubes, { autoFix: false });
+  const out = new THREE.BufferGeometry();
+  const pos = [], uv = [], col = [];
+  let offset = 0;
+  // ⚠️ bab 222 ronde 4 (bug regresi Claude): KUBUS wajib cDark — dulu cLight
+  // dipakai untuk KEDUA grup → kubus jadi EMAS sama dgn papan (efek bingkai
+  // hilang). gB=papan (terang), gC=kubus (gelap) — PASANGAN eksplisit.
+  [[gB, cLight, 0.13, 0.31], [gC, cDark, 0.47, 0.62]].forEach(([g, tint, ox, oy]) => {
+    const P = g.getAttribute('position'), U = g.getAttribute('uv');
+    for (let i = 0; i < P.count; i++) {
+      pos.push(P.getX(i), P.getY(i), P.getZ(i));
+      // bab 222 ronde 5: OFFSET UV acak-deterministik per part (anti simetri
+      // cermin MirroredRepeat — pola mata kayu kembar, catatan Claude)
+      uv.push(U ? U.getX(i) + ox : 0.5, U ? U.getY(i) + oy : 0.5);
+      col.push(tint.r, tint.g, tint.b);   // shading per-vertex di bawah
+    }
+    out.addGroup(offset, P.count, 0);
+    offset += P.count;
+  });
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  out.computeVertexNormals();
+  // ── bab 222 ronde 3: SHADING DIPANGGANG ke vertex color (Claude) — material
+  // UNLIT tapi kedalaman 3D tetap terbaca (atas terang, samping/bawah gelap).
+  // Muka depan = faktor 1.0 → kalibrasi pipet TIDAK berubah.
+  const L = new THREE.Vector3(-0.4, 0.7, 0.6).normalize();
+  const kFront = 0.66 + 0.34 * Math.max(0, new THREE.Vector3(0, 0, 1).dot(L));
+  const NN = out.getAttribute('normal');
+  const CC = out.getAttribute('color');
+  for (let i = 0; i < CC.count; i++) {
+    const nv = new THREE.Vector3(NN.getX(i), NN.getY(i), NN.getZ(i));
+    const k = Math.min((0.66 + 0.34 * Math.max(0, nv.dot(L))) / kFront, 1.05);
+    CC.setXYZ(i, CC.getX(i) * k, CC.getY(i) * k, CC.getZ(i) * k);
+  }
   return out;
 }
 
@@ -4741,6 +4829,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_FL_SLUG) return makeFlagGeometry(THREE);
   // bab 218: Star (bintang NEON — satu mesh ExtrudeGeometry)
   if (slug === NSI_STAR_SLUG) return makeStarGeometry(THREE);
+  // bab 222: Sign (papan tanda interaktif — teks user via modal)
+  if (slug === NSI_SIGN_SLUG) return makeSignGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
