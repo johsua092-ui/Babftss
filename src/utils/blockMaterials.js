@@ -185,6 +185,9 @@ export const BLOCK_LIBRARY = [
   // + tekstur GRAYSCALE smooth_wood_block (pola Door bab 136). Plane teks
   // dipasang jalur place app (canvas texture, bukan di sini).
   { slug: 'sign',              name: 'Sign',       label: 'Sign',       roughness: 0.85, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // bab 225: BREAD — loaf roti tawar (muka irisan + crust, atas 2 gulungan)
+  // roughness 0.95 = permukaan roti matte; metalness 0.
+  { slug: 'bread',             name: 'Bread',      label: 'Bread',      roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -344,6 +347,43 @@ export function makeSignMaterials(THREE) {
     tex.userData.onReady.push(() => { mat.color.set(0xffffff); mat.needsUpdate = true; });
   }
   return mat;
+}
+
+/**
+ * makeBreadMaterials(THREE) — NSI "Bread" (bab 225). ARRAY 2 material,
+ * URUTAN = grup ExtrudeGeometry makeBreadGeometry():
+ *   0 = muka IRISAN (map bread_face.png — ring crust + krem + grain,
+ *       digambar dari path profil yang sama dgn geometri)
+ *   1 = dinding CRUST (map bread.png — oranye noise + streak memanjang)
+ * MeshStandardMaterial (shading 3D penting utk loaf — bukan UNLIT);
+ * roughness 0.95 matte. vertexColors FALSE default (pipeline place hanya
+ * menyalakan kalau geometri punya atribut color — bread punya color putih
+ * seragam, jadi tidak menyala → warna murni dari tekstur).
+ * Tekstur via getBlockTexture (cache + onReady; bread.png & bread_face.png
+ * keduanya resolve otomatis dari slug — tanpa special-case).
+ */
+export function makeBreadMaterials(THREE) {
+  const face = getBlockTexture(THREE, 'bread_face');
+  const side = getBlockTexture(THREE, 'bread');
+  // bab 225 ronde 2 (brainstorm Claude ronde 1 — kritik "warna terlalu gelap,
+  // krem jadi zaitun"): roughness 0.95→0.65 (kilau lembut kubah) + emissiveMap
+  // SAMA dengan map @ intensity 0.30 → warna tetap terbaca di cahaya redup
+  // TANPA kehilangan shading 3D (Bread bisa diputar — dilarang bake vertex).
+  const mFace = new THREE.MeshStandardMaterial({
+    map: face || null,
+    emissiveMap: face || null,
+    emissive: 0xffffff, emissiveIntensity: 0.30,
+    roughness: 0.65, metalness: 0.0,
+    vertexColors: false,
+  });
+  const mSide = new THREE.MeshStandardMaterial({
+    map: side || null,
+    emissiveMap: side || null,
+    emissive: 0xffffff, emissiveIntensity: 0.30,
+    roughness: 0.65, metalness: 0.0,
+    vertexColors: false,
+  });
+  return [mFace, mSide];
 }
 
 export function makeStarMaterials(THREE) {
@@ -833,6 +873,12 @@ export function makeBlockMaterial(THREE, slug) {
   // jalur generik akan 404.
   if (slug === 'star') {
     return makeStarMaterials(THREE);
+  }
+  // bab 225: BREAD — material ARRAY 2 (muka irisan / dinding crust).
+  // WAJIB cabang sendiri sebelum jalur generik: bread punya DUA tekstur
+  // berbeda (bread_face.png + bread.png) — jalur generik hanya muat satu.
+  if (slug === 'bread') {
+    return makeBreadMaterials(THREE);
   }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({

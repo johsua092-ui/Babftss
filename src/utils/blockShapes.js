@@ -405,6 +405,22 @@ export const NSI_SIGN_CUBE  = { half: 0.25, cx: 1.0, cy: 0.75, z0:-0.25, z1:0.25
 export const NSI_SIGN_TEXPLANE = { w: 2.0, h: 1.5, z: 0.185 };   // di depan muka papan (+0.175)
 export const SIGN_EDIT_RANGE = 5;               // block (10 studs) jarak klik
 
+// ══ bab 225: NSI LEVEL 2 "BREAD" — loaf roti tawar ══
+// 7 referensi (folder kerja): muka irisan di ujung (crust ring + krem dalam,
+// atas 2 kubah + lembah tengah, bawah 2 kaki + lembah kecil), badan crust
+// oranye, ATAS = 2 gulungan memanjang penuh (ekstrusi profil irisan →
+// gulungan otomatis). Warna PIPET eksak dari referensi:
+//   crust #a94819 (puncak terang #d36b2a, sisi gelap #9d4217),
+//   krem  #cdc697 (highlight #f5edc4).
+// Ukuran (pipet dari spesifikasi user): X=2 studs, Z=3 studs, Y=2 studs
+// → nilai NSI (studs/2): [1, 1, 1.5].
+// Tekstur: bread.png (dinding crust, noise + streak), bread_face.png (muka
+// irisan lengkap: ring crust + krem + grain — digambar dari path profil
+// yang SAMA dengan geometri supaya kontur inner pas).
+export const NSI_BREAD_SLUG = 'bread';
+export const NSI_BREAD_NAME = 'Bread';
+export const NSI_BREAD_SIZE = [1, 1, 1.5];      // block = 2 x 2 x 3 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -425,6 +441,7 @@ export const NSI_SIZES = {
   [NSI_FL_SLUG]: NSI_FL_SIZE.slice(),   // bab 214: Flag 6 x 21.5 x 1 studs
   [NSI_STAR_SLUG]: NSI_STAR_SIZE.slice(), // bab 221: Star TIDURAN 3 x 1 x 3 studs (NEON)
   [NSI_SIGN_SLUG]: NSI_SIGN_SIZE.slice(), // bab 222: Sign 5 x 4 x 1 studs (INTERAKTIF)
+  [NSI_BREAD_SLUG]: NSI_BREAD_SIZE.slice(), // bab 225: Bread 2 x 2 x 3 studs (LOAF)
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -451,7 +468,7 @@ export function getNsiSize(slug) {
 // sejak bab 205/206/208 tapi TIDAK PERNAH didaftarkan di sini → isNsi() false →
 // guard "NSI tidak bisa di-scale" MELESETKAN mereka (gizmo scale terpasang,
 // tanpa toast) — ditemukan audit_nsi.py (scale_ditolak FAIL torch/lamp/candle).
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1451,6 +1468,170 @@ export function makeSignGeometry(THREE) {
 }
 
 /**
+ * makeBreadGeometry(THREE) — NSI L2 "Bread" (bab 225 ronde 4).
+ * bbox TEPAT 1 x 1 x 1.5 block (2 x 2 x 3 studs).
+ *
+ * KOREKSI USER + KRITIK CLAUDE (ronde 3 dinilai 3/10):
+ *  1) KEDUA UJUNG WAJIB TERBELAH. Ronde 3 menyusutkan cincin belakang ke
+ *     skala 0.06 → ujung belakang TERTUTUP crust (pelanggaran spesifikasi:
+ *     "satunya dibelah satunya masih terbungkus kulit roti").
+ *  2) IRISAN WAJIB PUNYA KEDALAMAN. Pelat krem dicekung DEPTH = 0.07 block
+ *     (0.14 stud) dari bibir crust; di antaranya ada dinding lereng (band)
+ *     sehingga terbaca sebagai irisan, bukan tempelan datar.
+ *
+ * STRUKTUR (simetris cermin terhadap z = 0, jadi kedua ujung IDENTIK):
+ *   dinding luar crust : prisma profil penuh, z −0.75 .. +0.75
+ *   band belakang      : pelat z=−0.68 (skala INSET) → bibir z=−0.75 (skala 1)
+ *   band depan         : bibir z=+0.75 (skala 1)     → pelat z=+0.68 (skala INSET)
+ *   pelat krem belakang: z=−0.68, profil INSET, normal −z
+ *   pelat krem depan   : z=+0.68, profil INSET, normal +z
+ * INSET = 0.84 → tebal ring crust ≈ 0.08 block (0.16 stud) di titik terlebar
+ * (Claude mengukur referensi 0.06–0.10 block).
+ *
+ * WINDING (terukur, jangan diubah tanpa uji):
+ *  - dinding luar: urutan ring −z → +z (profil CW) → normal KELUAR.
+ *  - band belakang: pelat(INSET) → bibir(1) → normal −z.
+ *  - band depan   : bibir(1) → pelat(INSET) → normal +z.
+ *  - pelat belakang: indeks dibalik; pelat depan: indeks normal.
+ *
+ * GRUP (geometri INDEXED → addGroup memakai INDEKS INDEX-BUFFER, bab 225
+ * ronde 3): 0 = pelat krem (bread_face.png), 1 = crust (bread.png).
+ */
+function buildBreadProfile() {
+  const pts = [];
+  const add = (x, y) => pts.push([x, y]);
+  const q = (x0, y0, cx, cy, x1, y1, n = 9) => {
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, a = (1 - t) ** 2, b = 2 * (1 - t) * t, c = t * t;
+      add(a * x0 + b * cx + c * x1, a * y0 + b * cy + c * y1);
+    }
+  };
+  const c3 = (x0, y0, c1x, c1y, c2x, c2y, x1, y1, n = 12) => {
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, a = (1 - t) ** 3, b = 3 * (1 - t) ** 2 * t, c = 3 * (1 - t) * t * t, d = t ** 3;
+      add(a * x0 + b * c1x + c * c2x + d * x1, a * y0 + b * c1y + c * c2y + d * y1);
+    }
+  };
+  // bahu menyempit 0.10 block/sisi dari lebar maksimum (kritik Claude C.6)
+  add(-0.40, -0.5);
+  q(-0.40, -0.5, -0.455, -0.5, -0.455, -0.42);             // sudut bawah kiri
+  add(-0.455, 0.20);                                        // sisi kiri vertikal
+  c3(-0.455, 0.20, -0.47, 0.26, -0.50, 0.30, -0.50, 0.37);  // bibir keluar kiri
+  c3(-0.50, 0.37, -0.50, 0.46, -0.36, 0.50, -0.21, 0.50);   // kubah kiri
+  q(-0.21, 0.50, -0.10, 0.50, 0.0, 0.42);                   // lembah tengah 0.08 (16%)
+  q(0.0, 0.42, 0.10, 0.50, 0.21, 0.50);                     // kubah kanan
+  c3(0.21, 0.50, 0.36, 0.50, 0.50, 0.46, 0.50, 0.37);       // kubah kanan → bibir
+  c3(0.50, 0.37, 0.50, 0.30, 0.47, 0.26, 0.455, 0.20);      // bibir keluar kanan
+  add(0.455, -0.42);                                        // sisi kanan turun
+  q(0.455, -0.42, 0.455, -0.5, 0.40, -0.5);                 // sudut bawah kanan
+  // ⚠️ JANGAN tutup dengan titik duplikat: loop dinding memakai wrap (j+1)%P,
+  //    titik duplikat membuat quad degenerat di seam + merusak triangulasi.
+  return pts;
+}
+
+export function makeBreadGeometry(THREE) {
+  const prof = buildBreadProfile();
+  const P = prof.length;
+  const HALF = 0.75;          // setengah panjang → bbox Z = 1.5
+  const INSET = 0.84;         // pelat krem = profil × 0.84 (ring ≈ 0.08 block)
+  const DEPTH = 0.05;         // kedalaman irisan (0.10 stud) — Claude r2: 0.02-0.04, kompromi user
+  const ZC = HALF - DEPTH;    // 0.68
+
+  // panjang busur kontur (u) — wrap persis supaya tanpa seam
+  const arc = [0];
+  for (let j = 1; j <= P; j++) {
+    const a = prof[j % P], b = prof[j - 1];
+    arc.push(arc[j - 1] + Math.hypot(a[0] - b[0], a[1] - b[1]));
+  }
+  const tileU = arc[P] / 13;   // 13 repeat persis (keliling)
+  // ISOTROPIK (kritik Claude r2: stretch 3-4:1): panjang 1 repeat di V
+  // WAJIB ≈ tileU supaya texel density sama dengan U.
+  const nV = Math.max(1, Math.round(1.5 / tileU));
+  const tileV = 1.5 / nV;
+
+  const pos = [], col = [], uv = [], idx = [];
+
+  const ringVerts = (z, s) => {
+    const base = pos.length / 3;
+    for (let j = 0; j < P; j++) {
+      const x = prof[j][0] * s, y = prof[j][1] * s;
+      pos.push(x, y, z);
+      const t = Math.min(1, Math.max(0, y + 0.5));
+      const k = 0.85 + 0.25 * t;         // gradasi crust: bawah 0.85 → puncak 1.10
+      col.push(k, k, k);
+      uv.push(arc[j] / tileU, (z + HALF) / tileV);
+    }
+    return base;
+  };
+  const link = (r0, r1) => {             // quad di antara dua ring
+    for (let j = 0; j < P; j++) {
+      const jn = (j + 1) % P;
+      const a = r0 + j, b = r1 + j, c = r1 + jn, d = r0 + jn;
+      idx.push(a, b, c, a, c, d);
+    }
+  };
+
+  // ── 1. dinding luar crust (prisma penuh −z → +z) ──
+  const wallZ = [-HALF, -0.375, 0, 0.375, HALF];
+  const wallB = wallZ.map((z) => ringVerts(z, 1));
+  for (let i = 0; i < wallB.length - 1; i++) link(wallB[i], wallB[i + 1]);
+  const wallCount = idx.length;
+
+  // ── 2. band belakang: pelat(z=−ZC, INSET) → bibir(z=−HALF, 1) ──
+  link(ringVerts(-ZC, INSET), ringVerts(-HALF, 1));
+  const backBandCount = idx.length - wallCount;
+
+  // ── 3. band depan: bibir(z=+HALF, 1) → pelat(z=+ZC, INSET) ──
+  link(ringVerts(HALF, 1), ringVerts(ZC, INSET));
+  const frontBandCount = idx.length - wallCount - backBandCount;
+
+  const crustIdxCount = wallCount + backBandCount + frontBandCount;
+
+  // ── 4. pelat krem belakang (z=−ZC, normal −z) ──
+  const profV2 = prof.map((pp) => new THREE.Vector2(pp[0] * INSET, pp[1] * INSET));
+  const tris = THREE.ShapeUtils.triangulateShape(profV2, []);
+  const backBase = pos.length / 3;
+  for (let j = 0; j < P; j++) {
+    pos.push(prof[j][0] * INSET, prof[j][1] * INSET, -ZC);
+    col.push(1, 1, 1);
+    uv.push(prof[j][0] + 0.5, prof[j][1] + 0.5);   // pelat → 0..1 penuh
+  }
+  for (const t of tris) idx.push(backBase + t[2], backBase + t[1], backBase + t[0]); // dibalik → −z
+  const backCapCount = tris.length * 3;
+
+  // ── 5. pelat krem depan (z=+ZC, normal +z) ──
+  const frontBase = pos.length / 3;
+  for (let j = 0; j < P; j++) {
+    pos.push(prof[j][0] * INSET, prof[j][1] * INSET, ZC);
+    col.push(1, 1, 1);
+    uv.push(prof[j][0] + 0.5, prof[j][1] + 0.5);
+  }
+  for (const t of tris) idx.push(frontBase + t[0], frontBase + t[1], frontBase + t[2]);
+  const frontCapCount = tris.length * 3;
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+  out.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
+  out.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+  out.clearGroups();
+  out.addGroup(0, crustIdxCount, 1);                              // crust
+  out.addGroup(crustIdxCount, backCapCount + frontCapCount, 0);   // pelat krem (2 ujung)
+  out.computeVertexNormals();
+  out.computeBoundingBox();
+  out.userData.breadP = P;
+  out.userData.breadWallRings = wallB.length;
+  out.userData.breadLayout = {
+    P, wallRings: wallB.length, crustIdxCount,
+    backCapBase: backBase, frontCapBase: frontBase, backCapCount, frontCapCount,
+    HALF, ZC, INSET, DEPTH,
+  };
+  return out;
+}
+
+/**
+ * makeStarGeometry(THREE) — NSI L2 "Star" (bab 218): bintang 5 pucuk TEGAK,/**
  * makeStarGeometry(THREE) — NSI L2 "Star" (bab 218): bintang 5 pucuk TEGAK,
  * bbox TEPAT 1.5 x 1.5 x 0.5 block (3 x 3 x 1 studs), satu mesh ExtrudeGeometry.
  *
@@ -4831,6 +5012,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_STAR_SLUG) return makeStarGeometry(THREE);
   // bab 222: Sign (papan tanda interaktif — teks user via modal)
   if (slug === NSI_SIGN_SLUG) return makeSignGeometry(THREE);
+  // bab 225: Bread (loaf roti — muka irisan + crust, atas 2 gulungan)
+  if (slug === NSI_BREAD_SLUG) return makeBreadGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
