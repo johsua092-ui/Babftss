@@ -188,6 +188,9 @@ export const BLOCK_LIBRARY = [
   // bab 225: BREAD — loaf roti tawar (muka irisan + crust, atas 2 gulungan)
   // roughness 0.95 = permukaan roti matte; metalness 0.
   { slug: 'bread',             name: 'Bread',      label: 'Bread',      roughness: 0.95, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2, hasFacing: true },
+  // bab 227: CAKE — kue kotak voxel (badan cokelat + krim putih + sprinkles)
+  // Vertex color murni (tanpa tekstur) — lihat makeCakeMaterials().
+  { slug: 'cake',              name: 'Cake',       label: 'Cake',       roughness: 0.88, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -384,6 +387,22 @@ export function makeBreadMaterials(THREE) {
     vertexColors: false,
   });
   return [mFace, mSide];
+}
+
+/**
+ * makeCakeMaterials(THREE) — NSI "Cake" (bab 227).
+ * v3 (brainstorm Claude ronde 1): UNLIT — MeshBasicMaterial + shading
+ * per-muka yang sudah di-bake ke vertex color geometri (atas 1.0, sisi 0.85,
+ * bawah 0.55). Alasan terukur: MeshStandardMaterial di scene ini hanya
+ * menghasilkan putih ±56-69% (#B0 atas / #8F depan) → krim terbaca abu-abu.
+ * Tanpa tekstur: seluruh warna dari atribut color.
+ */
+export function makeCakeMaterials(THREE) {
+  return new THREE.MeshBasicMaterial({
+    vertexColors: true,   // warna + shading sudah di-bake di geometri
+    toneMapped: false,    // warna primer tetap jenuh (ACES mendesaturasi)
+    fog: false,
+  });
 }
 
 export function makeStarMaterials(THREE) {
@@ -879,6 +898,11 @@ export function makeBlockMaterial(THREE, slug) {
   // berbeda (bread_face.png + bread.png) — jalur generik hanya muat satu.
   if (slug === 'bread') {
     return makeBreadMaterials(THREE);
+  }
+  // bab 227: CAKE — vertex color murni (tanpa tekstur).
+  // Cabang sendiri supaya TIDAK memuat /blocks/tex/cake.png (tidak ada).
+  if (slug === 'cake') {
+    return makeCakeMaterials(THREE);
   }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({

@@ -421,6 +421,17 @@ export const NSI_BREAD_SLUG = 'bread';
 export const NSI_BREAD_NAME = 'Bread';
 export const NSI_BREAD_SIZE = [1, 1, 1.5];      // block = 2 x 2 x 3 studs
 
+// ══ bab 227: NSI LEVEL 2 #26 "CAKE" — kue kotak voxel (2026-11-10) ══
+// Referensi: 7 screenshot di folder kerja (vision Gemini 8-key, 7/7 terbaca).
+// Ukuran (user): panjang = lebar = 1.4 studs, tinggi = 1 studs
+// → block [0.7, 0.5, 0.7] (1 block = 2 studs).
+// Struktur terukur dari referensi: badan COKELAT TUA #4B3621 (≈40% tinggi),
+// krim PUTIH #FFFFFF (≈60% tinggi, OVERHANG keluar dari badan), 2 drip krim
+// per sisi menjuntai menutupi badan, 7 sprinkle batang warna-warni di atas.
+export const NSI_CAKE_SLUG = 'cake';
+export const NSI_CAKE_NAME = 'Cake';
+export const NSI_CAKE_SIZE = [0.7, 0.5, 0.7];   // block = 1.4 x 1 x 1.4 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -442,6 +453,7 @@ export const NSI_SIZES = {
   [NSI_STAR_SLUG]: NSI_STAR_SIZE.slice(), // bab 221: Star TIDURAN 3 x 1 x 3 studs (NEON)
   [NSI_SIGN_SLUG]: NSI_SIGN_SIZE.slice(), // bab 222: Sign 5 x 4 x 1 studs (INTERAKTIF)
   [NSI_BREAD_SLUG]: NSI_BREAD_SIZE.slice(), // bab 225: Bread 2 x 2 x 3 studs (LOAF)
+  [NSI_CAKE_SLUG]: NSI_CAKE_SIZE.slice(),   // bab 227: Cake 1.4 x 1 x 1.4 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -468,7 +480,7 @@ export function getNsiSize(slug) {
 // sejak bab 205/206/208 tapi TIDAK PERNAH didaftarkan di sini → isNsi() false →
 // guard "NSI tidak bisa di-scale" MELESETKAN mereka (gizmo scale terpasang,
 // tanpa toast) — ditemukan audit_nsi.py (scale_ditolak FAIL torch/lamp/candle).
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -1627,6 +1639,188 @@ export function makeBreadGeometry(THREE) {
     backCapBase: backBase, frontCapBase: frontBase, backCapCount, frontCapCount,
     HALF, ZC, INSET, DEPTH,
   };
+  return out;
+}
+
+/**
+ * makeCakeGeometry(THREE) — NSI L2 "Cake" (bab 227, 2026-11-10).
+ * bbox TEPAT 0.7 x 0.5 x 0.7 block (1.4 x 1 x 1.4 studs).
+ *
+ * Referensi 7 screenshot folder kerja (vision 8-key, 7/7 terbaca):
+ *  - badan kue COKELAT TUA (#4B3621) ≈ 40% tinggi;
+ *  - krim PUTIH (#FFFFFF) ≈ 60% tinggi, OVERHANG keluar dari badan;
+ *  - 2 drip krim per sisi menjuntai menutupi badan;
+ *  - 6-7 sprinkle batang (merah/pink/kuning/hijau/biru) di permukaan atas.
+ *
+ * Semua part BOX ber-vertex-color → digabung SATU BufferGeometry (_mergeGeos).
+ * bbox dikunci: X/Z ±0.35, Y −0.25..+0.25 (sprinkle atap TEPAT +0.25).
+ */
+function _cakeBoxFaces(x0, x1, y0, y1, z0, z1) {
+  const p = (x, y, z) => [x, y, z];
+  return [
+    [p(x0, y0, z1), p(x1, y0, z1), p(x1, y1, z1), p(x0, y1, z1)],   // +z
+    [p(x0, y0, z0), p(x0, y1, z0), p(x1, y1, z0), p(x1, y0, z0)],   // -z
+    [p(x0, y0, z0), p(x1, y0, z0), p(x1, y0, z1), p(x0, y0, z1)],   // -y
+    [p(x0, y1, z0), p(x0, y1, z1), p(x1, y1, z1), p(x1, y1, z0)],   // +y
+    [p(x0, y0, z0), p(x0, y0, z1), p(x0, y1, z1), p(x0, y1, z0)],   // -x
+    [p(x1, y0, z0), p(x1, y1, z0), p(x1, y1, z1), p(x1, y0, z1)],   // +x
+  ];
+}
+
+/** Batang sprinkle: kotak panjang yang DIPUTAR bebas terhadap sumbu Y. */
+function _cakeRodFaces(cx, cz, ang, len, wid, y0, y1) {
+  const hx = len / 2, hz = wid / 2;
+  const cos = Math.cos(ang), sin = Math.sin(ang);
+  const R = (x, z) => [cx + x * cos + z * sin, cz - x * sin + z * cos];
+  const c = [R(-hx, -hz), R(hx, -hz), R(hx, hz), R(-hx, hz)];
+  const at = (i, y) => [c[i][0], y, c[i][1]];
+  return [
+    [at(0, y0), at(1, y0), at(2, y0), at(3, y0)],   // alas
+    [at(0, y1), at(1, y1), at(2, y1), at(3, y1)],   // atas
+    [at(0, y0), at(1, y0), at(1, y1), at(0, y1)],
+    [at(1, y0), at(2, y0), at(2, y1), at(1, y1)],
+    [at(2, y0), at(3, y0), at(3, y1), at(2, y1)],
+    [at(3, y0), at(0, y0), at(0, y1), at(3, y1)],
+  ];
+}
+
+/** Faces + skala pencahayaan per muka → BufferGeometry warna tershading (v4).
+ * v4 (koreksi Claude ronde 2):
+ *  - WARNA DIKONVERSI lewat THREE.Color (sRGB→linear). v3 menulis 0x4A/255
+ *    langsung → dianggap linear → ter-encode sRGB lagi → cokelat jadi tan.
+ *  - shading per-MUKA: atas 1.0, ±Z 0.85, ±X 0.65, bawah 0.45
+ *    (sebelumnya semua sisi 0.85 → sudut slab & tebal drip tidak terbaca).
+ * scales[i] = pengali untuk muka ke-i (urutan vertex mengikuti _buildFaces:
+ * quad = 6 vertex berurutan per muka).
+ */
+function _cakePart(THREE, faces, hex, scales) {
+  const linear = new THREE.Color(hex);   // ColorManagement: sRGB → linear
+  const r = linear.r, gg = linear.g, b = linear.b;
+  const g = _buildFaces(THREE, faces, { autoFix: true });
+  const n = g.getAttribute('position').count;
+  const col = new Float32Array(n * 3);
+  let vi = 0;
+  for (let f = 0; f < faces.length; f++) {
+    const sc = scales ? scales[f] : 1.0;
+    const vCnt = faces[f].length === 4 ? 6 : 3;
+    for (let k = 0; k < vCnt; k++) {
+      col[vi * 3] = Math.min(1, r * sc);
+      col[vi * 3 + 1] = Math.min(1, gg * sc);
+      col[vi * 3 + 2] = Math.min(1, b * sc);
+      vi++;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+/** Skala pencahayaan box: [+z, -z, -y(bawah), +y(atas), -x, +x]
+ *  v4 Claude: ±Z 0.85 (≈#ED), ±X 0.65 (≈#D3), bawah 0.45. */
+const _CAKE_FACE_SC = [0.85, 0.85, 0.45, 1.0, 0.65, 0.65];
+/** Skala untuk rod sprinkle: [alas, atas, 4 sisi] — sisi 0.85, alas 0.45. */
+const _CAKE_ROD_SC = [0.45, 1.0, 0.85, 0.85, 0.85, 0.85];
+
+/** Drip v7 (Claude r6): hanya muka TERLIHAT — buang muka belakang (coplanar
+ *  berhadapan badan = sumber z-fighting) dan muka atas (tertanam slab).
+ *  axis 'z': drip di muka ±Z (memanjang X); axis 'x': di muka ±X (memanjang Z).
+ *  sign +1/-1 = sisi mana. c0..c1 = extent sepanjang sisi. dIn/dOut = kedalaman.
+ *  Return {faces, scales} — shading per muka ikut.
+ */
+function _cakeDrip(axis, sign, c0, c1, yBot, yTop, dIn, dOut) {
+  // v7b FIX: posisi LUAR/DALAM eksplisit — zo = sisi luar (dOut), zi = sisi dalam
+  // (dIn). Sebelumnya muka luar selalu di zb/xa → utk −Z & +X muka luar
+  // terkubur di dIn (di dalam badan) → drip sisi itu tak terender (Claude r7).
+  const p = (x, y, z) => [x, y, z];
+  const zo = sign * dOut, zi = sign * dIn;   // luar & dalam (bertanda)
+  const F = [], S = [];
+  const SIDES = 0.85, EDGE = 0.65, BOTTOM = 0.45;
+  if (axis === 'z') {
+    // drip menonjol dari muka ±Z, memanjang X (c0..c1)
+    // muka LUAR (±Z) di zo — scale 0.85
+    F.push([p(c0, yBot, zo), p(c1, yBot, zo), p(c1, yTop, zo), p(c0, yTop, zo)]); S.push(SIDES);
+    // muka sisi −X (di c0, span zi..zo)
+    F.push([p(c0, yBot, zi), p(c0, yBot, zo), p(c0, yTop, zo), p(c0, yTop, zi)]); S.push(EDGE);
+    // muka sisi +X (di c1, span zi..zo)
+    F.push([p(c1, yBot, zi), p(c1, yTop, zi), p(c1, yTop, zo), p(c1, yBot, zo)]); S.push(EDGE);
+    // muka BAWAH (−Y)
+    F.push([p(c0, yBot, zi), p(c1, yBot, zi), p(c1, yBot, zo), p(c0, yBot, zo)]); S.push(BOTTOM);
+  } else {
+    // drip menonjol dari muka ±X, memanjang Z (c0..c1)
+    // muka LUAR (±X) di zo — scale 0.65 (EDGE)
+    F.push([p(zo, yBot, c0), p(zo, yTop, c0), p(zo, yTop, c1), p(zo, yBot, c1)]); S.push(EDGE);
+    // muka sisi −Z (di c0, span zi..zo)
+    F.push([p(zi, yBot, c0), p(zo, yBot, c0), p(zo, yTop, c0), p(zi, yTop, c0)]); S.push(SIDES);
+    // muka sisi +Z (di c1, span zi..zo)
+    F.push([p(zi, yBot, c1), p(zi, yTop, c1), p(zo, yTop, c1), p(zo, yBot, c1)]); S.push(SIDES);
+    // muka BAWAH (−Y)
+    F.push([p(zi, yBot, c0), p(zi, yBot, c1), p(zo, yBot, c1), p(zo, yBot, c0)]); S.push(BOTTOM);
+  }
+  return { faces: F, scales: S };
+}
+
+export function makeCakeGeometry(THREE) {
+  const BODY = 0x4a2c1a;    // cokelat tua kemerahan (Claude r1: #3E2415-#4A2C1A)
+  const CREAM = 0xffffff;   // krim putih
+  const RED = 0xff0000, MAGENTA = 0xff00ff, YELLOW = 0xffff00;
+  const GREEN = 0x00ff00, BLUE = 0x0000ff;
+  const geos = [];
+  const add = (faces, hex = CREAM, sc = _CAKE_FACE_SC) =>
+    geos.push(_cakePart(THREE, faces, hex, sc));
+
+  // ── 1. badan cokelat — y −0.25..+0.02 (atas tertanam slab 0.02, anti coplanar)
+  add(_cakeBoxFaces(-0.3125, 0.3125, -0.25, 0.02, -0.3125, 0.3125), BODY);
+
+  // ── 2. slab krim — full 0.7 block, y 0.0..0.23 ──
+  add(_cakeBoxFaces(-0.35, 0.35, 0.0, 0.23, -0.35, 0.35), CREAM);
+
+  // ── 3. drip krim v7 — z 0.3000→0.3325 (menonjol 0.02 block = 0.04 stud) ──
+  // Jendela Claude r6: bebas z-fighting (≥0.005) & bebas sliver (≤0.024).
+  // y atas +0.02 (tertanam slab); buang muka belakang & atas (coplanar).
+  const D_IN = 0.30, D_OUT = 0.3325, YT = 0.02;
+  const drip = (axis, sign, c0, c1, yBot) => {
+    const d = _cakeDrip(axis, sign, c0, c1, yBot, YT, D_IN, D_OUT);
+    add(d.faces, CREAM, d.scales);
+  };
+  // +Z (depan)
+  drip('z', +1, -0.24, -0.11, -0.14);
+  drip('z', +1, 0.055, 0.155, -0.09);
+  drip('z', +1, 0.155, 0.215, -0.06);
+  // −Z (belakang)
+  drip('z', -1, 0.11, 0.24, -0.14);
+  drip('z', -1, -0.155, -0.055, -0.09);
+  drip('z', -1, -0.215, -0.155, -0.06);
+  // +X (kanan)
+  drip('x', +1, -0.24, -0.11, -0.14);
+  drip('x', +1, 0.055, 0.155, -0.09);
+  drip('x', +1, 0.155, 0.215, -0.06);
+  // −X (kiri)
+  drip('x', -1, 0.11, 0.24, -0.14);
+  drip('x', -1, -0.155, -0.055, -0.09);
+  drip('x', -1, -0.215, -0.155, -0.06);
+
+  // ── 4. sprinkle v5 — 7 dari grid 3×3, ≥1 per baris & kolom (Claude r3) ──
+  // Pilih: (0,0)(0,2)(1,1)(2,0)(2,2) = 5 pojok+tengah, lalu (1,0)(1,2) baris tengah
+  // → tiap baris & kolom terisi, sudut dekat tidak kosong.
+  const GX = [-0.19, 0.0, 0.19];
+  const GZ = [-0.19, 0.0, 0.19];
+  const pick = [
+    [0, 0, 0.50, RED],
+    [0, 2, -0.10, YELLOW],
+    [1, 0, 1.15, MAGENTA],
+    [1, 1, -0.45, GREEN],
+    [1, 2, 0.90, BLUE],
+    [2, 0, -0.70, RED],
+    [2, 2, 1.35, MAGENTA],
+  ];
+  for (const [ix, iz, ang, hex] of pick) {
+    const jx = ((ix * 7 + iz * 13) % 5 - 2) * 0.006;   // jitter deterministik ±0.012
+    const jz = ((ix * 11 + iz * 5) % 5 - 2) * 0.006;
+    add(_cakeRodFaces(GX[ix] + jx, GZ[iz] + jz, ang, 0.12, 0.025, 0.225, 0.25), hex, _CAKE_ROD_SC);
+  }
+
+  const out = _mergeGeos(THREE, geos);
+  out.computeBoundingBox();
+  out.userData.nsiCake = true;
   return out;
 }
 
@@ -5014,6 +5208,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_SIGN_SLUG) return makeSignGeometry(THREE);
   // bab 225: Bread (loaf roti — muka irisan + crust, atas 2 gulungan)
   if (slug === NSI_BREAD_SLUG) return makeBreadGeometry(THREE);
+  // bab 227: Cake (kue kotak voxel — badan cokelat + krim drip + sprinkles)
+  if (slug === NSI_CAKE_SLUG) return makeCakeGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
