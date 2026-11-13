@@ -191,6 +191,8 @@ export const BLOCK_LIBRARY = [
   // bab 227: CAKE — kue kotak voxel (badan cokelat + krim putih + sprinkles)
   // Vertex color murni (tanpa tekstur) — lihat makeCakeMaterials().
   { slug: 'cake',              name: 'Cake',       label: 'Cake',       roughness: 0.88, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // bab 230: Pumpkin — vertex color murni (unlit), TOGGLE muka via klik.
+  { slug: 'pumpkin',           name: 'Pumpkin',    label: 'Pumpkin',    roughness: 0.90, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -903,6 +905,10 @@ export function makeBlockMaterial(THREE, slug) {
   // Cabang sendiri supaya TIDAK memuat /blocks/tex/cake.png (tidak ada).
   if (slug === 'cake') {
     return makeCakeMaterials(THREE);
+  }
+  // bab 230: PUMPKIN — vertex color murni (unlit, sama pola Cake).
+  if (slug === 'pumpkin') {
+    return makeCakeMaterials(THREE);   // material identik: unlit + vertexColors
   }
   if (def.glow) {
     const mat = new THREE.MeshStandardMaterial({

@@ -432,6 +432,15 @@ export const NSI_CAKE_SLUG = 'cake';
 export const NSI_CAKE_NAME = 'Cake';
 export const NSI_CAKE_SIZE = [0.7, 0.5, 0.7];   // block = 1.4 x 1 x 1.4 studs
 
+// ── NSI L2 #2: PUMPKIN (labu) — konstanta (bab 230, 2026-11-10) ──
+// 4 x 4.5 x 4 studs = 2 x 2.25 x 2 block. NSI pertama dgn MEKANISME TOGGLE
+// KLIK: default TANPA muka (labu polos); klik 1x = muka bercahaya + cahaya
+// sorot ke arah muka; klik 2x = hilang; klik 3x = muncul lagi (toggle).
+// GHOST preview = versi BERMAKA; saat ditaruh = polos (default).
+export const NSI_PK_SLUG = 'pumpkin';
+export const NSI_PK_NAME = 'Pumpkin';
+export const NSI_PK_SIZE = [2, 2.25, 2];          // block = 4 x 4.5 x 4 studs
+
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
   [NSI_RAMP_SLUG]: [1, 1, 1],
@@ -454,6 +463,7 @@ export const NSI_SIZES = {
   [NSI_SIGN_SLUG]: NSI_SIGN_SIZE.slice(), // bab 222: Sign 5 x 4 x 1 studs (INTERAKTIF)
   [NSI_BREAD_SLUG]: NSI_BREAD_SIZE.slice(), // bab 225: Bread 2 x 2 x 3 studs (LOAF)
   [NSI_CAKE_SLUG]: NSI_CAKE_SIZE.slice(),   // bab 227: Cake 1.4 x 1 x 1.4 studs
+  [NSI_PK_SLUG]: NSI_PK_SIZE.slice(),       // bab 230: Pumpkin 4 x 4.5 x 4 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -480,7 +490,7 @@ export function getNsiSize(slug) {
 // sejak bab 205/206/208 tapi TIDAK PERNAH didaftarkan di sini → isNsi() false →
 // guard "NSI tidak bisa di-scale" MELESETKAN mereka (gizmo scale terpasang,
 // tanpa toast) — ditemukan audit_nsi.py (scale_ditolak FAIL torch/lamp/candle).
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG, NSI_PK_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -5139,6 +5149,863 @@ export function getTrophyParts(slug) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// bab 230 — NSI L2 "PUMPKIN" (labu) — geometri + varian muka bercahaya.
+// Spesifikasi Claude r1 (sesi ae33ea98). Satuan BLOCK (1 block=2 studs=2 unit).
+// Badan: lathe/revolve 8 panel FLAT-SHADED. Oktagon diputar 22.5° supaya PUSAT
+//   panel menghadap +Z/±X (muka simetris). Profil didefinisikan sbg APOTEMA
+//   (jarak pusat→bidang panel); circumradius vertex = apotema/cos22.5°.
+//   → lebar sumbu X/Z TEPAT 2.0 block (semua vertex ≤ ±1.0).
+// Profir ring (y dari dasar, apotema): 0/0.50 · 0.30/0.84 · 0.85/1.00(maks) ·
+//   1.35/0.93 · 1.62/0.62 · 1.75/0.26. Rasio bawah:maks:atas = 0.50:1.00:0.26.
+// Tinggi badan 1.75 + batang 0.50 = total 2.25 block (= 4.5 studs). ✓
+// ══════════════════════════════════════════════════════════════════════════
+const _PK_BODY = 0xff8a0a;   // oranye badan (dasar, band tengah)
+const _PK_STEM = 0x2e6b30;   // hijau batang (bawah)
+const _PK_STEM2 = 0x4fa04f;  // hijau batang (tutup atas, Claude r2)
+const _PK_FACE = 0xffff00;   // kuning muka (TIDAK dikali shade — tampak menyala)
+const _PK_RIM = 0xb84a00;    // rim ukiran oranye gelap
+const _PK_SEG = 8;           // jumlah panel badan
+const _PK_HALF = Math.PI / 8;              // 22.5° (setengah panel)
+const _PK_YOFF = -1.125;                   // geser: [0,2.25] → [-1.125,+1.125]
+const _PK_PROF = [[0.00, 0.50], [0.30, 0.84], [0.85, 1.00], [1.35, 0.93],
+                  [1.62, 0.62], [1.75, 0.26]];
+// Claude r2: TANGGA WARNA per-band (rasio dari #FF8A0A) — makin ke bawah makin
+// gelap, tutup atas paling terang. Kunci agar 8 panel & band TERBACA (v1 rata
+// #C46A00, antar-panel cuma 3-5%; referensi ≥12-15%).
+const _PK_BAND = [0xb85800, 0xe87a05, 0xff8a0a, 0xff9418, 0xffa83a]; // band j0-j1..j4-j5
+const _PK_TOPCAP = 0xffa033;               // tutup atas paling terang
+const _PK_BOTCAP = 0x8f4c06;               // tutup bawah paling gelap
+// Pengali kecerahan PER-PANEL (azimut dari depan, kiri +) — Claude r2. Panel
+// menghadap depan 0.92, panel +45° 1.00 (paling terang), belakang 0.66. Antar
+// panel bertetangga selisih ≥0.06 → 8 lobus terbaca sebagai gerigi low-poly.
+const _PK_PANEL = [0.78, 0.92, 1.00, 0.90, 0.72, 0.66, 0.60, 0.68];
+
+/** Vertex boundary ring j, index k (0..7): sudut β = k·45° + 22.5°.
+ *  Y sudah di-center (dikurangi 1.125) → bbox [-1.125, +1.125]. */
+function _pkRingVert(j, k) {
+  const a = _PK_PROF[j][1];
+  const c = a / Math.cos(_PK_HALF);          // circumradius
+  const b = k * (Math.PI / 4) + _PK_HALF;    // sudut boundary
+  return [c * Math.cos(b), _PK_PROF[j][0] + _PK_YOFF, c * Math.sin(b)];
+}
+
+/** Cat vertex-color pada geometri hasil _buildFaces (quad=6 vtx, tri=3 vtx).
+ *  Warna via THREE.Color (sRGB→linear, sama seperti _cakePart). */
+function _pkPaint(THREE, g, faces, hex, scales) {
+  const linear = new THREE.Color(hex);
+  const r = linear.r, gg = linear.g, b = linear.b;
+  const pos = g.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  let vi = 0;
+  for (let f = 0; f < faces.length; f++) {
+    const sc = scales ? scales[f] : 1.0;
+    const vCnt = faces[f].length === 4 ? 6 : 3;
+    for (let k = 0; k < vCnt; k++) {
+      col[vi * 3] = Math.min(1, r * sc);
+      col[vi * 3 + 1] = Math.min(1, gg * sc);
+      col[vi * 3 + 2] = Math.min(1, b * sc);
+      vi++;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+/** Badan labu 8 panel — v2 (Claude r2): TANGGA WARNA per-band × pengali
+ *  azimut per-panel (bukan satu rumus n·L yang membuat semua panel rata).
+ *  Return BufferGeometry ber-vertex-color. */
+/** Bab 234 (algoritme Claude ronde 1): bagian-bagian badan polos DIKEMBALIKAN
+ *  sebagai data (faces+colors) — TIDAK langsung jadi geometri. Pemanggil:
+ *  _pkBody (polos, utuh) dan _pkFrontHollow (muka: segitiga depan dipotong
+ *  pola mata/mulut per-segitiga + barycentric, badan TIDAK dirakit ulang).
+ *  skipFront TIDAK DIPAKAI LAGI (seluruh 8 panel tetap ada; lubang = hasil
+ *  clipping per segitiga, bukan pembuangan panel). */
+function _pkBodyParts() {
+  const faces = [], colors = [];   // colors: hex per muka (sudah termasuk band)
+  const NJ = _PK_PROF.length;
+  const V = (j, k) => _pkRingVert(j, ((k % _PK_SEG) + _PK_SEG) % _PK_SEG);
+  // pemetaan panel k → azimut: panel k membentang antara boundary k..k+1,
+  // pusatnya di k·45°+45° dari... oktagon diputar 22.5°: pusat panel k ada di
+  // azimut k·45°+45°? TIDAK — pusat panel k = k·45° + 22.5°+22.5°=... sederhana:
+  // panel k pusatnya menghadap arah (k·45°+45°)−22.5°−22.5°? Kita definisikan
+  // eksplisit: boundary β=k·45°+22.5° → pusat panel k = β+22.5° = k·45°+45°.
+  // Azimut "dari depan (+Z=0°)": panel 0 pusatnya di 45°... Claude minta panel
+  // depan 0.92 & panel +45° 1.00. Panel yang pusatnya di +Z (az 0°) adalah
+  // panel k dengan k·45°+45° = 0° → k=7. Tabel _PK_PANEL[k] di bawah memakai
+  // urutan azimut [315°,0°,45°,90°,135°,180°,225°,270°] utk k=0..7 → cukup
+  // digeser: az_k = (k·45+45) mod 360. _PK_PANEL[idx] dgn idx=az/45.
+  const panelOf = (k) => {
+    const az = ((k * 45 + 45) % 360) / 45;   // 0..7
+    return _PK_PANEL[az];
+  };
+  // sisi: 5 band × 8 panel × 2 tri
+  for (let j = 0; j < NJ - 1; j++) {
+    for (let k = 0; k < _PK_SEG; k++) {
+      const p0 = V(j, k), p1 = V(j, k + 1), p2 = V(j + 1, k + 1), p3 = V(j + 1, k);
+      const hex = _PK_BAND[j];
+      const m = panelOf(k);
+      // bab 234: triangulasi FAN dari pusat bilinear (bukan 2 tri diagonal).
+      // Quad band-panel NON-PLANAR → 2 tri diagonal saling tumpang-tindih dan
+      // meninggalkan CELAH di proyeksi (x,y) → titik lubang bisa jatuh di
+      // celah = kulit tak pernah terpotong di situ (terukur: proyeksi panel
+      // k=2 band j2 di y=1.05 hanya menutup x -0.972..-0.620, centroid mata
+      // -0.44 di luar). Fan dari pusat menutupi proyeksi quad PENUH → setiap
+      // titik (x,y) dimiliki TEPAT satu segitiga → clipping per-segitiga
+      // menjangkau seluruh lubang. Bentuk permukaan identik (pusat = titik
+      // bilinear (0.5,0.5) = rata-rata 4 sudut).
+      const c = [(p0[0] + p1[0] + p2[0] + p3[0]) / 4,
+                 (p0[1] + p1[1] + p2[1] + p3[1]) / 4,
+                 (p0[2] + p1[2] + p2[2] + p3[2]) / 4];
+      const hexM = mixHex(hex, m);
+      faces.push([p0, p1, c]); colors.push(hexM);
+      faces.push([p1, p2, c]); colors.push(hexM);
+      faces.push([p2, p3, c]); colors.push(hexM);
+      faces.push([p3, p0, c]); colors.push(hexM);
+    }
+  }
+  // tutup bawah (ring 0) & atas (ring terakhir) — fan ke pusat
+  const botC = [0, _PK_PROF[0][0] + _PK_YOFF, 0];
+  for (let k = 0; k < _PK_SEG; k++) {
+    faces.push([botC, V(0, k + 1), V(0, k)]); colors.push(_PK_BOTCAP);
+  }
+  const topJ = NJ - 1;
+  const topC = [0, _PK_PROF[topJ][0] + _PK_YOFF, 0];
+  for (let k = 0; k < _PK_SEG; k++) {
+    faces.push([topC, V(topJ, k), V(topJ, k + 1)]); colors.push(_PK_TOPCAP);
+  }
+  return { faces, colors };
+}
+
+function _pkBody(THREE) {
+  const { faces, colors } = _pkBodyParts();
+  const g = _buildFaces(THREE, faces, { autoFix: true });
+  // warna per-muka (hex bisa beda per muka) × pengali panel sudah menyatu di hex
+  _pkPaintMulti(THREE, g, faces, colors, faces.map(() => 1.0));
+  return g;
+}
+
+/** Campur hex dasar dgn pengali m: ≤1 → gelapkan (×m), >1 → geser menuju
+ *  #FFA83A (kloning R sudah penuh — Claude r2: jangan kalikan >1). */
+function mixHex(hex, m) {
+  if (m === 1) return hex;
+  let r = (hex >> 16) & 255, g = (hex >> 8) & 255, b = hex & 255;
+  if (m <= 1) {
+    r = Math.round(r * m); g = Math.round(g * m); b = Math.round(b * m);
+  } else {
+    const tr = 0xff, tg = 0xa8, tb = 0x3a;   // target #FFA83A
+    const t = Math.min(1, m - 1);            // 1.0→0, 1.15→0.15
+    r = Math.round(r + (tr - r) * t); g = Math.round(g + (tg - g) * t); b = Math.round(b + (tb - b) * t);
+  }
+  return (r << 16) | (g << 8) | b;
+}
+
+/** Versi _pkPaint dengan warna per-muka (hex beda-beda). */
+function _pkPaintMulti(THREE, g, faces, hexes, scales) {
+  const pos = g.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  let vi = 0;
+  for (let f = 0; f < faces.length; f++) {
+    const linear = new THREE.Color(hexes[f]);
+    const sc = scales ? scales[f] : 1.0;
+    const vCnt = faces[f].length === 4 ? 6 : 3;
+    for (let k = 0; k < vCnt; k++) {
+      col[vi * 3] = Math.min(1, linear.r * sc);
+      col[vi * 3 + 1] = Math.min(1, linear.g * sc);
+      col[vi * 3 + 2] = Math.min(1, linear.b * sc);
+      vi++;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+/** Batang v2 (Claude r2): prisma 6 sisi MELENGKUNG ke samping (+X 0.20, −Z
+ *  0.05 di ujung — referensi batang melengkung, bukan lurus seperti baut).
+ *  Ring: y1.60 r0.19 off(0,0) · y1.85 r0.15 off(+0.07,−0) · y2.25 r0.12 off(+0.20,−0.05).
+ *  Shade 6 sisi siklus [0.65,0.80,0.95,1.15,1.00,0.75] → highlight terbaca.
+ *  Tinggi terlihat ±0.52 block (mulai y=1.60 di dalam kerah badan). */
+function _pkStem(THREE) {
+  const faces = [], scales = [], cols = [];
+  const SEG = 6;
+  const SH = [0.65, 0.80, 0.95, 1.15, 1.00, 0.75];   // siklus per sisi
+  // v4 (Claude r4: "masih ada siku di y≈430") — 6 ring dgn kurva HALUS
+  // (offset x naik mulus 0→0.26, tanpa siku tajam antar-band).
+  const rings = [
+    { y: 1.60 + _PK_YOFF, r: 0.19, x: 0.00, z: 0.00, c: _PK_STEM },
+    { y: 1.75 + _PK_YOFF, r: 0.18, x: 0.03, z: 0.00, c: _PK_STEM },
+    { y: 1.92 + _PK_YOFF, r: 0.16, x: 0.08, z: 0.00, c: _PK_STEM },
+    { y: 2.08 + _PK_YOFF, r: 0.14, x: 0.15, z: -0.02, c: _PK_STEM },
+    { y: 2.20 + _PK_YOFF, r: 0.13, x: 0.21, z: -0.04, c: _PK_STEM },
+    { y: 2.25 + _PK_YOFF, r: 0.12, x: 0.26, z: -0.05, c: _PK_STEM2 },
+  ];
+  for (let j = 0; j < rings.length - 1; j++) {
+    const A = rings[j], B = rings[j + 1];
+    for (let k = 0; k < SEG; k++) {
+      const a0 = (k / SEG) * Math.PI * 2, a1 = ((k + 1) / SEG) * Math.PI * 2;
+      const p0 = [A.x + A.r * Math.cos(a0), A.y, A.r * Math.sin(a0) + A.z];
+      const p1 = [A.x + A.r * Math.cos(a1), A.y, A.r * Math.sin(a1) + A.z];
+      const p2 = [B.x + B.r * Math.cos(a1), B.y, B.r * Math.sin(a1) + B.z];
+      const p3 = [B.x + B.r * Math.cos(a0), B.y, B.r * Math.sin(a0) + B.z];
+      faces.push([p0, p1, p2, p3]); scales.push(SH[k % SEG]); cols.push(A.c);
+    }
+  }
+  // tutup atas
+  const T = rings[rings.length - 1], topC = [T.x, T.y, T.z];
+  for (let k = 0; k < SEG; k++) {
+    const a0 = (k / SEG) * Math.PI * 2, a1 = ((k + 1) / SEG) * Math.PI * 2;
+    faces.push([topC, [T.x + T.r * Math.cos(a1), T.y, T.r * Math.sin(a1) + T.z],
+                        [T.x + T.r * Math.cos(a0), T.y, T.r * Math.sin(a0) + T.z]]);
+    scales.push(1.0); cols.push(_PK_STEM2);
+  }
+  // gabung manual dengan warna campuran (stem punya 2 warna)
+  const geos = [];
+  let curFaces = [], curScales = [], curCol = cols[0];
+  for (let f = 0; f < faces.length; f++) {
+    const c = cols[f];
+    if (c !== curCol) { geos.push(_cakePart(THREE, curFaces, curCol, curScales)); curFaces = []; curScales = []; curCol = c; }
+    curFaces.push(faces[f]); curScales.push(scales[f]);
+  }
+  if (curFaces.length) geos.push(_cakePart(THREE, curFaces, curCol, curScales));
+  return _mergeGeos(THREE, geos);
+}
+
+/** POLIGON muka dalam koordinat proyeksi (x, y) — frame dasar badan (=0).
+ *  v2 (Claude r2): mulut DIPECAH di x=0 jadi 2 poligon KONVEKS (titik (0,0.62)
+ *  reflex → fan-triangulasi membalik segitiga di sekitarnya). */
+// bab 233: koordinat mata dari REFERENSI (Claude, 11 gambar). Jajar genjang
+// MIRING (bukan huruf L). Mata KANAN (x dari sumbu, y dari dasar badan):
+// dalam-bawah, dalam-atas, luar-atas, luar-bawah. Sudut luar lebih tinggi.
+const _PK_EYE_R = [[0.30, 0.92], [0.36, 1.12], [0.58, 1.18], [0.50, 0.99]];
+const _PK_MOUTH_R = [[0.00, 0.62], [0.68, 0.80], [0.52, 0.42], [0.34, 0.30], [0.00, 0.30]];
+const _PK_MOUTH_L = [[0.00, 0.62], [0.00, 0.30], [-0.34, 0.30], [-0.52, 0.42], [-0.68, 0.80]];
+
+/** Apotema profil pada ketinggian y (interpolasi linier antar ring). */
+function _pkApothemAt(y) {
+  const P = _PK_PROF;
+  if (y <= P[0][0]) return P[0][1];
+  for (let j = 0; j < P.length - 1; j++) {
+    if (y >= P[j][0] && y <= P[j + 1][0]) {
+      const t = (y - P[j][0]) / (P[j + 1][0] - P[j][0]);
+      return P[j][1] + t * (P[j + 1][1] - P[j][1]);
+    }
+  }
+  return P[P.length - 1][1];
+}
+
+// ── MUKA v2 (Claude r2, koreksi "muka rusak 1/10") ──
+// AKAR v1: proyeksi z=sqrt(a²−x²) = SILINDER, padahal panel depan bidang DATAR
+// z=a(y). Di |x|=0.414 selisih ≈0.09 block > offset 0.022 → muka terkubur.
+// FIX: (a) CLIP poligon ke batas panel x=±0.414·a(y) (Sutherland–Hodgman),
+// (b) proyeksikan ke BIDANG panel masing-masing, (c) offset SEPANJANG NORMAL
+// panel (bukan sepanjang Z).
+
+/** CLIP poligon (array [x,y]) terhadap x ≤ xmax dan x ≥ xmin (Sutherland–
+ *  Hodgman dua setengah-ruang). Return poligon ter-clip. */
+function _pkClipX(poly, xmin, xmax) {
+  const clipEdge = (pts, keep, lim) => {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const A = pts[i], B = pts[(i + 1) % pts.length];
+      const inA = keep(A[0], lim), inB = keep(B[0], lim);
+      if (inA) out.push(A);
+      if (inA !== inB) {
+        const t = (lim - A[0]) / (B[0] - A[0]);
+        out.push([lim, A[1] + t * (B[1] - A[1])]);
+      }
+    }
+    return out;
+  };
+  let p = poly;
+  p = clipEdge(p, (x, lim) => x <= lim, xmax);
+  p = clipEdge(p, (x, lim) => x >= lim, xmin);
+  return p;
+}
+
+/** Fan-triangulasi poligon konveks → daftar tri [x,y]. */
+function _pkFan(poly) {
+  const tris = [];
+  for (let i = 1; i < poly.length - 1; i++) tris.push([poly[0], poly[i], poly[i + 1]]);
+  return tris;
+}
+
+/** Buang tri yang degenerate/terbalik (area ≈0). */
+function _pkTriArea(t) {
+  const [a, b, c] = t;
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+function _pkFacePolys(THREE, poly, offset, grow, hex) {
+  // perbesar di sekitar centroid utk rim
+  let P = poly;
+  if (grow > 0) {
+    let cx = 0, cy = 0;
+    for (const p of P) { cx += p[0]; cy += p[1]; }
+    cx /= P.length; cy /= P.length;
+    P = P.map(([x, y]) => {
+      const dx = x - cx, dy = y - cy, l = Math.hypot(dx, dy) || 1;
+      return [x + dx / l * grow, y + dy / l * grow];
+    });
+  }
+  // v4 (fix "garis vertikal membelah mata & mulut"): EAR-CLIPPING dengan
+  // THREE.ShapeUtils.triangulateShape — menangani poligon CEKUNG (mulut
+  // menyeringai 7 titik punya reflex vertex) TANPA memecah poligon → TIDAK
+  // ADA lagi dua vertex duplikat persis di x=0 yang saling z-fight.
+  // (Fan-triangulasi dulu membalik tri di sekitar titik cekung; lalu pecah
+  // R/L menciptakan seam z-fighting tepat di tengah muka.)
+  const verts2 = P.map(p => new THREE.Vector2(p[0], p[1]));
+  let trisIdx;
+  try {
+    trisIdx = THREE.ShapeUtils.triangulateShape(verts2, []);
+  } catch (e) {
+    trisIdx = null;
+  }
+  const faces = [];
+  const tris = trisIdx
+    ? trisIdx.map(([a, b, c]) => [P[a], P[b], P[c]])
+    : _pkFan(P);   // fallback fan bila triangulate gagal
+  for (const tri of tris) {
+    if (Math.abs(_pkTriArea(tri)) < 1e-9) continue;
+    // paksa winding menghadap keluar (+Z) — area 2D <0 → balik (anti mata hilang)
+    let t = tri;
+    if (_pkTriArea(t) < 0) t = [t[0], t[2], t[1]];
+    const f = t.map(([x, y]) => {
+      const a = _pkApothemAt(y);
+      const z = Math.sqrt(Math.max(0, a * a - x * x));   // PERMUKAAN SILINDER halus
+      // normal radial horizontal keluar: (x, 0, z)/a
+      const L = Math.hypot(x, z) || 1;
+      const nx = x / L, nz = z / L;
+      return [x + nx * offset, y + _PK_YOFF, z + nz * offset];
+    });
+    faces.push(f);
+  }
+  // winding manual — muka TIPIS, JANGAN autoFix
+  const g = _buildFaces(THREE, faces, { autoFix: false });
+  _pkPaint(THREE, g, faces, hex, faces.map(() => 1.0));
+  return g;
+}
+
+// ── bab 232: PANEL DEPAN BERLUBANG (mata & mulut beneran tembus) ──
+// Pendekatan ROBUST (revisi: versi triangulate-with-holes per-quad menghasilkan
+// geometri patah/duri). Kini: tiap panel depan dibangun sebagai GRID SEL HALUS;
+// sel yang pusatnya jatuh di DALAM poligon mata/mulut DI-SKIP → jadi lubang.
+// Tanpa triangulate/clip → mustahil menghasilkan tri patah. Tepi lubang ber-
+// tangga halus (resolusi grid), bentuk mata/mulut tetap terbaca jelas.
+
+/** Point-in-polygon (ray casting) untuk pola muka 2D [x,y]. */
+function _pkPointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Normal segitiga 3D (belum dinormalisasi). */
+function _pkTriNormal(a, b, c) {
+  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+  const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+  return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+}
+/** Luas ber-tanda poligon 2D [x,y] (shoelace). */
+function _pkPolyArea(p) {
+  let a = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    a += (p[j][0] * p[i][1] - p[i][0] * p[j][1]);
+  }
+  return a / 2;
+}
+/** Sutherland–Hodgman: clip poligon 2D [x,y] ke quad KONVEKS (CCW). */
+function _pkClipConvexXY(poly, quad) {
+  let p = poly;
+  const n = quad.length;
+  for (let e = 0; e < n && p.length; e++) {
+    const A = quad[e], B = quad[(e + 1) % n];
+    const ex = B[0] - A[0], ey = B[1] - A[1];
+    const inside = (P) => ex * (P[1] - A[1]) - ey * (P[0] - A[0]) >= 0;
+    const out = [];
+    for (let i = 0; i < p.length; i++) {
+      const P = p[i], Q = p[(i + 1) % p.length];
+      const inP = inside(P), inQ = inside(Q);
+      if (inP) out.push(P);
+      if (inP !== inQ) {
+        const dP = ex * (P[1] - A[1]) - ey * (P[0] - A[0]);
+        const dQ = ex * (Q[1] - A[1]) - ey * (Q[0] - A[0]);
+        const t = dP / (dP - dQ);
+        out.push([P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]);
+      }
+    }
+    p = out;
+  }
+  return p;
+}
+
+/** Panel depan berlubang — POLIGON EKSAK di ruang (x, y_dasar), dipetakan
+ *  AFFINE ke bidang panel (bab 233 revisi; arahan Claude).
+ *  Metode (s,t) invers-bilinear tadi MENGHANCURKAN bentuk (mata "petir
+ *  bergerigi", mulut tersentak, sudut terpotong ±0.53). Solusi eksak:
+ *  Tiap band-panel = quad PLANAR dengan pemetaan AFFINE dari 2D (x,y_dasar)
+ *  ke 3D (P0 + u·eu + v·ev). Klip pola mata/mulut (2D) ke batas panel,
+ *  triangulasi quad+holes di 2D, lalu petakan balik via affine tsb.
+ *  → bentuk asli poligon 100% terjaga, sudut mulut mencapai ±0.68, watertight
+ *  di tepi panel bersama (peta affine dua panel sepakat di garis bersama). */
+/** ── BAB 234: MUKA BOLONG — ALGORITME CLAUDE RONDE 1 ────────────────────────
+ *  POTONG PER-SEGITIGA di 2D + barycentric balik ke 3D:
+ *  1. Badan polos (_pkBodyParts) = SUMBER KEBENARAN — TIDAK dirakit ulang.
+ *  2. Segitiga depan (normal.z > 0.05) diproyeksikan ke (x, y_dasar).
+ *  3. Tiap segitiga dipotong dgn pola mata/mulut: lubang didekomposisi jadi
+ *     segitiga-convex (earcut per lubang, sekali) → Sutherland-Hodgman
+ *     subject-tri ∩ hole-tri (keduanya convex → SH SAH) → sisa lubang per
+ *     segitiga = daftar polygon → earcut(contour, holes) per segitiga
+ *     (AMAN: earcut dipanggil per sisa kecil, BUKAN seluruh wajah — akar
+ *     kegagalan metode-1).
+ *  4. Vertex sisa dipetakan balik ke 3D via BARYCENTRIC segitiga asli
+ *     (z selalu tepat di permukaan — tidak ada rumus panel 2D lagi; akar
+ *     kegagalan metode-5/6).
+ *  5. Segitiga yang tidak tersentuh lubang disalin APA ADANYA (kulit utuh).
+ *  Invarian terukur (Claude): luas(sisa) + luas(lubang∩tri) = luas(tri). */
+
+/** SH-intersection: subject (poligon sederhana) ∩ clip (CONVEX, CCW). */
+function _pkSHInside(subject, clip) {
+  let out = subject;
+  const n = clip.length;
+  for (let e = 0; e < n && out.length; e++) {
+    const A = clip[e], B = clip[(e + 1) % n];
+    const ex = B[0] - A[0], ey = B[1] - A[1];
+    const inside = (P) => ex * (P[1] - A[1]) - ey * (P[0] - A[0]) >= 0;
+    const res = [];
+    for (let i = 0; i < out.length; i++) {
+      const P = out[i], Q = out[(i + 1) % out.length];
+      const inP = inside(P), inQ = inside(Q);
+      if (inP) res.push(P);
+      if (inP !== inQ) {
+        const dP = ex * (P[1] - A[1]) - ey * (P[0] - A[0]);
+        const dQ = ex * (Q[1] - A[1]) - ey * (Q[0] - A[0]);
+        const t = dP / (dP - dQ);
+        res.push([P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]);
+      }
+    }
+    out = res;
+  }
+  const dd = [];
+  for (const p of out) {
+    const q = dd[dd.length - 1];
+    if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9) dd.push(p);
+  }
+  if (dd.length > 2) {
+    const a = dd[dd.length - 1], b = dd[0];
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) <= 1e-9) dd.pop();
+  }
+  return dd;
+}
+
+/** Barycentric: titik 2D p di dalam segitiga 2D t2 → titik 3D pada tri. */
+function _pkBary3D(t2, tri, p) {
+  const a = t2[0], b = t2[1], c = t2[2];
+  const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+  if (Math.abs(det) < 1e-12) return tri[0].slice();
+  const u = ((p[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (p[1] - a[1])) / det;
+  const v = ((b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1])) / det;
+  const w = 1 - u - v;
+  return [
+    tri[0][0] * w + tri[1][0] * u + tri[2][0] * v,
+    tri[0][1] * w + tri[1][1] * u + tri[2][1] * v,
+    tri[0][2] * w + tri[1][2] * u + tri[2][2] * v,
+  ];
+}
+
+const _PK_CLIP_STATS = { kept: 0, dropped: 0, clipped: 0, maxErr: 0 };
+export function _pkClipStats() { return _PK_CLIP_STATS; }
+
+/** Geometri badan BERMAKA: semua panel badan dipertahankan; segitiga depan
+ *  yang bersinggungan dgn pola mata/mulut DIPOTONG di 2D lalu dipetakan
+ *  balik ke 3D via barycentric (permukaan asli, tanpa rumus). */
+function _pkFrontHollow(THREE) {
+  const { faces: parts, colors: partColors } = _pkBodyParts();
+  const MOUTH = [[-0.68, 0.78], [-0.42, 0.54], [0.00, 0.46], [0.42, 0.54], [0.68, 0.78],
+                 [0.58, 0.37], [0.30, 0.19], [-0.30, 0.19], [-0.58, 0.37]];
+  const eyeR = _PK_EYE_R;
+  const eyeL = _PK_EYE_R.map(([x, y]) => [-x, y]);
+  const holes2D = [eyeR, eyeL, MOUTH];
+
+  // Dekomposisi tiap lubang → segitiga CONVEX (normalisasi CCW).
+  const holeTris = [];
+  for (const h of holes2D) {
+    const v2 = h.map((p) => new THREE.Vector2(p[0], p[1]));
+    let idx = null;
+    try { idx = THREE.ShapeUtils.triangulateShape(v2, []); } catch (e) { idx = null; }
+    const tris = idx ? idx.map(([a, b, c]) => [h[a], h[b], h[c]]) : [];
+    for (const t of tris) {
+      if (Math.abs(_pkPolyArea(t)) < 1e-9) continue;
+      holeTris.push(_pkPolyArea(t) < 0 ? [t[0], t[2], t[1]] : t);   // CCW
+    }
+  }
+
+  const outFaces = [], outColors = [];
+  _PK_CLIP_STATS.kept = 0; _PK_CLIP_STATS.dropped = 0; _PK_CLIP_STATS.clipped = 0; _PK_CLIP_STATS.maxErr = 0;
+  // bbox gabungan lubang (Claude ronde 2): segitiga depan yang bbox-nya TIDAK
+  // menyentuh bbox lubang disalin apa adanya = identik mode polos.
+  const HB = { minx: Infinity, maxx: -Infinity, miny: Infinity, maxy: -Infinity };
+  for (const h of holes2D) for (const p of h) {
+    if (p[0] < HB.minx) HB.minx = p[0];
+    if (p[0] > HB.maxx) HB.maxx = p[0];
+    if (p[1] < HB.miny) HB.miny = p[1];
+    if (p[1] > HB.maxy) HB.maxy = p[1];
+  }
+  for (let i = 0; i < parts.length; i++) {
+    const f = parts[i];
+    const tris = f.length === 4 ? [[f[0], f[1], f[2]], [f[0], f[2], f[3]]] : [f];
+    for (const tri of tris) {
+      const colorOfPart = partColors[i];   // FIX Claude r2: simpan SEBELUM loop dalam
+      // ⚠️ winding MENTAH panel badan menghadap KE DALAM (autoFix membalik
+      // saat build) — filter wajib pakai z OUTWARD: kalau raw normal menunjuk
+      // ke arah pusat badan (0,-0.25,0), balik dulu. Tanpa ini segitiga depan
+      // tak pernah dipotong (terukur).
+      const n = _pkTriNormal(tri[0], tri[1], tri[2]);
+      const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+      const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
+      const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+      const cz = (tri[0][2] + tri[1][2] + tri[2][2]) / 3;
+      const inward = (n[0] * cx + n[1] * (cy + 0.25) + n[2] * cz) < 0;
+      const outZ = (inward ? -n[2] : n[2]) / nl;
+      if (outZ <= 0.05) {
+        outFaces.push(tri); outColors.push(colorOfPart); _PK_CLIP_STATS.kept++; continue;
+      }
+      // early-out bbox (Claude ronde 2): tak menyentuh bbox lubang → polos utuh
+      {
+        let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
+        for (const p of tri) {
+          const yd = p[1] - _PK_YOFF;
+          if (p[0] < bx0) bx0 = p[0]; if (p[0] > bx1) bx1 = p[0];
+          if (yd < by0) by0 = yd; if (yd > by1) by1 = yd;
+        }
+        if (bx1 < HB.minx || bx0 > HB.maxx || by1 < HB.miny || by0 > HB.maxy) {
+          outFaces.push(tri); outColors.push(colorOfPart); _PK_CLIP_STATS.kept++; continue;
+        }
+      }
+      // normalisasi subject CCW — t2c dan triC SELALU sejajar (barycentric eksak)
+      const flip = _pkPolyArea(tri.map((p) => [p[0], p[1] - _PK_YOFF])) < 0;
+      const t2c = flip
+        ? [tri[0], tri[2], tri[1]].map((p) => [p[0], p[1] - _PK_YOFF])
+        : tri.map((p) => [p[0], p[1] - _PK_YOFF]);
+      const triC = flip ? [tri[0], tri[2], tri[1]] : tri;
+      // ── SELISIH-CONVEX TANPA EARCUT ──
+      // earcut(contour, holes) GAGAL ketika lubang MENYENTUH tepi contour
+      // (terukur: menghasilkan segitiga yang MENUTUPI lubang). Solusi:
+      // subject − holeTri didekomposisi jadi maks 3 piece CONVEX:
+      //   piece_k = inside(e0..e_{k-1}) ∩ outside(e_k)
+      // Banyak lubang = difference berurutan antar piece.
+      let pieces = [t2c];
+      let removedArea = 0;
+      for (const ht of holeTris) {
+        const outsideAll = [];
+        for (const poly of pieces) {
+          const A_poly = Math.abs(_pkPolyArea(poly));
+          let chain = poly.slice();   // FIX: chain = DAFTAR VERTEX poligon (dulu [poly] = bungkus poligon -> dP=NaN -> semua tri depan habis)
+          const outs = [];
+          for (let e = 0; e < ht.length && chain.length; e++) {
+            const A = ht[e], B = ht[(e + 1) % ht.length];
+            const outside = [];
+            const inside = [];
+            for (let i = 0; i < chain.length; i++) {
+              const P = chain[i], Q = chain[(i + 1) % chain.length];
+              const ex = B[0] - A[0], ey = B[1] - A[1];
+              const dP = ex * (P[1] - A[1]) - ey * (P[0] - A[0]);
+              const dQ = ex * (Q[1] - A[1]) - ey * (Q[0] - A[0]);
+              const inP = dP >= 0, inQ = dQ >= 0;
+              if (inP) inside.push(P); else outside.push(P);
+              if (inP !== inQ) {
+                const t = dP / (dP - dQ);
+                const X = [P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])];
+                outside.push(X); inside.push(X);
+              }
+            }
+            if (outside.length >= 3) {
+              const dd = [];
+              for (const p of outside) {
+                const q = dd[dd.length - 1];
+                if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9) dd.push(p);
+              }
+              if (dd.length >= 3 && Math.abs(_pkPolyArea(dd)) > 1e-9) outs.push(dd);
+            }
+            if (inside.length >= 3) {
+              const dd = [];
+              for (const p of inside) {
+                const q = dd[dd.length - 1];
+                if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9) dd.push(p);
+              }
+              if (dd.length >= 3) chain = dd; else { chain = []; break; }
+            } else { chain = []; break; }
+          }
+          const A_outs = outs.reduce((s, o) => s + Math.abs(_pkPolyArea(o)), 0);
+          removedArea += Math.max(0, A_poly - A_outs);
+          outsideAll.push(...outs);
+        }
+        pieces = outsideAll;
+        if (!pieces.length) break;
+      }
+      let areaAfter = 0;
+      for (const poly of pieces) {
+        const ccw = _pkPolyArea(poly) < 0 ? [poly[0], poly[2], poly[1]] : poly;
+        // FIX Claude r2: loop dalam dulu memakai `i` → MENIMPA indeks part
+        // (shadowing) → semua kulit depan dapat partColors[1] (satu warna
+        // gelap, facet hilang). Ganti ke `q` + pakai colorOfPart.
+        for (let q = 1; q < ccw.length - 1; q++) {
+          const r = [ccw[0], ccw[q], ccw[q + 1]];
+          areaAfter += Math.abs(_pkPolyArea(r));
+          outFaces.push([_pkBary3D(t2c, triC, r[0]),
+                         _pkBary3D(t2c, triC, r[1]),
+                         _pkBary3D(t2c, triC, r[2])]);
+          outColors.push(colorOfPart);
+        }
+      }
+      _PK_CLIP_STATS.clipped++;
+      const A_tri = Math.abs(_pkPolyArea(t2c));
+      const err = Math.abs(A_tri - areaAfter - removedArea);
+      if (err > _PK_CLIP_STATS.maxErr) _PK_CLIP_STATS.maxErr = err;
+    }
+  }
+  const g = _buildFaces(THREE, outFaces, { autoFix: true });
+  _pkPaintMulti(THREE, g, outFaces, outColors, outFaces.map(() => 1.0));
+  return g;
+}
+
+/** Dinding rongga (rim, Claude Langkah 4): tepi lubang disampel rapat di
+ *  permukaan (barycentric → 3D), ring dalam digeser ke pusat labu depth
+ *  0.15, dihubungkan strip quad — tepi mengikuti poligon ASLI (tanpa undak).
+ *  autoFix:true → normal menjauhi pusat labu = terlihat lewat lubang. */
+function _pkRimWalls(THREE) {
+  const { faces: parts } = _pkBodyParts();
+  const MOUTH = [[-0.68, 0.78], [-0.42, 0.54], [0.00, 0.46], [0.42, 0.54], [0.68, 0.78],
+                 [0.58, 0.37], [0.30, 0.19], [-0.30, 0.19], [-0.58, 0.37]];
+  const eyeR = _PK_EYE_R;
+  const eyeL = _PK_EYE_R.map(([x, y]) => [-x, y]);
+  const frontTris = [];
+  for (const f of parts) {
+    const tris = f.length === 4 ? [[f[0], f[1], f[2]], [f[0], f[2], f[3]]] : [f];
+    for (const tri of tris) {
+      const n = _pkTriNormal(tri[0], tri[1], tri[2]);
+      const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+      const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
+      const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+      const cz = (tri[0][2] + tri[1][2] + tri[2][2]) / 3;
+      const inward = (n[0] * cx + n[1] * (cy + 0.25) + n[2] * cz) < 0;
+      if ((inward ? -n[2] : n[2]) / nl > 0.05) frontTris.push(tri);
+    }
+  }
+  const mapToSurface = (x, yd) => {
+    let best = null, bestD = Infinity;
+    for (const tri of frontTris) {
+      const t2 = tri.map((p) => [p[0], p[1] - _PK_YOFF]);
+      const d = (t2[1][0] - t2[0][0]) * (t2[2][1] - t2[0][1]) - (t2[2][0] - t2[0][0]) * (t2[1][1] - t2[0][1]);
+      if (Math.abs(d) < 1e-12) continue;
+      const u = ((x - t2[0][0]) * (t2[2][1] - t2[0][1]) - (t2[2][0] - t2[0][0]) * (yd - t2[0][1])) / d;
+      const v = ((t2[1][0] - t2[0][0]) * (yd - t2[0][1]) - (x - t2[0][0]) * (t2[1][1] - t2[0][1])) / d;
+      const eps = 1e-5;   // Claude ronde 3: naikkan eps — dulu 1e-7
+      if (u >= -eps && v >= -eps && u + v <= 1 + eps) return _pkBary3D(t2, tri, [x, yd]);
+      // fallback Claude ronde 3: segitiga TERDEKAT (barycentric clamp) — JANGAN
+      // pernah null: titik ring yang terlewat membuat chord merobek dinding.
+      let uu = Math.max(0, Math.min(1, u)), vv = Math.max(0, Math.min(1, v));
+      const s = uu + vv;
+      if (s > 1) { uu /= s; vv /= s; }
+      const qx = t2[0][0] + uu * (t2[1][0] - t2[0][0]) + vv * (t2[2][0] - t2[0][0]);
+      const qy = t2[0][1] + uu * (t2[1][1] - t2[0][1]) + vv * (t2[2][1] - t2[0][1]);
+      const dist = Math.hypot(qx - x, qy - yd);
+      if (dist < bestD) { bestD = dist; best = _pkBary3D(t2, tri, [qx, qy]); }
+    }
+    return best;
+  };
+  const wallFaces = [], wallCols = [], capFaces = [];
+  const DEPTH = 0.15, STEP = 0.06;
+  const CY = -0.25;   // pusat labu (y_centered)
+  for (const hole of [eyeR, eyeL, MOUTH]) {
+    const h = _pkPolyArea(hole) < 0 ? [...hole].reverse() : hole;   // CCW
+    const ring = [];
+    for (let i = 0; i < h.length; i++) {
+      const A = h[i], B = h[(i + 1) % h.length];
+      const len = Math.hypot(B[0] - A[0], B[1] - A[1]);
+      const nSub = Math.max(1, Math.ceil(len / STEP));
+      for (let s = 0; s < nSub; s++) {
+        const tt = s / nSub;
+        const x = A[0] + (B[0] - A[0]) * tt, yd = A[1] + (B[1] - A[1]) * tt;
+        const p3 = mapToSurface(x, yd);
+        if (p3) ring.push(p3);
+      }
+    }
+    if (ring.length < 3) continue;
+    // Claude ronde 3: ring harus lengkap = jumlah sampel (titik terlewat →
+    // chord merobek dinding). mapToSurface kini tak pernah null (fallback),
+    // tapi tetap dipatroli.
+    let nSampel = 0;
+    for (let i = 0; i < h.length; i++) {
+      const A = h[i], B = h[(i + 1) % h.length];
+      nSampel += Math.max(1, Math.ceil(Math.hypot(B[0] - A[0], B[1] - A[1]) / STEP));
+    }
+    if (ring.length !== nSampel) console.warn('pkRimWalls: ring', ring.length, '!= sampel', nSampel);
+    const innerRing = [];   // tepi dalam dinding (Q) — dasar CAP kuning
+    for (let i = 0; i < ring.length; i++) {
+      const P0 = ring[i], P1 = ring[(i + 1) % ring.length];
+      const d0 = Math.hypot(P0[0], P0[1] - CY, P0[2]) || 1;
+      const d1 = Math.hypot(P1[0], P1[1] - CY, P1[2]) || 1;
+      const Q0 = [P0[0] + (0 - P0[0]) / d0 * DEPTH, P0[1] + (CY - P0[1]) / d0 * DEPTH, P0[2] + (0 - P0[2]) / d0 * DEPTH];
+      const Q1 = [P1[0] + (0 - P1[0]) / d1 * DEPTH, P1[1] + (CY - P1[1]) / d1 * DEPTH, P1[2] + (0 - P1[2]) / d1 * DEPTH];
+      // Claude ronde 3: DUA SISI dgn winding eksak (bukan bergantung centroid):
+      // [P0,P1,Q1,Q0] = sisi dalam rongga · [P0,Q0,Q1,P1] = sisi sebaliknya.
+      wallFaces.push([P0, P1, Q1, Q0]); wallCols.push(0xc85a05);
+      wallFaces.push([P0, Q0, Q1, P1]); wallCols.push(0xc85a05);
+      innerRing.push(Q0);
+    }
+    // CAP kuning per lubang (Claude ronde 2, Langkah 5 versi asli): menyambung
+    // PERSIS ke tepi dalam dinding → rongga tertutup rapat, tanpa celah hitam.
+    // Ring sederhana TANPA hole → triangulateShape aman. Kuning #FFFF00 MURNI
+    // (block MeshBasicMaterial → vertex color = warna penuh, tanpa shading).
+    const pts2 = innerRing.map((p) => new THREE.Vector2(p[0], p[1]));
+    const capIdx = THREE.ShapeUtils.triangulateShape(pts2, []);
+    for (const [a, b, c] of capIdx) {
+      let T = [innerRing[a], innerRing[b], innerRing[c]];
+      const ar = (T[1][0] - T[0][0]) * (T[2][1] - T[0][1]) - (T[2][0] - T[0][0]) * (T[1][1] - T[0][1]);
+      if (ar < 0) T = [T[0], T[2], T[1]];   // paksa CCW dilihat dari +z (winding eksak)
+      capFaces.push(T);
+    }
+  }
+  // DINDING dan CAP dibangun TERPISAH (autoFix menormalkan normal terhadap
+  // centroid GEOMETRI — bila digabung, tri berorientasi z ter-flip acak).
+  // Claude ronde 3: dinding DUA SISI winding eksak → autoFix:false (bukan true);
+  // dulu autoFix:true + centroid wajah mem-flip dinding tepi bawah → sliver hitam.
+  const gw = _buildFaces(THREE, wallFaces, { autoFix: false });
+  _pkPaintMulti(THREE, gw, wallFaces, wallCols, wallFaces.map(() => 1.0));
+  // cap: winding SUDAH CCW eksak → autoFix:false (tanpa ketergantungan centroid)
+  const gc = _buildFaces(THREE, capFaces, { autoFix: false });
+  _pkPaintMulti(THREE, gc, capFaces, capFaces.map(() => 0xffff00), capFaces.map(() => 1.0));
+  return _mergeGeos(THREE, [gw, gc]);
+}
+
+/** Interior KUNING — LATAR rongga (Claude ronde 2: "dibesarkan ke ~0.93 hanya
+ *  sebagai latar"). Cap menyusut radial (~87% proyeksi) → dari pandangan
+ *  miring celah antara cap dan tepi lubang tembus hitam (terukur r3: cap
+ *  hanya menutup 48-53% grid lubang). Cangkang 0.93 menutup sisa celah itu
+ *  sehingga segala sudut pandang melalui lubang = KUNING penuh. */
+function _pkInnerGlow(THREE) {
+  const g = _pkBody(THREE);
+  g.scale(0.93, 0.96, 0.93);   // latar rongga — tepi tetap di belakang kulit (kulit z≈0.965, cangkang z≈0.90)
+  // kuning murni FLAT (tanpa shade) — yang membuat muka tampak BERCAHAYA.
+  const pos = g.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  const yel = new THREE.Color(0xffff00);
+  for (let i = 0; i < pos.count; i++) {
+    col[i * 3] = yel.r; col[i * 3 + 1] = yel.g; col[i * 3 + 2] = yel.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+/** Geometri labu BERMAKA (bab 234 — algoritme Claude ronde 1):
+ *  - _pkFrontHollow: SEMUA panel badan dipertahankan; segitiga depan yang
+ *    bersinggungan pola mata/mulut DIPOTONG di 2D + barycentric balik ke 3D
+ *    (badan polos = sumber kebenaran, permukaan asli, tanpa rumus);
+ *  - _pkRimWalls: dinding rongga mengikuti tepi poligon asli (Claude L4)
+ *    + CAP kuning per lubang menyambung tepi dalam dinding (Claude ronde 2,
+ *    Langkah 5 versi asli);
+ *  - _pkInnerGlow: latar rongga kuning skala 0.93 (Claude ronde 2 — menutup
+ *    celah pandangan miring antara cap yang menyusut radial dan tepi lubang);
+ *  - _pkStem: tangkai (tidak berubah). */
+export function makePumpkinFaceGeometry(THREE) {
+  const geos = [
+    _pkFrontHollow(THREE),
+    _pkRimWalls(THREE),
+    _pkInnerGlow(THREE),
+    _pkStem(THREE),
+  ];
+  return _mergeGeos(THREE, geos);
+}
+
+/** Geometri labu POLOS (default, tanpa muka) — dipakai saat ditaruh. */
+export function makePumpkinGeometry(THREE) {
+  return _mergeGeos(THREE, [_pkBody(THREE), _pkStem(THREE)]);
+}
+
+// ── bab 230: TOGGLE MUKA + CAHAYA SOROT Pumpkin (Claude r1, di-tuning r2+) ──
+// Default TANPA muka. Klik ganjil = muka + SpotLight menyala ke arah muka;
+// klik genap = polos + cahaya mati. Muka menghadap +Z LOKAL block (ikut rotasi).
+// SpotLight origin DI DEPAN muka (blok lokal), target beberapa block di depan.
+export const PK_FACE_RANGE = 5;                    // block (10 studs) jarak klik
+export const PK_LIGHT_COLOR = 0xffb020;            // kuning hangat (Claude r1)
+export const PK_LIGHT_INTENSITY = 1.6;             // three legacy (decay 1.5)
+export const PK_LIGHT_DISTANCE = 14;               // unit dunia (7 block)
+export const PK_LIGHT_DECAY = 1.5;
+export const PK_LIGHT_ANGLE = 0.66;                // rad (cone 76°)
+export const PK_LIGHT_PENUMBRA = 0.5;
+// Origin SpotLight dalam koordinat LOKAL block: 0.10 block di depan permukaan
+// muka (muka z≈1.0), setinggi tengah muka (y≈0.80 dari pusat).
+export const PK_LIGHT_LOCAL_POS = [0, 0.80, 1.10];
+// Target dalam LOKAL: 5 block di depan, agak ke bawah (miring -3°).
+export const PK_LIGHT_LOCAL_TARGET = [0, 0.55, 5.0];
+
+// ── KERUCUT CAHAYA ADDITIVE (Claude r4 konsep + r5 koreksi terukur) ──
+// SpotLight TIDAK terlihat di scene unlit (semua block MeshBasicMaterial).
+// Solusi: mesh kerucut frustum terbuka, ADDITIVE blending, FADE DUA-UJUNG
+// (pangkal & ujung = hitam/transparan, puncak kecerahan di 20% dari pangkal)
+// → menghilangkan cincin dekat hantu + tepi keras ujung jauh.
+export const PK_BEAM_LEN = 3.0;        // block panjang kerucut (eksak)
+export const PK_BEAM_R_NEAR = 0.75;    // radius dekat (Claude r5: 0.75×0.60)
+export const PK_BEAM_R_FAR = 1.60;     // radius jauh
+export const PK_BEAM_NEAR_Y = 0.8;     // flatten ellipse dekat (0.75 × 0.60)
+export const PK_BEAM_COLOR = 0xffc040; // kuning hangat
+export const PK_BEAM_SEG = 10;         // 10 radial × 4 ring
+export const PK_BEAM_TILT = 4 * Math.PI / 180;    // r5: tanda dibalik (-4° bawah)
+export const PK_BEAM_ORIGIN = [0, -0.275, 1.03];  // r5: y LOKAL = 0.85-1.125 (frame tengah)
+// fade 2-ujung: nilai warna di 4 ring (t fraksi panjang) — Claude r5
+const _PK_BEAM_FADE = [0.00, 0.45, 0.22, 0.00];
+const _PK_BEAM_FADE_T = [0.00, 0.20, 0.55, 1.00];
+
+/** Geometri kerucut cahaya v5: 4 ring (fade 2-ujung), ellipse dekat pipih.
+ *  Sumbu +Z, origin pangkal (y = -0.275 = frame tengah block). */
+export function makePumpkinBeamGeometry(THREE) {
+  const SEG = PK_BEAM_SEG;
+  const FACES = [], COLS = [];
+  const nr = PK_BEAM_R_NEAR, fr = PK_BEAM_R_FAR, fl = PK_BEAM_NEAR_Y;
+  // 4 ring: interpolasi radius & fade antar t
+  const ringAt = (ri) => {
+    const t = _PK_BEAM_FADE_T[ri];
+    const r = nr + (fr - nr) * t;                  // radius tumbuh ke jauh
+    const z = PK_BEAM_LEN * t;
+    const inten = _PK_BEAM_FADE[ri];
+    const base = new THREE.Color(PK_BEAM_COLOR).multiplyScalar(inten);
+    const ring = [];
+    for (let k = 0; k < SEG; k++) {
+      const a = (k / SEG) * Math.PI * 2;
+      // ellipse dekat pipih: scaleY = fl/nr diterapkan proporsional
+      ring.push([r * Math.cos(a), r * Math.sin(a) * fl, z]);
+    }
+    return { ring, base };
+  };
+  const rings = [0, 1, 2, 3].map(ringAt);
+  for (let ri = 0; ri < rings.length - 1; ri++) {
+    const N = rings[ri], F = rings[ri + 1];
+    for (let k = 0; k < SEG; k++) {
+      const k2 = (k + 1) % SEG;
+      FACES.push([N.ring[k], N.ring[k2], F.ring[k2], F.ring[k]]);
+      COLS.push(N.base);
+    }
+  }
+  const g = _buildFaces(THREE, FACES, { autoFix: false });
+  // warna per-muka dari COLS (pangkal band paling terang, ujung hitam)
+  const pos = g.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  let vi = 0;
+  for (let f = 0; f < FACES.length; f++) {
+    const c = COLS[f];
+    for (let k = 0; k < 6; k++) {
+      col[vi * 3] = c.r; col[vi * 3 + 1] = c.g; col[vi * 3 + 2] = c.b; vi++;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // bab 200 — CACHE GEOMETRI TROPHY (perbaikan "NGELEG")
 // ⚠️ AKAR (terukur): makeTrophyGeometry memakan 13.31 ms dan dipanggil ULANG
 //    setiap kali block ditaruh / ghost diganti / preview dibuka. Untuk block
@@ -5210,6 +6077,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_BREAD_SLUG) return makeBreadGeometry(THREE);
   // bab 227: Cake (kue kotak voxel — badan cokelat + krim drip + sprinkles)
   if (slug === NSI_CAKE_SLUG) return makeCakeGeometry(THREE);
+  // bab 230: Pumpkin (labu 8-lobus — default polos; varian bermuka utk toggle)
+  if (slug === NSI_PK_SLUG) return makePumpkinGeometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;

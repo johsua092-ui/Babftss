@@ -52,7 +52,12 @@ import { BLOCK_LIBRARY, DEFAULT_BLOCK_SLUG, getBlockDef, getBlockTexture, getBlo
 import { makeNsiGeometry, isNsi, NSI_WEDGE_COLOR, getNsiSize, hasFacing, makeFacingArrowGeometry, NSI_FACING_ARROW_COLOR, directionFromVector, NSI_FACING_DEFAULT_SLUG, getFacingArrowTopY, DOOR_HINGE_X, DOOR_OPEN_ANGLE, HATCH_HINGE_X, HATCH_OPEN_ANGLE, makeSmallTreasureLidGeometry, makeSmallTreasureFullGeometry, makeSmallTreasureBodyGeometry, ST_HINGE_Y, ST_HINGE_Z, ST_OPEN_ANGLE, makeMediumTreasureLidGeometry, makeMediumTreasureFullGeometry, makeMediumTreasureBodyGeometry, MT_HINGE_Y, MT_HINGE_Z, MT_OPEN_ANGLE, makeBigTreasureLidGeometry, makeBigTreasureFullGeometry, makeBigTreasureBodyGeometry, BT_HINGE_Y, BT_HINGE_Z, BT_OPEN_ANGLE, NSI_TC_SLUG,
   LP_LIGHT_Y, LP_LIGHT_COLOR, LP_LIGHT_INTENSITY, LP_LIGHT_DISTANCE, LP_LIGHT_DECAY,
   NSI_LP_SLUG,
-  TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY } from '../utils/blockShapes.js';
+  TC_FLAME_BASE_Y, TC_FLAME_H, TC_FLAME_R, TC_LIGHT_Y, TC_LIGHT_COLOR, TC_LIGHT_INTENSITY, TC_LIGHT_DISTANCE, TC_LIGHT_DECAY,
+  // bab 230: Pumpkin (toggle muka + cahaya sorot)
+  NSI_PK_SLUG, makePumpkinGeometry, makePumpkinFaceGeometry,
+  PK_FACE_RANGE, PK_LIGHT_COLOR, PK_LIGHT_INTENSITY, PK_LIGHT_DISTANCE,
+  PK_LIGHT_DECAY, PK_LIGHT_ANGLE, PK_LIGHT_PENUMBRA,
+  PK_LIGHT_LOCAL_POS, PK_LIGHT_LOCAL_TARGET } from '../utils/blockShapes.js';
 import { NSI_SIGN_SLUG, NSI_SIGN_TEXPLANE, SIGN_EDIT_RANGE } from '../utils/blockShapes.js';
 import { makeSignTextPlane, getSignPlaneOf, setSignPlaneOf, cleanSignText, signGraphemeCount, SIGN_MAX_GRAPHEMES, preloadSignFont } from '../utils/signText.js';
 // bab 208: Candle (api kecil + cahaya ber-flicker)
@@ -237,6 +242,128 @@ const TOOL_MODAL_TITLE = {
 //   • tidak bergantung ukuran canvas / DPI.
 const GHOST_MIN_TRAVEL = 0.02;   // unit (dunia) — geser minimum agar dianggap drag
 const GHOST_MIN_ANGLE  = 0.01;   // radian (~0.57 degree) untuk mode rotate
+
+// ══ bab 230 — NSI PUMPKIN: toggle muka + cahaya sorot ══
+// Default TANPA muka (labu polos). Klik ganjil = muka + SpotLight menyala ke
+// arah muka; klik genap = polos + cahaya mati. GEOMETRI pakai 2 SINGLETON
+// SHARED (Claude r1: swap geometry, JANGAN dispose — dipakai semua pumpkin).
+let _PK_GEO_PLAIN = null, _PK_GEO_FACE = null;
+let _PK_BEAM_GEO = null, _PK_BEAM_MAT = null;   // singleton kerucut (Claude r4)
+function _pkGetGeos(THREE) {
+  if (!_PK_GEO_PLAIN) {
+    _PK_GEO_PLAIN = makePumpkinGeometry(THREE);
+    _PK_GEO_FACE = makePumpkinFaceGeometry(THREE);
+  }
+  return { plain: _PK_GEO_PLAIN, face: _PK_GEO_FACE };
+}
+/** Terapkan state muka pada mesh pumpkin: swap geometry + SpotLight + KERUCUT
+ *  CAHAYA ADDITIVE (Claude r4: SpotLight tak terlihat di scene unlit — kerucut
+ *  additive pola bara Torch-lah yang TERLIHAT).
+ *  on=true → muka + cahaya + kerucut; on=false → polos + semua mati. */
+function _pkApplyFace(THREE, mesh, on) {
+  const geos = _pkGetGeos(THREE);
+  mesh.geometry = on ? geos.face : geos.plain;
+  mesh.userData.pk = mesh.userData.pk || { on: false, light: null, beam: null };
+  mesh.userData.pk.on = on;
+  let light = mesh.userData.pk.light;
+  if (on && !light) {
+    light = new THREE.SpotLight(
+      PK_LIGHT_COLOR, PK_LIGHT_INTENSITY, PK_LIGHT_DISTANCE,
+      PK_LIGHT_ANGLE, PK_LIGHT_PENUMBRA, PK_LIGHT_DECAY);
+    light.position.set(...PK_LIGHT_LOCAL_POS);           // LOKAL block
+    light.castShadow = false;
+    // target sebagai ANAK mesh → ikut rotasi block (Claude r1)
+    const tgt = new THREE.Object3D();
+    tgt.position.set(...PK_LIGHT_LOCAL_TARGET);
+    light.target = tgt;
+    mesh.add(light);
+    mesh.add(tgt);
+    // raycast lampu dimatikan — klik tak boleh kena lampu (Claude r1)
+    light.raycast = () => {};
+    tgt.raycast = () => {};
+    mesh.userData.pk.light = light;
+    mesh.userData.pk.target = tgt;
+  }
+  if (light) {
+    // bab 233 FIX FPS=1 (Claude): JANGAN add/remove SpotLight tiap toggle —
+    // jumlah lampu berubah → semua material berlit RECOMPILE → render loop macet.
+    // Lampu TETAP di scene; toggle lewat intensity saja (0 = mati).
+    light.intensity = on ? PK_LIGHT_INTENSITY : 0;
+  }
+  // ══ bab 232.6 — AURA CAHAYA "TORCH" (perintah pemilik 2026-11-14) ══
+  // GEOMETRI MUKA DIKUNCI ACC (bab 232.6 KONTRAK) — aura = lapisan visual
+  // additive TERPISAH di sini, TIDAK menyentuh blockShapes.js.
+  // Pola bara Torch: halo memancar di sekitar labu (2 sprite billboard) +
+  // kolam bara di lantai. Nyala BERSAMA muka; klik 2× mematikan.
+  let aura = mesh.userData.pk.aura;
+  if (on && !aura) { aura = _pkBuildAura(THREE, mesh); mesh.userData.pk.aura = aura; }
+  if (aura) aura.visible = on;
+  mesh.userData.pk.beam = null;
+  return on;
+}
+
+/** Tekstur gradien radial bara (singleton) — pusat hangat → tepi transparan. */
+let _PK_AURA_TEX = null;
+function _pkAuraTex() {
+  if (_PK_AURA_TEX) return _PK_AURA_TEX;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  // Claude r5: "naikkan kejenuhan oranye" — jangan sampai abu-abu di latar biru
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,150,40,0.95)');
+  g.addColorStop(0.32, 'rgba(255,132,26,0.5)');
+  g.addColorStop(0.62, 'rgba(255,116,20,0.16)');
+  g.addColorStop(1, 'rgba(255,110,20,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+  _PK_AURA_TEX = new THREE.CanvasTexture(cv);
+  return _PK_AURA_TEX;
+}
+
+/** SEMUA resource aura SHARED singleton (Claude r5 pra-push: Clear All /
+ *  hapus block tak boleh bocor — material & tekstur & geo tak di-create
+ *  per block; Object3D group ikut subtree block saat dibuang). */
+let _PK_AURA_RES = null;
+function _pkAuraRes() {
+  if (_PK_AURA_RES) return _PK_AURA_RES;
+  const tex = _pkAuraTex();
+  const mkMat = (op) => new THREE.SpriteMaterial({ map: tex, color: 0xffffff,
+    transparent: true, opacity: op, blending: THREE.AdditiveBlending,
+    depthWrite: false });
+  const geoPool = new THREE.PlaneGeometry(6.4, 6.4);   // > radius gradien → tepi plane tak terbaca
+  const matHaloLuar = mkMat(0.34);
+  const matHaloDalam = mkMat(0.5);
+  const matPool = new THREE.MeshBasicMaterial({ map: tex, transparent: true,
+    opacity: 0.58, blending: THREE.AdditiveBlending, depthWrite: false });
+  _PK_AURA_RES = { geoPool, matHaloLuar, matHaloDalam, matPool };
+  return _PK_AURA_RES;
+}
+
+/** Aura "Torch" sekitar labu (bab 232.6): 2 halo billboard memancar +
+ *  kolam bara lantai — semua additive, depthWrite:false, raycast dimatikan
+ *  (klik tak boleh kena aura), renderOrder di atas scene. */
+function _pkBuildAura(THREE, mesh) {
+  const R = _pkAuraRes();
+  // Claude r5: pusat halo DI DALAM labu (z=0) — depthTest membuat bagian halo
+  // yang overlap badan tertutup kulit → aura MEMANCAR dari belakang tepi, dan
+  // tangkai/kulit tidak lagi pucat tertimpa halo.
+  const haloLuar = new THREE.Sprite(R.matHaloLuar); haloLuar.scale.set(3.8, 3.8, 1);
+  const haloDalam = new THREE.Sprite(R.matHaloDalam); haloDalam.scale.set(2.3, 2.3, 1);
+  haloLuar.position.set(0, 0.05, 0); haloDalam.position.set(0, 0.05, 0);
+  const pool = new THREE.Mesh(R.geoPool, R.matPool);
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(0, -1.105, 0.4);
+  const grp = new THREE.Group();
+  grp.add(haloLuar); grp.add(haloDalam); grp.add(pool);
+  [haloLuar, haloDalam, pool].forEach((o) => { o.raycast = () => {}; o.renderOrder = 6; });
+  grp.visible = false;
+  mesh.add(grp);
+  return grp;
+}
+/** Toggle muka pumpkin: ganjil = on, genap = off. THREE diimpor modul-level. */
+function _pkToggleFace(mesh) {
+  const st = mesh.userData.pk || { on: false };
+  return _pkApplyFace(THREE, mesh, !st.on);
+}
 
 /* Build Area icon — miniatur area build simulator: grid floor perspektif
    (GridHelper 60x60) + block isometrik hijau di atasnya. 3 sisi kubus
@@ -16782,7 +16909,10 @@ Now you can apply Displacement for detailed effect.`);
             ? makeMediumTreasureFullGeometry(THREE)
             : (slug === 'big_treasure')
               ? makeBigTreasureFullGeometry(THREE)
-              : makeNsiGeometry(THREE, slug);
+              : (slug === NSI_PK_SLUG)
+                // Pumpkin: GHOST = versi BERMAKA (preview), taruh = polos.
+                ? makePumpkinFaceGeometry(THREE)
+                : makeNsiGeometry(THREE, slug);
         if (ghostBlock.geometry && ghostBlock.geometry.dispose) ghostBlock.geometry.dispose();
         ghostBlock.geometry = _gNsi || new THREE.BoxGeometry(1, 1, 1);
         // ── bab 210/212 (PERMINTAAN USER 2026-10-31): default rotasi PER ITEM
@@ -17034,7 +17164,7 @@ Now you can apply Displacement for detailed effect.`);
         if (_doorHits.length > 0) {
           // Telusuri ke atas sampai menemukan block pintu (kalau kena anak mesh)
           let _d = _doorHits[0].object;
-          while (_d && !(_d.userData && (_d.userData.isSign || _d.userData.isDoor || _d.userData.isHatch || _d.userData.isSmallTreasure || _d.userData.isMediumTreasure || _d.userData.isBigTreasure)) && _d.parent) _d = _d.parent;
+          while (_d && !(_d.userData && (_d.userData.isSign || _d.userData.isDoor || _d.userData.isHatch || _d.userData.isSmallTreasure || _d.userData.isMediumTreasure || _d.userData.isBigTreasure || _d.userData.isPumpkin)) && _d.parent) _d = _d.parent;
           // ── NSI SIGN (bab 222): klik saat DEKAT → MODAL EDIT TEKS ──
           // Jarak = user → Sign: mode avatar = posisi avatar; mode kamera =
           // posisi kamera. SIGN_EDIT_RANGE = 5 block (10 studs) — konstanta.
@@ -17088,6 +17218,14 @@ Now you can apply Displacement for detailed effect.`);
             const _openNow = Math.abs(_hd.target) > 1e-6;
             _hd.target = _openNow ? 0 : HATCH_OPEN_ANGLE;
             return;   // klik pada palka hanya untuk buka/tutup
+          }
+          // ── NSI PUMPKIN (bab 230): klik → TOGGLE muka + cahaya sorot ──
+          // Default (baru ditaruh) = POLOS. Ganjil = muka + SpotLight; genap =
+          // polos + cahaya mati. Swap geometry ke 2 SINGLETON SHARED (JANGAN
+          // dispose — Claude r1: geometry dipakai semua pumpkin lain).
+          if (_d && _d.userData && _d.userData.isPumpkin) {
+            _pkToggleFace(_d);
+            return;   // klik pumpkin hanya untuk toggle muka
           }
         }
       }
@@ -17334,6 +17472,14 @@ Now you can apply Displacement for detailed effect.`);
               block.add(_sp.plane);
               setSignPlaneOf(block, _sp);          // bab 222: plane di WeakMap
             } catch (e) { console.warn('[sign] plane teks gagal:', e && e.message); }
+          }
+          // ── NSI PUMPKIN (bab 230): default POLOS saat ditaruh ──
+          // GHOST preview = versi BERMAKA, tapi begitu ditaruh → polos
+          // (aturan user verbatim: "baru aja ditaruh pasti mukanya hilang").
+          // Muka muncul HANYA lewat klik toggle.
+          if (blockDef.slug === NSI_PK_SLUG) {
+            block.userData.isPumpkin = true;
+            block.userData.pk = { on: false, light: null };
           }
           // SCALE BUG 2 FIX: tiling awal (basis UV dicatat; scale 1,1,1 =
           // uv 0..1 — pemanggilan ini menyiapkan basis supaya drag scale
@@ -18915,6 +19061,11 @@ Now you can apply Displacement for detailed effect.`);
               b.add(_sp.plane);
               setSignPlaneOf(b, _sp);
             } catch (e) { console.warn('[sign] plane:', e && e.message); }
+          }
+          if (slug === NSI_PK_SLUG) {
+            // bab 230: pumpkin via addBlock juga POLOS + siap toggle
+            b.userData.isPumpkin = true;
+            b.userData.pk = { on: false, light: null };
           }
           scene.add(b);
           threeRef.current.blocks.push(b);

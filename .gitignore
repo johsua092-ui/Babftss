@@ -212,3 +212,8 @@ public/previewstar.html
 # bab 222: work file render ikon/preview NSI Sign (localhost-only)
 public/iconsign.html
 public/previewsign.html
+
+# bab 230-232: work file pumpkin (localhost-only)
+public/iconcake.html
+public/iconpumpkin.html
+_tmp_*.mjs
