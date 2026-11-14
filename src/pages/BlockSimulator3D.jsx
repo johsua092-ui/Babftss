@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings, Zap, Sliders, User, X, Crosshair, Sun, Moon, Shield } from 'lucide-react';
+import { ArrowLeft, Box, Info, Plus, Trash2, Move, RotateCw, RotateCcw, Maximize, Paintbrush, Grid3x3, Undo2, Redo2, Shapes, Upload, Download, Sparkles, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Wrench, Copy, FlipHorizontal, Home, TreePine, Car, Building2, Lightbulb, Globe, Camera, Hammer, Check, Settings, Zap, Sliders, User, X, Crosshair, Sun, Moon, Shield, Swords} from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -2227,6 +2227,7 @@ _handles.forEach((p) => {
   };
   const [adminPanelMinimized, setAdminPanelMinimized] = useState(false);
   const [adminFly, setAdminFly] = useState(false);
+  const [pvpMode, setPvpMode] = useState(false);   // bab 241: PVP Mode default OFF saat user masuk
   const [adminWalkSpeed, setAdminWalkSpeed] = useState(10);
   const [adminJumpPower, setAdminJumpPower] = useState(15);
   const [adminInfiniteJump, setAdminInfiniteJump] = useState(false);
@@ -25481,6 +25482,29 @@ Now you can apply Displacement for detailed effect.`);
           </div>
         )}
 
+        {/* bab 241: badge PVP Mode ON — kotak dgn 2 pedang emas menyilang + tulisan di bawahnya.
+            Muncul HANYA saat pvpMode aktif (default OFF = tidak ada apa-apa di layar). Posisi BOTTOM-LEFT
+            karena top-center dipakai badge 'Avatar Mode Aktif' (terbukti saat verifikasi). pointerEvents none. */}
+        {pvpMode && (
+        <div style={{
+          position: 'absolute', bottom: 16, left: 16,
+          backgroundColor: 'rgba(14, 20, 32, 0.92)',
+          padding: '10px 22px', borderRadius: 12,
+          border: '1px solid rgba(212, 175, 55, 0.65)',
+          boxShadow: '0 0 24px rgba(212, 175, 55, 0.25)',
+          color: '#e2e8f0', textAlign: 'center',
+          zIndex: 5, pointerEvents: 'none',
+        }}>
+          <Swords size={42} color="#D4AF37" strokeWidth={1.7} style={{ display: "block", margin: "0 auto" }} aria-hidden="true" />
+          <div style={{
+            fontFamily: 'Orbitron, sans-serif', fontWeight: 600, fontSize: 12,
+            color: '#F0D67C', marginTop: 4, letterSpacing: 0.5,
+          }}>
+            PVP Mode ON
+          </div>
+        </div>
+        )}
+
         {/* Build Mode badge — hanya muncul saat user memegang tool aktif (klik tombol tool eksplisit);
             state 0 (fresh entry, tidak pegang tool apapun) = disembunyikan total seolah tidak ada */}
         {tool && (
@@ -30516,6 +30540,8 @@ backdropFilter: 'none',boxShadow:'0 16px 48px rgba(0,0,0,0.5), 0 0 24px rgba(99,
         }}
         isAvatarMode={isAvatarMode}
         onRequestAvatarMode={handleRequestAvatarMode}
+        pvpMode={pvpMode}
+        onPvp={(v) => setPvpMode(!!v)}
         flyEnabled={adminFly}
         onFly={handleAdminFly}
         flySpeed={adminFlySpeed}

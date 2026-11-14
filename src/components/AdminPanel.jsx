@@ -5,6 +5,7 @@ import {
   Infinity as InfinityIcon, Gauge, ChevronDown, ChevronRight, Minus, X,
   GripHorizontal, Lock, UserRound, RotateCcw, Wind, Scan, Sparkles, Plane,
   MapPin, Sun, Moon,
+  Swords,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -381,6 +382,7 @@ export default function AdminPanel({
   jumpPower, onJumpPower,
   infiniteJump, onInfiniteJump,
   onTeleportToTeam, teamName,
+  pvpMode, onPvp,
   onChangeAvatar,
   timeOfDay, onTimeOfDay,
   onResetPlayer,
@@ -963,6 +965,19 @@ export default function AdminPanel({
               </span>
             </button>
 
+            {/* ── bab 241 (REVISI pemilik): PVP Mode = Row + SWITCH (cara aktif seperti "Fly"),
+                tepat di bawah "Teleport To Team" & di atas "Fly". Terkunci di Camera Mode
+                (pudar + Lock, persis teman-temannya). Default OFF. ── */}
+            <Row
+              icon={<Swords size={13} />}
+              label="PVP Mode"
+              desc="Mode PVP: damage & ledakan aktif. Default OFF."
+              checked={pvpMode}
+              disabled={playerLocked}
+              accent="#f87171"
+              onChange={(v) => { if (onPvp) onPvp(v); }}
+              lockNote="Hanya bisa diakses di Avatar Mode."
+            />
             <Row
               icon={<Plane size={13} />}
               label="Fly"
