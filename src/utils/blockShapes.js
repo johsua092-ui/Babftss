@@ -443,6 +443,9 @@ export const NSI_PK_SIZE = [2, 2.25, 2];          // block = 4 x 4.5 x 4 studs
 // bab 235: Plushie 1 (4.5 x 4 x 2 studs — plushie karakter pengraein)
 export const NSI_PL1_SLUG = 'plushie1';
 export const NSI_PL1_SIZE = [2.25, 2.0, 1.0];
+// bab 236: Plushie 2 (3 x 3.5 x 2 studs — plushie sheriff)
+export const NSI_PL2_SLUG = 'plushie2';
+export const NSI_PL2_SIZE = [1.5, 1.75, 1.0];
 
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
@@ -468,6 +471,7 @@ export const NSI_SIZES = {
   [NSI_CAKE_SLUG]: NSI_CAKE_SIZE.slice(),   // bab 227: Cake 1.4 x 1 x 1.4 studs
   [NSI_PK_SLUG]: NSI_PK_SIZE.slice(),       // bab 230: Pumpkin 4 x 4.5 x 4 studs
   [NSI_PL1_SLUG]: NSI_PL1_SIZE.slice(),     // bab 235: Plushie 1 4.5 x 4 x 2 studs
+  [NSI_PL2_SLUG]: NSI_PL2_SIZE.slice(),     // bab 236: Plushie 2 3 x 3.5 x 2 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -494,7 +498,7 @@ export function getNsiSize(slug) {
 // sejak bab 205/206/208 tapi TIDAK PERNAH didaftarkan di sini → isNsi() false →
 // guard "NSI tidak bisa di-scale" MELESETKAN mereka (gizmo scale terpasang,
 // tanpa toast) — ditemukan audit_nsi.py (scale_ditolak FAIL torch/lamp/candle).
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG, NSI_PK_SLUG, NSI_PL1_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG, NSI_PK_SLUG, NSI_PL1_SLUG, NSI_PL2_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -6085,6 +6089,8 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_PK_SLUG) return makePumpkinGeometry(THREE);
   // bab 235: Plushie 1 (plushie karakter — vertex color murni)
   if (slug === NSI_PL1_SLUG) return makePlushie1Geometry(THREE);
+  // bab 236: Plushie 2 (plushie sheriff — vertex color murni)
+  if (slug === NSI_PL2_SLUG) return makePlushie2Geometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
@@ -7623,6 +7629,123 @@ export function makePlushie1Geometry(THREE) {
   blade(0.08, -0.56, -0.28, BLADE_TIP_X, -0.92, -0.34, 0.06, 0x454859, 0x5C6075);   // r3: ujung -0.92 (kemiringan 0.42)
 
   const g = _buildFaces(THREE, faces, { autoFix: false });   // winding CCW eksak — JANGAN centroid
+  _pkPaintMulti(THREE, g, faces, hexes, hexes.map(() => 1.0));
+  return g;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BAB 236: PLUSHIE 2 (NSI L2, 3 × 3.5 × 2 STUDS) — dekomposisi Claude sesi
+// 0dd8acbe-e5a7-4176-a38c-edc9aff4ac66 r1. Sheriff/plushie penembak:
+// topi ivory 2 tingkat + band hitam, gunting (2 bilah + berlian + gagang hitam)
+// tertancap, wajah putih bermata busur + mata hijau, masker abu, rompi krem
+// berkancing, lengan manset hitam-putih + tangan putih terangkat, kaki V boots
+// + badge emas. Semua part AABB tenggelam 0.01 (anti z-fight), rotasi RIGID.
+// ══════════════════════════════════════════════════════════════════════════
+export function makePlushie2Geometry(THREE) {
+  const faces = [], hexes = [];
+  const M = { py: 1.00, pz: 0.92, px: 0.85, nx: 0.78, nz: 0.72, ny: 0.60 };
+  const sh = (hex, m) => {
+    const r = Math.min(255, Math.round(((hex >> 16) & 255) * m));
+    const g = Math.min(255, Math.round(((hex >> 8) & 255) * m));
+    const b = Math.min(255, Math.round((hex & 255) * m));
+    return (r << 16) | (g << 8) | b;
+  };
+  const pick = (c, k, m) => (typeof c === 'number') ? sh(c, m)
+    : ((c[k] != null) ? c[k] : ((c.t != null) ? c.t : 0xffffff));
+
+  // box dgn rotasi RIGID rz (sekitar Z, pusat) lalu ry (sekitar Y, pusat)
+  function box(cx, cy, cz, sx, sy, sz, c, o = {}) {
+    const rz = (o.rz || 0) * Math.PI / 180, ry = (o.ry || 0) * Math.PI / 180;
+    const x0 = -sx/2, x1 = sx/2, y0 = -sy/2, y1 = sy/2, z0 = -sz/2, z1 = sz/2;
+    const loc = [[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]];
+    const V = loc.map(([x, y, z]) => {
+      let X = x, Y = y, Z = z;
+      if (rz) { const nx2 = X*Math.cos(rz) - Y*Math.sin(rz), ny2 = X*Math.sin(rz) + Y*Math.cos(rz); X = nx2; Y = ny2; }
+      if (ry) { const nz2 = Z*Math.cos(ry) + X*Math.sin(ry), nx3 = -Z*Math.sin(ry) + X*Math.cos(ry); X = nx3; Z = nz2; }
+      return [cx + X, cy + Y, cz + Z];
+    });
+    const q = (a, b, d, e, k, m) => { faces.push([V[a], V[b], V[d], V[e]]); hexes.push(pick(c, k, m)); };
+    q(4, 5, 6, 7, 'pz', M.pz);
+    q(1, 0, 3, 2, 'nz', M.nz);
+    q(5, 1, 2, 6, 'px', M.px);
+    q(0, 4, 7, 3, 'nx', M.nx);
+    q(7, 6, 2, 3, 't',  M.py);
+    q(0, 1, 5, 4, 'b',  M.ny);
+  }
+
+  // ══ 1. TORSO + ROMPI + GARIS + KANCING ══
+  box(0, -0.615, -0.03, 0.56, 0.51, 0.36, { t: 0x5A3B2B, pz: 0x4A2E22, nz: 0x4A2E22, px: 0x5A3B2B, nx: 0x5A3B2B, b: 0x3A241A });   // r2: dasar -0.870 (patuh 0.005)
+  box(0, -0.595, 0.155, 0.20, 0.44, 0.02, 0xE8DDB3);
+  box(0, -0.595, 0.168, 0.014, 0.44, 0.01, 0x10252E);
+  for (const by of [-0.50, -0.60, -0.70]) box(0.045, by, 0.172, 0.035, 0.035, 0.035, 0x8B3A12);
+
+  // ══ 2. KEPALA PUTIH + SYAL ABU ══
+  box(0, -0.2275, 0, 0.60, 0.295, 0.46, { t: 0xF4F4F6, pz: 0xF4F4F6, nz: 0xDCDCE0, px: 0xDCDCE0, nx: 0xDCDCE0, b: 0xDCDCE0 });
+  box(0, -0.2325, 0, 0.62, 0.045, 0.48, 0x6E6A72);
+
+  // ══ 3. WAJAH: busur mata kiri (3 batang) + soket hitam & mata hijau kanan ══
+  box(-0.13, -0.135, 0.2345, 0.07, 0.022, 0.008, 0x0A0A0A);
+  box(-0.18, -0.155, 0.2345, 0.03, 0.022, 0.008, 0x0A0A0A);
+  box(-0.08, -0.155, 0.2345, 0.03, 0.022, 0.008, 0x0A0A0A);
+  box(0.13, -0.145, 0.230, 0.09, 0.085, 0.008, 0x0A0A0A);
+  box(0.14, -0.145, 0.235, 0.04, 0.04, 0.008, 0x22E64B);
+
+  // ══ 4. TOPI: brim + tier A + band + tier B + jendela ══
+  const cIvoryBrim = { t: 0xFFF6D6, pz: 0xE9DDB0, nz: 0xE9DDB0, px: 0xE9DDB0, nx: 0xE9DDB0, b: 0xE9DDB0 };
+  const cIvoryKubah = { t: 0xF5EBC4, pz: 0xEBDDAE, nz: 0xE9DDB0, px: 0xE9DDB0, nx: 0xE9DDB0, b: 0xE9DDB0 };
+  box(0, -0.055, 0, 1.10, 0.05, 1.00, cIvoryBrim);
+  box(0, 0.13, 0, 0.46, 0.34, 0.40, cIvoryKubah);
+  box(0, 0, 0, 0.48, 0.075, 0.42, 0x0C0C0C);
+  box(0, 0.4575, 0, 0.34, 0.335, 0.30, cIvoryKubah);
+  box(0, 0.53, 0.152, 0.19, 0.12, 0.01, 0x0C0C0C);
+
+  // ══ 5. GUNTING: pivot cokelat + lidah + 2 bilah + berlian 4 batang ══
+  box(0, 0.02, 0.215, 0.075, 0.11, 0.05, 0x8A3B12);
+  box(0.05, -0.025, 0.30, 0.13, 0.02, 0.10, { t: 0xA64A14 }, { ry: -20 });
+  box(0.190, 0.291, 0.205, 0.05, 0.62, 0.03, { t: 0xB4B4BA, pz: 0xC8C9CF, nz: 0xB4B4BA, px: 0xC8C9CF, nx: 0xB4B4BA, b: 0xB4B4BA }, { rz: -29 });
+  box(-0.110, 0.240, 0.205, 0.045, 0.475, 0.03, { t: 0xB4B4BA, pz: 0xC8C9CF, nz: 0xB4B4BA, px: 0xC8C9CF, nx: 0xB4B4BA, b: 0xB4B4BA }, { rz: 22.3 });
+  // berlian: 4 batang pada −29°±22.8°, pusat sisi di C ± u·0.0775 ± v·0.0325
+  const cPerak = { t: 0xB4B4BA, pz: 0xC8C9CF, nz: 0xB4B4BA, px: 0xC8C9CF, nx: 0xB4B4BA, b: 0xB4B4BA };
+  // r2: pusat PER BATANG (dulu keempatnya di pusat diamond → X melayang)
+  box(0.3496, 0.6458, 0.205, 0.03, 0.20, 0.03, cPerak, { rz: -6.2 });    // kiri-bawah
+  box(0.4247, 0.7813, 0.205, 0.03, 0.20, 0.03, cPerak, { rz: -51.8 });   // kiri-atas
+  box(0.4065, 0.6143, 0.205, 0.03, 0.20, 0.03, cPerak, { rz: -51.8 });   // kanan-bawah
+  box(0.4816, 0.7498, 0.205, 0.03, 0.20, 0.03, cPerak, { rz: -6.2 });    // kanan-atas
+  box(0.499, 0.8478, 0.205, 0.04, 0.04, 0.03, cPerak, { rz: -29 });   // r2 spur: ujung atas tepat y 0.875
+
+  // ══ 6. GAGANG HITAM MELENGKUNG (4 segmen rigid) ══
+  // r2: 5 segmen loop gagang gunting — dari dalam pivot sampai bilah pendek
+  box(-0.090, 0.0075, 0.205, 0.161, 0.05, 0.04, 0x0C0C0C, { rz: -7.1 });
+  box(-0.190, 0.0425, 0.205, 0.137, 0.05, 0.04, 0x0C0C0C, { rz: -34.5 });
+  box(-0.245, 0.115, 0.205, 0.135, 0.05, 0.04, 0x0C0C0C, { rz: -71.6 });
+  box(-0.2525, 0.205, 0.205, 0.131, 0.05, 0.04, 0x0C0C0C, { rz: 80.5 });
+  box(-0.194, 0.285, 0.205, 0.164, 0.05, 0.04, 0x0C0C0C, { rz: 34.5 });
+
+  // ══ 7. KAKI V (yaw ±20°, rigid): paha + manset oranye + boots + badge ══
+  const cPaha = { t: 0x5B3A2A, pz: 0x5B3A2A, nz: 0x5B3A2A, px: 0x5B3A2A, nx: 0x5B3A2A, b: 0x4A2E22 };
+  const cMansetO = { t: 0xB5470F, pz: 0xB5470F, nz: 0xB5470F, px: 0xB5470F, nx: 0xB5470F, b: 0xB5470F };
+  const cBoots = 0x0E0E0E;
+  for (const sgn of [-1, 1]) {
+    const yaw = sgn * 20;
+    box(sgn * 0.198, -0.775, 0.132, 0.20, 0.20, 0.28, cPaha, { ry: yaw });
+    box(sgn * 0.246, -0.7675, 0.263, 0.22, 0.205, 0.08, cMansetO, { ry: yaw });   // r2: bawah -0.870 (offset 0.005)
+    box(sgn * 0.280, -0.775, 0.357, 0.20, 0.20, 0.20, cBoots, { ry: yaw });
+  }
+  box(-0.246, -0.663, 0.263, 0.07, 0.008, 0.07, 0xF0A818, { ry: -20 });   // badge emas (kaki kiri saja)
+
+  // ══ 8. LENGAN (rz −35 kanan / +145 kiri, sumbu panjang X) + manset H-P-H + tangan putih ══
+  const cLengan = { t: 0x5B3A2A, pz: 0x5B3A2A, nz: 0x5B3A2A, px: 0x5B3A2A, nx: 0x5B3A2A, b: 0x4A2E22 };
+  const cHitam = 0x0B0B0B, cPutih = 0xF4F4F4;
+  // r2: kiri (terangkat) pusat Y BERBEDA dari kanan — dulu mirror-x saja (salah)
+  const segKanan = [[0.395,-0.500,0.28,cLengan],[0.526,-0.592,0.04,cHitam],[0.558,-0.615,0.04,cPutih],[0.591,-0.638,0.04,cHitam],[0.649,-0.678,0.10,cPutih]];
+  const segKiri  = [[0.395,-0.340,0.28,cLengan],[0.526,-0.248,0.04,cHitam],[0.558,-0.225,0.04,cPutih],[0.591,-0.202,0.04,cHitam],[0.649,-0.162,0.10,cPutih]];
+  for (const [sgn, segs, rz] of [[1, segKanan, -35], [-1, segKiri, 145]]) {
+    for (const [sx0, sy0, panjang, col] of segs) {
+      box(sgn * sx0, sy0, -0.03, panjang, 0.17, 0.17, col, { rz });
+    }
+  }
+
+  const g = _buildFaces(THREE, faces, { autoFix: false });
   _pkPaintMulti(THREE, g, faces, hexes, hexes.map(() => 1.0));
   return g;
 }
