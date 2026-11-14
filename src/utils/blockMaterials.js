@@ -193,6 +193,8 @@ export const BLOCK_LIBRARY = [
   { slug: 'cake',              name: 'Cake',       label: 'Cake',       roughness: 0.88, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
   // bab 230: Pumpkin — vertex color murni (unlit), TOGGLE muka via klik.
   { slug: 'pumpkin',           name: 'Pumpkin',    label: 'Pumpkin',    roughness: 0.90, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
+  // bab 235: Plushie 1 — vertex color murni (unlit, pola pumpkin).
+  { slug: 'plushie1',          name: 'Plushie 1',  label: 'Plushie 1',  roughness: 0.90, metalness: 0.0, transparent: false, opacity: 1.0, nsi: true, nsiLevel: 2 },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -908,6 +910,10 @@ export function makeBlockMaterial(THREE, slug) {
   }
   // bab 230: PUMPKIN — vertex color murni (unlit, sama pola Cake).
   if (slug === 'pumpkin') {
+    return makeCakeMaterials(THREE);   // material identik: unlit + vertexColors
+  }
+  // bab 235: PLUSHIE 1 — vertex color murni (unlit, sama pola Pumpkin).
+  if (slug === 'plushie1') {
     return makeCakeMaterials(THREE);   // material identik: unlit + vertexColors
   }
   if (def.glow) {
