@@ -7774,7 +7774,7 @@ export function makePlushie2Geometry(THREE) {
 // Prediksi Claude: tri 1432 · bbox x ±1.4994 · y ±0.875 · z −0.875..+0.875.
 // ══════════════════════════════════════════════════════════════════════════
 export function makePlushie3Geometry(THREE) {
-  const faces = [], hexes = [];
+  let faces = [], hexes = [];
   const M = { py: 1.00, pz: 0.92, px: 0.85, nx: 0.78, nz: 0.72, ny: 0.60 };
   const sh = (hex, m) => {
     const r = Math.min(255, Math.round(((hex >> 16) & 255) * m));
@@ -7785,7 +7785,6 @@ export function makePlushie3Geometry(THREE) {
   const pick = (c, k, m) => (typeof c === 'number') ? sh(c, m)
     : ((c[k] != null) ? c[k] : ((c.t != null) ? c.t : 0xffffff));
 
-  // box axis-aligned dgn rotasi opsional (rz sekitar Z, ry sekitar Y — pusat)
   function box(cx, cy, cz, sx, sy, sz, c, o = {}) {
     const rz = (o.rz || 0) * Math.PI / 180, ry = (o.ry || 0) * Math.PI / 180;
     const x0 = -sx/2, x1 = sx/2, y0 = -sy/2, y1 = sy/2, z0 = -sz/2, z1 = sz/2;
@@ -7804,82 +7803,147 @@ export function makePlushie3Geometry(THREE) {
     q(7, 6, 2, 3, 't',  M.py);
     q(0, 1, 5, 4, 'b',  M.ny);
   }
-
+  // box 4 sisi saja (tanpa atas & bawah) — kepala bawah
+  function boxSisi(cx, cy, cz, sx, sy, sz, c) {
+    const x0 = cx-sx/2, x1 = cx+sx/2, y0 = cy-sy/2, y1 = cy+sy/2, z0 = cz-sz/2, z1 = cz+sz/2;
+    const q = (a, b, d, e, k, m) => { faces.push([a, b, d, e]); hexes.push(pick(c, k, m)); };
+    q([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1], 'pz', M.pz);
+    q([x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0], 'nz', M.nz);
+    q([x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1], 'px', M.px);
+    q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0], 'nx', M.nx);
+  }
   // FRUSTUM sumbu-Y: alas y0 (CCW dilihat dari +y), atas y1 (urutan sama)
-  function frustumY(b, t, c) {
+  function frustumY(b, t, c, opt = {}) {
     const q = (a, b2, d, e, k, m) => { faces.push([a, b2, d, e]); hexes.push(pick(c, k, m)); };
-    q(t[0], t[1], t[2], t[3], 't',  M.py);              // atas
-    q(b[0], b[3], b[2], b[1], 'b',  M.ny);              // bawah
+    if (!opt.noTop) q(t[0], t[1], t[2], t[3], 't', M.py);
+    if (!opt.noBottom) q(b[0], b[3], b[2], b[1], 'b', M.ny);
     for (let i = 0; i < 4; i++) {
       const j = (i + 1) % 4;
-      const kk = ['pz', 'px', 'nz', 'nx'][i];           // depan/kanan/belakang/kiri (urutan b CCW-dari-atas: z1,x1,z0,x0)
+      const kk = ['pz', 'px', 'nz', 'nx'][i];
       q(b[i], b[j], t[j], t[i], kk, M[kk] !== undefined ? M[kk] : 0.9);
     }
   }
-  // FRUSTUM sumbu-Z: alas z0 (CCW dilihat dari +z), ujung z1
-  function frustumZ(b, t, c) {
+  // FRUSTUM sumbu-Z: alas z0, ujung z1 — 5 muka (tanpa alas).
+  // ⚠️ FIX v19b (laporan pemilik "paruh tekstur hilang saat kamera diputar"):
+  // winding LAMA menghasilkan normal KE DALAM utk SEMUA 5 muka (terukur
+  // cross-product: pz −z, nx +x, t −y, px −x, b +y) → jalur app FrontSide
+  // tidak menggambar satupun dari luar → paruh bolong, terlihat interior
+  // gelap (bukti piksel: 0% putih dari 6 sudut). Urutan vertex dibalik agar
+  // normal keluar: pz +z, nx −x, t +y, px +x, b −y (semua terverifikasi).
+  function frustumZ5(b, t, c) {
     const q = (a, b2, d, e, k, m) => { faces.push([a, b2, d, e]); hexes.push(pick(c, k, m)); };
-    q(t[0], t[1], t[2], t[3], 'pz', M.pz);              // ujung (menghadap +z)
-    q(b[0], b[3], b[2], b[1], 'nz', M.nz);              // alas
-    q(b[0], b[1], t[1], t[0], 'nx', M.nx);              // kiri (x0)
-    q(b[1], b[2], t[2], t[1], 't',  M.py);              // atas (y1)
-    q(b[2], b[3], t[3], t[2], 'px', M.px);              // kanan (x1)
-    q(b[3], b[0], t[0], t[3], 'b',  M.ny);              // bawah (y0)
+    q(t[3], t[2], t[1], t[0], 'pz', M.pz);              // ujung (+z)
+    q(b[1], b[0], t[0], t[1], 'nx', M.nx);              // kiri (−x)
+    q(b[2], b[1], t[1], t[2], 't',  M.py);              // atas (+y)
+    q(b[3], b[2], t[2], t[3], 'px', M.px);              // kanan (+x)
+    q(b[0], b[3], t[3], t[0], 'b',  M.ny);              // bawah (−y)
+  }
+  // quad tunggal (untuk interior & tambalan)
+  function quad(a, b, d, e, hex) { faces.push([a, b, d, e]); hexes.push(hex); }
+  // balok dgn muka TERTANAM dibuang (skip: 'pz','nz','px','nx','t','b') — instruksi
+  // Claude sesi 11fd8d41: "muka yang tertanam itu dihilangkan"
+  function boxSkip(cx, cy, cz, sx, sy, sz, c, skip = []) {
+    const x0 = cx - sx/2, x1 = cx + sx/2, y0 = cy - sy/2, y1 = cy + sy/2, z0 = cz - sz/2, z1 = cz + sz/2;
+    const q = (a, b, d, e, k, m) => { if (skip.includes(k)) return; faces.push([a, b, d, e]); hexes.push(pick(c, k, m)); };
+    q([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1], 'pz', M.pz);
+    q([x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0], 'nz', M.nz);
+    q([x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1], 'px', M.px);
+    q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0], 'nx', M.nx);
+    q([x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0], 't',  M.py);
+    q([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1], 'b',  M.ny);
   }
 
-  // ══ A. BADAN EMAS ══
-  box(0, -0.65, -0.015, 0.64, 0.40, 0.51, 0xA8803A);
-  box(0.02, -0.405, 0, 0.70, 0.11, 0.50, { t: 0xC9A04E, pz: 0xC9A04E, nz: 0xB58B3E, px: 0xB58B3E, nx: 0xB58B3E, b: 0xB58B3E });
-  box(-0.02, -0.305, 0, 0.76, 0.11, 0.56, { t: 0xC9A04E, pz: 0xB58B3E, nz: 0xB58B3E, px: 0xB58B3E, nx: 0xB58B3E, b: 0xB58B3E });
-  box(0.015, -0.205, 0, 0.72, 0.11, 0.52, { t: 0xC9A04E, pz: 0xC9A04E, nz: 0xB58B3E, px: 0xB58B3E, nx: 0xB58B3E, b: 0xB58B3E });
-  box(-0.02, -0.105, 0.04, 0.66, 0.11, 0.48, { t: 0xC9A04E, pz: 0xB58B3E, nz: 0xB58B3E, px: 0xB58B3E, nx: 0xB58B3E, b: 0xB58B3E });
-  for (const sgn of [-1, 1]) {
-    box(sgn * 0.17, -0.7375, 0.34, 0.26, 0.275, 0.28, { t: 0xB58B3E, pz: 0x9C7632, nz: 0x9C7632, px: 0x9C7632, nx: 0x9C7632, b: 0x9C7632 });   // r6: kaki kubus besar x[0.04,0.30] y[-0.875,-0.60] z[0.20,0.48]
-    for (const dx of [-0.07, 0, 0.07]) {
-      box(sgn * 0.18 + dx, -0.845, 0.49, 0.04, 0.05, 0.10, 0xD4B060);   // r6: z pusat 0.49 (ujung max 0.54)
-    }
-  }
+  // ══ 1-3. TUBUH+TANGAN+KAKI v22 — DIBANGUN DARI 0 (pemilik menolak v21 "badan gemuk";
+  // dekomposisi Claude SESI BARU 11fd8d41 dari 10 foto referensi):
+  // TUBUH = 7 RUAS TULANG berselang panjang-pendek (rasio 1.4:1, tebal 0.055-0.065, pipih)
+  // dgn CELAH 0.025 antar ruas + SPINE tiang inti gelap 4 sisi penutup celah; terlebar
+  // di atas (bahu ±0.30), menyempit ke bawah; atas R1 y 0.215 (0.005 di bawah kepala 0.22).
+  // TANGAN = lengan atas (nx tertanam R2 → dibuang) + lengan bawah membentuk L ke depan
+  // + 3 cakar menggantung (t tertanam H2 → dibuang), keluar sisi ruas ke-2.
+  // KAKI = paha tebal menurun ke tanah + telapak menapak y -0.875. (Claude menebak sayap
+  // mencapai -0.875 — TIDAK: sayap terbawah -0.55; maka kaki WAJIB sampai -0.875 agar
+  // plushie tidak melayang saat ditempatkan.)
+  const cRuas = { t: 0xD2AE5E, b: 0x6E5224, pz: 0xBE9A4C, nz: 0x7E6128, px: 0xA98438, nx: 0xA98438 };
+  const cSpine = 0x4A3618;
+  const cLengan = { t: 0xD8B665, b: 0x745928, pz: 0xC8A352, nz: 0x85682D, px: 0xB08C40, nx: 0xB08C40 };
+  const cKaki22 = { t: 0xC09A48, b: 0x5E4720, pz: 0xA8803A, nz: 0x6F5324, px: 0x8C6A2C, nx: 0x8C6A2C };
+  box(0, 0.1825, 0.08, 0.60, 0.065, 0.52, cRuas);       // R1 panjang x±0.30 y[0.150,0.215] z[-0.18,0.34]
+  box(0, 0.0925, 0.08, 0.40, 0.065, 0.40, cRuas);       // R2 pendek x±0.20 y[0.060,0.125] z[-0.12,0.28]
+  box(0, 0.0025, 0.075, 0.54, 0.065, 0.49, cRuas);      // R3 panjang x±0.27 y[-0.030,0.035] z[-0.17,0.32]
+  box(0, -0.0825, 0.075, 0.36, 0.055, 0.37, cRuas);     // R4 pendek x±0.18 y[-0.110,-0.055] z[-0.11,0.26]
+  box(0, -0.1675, 0.075, 0.50, 0.065, 0.47, cRuas);     // R5 panjang x±0.25 y[-0.200,-0.135] z[-0.16,0.31]
+  box(0, -0.255, 0.07, 0.30, 0.060, 0.34, cRuas);       // R6 pendek x±0.15 y[-0.285,-0.225] z[-0.10,0.24]
+  box(0, -0.3425, 0.075, 0.42, 0.065, 0.45, cRuas);     // R7 panjang x±0.21 y[-0.375,-0.310] z[-0.15,0.30]
+  boxSisi(0, -0.0625, 0.11, 0.14, 0.575, 0.14, { pz: cSpine, nz: cSpine, px: cSpine, nx: cSpine });   // spine x±0.07 y[-0.350,0.225] z[0.04,0.18]
+  boxSkip(0.3725, 0.22, 0.07, 0.155, 0.12, 0.12, cLengan, []);         // BAHU kubus x[0.295,0.45] y[0.16,0.28] z[0.01,0.13] (tetap; tebal 0.12)
+  boxSkip(0.37, 0.005, 0.07, 0.10, 0.32, 0.08, cLengan, []);           // LENGAN x[0.32,0.42] y[-0.155,0.165] z[0.03,0.11] (v35: digeser MENDekat ke tubuh, celah 0.05 - bahu TIDAK bergerak; tetap menanam ke bahu)
+  boxSkip(-0.3725, 0.22, 0.07, 0.155, 0.12, 0.12, cLengan, []);        // BAHU kiri (cermin)
+  boxSkip(-0.37, 0.005, 0.07, 0.10, 0.32, 0.08, cLengan, []);          // LENGAN kiri (cermin)
+  boxSkip(0.11, -0.4125, 0.21, 0.18, 0.085, 0.26, cKaki22, []);        // paha x[0.02,0.20] y[-0.455,-0.370] z[0.08,0.34] (v25 Claude: 0.98x lebar R7)
+  boxSkip(0.11, -0.4525, 0.4275, 0.19, 0.075, 0.185, cKaki22, []);     // telapak x[0.015,0.205] y[-0.49,-0.415] z[0.335,0.52] (v39: ditinggikan lagi jadi 0.075; menanam ke paha; lebar 0.005 lebih, anti sebidang)
+  boxSkip(-0.11, -0.4125, 0.21, 0.18, 0.085, 0.26, cKaki22, []);       // paha cermin
+  boxSkip(-0.11, -0.4525, 0.4275, 0.19, 0.075, 0.185, cKaki22, []);    // telapak cermin
 
-  // ══ B. KEPALA + PARUH + MATA + JAMBUL + EKOR ══
-  box(0, 0.07, 0.10, 0.58, 0.38, 0.50, { t: 0xF0F0F4, pz: 0xF0F0F4, nz: 0xD8DAE0, px: 0xD8DAE0, nx: 0xD8DAE0, b: 0xD8DAE0 });
-  // kepala atas: frustum y 0.25→0.46; alas x±0.285 z[−0.14,0.34]; atas x±0.17 z[−0.05,0.25]
+  const _k0 = faces.length;   // v36: awal unit kepala
+  // ══ 4. KEPALA v18 (Claude r28): 4 tahap bertumpuk — bulat bersegi; muka depan z=0.42 tetap
+  // sampai y 0.62 (mata z 0.415..0.445, tambalan mulut 0.425, alas paruh 0.40 tak perlu digeser);
+  // S1 frustum y 0.22→0.31 (x ±0.25→±0.29, z blkg 0.00→−0.04) TANPA alas/atas;
+  // S2 kotak y 0.31→0.52 (x ±0.29, z −0.04..0.42);
+  // S3 frustum y 0.52→0.62 (x ±0.29→±0.25, z blkg −0.04→0.02) TANPA alas/atas;
+  // S4 frustum y 0.62→0.72 (x ±0.25→±0.16, z blkg 0.02→0.08, z dpn 0.42→0.34) + muka atas.
+  // Batas y 0.31/0.52/0.62 = titik sambung — TANPA muka horizontal (tertanam); 0.31 sengaja ≠ y 0.30 sayap.
   frustumY(
-    [[-0.285, 0.25, 0.34], [0.285, 0.25, 0.34], [0.285, 0.25, -0.14], [-0.285, 0.25, -0.14]],
-    [[-0.17, 0.46, 0.25], [0.17, 0.46, 0.25], [0.17, 0.46, -0.05], [-0.17, 0.46, -0.05]],
-    { t: 0xF0F0F4, pz: 0xF0F0F4, nz: 0xD8DAE0, px: 0xD8DAE0, nx: 0xD8DAE0, b: 0xD8DAE0 });
-  // paruh atas: frustum z 0.34→0.875; alas x±0.16 y[0.02,0.12]; ujung x±0.03 y[0.06,0.085]
-  frustumZ(
-    [[-0.16, 0.02, 0.34], [-0.16, 0.12, 0.34], [0.16, 0.12, 0.34], [0.16, 0.02, 0.34]],
-    [[-0.03, 0.05, 0.875], [-0.03, 0.09, 0.875], [0.03, 0.09, 0.875], [0.03, 0.05, 0.875]],
-    { t: 0xFAFAFC, pz: 0xFAFAFC, nz: 0xFAFAFC, px: 0xFAFAFC, nx: 0xFAFAFC, b: 0xFAFAFC });
-  // paruh bawah: alas x±0.16 y[−0.10,0.00]; ujung x±0.03 y[−0.075,−0.055]
-  frustumZ(
-    [[-0.16, -0.10, 0.34], [-0.16, 0.00, 0.34], [0.16, 0.00, 0.34], [0.16, -0.10, 0.34]],
-    [[-0.03, -0.115, 0.875], [-0.03, -0.095, 0.875], [0.03, -0.095, 0.875], [0.03, -0.115, 0.875]],
-    0xBEC0C8);
-  // interior mulut: z 0.345→0.70; gelap
-  frustumZ(
-    [[-0.13, 0.005, 0.345], [-0.13, 0.015, 0.345], [0.13, 0.015, 0.345], [0.13, 0.005, 0.345]],
-    [[-0.035, -0.09, 0.70], [-0.035, 0.045, 0.70], [0.035, 0.045, 0.70], [0.035, -0.09, 0.70]],
-    0x0A141E);   // r6: interior ujung y[-0.09,0.045] menutup celah V paruh terbuka
-  // mata ×2: CHEVRON (Claude r4) — polygon 6 titik, kipas dari A, z 0.345..0.375
+    [[-0.25, 0.22, 0.42], [0.25, 0.22, 0.42], [0.25, 0.22, 0.00], [-0.25, 0.22, 0.00]],
+    [[-0.29, 0.31, 0.42], [0.29, 0.31, 0.42], [0.29, 0.31, -0.04], [-0.29, 0.31, -0.04]],
+    { pz: 0xF0F0F4, nz: 0xC8CAD2, px: 0xCED0D8, nx: 0xCED0D8 },
+    { noBottom: true, noTop: true });
+  boxSisi(0, 0.415, 0.19, 0.58, 0.21, 0.46,
+      { pz: 0xF0F0F4, nz: 0xC8CAD2, px: 0xD8DAE0, nx: 0xD8DAE0 });
+  frustumY(
+    [[-0.29, 0.52, 0.42], [0.29, 0.52, 0.42], [0.29, 0.52, -0.04], [-0.29, 0.52, -0.04]],
+    [[-0.25, 0.62, 0.42], [0.25, 0.62, 0.42], [0.25, 0.62, 0.02], [-0.25, 0.62, 0.02]],
+    { pz: 0xF4F4F8, nz: 0xCED0D8, px: 0xE0E2E8, nx: 0xE0E2E8 },
+    { noBottom: true, noTop: true });
+  frustumY(
+    [[-0.25, 0.62, 0.42], [0.25, 0.62, 0.42], [0.25, 0.62, 0.02], [-0.25, 0.62, 0.02]],
+    [[-0.16, 0.72, 0.34], [0.16, 0.72, 0.34], [0.16, 0.72, 0.08], [-0.16, 0.72, 0.08]],
+    { t: 0xFAFAFC, pz: 0xF4F4F8, nz: 0xD6D8DE, px: 0xE8EAF0, nx: 0xE8EAF0 },
+    { noBottom: true });
+
+  // ══ 5. PARUH 3 PELAT BERLAPIS (frustumZ 5 muka — TANPA muka alas; celah V 0.01 pangkal → 0.03-0.04 ujung) ══
+  frustumZ5(
+    [[-0.20, 0.345, 0.40], [-0.20, 0.405, 0.40], [0.20, 0.405, 0.40], [0.20, 0.345, 0.40]],
+    [[-0.06, 0.350, 0.875], [-0.06, 0.395, 0.875], [0.06, 0.395, 0.875], [0.06, 0.350, 0.875]],
+    { t: 0xFAFAFC, pz: 0xF0F0F4, nz: 0xE8E8EE, px: 0xE8E8EE, nx: 0xE8E8EE, b: 0xD0D2D8 });
+  frustumZ5(
+    [[-0.19, 0.285, 0.40], [-0.19, 0.335, 0.40], [0.19, 0.335, 0.40], [0.19, 0.285, 0.40]],
+    [[-0.055, 0.290, 0.875], [-0.055, 0.330, 0.875], [0.055, 0.330, 0.875], [0.055, 0.290, 0.875]],
+    { t: 0xE4E6EC, pz: 0xDADCE2, nz: 0xD4D6DC, px: 0xD4D6DC, nx: 0xD4D6DC, b: 0xC0C2CA });
+  frustumZ5(
+    [[-0.18, 0.215, 0.40], [-0.18, 0.275, 0.40], [0.18, 0.275, 0.40], [0.18, 0.215, 0.40]],
+    [[-0.05, 0.215, 0.875], [-0.05, 0.265, 0.875], [0.05, 0.265, 0.875], [0.05, 0.215, 0.875]],
+    { t: 0xCDCFD6, pz: 0xB4B6BE, nz: 0xBEC0C8, px: 0xBEC0C8, nx: 0xBEC0C8, b: 0xA0A2AC });
+  // interior gelap (v19 anti-tembus): BOX tertutup di dalam mulut — dari sudut kamera mana pun
+  // yang menembus celah antar pelat terlihat muka gelap, bukan latar (gejala "tekstur hilang");
+  // semua mukanya tertanam/tersembunyi di balik pelat (tidak sebidang dgn apa pun)
+  box(0, 0.305, 0.63, 0.06, 0.17, 0.42, 0x0A141E);   // x±0.03 y[0.22,0.39] z[0.42,0.84]
+  quad([-0.185, 0.275, 0.425], [0.185, 0.275, 0.425], [0.185, 0.345, 0.425], [-0.185, 0.345, 0.425], 0x0A141E); // tambalan mulut
+
+  // ══ 6. MATA chevron ×2 (cx ±0.12, tebal z 0.415..0.445; belakang masuk 0.005 ke muka depan kepala z0.42) ══
   for (const sgn of [-1, 1]) {
-    const cx = sgn * 0.15, zf = 0.375, zb = 0.345;
-    const A  = [cx, 0.235, zf],  L  = [cx - 0.06, 0.120, zf], Lin = [cx - 0.015, 0.120, zf];
-    const N  = [cx, 0.175, zf], Rin = [cx + 0.015, 0.120, zf], R  = [cx + 0.06, 0.120, zf];
-    const Ab = [cx, 0.235, zb],  Lb = [cx - 0.06, 0.120, zb], Linb = [cx - 0.015, 0.120, zb];
-    const Nb = [cx, 0.175, zb], Rinb = [cx + 0.015, 0.120, zb], Rb = [cx + 0.06, 0.120, zb];
-    // muka depan: 4 tri kipas dari A
+    const cx = sgn * 0.12, zf = 0.445, zb = 0.415;
+    const A  = [cx, 0.550, zf],  L  = [cx - 0.07, 0.425, zf], Lin = [cx - 0.02, 0.425, zf];
+    const N  = [cx, 0.485, zf], Rin = [cx + 0.02, 0.425, zf], R  = [cx + 0.07, 0.425, zf];
+    const Ab = [cx, 0.550, zb],  Lb = [cx - 0.07, 0.425, zb], Linb = [cx - 0.02, 0.425, zb];
+    const Nb = [cx, 0.485, zb], Rinb = [cx + 0.02, 0.425, zb], Rb = [cx + 0.07, 0.425, zb];
     faces.push([A, L, Lin]); hexes.push(0x000000);
     faces.push([A, Lin, N]); hexes.push(0x000000);
     faces.push([A, N, Rin]); hexes.push(0x000000);
     faces.push([A, Rin, R]); hexes.push(0x000000);
-    // muka belakang: urutan dibalik
     faces.push([Ab, Linb, Lb]); hexes.push(0x000000);
     faces.push([Ab, Nb, Linb]); hexes.push(0x000000);
     faces.push([Ab, Rinb, Nb]); hexes.push(0x000000);
     faces.push([Ab, Rb, Rinb]); hexes.push(0x000000);
-    // 6 sisi tebal
     faces.push([A, Ab, Lb, L]); hexes.push(0x000000);
     faces.push([L, Lb, Linb, Lin]); hexes.push(0x000000);
     faces.push([Lin, Linb, Nb, N]); hexes.push(0x000000);
@@ -7887,19 +7951,10 @@ export function makePlushie3Geometry(THREE) {
     faces.push([Rin, Rinb, Rb, R]); hexes.push(0x000000);
     faces.push([R, Rb, Ab, A]); hexes.push(0x000000);
   }
-  // jambul ×3 (bertingkat turun ke belakang)
-  box(0, 0.48, 0.0175, 0.07, 0.36, 0.055, 0xB01C1C);
-  box(0, 0.45, -0.035, 0.07, 0.30, 0.06, 0xB01C1C);
-  box(0, 0.42, -0.09, 0.07, 0.24, 0.06, 0xB01C1C);
-  // ekor ×3
-  box(-0.10, -0.14, -0.30, 0.08, 0.32, 0.10, 0xB01C1C);
-  box(0, -0.09, -0.30, 0.08, 0.42, 0.10, 0xB01C1C);
-  box(0.10, -0.14, -0.30, 0.08, 0.32, 0.10, 0xB01C1C);
 
-  // ══ C. SAYAP v2 (Claude sesi baru): 9 kolom SOLID per sisi — 1 box/kolom tebal 0.18,
-  // TANPA yaw (voxel-style geser z 0.06/kolom), muka ±z 3 pita warna (terang/mid/gelap),
-  // muka ±x & +y GELAP, −y #4A0000. Kolom 6-8 = kait bawah (menggantikan blok tangan v1).
-  // Winding eksak dari Claude; s kiri = cermin x (x dinormalisasi min/max).
+  const _k1 = faces.length;   // v36: akhir unit kepala
+  for (let _i = _k0; _i < _k1; _i++) faces[_i] = faces[_i].map(([x, y, z]) => [x, y, z - 0.08]);   // kepala+paruh+mata digeser ke BELAKANG 0.08 (perintah pemilik: kepala terlalu maju); relasi internal kepala tetap persis
+  // ══ 9. SAYAP v2 ACC DIKUNCI (tidak disentuh) ══
   const SY = [ // i: yb, ya, b1 (terang/mid), b2 (mid/gelap)
     [-0.10, 0.30, 0.060, 0.220],
     [-0.12, 0.50, 0.128, 0.376],
@@ -7931,12 +7986,12 @@ export function makePlushie3Geometry(THREE) {
     q([x0,yb,z0],[x1,yb,z0],[x1,yb,z1],[x0,yb,z1], cBawah);
   }
   for (const s of [-1, 1]) for (let i = 0; i < 9; i++) kolomSayap(s, i);
-  // r4: KAIT J ujung sayap (Claude) — box axis-aligned, cermin x
-  const cKait = { t: 0x660000, pz: 0x990000, nz: 0x990000, px: 0x660000, nx: 0x660000, b: 0x4A0000 };
-  for (const s of [-1, 1]) {
-    box(s * 1.35, -0.615, -0.785, 0.30, 0.13, 0.18, cKait);
-  }
 
+  // TRANSLASI GLOBAL -0.325 (koreksi posisi duduk, Claude sesi 11fd8d41): geometri
+  // asli menempati y -0.55..0.72 (sayap & telapak sama-sama berhenti ~-0.55, sesuai
+  // referensi); digeser turun agar MENAPAK dasar slot (-0.875) tanpa mengubah desain
+  // satu piksel pun — seluruh bagian (termasuk kepala & sayap terkunci) turun seragam.
+  faces = faces.map((f) => f.map(([x, y, z]) => [x, y - 0.325, z]));
   const g = _buildFaces(THREE, faces, { autoFix: false });
   _pkPaintMulti(THREE, g, faces, hexes, hexes.map(() => 1.0));
   return g;
