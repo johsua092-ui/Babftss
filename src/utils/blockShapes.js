@@ -7679,16 +7679,24 @@ export function makePlushie2Geometry(THREE) {
   box(0, -0.595, 0.168, 0.014, 0.44, 0.01, 0x10252E);
   for (const by of [-0.50, -0.60, -0.70]) box(0.045, by, 0.172, 0.035, 0.035, 0.035, 0x8B3A12);
 
-  // ══ 2. KEPALA PUTIH + SYAL ABU ══
+  // ══ 2. KEPALA PUTIH (pita mata) + SYAL-TALI + MASKER ABU (Claude pl2 r5) ══
+  // Pemilik: wajah putih hanya PITA TIPIS; 2/3 bawah kepala = MASKER ABU BESAR.
   box(0, -0.2275, 0, 0.60, 0.295, 0.46, { t: 0xF4F4F6, pz: 0xF4F4F6, nz: 0xDCDCE0, px: 0xDCDCE0, nx: 0xDCDCE0, b: 0xDCDCE0 });
-  box(0, -0.2325, 0, 0.62, 0.045, 0.48, 0x6E6A72);
+  box(0, -0.2325, 0, 0.62, 0.045, 0.48, 0x6E6A72);   // syal-tali (melingkar ke belakang)
+  const cMasker = { t: 0x86828B, pz: 0x6E6A72, nz: 0x5A565E, px: 0x5A565E, nx: 0x5A565E, b: 0x3F3C43 };
+  // r17 (pemilik): masker 2 TINGKAT — kotak BESAR selebar wajah di bawah mata,
+  // lalu kotak KECIL lebih menonjol di dagu (menyempit) — sesuai referensi depan.
+  box(0, -0.2325, 0.235, 0.56, 0.135, 0.07, cMasker); // r19: kotak atas GEMUK (y -0.30..-0.165) — dominan
+  box(0, -0.339, 0.24, 0.30, 0.0885, 0.075, cMasker); // r19: kotak bawah KECIL (y -0.3835..-0.295; atas overlap 0.005 ke dalam atas)
+  box(0, -0.3575, 0.19, 0.20, 0.035, 0.09, 0xE8DDB3);   // collar krem (di belakang kotak kecil, tepi kiri-kanan terlihat)
+  box(0, -0.3575, 0.238, 0.014, 0.035, 0.01, 0x10252E); // garis tengah collar
 
-  // ══ 3. WAJAH: busur mata kiri (3 batang) + soket hitam & mata hijau kanan ══
-  box(-0.13, -0.135, 0.2345, 0.07, 0.022, 0.008, 0x0A0A0A);
-  box(-0.18, -0.155, 0.2345, 0.03, 0.022, 0.008, 0x0A0A0A);
-  box(-0.08, -0.155, 0.2345, 0.03, 0.022, 0.008, 0x0A0A0A);
-  box(0.13, -0.145, 0.230, 0.09, 0.085, 0.008, 0x0A0A0A);
-  box(0.14, -0.145, 0.235, 0.04, 0.04, 0.008, 0x22E64B);
+  // ══ 3. WAJAH: pita mata (busur kiri + soket/hijau kanan) — turun 0.012 (r6) ══
+  box(-0.13, -0.120, 0.232, 0.07, 0.02, 0.008, 0x0A0A0A);
+  box(-0.179, -0.140, 0.232, 0.028, 0.02, 0.008, 0x0A0A0A);
+  box(-0.081, -0.140, 0.232, 0.028, 0.02, 0.008, 0x0A0A0A);
+  box(0.13, -0.135, 0.232, 0.07, 0.06, 0.008, 0x0A0A0A);
+  box(0.14, -0.135, 0.2375, 0.035, 0.035, 0.006, 0x22E64B);
 
   // ══ 4. TOPI: brim + tier A + band + tier B + jendela ══
   const cIvoryBrim = { t: 0xFFF6D6, pz: 0xE9DDB0, nz: 0xE9DDB0, px: 0xE9DDB0, nx: 0xE9DDB0, b: 0xE9DDB0 };
