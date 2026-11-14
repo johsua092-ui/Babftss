@@ -446,9 +446,161 @@ export const NSI_PL1_SIZE = [2.25, 2.0, 1.0];
 // bab 236: Plushie 2 (3 x 3.5 x 2 studs — plushie sheriff)
 export const NSI_PL2_SLUG = 'plushie2';
 export const NSI_PL2_SIZE = [1.5, 1.75, 1.0];
+// ══════════════════════════════════════════════════════════════════════════
+// BAB 240: PLUSHIE 4 (NSI L2, 2 x 3.5 x 2 studs) — karakter blocky DUDUK ala
+// minifig: kepala kubus kuning (wajah minimalis) dibungkus TOPI BIRU BERTINGKAT
+// 3 (tangga menyusut ke atas), juntaian batang miring 2 per sisi, rumbai belakang
+// 4 bilah meruncing, torso biru tua, tangan kuning bertumpu di atas kaki hijau
+// duduk. Dekomposisi Claude SESI BARU dadccf4f dari 9 foto referensi.
+// ⚠️ PELAJARAN bab 239: app = FrontSide → winding WAJIB normal keluar (semua
+// rumus kotak sudah terverifikasi cross-product oleh Claude).
+// Prediksi Claude: 222 tri · NaN 0 · bbox x ±0.50 y ±0.875 z ±0.50.
+// ══════════════════════════════════════════════════════════════════════════
+export function makePlushie4Geometry(THREE) {
+  const faces = [], hexes = [];
+  const M = { py: 1.00, pz: 0.92, px: 0.85, nx: 0.78, nz: 0.72, ny: 0.60 };
+  const sh = (hex, m) => {
+    const r = Math.min(255, Math.round(((hex >> 16) & 255) * m));
+    const g = Math.min(255, Math.round(((hex >> 8) & 255) * m));
+    const b = Math.min(255, Math.round((hex & 255) * m));
+    return (r << 16) | (g << 8) | b;
+  };
+  const pick = (c, k, m) => (typeof c === 'number') ? sh(c, m)
+    : ((c[k] != null) ? c[k] : ((c.t != null) ? c.t : 0xffffff));
+
+  // balok axis-aligned dgn daftar muka dibuang (tertanam)
+  function boxSkip(cx, cy, cz, sx, sy, sz, c, skip = []) {
+    const x0 = cx - sx/2, x1 = cx + sx/2, y0 = cy - sy/2, y1 = cy + sy/2, z0 = cz - sz/2, z1 = cz + sz/2;
+    const q = (a, b, d, e, k, m) => { if (skip.includes(k)) return; faces.push([a, b, d, e]); hexes.push(pick(c, k, m)); };
+    q([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1], 'pz', M.pz);
+    q([x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0], 'nz', M.nz);
+    q([x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1], 'px', M.px);
+    q([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0], 'nx', M.nx);
+    q([x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0], 't',  M.py);
+    q([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1], 'b',  M.ny);
+  }
+
+  // kotak 8-titik generik (juntaian miring): atas x(in..out), bawah digeser dx
+  function kotakGeser(xIn, xOut, dxBawah, y0, y1, z0, z1, c) {
+    const P = [
+      [xIn + dxBawah, y0, z0], [xOut + dxBawah, y0, z0], [xOut + dxBawah, y0, z1], [xIn + dxBawah, y0, z1],
+      [xIn, y1, z0], [xOut, y1, z0], [xOut, y1, z1], [xIn, y1, z1],
+    ];
+    const q = (a, b, d, e, k, m) => { faces.push([P[a], P[b], P[d], P[e]]); hexes.push(pick(c, k, m)); };
+    q(3, 2, 6, 7, 'pz', M.pz);   // +Z
+    q(1, 0, 4, 5, 'nz', M.nz);   // -Z
+    q(2, 1, 5, 6, 'px', M.px);   // +X (sisi luar)
+    q(0, 3, 7, 4, 'nx', M.nx);   // -X (sisi dalam)
+    q(7, 6, 5, 4, 't',  M.py);
+    q(0, 1, 2, 3, 'b',  M.ny);
+  }
+
+  // kotak-geser sumbu-Z (lengan miring): cincin atas & bawah z berbeda
+  function kotakGeserZ(x0, x1, zA0, zA1, zB0, zB1, y0, y1, c, skip = []) {
+    const A = [[x0, y1, zA0], [x1, y1, zA0], [x1, y1, zA1], [x0, y1, zA1]];
+    const B = [[x0, y0, zB0], [x1, y0, zB0], [x1, y0, zB1], [x0, y0, zB1]];
+    const q = (a, b, d, e, k, m) => { if (skip.includes(k)) return; faces.push([a, b, d, e]); hexes.push(pick(c, k, m)); };
+    q(A[3], A[2], A[1], A[0], 't',  M.py);
+    q(B[0], B[1], B[2], B[3], 'b',  M.ny);
+    q(B[3], B[2], A[2], A[3], 'pz', M.pz);
+    q(B[1], B[0], A[0], A[1], 'nz', M.nz);
+    q(B[2], B[1], A[1], A[2], 'px', M.px);
+    q(B[0], B[3], A[3], A[0], 'nx', M.nx);
+  }
+
+  // frustum 8-titik generik (rumbai meruncing): cincin atas & bawah bebas
+  function frustum8(xa0, xa1, za0, za1, ya, xb0, xb1, zb0, zb1, yb, c) {
+    const A = [[xa0, ya, za0], [xa1, ya, za0], [xa1, ya, za1], [xa0, ya, za1]];
+    const B = [[xb0, yb, zb0], [xb1, yb, zb0], [xb1, yb, zb1], [xb0, yb, zb1]];
+    const q = (a, b, d, e, k, m) => { faces.push([a, b, d, e]); hexes.push(pick(c, k, m)); };
+    q(A[3], A[2], A[1], A[0], 't',  M.py);
+    q(B[0], B[1], B[2], B[3], 'b',  M.ny);
+    q(B[3], B[2], A[2], A[3], 'pz', M.pz);
+    q(B[1], B[0], A[0], A[1], 'nz', M.nz);
+    q(B[2], B[1], A[1], A[2], 'px', M.px);
+    q(B[0], B[3], A[3], A[0], 'nx', M.nx);
+  }
+
+  // decal quad datar +Z (offset 0.005 dari muka induk)
+  function decal(x0, x1, y0, y1, z, hex) {
+    faces.push([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]]);
+    hexes.push(hex);
+  }
+
+  const cTopi   = { t: 0x10BBFF, pz: 0x0A9EE6, nz: 0x0786D0, px: 0x0589D4, nx: 0x0A94DC, b: 0x056AA6 };
+  const cKuning = { t: 0xFFF133, pz: 0xFFE020, nz: 0xD9B818, px: 0xE6C41A, nx: 0xEBCB1C, b: 0xB8970F };
+  const cTorso  = { t: 0x1280E0, pz: 0x0B6AC4, nz: 0x05509E, px: 0x0A62B8, nx: 0x0A5CAD, b: 0x043E7A };
+  const cKaki   = { t: 0x48E22A, pz: 0x3CCB22, nz: 0x2BAA16, px: 0x2EB41A, nx: 0x35BF1F, b: 0x1E7A0F };
+  const cTgn    = { t: 0xFFFF33, pz: 0xFFE828, nz: 0xD9B818, px: 0xE8C81C, nx: 0xF0D21E, b: 0xB8970F };
+  const cJuntai = { t: 0x20B8FF, pz: 0x05A4F2, nz: 0x0488D2, px: 0x0589D4, nx: 0x0A9BE6, b: 0x056AA6 };
+  const cRumbai = { t: 0x12B6FF, pz: 0x0E98E4, nz: 0x0E98E4, px: 0x0A84CC, nx: 0x0A84CC, b: 0x056AA6 };
+
+  // ══ 1. KAKI duduk (2 kotak hijau, celah tengah 0.06; menjulur depan z s.d. 0.50) ══
+  // v9: kaki di-ROTATE 5 deg (10 terlalu besar menurut pemilik) sekitar titik BOKONG BELAKANG (pangkal belakang-dalam kaki) - kanan berayun ke kanan, kiri ke kiri (menyebar V); alas tetap menapak (rotasi yaw)
+  const R = 5 * Math.PI / 180, C10 = Math.cos(R), S10 = Math.sin(R);
+  const rotKaki = (x, z, px, pz, sgn) => {
+    const dx = x - px, dz = z - pz;
+    return [px + dx * C10 + sgn * dz * S10, pz - sgn * dx * S10 + dz * C10];
+  };
+  const balokRotY = (x0, x1, y0, y1, z0, z1, px, pz, sgn, c) => {
+    const loc = [[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]];
+    const P = loc.map(([x, y, z]) => { const [rx, rz] = rotKaki(x, z, px, pz, sgn); return [rx, y, rz]; });
+    const q = (a, b, d, e, k, m) => { faces.push([P[a], P[b], P[d], P[e]]); hexes.push(pick(c, k, m)); };
+    q(3, 2, 6, 7, 'pz', M.pz);
+    q(1, 0, 4, 5, 'nz', M.nz);
+    q(2, 1, 5, 6, 'px', M.px);
+    q(0, 3, 7, 4, 'nx', M.nx);
+    q(7, 6, 5, 4, 't',  M.py);
+    q(0, 1, 2, 3, 'b',  M.ny);
+  };
+  balokRotY(0.02, 0.35, -0.875, -0.545, -0.13, 0.50, 0.02, -0.13, +1, cKaki);   // kaki kanan: pivot bokong belakang-dalam, ayun ke KANAN 5 deg
+  balokRotY(-0.35, -0.02, -0.875, -0.545, -0.13, 0.50, -0.02, -0.13, -1, cKaki); // kaki kiri: cermin, ayun ke KIRI 5 deg
+
+  // ══ 2. TORSO biru tua (skip +Y: tertanam kepala; y0 menanam ke kaki) ══
+  boxSkip(0, -0.3675, 0, 0.48, 0.365, 0.42, cTorso, ['t']);    // x ±0.24 y[-0.550,-0.185] z ±0.21
+
+  // ══ 3. KEPALA kuning (skip +Y: tertanam topi T1) ══
+  boxSkip(0, -0.0575, 0, 0.50, 0.265, 0.56, cKuning, ['t']);   // x ±0.25 y[-0.190,0.075] z ±0.28
+
+  // ══ 4. TOPI bertingkat 3 (T1 tidak skip: bawahnya tertanam kepala; T2/T3 skip bawah) ══
+  boxSkip(0, 0.259, 0, 0.66, 0.382, 0.60, cTopi, []);          // T1 x±0.33 y[0.068,0.450] z ±0.30
+  boxSkip(0, 0.5545, 0, 0.54, 0.219, 0.50, cTopi, ['b']);      // T2 x±0.27 y[0.445,0.664] z ±0.25
+  boxSkip(0, 0.767, 0, 0.45, 0.216, 0.43, cTopi, ['b']);       // T3 x±0.225 y[0.659,0.875] z ±0.215 (v2: dilebarkan, rasio 0.68)
+
+  // ══ 5-6. LENGAN miring (v2: satu kotak-geser per sisi, dari bahu turun ke atas lutut; bawah skip - menanam ke kaki) ══
+  // cincin atas y=-0.200: z -0.060..0.300 ; cincin bawah y=-0.550: z 0.100..0.460 (x sama -0.460..-0.120 / 0.120..0.460)
+  kotakGeserZ(-0.460, -0.120, -0.060, 0.300, 0.100, 0.460, -0.550, -0.200, cTgn, ['b']);  // lengan kiri
+  kotakGeserZ(0.120, 0.460, -0.060, 0.300, 0.100, 0.460, -0.550, -0.200, cTgn, ['b']);    // lengan kanan
+
+  // ══ 7. JUNTAIAN sisi miring (kotak geser; bawah bergeser keluar 0.06) ══
+  kotakGeser(-0.265, -0.215, -0.100, -0.240, 0.190, 0.295, 0.345, cJuntai);   // kiri A (depan, menggantung di depan muka topi)
+  kotakGeser(-0.385, -0.335, -0.100, -0.200, 0.190, 0.100, 0.150, cJuntai);   // kiri B (luar)
+  kotakGeser(0.215, 0.265, 0.100, -0.240, 0.190, 0.295, 0.345, cJuntai);      // kanan A (depan)
+  kotakGeser(0.335, 0.385, 0.100, -0.200, 0.190, 0.100, 0.150, cJuntai);      // kanan B (luar)
+
+  // ══ 8. RUMBAI belakang (frustum meruncing; atas menanam 0.005 ke muka belakang T1) ══
+  frustum8(-0.305, -0.175, -0.355, -0.295, 0.200, -0.275, -0.205, -0.345, -0.305, -0.140, cRumbai);
+  frustum8(-0.145, -0.015, -0.355, -0.295, 0.200, -0.115, -0.045, -0.345, -0.305, -0.180, cRumbai);
+  frustum8(0.015, 0.145, -0.355, -0.295, 0.200, 0.045, 0.115, -0.345, -0.305, -0.160, cRumbai);
+  frustum8(0.175, 0.305, -0.355, -0.295, 0.200, 0.205, 0.275, -0.345, -0.305, -0.120, cRumbai);
+
+  // ══ 9. DECAL wajah (mata di muka BIRU T1 z 0.305; mulut di muka KUNING z 0.285) ══
+  decal(-0.114, -0.074, 0.147, 0.169, 0.305, 0x0A0A0A);   // mata kiri (v2: tinggi 0.022)
+  decal(0.074, 0.114, 0.147, 0.169, 0.305, 0x0A0A0A);     // mata kanan
+  decal(-0.040, 0.040, -0.055, -0.037, 0.285, 0x0A0A0A);  // mulut tengah
+  decal(-0.078, -0.040, -0.055, -0.005, 0.285, 0x0A0A0A); // mulut ujung kiri (v3: naik ke -0.005 - senyum U tegas)
+  decal(0.040, 0.078, -0.055, -0.005, 0.285, 0x0A0A0A);   // mulut ujung kanan
+
+  const g = _buildFaces(THREE, faces, { autoFix: false });
+  _pkPaintMulti(THREE, g, faces, hexes, hexes.map(() => 1.0));
+  return g;
+}
+
 // bab 237: Plushie 3 (6 x 3.5 x 3.5 studs — burung merak)
 export const NSI_PL3_SLUG = 'plushie3';
 export const NSI_PL3_SIZE = [3.0, 1.75, 1.75];
+export const NSI_PL4_SLUG = 'plushie4';
+export const NSI_PL4_SIZE = [1.0, 1.75, 1.0];   // bab 240: block = 2 x 3.5 x 2 studs
 
 export const NSI_SIZES = {
   [NSI_WEDGE_SLUG]: [1, 1, 1],
@@ -475,7 +627,8 @@ export const NSI_SIZES = {
   [NSI_PK_SLUG]: NSI_PK_SIZE.slice(),       // bab 230: Pumpkin 4 x 4.5 x 4 studs
   [NSI_PL1_SLUG]: NSI_PL1_SIZE.slice(),     // bab 235: Plushie 1 4.5 x 4 x 2 studs
   [NSI_PL2_SLUG]: NSI_PL2_SIZE.slice(),     // bab 236: Plushie 2 3 x 3.5 x 2 studs
-  [NSI_PL3_SLUG]: NSI_PL3_SIZE.slice(),     // bab 237: Plushie 3 6 x 3.5 x 3.5 studs
+  [NSI_PL3_SLUG]: NSI_PL3_SIZE.slice(),
+  [NSI_PL4_SLUG]: NSI_PL4_SIZE.slice(),     // bab 240: Plushie 4 2 x 3.5 x 2 studs     // bab 237: Plushie 3 6 x 3.5 x 3.5 studs
 };
 // 5 chest (ungu/cyan/merah/kuning/hijau) — ukuran IDENTIK (bentuk sama).
 NSI_CHEST_SLUGS.forEach((s) => { NSI_SIZES[s] = [2.25, 1.75, 2.25]; });
@@ -502,7 +655,7 @@ export function getNsiSize(slug) {
 // sejak bab 205/206/208 tapi TIDAK PERNAH didaftarkan di sini → isNsi() false →
 // guard "NSI tidak bisa di-scale" MELESETKAN mereka (gizmo scale terpasang,
 // tanpa toast) — ditemukan audit_nsi.py (scale_ditolak FAIL torch/lamp/candle).
-export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG, NSI_PK_SLUG, NSI_PL1_SLUG, NSI_PL2_SLUG, NSI_PL3_SLUG];
+export const NSI_SLUGS = [NSI_WEDGE_SLUG, NSI_RAMP_SLUG, NSI_TRUSS_SLUG, NSI_SEAT_SLUG, NSI_STEP_SLUG, NSI_MAST_SLUG, NSI_HELM_SLUG, NSI_WINDOW_SLUG, NSI_DOOR_SLUG, NSI_HATCH_SLUG, ...NSI_CHEST_SLUGS, NSI_ST_SLUG, NSI_MT_SLUG, NSI_BT_SLUG, NSI_PT_SLUG, ...NSI_TR_SLUGS, NSI_TC_SLUG, NSI_LP_SLUG, NSI_CD_SLUG, ...NSI_ROD_SLUGS, NSI_IB_SLUG, NSI_CH_SLUG, NSI_TH_SLUG, NSI_FL_SLUG, NSI_STAR_SLUG, NSI_SIGN_SLUG, NSI_BREAD_SLUG, NSI_CAKE_SLUG, NSI_PK_SLUG, NSI_PL1_SLUG, NSI_PL2_SLUG, NSI_PL3_SLUG, NSI_PL4_SLUG];
 export function isNsi(slug) {
   return NSI_SLUGS.indexOf(slug) >= 0;
 }
@@ -6097,6 +6250,7 @@ export function makeNsiGeometry(THREE, slug) {
   if (slug === NSI_PL2_SLUG) return makePlushie2Geometry(THREE);
   // bab 237: Plushie 3 (burung merak — vertex color murni)
   if (slug === NSI_PL3_SLUG) return makePlushie3Geometry(THREE);
+  if (slug === NSI_PL4_SLUG) return makePlushie4Geometry(THREE);
   if (NSI_CHEST_SLUGS.indexOf(slug) >= 0) return makeChestGeometry(THREE, slug);
   if (NSI_ROD_SLUGS.indexOf(slug) >= 0) return makeRodGeometry(THREE);
   return null;
